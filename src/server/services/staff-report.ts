@@ -53,6 +53,8 @@ export interface BusinessPeriod {
 }
 export interface TeamPeriodData {
   v: 1; kind: PeriodKind; from: BusinessDate; to: BusinessDate; label: string;
+  /** Counted now, while the period is still running ("so far"). */
+  live?: boolean;
   /** The business itself (reports made before Oct 2026 have none). */
   business?: BusinessPeriod;
   people: { userId: string; name: string; role: string; department: "RECEPTION" | "RESTAURANT"; reportId: string; token: string; shifts: number; minutes: number; headline: ShiftFact[] }[];
@@ -112,7 +114,8 @@ export async function buildPersonPeriod(userId: string, kind: PeriodKind, from: 
   // The period before, for comparison: the week / month before (so far: the same part of it, up to the same moment).
   const p = previousPeriod(kind, from, to);
   const pb = businessRangeBounds(p.from, p.to, cfg);
-  const prevEnd = new Date(Math.min(pb.end.getTime(), pb.start.getTime() + (end.getTime() - start.getTime())));
+  const running = opts.live || fullEnd > now;
+  const prevEnd = running ? new Date(Math.min(pb.end.getTime(), pb.start.getTime() + (end.getTime() - start.getTime()))) : pb.end;
   const [facts, prev] = await Promise.all([
     personFacts(subject(start, end), department, { period: true }),
     personFacts(subject(pb.start, prevEnd), department, { period: true }).catch(() => null),

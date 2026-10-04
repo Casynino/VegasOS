@@ -98,13 +98,19 @@ describe("room service by the restaurant (owner, 2026-10-04: the restaurant serv
     expect(o).toMatchObject({ type: "ROOM_SERVICE", settlement: "ROOM", guestId: john.guestId, reservationId: john.id });
   });
 
-  it("a guest with no phone on file gets the one given now — never a number that is someone else's", async () => {
+  it("a guest with no phone on file: never a number that is someone else's; a waiter's stays on the order, reception's fills the guest in", async () => {
     const quiet = await stay("Quiet Guest", null, { roomIndex: 1 });
     await stay("Other Customer", "0712 800 999", { roomIndex: 2 });
     await expect(stayCustomer(quiet.id, null, "0712 800 999", NOT_STAYING)).rejects.toThrow(/belongs to another customer/);
     const { guestId, phone } = await stayCustomer(quiet.id, null, "0712 800 555", NOT_STAYING);
-    const waiter = await waiterActor();
-    await createRestaurantOrder({ type: "ROOM_SERVICE", reservationId: quiet.id, settlement: "UNPAID", items: [beer] }, waiter, new Date(), { pickedGuestId: guestId, customerPhone: phone });
+    // A waiter: the number is the order's (for updates) — the staying guest's record is not changed (it would open their room).
+    const o = await createRestaurantOrder({ type: "ROOM_SERVICE", reservationId: quiet.id, settlement: "UNPAID", items: [beer] }, await waiterActor(), new Date(), { pickedGuestId: guestId, customerPhone: phone, phoneOnOrderOnly: true });
+    expect(o).toMatchObject({ guestId: quiet.guestId, customerPhone: "+255712800555" });
+    expect((await db.guest.findUniqueOrThrow({ where: { id: quiet.guestId } })).phone).toBeNull();
+    // …so that number never gets a dine-in room bill on this room.
+    await expect(createRestaurantOrder({ type: "DINE_IN", locationId: "loc_in_4", reservationId: quiet.id, settlement: "ROOM", items: [beer] }, await waiterActor(), new Date(), { customerPhone: "0712 800 555" })).rejects.toThrow(/not this customer's/);
+    // Reception (who checks stays) fills the guest's phone in.
+    await createRestaurantOrder({ type: "ROOM_SERVICE", reservationId: quiet.id, settlement: "UNPAID", items: [beer] }, await receptionistActor(), new Date(), { pickedGuestId: guestId, customerPhone: phone });
     expect((await db.guest.findUniqueOrThrow({ where: { id: quiet.guestId } })).phone).toBe("+255712800555");
   });
 

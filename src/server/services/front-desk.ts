@@ -250,7 +250,7 @@ export async function getArrivalsSummary(today: BusinessDate) {
  * Arrival-day reminders through the configured provider (runs with the daily job).
  * Channel "MANUAL" = no automatic sending; reception uses the "Remind" button.
  */
-export async function sendArrivalReminders(today: BusinessDate) {
+export async function sendArrivalReminders(today: BusinessDate, deadline?: number) {
   const settings = await getSettings();
   if (settings.arrivalReminderChannel === "MANUAL") return { sent: 0, skipped: "manual" as const };
   const { sendMessage } = await import("./messaging");
@@ -258,6 +258,8 @@ export async function sendArrivalReminders(today: BusinessDate) {
   let sent = 0;
   for (const p of [...s.expected, ...s.late]) {
     if (!p.phone) continue;
+    // The scheduled run's time limit: a send that might not finish waits for the next run.
+    if (deadline && deadline - Date.now() < 16_000) break;
     const r = await db.reservation.findUnique({ where: { id: p.id }, select: { reminderSentAt: true } });
     if (r?.reminderSentAt) continue;
     const out = await sendMessage({ channel: settings.arrivalReminderChannel, to: p.phone, text: p.reminder });

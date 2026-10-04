@@ -85,7 +85,9 @@ export async function createOrderAction(input: z.input<typeof OrderSchema>): Pro
     const by = await actingWaiter(user, pin, "making an order");
     const counter = isRestaurantDevice(user.permissions);
     const payBy = counter && d.settlement === "PAY_NOW" ? await actor(user) : undefined;
-    const o = await createRestaurantOrder(d, by, new Date(), { source, customerPhone: normalizePhone(stayPhone), pickedGuestId: forStay ? stayGuest : customerId ?? null, payBy, handedOverById: payBy ? by.userId : null });
+    const o = await createRestaurantOrder(d, by, new Date(), { source, customerPhone: normalizePhone(stayPhone), pickedGuestId: forStay ? stayGuest : customerId ?? null,
+      // A waiter's room service: the number typed reaches the order (updates), never the staying guest's record.
+      phoneOnOrderOnly: forStay && !user.permissions.has("reservations.view"), payBy, handedOverById: payBy ? by.userId : null });
     if (o.customerPhone) after(() => notifyOrderCustomer(o.id, "RECEIVED"));
     refresh();
     revalidatePath("/staff/reservations", "layout");

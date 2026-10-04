@@ -147,9 +147,9 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
   let row = 0;
 
   return (
-    <article id="invoice-doc" className="invoice-sheet relative mx-auto w-full max-w-[880px] overflow-hidden rounded-[28px] bg-white text-[#1d1a16] shadow-[0_2px_6px_rgba(15,23,42,0.05),0_40px_80px_-40px_rgba(15,23,42,0.55)] print:max-w-none print:rounded-none print:shadow-none" style={{ printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" }}>
+    <article id="invoice-doc" className="invoice-sheet group/doc relative mx-auto w-full max-w-[880px] overflow-hidden rounded-[28px] bg-white text-[#1d1a16] shadow-[0_2px_6px_rgba(15,23,42,0.05),0_40px_80px_-40px_rgba(15,23,42,0.55)] print:max-w-none print:rounded-none print:shadow-none" style={{ printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" }}>
       {/* Header */}
-      <header className="relative overflow-hidden bg-[#15110c] px-8 pb-8 pt-7 text-white sm:px-10">
+      <header data-break className="relative overflow-hidden bg-[#15110c] px-8 pb-8 pt-7 text-white sm:px-10">
         <div className="pointer-events-none absolute -right-24 -top-32 size-80 rounded-full bg-[#c9a24a]/25 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-40 left-1/3 size-72 rounded-full bg-[#c9a24a]/10 blur-3xl" />
         <div className="relative flex flex-wrap items-start justify-between gap-6">
@@ -192,7 +192,7 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
 
       <div className="space-y-8 px-8 py-8 sm:px-10">
         {/* Who & what */}
-        <section className="grid gap-4 sm:grid-cols-2">
+        <section data-break className="grid gap-4 sm:grid-cols-2 group-data-[paper=true]/doc:grid-cols-2">
           <div className="rounded-2xl border border-[#eadfca] bg-[#fbf8f2] p-5">
             <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#9a7a35]"><Building2 className="size-3.5" />{w.to}</p>
             <p className="mt-2 text-lg font-semibold leading-snug">{inv.billTo.name}</p>
@@ -224,14 +224,14 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
 
         {/* Group / multi-stay invoice: rooms, then extra charges by department (each with its room & guest), then each room's total */}
         {folioMode && (
-          <section className="space-y-5">
+          <section data-break className="space-y-5">
             <div className="break-inside-avoid">
               <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#9a7a35]">Room breakdown</p>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b-2 border-[#15110c] text-left text-[10px] uppercase tracking-[0.14em] text-[#8a8177]">
-                    <th className="py-2 font-semibold">Room</th><th className="py-2 font-semibold">Guest</th><th className="hidden py-2 font-semibold sm:table-cell">Room type</th>
-                    <th className="py-2 text-right font-semibold">Nights</th><th className="hidden py-2 text-right font-semibold sm:table-cell">Rate</th>
+                    <th className="py-2 font-semibold">Room</th><th className="py-2 font-semibold">Guest</th><th className="hidden py-2 font-semibold sm:table-cell group-data-[paper=true]/doc:table-cell">Room type</th>
+                    <th className="py-2 text-right font-semibold">Nights</th><th className="hidden py-2 text-right font-semibold sm:table-cell group-data-[paper=true]/doc:table-cell">Rate</th>
                     {roomDiscount > 0 && <th className="py-2 text-right font-semibold">Discount</th>}
                     <th className="py-2 text-right font-semibold">Room total</th>
                   </tr>
@@ -241,19 +241,19 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
                     const stay = i.reservationId ? inv.stays?.[i.reservationId] : undefined;
                     const short = i.description.endsWith("short time");
                     return (
-                      <tr key={i.id} className="border-b border-[#efe7da] align-top">
+                      <tr data-break key={i.id} className="border-b border-[#efe7da] align-top">
                         <td className="py-2 font-semibold">{i.roomNumber ?? "—"}</td>
                         <td className="py-2">{i.guestName ?? "—"}{stay?.others.length ? <span className="block text-xs text-[#8a8177]">with {stay.others.join(", ")}</span> : null}</td>
-                        <td className="hidden py-2 sm:table-cell">{i.description.split(" · ")[0]}</td>
+                        <td className="hidden py-2 sm:table-cell group-data-[paper=true]/doc:table-cell">{i.description.split(" · ")[0]}</td>
                         <td className="py-2 text-right">{short ? "short time" : i.quantity}</td>
-                        <td className="hidden py-2 text-right sm:table-cell">{n(i.unitAmount)}</td>
+                        <td className="hidden py-2 text-right sm:table-cell group-data-[paper=true]/doc:table-cell">{n(i.unitAmount)}</td>
                         {roomDiscount > 0 && <td className="py-2 text-right text-emerald-700">{i.discountAmount ? `− ${n(i.discountAmount)}` : "—"}</td>}
                         <td className="py-2 text-right font-semibold">{n(i.netAmount)}</td>
                       </tr>
                     );
                   })}
                 </tbody>
-                <tfoot><tr className="font-semibold tabular-nums"><td colSpan={roomDiscount > 0 ? 6 : 5} className="py-2 text-right text-[#8a8177] max-sm:hidden">Rooms</td><td className="py-2 text-right sm:hidden" colSpan={roomDiscount > 0 ? 4 : 3}>Rooms</td><td className="py-2 text-right">{n(roomLines.reduce((t, i) => t + i.netAmount, 0))}</td></tr></tfoot>
+                <tfoot><tr className="font-semibold tabular-nums"><td colSpan={roomDiscount > 0 ? 6 : 5} className="py-2 text-right text-[#8a8177] max-sm:hidden group-data-[paper=true]/doc:table-cell">Rooms</td><td className="py-2 text-right sm:hidden group-data-[paper=true]/doc:hidden" colSpan={roomDiscount > 0 ? 4 : 3}>Rooms</td><td className="py-2 text-right">{n(roomLines.reduce((t, i) => t + i.netAmount, 0))}</td></tr></tfoot>
               </table>
             </div>
 
@@ -265,7 +265,7 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
                     <p className="flex justify-between bg-[#f6efe2] px-4 py-2 text-sm font-semibold"><span>{DEPT_LABEL[d]}</span><span className="tabular-nums">{n(items.reduce((t, i) => t + i.netAmount, 0))}</span></p>
                     <table className="w-full text-sm"><tbody className="tabular-nums">
                       {items.map((i) => (
-                        <tr key={i.id} className="border-t border-[#efe7da] align-top">
+                        <tr data-break key={i.id} className="border-t border-[#efe7da] align-top">
                           <td className="px-4 py-1.5">{i.date && <span className="text-xs text-[#8a8177]">{shortDay(i.date)} · </span>}{d === "MEETING" ? i.description : i.description}</td>
                           <td className="px-2 py-1.5 text-xs text-[#5b534a]">{i.roomNumber ? `Room ${i.roomNumber}` : ""}{i.guestName ? `${i.roomNumber ? " · " : ""}${i.guestName}` : ""}</td>
                           <td className="w-28 px-4 py-1.5 text-right font-semibold">{n(i.netAmount)}</td>
@@ -282,7 +282,7 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
                 <p className="flex justify-between bg-[#f6efe2] px-4 py-2 text-sm font-semibold"><span>Adjustments</span><span className="tabular-nums">{adjustments < 0 ? "− " : ""}{n(Math.abs(adjustments))}</span></p>
                 <table className="w-full text-sm"><tbody className="tabular-nums">
                   {adjLines.map((i) => (
-                    <tr key={i.id} className="border-t border-[#efe7da]">
+                    <tr data-break key={i.id} className="border-t border-[#efe7da]">
                       <td className="px-4 py-1.5">{i.description}</td>
                       <td className="px-2 py-1.5 text-xs text-[#5b534a]">{i.roomNumber ? `Room ${i.roomNumber}` : ""}{i.guestName ? ` · ${i.guestName}` : ""}</td>
                       <td className="w-28 px-4 py-1.5 text-right font-semibold">{i.netAmount < 0 ? "− " : ""}{n(Math.abs(i.netAmount))}</td>
@@ -296,7 +296,7 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
               <div className="break-inside-avoid overflow-hidden rounded-2xl border border-[#eadfca]">
                 <p className="bg-[#f6efe2] px-4 py-2 text-sm font-semibold">Other items</p>
                 <table className="w-full text-sm"><tbody>
-                  {loose.map((i) => <tr key={i.id} className="border-t border-[#efe7da]"><td className="px-4 py-1.5">{i.description}{i.quantity > 1 && ` · ${i.quantity} × ${n(i.unitAmount)}`}</td><td className="w-28 px-4 py-1.5 text-right font-semibold tabular-nums">{n(i.netAmount)}</td></tr>)}
+                  {loose.map((i) => <tr data-break key={i.id} className="border-t border-[#efe7da]"><td className="px-4 py-1.5">{i.description}{i.quantity > 1 && ` · ${i.quantity} × ${n(i.unitAmount)}`}</td><td className="w-28 px-4 py-1.5 text-right font-semibold tabular-nums">{n(i.netAmount)}</td></tr>)}
                 </tbody></table>
               </div>
             )}
@@ -315,7 +315,7 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
                   </thead>
                   <tbody className="tabular-nums">
                     {folios.map((f) => (
-                      <tr key={f.key} className="border-b border-[#efe7da]">
+                      <tr data-break key={f.key} className="border-b border-[#efe7da]">
                         <td className="px-4 py-1.5"><span className="font-semibold">{f.room ?? "—"}</span> · {f.guest}</td>
                         {usedDepts.map((d) => { const v = f.depts.find((x) => x.d === d)?.items.reduce((t, i) => t + i.netAmount + i.discountAmount, 0) ?? 0; return <td key={d} className="px-2 py-1.5 text-right">{v ? n(v) : "—"}</td>; })}
                         {inv.discount > 0 && <td className="px-2 py-1.5 text-right text-emerald-700">{f.discount ? `− ${n(f.discount)}` : "—"}</td>}
@@ -346,12 +346,12 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
                 <th className="py-2.5 font-semibold">Description</th>
                 <th className="py-2.5 text-right font-semibold">Qty</th>
                 <th className="py-2.5 text-right font-semibold">Rate</th>
-                <th className="hidden py-2.5 text-right font-semibold sm:table-cell">Discount</th>
+                <th className="hidden py-2.5 text-right font-semibold sm:table-cell group-data-[paper=true]/doc:table-cell">Discount</th>
                 <th className="py-2.5 text-right font-semibold">Amount</th>
               </tr>
             </thead>
             {groups.map((g) => (
-              <tbody key={g.key} className="break-inside-avoid">
+              <tbody data-break key={g.key} className="break-inside-avoid">
                 {g.head && (
                   <tr className="bg-[#f6efe2]">
                     <td colSpan={6} className="px-2 py-2">
@@ -370,7 +370,7 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
                   </tr>
                 )}
                 {g.items.map((i) => (
-                  <tr key={i.id} className="border-b border-[#efe7da] align-top">
+                  <tr data-break key={i.id} className="border-b border-[#efe7da] align-top">
                     <td className="py-2.5 text-xs tabular-nums text-[#a39a8f]">{String(++row).padStart(2, "0")}</td>
                     <td className="py-2.5 pr-3">
                       {i.description}
@@ -378,7 +378,7 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
                     </td>
                     <td className="py-2.5 text-right tabular-nums">{i.quantity}</td>
                     <td className="py-2.5 text-right tabular-nums">{n(i.unitAmount)}</td>
-                    <td className="hidden py-2.5 text-right tabular-nums text-emerald-700 sm:table-cell">{i.discountAmount ? `− ${n(i.discountAmount)}` : "—"}</td>
+                    <td className="hidden py-2.5 text-right tabular-nums text-emerald-700 sm:table-cell group-data-[paper=true]/doc:table-cell">{i.discountAmount ? `− ${n(i.discountAmount)}` : "—"}</td>
                     <td className="py-2.5 text-right font-semibold tabular-nums">{n(i.netAmount)}</td>
                   </tr>
                 ))}
@@ -389,11 +389,11 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
         </section>}
 
         {/* Pay into + totals */}
-        <section className="grid gap-6 sm:grid-cols-[1fr_300px]">
+        <section data-break className="grid gap-6 sm:grid-cols-[1fr_300px] group-data-[paper=true]/doc:grid-cols-[1fr_300px]">
           <div className="space-y-3">
             <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#9a7a35]">Pay into</p>
             {hasBank || hasMobile ? (
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2 group-data-[paper=true]/doc:grid-cols-2">
                 {hasBank && (
                   <div className="rounded-2xl border border-[#eadfca] p-4">
                     <p className="flex items-center gap-2 text-sm font-semibold"><span className="grid size-7 place-items-center rounded-lg bg-[#15110c] text-[#f0cf86]"><Landmark className="size-3.5" /></span>{s.bankName}</p>
@@ -446,7 +446,7 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
         </section>
 
         {inv.payments.length > 0 && (
-          <section className="rounded-2xl bg-[#fbf8f2] p-4 text-xs">
+          <section data-break className="rounded-2xl bg-[#fbf8f2] p-4 text-xs">
             <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#9a7a35]">Payments received</p>
             <ul className="space-y-1">
               {inv.payments.map((p) => (
@@ -462,7 +462,7 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
         {inv.cancelReason && <p className="rounded-xl bg-rose-50 px-4 py-2.5 text-sm text-rose-700">{inv.status === "VOID" ? "Void" : "Cancelled"}: {inv.cancelReason}</p>}
 
         {/* Footer */}
-        <footer className="grid items-end gap-6 border-t border-[#efe7da] pt-6 sm:grid-cols-[1fr_auto]">
+        <footer data-break className="grid items-end gap-6 border-t border-[#efe7da] pt-6 sm:grid-cols-[1fr_auto] group-data-[paper=true]/doc:grid-cols-[1fr_auto]">
           <div className="space-y-2 text-xs text-[#8a8177]">
             <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#9a7a35]">Terms</p>
             <p className="max-w-lg leading-relaxed">

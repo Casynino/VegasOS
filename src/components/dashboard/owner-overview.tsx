@@ -101,7 +101,9 @@ export async function OwnerOverview({ searchParams, basePath }: {
   const extensionsToday = await db.auditLog.count({ where: { action: "reservation.extended", createdAt: { gte: new Date(now.getTime() - 24 * 3600_000) } } });
   const hour = Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hourCycle: "h23", timeZone: "Africa/Dar_es_Salaam" }).format(now));
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
-  const departuresOwing = snap.departures.filter((r) => r.balanceAmount > 0);
+  // What each guest really owes (a group pays its rooms) — the same rule as the front desk.
+  const owedBy = new Map(inHouse.rows.map((x) => [x.reservationId, x.outstanding]));
+  const departuresOwing = snap.departures.filter((r) => (owedBy.get(r.id) ?? Math.max(0, r.balanceAmount)) > 0);
   const q = (p: string) => (custom ? `from=${range.from}&to=${range.to}` : `period=${p}`);
   const revSpark = trendPl.revenue.daily.map((d) => d.rooms + d.other);
 

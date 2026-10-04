@@ -158,8 +158,8 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
   const pickType = (t: OrderType) => {
     setType(t);
     if (t === "ROOM_SERVICE" && !canPay && settlement === "PAY_NOW") setSettlement(roomBills ? "ROOM" : "UNPAID");
-    // From a table's customer to room service: keep them (their phone finds their room).
-    if (t === "ROOM_SERVICE" && sameCustomer && tableCustomer?.phone && !phone) setPhone(tableCustomer.phone);
+    // Room service is for the staying guest picked from the list: an earlier customer's number or name never carries over.
+    if (t === "ROOM_SERVICE" && t !== type) { setPhone(""); setName(""); setChosen(null); }
   };
   const reset = () => { setCart({}); setQ(""); setNotes(""); setLocationId(""); setJoinId(null); setName(""); setPhone(""); setChosen(null); setReference(""); setGuestId(""); setStayId(""); setRoomReason(""); };
   // Reception: the customer's own rooms first in the list.
@@ -407,7 +407,7 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
               )}
               {(needsGuest || (type === "DINE_IN" && verify)) && (
                 <div className="mt-2 space-y-2">
-                  <StayingGuestPicker guests={guests} value={guestId || null} onChange={setGuestId} ownIds={ownIds} required={needsGuest} />
+                  <StayingGuestPicker guests={guests} value={guestId || null} onChange={(id) => { setGuestId(id); if (forStay && id !== guestId) { setPhone(""); setName(""); setChosen(null); } }} ownIds={ownIds} required={needsGuest} />
                   {guest && otherGuestsRoom && (
                     <div className="rounded-xl border border-amber-500/40 bg-amber-500/[0.06] p-2.5">
                       <p className="text-[11px] font-medium text-amber-700 dark:text-amber-300">This is not the customer&apos;s own room — say why it goes on it.</p>

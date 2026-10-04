@@ -384,7 +384,7 @@ function vs(cur: number, prev: number, what: string) {
 }
 
 /** The business over the week or month: income, money, rooms, the restaurant, guests, expenses. */
-function BusinessSection({ b, kind }: { b: BusinessPeriod; kind: "WEEK" | "MONTH" }) {
+function BusinessSection({ b, kind, live = false }: { b: BusinessPeriod; kind: "WEEK" | "MONTH"; live?: boolean }) {
   const before = kind === "WEEK" ? "last week" : "last month";
   const label = (date: string) => kind === "WEEK" ? new Date(`${date}T12:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", timeZone: "UTC" }) : String(Number(date.slice(8)));
   const k = (n: number) => (Math.abs(n) >= 1_000_000 ? `${Math.round(n / 100_000) / 10}M` : Math.abs(n) >= 1000 ? `${Math.round(n / 1000)}k` : num(n));
@@ -403,7 +403,7 @@ function BusinessSection({ b, kind }: { b: BusinessPeriod; kind: "WEEK" | "MONTH
   const guests: [string, number][] = [["Checked in", b.guests.checkIns], ["Checked out", b.guests.checkOuts], ["New bookings", b.guests.newBookings], ["Cancelled", b.guests.cancellations], ["No-shows", b.guests.noShows]];
   return (
     <section className="space-y-4">
-      <SectionTitle title="The business" sub={`The same figures as Finance and the daily report · compared with ${before}`} />
+      <SectionTitle title="The business" sub={live ? `So far · compared with the same days ${before} (whole days — today is still running)` : `The same figures as Finance and the daily report · compared with ${before}`} />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3" data-break>
         {figures.map((f, i) => (
           <div key={f.label} className={cn("rounded-2xl p-4", i === 0 ? "bg-[#15110c] text-white" : "bg-white ring-1 ring-[#eee4d2]")}>
@@ -458,7 +458,7 @@ export function TeamPeriodPaper({ d, hotel, number, preparedAt, personHref }: { 
   return (
     <Paper hotel={hotel} eyebrow={what} title={d.business ? "Business & team" : "The team"} period={d.label} number={number} preparedAt={preparedAt}
       signoff={[["Prepared by", "System · automatic report"], ["Checked by", ""], ["Approved by (MD)", ""]]}>
-      {d.business && <BusinessSection b={d.business} kind={d.kind} />}
+      {d.business && <BusinessSection b={d.business} kind={d.kind} live={d.live} />}
       {d.business && <SectionTitle title="The team" sub="Who worked, and each person's own report" />}
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4" data-break>
         {[[Users, "People who worked", num(d.people.length)], [Clock, "Shifts", num(d.people.reduce((t, p) => t + p.shifts, 0))], [Clock, "Hours on shift", dur(hours)], [CalendarCheck, "Reception · Restaurant", `${dept("RECEPTION").length} · ${dept("RESTAURANT").length}`]].map(([Icon, label, value], i) => {

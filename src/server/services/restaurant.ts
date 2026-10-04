@@ -227,6 +227,9 @@ export interface OrderContext {
   guestId?: string | null;
   /** Staff picked this customer in the search (not just typed a number): the order is theirs. */
   pickedGuestId?: string | null;
+  /** The number given is kept on the order only — never saved onto the picked guest (a waiter's room service: only
+   *  reception, who checks stays, gives a staying guest a phone; it would open their room to that number). */
+  phoneOnOrderOnly?: boolean;
   customerPhone?: string | null;
   customerEmail?: string | null;
   /** Sent once per submit by the customer's screen: a repeated tap returns the same order. */
@@ -369,7 +372,8 @@ export const canBillAnotherRoom = (actor: Actor) => ["dashboard.manager", "dashb
  * An order FOR a staying guest picked from the list — reception's orders, and room service by anyone who takes orders
  * (owner, 2026-10-04: "the restaurant serves the hotel too"; waiters pick the staying guest the way reception does). The
  * customer is that guest — or someone on their booking when they were picked — never another person. A phone typed
- * here only fills in a guest who has none on file, and it must not be someone else's (that would open the room to them).
+ * here must not be someone else's; reception's fills in a guest who has none on file, a waiter's stays on the order only
+ * (see OrderContext.phoneOnOrderOnly).
  */
 export async function stayCustomer(reservationId: string | null | undefined, customerId: string | null | undefined, customerPhone: string | null | undefined, notStaying: string) {
   const stay = reservationId ? await db.reservation.findUnique({ where: { id: reservationId }, select: { status: true, guestId: true, guest: { select: { phone: true } }, guests: { select: { guestId: true } } } }) : null;
@@ -468,7 +472,7 @@ export async function createRestaurantOrderTx(tx: Tx, input: OrderInput, actor: 
   // staying guest without a phone on file gets the one given now (unless it is someone else's).
   const givenPhone = normalizePhone(ctx.customerPhone);
   // A customer staff picked in the search is that person (their blank phone gets this one).
-  let customerGuestId = (!ctx.byCustomer && ctx.pickedGuestId ? await pickedCustomerTx(tx, ctx.pickedGuestId, givenPhone) : null) ?? ctx.guestId ?? null;
+  let customerGuestId = (!ctx.byCustomer && ctx.pickedGuestId ? await pickedCustomerTx(tx, ctx.pickedGuestId, ctx.phoneOnOrderOnly ? null : givenPhone) : null) ?? ctx.guestId ?? null;
   if (!ctx.byCustomer && givenPhone && !customerGuestId) {
     const known = await tx.guest.findFirst({ where: { deletedAt: null, OR: [{ phone: givenPhone }, { altPhone: givenPhone }] }, orderBy: { updatedAt: "desc" }, select: { id: true } });
     if (known) customerGuestId = known.id;
@@ -1673,7 +1677,10 @@ export async function setOrderCustomerPhone(id: string, rawPhone: string, actor:
     let guestId = o.guestId ?? o.reservation?.guestId ?? null;
     if (guestId) {
       const g = await tx.guest.findUnique({ where: { id: guestId }, select: { phone: true } });
-      if (g && !g.phone) await tx.guest.update({ where: { id: guestId }, data: { phone } });
+      // A staying guest gets a phone on file only from reception (who checks stays) — from anyone else the number stays
+      // on this order (it would open their room to that number).
+      const fill = g && !g.phone && (canVerifyRoom(actor) || !(await activeStaysFor(tx, [guestId])).length);
+      if (fill) await tx.guest.update({ where: { id: guestId }, data: { phone } });
     } else guestId = await resolveGuest(tx, { fullName: o.customerName?.trim() || "Restaurant customer", phone });
     await tx.restaurantOrder.update({ where: { id }, data: { customerPhone: phone, guestId } });
     await audit(tx, actor, { action: "restaurant_order.phone", entityType: "RestaurantOrder", entityId: id, before: { phone: o.customerPhone }, after: { phone } });

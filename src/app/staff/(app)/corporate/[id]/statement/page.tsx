@@ -48,8 +48,8 @@ export default async function StatementPage({ params, searchParams }: PageProps<
         </div>
       </div>
 
-      <article id="statement-doc" className="mx-auto w-full max-w-[880px] overflow-hidden rounded-[28px] bg-white text-[#1d1a16] shadow-[0_40px_80px_-40px_rgba(15,23,42,0.55)] print:max-w-none print:rounded-none print:shadow-none" style={{ printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" }}>
-        <header className="relative overflow-hidden bg-[#15110c] px-8 py-7 text-white sm:px-10">
+      <article id="statement-doc" className="group/doc mx-auto w-full max-w-[880px] overflow-hidden rounded-[28px] bg-white text-[#1d1a16] shadow-[0_40px_80px_-40px_rgba(15,23,42,0.55)] print:max-w-none print:rounded-none print:shadow-none" style={{ printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" }}>
+        <header data-break className="relative overflow-hidden bg-[#15110c] px-8 py-7 text-white sm:px-10">
           <div className="pointer-events-none absolute -right-24 -top-32 size-80 rounded-full bg-[#c9a24a]/25 blur-3xl" />
           <div className="relative flex flex-wrap items-start justify-between gap-6">
             <div className="flex items-center gap-4">
@@ -69,7 +69,7 @@ export default async function StatementPage({ params, searchParams }: PageProps<
         <div className="h-1 bg-gradient-to-r from-[#8a6a25] via-[#f0cf86] to-[#8a6a25]" />
 
         <div className="space-y-7 px-8 py-8 sm:px-10">
-          <section className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl bg-[#eadfca] sm:grid-cols-4">
+          <section data-break className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl bg-[#eadfca] sm:grid-cols-4 group-data-[paper=true]/doc:grid-cols-4">
             {[["Opening balance", st.opening], ["Invoiced", st.invoiced], ["Paid", st.paid], ["Closing balance", st.closing]].map(([k, v], i) => (
               <div key={k as string} className={cn("bg-[#fbf8f2] px-4 py-3", i === 3 && "bg-[#15110c] text-white")}>
                 <p className={cn("text-[10px] uppercase tracking-[0.18em]", i === 3 ? "text-white/50" : "text-[#8a8177]")}>{k}</p>
@@ -84,9 +84,9 @@ export default async function StatementPage({ params, searchParams }: PageProps<
               <th className="w-24 py-2.5 pl-4 text-right font-semibold">Invoiced</th><th className="w-24 py-2.5 pl-4 text-right font-semibold">Paid</th><th className="w-28 py-2.5 pl-4 text-right font-semibold">Balance</th>
             </tr></thead>
             <tbody>
-              <tr className="border-b border-[#efe7da] bg-[#fbf8f2]"><td className="py-2.5 text-xs">{formatBusinessDate(p.from)}</td><td /><td className="py-2.5 font-medium">Opening balance</td><td /><td /><td className="py-2.5 text-right font-semibold tabular-nums">{n(st.opening)}</td></tr>
+              <tr data-break className="border-b border-[#efe7da] bg-[#fbf8f2]"><td className="py-2.5 text-xs">{formatBusinessDate(p.from)}</td><td /><td className="py-2.5 font-medium">Opening balance</td><td /><td /><td className="py-2.5 text-right font-semibold tabular-nums">{n(st.opening)}</td></tr>
               {st.rows.map((r, i) => (
-                <tr key={i} className="border-b border-[#efe7da]">
+                <tr data-break key={i} className="border-b border-[#efe7da]">
                   <td className="py-2.5 text-xs">{formatBusinessDate(r.date)}</td>
                   <td className="whitespace-nowrap py-2.5 pr-4 font-mono text-xs">{r.href ? <Link href={r.href} className="hover:underline">{r.ref}</Link> : r.ref}</td>
                   <td className="py-2.5 text-[#5b534a]">{r.detail}</td>
@@ -96,13 +96,13 @@ export default async function StatementPage({ params, searchParams }: PageProps<
                 </tr>
               ))}
               {st.rows.length === 0 && <tr><td colSpan={6} className="py-6 text-center text-[#8a8177]">No invoices or payments in this period.</td></tr>}
-              <tr className="bg-[#15110c] text-white"><td className="px-2 py-3 text-xs">{formatBusinessDate(p.to)}</td><td /><td className="py-3 font-semibold">Closing balance</td><td /><td /><td className="px-2 py-3 text-right text-base font-semibold tabular-nums text-[#f0cf86]">{n(st.closing)}</td></tr>
+              <tr data-break className="bg-[#15110c] text-white"><td className="px-2 py-3 text-xs">{formatBusinessDate(p.to)}</td><td /><td className="py-3 font-semibold">Closing balance</td><td /><td /><td className="px-2 py-3 text-right text-base font-semibold tabular-nums text-[#f0cf86]">{n(st.closing)}</td></tr>
             </tbody>
           </table>
 
           <section>
             <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#9a7a35]">Owed today, by age</p>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 group-data-[paper=true]/doc:grid-cols-4">
               {[["Not yet due", age.current], ["1–30 days late", age.d30], ["31–60 days late", age.d60], ["Over 60 days", age.d90]].map(([k, v], i) => (
                 <div key={k as string} className={cn("rounded-xl border px-3 py-2.5", i > 0 && (v as number) > 0 ? "border-rose-200 bg-rose-50" : "border-[#eadfca]")}>
                   <p className="text-[11px] text-[#8a8177]">{k}</p>

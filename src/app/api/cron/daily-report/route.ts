@@ -33,7 +33,6 @@ export async function GET(req: Request) {
   try {
     await refreshOverdueInvoices();
     await refreshBookingStates();
-    await sendArrivalReminders(await businessToday()).catch((e) => console.error("[cron] arrival reminders failed", e));
     // Housekeeping: expired sessions and stale rate-limit windows.
     await db.session.deleteMany({ where: { expiresAt: { lt: new Date() } } });
     await db.rateLimitBucket.deleteMany({ where: { windowStart: { lt: new Date(Date.now() - 86_400_000) } } });
@@ -48,6 +47,8 @@ export async function GET(req: Request) {
     // …then shift reports: any closed shift still without its report gets it, and an unsent message to the Boss is
     // tried again — the rest waits for the next run.
     const shifts = await retryShiftReports(new Date(), Math.min(20_000, left()), until).catch((e) => { console.error("[cron] shift reports failed", e); return null; });
+    // Guests' arrival reminders last (a slow provider must never take the reports' time), within what is left.
+    if (left() > 16_000) await sendArrivalReminders(await businessToday(), until).catch((e) => console.error("[cron] arrival reminders failed", e));
     return Response.json({ ok: true, ...result, shifts, periods });
   } catch (e) {
     console.error("[cron] daily report failed", e);

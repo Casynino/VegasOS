@@ -52,7 +52,7 @@ export default async function LiveStaffReportPage({ searchParams }: PageProps<"/
     const workers = await db.actualShift.findMany({ where: { startedAt: { gte: start, lt: end } }, distinct: ["userId"], select: { userId: true } });
     const [business, ...people] = await Promise.all([buildBusinessPeriod(kind, from, today), ...workers.map((w) => buildPersonPeriod(w.userId, kind, from, today, { live: true }))]);
     const d: TeamPeriodData = {
-      v: 1, kind, from, to: today, label: `${periodLabel(kind, from, periodOf(kind, today).to)} · so far`, business,
+      v: 1, kind, from, to: today, label: `${periodLabel(kind, from, periodOf(kind, today).to)} · so far`, live: true, business,
       people: people.map((p) => ({ userId: p.person.id, name: p.person.name, role: p.person.role, department: p.department, reportId: "", token: "", shifts: p.totals.shifts, minutes: p.totals.minutes, headline: p.headline.slice(2, 6) }))
         .sort((a, b) => a.department.localeCompare(b.department) || a.name.localeCompare(b.name)),
     };
