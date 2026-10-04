@@ -5,6 +5,7 @@ import { can, getCurrentUser } from "@/server/auth";
 import { roomForQr, scanRoomQr } from "@/server/services/room-qr";
 import { restaurantMenu } from "@/server/services/online-orders";
 import { customerPayAccounts } from "@/server/services/payment-accounts";
+import { onlinePayAvailable } from "@/server/services/online-pay";
 import { StayPage } from "@/components/restaurant/stay-page";
 import { RestaurantApp } from "@/components/restaurant/restaurant-app";
 import { restaurantShell } from "@/components/restaurant/shell";
@@ -42,6 +43,6 @@ export default async function RoomQrPage({ params, searchParams }: PageProps<"/r
         label: room ? (room.meeting ? `Meeting room ${room.number}` : `Room ${room.number}`) : null,
         note: room ? "Eat at the restaurant or take out · room service once you are checked in" : null,
       }}
-      checkout={{ kind: "public", table: null, fromQr: true, payTo: await customerPayAccounts() }} />
+      checkout={{ kind: "public", table: null, fromQr: true, payTo: await customerPayAccounts(), online: await onlinePayAvailable("restaurant", s) }} />
   );
 }

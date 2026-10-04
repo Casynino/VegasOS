@@ -232,6 +232,8 @@ export interface LocationOrderInput {
   deliveryAddress?: string | null;
   /** Take out is paid first: the customer's payment screenshot and the account they paid. */
   paidFirst?: PaidFirst | null;
+  /** "Pay online" (nTZS) instead: the payment request follows once the order is in (see online-pay). */
+  payOnline?: boolean;
   /** Main restaurant QR only: where they are sitting, if they want to say. */
   where?: string | null;
 }
@@ -269,7 +271,7 @@ export async function placeLocationOrder(token: string, input: LocationOrderInpu
       const recent = await tx.restaurantOrder.count({ where: { customerPhone: phone, source: { in: Object.values(LOCATION_SOURCE) }, createdAt: { gte: new Date(now.getTime() - 30 * 60_000) } } });
       if (recent >= ORDER_LIMIT) throw new AppError("You have sent several orders just now — please ask a waiter for more.", "VALIDATION");
       // Take out is always paid first; eating here may be paid now too.
-      const paidFirst = kind === "TAKEAWAY" || input.paidFirst ? await paidFirstTx(tx, input.paidFirst, now) : null;
+      const paidFirst = !input.payOnline && (kind === "TAKEAWAY" || input.paidFirst) ? await paidFirstTx(tx, input.paidFirst, now) : null;
       // At a table: the session must still be open (it could have been paid and closed a moment ago).
       const session = seated ? seated.member.session : null;
       if (session) {
@@ -284,7 +286,7 @@ export async function placeLocationOrder(token: string, input: LocationOrderInpu
         // Take out is not at the table: it does not keep the table busy or join its bill. A moved customer's order goes to their table now.
         locationId: kind === "TAKEAWAY" ? null : session?.locationId ?? l.id, tableLabel: where, deliveryAddress: address || null,
       }, { userId: null, label: `${name} (${l.name})` }, now, {
-        byCustomer: true, source: LOCATION_SOURCE[l.kind], guestId, customerPhone: phone, customerEmail: (seated?.member.guest.email ?? input.email)?.trim() || null, clientKey: input.clientKey, paidFirst,
+        byCustomer: true, source: LOCATION_SOURCE[l.kind], guestId, customerPhone: phone, customerEmail: (seated?.member.guest.email ?? input.email)?.trim() || null, clientKey: input.clientKey, paidFirst, payOnline: !!input.payOnline,
         sessionId: session?.id ?? null,
       });
     });

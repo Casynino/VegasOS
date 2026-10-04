@@ -4,7 +4,7 @@ import { requirePagePermission } from "@/server/auth";
 import { businessToday, getSettings } from "@/server/settings";
 import { siteOrigin } from "@/server/site-origin";
 import { accountOptions } from "@/server/services/payment-accounts";
-import { awaitsOnlinePayment, diningMoney, inHouseGuests, ordersBoard, ORDER_SOURCE } from "@/server/services/restaurant";
+import { awaitsOnlinePayment, diningMoney, inHouseGuests, onlinePayStates, ordersBoard, ORDER_SOURCE } from "@/server/services/restaurant";
 import { mainRestaurantQr } from "@/server/services/restaurant-locations";
 import { RestaurantPortal } from "./portal/portal";
 import type { Shortcut } from "./portal/types";
@@ -74,7 +74,7 @@ export default async function RestaurantPortalPage() {
   // Only the room and the name reach the screen — never the guest's phone or balance.
   const rooms = guests.map((g) => ({ id: g.id, label: `Room ${g.rooms} — ${g.name}` }));
   const [sent, stays] = await Promise.all([perms.waiter ? sentUpdates(orders.map((o) => o.id)) : Promise.resolve(undefined), seesMoney ? orderStays(orders) : Promise.resolve(undefined)]);
-  const portal = toPortalOrders(orders, { seesMoney, waiter: perms.waiter, settings, origin, sent, stays });
+  const portal = toPortalOrders(orders, { seesMoney, waiter: perms.waiter, settings, origin, sent, stays, online: await onlinePayStates(orders) });
 
   // Today, for the manager: sales, times and who handled what.
   const todays = orders.filter((o) => o.businessDate.toISOString().slice(0, 10) === today && o.status !== "CANCELLED");

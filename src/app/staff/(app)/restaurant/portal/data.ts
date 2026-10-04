@@ -4,7 +4,7 @@ import { db } from "@/server/db";
 import type { getSettings } from "@/server/settings";
 import { mediaUrl } from "@/server/services/media";
 import { activeStaysFor } from "@/server/services/guests";
-import { awaitsOnlinePayment, deliveryPlace, ORDER_SOURCE, type BoardOrder } from "@/server/services/restaurant";
+import { awaitsOnlinePayment, deliveryPlace, ORDER_SOURCE, type BoardOrder, type OnlinePayState } from "@/server/services/restaurant";
 import { prettyPhone } from "@/lib/guest-messages";
 import { inHouseGuestIds, isHotelOrder } from "@/server/desk";
 import { isRestaurantDevice } from "@/lib/permissions";
@@ -53,7 +53,7 @@ export function portalAccess(user: CurrentUser): { perms: PortalPerms; role: Por
 }
 
 /** Orders as the portal cards show them (money left out for the cook; the customer's update text for waiters). */
-export function toPortalOrders(orders: BoardOrder[], ctx: { seesMoney: boolean; waiter: boolean; settings: Awaited<ReturnType<typeof getSettings>>; origin: string; sent?: Set<string>; stays?: Map<string, PortalStay[]> }): PortalOrder[] {
+export function toPortalOrders(orders: BoardOrder[], ctx: { seesMoney: boolean; waiter: boolean; settings: Awaited<ReturnType<typeof getSettings>>; origin: string; sent?: Set<string>; stays?: Map<string, PortalStay[]>; online?: Map<string, OnlinePayState> }): PortalOrder[] {
   const { seesMoney, settings, origin } = ctx;
   const hotelPhone = prettyPhone(settings.whatsapp || settings.phone);
   return orders.map((o) => {
@@ -68,6 +68,7 @@ export function toPortalOrders(orders: BoardOrder[], ctx: { seesMoney: boolean; 
         reference: o.customerPayRef, at: (o.customerPaidAt ?? o.createdAt).toISOString(),
       } : null,
       awaitsPayment: awaitsOnlinePayment(o, o.payments.some((p) => p.online)),
+      online: ctx.online?.get(o.id) ?? null,
       notes: o.notes, cancelReason: o.cancelReason,
       createdAt: o.createdAt.toISOString(), acceptedAt: o.acceptedAt?.toISOString() ?? null, readyAt: o.readyAt?.toISOString() ?? null,
       takenAt: o.takenAt?.toISOString() ?? null, deliveredAt: o.deliveredAt?.toISOString() ?? null, doneAt: (o.completedAt ?? o.cancelledAt ?? o.deliveredAt)?.toISOString() ?? null,

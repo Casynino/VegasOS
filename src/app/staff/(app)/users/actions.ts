@@ -19,9 +19,13 @@ const CreateUserSchema = z.object({
   password: z.string().min(1, "Set a temporary password."),
 });
 
+/** "Online · nTZS" — the system account that records what customers pay online; never a person's role. */
+const SYSTEM_ROLE = "SYSTEM_ONLINE";
+
 async function assertCanAssignRole(actor: CurrentUser, roleId: string) {
   const role = await db.role.findUnique({ where: { id: roleId } });
   if (!role) throw new AppError("Role not found.", "NOT_FOUND");
+  if (role.code === SYSTEM_ROLE) throw new AppError("That role is for the system only.", "FORBIDDEN");
   if (role.code === "OWNER" && actor.roleCode !== "OWNER") {
     throw new AppError("Only an owner can grant the Owner role.", "FORBIDDEN");
   }
@@ -75,6 +79,7 @@ export async function updateUserAction(_prev: unknown, formData: FormData): Prom
     const actor = await authorize("users.manage");
     const input = parseInput(UpdateUserSchema, formData);
     const target = await db.user.findUnique({ where: { id: input.userId }, include: { role: true } });
+    if (target?.role.code === SYSTEM_ROLE) throw new AppError("User not found.", "NOT_FOUND");
     if (!target) throw new AppError("Staff member not found.", "NOT_FOUND");
     if (target.role.code === "OWNER" && actor.roleCode !== "OWNER") {
       throw new AppError("Only an owner can change an owner account.", "FORBIDDEN");
@@ -120,6 +125,7 @@ export async function resetPasswordAction(_prev: unknown, formData: FormData): P
     const weak = validatePasswordStrength(input.password);
     if (weak) throw new AppError(weak, "VALIDATION", { password: weak });
     const target = await db.user.findUnique({ where: { id: input.userId }, include: { role: true } });
+    if (target?.role.code === SYSTEM_ROLE) throw new AppError("User not found.", "NOT_FOUND");
     if (!target) throw new AppError("Staff member not found.", "NOT_FOUND");
     if (target.role.code === "OWNER" && actor.roleCode !== "OWNER") {
       throw new AppError("Only an owner can reset an owner's password.", "FORBIDDEN");
@@ -152,6 +158,7 @@ export async function setRolePermissionAction(input: z.input<typeof PermissionTo
     const role = await db.role.findUnique({ where: { id: data.roleId } });
     if (!role) throw new AppError("Role not found.", "NOT_FOUND");
     if (role.code === "OWNER") throw new AppError("The Owner role always has every permission.");
+    if (role.code === SYSTEM_ROLE) throw new AppError("That role is for the system only.", "FORBIDDEN");
     if (actor.roleCode !== "OWNER" && role.code === "MANAGER") {
       throw new AppError("Only an owner can change manager permissions.", "FORBIDDEN");
     }

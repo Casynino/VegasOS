@@ -85,6 +85,8 @@ export function payBadge(o: PortalOrder) {
   // Paid online first: recorded automatically from the customer's proof — never collected again.
   if (o.payments.some((p) => p.online && p.status === "POSTED") && o.payment === "PAID") return { text: `Paid online${o.paidTo ? ` · ${o.paidTo}` : ""}`, tone: "bg-emerald-500/10 text-emerald-700 ring-emerald-500/20 dark:text-emerald-300" };
   if (o.awaitsPayment && o.status !== "CANCELLED") return { text: "Paid online · to confirm", tone: "bg-sky-500/10 text-sky-700 ring-sky-500/20 dark:text-sky-300" };
+  if (o.online === "PAYING") return { text: "Paying online…", tone: "bg-sky-500/10 text-sky-700 ring-sky-500/20 dark:text-sky-300" };
+  if (o.online === "NOT_PAID") return { text: `Not paid online${o.due ? ` · ${tzs(o.due)}` : ""}`, tone: "bg-rose-500/10 text-rose-700 ring-rose-500/20 dark:text-rose-300" };
   if (o.settlement === "ROOM") return { text: `Charged to room${o.room ? ` · Room ${o.room}` : ""}`, tone: "bg-violet-500/10 text-violet-700 ring-violet-500/20 dark:text-violet-300" };
   if (o.payment === "PAID") return { text: `Paid${o.paidTo ? ` · ${o.paidTo}` : ""}`, tone: "bg-emerald-500/10 text-emerald-700 ring-emerald-500/20 dark:text-emerald-300" };
   if (o.payment === "PENDING_CONFIRMATION") return { text: "Payment pending", tone: "bg-amber-500/10 text-amber-700 ring-amber-500/25 dark:text-amber-300" };
@@ -345,6 +347,16 @@ export function OrderCard({ o, perms, now, fresh, accounts, rooms, drag, roomy, 
         <span className="grid size-7 shrink-0 place-items-center rounded-full bg-sky-500/15 [&_svg]:size-3.5"><ShieldCheck /></span><span className="truncate">Paid online · the Counter checks it first</span>
       </p>
       {canPrep && declineButton}
+    </div>
+  );
+  // Pay online (nTZS): the kitchen starts once the payment is confirmed — it shows Paid by itself.
+  else if (o.status === "PENDING" && o.online) action = (
+    <div className="flex gap-2">
+      <p className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-full border border-dashed border-sky-500/40 bg-sky-500/[0.06] pl-1 pr-3.5 text-[12.5px] font-medium text-sky-800 dark:text-sky-200">
+        <span className="grid size-7 shrink-0 place-items-center rounded-full bg-sky-500/15 [&_svg]:size-3.5">{o.online === "PAYING" ? <Loader2 className="animate-spin" /> : <Smartphone />}</span>
+        <span className="truncate">{o.online === "PAYING" ? "Paying online — accept once it is paid" : "Take out · not paid online yet"}</span>
+      </p>
+      {canPrep && o.online === "NOT_PAID" && declineButton}
     </div>
   );
   else if (o.status === "PENDING" && !canPrep) action = (

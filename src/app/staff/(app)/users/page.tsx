@@ -19,14 +19,16 @@ export default async function UsersPage() {
   const actor = await requirePagePermission("users.manage");
   const [users, roles] = await Promise.all([
     // The PIN's state only (set / locked) — never its hash.
+    // "Online · nTZS" (records what customers pay online themselves) is not a person — never listed or edited here.
     db.user.findMany({
+      where: { role: { code: { not: "SYSTEM_ONLINE" } } },
       select: {
         id: true, fullName: true, email: true, phone: true, roleId: true, isActive: true, mustChangePassword: true, lastLoginAt: true,
         role: { select: { code: true, name: true } },
       },
       orderBy: [{ isActive: "desc" }, { fullName: "asc" }],
     }),
-    db.role.findMany({ include: { permissions: { include: { permission: true } } }, orderBy: { createdAt: "asc" } }),
+    db.role.findMany({ where: { code: { not: "SYSTEM_ONLINE" } }, include: { permissions: { include: { permission: true } } }, orderBy: { createdAt: "asc" } }),
   ]);
   // The shared restaurant screen's role: its account is the restaurant's own login, not a person.
   const isScreen = (r: (typeof roles)[number]) => {

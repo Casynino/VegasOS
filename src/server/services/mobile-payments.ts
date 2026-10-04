@@ -1,7 +1,8 @@
 import "server-only";
+import { randomBytes } from "node:crypto";
 import { db, type Tx } from "../db";
 import { audit } from "../audit";
-import { AppError } from "../errors";
+import { AppError, isUniqueViolation } from "../errors";
 import { recordPaymentTx } from "./payments";
 import { ordersDueForPrompt, payOrdersFromMobileTx } from "./restaurant";
 import { createNtzsDeposit, depositCompleted, depositFailed, getNtzsDeposit, ntzsEnabled, ntzsLive, ntzsPhone, NTZS_MIN_TZS } from "./ntzs";
@@ -29,21 +30,44 @@ export type PromptTarget =
   | { purpose: "RESERVATION"; reservationId: string; amount: number }
   | { purpose: "RESTAURANT"; orderIds: string[]; handedOverById?: string | null };
 
-/** Send the payment prompt to the customer's phone. Returns the waiting prompt (or throws with a clear message). */
-export async function requestMobilePayment(target: PromptTarget, rawPhone: string, actor: Actor & { userId: string }, now = new Date()) {
-  if (!ntzsEnabled()) throw new AppError("Mobile-money prompts are not set up yet — add the nTZS key in the server settings.", "CONFLICT");
+/** What a prompt is for, as one key — one live prompt per bill ("RES:<id>", "ORD:<sorted ids>"). */
+const targetKeyOf = (t: PromptTarget, orderIds: string[]) => (t.purpose === "RESERVATION" ? `RES:${t.reservationId}` : `ORD:${[...orderIds].sort().join(",")}`);
+/** A customer's prompt is given up sooner than a staff one (they are looking at their phone). */
+const CUSTOMER_EXPIRES_MS = 10 * 60_000; // a phone's prompt times out within minutes; an abandoned payment never holds an order long
+const newToken = () => randomBytes(18).toString("base64url");
+
+export type PromptOptions = {
+  /** Where it started (WEBSITE, TABLE_QR, ROOM_QR, STAY_LINK, ORDER_LINK, BOOKING_PAGE, DESK…). */
+  source?: string | null;
+  /** The browser's key for this "Pay" press — pressed twice (double tap, refresh, two tabs) it is the same attempt. */
+  clientKey?: string | null;
+};
+
+/**
+ * Send the payment prompt to the customer's phone — sent by staff ("Send to phone", `actor` set) or by the customer
+ * themselves ("Pay online", `actor` null). The amount is always worked out here, never taken from the screen. Returns
+ * the waiting attempt (or throws with a clear message).
+ */
+export async function requestMobilePayment(target: PromptTarget, rawPhone: string, actor: (Actor & { userId: string }) | null, now = new Date(), opts: PromptOptions = {}) {
+  if (!ntzsEnabled()) throw new AppError(actor ? "Mobile-money prompts are not set up yet — add the nTZS key in the server settings." : "Online payment is not available right now — please pay at the hotel.", "CONFLICT");
+  const customer = !actor;
+  // The same press again: the same attempt (no second prompt, no second payment).
+  if (opts.clientKey) {
+    const again = await db.mobilePayment.findUnique({ where: { clientKey: opts.clientKey } });
+    if (again) return { ...again, instructions: null, reused: true };
+  }
   const phone = ntzsPhone(rawPhone);
-  if (!phone) throw new AppError("Enter the customer's mobile-money number, e.g. 0712 345 678.", "VALIDATION", { phone: "Invalid" });
+  if (!phone) throw new AppError(customer ? "Enter your mobile-money number, e.g. 0712 345 678." : "Enter the customer's mobile-money number, e.g. 0712 345 678.", "VALIDATION", { phone: "Invalid" });
 
   let amount: number, name: string | null = null, reservationId: string | null = null, orderIds: string[] = [];
   if (target.purpose === "RESERVATION") {
     const r = await db.reservation.findUnique({ where: { id: target.reservationId }, select: { id: true, status: true, balanceAmount: true, guest: { select: { fullName: true } } } });
     if (!r) throw new AppError("Booking not found.", "NOT_FOUND");
-    if (r.status === "CANCELLED" || r.status === "NO_SHOW") throw new AppError("This booking is closed — nothing to collect.", "CONFLICT");
+    if (r.status === "CANCELLED" || r.status === "NO_SHOW") throw new AppError("This booking is closed — nothing to pay.", "CONFLICT");
     amount = Math.round(target.amount);
     if (!Number.isInteger(amount) || amount <= 0) throw new AppError("Enter the amount.", "VALIDATION", { amount: "Required" });
     if (r.balanceAmount <= 0) throw new AppError("Nothing is owed on this booking.", "CONFLICT");
-    if (amount > r.balanceAmount) throw new AppError(`That is more than the guest owes (${fmt(r.balanceAmount)}).`, "VALIDATION", { amount: "Exceeds balance" });
+    if (amount > r.balanceAmount) throw new AppError(`That is more than ${customer ? "is owed" : "the guest owes"} (${fmt(r.balanceAmount)}).`, "VALIDATION", { amount: "Exceeds balance" });
     reservationId = r.id; name = r.guest.fullName;
   } else {
     if (target.handedOverById) {
@@ -61,48 +85,77 @@ export async function requestMobilePayment(target: PromptTarget, rawPhone: strin
     const due = await ordersDueForPrompt(target.orderIds);
     amount = due.total; orderIds = due.orders.map((o) => o.id); name = due.orders[0]?.customerName ?? null;
   }
-  if (amount < NTZS_MIN_TZS) throw new AppError(`Mobile-money prompts start at ${fmt(NTZS_MIN_TZS)}.`, "VALIDATION", { amount: "Too small" });
+  if (amount < NTZS_MIN_TZS) throw new AppError(`Mobile-money payments start at ${fmt(NTZS_MIN_TZS)}.`, "VALIDATION", { amount: "Too small" });
+  const targetKey = targetKeyOf(target, orderIds);
 
-  // One prompt at a time for a bill: the customer approves the one already on their phone (or staff cancel it).
-  const busy = await db.mobilePayment.findFirst({
-    where: {
-      status: "PENDING", createdAt: { gt: new Date(now.getTime() - PROMPT_BUSY_MS) },
-      ...(reservationId ? { reservationId } : { orderIds: { hasSome: orderIds } }),
-    },
-    select: { id: true },
+  // One live prompt per bill — decided under a lock on the bill, so two presses at once cannot both send one.
+  const created = await db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${targetKey}))`;
+    const live = await tx.mobilePayment.findFirst({
+      where: {
+        status: "PENDING", completedAt: null,
+        OR: [{ targetKey }, ...(reservationId ? [{ reservationId }] : [{ orderIds: { hasSome: orderIds } }])],
+        createdAt: { gt: new Date(now.getTime() - (customer ? CUSTOMER_EXPIRES_MS : PROMPT_BUSY_MS)) },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    // A customer pressing Pay again (another tab, a new phone) sees the prompt already on its way; staff are told.
+    if (live && customer) return { mp: live, reused: true };
+    if (live) throw new AppError("A payment prompt for this bill is already waiting on the customer's phone — ask them to approve it, or cancel it first.", "CONFLICT");
+    const mp = await tx.mobilePayment.create({
+      data: {
+        purpose: target.purpose, amount, phone, reservationId, orderIds, livemode: ntzsLive(), requestedById: actor?.userId ?? null,
+        initiator: customer ? "CUSTOMER" : "STAFF", source: opts.source ?? (customer ? "WEBSITE" : "DESK"), publicToken: newToken(), clientKey: opts.clientKey ?? null,
+        targetKey, expiresAt: new Date(now.getTime() + (customer ? CUSTOMER_EXPIRES_MS : PROMPT_EXPIRES_MS)),
+        handedOverById: target.purpose === "RESTAURANT" ? target.handedOverById ?? null : null,
+      },
+    });
+    return { mp, reused: false };
+  }).catch(async (e) => {
+    // Two presses with the same key at once: the other one made it.
+    if (opts.clientKey && isUniqueViolation(e)) return { mp: await db.mobilePayment.findUniqueOrThrow({ where: { clientKey: opts.clientKey } }), reused: true };
+    throw e;
   });
-  if (busy) throw new AppError("A payment prompt for this bill is already waiting on the customer's phone — ask them to approve it, or cancel it first.", "CONFLICT");
+  if (created.reused) return { ...created.mp, instructions: null, reused: true };
+  const mp = created.mp;
 
-  const mp = await db.mobilePayment.create({
-    data: {
-      purpose: target.purpose, amount, phone, reservationId, orderIds, livemode: ntzsLive(), requestedById: actor.userId,
-      handedOverById: target.purpose === "RESTAURANT" ? target.handedOverById ?? null : null,
-    },
-  });
   const res = await createNtzsDeposit({ amountTzs: amount, phone, reference: mp.id, name });
   if (!res.ok) {
     await db.mobilePayment.update({ where: { id: mp.id }, data: { status: "FAILED", lastError: res.error.slice(0, 500) } });
-    throw new AppError(res.error, "CONFLICT");
+    throw new AppError(customer ? friendlyForCustomer(res.error) : res.error, "CONFLICT");
   }
   const sent = await db.mobilePayment.update({ where: { id: mp.id }, data: { depositId: res.data.id, pspReference: res.data.pspReference ?? null } });
-  await audit(db, actor, {
+  await audit(db, actor ?? { label: "Customer · online" }, {
     action: "mobile_payment.requested", entityType: "MobilePayment", entityId: mp.id,
-    after: { amount, phone: maskPhone(phone), purpose: target.purpose, reservationId, orders: orderIds.length, depositId: res.data.id, live: sent.livemode },
+    after: { amount, phone: maskPhone(phone), purpose: target.purpose, reservationId, orders: orderIds.length, depositId: res.data.id, live: sent.livemode, by: customer ? "customer" : "staff", source: sent.source },
   });
-  return { ...sent, instructions: res.data.instructions ?? null };
+  return { ...sent, instructions: res.data.instructions ?? null, reused: false };
+}
+
+/** What a customer sees when nTZS refuses: plain words, never the provider's technical message. */
+function friendlyForCustomer(error: string) {
+  if (/phone|number/i.test(error)) return "That number cannot receive a mobile-money payment request — check it and try again.";
+  if (/amount/i.test(error)) return "This amount cannot be paid online — please pay at the hotel.";
+  if (/busy|try again|did not answer|timed out/i.test(error)) return "The payment service is busy — please try again in a moment.";
+  return "Online payment is not available right now — please try again, or pay at the hotel.";
 }
 
 /** "255712345678" → "0712 ••• 678" (what staff screens and the audit show). */
 export const maskPhone = (p: string) => `0${p.slice(3, 6)} ••• ${p.slice(-3)}`;
 
-/** The staff member who sent the prompt — the payment is theirs (as if they had recorded it). */
-async function promptActor(mp: MobilePayment): Promise<Actor & { userId: string }> {
-  const u = await db.user.findUnique({ where: { id: mp.requestedById }, select: { id: true, fullName: true, role: { select: { name: true } } } });
-  return {
-    userId: mp.requestedById, label: `${u?.fullName ?? "Staff"} · nTZS`, role: u?.role.name ?? null,
-    // Checked when the prompt was sent (payments.record / revenue.record): the confirmation itself is from nTZS.
-    permissions: new Set(["payments.record", "revenue.record", "restaurant.payments.confirm"]),
-  };
+/** The system account that stands for payments customers make online themselves (it cannot sign in). */
+export const ONLINE_RECORDER_ID = "usr_online_ntzs";
+
+/**
+ * Who the payment is recorded by: the staff member who sent the prompt (as if they had recorded it) — or, for a
+ * customer paying online themselves, "Online · nTZS" (never a person who did not handle it).
+ */
+async function settleActor(mp: MobilePayment): Promise<Actor & { userId: string }> {
+  // Checked when the prompt was sent (payments.record / revenue.record): the confirmation itself is from nTZS.
+  const permissions = new Set(["payments.record", "revenue.record", "restaurant.payments.confirm"]);
+  if (!mp.requestedById) return { userId: ONLINE_RECORDER_ID, label: "Online · nTZS", role: "Paid online", permissions };
+  const u = await db.user.findUnique({ where: { id: mp.requestedById }, select: { fullName: true, role: { select: { name: true } } } });
+  return { userId: mp.requestedById, label: `${u?.fullName ?? "Staff"} · nTZS`, role: u?.role.name ?? null, permissions };
 }
 
 /**
@@ -135,7 +188,7 @@ async function recordMobilePayment(id: string, info: { received?: number | null;
     // Recorded already (whatever its status says now): never twice.
     if (mp.status === "COMPLETED" || mp.completedAt || mp.paymentId || mp.orderPaymentIds.length) return { mp, recorded: false };
     const received = Math.round(info.received && info.received > 0 ? info.received : mp.amount);
-    const actor = await promptActor(mp);
+    const actor = await settleActor(mp);
     const method = await tx.paymentMethod.findUniqueOrThrow({ where: { code: NTZS_METHOD }, select: { id: true } });
     const reference = `nTZS ${info.pspReference || mp.pspReference || mp.depositId || mp.id}`.slice(0, 80);
     let paymentId: string | null = null, orderPaymentIds: string[] = [], note: string | null = null;

@@ -180,6 +180,8 @@ export type StayOrderInput = {
   items: { menuItemId: string; quantity: number }[]; notes?: string | null; clientKey?: string | null;
   /** "Pay now" instead of the room bill: the guest's payment screenshot and the account — staff check it and record it. */
   paidFirst?: PaidFirst | null;
+  /** "Pay online" (nTZS) instead of the room bill: the payment request follows once the order is in (see online-pay). */
+  payOnline?: boolean;
 };
 
 /**
@@ -205,17 +207,17 @@ export async function placeOrderForStay(reservationId: string, input: StayOrderI
     const recent = await tx.restaurantOrder.count({ where: { reservationId: r.id, source: { in: ["GUEST_LINK", "ROOM_QR"] }, createdAt: { gte: new Date(now.getTime() - 30 * 60_000) } } });
     if (recent >= ORDER_LIMIT) throw new AppError("Several orders were sent just now — please call reception for more.", "VALIDATION");
     if (input.items.length > 30) throw new AppError("Too many items in one order.", "VALIDATION");
-    const paidFirst = input.paidFirst ? await paidFirstTx(tx, input.paidFirst, now) : null;
+    const paidFirst = input.paidFirst && !input.payOnline ? await paidFirstTx(tx, input.paidFirst, now) : null;
     const meeting = r.kind === "MEETING";
     const room = r.rooms.map((x) => x.room.number).join(", ");
     return createRestaurantOrderTx(tx, {
       // A meeting in use is served in the meeting room (no room-service fee); a guest room gets room service.
       type: meeting ? "DINE_IN" : "ROOM_SERVICE", tableLabel: meeting ? `Meeting room ${room}` : null,
-      // On the room bill, or paid now (with the guest's proof — then it is not on the room bill).
-      settlement: paidFirst ? "UNPAID" : "ROOM", reservationId: r.id, items: input.items,
+      // On the room bill, or paid now (online, or with the guest's proof — then it is not on the room bill).
+      settlement: paidFirst || input.payOnline ? "UNPAID" : "ROOM", reservationId: r.id, items: input.items,
       notes: input.notes?.trim().slice(0, 300) || null, customerName: r.guest.fullName,
     }, { userId: null, label: `Guest (${source === "ROOM_QR" ? "room QR" : "online"}) · ${r.reference}` }, now, {
-      byCustomer: true, source, guestId: r.guestId, customerPhone: r.guest.phone, clientKey: input.clientKey ?? null, paidFirst, servedRoom: scanned?.room.number ?? null,
+      byCustomer: true, source, guestId: r.guestId, customerPhone: r.guest.phone, clientKey: input.clientKey ?? null, paidFirst, payOnline: !!input.payOnline, servedRoom: scanned?.room.number ?? null,
     });
   });
 }

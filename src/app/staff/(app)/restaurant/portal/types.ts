@@ -41,6 +41,8 @@ export type PortalOrder = {
    * record it automatically): nobody accepts it until it is checked. Shown to everyone, the cook too (no money in it).
    */
   awaitsPayment: boolean;
+  /** The customer chose Pay online (nTZS): PAYING — the payment is on its way from their phone; NOT_PAID — take out not paid yet. Not accepted until paid. */
+  online: "PAYING" | "NOT_PAID" | null;
   notes: string | null; cancelReason: string | null;
   createdAt: string; acceptedAt: string | null; readyAt: string | null; takenAt: string | null; deliveredAt: string | null; doneAt: string | null;
   acceptedBy: string | null; readyBy: string | null; takenBy: string | null; deliveredBy: string | null;

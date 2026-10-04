@@ -9,6 +9,8 @@ import { formatTime } from "@/lib/format";
 import { telHref, whatsappHref } from "@/components/public/contact";
 import { cn } from "@/lib/utils";
 import { LiveRefresh } from "@/components/live-refresh";
+import { livePaymentForOrder, onlinePayAvailable } from "@/server/services/online-pay";
+import { PayOrderOnline } from "@/components/restaurant/pay-order-online";
 
 export const metadata: Metadata = { title: "Your order", robots: { index: false, follow: false }, referrer: "no-referrer" };
 export const dynamic = "force-dynamic";
@@ -40,11 +42,19 @@ export default async function TrackOrderPage({ params, searchParams }: PageProps
   ];
   const current = steps.filter((x) => x.done).length - 1;
   const due = o.settlement === "ROOM" ? 0 : Math.max(0, o.total - o.paidAmount);
+  // Pay online (nTZS): offered while something is due; a payment on its way is followed, never asked twice.
+  const roomService = o.source === "ROOM_QR" || o.source === "GUEST_LINK";
+  const [online, livePay] = !cancelled && due > 0
+    ? await Promise.all([onlinePayAvailable(roomService ? "roomService" : "restaurant", s), livePaymentForOrder(token)]) : [false, null];
+  // Take out ordered with Pay online starts once it is paid.
+  const waitsForPay = !!o.payOnlineAt && o.status === "PENDING" && due > 0 && (o.type === "TAKEAWAY" || o.type === "PICKUP");
   const pay = o.status === "CANCELLED" ? (o.paymentStatus === "REFUNDED" ? "Cancelled — your payment will be given back" : "Cancelled — nothing to pay")
     : o.settlement === "ROOM" ? `On your Room ${o.roomNumber} bill`
     : due === 0 && o.paidAmount > 0 ? "Paid — thank you"
     : o.paidAmount > 0 ? `${tzs(due)} still to pay`
     : o.customerPaidAt ? "Payment sent — we are checking it"
+    : livePay ? "Paying online — approve it on your phone"
+    : waitsForPay ? "Waiting for your online payment"
     : room || delivery ? "Pay on delivery" : o.type === "DINE_IN" ? "Pay after your meal" : "Pay at the counter";
   const canAdd = ["PENDING", "ACCEPTED", "PREPARING", "DELIVERED"].includes(o.status);
   const phone = prettyPhone(s.whatsapp || s.phone);
@@ -52,6 +62,7 @@ export default async function TrackOrderPage({ params, searchParams }: PageProps
   // The headline: where the order is now, in plain words.
   const headline = cancelled ? ["Order cancelled", "We are sorry — this order was cancelled. Please contact us if you have questions."]
     : added ? ["Added to your order", "The new items are on their way to the kitchen — on the same order and bill."]
+    : waitsForPay ? ["Waiting for payment", "We start your order as soon as your online payment is confirmed."]
     : o.status === "PENDING" ? ["Order received", `Thank you${o.firstName ? `, ${o.firstName}` : ""} — your order has been received.`]
     : ["ACCEPTED", "PREPARING"].includes(o.status) ? ["Preparing", "Our team is preparing your order."]
     : o.status === "READY" ? ["Ready", pickup ? "Your order is ready to collect." : "Your order is ready — it is coming to you."]
@@ -111,6 +122,8 @@ export default async function TrackOrderPage({ params, searchParams }: PageProps
             </ol>
           )}
         </section>
+
+        {(online || livePay) && <PayOrderOnline token={token} due={due} live={livePay} failed={sp.pay === "0"} waits={waitsForPay} />}
 
         {/* What they ordered */}
         <section className="mt-4 rounded-[28px] bg-(--vr-card) p-5 ring-1 ring-(--vr-line)">

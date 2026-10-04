@@ -2,7 +2,8 @@
 
 import { z } from "zod";
 import { requestMeta } from "@/server/auth";
-import { runAction, type ActionResult } from "@/server/errors";
+import { AppError, runAction, type ActionResult } from "@/server/errors";
+import { assertCanPayOnline, payForNewOrder } from "@/server/services/online-pay";
 import { rateLimit } from "@/server/rate-limit";
 import { parseInput } from "@/server/validation";
 import { askFromStay, placeStayOrder } from "@/server/services/guest-comms";
@@ -13,18 +14,25 @@ const Order = z.object({
   notes: z.string().trim().max(300).optional(),
   clientKey: z.string().regex(/^[a-f0-9]{32}$/).optional(),
   paidFirst: z.object({ proofId: z.string().min(1).max(40), accountId: z.string().min(1).max(40), reference: z.string().trim().max(60).optional(), expectedTotal: z.number().int().nonnegative().max(100_000_000).optional() }).optional(),
+  /** "Pay online" (nTZS): the mobile-money number the payment request goes to. */
+  payOnline: z.object({ phone: z.string().trim().min(9).max(30) }).optional(),
 });
 
 /** The guest orders from their stay link: room service, charged to their room. */
-export async function placeStayOrderAction(input: z.input<typeof Order>): Promise<ActionResult<{ number: string; total: number; track: string | null }>> {
+export async function placeStayOrderAction(input: z.input<typeof Order>): Promise<ActionResult<{ number: string; total: number; track: string | null; pay: string | null; payError: string | null }>> {
   return runAction(async () => {
     const { ipAddress } = await requestMeta();
     // Guests on the hotel Wi-Fi share one address: a loose limit per address, the real one per stay link.
     await rateLimit(`stay-order-ip:${ipAddress ?? "unknown"}`, 60, 600);
     const d = parseInput(Order, input);
     await rateLimit(`stay-order:${d.token}`, 10, 600);
-    const order = await placeStayOrder(d.token, { items: d.items, notes: d.notes, clientKey: d.clientKey, paidFirst: d.paidFirst });
-    return { number: order.number, total: order.total, track: order.trackToken };
+    if (d.payOnline) {
+      if (!d.clientKey) throw new AppError("Please try again.", "VALIDATION");
+      await assertCanPayOnline("roomService", d.payOnline.phone);
+    }
+    const order = await placeStayOrder(d.token, { items: d.items, notes: d.notes, clientKey: d.clientKey, paidFirst: d.payOnline ? null : d.paidFirst, payOnline: !!d.payOnline });
+    const paying = d.payOnline ? await payForNewOrder(order, { phone: d.payOnline.phone, clientKey: d.clientKey!, ip: ipAddress }) : null;
+    return { number: order.number, total: order.total, track: order.trackToken, pay: paying?.pay ?? null, payError: paying?.payError ?? null };
   });
 }
 

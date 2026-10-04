@@ -244,6 +244,8 @@ export interface OrderContext {
   paidFirst?: { paymentProofFileId: string; customerPaidToId: string; customerPayRef: string | null; customerPaidAt: Date; expectedTotal?: number | null } | null;
   /** From a table's QR: the customer's session at the table (checked by the caller) — the order is part of it. */
   sessionId?: string | null;
+  /** The customer chose "Pay online" (nTZS): the order waits for that payment before the kitchen starts it. */
+  payOnline?: boolean;
   /** Paid now, recorded by someone else than the one making the order (the Restaurant Counter, for a waiter's order). */
   payBy?: Actor;
   /** Paid now at the Counter: the waiter who brought the money. */
@@ -298,6 +300,36 @@ const canPrepareAny = (actor: Actor) => !!(actor.permissions?.has("kitchen.order
 
 /** Who did it, for the order's history (name and role as they were at the time). */
 const by = (actor: Actor) => ({ byId: actor.userId ?? null, byLabel: actor.label ?? null, byRole: actor.role ?? null });
+
+/** The orders among these with a mobile-money payment (nTZS) waiting on the customer's phone right now. */
+export async function payingByPhoneTx(tx: Tx, ids: string[], now = new Date()) {
+  if (!ids.length) return new Set<string>();
+  const live = await tx.mobilePayment.findMany({
+    where: { purpose: "RESTAURANT", status: "PENDING", completedAt: null, orderIds: { hasSome: ids }, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+    select: { orderIds: true },
+  });
+  return new Set(live.flatMap((m) => m.orderIds).filter((id) => ids.includes(id)));
+}
+const PAYING_BY_PHONE = "The customer is paying this order by phone right now — wait a moment for the payment to finish.";
+
+/**
+ * Where an order stands with "Pay online" (nTZS): PAYING — a payment is on its way from the customer's phone now;
+ * NOT_PAID — take out ordered with Pay online and not paid (take out never starts unpaid). The kitchen does not
+ * accept either. A dine-in or room-service order whose online payment did not go through goes ahead, paid later.
+ */
+export type OnlinePayState = "PAYING" | "NOT_PAID";
+type OnlineOrder = { id: string; type: string; status: string; settlement: string; paymentStatus: string; payOnlineAt: Date | null };
+export async function onlinePayStatesTx(tx: Tx, orders: OnlineOrder[], now = new Date()) {
+  const states = new Map<string, OnlinePayState>();
+  const open = orders.filter((o) => o.payOnlineAt && o.status !== "CANCELLED" && o.settlement !== "ROOM" && o.paymentStatus !== "PAID");
+  const paying = await payingByPhoneTx(tx, open.map((o) => o.id), now);
+  for (const o of open) {
+    if (paying.has(o.id)) states.set(o.id, "PAYING");
+    else if (o.status === "PENDING" && (o.type === "TAKEAWAY" || o.type === "PICKUP")) states.set(o.id, "NOT_PAID");
+  }
+  return states;
+}
+export const onlinePayStates = (orders: OnlineOrder[], now = new Date()) => onlinePayStatesTx(db as unknown as Tx, orders, now);
 
 export { deliveryPlace };
 
@@ -533,6 +565,7 @@ export async function createRestaurantOrderTx(tx: Tx, input: OrderInput, actor: 
       ...(ctx.byCustomer && ctx.paidFirst ? {
         paymentProofFileId: ctx.paidFirst.paymentProofFileId, customerPaidToId: ctx.paidFirst.customerPaidToId, customerPayRef: ctx.paidFirst.customerPayRef, customerPaidAt: ctx.paidFirst.customerPaidAt,
       } : {}),
+      ...(ctx.byCustomer && ctx.payOnline && input.settlement === "UNPAID" ? { payOnlineAt: now } : {}),
       tableLabel: location && location.kind !== "MAIN" ? location.name : input.tableLabel?.trim() || null, locationId: location?.id ?? null, sessionId, assignedToId: waiterId,
       guestId: customerGuestId, customerPhone: givenPhone ?? ctx.customerPhone ?? reservation?.guestPhone ?? null, customerEmail: ctx.customerEmail ?? null,
       foodSubtotal, drinksSubtotal, serviceFee, total,
@@ -558,6 +591,7 @@ export async function createRestaurantOrderTx(tx: Tx, input: OrderInput, actor: 
     action: "restaurant_order.created", entityType: "RestaurantOrder", entityId: order.id,
     after: {
       number: order.number, type: order.type, settlement: order.settlement, total, serviceFee, room: order.roomNumber, source, byCustomer: !!ctx.byCustomer, role: ctx.byCustomer ? "Customer" : actor.role ?? null,
+      ...(order.payOnlineAt ? { payOnline: true } : {}),
       ...(input.settlement === "ROOM" ? { billing: `Room ${order.roomNumber ?? ""}`.trim(), businessDate } : {}),
       customer: order.customerName, phone: order.customerPhone, reservation: reservation?.reference ?? null, place: order.tableLabel, location: location?.id ?? null, session: sessionId,
       ...(!roomIsTheirs ? { roomOfAnotherGuest: true, reason: input.reason?.trim() || null } : {}),
@@ -889,6 +923,7 @@ export async function chargeOrderToRoomTx(tx: Tx, id: string, reservationId: str
   if (o.settlement === "ROOM") throw new AppError("This order is already on a room bill.");
   if (o.paidAmount > 0) throw new AppError("Part of this order is already paid — receive the rest as a payment.");
   if ((await awaitingOnlineTx(tx, [id])).length) throw new AppError("The customer paid this order online — it cannot go on a room. Confirm their payment, or decline the order.", "CONFLICT");
+  if ((await payingByPhoneTx(tx, [id], now)).size) throw new AppError(PAYING_BY_PHONE, "CONFLICT");
   if (await tx.revenueTransaction.count({ where: { restaurantOrderId: id, isVoided: false } })) throw new AppError("Money for this order is already recorded at the restaurant — it cannot also go on a room.", "CONFLICT");
   await tx.$queryRaw`SELECT "id" FROM "reservations" WHERE "id" = ${reservationId} FOR UPDATE`;
   const r = await tx.reservation.findUnique({ where: { id: reservationId }, include: { guest: { select: { fullName: true } }, rooms: { where: { status: "CHECKED_IN" }, include: { room: { select: { number: true } } } } } });
@@ -975,6 +1010,7 @@ export async function addOrderItemsTx(tx: Tx, id: string, items: { menuItemId: s
   if (CLOSED_STATUSES.includes(o.status)) throw new AppError(o.status === "CANCELLED" ? "This order was cancelled." : "This order is closed — start a new order.");
   if (o.status === "READY" || o.status === "OUT_FOR_DELIVERY") throw new AppError("This order is already on its way — add the new items once it is served.");
   if ((await awaitingOnlineTx(tx, [id])).length) throw new AppError("This order was paid online and its payment is not checked yet — confirm it first, or start a new order for the extra items.", "CONFLICT");
+  if ((await payingByPhoneTx(tx, [id], now)).size) throw new AppError(opts.byCustomer ? "Your payment for this order is still on its way — add more once it is done." : PAYING_BY_PHONE, "CONFLICT");
   // A hotel order (room service, or on a room bill) grows only while the guest is staying — and, on a room bill,
   // only for the room's own guest (or someone at their table), unless a manager moved it there.
   if (o.reservationId && (o.type === "ROOM_SERVICE" || o.settlement === "ROOM")) {
@@ -1062,6 +1098,7 @@ export async function removeOrderItem(orderId: string, itemId: string, quantity:
     if (CLOSED_STATUSES.includes(o.status)) throw new AppError(o.status === "CANCELLED" ? "This order was cancelled." : "This order is closed.");
     // Paid online and not checked yet: the customer paid for every line — nothing comes off before the check.
     if ((await awaitingOnlineTx(tx, [orderId])).length) throw new AppError("The customer paid this order online — confirm or decline their payment first.", "CONFLICT");
+    if ((await payingByPhoneTx(tx, [orderId], now)).size) throw new AppError(PAYING_BY_PHONE, "CONFLICT");
     const item = o.items.find((i) => i.id === itemId);
     if (!item) throw new AppError("That item is no longer on this order.", "NOT_FOUND");
     if (item.paymentId) throw new AppError(`${item.name} is already paid — it cannot be removed here.`);
@@ -1182,6 +1219,7 @@ export async function discountOrders(orderIds: string[], input: { amount?: numbe
   return db.$transaction(async (tx) => {
     for (const id of ids) await tx.$queryRaw`SELECT "id" FROM "restaurant_orders" WHERE "id" = ${id} FOR UPDATE`;
     if ((await awaitingOnlineTx(tx, ids)).length) throw new AppError("An order on this bill was paid online and its payment is not checked yet — confirm or decline it first.", "CONFLICT");
+    if ((await payingByPhoneTx(tx, ids, now)).size) throw new AppError(PAYING_BY_PHONE, "CONFLICT");
     const orders = (await tx.restaurantOrder.findMany({ where: { id: { in: ids } }, include: { items: { orderBy: { id: "asc" } } } }))
       .filter((o) => !CLOSED_STATUSES.includes(o.status) || o.paidAmount < o.total);
     // Room orders of a guest who has checked out were settled at check-out — the discount leaves them as they are.
@@ -1264,6 +1302,12 @@ async function moveOrderTx(tx: Tx, id: string, status: RestaurantOrderStatus, ac
   // Paid online first: nobody accepts it until the money is seen in the account and confirmed (the Counter or reception) —
   // or it is declined. Money paid at the Counter needs no check.
   if (o.status === "PENDING" && (await awaitingOnlineTx(tx, [id])).length) throw new AppError("Check the customer's online payment first — confirm it once the money is in the account, or decline the order.", "CONFLICT");
+  // Pay online (nTZS): the kitchen starts once nTZS confirms the payment — never on a payment still on its way.
+  if (o.status === "PENDING" && o.payOnlineAt) {
+    const state = (await onlinePayStatesTx(tx, [o], now)).get(id);
+    if (state === "PAYING") throw new AppError("The customer is paying this order online right now — it can be accepted as soon as the payment is confirmed.", "CONFLICT");
+    if (state === "NOT_PAID") throw new AppError("This take-out order was to be paid online and is not paid yet — take the payment, or decline the order.", "CONFLICT");
+  }
   if (o.status === "DELIVERED") throw new AppError("This order is already served — record its payment to complete it.");
   const to = ORDER_STEPS.indexOf(status), from = ORDER_STEPS.indexOf(o.status);
   if (to <= from) throw new AppError("That step does not come next for this order.");

@@ -2,6 +2,7 @@ import type { HotelSettings } from "@/generated/prisma/client";
 import type { GuestStay } from "@/server/services/guest-comms";
 import { restaurantMenu } from "@/server/services/online-orders";
 import { customerPayAccounts } from "@/server/services/payment-accounts";
+import { onlinePayAvailable } from "@/server/services/online-pay";
 import { formatTime } from "@/lib/format";
 import { formatMinutes } from "@/lib/time/business-date";
 import { prettyPhone } from "@/lib/guest-messages";
@@ -62,7 +63,7 @@ export async function StayPage({ stay, s, target, via }: {
         kind: "room", room: room || "—", guest: first, meeting, fee: s.roomServiceFee, stayHref: info.billHref,
         orders: stay.orders.map((o) => ({ number: o.number, status: o.status, total: o.total, track: o.track })),
       }}
-      checkout={{ kind: "room", target, where: meeting ? "the meeting room" : `Room ${room}`, guest: first, payTo: await customerPayAccounts() }}
+      checkout={{ kind: "room", target, where: meeting ? "the meeting room" : `Room ${room}`, guest: first, payTo: await customerPayAccounts(), online: await onlinePayAvailable("roomService", s) }}
       top={<StayTop key="stay-top" stay={stay} info={info} />}
       bottom={<StayBottom key="stay-bottom" stay={stay} info={info} />} />
   );

@@ -10,6 +10,8 @@ import { rateLimit } from "@/server/rate-limit";
 import { parseInput } from "@/server/validation";
 import { notifyOrderCustomer } from "@/server/services/online-orders";
 import { identifyAtLocation, placeLocationOrder } from "@/server/services/restaurant-locations";
+import { assertCanPayOnline, payForNewOrder } from "@/server/services/online-pay";
+import type { PlacedOrder } from "@/app/order/actions";
 import { customerRequestBill, SEAT_COOKIE, SEAT_HOURS, seatAtTable } from "@/server/services/dining-sessions";
 
 const seatToken = async () => (await cookies()).get(SEAT_COOKIE)?.value ?? null;
@@ -65,18 +67,22 @@ const Order = z.object({
   where: z.string().trim().max(40).optional(),
   deliveryAddress: z.string().trim().max(200).optional(),
   paidFirst: z.object({ proofId: z.string().min(1).max(40), accountId: z.string().min(1).max(40), reference: z.string().trim().max(60).optional(), expectedTotal: z.number().int().nonnegative().max(100_000_000).optional() }).optional(),
+  /** "Pay online" (nTZS): the mobile-money number the payment request goes to. */
+  payOnline: z.object({ phone: z.string().trim().min(9).max(30) }).optional(),
   website: z.string().max(0).optional(), // honeypot
 });
 
 /** An order from a table / the counter / the main restaurant QR — straight to the restaurant portal. */
-export async function placeTableOrderAction(input: z.input<typeof Order>): Promise<ActionResult<{ number: string; track: string }>> {
+export async function placeTableOrderAction(input: z.input<typeof Order>): Promise<ActionResult<PlacedOrder>> {
   return runAction(async () => {
     const { ipAddress } = await requestMeta();
     await rateLimit(`table-order:${ipAddress ?? "unknown"}`, 12, 600);
     const d = parseInput(Order, input);
-    const o = await placeLocationOrder(d.token, { clientKey: d.clientKey, items: d.items, notes: d.notes, name: d.name, phone: d.phone, email: d.email || null, kind: d.kind, where: d.where, deliveryAddress: d.deliveryAddress, paidFirst: d.paidFirst, seatToken: await seatToken() });
+    if (d.payOnline) await assertCanPayOnline("restaurant", d.payOnline.phone);
+    const o = await placeLocationOrder(d.token, { clientKey: d.clientKey, items: d.items, notes: d.notes, name: d.name, phone: d.phone, email: d.email || null, kind: d.kind, where: d.where, deliveryAddress: d.deliveryAddress, paidFirst: d.payOnline ? null : d.paidFirst, payOnline: !!d.payOnline, seatToken: await seatToken() });
+    const paying = d.payOnline ? await payForNewOrder(o, { phone: d.payOnline.phone, clientKey: d.clientKey, ip: ipAddress }) : null;
     after(() => notifyOrderCustomer(o.id, "RECEIVED"));
     revalidatePath("/staff/restaurant", "layout");
-    return { number: o.number, track: o.trackToken! };
+    return { number: o.number, track: o.trackToken!, pay: paying?.pay ?? null, payError: paying?.payError ?? null };
   });
 }

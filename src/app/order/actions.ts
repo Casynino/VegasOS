@@ -8,6 +8,7 @@ import { rateLimit } from "@/server/rate-limit";
 import { parseInput } from "@/server/validation";
 import { identifyCustomer, placeOnlineOrder, storePaymentProof } from "@/server/services/online-orders";
 import { addItemsByTrackToken } from "@/server/services/restaurant-locations";
+import { assertCanPayOnline, payForNewOrder, payOrderOnline } from "@/server/services/online-pay";
 
 const Order = z.object({
   clientKey: z.string().regex(/^[a-f0-9]{32}$/),
@@ -21,20 +22,44 @@ const Order = z.object({
   deliveryAddress: z.string().trim().max(200).optional(),
   paidFirst: z.object({ proofId: z.string().min(1).max(40), accountId: z.string().min(1).max(40), reference: z.string().trim().max(60).optional(), expectedTotal: z.number().int().nonnegative().max(100_000_000).optional() }).optional(),
   fromQr: z.boolean().optional(),
+  /** "Pay online" (nTZS): the mobile-money number the payment request goes to. */
+  payOnline: z.object({ phone: z.string().trim().min(9).max(30) }).optional(),
   website: z.string().max(0).optional(), // honeypot
 });
 
+/** What placing an order answers: the order, and — paying online — the payment page to go to (or why it did not start). */
+export type PlacedOrder = { number: string; track: string; pay: string | null; payError: string | null };
+
 /** A public customer orders from the menu (website or public menu QR): one order, straight to reception and the kitchen. */
-export async function placeOnlineOrderAction(input: z.input<typeof Order>): Promise<ActionResult<{ number: string; track: string }>> {
+export async function placeOnlineOrderAction(input: z.input<typeof Order>): Promise<ActionResult<PlacedOrder>> {
   return runAction(async () => {
     const { ipAddress } = await requestMeta();
     await rateLimit(`online-order:${ipAddress ?? "unknown"}`, 12, 600);
     const d = parseInput(Order, input);
+    if (d.payOnline) await assertCanPayOnline("restaurant", d.payOnline.phone);
     const order = await placeOnlineOrder({
       clientKey: d.clientKey, items: d.items, notes: d.notes, name: d.name, phone: d.phone, email: d.email || null,
-      kind: d.kind, tableLabel: d.tableLabel, deliveryAddress: d.deliveryAddress, paidFirst: d.paidFirst, fromQr: d.fromQr,
+      kind: d.kind, tableLabel: d.tableLabel, deliveryAddress: d.deliveryAddress, paidFirst: d.payOnline ? null : d.paidFirst, fromQr: d.fromQr, payOnline: !!d.payOnline,
     });
-    return { number: order.number, track: order.trackToken! };
+    const paying = d.payOnline ? await payForNewOrder(order, { phone: d.payOnline.phone, clientKey: d.clientKey, ip: ipAddress }) : null;
+    revalidatePath("/staff/restaurant", "layout");
+    return { number: order.number, track: order.trackToken!, pay: paying?.pay ?? null, payError: paying?.payError ?? null };
+  });
+}
+
+const PayOrder = z.object({
+  token: z.string().regex(/^[A-Za-z0-9_-]{12,40}$/),
+  phone: z.string().trim().min(9, "Enter your mobile-money number.").max(30),
+  clientKey: z.string().regex(/^[a-f0-9]{32}$/),
+});
+
+/** "Pay online" for an order already placed (its own page): the payment page to go to. */
+export async function payOrderOnlineAction(input: z.input<typeof PayOrder>): Promise<ActionResult<{ pay: string }>> {
+  return runAction(async () => {
+    const { ipAddress } = await requestMeta();
+    const d = parseInput(PayOrder, input);
+    const r = await payOrderOnline(d.token, { phone: d.phone, clientKey: d.clientKey, ip: ipAddress });
+    return { pay: r.token };
   });
 }
 

@@ -3,7 +3,7 @@ import { can, requirePagePermission } from "@/server/auth";
 import { businessToday, getSettings } from "@/server/settings";
 import { siteOrigin } from "@/server/site-origin";
 import { accountOptions } from "@/server/services/payment-accounts";
-import { CLOSED_STATUSES, deliveryPlace, inHouseGuests, orderingMenu, ordersBoard } from "@/server/services/restaurant";
+import { CLOSED_STATUSES, deliveryPlace, inHouseGuests, onlinePayStates, orderingMenu, ordersBoard } from "@/server/services/restaurant";
 import { orderLocations } from "@/server/services/restaurant-locations";
 import { openTableSessions } from "@/server/services/dining-sessions";
 import { LiveRefresh } from "@/components/live-refresh";
@@ -42,7 +42,7 @@ export default async function PosPage({ searchParams }: PageProps<"/staff/restau
     items: o.items.reduce((t, i) => t + i.quantity, 0),
   })) : [];
   const open = orders.filter((o) => !CLOSED_STATUSES.includes(o.status));
-  const line = toPortalOrders(open, { seesMoney, waiter: perms.waiter, settings, origin, stays: seesMoney ? await orderStays(open) : undefined });
+  const line = toPortalOrders(open, { seesMoney, waiter: perms.waiter, settings, origin, stays: seesMoney ? await orderStays(open) : undefined, online: await onlinePayStates(open) });
 
   // Open bills: a table still eating / not paid today, or a staying guest's restaurant orders — new orders add to them.
   const bills = new Map<string, OpenBill>();

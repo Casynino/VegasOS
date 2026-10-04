@@ -102,7 +102,7 @@ export function RestaurantPortal({ role, perms, meId, takesCharge, name, greetin
   const canPrepare = (o: PortalOrder) => perms.cook || (drinksOnly(o) && perms.bar);
   const oldest = (xs: PortalOrder[]) => xs.sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map((o) => o.id);
   // (An order paid online still waiting for its payment check is not to accept yet.)
-  const newOnes = role === "cook" || role === "waiter" ? oldest(orders.filter((o) => o.status === "PENDING" && canPrepare(o) && !o.awaitsPayment)) : [];
+  const newOnes = role === "cook" || role === "waiter" ? oldest(orders.filter((o) => o.status === "PENDING" && canPrepare(o) && !o.awaitsPayment && !o.online)) : [];
   // A waiter hears their own ready orders and the ones nobody has yet; the shared screen hears them all.
   const readyOnes = role === "waiter" ? oldest(orders.filter((o) => o.status === "READY" && (perms.device || !o.assignedTo || o.assignedTo.id === meId))) : [];
   const attention = [...readyOnes, ...newOnes];
@@ -136,7 +136,7 @@ export function RestaurantPortal({ role, perms, meId, takesCharge, name, greetin
   // Dragging a card: only to the step that comes next for this person.
   const dropStatus = (o: PortalOrder, col: ColKey) => {
     const prep = role !== "desk" && canPrepare(o);
-    if (col === "preparing" && o.status === "PENDING" && prep && !o.awaitsPayment) return "PREPARING";
+    if (col === "preparing" && o.status === "PENDING" && prep && !o.awaitsPayment && !o.online) return "PREPARING";
     if (col === "ready" && o.status === "PREPARING" && prep && allPrepared(o)) return "READY";
     if (col === "out" && o.status === "READY" && perms.serve && role !== "desk") return "OUT_FOR_DELIVERY";
     return null;

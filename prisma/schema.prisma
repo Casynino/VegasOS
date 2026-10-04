@@ -225,6 +225,15 @@ model HotelSettings {
   reportEnabled              Boolean  @default(true)
   /// Each waiter's / receptionist's shift report goes to the report recipients by WhatsApp when the shift ends.
   shiftReportEnabled         Boolean  @default(true)
+  /// "Pay online" for customers (nTZS) — the master switch and one switch per service (owner, 2026-10-04).
+  onlinePayEnabled           Boolean  @default(true)
+  onlinePayRestaurant        Boolean  @default(true)
+  onlinePayRoomService       Boolean  @default(true)
+  onlinePayStayBill          Boolean  @default(true)
+  onlinePayBooking           Boolean  @default(true)
+  onlinePayMeeting           Boolean  @default(true)
+  onlinePayTransport         Boolean  @default(true)
+  onlinePayInvoices          Boolean  @default(true)
   reportRecipients           Json     @default("[]") // [{ name, phone, channel }]
   publicBookingEnabled       Boolean  @default(true)
   maxAdvanceBookingDays      Int      @default(365)
@@ -956,6 +965,8 @@ enum InvoiceStatus {
 }
 
 model Invoice {
+  /// Online payments (nTZS) asked for on this invoice.
+  mobilePayments     MobilePayment[]
   id                  String             @id @default(cuid())
   number              String             @unique
   status              InvoiceStatus      @default(DRAFT)
@@ -1681,6 +1692,9 @@ enum TripStatus {
 model TransportTrip {
   id                String               @id @default(cuid())
   reference         String               @unique
+  /// The customer's private link to their trip (pay online, see its status).
+  payToken          String?              @unique
+  mobilePayments    MobilePayment[]
   type              TripType
   status            TripStatus           @default(REQUESTED)
   reservationId     String?
@@ -2317,6 +2331,8 @@ model RestaurantOrder {
   /// Take out is paid first: the customer's screenshot of the payment, the account they paid and their
   /// code. Staff check it and record the payment — nothing counts as received until they do.
   paymentProofFileId String?                  @unique
+  /// The customer chose "Pay online" (nTZS): the kitchen waits until nTZS confirms (cleared when paid, or when it fails).
+  payOnlineAt        DateTime?
   paymentProof       StoredFile?              @relation(fields: [paymentProofFileId], references: [id])
   customerPaidToId   String?
   customerPaidTo     MoneyAccount?            @relation("RestaurantOrderCustomerPaidTo", fields: [customerPaidToId], references: [id])
@@ -3154,8 +3170,26 @@ model MobilePayment {
   reservation     Reservation?        @relation(fields: [reservationId], references: [id])
   orderIds        String[]            @default([])
   livemode        Boolean             @default(false)
-  requestedById   String
-  requestedBy     User                @relation("MobilePaymentRequestedBy", fields: [requestedById], references: [id])
+  /// The staff member who sent it — none when the customer paid online themselves.
+  requestedById   String?
+  requestedBy     User?               @relation("MobilePaymentRequestedBy", fields: [requestedById], references: [id])
+  /// STAFF (a "Send to phone" from a staff screen) | CUSTOMER ("Pay online" on the customer's own phone).
+  initiator       String              @default("STAFF")
+  /// Where it started: WEBSITE, TABLE_QR, ROOM_QR, STAY_LINK, ORDER_LINK, BOOKING_PAGE, INVOICE_LINK, TRANSPORT, DESK…
+  source          String?
+  /// The customer's private status link (/pay/<token>) — never the id.
+  publicToken     String?             @unique
+  /// The same "Pay" pressed twice (double tap, refresh, two tabs) is one attempt.
+  clientKey       String?             @unique
+  /// What is being paid ("RES:<id>", "ORD:<ids>", "TRIP:<id>", "INV:<id>") — one live attempt per bill.
+  targetKey       String?
+  invoiceId       String?
+  invoice         Invoice?            @relation(fields: [invoiceId], references: [id])
+  tripId          String?
+  trip            TransportTrip?      @relation(fields: [tripId], references: [id])
+  /// After this the customer's prompt is given up (a late confirmation is still recorded).
+  expiresAt       DateTime?
+  lastCheckedAt   DateTime?
   /// Restaurant: the waiter who served it (noted on the payment as the one who brought it).
   handedOverById  String?
   pspReference    String?
@@ -3175,5 +3209,6 @@ model MobilePayment {
   @@index([status, createdAt])
   @@index([reservationId])
   @@index([attentionAt, resolvedAt])
+  @@index([targetKey, status])
   @@map("mobile_payments")
 }

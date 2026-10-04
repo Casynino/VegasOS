@@ -102,6 +102,8 @@ export interface OnlineOrderInput {
   deliveryAddress?: string | null;
   /** Take out is paid first: the customer's payment screenshot and the account they paid. */
   paidFirst?: PaidFirst | null;
+  /** "Pay online" (nTZS) instead: the payment request follows once the order is in (see online-pay). */
+  payOnline?: boolean;
   tableLabel?: string | null;
   /** Scanned from a printed public menu QR (restaurant tables, reception) rather than the website. */
   fromQr?: boolean;
@@ -129,15 +131,15 @@ export async function placeOnlineOrder(input: OnlineOrderInput, now = new Date()
     return await db.$transaction(async (tx) => {
       const recent = await tx.restaurantOrder.count({ where: { customerPhone: phone, source: { in: ["PUBLIC_QR", "WEBSITE"] }, createdAt: { gte: new Date(now.getTime() - 30 * 60_000) } } });
       if (recent >= ORDER_LIMIT) throw new AppError("You have sent several orders just now — please call us for more.", "VALIDATION");
-      // Take out is always paid first; eating here may be paid now too.
-      const paidFirst = input.kind === "TAKEAWAY" || input.paidFirst ? await paidFirstTx(tx, input.paidFirst, now) : null;
+      // Take out is always paid first (online, or with the proof of payment); eating here may be paid now too.
+      const paidFirst = !input.payOnline && (input.kind === "TAKEAWAY" || input.paidFirst) ? await paidFirstTx(tx, input.paidFirst, now) : null;
       // One customer, saved once: the phone finds them (or they are saved now).
       const guestId = await resolveGuest(tx, { fullName: name, phone, email: input.email?.trim() || null });
       return createRestaurantOrderTx(tx, {
         type: input.kind, settlement: "UNPAID", items: input.items, notes: input.notes?.trim().slice(0, 300) || null, customerName: name,
         tableLabel: input.kind === "DINE_IN" ? input.tableLabel?.trim().slice(0, 40) || null : null, deliveryAddress: address || null,
       }, { userId: null, label: `${name} (online)` }, now, {
-        byCustomer: true, source: input.fromQr ? "PUBLIC_QR" : "WEBSITE", guestId, customerPhone: phone, customerEmail: input.email?.trim() || null, clientKey: input.clientKey, paidFirst,
+        byCustomer: true, source: input.fromQr ? "PUBLIC_QR" : "WEBSITE", guestId, customerPhone: phone, customerEmail: input.email?.trim() || null, clientKey: input.clientKey, paidFirst, payOnline: !!input.payOnline,
       });
     });
   } catch (e) {
@@ -157,6 +159,7 @@ export async function orderByTrackToken(token: string) {
   const o = await db.restaurantOrder.findUnique({
     where: { trackToken: token },
     select: {
+      source: true, payOnlineAt: true,
       number: true, type: true, status: true, settlement: true, paymentStatus: true, paidAmount: true, round: true, roomNumber: true, customerName: true, tableLabel: true, deliveryAddress: true, customerPaidAt: true, notes: true,
       total: true, serviceFee: true, createdAt: true, acceptedAt: true, readyAt: true, takenAt: true, deliveredAt: true, completedAt: true, cancelledAt: true, statusChangedAt: true,
       items: { select: { name: true, quantity: true, lineTotal: true, round: true }, orderBy: { id: "asc" } },
