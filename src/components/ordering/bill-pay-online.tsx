@@ -49,7 +49,7 @@ export function BillPayOnline({ due, live, action }: {
   return (
     <section className="space-y-3 rounded-2xl bg-white p-4 font-sans shadow-sm ring-1 ring-black/5 print:hidden">
       <div className="flex items-center justify-between gap-3">
-        <p className="flex items-center gap-2 text-[15px] font-semibold"><Smartphone className="size-4 text-[#9a7428]" />Pay your bill online</p>
+        <p className="flex items-center gap-2 text-[15px] font-semibold"><Smartphone className="size-4 text-[#9a7428]" />Pay your bill now</p>
         <p className="text-[15px] font-semibold tabular-nums">{tzs(due)}</p>
       </div>
       <label className="block text-[12.5px] font-medium text-black/70">Mobile-money number
@@ -59,9 +59,9 @@ export function BillPayOnline({ due, live, action }: {
       {error && <p role="alert" className="rounded-xl bg-rose-50 px-3 py-2 text-[13px] text-rose-800 ring-1 ring-rose-200">{error}</p>}
       <button type="button" onClick={pay} disabled={pending}
         className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[#1d1712] text-[14.5px] font-semibold text-white transition hover:bg-black disabled:opacity-60">
-        {pending ? <Loader2 className="size-4 animate-spin" /> : <Smartphone className="size-4" />}Pay {tzs(due)} online
+        {pending ? <Loader2 className="size-4 animate-spin" /> : <Smartphone className="size-4" />}Pay {tzs(due)} now
       </button>
-      <p className="text-center text-[11.5px] text-black/55">M-Pesa, Airtel Money, Tigo Pesa or HaloPesa — approve the request on your phone with your PIN.</p>
+      <p className="text-center text-[11.5px] text-black/55">M-Pesa, Airtel Money, Mixx by Yas or HaloPesa — approve the request on your phone with your PIN.</p>
       <p className="flex items-center justify-center gap-1.5 text-[11px] font-medium text-black/50"><ShieldCheck className="size-3.5 text-[#9a7428]" />Secure payment powered by NTZS</p>
     </section>
   );

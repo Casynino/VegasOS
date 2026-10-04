@@ -117,19 +117,19 @@ function PayBillOnline({ due, live }: { due: number; live: string | null }) {
   return (
     <>
       <button type="button" onClick={() => setOpen(true)} className="flex w-full items-center gap-2 border-t border-(--vr-line) bg-(--vr-dark) px-3.5 py-2.5 text-left text-[12.5px] font-semibold text-white">
-        <Smartphone className="size-4 shrink-0 text-(--vr-gold)" /><span className="flex-1">Pay my bill online · {tzs(due)}</span><ArrowRight className="size-3.5 text-(--vr-gold)" />
+        <Smartphone className="size-4 shrink-0 text-(--vr-gold)" /><span className="flex-1">Pay my bill now · {tzs(due)}</span><ArrowRight className="size-3.5 text-(--vr-gold)" />
       </button>
       <AnimatePresence>
         {open && (
           <motion.div className="fixed inset-0 z-50 grid place-items-end bg-[#1d1712]/50 p-4 backdrop-blur-[2px] sm:place-items-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setOpen(false)}>
-            <motion.div role="dialog" aria-modal="true" aria-label="Pay your bill online" onClick={(e) => e.stopPropagation()} initial={{ y: 24 }} animate={{ y: 0 }} exit={{ y: 24 }}
+            <motion.div role="dialog" aria-modal="true" aria-label="Pay your bill now" onClick={(e) => e.stopPropagation()} initial={{ y: 24 }} animate={{ y: 0 }} exit={{ y: 24 }}
               className="vr w-full max-w-sm space-y-3 rounded-3xl bg-(--vr-card) p-5 text-(--vr-ink) shadow-2xl">
               <div className="flex items-start justify-between gap-3">
                 <span className="grid size-11 place-items-center rounded-full bg-(--vr-dark) text-(--vr-gold)"><Smartphone className="size-5" /></span>
                 <button type="button" onClick={() => setOpen(false)} aria-label="Close" className="grid size-9 place-items-center rounded-full ring-1 ring-(--vr-line)"><X className="size-4" /></button>
               </div>
               <div>
-                <h2 className="font-display text-[24px] font-semibold leading-tight">Pay your bill online</h2>
+                <h2 className="font-display text-[24px] font-semibold leading-tight">Pay your bill now</h2>
                 <p className="mt-1 text-[13px] text-(--vr-muted)">Everything still to pay at your table · <strong className="tabular-nums text-(--vr-ink)">{tzs(due)}</strong></p>
               </div>
               <label className="block text-[12.5px] font-medium text-(--vr-ink)/80">Mobile-money number
@@ -140,7 +140,7 @@ function PayBillOnline({ due, live }: { due: number; live: string | null }) {
               <button type="button" disabled={pending} onClick={pay} className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-(--vr-dark) text-[14px] font-semibold text-white disabled:opacity-60">
                 {pending ? <Loader2 className="size-4 animate-spin" /> : <Smartphone className="size-4 text-(--vr-gold)" />}Pay {tzs(due)}
               </button>
-              <p className="text-center text-[11.5px] text-(--vr-muted)">M-Pesa, Airtel Money, Tigo Pesa or HaloPesa — approve the request on your phone with your PIN.</p>
+              <p className="text-center text-[11.5px] text-(--vr-muted)">M-Pesa, Airtel Money, Mixx by Yas or HaloPesa — approve the request on your phone with your PIN.</p>
               <p className="flex items-center justify-center gap-1.5 text-[11px] font-medium text-(--vr-muted)"><ShieldCheck className="size-3.5 text-(--vr-gold-ink)" />Secure payment powered by NTZS</p>
             </motion.div>
           </motion.div>

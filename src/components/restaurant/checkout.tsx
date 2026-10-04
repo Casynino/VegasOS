@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { BedDouble, Check, CreditCard, Loader2, MapPin, Plus, Receipt, ShieldCheck, ShoppingBag, Smartphone, UserRound, UtensilsCrossed } from "lucide-react";
+import { BedDouble, Check, CircleCheck, CreditCard, Loader2, Lock, MapPin, Phone, Plus, Receipt, ShoppingBag, Smartphone, UserRound, UtensilsCrossed } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { identifyAtTableAction, placeTableOrderAction } from "@/app/t/[token]/actions";
 import { addItemsByTrackAction, placeOnlineOrderAction } from "@/app/order/actions";
@@ -40,7 +40,7 @@ const addressOk = (a: string) => a.trim().length >= 5;
 type PayWay = "BILL" | "NOW";
 const paidFirstOf = (pay: PayFirstValue, total: number) => ({ proofId: pay.proofId!, accountId: pay.accountId!, reference: pay.reference.trim() || undefined, expectedTotal: total });
 const PAY_FIRST_MISSING = "Pay first — choose the account, add the screenshot and tick “I have paid”.";
-const PAY_PHONE_MISSING = "Enter your mobile-money number to pay online.";
+const PAY_PHONE_MISSING = "Enter your mobile-money number to pay now.";
 /** A Tanzanian mobile-money number (0712 345 678, +255 712 345 678…) — the server checks it again. */
 const payPhoneOk = (p: string) => /^(?:\+?255|0)?[67]\d{8}$/.test(p.replace(/[\s-]/g, ""));
 
@@ -50,26 +50,91 @@ function afterOrder(res: { track: string | null; pay: string | null; payError: s
   return res.track ? `/order/${res.track}?new=1${res.payError ? "&pay=0" : ""}` : null;
 }
 
-function PayWayPicker({ way, setWay, bill, billHint, online }: { way: PayWay; setWay: (w: PayWay) => void; bill: string; billHint: string; online?: boolean }) {
-  const options: { v: PayWay; label: string; hint: string; icon: typeof Receipt }[] = [
-    { v: "BILL", label: bill, hint: billHint, icon: Receipt },
-    online ? { v: "NOW", label: "Pay online", hint: "Mobile money, now", icon: Smartphone } : { v: "NOW", label: "Pay now", hint: "Mobile money or bank", icon: Smartphone },
-  ];
+/** Mobile-money networks a "Pay now" prompt can go to (names only — no logos). */
+const NETWORKS = ["M-Pesa", "Airtel", "Mixx by Yas", "HaloPesa"];
+
+/**
+ * HOW WOULD YOU LIKE TO PAY — one card, "Pay now" first: mobile money on the customer's phone (the prompt comes to it;
+ * where online payment is off, mobile money or bank with the proof), then paying later (the bill, the room bill). The
+ * chosen way opens in place with what it needs. Take out has only "Pay now" (it is always paid first).
+ */
+function PaymentChoice({ way, setWay, later, online, phone, setPhone, after, proof }: {
+  way: PayWay; setWay: (w: PayWay) => void;
+  /** Paying later here ("Add to my bill", "Bill to my room"…) — none for take out. */
+  later: { label: string; hint: string; icon?: typeof Receipt } | null;
+  online: boolean; phone: string; setPhone: (v: string) => void;
+  /** What happens once it is paid ("We start your order"…). */
+  after: string;
+  /** Where online payment is off: paying now with the proof of payment. */
+  proof: React.ReactNode;
+}) {
   return (
-    <div>
-      <p className={heading}>How will you pay?</p>
-      <div className="mt-2 grid grid-cols-2 gap-2">
-        {options.map((o) => (
-          <button key={o.v} type="button" onClick={() => setWay(o.v)} aria-pressed={way === o.v}
-            className={cn("flex items-center gap-2.5 rounded-2xl p-2.5 text-left ring-1 transition", way === o.v ? "bg-(--vr-dark) text-white ring-(--vr-dark)" : "bg-(--vr-bg) ring-(--vr-line) hover:ring-(--vr-gold)")}>
-            <span className={cn("grid size-8 shrink-0 place-items-center rounded-full", way === o.v ? "bg-(--vr-gold) text-(--vr-ink)" : "bg-white text-(--vr-gold-ink)")}><o.icon className="size-4" /></span>
-            <span className="min-w-0 leading-tight">
-              <span className="block text-[13px] font-semibold">{o.label}</span>
-              <span className={cn("block text-[11px]", way === o.v ? "text-white/65" : "text-(--vr-muted)")}>{o.hint}</span>
-            </span>
-          </button>
-        ))}
+    <section aria-labelledby="pay-way">
+      <p id="pay-way" className={heading}>How would you like to pay?</p>
+      <div role="radiogroup" aria-labelledby="pay-way" className="mt-2 overflow-hidden rounded-[22px] bg-(--vr-card) shadow-[0_18px_40px_-34px_rgba(29,23,18,0.85)] ring-1 ring-(--vr-line)">
+        <WayRow on={way === "NOW"} onSelect={() => setWay("NOW")} icon={Smartphone} title="Pay now"
+          hint={online ? "Mobile money — approve it on your phone" : "Mobile money or bank"} tag={online && later ? "Quickest" : undefined}>
+          {online ? <PayNowDetails phone={phone} setPhone={setPhone} after={after} /> : proof}
+        </WayRow>
+        {later && <WayRow on={way === "BILL"} onSelect={() => setWay("BILL")} icon={later.icon ?? Receipt} title={later.label} hint={later.hint} />}
       </div>
+    </section>
+  );
+}
+
+function WayRow({ on, onSelect, icon: Icon, title, hint, tag, children }: {
+  on: boolean; onSelect: () => void; icon: typeof Receipt; title: string; hint: string; tag?: string; children?: React.ReactNode;
+}) {
+  return (
+    <div className={cn("border-b border-(--vr-line) transition-colors last:border-b-0", on ? "bg-(--vr-gold-soft)/55" : "hover:bg-(--vr-bg)/70")}>
+      <button type="button" role="radio" aria-checked={on} onClick={onSelect} className="flex w-full items-center gap-3 px-4 py-3.5 text-left">
+        <span className={cn("grid size-10 shrink-0 place-items-center rounded-full transition", on ? "bg-(--vr-dark) text-(--vr-gold)" : "bg-(--vr-bg) text-(--vr-gold-ink) ring-1 ring-(--vr-line)")}><Icon className="size-[18px]" /></span>
+        <span className="min-w-0 flex-1 leading-tight">
+          <span className="flex flex-wrap items-center gap-2 text-[15px] font-semibold">{title}
+            {tag && <span className="rounded-full bg-(--vr-dark) px-2 py-[3px] text-[9.5px] font-semibold uppercase tracking-[0.14em] text-(--vr-gold)">{tag}</span>}
+          </span>
+          <span className="mt-0.5 block text-[12.5px] text-(--vr-muted)">{hint}</span>
+        </span>
+        <span aria-hidden className={cn("grid size-[22px] shrink-0 place-items-center rounded-full border-2 transition", on ? "border-(--vr-dark) bg-(--vr-dark) text-white" : "border-(--vr-line) bg-white")}>
+          {on && <Check className="size-3" strokeWidth={3.5} />}
+        </span>
+      </button>
+      {on && children && <div className="px-4 pb-4">{children}</div>}
+    </div>
+  );
+}
+
+/** "Pay now" opened: the number the prompt goes to, the networks, the three steps and who carries the payment. */
+function PayNowDetails({ phone, setPhone, after }: { phone: string; setPhone: (v: string) => void; after: string }) {
+  const ok = payPhoneOk(phone);
+  const steps = ["A prompt comes to this phone", "Enter your PIN to approve", after];
+  return (
+    <div className="space-y-3.5 rounded-2xl bg-(--vr-card) p-3.5 ring-1 ring-(--vr-line)">
+      <label className="block">
+        <span className="text-[12px] font-medium text-(--vr-ink)/75">Mobile-money number</span>
+        <span className="relative mt-1 block">
+          <Phone className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-(--vr-muted)" />
+          <input value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" inputMode="tel" autoComplete="tel" placeholder="0712 345 678" aria-invalid={!!phone && !ok}
+            className={cn("block h-12 w-full rounded-xl border bg-white pl-10 pr-10 text-[16px] tracking-wide tabular-nums outline-none transition placeholder:text-(--vr-muted)/60 focus:ring-4 focus:ring-(--vr-gold)/15 sm:text-[15px]",
+              phone && !ok ? "border-amber-400" : "border-(--vr-line) focus:border-(--vr-gold)")} />
+          {ok && <CircleCheck className="pointer-events-none absolute right-3.5 top-1/2 size-[18px] -translate-y-1/2 text-emerald-600" />}
+        </span>
+        {phone && !ok && <span className="mt-1 block text-[11.5px] text-amber-700">A Tanzanian mobile-money number, e.g. 0712 345 678</span>}
+      </label>
+      <div className="flex flex-wrap gap-1">
+        {NETWORKS.map((n) => <span key={n} className="whitespace-nowrap rounded-full bg-(--vr-bg) px-2 py-[3px] text-[10.5px] font-medium text-(--vr-ink)/70 ring-1 ring-(--vr-line)">{n}</span>)}
+      </div>
+      <ol className="grid grid-cols-3 gap-2">
+        {steps.map((t, i) => (
+          <li key={t} className="rounded-xl bg-(--vr-bg) px-2 py-2.5 text-center">
+            <span className="mx-auto grid size-6 place-items-center rounded-full bg-(--vr-dark) text-[11px] font-bold text-(--vr-gold)">{i + 1}</span>
+            <span className="mt-1.5 block text-[11px] leading-snug text-(--vr-ink)/75">{t}</span>
+          </li>
+        ))}
+      </ol>
+      <p className="flex items-center justify-center gap-1.5 border-t border-dashed border-(--vr-line) pt-3 text-[11.5px] text-(--vr-muted)">
+        <Lock className="size-3.5 shrink-0 text-(--vr-gold-ink)" />Secure payment powered by NTZS
+      </p>
     </div>
   );
 }
@@ -136,11 +201,11 @@ function DeliveryAddress({ value, onChange }: { value: string; onChange: (v: str
   );
 }
 
-function Submit({ pending, disabled, onClick, children }: { pending: boolean; disabled?: boolean; onClick: () => void; children: React.ReactNode }) {
+function Submit({ pending, disabled, onClick, children, paying }: { pending: boolean; disabled?: boolean; onClick: () => void; children: React.ReactNode; /** Paying now: a lock, in gold. */ paying?: boolean }) {
   return (
     <button type="button" disabled={pending || disabled} onClick={onClick}
       className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-(--vr-dark) text-[14.5px] font-semibold text-white shadow-[0_14px_30px_-18px_rgba(29,23,18,0.9)] transition hover:bg-black disabled:opacity-50">
-      {pending ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}{children}
+      {pending ? <Loader2 className="size-4 animate-spin" /> : paying ? <Lock className="size-4 text-(--vr-gold)" /> : <Check className="size-4" />}{children}
     </button>
   );
 }
@@ -162,24 +227,6 @@ function Problem({ error }: { error: string | null }) {
 
 function PayNote({ children }: { children: React.ReactNode }) {
   return <p className="flex items-start gap-2 text-[12px] leading-snug text-(--vr-muted)"><CreditCard className="mt-px size-3.5 shrink-0 text-(--vr-gold-ink)" />{children}</p>;
-}
-
-/** Pay online: the number the payment request goes to — the customer approves it on their phone with their PIN. */
-function PayOnline({ total, phone, onChange }: { total: number; phone: string; onChange: (v: string) => void }) {
-  return (
-    <div className="space-y-2.5 rounded-2xl bg-(--vr-bg) p-3.5 ring-1 ring-(--vr-line)">
-      <div className="flex items-center justify-between gap-3">
-        <p className="flex items-center gap-2 text-[13.5px] font-semibold"><Smartphone className="size-4 text-(--vr-gold-ink)" />Pay online</p>
-        <p className="text-[14px] font-semibold tabular-nums">{tzs(total)}</p>
-      </div>
-      <label className={label}>Mobile-money number
-        <input value={phone} onChange={(e) => onChange(e.target.value)} type="tel" inputMode="tel" autoComplete="tel" placeholder="e.g. 0712 345 678"
-          className={cn(field, phone && !payPhoneOk(phone) && "border-amber-400")} />
-      </label>
-      <p className="text-[11.5px] leading-snug text-(--vr-muted)">M-Pesa, Airtel Money, Tigo Pesa or HaloPesa — a payment request comes to this phone; approve it with your PIN.</p>
-      <p className="flex items-center gap-1.5 text-[11px] font-medium text-(--vr-muted)"><ShieldCheck className="size-3.5 text-(--vr-gold-ink)" />Secure payment powered by NTZS</p>
-    </div>
-  );
 }
 
 /** The details this place needs, and "Place order" — then the order's own page (status, bill). */
@@ -211,7 +258,8 @@ function SpotCheckout({ config, items, total, who, onWho, onDone, seated }: {
   const router = useRouter();
   const [notes, setNotes] = useState("");
   const [kind, setKind] = useState<Kind>("DINE_IN");
-  const [way, setWay] = useState<PayWay>("BILL");
+  // Pay now first (where online payment is on); the bill is one tap away.
+  const [way, setWay] = useState<PayWay>(config.online ? "NOW" : "BILL");
   const [where, setWhere] = useState("");
   const [address, setAddress] = useState(who?.address ?? "");
   const [pay, setPay] = useState<PayFirstValue>(NO_PAYMENT);
@@ -275,7 +323,11 @@ function SpotCheckout({ config, items, total, who, onWho, onDone, seated }: {
         ? seated ? <WhoCard who={{ name: seated.name, phone: "" }} sub={`${seated.table} · your table · one bill`} /> : <WhoCard who={null} onChange={onWho} />
         : <WhoCard who={who} onChange={onWho} />}
       {main && <KindPicker kind={kind} setKind={setKind} />}
-      {!takeOut && <PayWayPicker way={way} setWay={setWay} bill={main ? "Pay after" : "Add to my bill"} billHint="Pay when you are done" online={online} />}
+      {takeOut && <DeliveryAddress value={address} onChange={setAddress} />}
+      <PaymentChoice way={takeOut ? "NOW" : way} setWay={setWay} online={online} phone={payPhone} setPhone={setPayPhone}
+        later={takeOut ? null : { label: main ? "Pay after" : "Add to my bill", hint: "Pay when you are done — cash, card or mobile money" }}
+        after={takeOut ? "We start and bring it to you" : "Your order goes to the kitchen"}
+        proof={<PayFirst total={total} accounts={config.payTo} value={pay} onChange={setPay} />} />
       {open && !payNow && (
         <div className="space-y-1.5 rounded-2xl bg-(--vr-gold-soft) p-3">
           <p className="text-[12.5px] font-semibold text-(--vr-gold-ink)">You have an open order here — #{open.number} · {tzs(open.total)}</p>
@@ -288,17 +340,14 @@ function SpotCheckout({ config, items, total, who, onWho, onDone, seated }: {
           ))}
         </div>
       )}
-      {takeOut && <DeliveryAddress value={address} onChange={setAddress} />}
-      {payNow && (online ? <PayOnline total={total} phone={payPhone} onChange={setPayPhone} /> : <PayFirst total={total} accounts={config.payTo} value={pay} onChange={setPay} />)}
       {main && !takeOut && !joining && <label className={label}>Where are you sitting? <span className="font-normal text-(--vr-muted)">· optional</span><input value={where} onChange={(e) => setWhere(e.target.value)} placeholder="e.g. by the window" className={field} /></label>}
       {!joining && <Notes value={notes} onChange={setNotes} />}
       <input value={trap} onChange={(e) => setTrap(e.target.value)} tabIndex={-1} autoComplete="off" aria-hidden className="hidden" name="website" />
-      <PayNote>{payNow && online ? (takeOut ? "Paid online first — once your payment is confirmed, your order starts and we bring it to you." : "Approve the payment on your phone — your order starts as soon as it is paid.")
-        : takeOut ? "Paid first — your order starts right away and we bring it to you. If the payment does not reach us, we call you."
+      {!(payNow && online) && <PayNote>{takeOut ? "Paid first — your order starts right away and we bring it to you. If the payment does not reach us, we call you."
         : payNow ? "Paid now — your order starts right away. If the payment does not reach us, we call you."
-        : "Order more any time — ask for your bill when you are done. Cash, card or mobile money."}</PayNote>
-      <Footer error={error} hint="Straight to our kitchen and bar — follow it on the next page.">
-        <Submit pending={pending} disabled={!ready} onClick={send}>{joining ? `Add to order #${open?.number} · ${tzs(total)}` : payNow && online ? `Order & pay online · ${tzs(total)}` : payNow ? `Place paid order · ${tzs(total)}` : `Place order · ${tzs(total)}`}</Submit>
+        : "Order more any time — ask for your bill when you are done."}</PayNote>}
+      <Footer error={error} hint={payNow && online ? "Your order goes to our kitchen and bar as soon as it is paid." : "Straight to our kitchen and bar — follow it on the next page."}>
+        <Submit pending={pending} disabled={!ready} onClick={send} paying={payNow && online && !joining}>{joining ? `Add to order #${open?.number} · ${tzs(total)}` : payNow && online ? `Pay ${tzs(total)} now` : payNow ? `Place paid order · ${tzs(total)}` : `Place order · ${tzs(total)}`}</Submit>
       </Footer>
     </div>
   );
@@ -314,7 +363,8 @@ function PublicCheckout({ config, items, total, who, onWho, onDone }: {
   const [address, setAddress] = useState(who?.address ?? "");
   const [pay, setPay] = useState<PayFirstValue>(NO_PAYMENT);
   const [payPhone, setPayPhone] = useState(who?.phone ?? "");
-  const [way, setWay] = useState<PayWay>("BILL");
+  // Pay now first (where online payment is on); paying after is one tap away.
+  const [way, setWay] = useState<PayWay>(config.online ? "NOW" : "BILL");
   const takeOut = kind === "TAKEAWAY";
   const payNow = takeOut || way === "NOW";
   const online = !!config.online;
@@ -346,17 +396,17 @@ function PublicCheckout({ config, items, total, who, onWho, onDone }: {
       <KindPicker kind={kind} setKind={setKind} />
       {takeOut
         ? <DeliveryAddress value={address} onChange={setAddress} />
-        : <>
-            <PayWayPicker way={way} setWay={setWay} bill="Pay after" billHint="Pay when you are done" online={online} />
-            <label className={label}>Table <span className="font-normal text-(--vr-muted)">· optional</span><input value={table} onChange={(e) => setTable(e.target.value)} placeholder="e.g. Table 4" className={field} /></label>
-          </>}
-      {payNow && (online ? <PayOnline total={total} phone={payPhone} onChange={setPayPhone} /> : <PayFirst total={total} accounts={config.payTo} value={pay} onChange={setPay} />)}
+        : <label className={label}>Table <span className="font-normal text-(--vr-muted)">· optional</span><input value={table} onChange={(e) => setTable(e.target.value)} placeholder="e.g. Table 4" className={field} /></label>}
+      <PaymentChoice way={takeOut ? "NOW" : way} setWay={setWay} online={online} phone={payPhone} setPhone={setPayPhone}
+        later={takeOut ? null : { label: "Pay after", hint: "Pay when you are done — cash, card or mobile money" }}
+        after={takeOut ? "We start and bring it to you" : "Your order goes to the kitchen"}
+        proof={<PayFirst total={total} accounts={config.payTo} value={pay} onChange={setPay} />} />
       <Notes value={notes} onChange={setNotes} />
       <input value={trap} onChange={(e) => setTrap(e.target.value)} tabIndex={-1} autoComplete="off" aria-hidden className="hidden" name="website" />
-      <PayNote>{payNow && online ? (takeOut ? "Paid online first — once your payment is confirmed, your order starts and we bring it to you." : "Approve the payment on your phone — your order starts as soon as it is paid.") : takeOut ? "Paid first — your order starts right away and we bring it to you. If the payment does not reach us, we call you." : payNow ? "Paid now — your order starts right away. If the payment does not reach us, we call you." : "You pay after your meal — cash, card or mobile money."}</PayNote>
+      {payNow && !online && <PayNote>{takeOut ? "Paid first — your order starts right away and we bring it to you. If the payment does not reach us, we call you." : "Paid now — your order starts right away. If the payment does not reach us, we call you."}</PayNote>}
       <p className="flex items-start gap-2 text-[12px] text-(--vr-muted)"><BedDouble className="mt-px size-3.5 shrink-0" />Staying with us? Scan the QR card in your room to order to your room bill.</p>
       <Footer error={error}>
-        <Submit pending={pending} disabled={!ready} onClick={send}>{payNow && online ? "Order & pay online" : payNow ? "Place paid order" : "Place order"} · {tzs(total)}</Submit>
+        <Submit pending={pending} disabled={!ready} onClick={send} paying={payNow && online}>{payNow && online ? `Pay ${tzs(total)} now` : `${payNow ? "Place paid order" : "Place order"} · ${tzs(total)}`}</Submit>
       </Footer>
     </div>
   );
@@ -366,7 +416,8 @@ function PublicCheckout({ config, items, total, who, onWho, onDone }: {
 function RoomCheckout({ config, items, total, onDone }: { config: Extract<CheckoutConfig, { kind: "room" }>; items: Items; total: number; onDone: () => void }) {
   const router = useRouter();
   const [notes, setNotes] = useState("");
-  const [way, setWay] = useState<PayWay>("BILL");
+  // Pay now first (where online payment is on); the room bill is one tap away.
+  const [way, setWay] = useState<PayWay>(config.online ? "NOW" : "BILL");
   const [pay, setPay] = useState<PayFirstValue>(NO_PAYMENT);
   const [payPhone, setPayPhone] = useState("");
   const [key, setKey] = useState<string | null>(null);
@@ -392,14 +443,16 @@ function RoomCheckout({ config, items, total, onDone }: { config: Extract<Checko
   return (
     <div className="mt-4 space-y-3.5">
       {config.guest && <WhoCard who={{ name: config.guest, phone: "" }} sub={config.where.replace(/^the /, "The ")} />}
-      <PayWayPicker way={way} setWay={setWay} bill="Bill to my room" billHint="Settle at check-out" online={online} />
-      {payNow && (online ? <PayOnline total={total} phone={payPhone} onChange={setPayPhone} /> : <PayFirst total={total} accounts={config.payTo ?? []} value={pay} onChange={setPay} />)}
+      <PaymentChoice way={way} setWay={setWay} online={online} phone={payPhone} setPhone={setPayPhone}
+        later={{ label: "Bill to my room", hint: "Added to your room bill — settle at check-out", icon: BedDouble }}
+        after={`Brought to ${config.where.replace(/^the /, "the ")}`}
+        proof={<PayFirst total={total} accounts={config.payTo ?? []} value={pay} onChange={setPay} />} />
       <p className="flex items-start gap-2 rounded-xl bg-(--vr-gold-soft) px-3 py-2.5 text-[12.5px] text-(--vr-gold-ink)"><BedDouble className="mt-0.5 size-4 shrink-0" />
-        {payNow ? `Delivered to ${config.where} — ${online ? "paid online" : "paid now"}, so it is not added to your room bill.` : `Delivered to ${config.where} and added to your room bill — you settle everything at check-out.`}
+        {payNow ? `Delivered to ${config.where} — paid now, so it is not added to your room bill.` : `Delivered to ${config.where} and added to your room bill — you settle everything at check-out.`}
       </p>
       <Notes value={notes} onChange={setNotes} />
       <Footer error={error}>
-        <Submit pending={pending} disabled={!payReady} onClick={send}>{payNow && online ? "Order & pay online" : payNow ? "Place paid order" : "Place order"} · {tzs(total)}</Submit>
+        <Submit pending={pending} disabled={!payReady} onClick={send} paying={payNow && online}>{payNow && online ? `Pay ${tzs(total)} now` : `${payNow ? "Place paid order" : "Place order"} · ${tzs(total)}`}</Submit>
       </Footer>
     </div>
   );

@@ -27,7 +27,7 @@ type Target = { kind: "stay"; reservationId: string } | { kind: "orders"; orderI
 type Waiting = { id: string; amount: number; phone: string; status: string; note: string | null };
 
 /**
- * SEND TO PHONE — a mobile-money prompt (nTZS) to the customer's phone: M-Pesa, Airtel Money, Tigo Pesa, HaloPesa…
+ * SEND TO PHONE — a mobile-money prompt (nTZS) to the customer's phone: M-Pesa, Airtel Money, Mixx by Yas, HaloPesa…
  * They approve it on their phone; the payment is recorded by itself (on the guest's bill, or the order / table bill)
  * and the screen updates. Shown only where nTZS is set up and to those who take payments.
  */
@@ -147,7 +147,7 @@ export function SendToPhone({ target, amount, phone = "", editableAmount = false
         <p className="flex items-center gap-1.5 text-sm font-semibold"><Smartphone className="size-4 text-sky-600 dark:text-sky-300" />Send a payment prompt</p>
         <button type="button" onClick={() => setOpen(false)} aria-label="Close" className="grid size-7 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"><X className="size-4" /></button>
       </div>
-      <p className="text-[11px] text-muted-foreground">M-Pesa, Airtel Money, Tigo Pesa, HaloPesa… The customer approves it on their phone; the payment is recorded by itself.</p>
+      <p className="text-[11px] text-muted-foreground">M-Pesa, Airtel Money, Mixx by Yas, HaloPesa… The customer approves it on their phone; the payment is recorded by itself.</p>
       <div className={cn("grid gap-2", editableAmount && "grid-cols-2")}>
         <input value={number} onChange={(e) => setNumber(e.target.value)} type="tel" inputMode="tel" placeholder="Their number, e.g. 0712 345 678" aria-label="Mobile-money number"
           className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-sky-500/30" />

@@ -3,7 +3,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 /**
  * nTZS (https://www.ntzs.co.tz/developers) — mobile-money COLLECTIONS. The hotel asks for a payment; the customer gets
- * the mobile-money prompt on their phone (M-Pesa, Airtel Money, Tigo Pesa, HaloPesa, TTCL Pesa…) and approves it; nTZS
+ * the mobile-money prompt on their phone (M-Pesa, Airtel Money, Mixx by Yas, HaloPesa, TTCL Pesa…) and approves it; nTZS
  * tells us by a signed webhook (`deposit.completed`) and the payment is recorded by itself.
  *
  * Keys are secrets — server env vars only (Vercel), never in the database or the browser:

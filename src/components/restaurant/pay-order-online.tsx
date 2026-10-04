@@ -59,8 +59,8 @@ export function PayOrderOnline({ token, due, live, failed, waits }: {
     <section className="mt-4 space-y-3 rounded-[28px] bg-(--vr-card) p-5 ring-1 ring-(--vr-line)">
       <div className="flex items-start justify-between gap-3">
         <div className="leading-tight">
-          <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><Smartphone className="size-5 text-(--vr-gold-ink)" />Pay online</h2>
-          <p className="mt-1 text-xs text-(--vr-muted)">{waits ? "We start your order once it is paid." : "Pay from your phone now — no need to wait for the bill."}</p>
+          <h2 className="flex items-center gap-2 font-display text-2xl font-semibold"><Smartphone className="size-5 text-(--vr-gold-ink)" />Pay now</h2>
+          <p className="mt-1 text-xs text-(--vr-muted)">{waits ? "We start your order once it is paid." : "Mobile money from your phone — no need to wait for the bill."}</p>
         </div>
         <p className="shrink-0 text-lg font-semibold tabular-nums">{tzs(due)}</p>
       </div>
@@ -71,9 +71,9 @@ export function PayOrderOnline({ token, due, live, failed, waits }: {
       {error && <p role="alert" className="rounded-xl bg-rose-50 px-3.5 py-2.5 text-[13px] text-rose-800 ring-1 ring-rose-200">{error}</p>}
       <button type="button" onClick={pay} disabled={pending}
         className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-(--vr-dark) text-[14.5px] font-semibold text-white transition hover:bg-black disabled:opacity-60">
-        {pending ? <Loader2 className="size-4 animate-spin" /> : <Smartphone className="size-4" />}Pay {tzs(due)} online
+        {pending ? <Loader2 className="size-4 animate-spin" /> : <Smartphone className="size-4" />}Pay {tzs(due)} now
       </button>
-      <p className="text-center text-[11.5px] leading-snug text-(--vr-muted)">M-Pesa, Airtel Money, Tigo Pesa or HaloPesa — approve the request on your phone with your PIN.</p>
+      <p className="text-center text-[11.5px] leading-snug text-(--vr-muted)">M-Pesa, Airtel Money, Mixx by Yas or HaloPesa — approve the request on your phone with your PIN.</p>
       <p className="flex items-center justify-center gap-1.5 text-[11px] font-medium text-(--vr-muted)"><ShieldCheck className="size-3.5 text-(--vr-gold-ink)" />Secure payment powered by NTZS</p>
     </section>
   );

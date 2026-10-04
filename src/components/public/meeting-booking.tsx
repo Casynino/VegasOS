@@ -174,7 +174,7 @@ export function MeetingBooking({ today, price, capacity, online = false }: { tod
                 <button type="button" onClick={payOnline} disabled={paying || booking} className={cn(pillGold, pillPad, "h-12 w-full sm:w-auto")}>
                   {paying ? <Loader2 className="size-4 animate-spin" /> : <Smartphone className="size-4" />} Pay TZS {n(fresh.price)} & confirm
                 </button>
-                <p className="text-xs leading-relaxed text-tone/60">M-Pesa, Airtel Money, Tigo Pesa or HaloPesa — approve the request on your phone with your PIN. The time is held for you while you pay.</p>
+                <p className="text-xs leading-relaxed text-tone/60">M-Pesa, Airtel Money, Mixx by Yas or HaloPesa — approve the request on your phone with your PIN. The time is held for you while you pay.</p>
                 <p className="flex items-center gap-1.5 text-[11px] font-medium text-tone/55"><ShieldCheck className="size-3.5 text-accent-ink" />Secure payment powered by NTZS</p>
                 <button type="submit" disabled={booking || paying} className="text-sm font-medium text-tone/70 underline-offset-4 hover:text-tone hover:underline">
                   {booking ? "Sending your request…" : "Or send a request — pay at the hotel"}
