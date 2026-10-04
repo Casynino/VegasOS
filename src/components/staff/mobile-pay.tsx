@@ -66,10 +66,9 @@ export function SendToPhone({ target, amount, phone = "", editableAmount = false
     let stopped = false, timer: ReturnType<typeof setTimeout> | undefined;
     const tick = async () => {
       if (stopped) return;
-      if (Date.now() - startedAt.current > GIVE_UP_MS) {
-        setWaiting((w) => (w && w.id === waitingId ? { ...w, note: "Still not confirmed — check again later; it is recorded by itself if they pay." } : w));
-        return;
-      }
+      // After a while it is asked less often — never given up (a late approval still shows "paid" here).
+      const late = Date.now() - startedAt.current > GIVE_UP_MS;
+      if (late) setWaiting((w) => (w && w.id === waitingId && !w.note ? { ...w, note: "Still not confirmed — it is recorded by itself if they pay." } : w));
       const r = await promptStatusAction({ id: waitingId }).catch(() => null);
       if (stopped) return;
       if (r?.ok && r.data.status !== "PENDING") {
@@ -82,7 +81,7 @@ export function SendToPhone({ target, amount, phone = "", editableAmount = false
         } else if (r.data.status === "FAILED" || r.data.status === "EXPIRED") toast.error(r.data.note ?? "The customer did not pay.", { duration: 9000 });
         return;
       }
-      timer = setTimeout(tick, POLL_MS);
+      timer = setTimeout(tick, late ? 20_000 : POLL_MS);
     };
     timer = setTimeout(tick, POLL_MS);
     return () => { stopped = true; if (timer) clearTimeout(timer); };
@@ -98,14 +97,21 @@ export function SendToPhone({ target, amount, phone = "", editableAmount = false
         : await sendOrdersPromptAction({ orderIds: target.orderIds, phone: number, handedOverById: target.handedOverById ?? null });
       if (!r.ok) { toast.error(r.error, { duration: 9000 }); return; }
       startedAt.current = Date.now();
-      setWaiting({ id: r.data.id, amount: r.data.amount, phone: r.data.phone, status: r.data.status, note: null });
+      setWaiting({ id: r.data.id, amount: r.data.amount, phone: r.data.phone, status: r.data.status, note: r.data.note });
     });
   }
   function cancel() {
     if (!waiting) return;
     start(async () => {
       const r = await cancelPromptAction({ id: waiting.id });
-      if (r.ok) setWaiting(null); else toast.error(r.error);
+      if (!r.ok) { toast.error(r.error); return; }
+      // They had just paid: it is recorded — not cancelled, and not collected again.
+      if (r.data.status === "COMPLETED") {
+        setWaiting((w) => (w ? { ...w, status: "COMPLETED", note: r.data.note } : w));
+        toast.success(`${fmt(r.data.amount)} received by mobile money — recorded.`, { duration: 9000 });
+        router.refresh();
+        onPaidRef.current?.();
+      } else setWaiting(null);
     });
   }
 
@@ -122,7 +128,7 @@ export function SendToPhone({ target, amount, phone = "", editableAmount = false
               {s === "COMPLETED" ? (waiting.note ? "Received — needs attention" : `Paid · ${fmt(waiting.amount)} recorded`) : s === "PENDING" ? `Waiting for ${who ? who.split(" ")[0] : "the customer"} to approve…` : s === "CANCELLED" ? "Stopped waiting" : "Not paid"}
             </span>
             <span className="text-xs text-muted-foreground">
-              {s === "PENDING" ? `${fmt(waiting.amount)} prompt sent to ${waiting.phone} — they enter their PIN on the phone. This updates by itself.` : waiting.note ?? `${fmt(waiting.amount)} · ${waiting.phone}`}
+              {s === "PENDING" ? waiting.note ?? `${fmt(waiting.amount)} prompt sent to ${waiting.phone} — they enter their PIN on the phone. This updates by itself.` : waiting.note ?? `${fmt(waiting.amount)} · ${waiting.phone}`}
             </span>
           </span>
           {s === "PENDING" && <button type="button" onClick={cancel} disabled={pending} className="shrink-0 rounded-lg px-2 py-1 text-[11px] font-semibold text-muted-foreground ring-1 ring-border hover:bg-muted hover:text-foreground">Cancel</button>}

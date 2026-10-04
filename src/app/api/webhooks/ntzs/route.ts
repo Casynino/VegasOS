@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { depositCompleted, depositFailed, readDeposit, verifyNtzsWebhook } from "@/server/services/ntzs";
+import { db } from "@/server/db";
 import { checkMobilePayment, findMobilePayment, settleMobilePayment } from "@/server/services/mobile-payments";
 
 export const dynamic = "force-dynamic";
@@ -43,6 +44,9 @@ export async function POST(req: Request) {
     console.warn("[ntzs] webhook for a payment we do not know", log);
     return Response.json({ ok: true, ignored: "unknown payment" });
   }
+
+  // Found by our reference on a request nTZS never confirmed: keep its deposit id, so it can be asked about later too.
+  if (depositId && !mp.depositId) await db.mobilePayment.updateMany({ where: { id: mp.id, depositId: null }, data: { depositId } }).catch(() => null);
 
   try {
     // "Paid" by the event's name (deposit.completed…) or by the deposit's own status in the message (minted…).

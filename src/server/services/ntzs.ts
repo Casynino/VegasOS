@@ -41,13 +41,13 @@ export interface NtzsDeposit {
 }
 type Result<T> = { ok: true; data: T } | { ok: false; error: string; status?: number; code?: string };
 
-async function call<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<Result<T>> {
+async function call<T>(method: "GET" | "POST", path: string, body?: unknown, extraHeaders: Record<string, string> = {}): Promise<Result<T>> {
   const key = process.env.NTZS_API_KEY;
   if (!key) return { ok: false, error: "nTZS is not set up — add NTZS_API_KEY in the server settings." };
   try {
     const res = await fetch(`${BASE}${path}`, {
       method, cache: "no-store", signal: AbortSignal.timeout(TIMEOUT_MS),
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", Accept: "application/json" },
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", Accept: "application/json", ...extraHeaders },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const text = await res.text();
@@ -88,7 +88,7 @@ export async function createNtzsDeposit(input: { amountTzs: number; phone: strin
     collectToTreasury: true,
     externalReference: input.reference,
     ...(userId ? { userId } : { endUser: { reference: input.reference, ...(input.name ? { name: input.name.slice(0, 80) } : {}), phone: input.phone } }),
-  });
+  }, { "Idempotency-Key": input.reference }); // one request per attempt, even if it reaches nTZS twice
   if (!res.ok) return res;
   const d = readDeposit(res.data);
   if (!d.id) return { ok: false, error: "nTZS did not return the payment's id — try again." };

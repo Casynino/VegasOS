@@ -86,6 +86,16 @@ export async function expireUnpaidHolds(now = new Date()) {
   });
   let expired = 0;
   for (const { id } of due) {
+    // Paid online but not recorded yet (a confirmation that went astray)? Ask nTZS first — a booking that is paid is
+    // never released. (Outside the booking's lock; loaded here to avoid an import cycle.)
+    const unrecorded = await db.mobilePayment.findMany({
+      where: { reservationId: id, completedAt: null, depositId: { not: null }, status: { in: ["PENDING", "EXPIRED", "FAILED", "CANCELLED"] } },
+      select: { id: true }, orderBy: { createdAt: "desc" }, take: 3,
+    });
+    if (unrecorded.length) {
+      const { checkMobilePayment } = await import("./mobile-payments");
+      for (const m of unrecorded) await checkMobilePayment(m.id, "sweep", now).catch(() => null);
+    }
     await db.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT "id" FROM "reservations" WHERE "id" = ${id} FOR UPDATE`;
       const r = await tx.reservation.findUniqueOrThrow({ where: { id }, include: { rooms: { include: { room: true } } } });

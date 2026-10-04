@@ -144,8 +144,21 @@ export async function requestMobilePayment(target: PromptTarget, rawPhone: strin
 
   const res = await createNtzsDeposit({ amountTzs: amount, phone, reference: mp.id, name });
   if (!res.ok) {
-    await db.mobilePayment.update({ where: { id: mp.id }, data: { status: "FAILED", lastError: res.error.slice(0, 500) } });
-    throw new AppError(customer ? friendlyForCustomer(res.error) : res.error, "CONFLICT");
+    // Only a clear refusal means no prompt went out. No answer (timed out), a server error or an answer without an id
+    // may have sent it all the same: the attempt keeps waiting a short while — the bill stays locked against a second
+    // prompt, the webhook still finds it by our reference, and it times out by itself if nothing comes.
+    const refused = typeof res.status === "number" && res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 409;
+    if (refused) {
+      await db.mobilePayment.updateMany({ where: { id: mp.id, status: "PENDING", completedAt: null }, data: { status: "FAILED", lastError: res.error.slice(0, 500) } });
+      throw new AppError(customer ? friendlyForCustomer(res.error) : res.error, "CONFLICT");
+    }
+    console.warn("[ntzs] prompt not confirmed by nTZS — kept waiting", { id: mp.id, httpStatus: res.status ?? null, error: res.error });
+    await db.mobilePayment.updateMany({
+      where: { id: mp.id, status: "PENDING", completedAt: null },
+      data: { lastError: `nTZS did not confirm the request (${res.error}) — if the prompt reached the phone, approving it is recorded by itself.`.slice(0, 500), expiresAt: new Date(now.getTime() + CUSTOMER_EXPIRES_MS) },
+    });
+    const waiting = await db.mobilePayment.findUniqueOrThrow({ where: { id: mp.id } });
+    return { ...waiting, instructions: null, reused: false };
   }
   const sent = await db.mobilePayment.update({ where: { id: mp.id }, data: { depositId: res.data.id, pspReference: res.data.pspReference ?? null } });
   await audit(db, actor ?? { label: "Customer · online" }, {
@@ -156,8 +169,8 @@ export async function requestMobilePayment(target: PromptTarget, rawPhone: strin
 }
 
 /**
- * Earlier attempts for the same bill (the last few hours) that ended without being recorded — timed out, stopped,
- * marked failed — are asked about once more: money nTZS did collect is recorded before anything new is asked.
+ * Earlier attempts for the same bill (the last few hours) not recorded yet — still waiting, timed out, stopped, marked
+ * failed — are asked about once more: money nTZS did collect is recorded before anything new is asked.
  */
 async function settleLateAttempts(target: PromptTarget, now: Date) {
   const bill = target.purpose === "RESERVATION" ? { reservationId: target.reservationId }
@@ -165,7 +178,7 @@ async function settleLateAttempts(target: PromptTarget, now: Date) {
     : target.purpose === "INVOICE" ? { invoiceId: target.invoiceId }
     : { orderIds: { hasSome: target.orderIds } };
   const late = await db.mobilePayment.findMany({
-    where: { ...bill, status: { in: ["EXPIRED", "FAILED", "CANCELLED"] }, completedAt: null, depositId: { not: null }, createdAt: { gt: new Date(now.getTime() - 6 * 3_600_000) } },
+    where: { ...bill, status: { in: ["PENDING", "EXPIRED", "FAILED", "CANCELLED"] }, completedAt: null, depositId: { not: null }, createdAt: { gt: new Date(now.getTime() - 6 * 3_600_000) } },
     orderBy: { createdAt: "desc" }, take: 3, select: { id: true },
   });
   for (const m of late) await checkMobilePayment(m.id, "check", now).catch(() => null);
@@ -275,24 +288,37 @@ async function recordMobilePayment(id: string, info: { received?: number | null;
   }, { timeout: 20_000, maxWait: 10_000 });
 }
 
-/** Ask nTZS how a waiting prompt is doing (the screen waiting for the customer, the scheduled run). */
-export async function checkMobilePayment(id: string, source: "check" | "sweep" = "check", now = new Date()) {
+/**
+ * Ask nTZS how a payment not recorded yet is doing (the waiting screens, the scheduled run, "Check with nTZS"). Money
+ * nTZS has is recorded — whatever our side says now (waiting, timed out, stopped, marked failed). `answered`: nTZS
+ * replied (otherwise nothing could be learned now — logged).
+ */
+export async function checkMobilePaymentWithAnswer(id: string, source: "check" | "sweep" = "check", now = new Date()): Promise<{ mp: MobilePayment; answered: boolean; ntzsStatus: string | null; error: string | null }> {
   const mp = await db.mobilePayment.findUnique({ where: { id } });
   if (!mp) throw new AppError("Payment prompt not found.", "NOT_FOUND");
-  if (mp.status === "COMPLETED" || !mp.depositId) return mp;
+  if (mp.status === "COMPLETED" || !mp.depositId) return { mp, answered: false, ntzsStatus: null, error: mp.depositId ? null : "nTZS gave no reference for this request" };
   await db.mobilePayment.update({ where: { id }, data: { lastCheckedAt: now } });
   const res = await getNtzsDeposit(mp.depositId);
-  if (!res.ok) return mp; // nTZS not answering: still waiting
-  // Money that came in is recorded whatever our side says now (waiting, timed out, stopped, marked failed).
-  if (depositCompleted(res.data.status)) return (await settleMobilePayment(id, { received: res.data.amountTzs ?? null, pspReference: res.data.pspReference ?? null, source }, now)).mp;
+  if (!res.ok) {
+    console.warn("[ntzs] could not ask nTZS about a deposit", { id, depositId: mp.depositId, httpStatus: res.status ?? null, error: res.error });
+    return { mp, answered: false, ntzsStatus: null, error: res.error };
+  }
+  const status = res.data.status || null;
+  if (depositCompleted(res.data.status)) {
+    const done = (await settleMobilePayment(id, { received: res.data.amountTzs ?? null, pspReference: res.data.pspReference ?? null, source }, now)).mp;
+    return { mp: done, answered: true, ntzsStatus: status, error: null };
+  }
   if (!depositFailed(res.data.status) && res.data.status !== "submitted" && res.data.status !== "pending" && res.data.status !== "processing") {
     console.info(`[ntzs] deposit ${mp.depositId} reads "${res.data.status || "(no status)"}" — still waiting`);
   }
   if (mp.status === "PENDING" && depositFailed(res.data.status)) {
     await db.mobilePayment.updateMany({ where: { id, status: "PENDING", completedAt: null }, data: { status: "FAILED", lastError: `The customer did not pay (${res.data.status}).` } });
-    return db.mobilePayment.findUniqueOrThrow({ where: { id } });
+    return { mp: await db.mobilePayment.findUniqueOrThrow({ where: { id } }), answered: true, ntzsStatus: status, error: null };
   }
-  return mp;
+  return { mp, answered: true, ntzsStatus: status, error: null };
+}
+export async function checkMobilePayment(id: string, source: "check" | "sweep" = "check", now = new Date()) {
+  return (await checkMobilePaymentWithAnswer(id, source, now)).mp;
 }
 
 /** Staff stop waiting (the customer will pay another way). If the money still comes in, it is recorded all the same. */
@@ -300,6 +326,9 @@ export async function cancelMobilePayment(id: string, actor: Actor) {
   const mp = await db.mobilePayment.findUnique({ where: { id } });
   if (!mp) throw new AppError("Payment prompt not found.", "NOT_FOUND");
   if (mp.status !== "PENDING") return mp;
+  // Paid already (the customer approved just now)? Then it is recorded, not cancelled — nobody collects it again.
+  const asked = mp.depositId ? await checkMobilePayment(id).catch(() => mp) : mp;
+  if (asked.status === "COMPLETED") return asked;
   // Only a prompt still waiting is cancelled (one being recorded right now stays recorded).
   const done = await db.mobilePayment.updateMany({ where: { id, status: "PENDING", completedAt: null }, data: { status: "CANCELLED" } });
   if (done.count) await audit(db, actor, { action: "mobile_payment.cancelled", entityType: "MobilePayment", entityId: id, after: { amount: mp.amount } });
@@ -318,7 +347,9 @@ export async function sweepMobilePayments(now = new Date(), deadline = Date.now(
     where: { status: { in: ["PENDING", "CANCELLED", "EXPIRED", "FAILED"] }, completedAt: null, depositId: { not: null }, createdAt: { gt: new Date(now.getTime() - 48 * 3_600_000), lt: new Date(now.getTime() - 60_000) } },
     orderBy: [{ lastCheckedAt: { sort: "asc", nulls: "first" } }, { createdAt: "asc" }], take: 30, select: { id: true, status: true, createdAt: true },
   });
-  let checked = 0, expired = 0;
+  // A request nTZS never confirmed (no reference to ask about) stops waiting once its time is up.
+  const unconfirmed = await db.mobilePayment.updateMany({ where: { status: "PENDING", completedAt: null, depositId: null, expiresAt: { lt: now } }, data: { status: "EXPIRED" } });
+  let checked = 0, expired = unconfirmed.count;
   for (const w of waiting) {
     if (Date.now() > deadline) break;
     const mp = await checkMobilePayment(w.id, "sweep", now).catch(() => null);

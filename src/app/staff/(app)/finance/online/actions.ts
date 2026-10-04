@@ -8,7 +8,7 @@ import { db } from "@/server/db";
 import { AppError, runAction, type ActionResult } from "@/server/errors";
 import { parseInput } from "@/server/validation";
 import { testNtzsConnection } from "@/server/services/ntzs";
-import { checkMobilePayment, sweepMobilePayments } from "@/server/services/mobile-payments";
+import { checkMobilePaymentWithAnswer, sweepMobilePayments } from "@/server/services/mobile-payments";
 import { ONLINE_SERVICES } from "@/server/services/online-pay";
 import { onlinePayFlag } from "@/server/services/online-payments-admin";
 
@@ -53,9 +53,11 @@ export async function checkOnlinePaymentAction(input: { id: string }): Promise<A
   return runAction(async () => {
     await authorize("finance.view", "payments.record", "revenue.record");
     const id = z.string().min(10).max(40).parse(input.id);
-    const mp = await checkMobilePayment(id, "check");
+    const r = await checkMobilePaymentWithAnswer(id, "check");
     revalidatePath("/staff", "layout");
-    return { status: mp.status, text: STATUS_WORD[mp.status] ?? mp.status };
+    if (r.mp.status === "COMPLETED") return { status: r.mp.status, text: STATUS_WORD.COMPLETED };
+    if (!r.answered) throw new AppError(`nTZS did not answer (${r.error ?? "no reply"}) — nothing has changed. Try again in a minute.`, "CONFLICT");
+    return { status: r.mp.status, text: `${STATUS_WORD[r.mp.status] ?? r.mp.status}${r.ntzsStatus ? ` (nTZS: ${r.ntzsStatus})` : ""}` };
   });
 }
 

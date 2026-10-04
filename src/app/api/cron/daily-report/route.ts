@@ -33,6 +33,8 @@ export async function GET(req: Request) {
   const t0 = Date.now();
   try {
     await refreshOverdueInvoices();
+    // Payments nTZS confirmed but we have not recorded yet are found first — before unpaid bookings are released.
+    await sweepMobilePayments(new Date(), Date.now() + 8_000).catch((e) => console.error("[cron] mobile payments failed", e));
     await refreshBookingStates();
     // Housekeeping: expired sessions and stale rate-limit windows.
     await db.session.deleteMany({ where: { expiresAt: { lt: new Date() } } });

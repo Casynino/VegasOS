@@ -14,7 +14,7 @@ import { createTransportRequest } from "@/server/services/transport";
 import { createManualInvoice, issueInvoice } from "@/server/services/invoices";
 import { customerOnlinePayments, onlinePaymentTotals, onlinePayments, reconcileOnlinePayments } from "@/server/services/online-payments-admin";
 import { paymentsByMethod } from "@/server/services/finance";
-import { ONLINE_RECORDER_ID, sweepMobilePayments } from "@/server/services/mobile-payments";
+import { cancelMobilePayment, ONLINE_RECORDER_ID, requestMobilePayment, sweepMobilePayments } from "@/server/services/mobile-payments";
 import { createHmac } from "node:crypto";
 import { POST as ntzsWebhook } from "@/app/api/webhooks/ntzs/route";
 import {
@@ -41,6 +41,8 @@ let deposits: Record<string, { status: string; amountTzs: number }> = {};
 let sent: Record<string, unknown>[] = [];
 /** nTZS's GET answer wrapped ({ data: … }) instead of at the top level. */
 let wrapGet = false;
+/** The next call to nTZS: no answer (0 = timed out) or this HTTP status. */
+let failNext: number | null = null;
 
 beforeEach(async () => {
   await resetBusinessData();
@@ -50,9 +52,15 @@ beforeEach(async () => {
   });
   process.env.NTZS_API_KEY = "ntzs_test_unit";
   process.env.NTZS_WEBHOOK_SECRET = "whsec_unit";
-  deposits = {}; sent = []; wrapGet = false;
+  deposits = {}; sent = []; wrapGet = false; failNext = null;
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const url = String(input);
+    if (failNext !== null) {
+      const f = failNext; failNext = null;
+      if (url.endsWith("/deposits") && init?.method === "POST") sent.push(JSON.parse(String(init.body)));
+      if (f === 0) throw new DOMException("The operation timed out.", "TimeoutError");
+      return new Response(JSON.stringify({ error: { code: f >= 500 ? "server_error" : "invalid_phone", message: "nope" } }), { status: f });
+    }
     if (url.endsWith("/deposits") && init?.method === "POST") {
       const body = JSON.parse(String(init.body));
       sent.push(body);
@@ -519,6 +527,71 @@ describe("nTZS confirmations (live incident, 2026-10-04: paid, minted — but no
     deposits[await depositOf(d.token)].status = "minted";
     await expect(payOrderOnline(d.order.trackToken!, { phone: d.phone, clientKey: key(), ip: ip() })).rejects.toThrow(/already paid/);
     expect(await paidNow(d.order.id)).toBe("PAID");
+  });
+});
+
+describe("review fixes (2026-10-04): nothing paid is lost, nobody is asked twice", () => {
+  it("nTZS does not answer the request: the attempt keeps waiting (no second prompt); the webhook still records it and keeps its id", async () => {
+    const k = key(), p = phone();
+    const order = await placeOnlineOrder({ clientKey: k, items: [{ menuItemId: BEER, quantity: 1 }], name: "Slow Network", phone: p, kind: "DINE_IN", payOnline: true });
+    failNext = 0; // timed out — nTZS may have sent the prompt all the same
+    const started = await payForNewOrder(order, { phone: p, clientKey: k, ip: ip() });
+    const mp = await db.mobilePayment.findUniqueOrThrow({ where: { publicToken: started.pay! } });
+    expect(mp).toMatchObject({ status: "PENDING", depositId: null });
+    expect(mp.lastError).toMatch(/did not confirm/);
+    // Pressing again is the same waiting attempt — no second prompt to the phone.
+    const before = sent.length;
+    await expect(payOrderOnline(order.trackToken!, { phone: p, clientKey: key(), ip: ip() })).resolves.toMatchObject({ token: started.pay, reused: true });
+    expect(sent.length).toBe(before);
+    // The prompt did reach the phone and was approved: the webhook finds it by our reference, records it, keeps the id.
+    await webhook({ type: "deposit.completed", data: { depositId: "dep_late", externalReference: mp.id, amountTzs: order.total } });
+    expect(await paidNow(order.id)).toBe("PAID");
+    expect((await db.mobilePayment.findUniqueOrThrow({ where: { id: mp.id } })).depositId).toBe("dep_late");
+  });
+
+  it("a clear refusal is failed at once; a request never confirmed times out by itself", async () => {
+    const k = key(), p = phone();
+    const order = await placeOnlineOrder({ clientKey: k, items: [{ menuItemId: BEER, quantity: 1 }], name: "Refused", phone: p, kind: "DINE_IN", payOnline: true });
+    failNext = 400;
+    const r = await payForNewOrder(order, { phone: p, clientKey: k, ip: ip() });
+    expect((await db.mobilePayment.findUniqueOrThrow({ where: { publicToken: r.pay! } })).status).toBe("FAILED");
+
+    const k2 = key();
+    const o2 = await placeOnlineOrder({ clientKey: k2, items: [{ menuItemId: BEER, quantity: 1 }], name: "Server Error", phone: phone(), kind: "DINE_IN", payOnline: true });
+    failNext = 502;
+    const r2 = await payForNewOrder(o2, { phone: p, clientKey: k2, ip: ip() });
+    await db.mobilePayment.updateMany({ where: { publicToken: r2.pay! }, data: { expiresAt: new Date(Date.now() - 1000) } });
+    await sweepMobilePayments();
+    expect((await db.mobilePayment.findUniqueOrThrow({ where: { publicToken: r2.pay! } })).status).toBe("EXPIRED");
+  });
+
+  it("an earlier attempt still marked waiting but paid is recorded before a new one — and a Cancel that comes too late says paid", async () => {
+    const a = await orderPayingOnline();
+    deposits[await depositOf(a.token)].status = "minted";
+    // Staff press Send to phone for the same bill: the customer's payment is found first — nothing new is sent.
+    const counter = await managerActor();
+    const before = sent.length;
+    await expect(requestMobilePayment({ purpose: "RESTAURANT", orderIds: [a.order.id] }, a.phone, { ...counter, userId: counter.userId! })).rejects.toThrow(/already paid/);
+    expect(sent.length).toBe(before);
+    expect(await paidNow(a.order.id)).toBe("PAID");
+
+    const b = await orderPayingOnline();
+    deposits[await depositOf(b.token)].status = "minted";
+    const mpB = await db.mobilePayment.findUniqueOrThrow({ where: { publicToken: b.token } });
+    expect((await cancelMobilePayment(mpB.id, { label: "Customer" })).status).toBe("COMPLETED");
+    expect(await paidNow(b.order.id)).toBe("PAID");
+  });
+
+  it("a booking paid but not recorded is never released when its hold runs out", async () => {
+    const bk = await bookOnline(16);
+    const id = bk.reservationId!;
+    await db.mobilePayment.updateMany({ where: { publicToken: bk.pay! }, data: { status: "EXPIRED" } });
+    deposits[await depositOf(bk.pay!)].status = "minted";
+    await db.reservation.update({ where: { id }, data: { holdUntil: new Date(Date.now() - 60_000) } });
+    await expireUnpaidHolds();
+    const r = await db.reservation.findUniqueOrThrow({ where: { id } });
+    expect(r.status).toBe("CONFIRMED");
+    expect(r.balanceAmount).toBe(0);
   });
 });
 
