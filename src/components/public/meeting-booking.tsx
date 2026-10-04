@@ -1,22 +1,27 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { CalendarCheck, CheckCircle2, Clock, Loader2, Search, Users, XCircle } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { CalendarCheck, CheckCircle2, Clock, Loader2, Search, ShieldCheck, Smartphone, Users, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { bookMeetingAction, checkMeetingAction, type MeetingCheck, type MeetingReceipt } from "@/app/(public)/meeting-room/actions";
+import { bookMeetingAction, checkMeetingAction, payMeetingAction, type MeetingCheck, type MeetingReceipt } from "@/app/(public)/meeting-room/actions";
 import { eyebrow, fieldError, fieldInput, fieldLabel, fieldTextarea, goldText, pillGold, pillPad } from "./ui";
 
 const n = (v: number) => v.toLocaleString("en-US");
 const longDate = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+const newKey = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (x) => x.toString(16).padStart(2, "0")).join("");
+const payPhoneOk = (p: string) => /^(?:\+?255|0)?[67]\d{8}$/.test(p.replace(/[\s-]/g, ""));
 const SLOTS = [["Morning", "08:00", "12:00"], ["Half day", "09:00", "13:00"], ["Afternoon", "13:00", "17:00"], ["Full day", "08:00", "17:00"]] as const;
 
 /**
  * Meeting room on the website: pick a date and time → "Check availability"
  * (live, from the same booking engine as reception) → "Book now" with the
- * customer's details. The booking is a request until the hotel confirms it.
+ * customer's details. The booking is a request until the hotel confirms it — or, paying online (nTZS), it is booked
+ * at once and the payment confirms it.
  */
-export function MeetingBooking({ today, price, capacity }: { today: string; price: number; capacity: number }) {
+export function MeetingBooking({ today, price, capacity, online = false }: { today: string; price: number; capacity: number; online?: boolean }) {
+  const router = useRouter();
   const [when, setWhen] = useState({ date: "", start: "09:00", end: "13:00", attendees: "10" });
   const [f, setF] = useState({ fullName: "", companyName: "", phone: "", email: "", requirements: "", notes: "", website: "" });
   const [check, setCheck] = useState<(MeetingCheck & { for: string }) | null>(null);
@@ -25,6 +30,9 @@ export function MeetingBooking({ today, price, capacity }: { today: string; pric
   const [done, setDone] = useState<MeetingReceipt | null>(null);
   const [checking, startCheck] = useTransition();
   const [booking, startBook] = useTransition();
+  const [paying, startPay] = useTransition();
+  const [payPhone, setPayPhone] = useState<string | null>(null);
+  const payKey = useRef("");
   const key = `${when.date}|${when.start}|${when.end}`;
   const fresh = check?.for === key ? check : null;
 
@@ -53,6 +61,21 @@ export function MeetingBooking({ today, price, capacity }: { today: string; pric
         setFormError(res.error);
         if (res.code === "UNAVAILABLE") setCheck(null);
       }
+    });
+  }
+
+  const number = payPhone ?? f.phone;
+  function payOnline() {
+    setFormError(null);
+    if (!payPhoneOk(number)) { setErrors({ payPhone: "Enter your mobile-money number, e.g. 0712 345 678." }); return; }
+    payKey.current ||= newKey();
+    startPay(async () => {
+      const res = await payMeetingAction({ ...when, attendees: Number(when.attendees), ...f, payPhone: number.trim(), clientKey: payKey.current });
+      if (res.ok) { router.push(res.data.next); return; }
+      payKey.current = ""; // the next press is a new booking attempt
+      setErrors(res.fieldErrors ?? {});
+      setFormError(res.error);
+      if (res.code === "UNAVAILABLE") setCheck(null);
     });
   }
 
@@ -142,9 +165,26 @@ export function MeetingBooking({ today, price, capacity }: { today: string; pric
             <F label="Special requirements" error={errors.requirements}><textarea className={fieldTextarea} value={f.requirements} onChange={set("requirements")} placeholder="e.g. projector, seating layout, tea break at 10:30, lunch for 12" /></F>
             <F label="Notes" error={errors.notes}><textarea className={cn(fieldTextarea, "min-h-20")} value={f.notes} onChange={set("notes")} /></F>
             <input type="text" name="website" value={f.website} onChange={set("website")} tabIndex={-1} autoComplete="off" aria-hidden="true" className="hidden" />
-            <button type="submit" disabled={booking} className={cn(pillGold, pillPad, "h-12 w-full sm:w-auto")}>
-              {booking ? <Loader2 className="size-4 animate-spin" /> : <CalendarCheck className="size-4" />} Book now
-            </button>
+            {online ? (
+              <div className="space-y-4 border-t border-tone/10 pt-6">
+                <p className={cn(eyebrow, goldText)}>3 · Pay online and confirm now</p>
+                <F label="Mobile-money number *" error={errors.payPhone}>
+                  <input className={fieldInput} value={number} onChange={(e) => setPayPhone(e.target.value)} type="tel" inputMode="tel" autoComplete="tel" placeholder="e.g. 0712 345 678" aria-invalid={!!errors.payPhone} />
+                </F>
+                <button type="button" onClick={payOnline} disabled={paying || booking} className={cn(pillGold, pillPad, "h-12 w-full sm:w-auto")}>
+                  {paying ? <Loader2 className="size-4 animate-spin" /> : <Smartphone className="size-4" />} Pay TZS {n(fresh.price)} & confirm
+                </button>
+                <p className="text-xs leading-relaxed text-tone/60">M-Pesa, Airtel Money, Tigo Pesa or HaloPesa — approve the request on your phone with your PIN. The time is held for you while you pay.</p>
+                <p className="flex items-center gap-1.5 text-[11px] font-medium text-tone/55"><ShieldCheck className="size-3.5 text-accent-ink" />Secure payment powered by NTZS</p>
+                <button type="submit" disabled={booking || paying} className="text-sm font-medium text-tone/70 underline-offset-4 hover:text-tone hover:underline">
+                  {booking ? "Sending your request…" : "Or send a request — pay at the hotel"}
+                </button>
+              </div>
+            ) : (
+              <button type="submit" disabled={booking} className={cn(pillGold, pillPad, "h-12 w-full sm:w-auto")}>
+                {booking ? <Loader2 className="size-4 animate-spin" /> : <CalendarCheck className="size-4" />} Book now
+              </button>
+            )}
           </fieldset>
         )}
         {formError && <p className={fieldError} role="alert">{formError}</p>}
@@ -161,7 +201,9 @@ export function MeetingBooking({ today, price, capacity }: { today: string; pric
             <li className="flex gap-3"><CalendarCheck className="size-4 shrink-0 text-gold" />Food & drinks from our restaurant and bar can go on the same bill</li>
           </ul>
         </div>
-        <p className="px-2 text-xs leading-relaxed text-tone/55">No account needed and nothing to pay online. Your booking is confirmed when our team calls or messages you.</p>
+        <p className="px-2 text-xs leading-relaxed text-tone/55">{online
+          ? "No account needed. Pay online and your booking is confirmed at once — or send a request and our team calls or messages you to confirm it."
+          : "No account needed and nothing to pay online. Your booking is confirmed when our team calls or messages you."}</p>
       </aside>
     </form>
   );

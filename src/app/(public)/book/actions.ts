@@ -5,7 +5,8 @@ import { requestMeta } from "@/server/auth";
 import { AppError, runAction, type ActionResult } from "@/server/errors";
 import { rateLimit } from "@/server/rate-limit";
 import { parseInput } from "@/server/validation";
-import { quoteSelection, type Selection } from "@/server/services/public-booking";
+import { createWebsiteBooking, quoteSelection, type Selection } from "@/server/services/public-booking";
+import { bookAndPayOnline, ONLINE_BOOKING_HOLD_MINUTES } from "@/server/services/online-pay";
 import { submitBookingRequest } from "@/server/services/booking-requests";
 import { DEFAULT_AIRPORT } from "@/server/services/transport";
 import { formatBusinessDate } from "@/lib/format";
@@ -31,6 +32,12 @@ export interface BookingReview {
 
 function toSelection(v: BookingInput): Selection {
   return { checkIn: v.checkIn, checkOut: v.checkOut, adults: v.adults, children: v.children, typeSlug: v.type, rooms: v.rooms };
+}
+
+function pickupOf(v: BookingInput) {
+  return v.pickup === "yes" && v.flightNumber && v.pickupDate && v.pickupTime
+    ? { flightNumber: v.flightNumber, arrivalDate: v.pickupDate, arrivalTime: v.pickupTime, airport: v.airport || null, passengers: typeof v.passengers === "number" ? v.passengers : null, notes: v.pickupNotes || null }
+    : null;
 }
 
 function parse(formData: FormData): BookingInput {
@@ -104,6 +111,33 @@ export async function confirmBookingAction(_prev: ActionResult<null> | undefined
         : null,
     );
     target = `/booking/${request.reference}?token=${encodeURIComponent(request.manageToken)}`;
+    return null;
+  });
+  if (result.ok && target) redirect(target);
+  return result;
+}
+
+/**
+ * Step 4 → Pay online: the booking is made at once (the room held a short while) and the payment request goes to the
+ * guest's phone; the payment confirms it. Then the payment page — or, if no request could start, the booking's page.
+ */
+export async function payAndBookAction(_prev: ActionResult<null> | undefined, formData: FormData): Promise<ActionResult<null>> {
+  let target: string | null = null;
+  const result = await runAction(async () => {
+    const { ipAddress } = await requestMeta();
+    await rateLimit(`web-book:${ipAddress ?? "unknown"}`, 5, 600);
+    const v = parse(formData);
+    const payPhone = String(formData.get("payPhone") ?? "").trim().slice(0, 30);
+    const clientKey = String(formData.get("clientKey") ?? "");
+    if (!/^[a-f0-9]{32}$/.test(clientKey)) throw new AppError("Please try again.", "VALIDATION");
+    const r = await bookAndPayOnline({
+      service: "booking", phone: payPhone, clientKey, ip: ipAddress,
+      create: () => createWebsiteBooking(toSelection(v), {
+        fullName: v.fullName, phone: v.phone, email: v.email || null, nationality: v.nationality || null,
+        specialRequests: v.specialRequests || null, expectedArrivalTime: v.expectedArrivalTime,
+      }, ipAddress, pickupOf(v), { holdMinutes: ONLINE_BOOKING_HOLD_MINUTES }),
+    });
+    target = r.pay ? `/pay/${r.pay}` : r.booking;
     return null;
   });
   if (result.ok && target) redirect(target);

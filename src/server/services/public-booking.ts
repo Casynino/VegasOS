@@ -363,6 +363,8 @@ export interface WebsiteGuest {
   email?: string | null;
   nationality?: string | null;
   specialRequests?: string | null;
+  /** HH:MM as given by the guest. */
+  expectedArrivalTime?: string | null;
 }
 
 export interface PickupRequest {
@@ -375,7 +377,7 @@ export interface PickupRequest {
 }
 
 /** Create a website booking through the single reservation engine. */
-export async function createWebsiteBooking(sel: Selection, guest: WebsiteGuest, ipAddress: string | null, pickup?: PickupRequest | null) {
+export async function createWebsiteBooking(sel: Selection, guest: WebsiteGuest, ipAddress: string | null, pickup?: PickupRequest | null, opts: { holdMinutes?: number } = {}) {
   const quote = await quoteSelection(sel); // early, friendly checks; the engine re-validates in its transaction
   const actor: Actor = { userId: null, label: "website", ipAddress, permissions: new Set<string>() };
   const reservation = await createReservation(
@@ -391,9 +393,12 @@ export async function createWebsiteBooking(sel: Selection, guest: WebsiteGuest, 
       stay: { kind: "overnight", arrivalDate: sel.checkIn, departureDate: sel.checkOut },
       rooms: quote.roomRequests, // no discount given → engine applies the standard website discount
       specialRequests: guest.specialRequests || null,
-      internalNotes: pickup
-        ? `Website: airport pickup requested — flight ${pickup.flightNumber.toUpperCase()}, arriving ${pickup.arrivalDate} ${pickup.arrivalTime}.`
-        : null,
+      internalNotes: [
+        opts.holdMinutes ? "Website: booked and paying online (nTZS) — confirmed by the payment." : null,
+        pickup ? `Website: airport pickup requested — flight ${pickup.flightNumber.toUpperCase()}, arriving ${pickup.arrivalDate} ${pickup.arrivalTime}.` : null,
+      ].filter(Boolean).join(" ") || null,
+      eta: guest.expectedArrivalTime && /^([01]\d|2[0-3]):[0-5]\d$/.test(guest.expectedArrivalTime) ? guest.expectedArrivalTime : null,
+      holdMinutes: opts.holdMinutes ?? null,
     },
     actor,
   );
@@ -416,7 +421,7 @@ export async function createWebsiteBooking(sel: Selection, guest: WebsiteGuest, 
       console.error("[public-booking] airport pickup request failed", reservation.reference, e);
     }
   }
-  return { reference: reservation.reference, manageToken: reservation.manageToken, pickupRequested };
+  return { id: reservation.id, reference: reservation.reference, manageToken: reservation.manageToken, pickupRequested };
 }
 
 // ───────────────────────────── View booking ─────────────────────────────
@@ -447,7 +452,10 @@ export async function getBookingForGuest(reference: string, token: string | unde
     pickup: trip,
     reference: r.reference,
     status: r.status,
+    kind: r.kind,
+    holdUntil: r.holdUntil,
     guestName: r.guest.fullName,
+    guestPhone: r.guest.phone,
     arrivalDate: fromDbDate(r.arrivalDate),
     departureDate: fromDbDate(r.departureDate),
     adults: r.adults,

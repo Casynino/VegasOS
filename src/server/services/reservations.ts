@@ -88,6 +88,8 @@ export interface CreateReservationInput {
   menuRoomService?: boolean;
   /** Link to the website booking request this reservation fulfils (converted atomically, once). */
   bookingRequestId?: string | null;
+  /** Booked online and being paid online now: an unpaid booking holds its room only this long (the payment confirms it). */
+  holdMinutes?: number | null;
 }
 
 const REF_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -263,7 +265,8 @@ export async function createReservationTx(tx: Tx, input: CreateReservationInput,
   const status: ReservationStatus = checkInNow ? "CHECKED_IN"
     : input.status === "INQUIRY" ? "INQUIRY"
       : paying || billTo !== "GUEST" || guaranteedUnpaid ? "CONFIRMED" : "RESERVED";
-  const holdUntil = status === "RESERVED" ? holdDeadline(settings, now) : null;
+  const holdUntil = status !== "RESERVED" ? null
+    : input.holdMinutes ? new Date(now.getTime() + input.holdMinutes * 60_000) : holdDeadline(settings, now);
   const reservation = await tx.reservation.create({
     data: {
       reference: newReference(),

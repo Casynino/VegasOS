@@ -77,8 +77,10 @@ export async function reopenHoldTx(tx: Tx, reservationId: string, actor: Actor) 
  * safe to call often (booking screens, availability checks, the nightly job).
  */
 export async function expireUnpaidHolds(now = new Date()) {
+  // (A booking whose guest is paying online right now keeps its room until that payment ends.)
+  const paying = { mobilePayments: { none: { status: "PENDING" as const, completedAt: null, expiresAt: { gt: now } } } };
   const due = await db.reservation.findMany({
-    where: { status: "RESERVED", holdUntil: { lt: now }, paidAmount: { lte: 0 } },
+    where: { status: "RESERVED", holdUntil: { lt: now }, paidAmount: { lte: 0 }, ...paying },
     select: { id: true },
     take: 200,
   });
@@ -88,6 +90,7 @@ export async function expireUnpaidHolds(now = new Date()) {
       await tx.$queryRaw`SELECT "id" FROM "reservations" WHERE "id" = ${id} FOR UPDATE`;
       const r = await tx.reservation.findUniqueOrThrow({ where: { id }, include: { rooms: { include: { room: true } } } });
       if (r.status !== "RESERVED" || !r.holdUntil || r.holdUntil >= now || r.paidAmount > 0) return;
+      if (await tx.mobilePayment.count({ where: { reservationId: id, status: "PENDING", completedAt: null, expiresAt: { gt: now } } })) return;
       const held = r.rooms.filter((x) => x.status === "RESERVED" || x.status === "INQUIRY");
       for (const rr of held) {
         await tx.reservationRoom.update({ where: { id: rr.id }, data: { status: "CANCELLED" } });

@@ -212,6 +212,33 @@ export async function submitMeetingRequest(input: MeetingRequestInput, ipAddress
   });
 }
 
+/**
+ * Website meeting room booked and paid online: a reservation of the meeting room straight away (the same engine as
+ * reception), held for `holdMinutes` while the customer pays — the payment confirms it.
+ */
+export async function createWebsiteMeetingBooking(input: MeetingRequestInput, ipAddress: string | null, opts: { holdMinutes: number }) {
+  const type = await publicMeetingRoom();
+  if (!type) throw new AppError("The meeting room cannot be booked online right now — please call us.", "UNAVAILABLE");
+  if (input.attendees < 1 || input.attendees > type.maxAdults) {
+    throw new AppError(`The meeting room holds up to ${type.maxAdults} people.`, "VALIDATION", { attendees: "Too many" });
+  }
+  const stay = await meetingWindow(input.date, input.start, input.end);
+  const free = await findAvailableRooms({ stay, roomTypeId: type.id, category: "MEETING_ROOM" });
+  if (!free.length) throw new AppError("Sorry — the meeting room is already booked for part of that time. Please choose another time.", "UNAVAILABLE");
+  const r = await createReservation({
+    sourceCode: WEBSITE_SOURCE,
+    guest: { fullName: input.fullName.trim(), phone: input.phone.trim(), email: input.email?.trim() || null },
+    companyName: input.companyName?.trim() || null,
+    stay: { kind: "meeting", startAt: stay.startAt, endAt: stay.endAt },
+    rooms: [{ roomTypeId: type.id, adults: input.attendees, children: 0 }],
+    status: "RESERVED",
+    specialRequests: input.requirements?.trim() || null,
+    internalNotes: ["Website: meeting room booked and paying online (nTZS) — confirmed by the payment.", input.notes?.trim()].filter(Boolean).join(" "),
+    holdMinutes: opts.holdMinutes,
+  }, { userId: null, label: "website", ipAddress, permissions: new Set<string>() });
+  return { id: r.id, reference: r.reference, manageToken: r.manageToken, price: type.baseRate, date: stay.arrivalDate, time: timeRange(stay.startAt, stay.endAt), name: type.name };
+}
+
 function sameToken(a: string, b: string) {
   const x = Buffer.from(a), y = Buffer.from(b);
   return x.length === y.length && timingSafeEqual(x, y);

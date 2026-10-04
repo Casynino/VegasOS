@@ -5,7 +5,8 @@ import { requestMeta } from "@/server/auth";
 import { AppError, runAction, type ActionResult } from "@/server/errors";
 import { rateLimit } from "@/server/rate-limit";
 import { parseInput } from "@/server/validation";
-import { meetingAvailability, submitMeetingRequest } from "@/server/services/booking-requests";
+import { createWebsiteMeetingBooking, meetingAvailability, submitMeetingRequest } from "@/server/services/booking-requests";
+import { bookAndPayOnline, ONLINE_BOOKING_HOLD_MINUTES } from "@/server/services/online-pay";
 
 const when = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a date."),
@@ -46,5 +47,27 @@ export async function bookMeetingAction(input: z.input<typeof booking>): Promise
     const d = parseInput(booking, input);
     const r = await submitMeetingRequest({ ...d, email: d.email || null, companyName: d.companyName || null }, ipAddress);
     return { reference: r.reference, manageToken: r.manageToken, name: d.fullName.split(/\s+/)[0], date: r.date, time: r.time, price: r.price, room: r.name };
+  });
+}
+
+const payOnline = booking.extend({
+  payPhone: z.string().trim().min(9, "Enter your mobile-money number.").max(30),
+  clientKey: z.string().regex(/^[a-f0-9]{32}$/),
+});
+
+/** "Book & pay online": the meeting room is booked at once (held a short while) and the payment confirms it. Returns where to go next. */
+export async function payMeetingAction(input: z.input<typeof payOnline>): Promise<ActionResult<{ next: string }>> {
+  return runAction(async () => {
+    const { ipAddress } = await requestMeta();
+    if (input.website) throw new AppError("Please try again.");
+    await rateLimit(`web-meeting-book:${ipAddress ?? "unknown"}`, 6, 600);
+    const d = parseInput(payOnline, input);
+    const r = await bookAndPayOnline({
+      service: "meeting", phone: d.payPhone, clientKey: d.clientKey, ip: ipAddress,
+      create: () => createWebsiteMeetingBooking({ ...d, email: d.email || null, companyName: d.companyName || null }, ipAddress, { holdMinutes: ONLINE_BOOKING_HOLD_MINUTES }),
+    });
+    const next = r.pay ? `/pay/${r.pay}` : r.booking;
+    if (!next) throw new AppError("Please try again.");
+    return { next };
   });
 }

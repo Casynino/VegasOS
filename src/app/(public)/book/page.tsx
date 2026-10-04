@@ -21,7 +21,8 @@ import { getSiteContent } from "@/server/services/site-content";
 import { PillLink } from "@/components/public/pill-link";
 import { StaySearchForm } from "@/components/public/stay-search-form";
 import { container, cream, eyebrow, goldText, type } from "@/components/public/ui";
-import { confirmBookingAction, reviewBookingAction } from "./actions";
+import { confirmBookingAction, payAndBookAction, reviewBookingAction } from "./actions";
+import { onlinePayAvailable } from "@/server/services/online-pay";
 
 export const metadata: Metadata = {
   title: "Book your stay",
@@ -151,6 +152,8 @@ export default async function BookPage({ searchParams }: PageProps<"/book">) {
               backToRoomsHref={backToRooms}
               reviewAction={reviewBookingAction}
               confirmAction={confirmBookingAction}
+              payAction={payAndBookAction}
+              online={await onlinePayAvailable("booking", settings)}
               arrival={{
                 defaultAirport: c.facts.airportName,
                 note: `Our own drivers can collect you from the airport, about ${c.facts.airportKm} km away. We’ll confirm by phone or WhatsApp.`,

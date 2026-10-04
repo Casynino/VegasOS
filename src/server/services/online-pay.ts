@@ -1,4 +1,5 @@
 import "server-only";
+import { timingSafeEqual } from "node:crypto";
 import { db } from "../db";
 import { AppError } from "../errors";
 import { getSettings } from "../settings";
@@ -6,6 +7,7 @@ import { rateLimit } from "../rate-limit";
 import { ntzsEnabled, ntzsPhone } from "./ntzs";
 import { cancelMobilePayment, checkMobilePayment, maskPhone, requestMobilePayment, type PromptTarget } from "./mobile-payments";
 import type { HotelSettings, MobilePayment } from "@/generated/prisma/client";
+import { formatTime } from "@/lib/format";
 
 /**
  * PAY ONLINE — the hotel's one customer-facing online payment (owner, 2026-10-04): wherever a customer pays online
@@ -101,6 +103,77 @@ export async function livePaymentForOrder(trackToken: string) {
   return mp?.publicToken ?? null;
 }
 
+/** A booking made and paid online keeps its room this long while the guest pays — the payment confirms it. */
+export const ONLINE_BOOKING_HOLD_MINUTES = 30;
+
+/**
+ * "Pay online" while booking (a room, or the meeting room): the booking is made — held a short while — and its payment
+ * request goes for the whole amount, worked out on the server. The same press twice is one booking and one payment.
+ * Returns the payment page (or, when the request could not start, the booking's own page, which offers it again).
+ */
+export async function bookAndPayOnline(input: {
+  service: "booking" | "meeting"; phone: string; clientKey: string; ip: string | null;
+  create: () => Promise<{ id: string; reference: string; manageToken: string }>;
+}) {
+  await assertCanPayOnline(input.service, input.phone);
+  const clientKey = `book:${input.clientKey}`;
+  const made = await db.mobilePayment.findUnique({ where: { clientKey }, select: { publicToken: true } });
+  if (made?.publicToken) return { pay: made.publicToken, booking: null, payError: null };
+  // One booking per press — even pressed twice at once (the screen sends a new key after an error).
+  try { await rateLimit(`book-once:${input.clientKey}`, 1, 3600); }
+  catch { throw new AppError("Your booking is on its way — check your phone for the payment request.", "CONFLICT"); }
+  const b = await input.create();
+  const page = `/booking/${b.reference}?token=${encodeURIComponent(b.manageToken)}`;
+  const r = await db.reservation.findUniqueOrThrow({ where: { id: b.id }, select: { balanceAmount: true } });
+  try {
+    const started = await startCustomerPayment({
+      target: { purpose: "RESERVATION", reservationId: b.id, amount: r.balanceAmount }, phone: input.phone, clientKey, source: "BOOKING_PAGE", service: input.service, ip: input.ip,
+    });
+    return { pay: started.token, booking: page, payError: null };
+  } catch (e) {
+    const tried = await db.mobilePayment.findUnique({ where: { clientKey }, select: { publicToken: true } });
+    if (tried?.publicToken) return { pay: tried.publicToken, booking: page, payError: null };
+    return { pay: null, booking: page, payError: e instanceof AppError ? e.message : "Online payment could not start — please try again." };
+  }
+}
+
+const sameToken = (a: string, b: string) => {
+  const x = Buffer.from(a), y = Buffer.from(b);
+  return x.length === y.length && timingSafeEqual(x, y);
+};
+
+/** A booking from its private page (reference + token) — what online payment needs to know about it. */
+async function bookingByLink(reference: string, token: string) {
+  if (!/^VLH-[A-Z0-9]{4,12}$/.test(reference) || !token || token.length > 200) return null;
+  const r = await db.reservation.findUnique({ where: { reference }, select: { id: true, manageToken: true, status: true, kind: true, billTo: true, balanceAmount: true } });
+  return r && sameToken(r.manageToken, token) ? r : null;
+}
+const bookingService = (r: { status: string; kind: string }): OnlineService =>
+  r.status === "CHECKED_IN" || r.status === "CHECKED_OUT" ? "stayBill" : r.kind === "MEETING" ? "meeting" : "booking";
+
+/** Pay online offered on a booking's page now: something the guest owes, and online payment on for it. */
+export async function bookingPayOnline(reference: string, token: string) {
+  const r = await bookingByLink(reference, token);
+  if (!r || r.billTo !== "GUEST" || r.balanceAmount <= 0 || r.status === "CANCELLED" || r.status === "NO_SHOW") return { offered: false, live: null };
+  const live = await db.mobilePayment.findFirst({
+    where: { reservationId: r.id, initiator: "CUSTOMER", status: "PENDING", completedAt: null, expiresAt: { gt: new Date() } },
+    orderBy: { createdAt: "desc" }, select: { publicToken: true },
+  });
+  return { offered: await onlinePayAvailable(bookingService(r)), live: live?.publicToken ?? null };
+}
+
+/** "Pay online" from a booking's page: what is still owed on it, worked out here. */
+export async function payBookingOnline(reference: string, token: string, input: { phone: string; clientKey: string | null; ip: string | null }) {
+  const r = await bookingByLink(reference, token);
+  if (!r) throw new AppError("Booking not found.", "NOT_FOUND");
+  if (r.status === "CANCELLED" || r.status === "NO_SHOW") throw new AppError("This booking is closed — please contact us.", "CONFLICT");
+  if (r.billTo !== "GUEST") throw new AppError("This booking is billed to your company — please contact us to pay.", "CONFLICT");
+  if (r.balanceAmount <= 0) throw new AppError("Nothing is owed on this booking.", "CONFLICT");
+  return startCustomerPayment({
+    target: { purpose: "RESERVATION", reservationId: r.id, amount: r.balanceAmount }, phone: input.phone, clientKey: input.clientKey, source: "BOOKING_PAGE", service: bookingService(r), ip: input.ip,
+  });
+}
+
 export type CustomerPayStatus = "PENDING" | "PAID" | "FAILED" | "EXPIRED" | "CANCELLED";
 export type CustomerPayView = {
   token: string; status: CustomerPayStatus; amount: number; phone: string; what: string; reference: string; at: string; paidAt: string | null;
@@ -155,14 +228,16 @@ async function describe(mp: MobilePayment) {
     };
   }
   if (mp.reservationId) {
-    const r = await db.reservation.findUnique({ where: { id: mp.reservationId }, select: { reference: true, kind: true, manageToken: true, guestToken: true, status: true } });
+    const r = await db.reservation.findUnique({ where: { id: mp.reservationId }, select: { reference: true, kind: true, manageToken: true, guestToken: true, status: true, holdUntil: true } });
     if (r) {
       const booking = mp.source === "BOOKING_PAGE" || mp.source === "WEBSITE";
+      const held = r.status === "RESERVED" && r.holdUntil && r.holdUntil > new Date() ? formatTime(r.holdUntil, (await getSettings()).timezone) : null;
       return {
+        unpaidNote: r.status === "CANCELLED" ? "The booking was released — please book again." : held ? `We hold your booking until ${held} — try again to confirm it.` : null,
         what: r.kind === "MEETING" ? `Meeting room booking ${r.reference}` : booking ? `Room booking ${r.reference}` : `Your bill · ${r.reference}`,
         back: booking ? { href: `/booking/${r.reference}?token=${r.manageToken}`, label: "View your booking" }
           : r.guestToken ? { href: `/stay/${r.guestToken}`, label: "Back to your stay" } : null,
-        receipt: null, unpaidNote: null,
+        receipt: null,
       };
     }
   }
@@ -190,7 +265,8 @@ export async function retryCustomerPayment(token: string, input: { phone?: strin
     target = { purpose: "RESTAURANT", orderIds: old.orderIds };
     service = orderService(old.source);
   } else {
-    const r = old.reservationId ? await db.reservation.findUnique({ where: { id: old.reservationId }, select: { balanceAmount: true, kind: true } }) : null;
+    const r = old.reservationId ? await db.reservation.findUnique({ where: { id: old.reservationId }, select: { balanceAmount: true, kind: true, status: true } }) : null;
+    if (r?.status === "CANCELLED" || r?.status === "NO_SHOW") throw new AppError("This booking was released — please book again.", "CONFLICT");
     if (!r || r.balanceAmount <= 0) throw new AppError("Nothing is owed any more.", "CONFLICT");
     target = { purpose: "RESERVATION", reservationId: old.reservationId!, amount: Math.min(old.amount, r.balanceAmount) };
     service = old.source === "BOOKING_PAGE" || old.source === "WEBSITE" ? (r.kind === "MEETING" ? "meeting" : "booking") : "stayBill";

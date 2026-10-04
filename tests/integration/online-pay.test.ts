@@ -6,9 +6,12 @@ import { onlinePayStates, setOrderStatus } from "@/server/services/restaurant";
 import { placeOnlineOrder } from "@/server/services/online-orders";
 import { addItemsByTrackToken } from "@/server/services/restaurant-locations";
 import { placeStayOrder } from "@/server/services/guest-comms";
+import { createWebsiteBooking } from "@/server/services/public-booking";
+import { createWebsiteMeetingBooking } from "@/server/services/booking-requests";
+import { expireUnpaidHolds } from "@/server/services/booking-holds";
 import { ONLINE_RECORDER_ID } from "@/server/services/mobile-payments";
 import {
-  assertCanPayOnline, cancelCustomerPayment, customerPaymentByToken, livePaymentForOrder, onlinePayAvailable, payForNewOrder, payOrderOnline, retryCustomerPayment,
+  assertCanPayOnline, bookAndPayOnline, bookingPayOnline, cancelCustomerPayment, ONLINE_BOOKING_HOLD_MINUTES, payBookingOnline, customerPaymentByToken, livePaymentForOrder, onlinePayAvailable, payForNewOrder, payOrderOnline, retryCustomerPayment,
 } from "@/server/services/online-pay";
 import { addDays, businessDateOf, zonedInstant } from "@/lib/time/business-date";
 import { chefActor, managerActor, resetBusinessData, roomType } from "../support/helpers";
@@ -34,7 +37,7 @@ beforeEach(async () => {
   await resetBusinessData();
   await db.menuItem.updateMany({ where: { id: BEER }, data: { isAvailable: true, isActive: true } });
   await db.hotelSettings.updateMany({
-    data: { publicOrderingEnabled: true, onlinePayEnabled: true, onlinePayRestaurant: true, onlinePayRoomService: true, onlinePayStayBill: true, onlinePayBooking: true },
+    data: { publicOrderingEnabled: true, onlinePayEnabled: true, onlinePayRestaurant: true, onlinePayRoomService: true, onlinePayStayBill: true, onlinePayBooking: true, onlinePayMeeting: true },
   });
   process.env.NTZS_API_KEY = "ntzs_test_unit";
   process.env.NTZS_WEBHOOK_SECRET = "whsec_unit";
@@ -190,6 +193,99 @@ describe("room service: Pay online or Bill to my room", () => {
     expect(billed.settlement).toBe("ROOM");
     expect(billed.payOnlineAt).toBeNull();
     expect(await db.reservationCharge.count({ where: { restaurantOrderId: billed.id, isVoided: false } })).toBeGreaterThan(0);
+  });
+});
+
+/** A room booked on the website with Pay online (held while the guest pays). */
+async function bookOnline(days: number, clientKey = key()) {
+  const p = phone();
+  const sel = { checkIn: addDays(today(), days), checkOut: addDays(today(), days + 2), adults: 2, children: 0, typeSlug: "double-deluxe", rooms: 1 };
+  const r = await bookAndPayOnline({
+    service: "booking", phone: p, clientKey, ip: ip(),
+    create: () => createWebsiteBooking(sel, { fullName: "Website Guest", phone: p }, "10.9.9.9", null, { holdMinutes: ONLINE_BOOKING_HOLD_MINUTES }),
+  });
+  const mp = r.pay ? await db.mobilePayment.findUniqueOrThrow({ where: { publicToken: r.pay } }) : null;
+  return { ...r, phone: p, clientKey, reservationId: mp?.reservationId ?? null };
+}
+
+describe("room booking and the meeting room: Pay online", () => {
+  it("the booking is held while the guest pays; the payment confirms it — the whole amount, recorded once", async () => {
+    const b = await bookOnline(10);
+    expect(b.pay).toBeTruthy();
+    const held = await db.reservation.findUniqueOrThrow({ where: { id: b.reservationId! } });
+    expect(held.status).toBe("RESERVED");
+    expect(held.holdUntil!.getTime() - Date.now()).toBeGreaterThan(25 * 60_000);
+    expect(held.holdUntil!.getTime() - Date.now()).toBeLessThanOrEqual(30 * 60_000);
+    expect(sent[0]).toMatchObject({ amountTzs: held.balanceAmount });
+
+    // The same press again: the same booking, the same payment.
+    const again = await bookAndPayOnline({ service: "booking", phone: b.phone, clientKey: b.clientKey, ip: ip(), create: () => { throw new Error("must not book twice"); } });
+    expect(again.pay).toBe(b.pay);
+    expect(await db.reservation.count()).toBe(1);
+
+    const waiting = await customerPaymentByToken(b.pay!, { check: true });
+    expect(waiting).toMatchObject({ status: "PENDING" });
+    expect(waiting!.back!.href).toContain(`/booking/${held.reference}?token=`);
+
+    deposits[await depositOf(b.pay!)].status = "completed";
+    await db.mobilePayment.updateMany({ where: { publicToken: b.pay! }, data: { lastCheckedAt: null } });
+    const paid = await customerPaymentByToken(b.pay!, { check: true });
+    expect(paid).toMatchObject({ status: "PAID", amount: held.balanceAmount });
+    const r = await db.reservation.findUniqueOrThrow({ where: { id: held.id }, include: { payments: { include: { account: true } } } });
+    expect(r.status).toBe("CONFIRMED");
+    expect(r.holdUntil).toBeNull();
+    expect(r.balanceAmount).toBe(0);
+    expect(r.payments).toHaveLength(1);
+    expect(r.payments[0]).toMatchObject({ amount: held.balanceAmount, recordedById: ONLINE_RECORDER_ID, status: "POSTED" });
+    expect(r.payments[0].account!.code).toBe("NTZS");
+    // Nothing left to pay: the booking page offers no payment.
+    expect((await bookingPayOnline(r.reference, r.manageToken)).offered).toBe(false);
+  });
+
+  it("not paid: the room is kept while a payment is on its way, then released — Try again says so", async () => {
+    const b = await bookOnline(12);
+    const id = b.reservationId!;
+    await db.reservation.update({ where: { id }, data: { holdUntil: new Date(Date.now() - 60_000) } });
+    await expireUnpaidHolds();
+    expect((await db.reservation.findUniqueOrThrow({ where: { id } })).status).toBe("RESERVED"); // still paying
+
+    await cancelCustomerPayment(b.pay!);
+    await expireUnpaidHolds();
+    expect((await db.reservation.findUniqueOrThrow({ where: { id } })).status).toBe("CANCELLED");
+    const view = await customerPaymentByToken(b.pay!);
+    expect(view!.message).toMatch(/released/);
+    await expect(retryCustomerPayment(b.pay!, { clientKey: key(), ip: ip() })).rejects.toThrow(/released/);
+  });
+
+  it("from the booking's page: pays what is owed; a wrong link or a company bill is refused", async () => {
+    const b = await bookOnline(14);
+    const r = await db.reservation.findUniqueOrThrow({ where: { id: b.reservationId! } });
+    await cancelCustomerPayment(b.pay!);
+    expect(await bookingPayOnline(r.reference, r.manageToken)).toEqual({ offered: true, live: null });
+    await expect(payBookingOnline(r.reference, "x".repeat(32), { phone: b.phone, clientKey: key(), ip: ip() })).rejects.toThrow(/not found/);
+    const again = await payBookingOnline(r.reference, r.manageToken, { phone: b.phone, clientKey: key(), ip: ip() });
+    expect((await db.mobilePayment.findUniqueOrThrow({ where: { publicToken: again.token } })).amount).toBe(r.balanceAmount);
+    expect((await bookingPayOnline(r.reference, r.manageToken)).live).toBe(again.token);
+    await db.reservation.update({ where: { id: r.id }, data: { billTo: "COMPANY" } });
+    await expect(payBookingOnline(r.reference, r.manageToken, { phone: b.phone, clientKey: key(), ip: ip() })).rejects.toThrow(/billed to your company/);
+  });
+
+  it("the meeting room: booked at once and paid online; switched off, nothing is booked", async () => {
+    const p = phone();
+    const input = { date: addDays(today(), 6), start: "09:00", end: "13:00", attendees: 8, fullName: "Meeting Host", phone: p, companyName: "Acme Ltd" };
+    const m = await bookAndPayOnline({ service: "meeting", phone: p, clientKey: key(), ip: ip(), create: () => createWebsiteMeetingBooking(input, "10.9.9.9", { holdMinutes: ONLINE_BOOKING_HOLD_MINUTES }) });
+    const mp = await db.mobilePayment.findUniqueOrThrow({ where: { publicToken: m.pay! } });
+    const r = await db.reservation.findUniqueOrThrow({ where: { id: mp.reservationId! } });
+    expect(r).toMatchObject({ kind: "MEETING", status: "RESERVED", companyName: "Acme Ltd" });
+    expect(mp.amount).toBe(r.balanceAmount);
+    expect((await customerPaymentByToken(m.pay!))!.what).toMatch(/Meeting room booking/);
+
+    await db.hotelSettings.updateMany({ data: { onlinePayMeeting: false } });
+    const before = await db.reservation.count();
+    await expect(bookAndPayOnline({ service: "meeting", phone: p, clientKey: key(), ip: ip(), create: () => createWebsiteMeetingBooking({ ...input, start: "14:00", end: "16:00" }, null, { holdMinutes: 30 }) }))
+      .rejects.toThrow(/not available/);
+    expect(await db.reservation.count()).toBe(before);
+    await db.hotelSettings.updateMany({ data: { onlinePayMeeting: true } });
   });
 });
 

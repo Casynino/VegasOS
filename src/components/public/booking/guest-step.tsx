@@ -3,7 +3,7 @@
 import { startTransition, useActionState, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
-import { AlertCircle, ChevronLeft, LoaderCircle, Pencil, Plane, Send } from "lucide-react";
+import { AlertCircle, ChevronLeft, LoaderCircle, Pencil, Plane, Send, ShieldCheck, Smartphone } from "lucide-react";
 import type { ActionResult } from "@/server/errors";
 import { formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -50,6 +50,9 @@ interface Values {
   pickupNotes: string;
 }
 
+const newKey = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (x) => x.toString(16).padStart(2, "0")).join("");
+const payPhoneOk = (p: string) => /^(?:\+?255|0)?[67]\d{8}$/.test(p.replace(/[\s-]/g, ""));
+
 const TEXT_FIELDS = ["fullName", "phone", "email", "nationality", "specialRequests", "expectedArrivalTime", "company", "flightNumber", "pickupDate", "pickupTime", "airport", "passengers", "pickupNotes"] as const;
 
 /**
@@ -61,6 +64,8 @@ export function GuestStep({
   backToRoomsHref,
   reviewAction,
   confirmAction,
+  payAction,
+  online = false,
   arrival,
 }: {
   selection: { checkIn: string; checkOut: string; adults: number; children: number; type: string; rooms: number };
@@ -69,6 +74,10 @@ export function GuestStep({
   arrival: { defaultAirport: string; note: string };
   reviewAction: ReviewAction;
   confirmAction: ConfirmAction;
+  /** Pay online (nTZS): the booking is made and paid now — the payment confirms it. */
+  payAction: ConfirmAction;
+  /** Pay online is offered for room bookings now. */
+  online?: boolean;
 }) {
   const [values, setValues] = useState<Values>({
     fullName: "", phone: "", email: "", nationality: "", specialRequests: "", expectedArrivalTime: "", company: "",
@@ -82,6 +91,11 @@ export function GuestStep({
   const step: "details" | "review" = reviewState?.ok && editedAfter !== reviewState ? "review" : "details";
   const editDetails = () => setEditedAfter(reviewState);
   const [confirmState, runConfirm, confirming] = useActionState(confirmAction, undefined);
+  const [payState, runPay, paying] = useActionState(payAction, undefined);
+  const [payPhone, setPayPhone] = useState<string | null>(null);
+  const payKey = useRef("");
+  // A new key after an error: the next press is a new booking attempt (the same press twice is one booking).
+  useEffect(() => { if (payState && !payState.ok) payKey.current = ""; }, [payState]);
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   const review = reviewState?.ok ? reviewState.data : null;
@@ -115,7 +129,17 @@ export function GuestStep({
     startTransition(() => runConfirm(buildFormData(values)));
   }
 
-  const confirmError = confirmState && !confirmState.ok ? confirmState : null;
+  const number = payPhone ?? values.phone;
+  function onPay() {
+    payKey.current ||= newKey();
+    const fd = buildFormData(values);
+    fd.set("payPhone", number.trim());
+    fd.set("clientKey", payKey.current);
+    startTransition(() => runPay(fd));
+  }
+
+  const confirmError = confirmState && !confirmState.ok ? confirmState : payState && !payState.ok ? payState : null;
+  const busy = confirming || paying;
   const unavailable = confirmError?.code === "UNAVAILABLE" || (reviewState && !reviewState.ok && reviewState.code === "UNAVAILABLE");
 
   return (
@@ -273,14 +297,16 @@ export function GuestStep({
             transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
             aria-labelledby="review-title"
           >
-            <h2 id="review-title" ref={headingRef} tabIndex={-1} className={cn("scroll-mt-28 outline-none", type.h3)}>Review your request</h2>
-            <p className="mt-2 text-tone/65">Check everything below, then send it to our team. Nothing is charged online, and your room is confirmed only when our team contacts you.</p>
+            <h2 id="review-title" ref={headingRef} tabIndex={-1} className={cn("scroll-mt-28 outline-none", type.h3)}>{online ? "Review and confirm" : "Review your request"}</h2>
+            <p className="mt-2 text-tone/65">{online
+              ? "Check everything below. Pay online now and your room is confirmed the moment the payment is approved — or send it as a request and pay at the hotel."
+              : "Check everything below, then send it to our team. Nothing is charged online, and your room is confirmed only when our team contacts you."}</p>
 
             {confirmError && (
               <div role="alert" className="mt-6 flex gap-3 rounded-2xl border border-red-700/20 bg-red-50 p-4 text-sm text-red-900">
                 <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
                 <div>
-                  <p className="font-medium">{unavailable ? "Availability changed while you were choosing." : "We couldn’t send your request."}</p>
+                  <p className="font-medium">{unavailable ? "Availability changed while you were choosing." : payState && !payState.ok ? "We couldn’t start your payment." : "We couldn’t send your request."}</p>
                   <p className="mt-1">{confirmError.error}</p>
                   {unavailable && <Link href={backToRoomsHref} className="mt-2 inline-block font-medium underline underline-offset-2">See rooms still available</Link>}
                 </div>
@@ -342,14 +368,37 @@ export function GuestStep({
                       <dd className="font-display text-3xl font-semibold text-gold">{formatTZS(review.netAmount)}</dd>
                     </div>
                   </dl>
-                  <p className="mt-4 text-xs text-white/55">Breakfast and Wi-Fi included. The final price is confirmed by our team; you pay at reception — no card details are needed online.</p>
+                  <p className="mt-4 text-xs text-white/55">{online
+                    ? "Breakfast and Wi-Fi included. Paying online, this is the amount you pay — no card details are needed."
+                    : "Breakfast and Wi-Fi included. The final price is confirmed by our team; you pay at reception — no card details are needed online."}</p>
                   <div className="mt-auto pt-6">
-                    <button type="button" onClick={onConfirm} disabled={confirming || Boolean(unavailable)} className={cn(pillGold, "h-13 w-full justify-between py-1.5 pl-6 pr-1.5 text-base")}>
+                    {online && (
+                      <div className="mb-5 space-y-3 rounded-2xl bg-white/[0.06] p-4 ring-1 ring-white/10">
+                        <p className="flex items-center gap-2 text-sm font-medium"><Smartphone className="size-4 text-gold" aria-hidden="true" />Pay online and confirm now</p>
+                        <label className="block">
+                          <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.18em] text-white/60">Mobile-money number</span>
+                          <input value={number} onChange={(e) => setPayPhone(e.target.value)} type="tel" inputMode="tel" autoComplete="tel" placeholder="e.g. 0712 345 678"
+                            aria-invalid={number !== "" && !payPhoneOk(number)}
+                            className="block h-12 w-full rounded-xl border border-white/15 bg-white/[0.07] px-4 text-base text-white placeholder:text-white/35 transition-colors focus:border-gold/70 focus:outline-none focus:ring-3 focus:ring-gold/30 aria-invalid:border-amber-400" />
+                        </label>
+                        <button type="button" onClick={onPay} disabled={busy || Boolean(unavailable) || !payPhoneOk(number)} className={cn(pillGold, "h-13 w-full justify-between py-1.5 pl-6 pr-1.5 text-base")}>
+                          <span className="relative inline-flex items-center gap-2">
+                            {paying ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : <Smartphone className="size-4" aria-hidden="true" />}
+                            {paying ? "Booking your room…" : `Pay ${formatTZS(review.netAmount)} & confirm`}
+                          </span>
+                          <ArrowBadge />
+                        </button>
+                        <p className="text-xs leading-relaxed text-white/55">M-Pesa, Airtel Money, Tigo Pesa or HaloPesa — approve the request on your phone with your PIN. We hold your room while you pay.</p>
+                        <p className="flex items-center gap-1.5 text-[11px] font-medium text-white/55"><ShieldCheck className="size-3.5 text-gold" aria-hidden="true" />Secure payment powered by NTZS</p>
+                      </div>
+                    )}
+                    <button type="button" onClick={onConfirm} disabled={busy || Boolean(unavailable)}
+                      className={cn(online ? "flex h-12 w-full items-center justify-center gap-2 rounded-full border border-white/20 text-sm font-medium text-white/85 transition hover:border-gold/60 hover:text-white disabled:opacity-50" : cn(pillGold, "h-13 w-full justify-between py-1.5 pl-6 pr-1.5 text-base"))}>
                       <span className="relative inline-flex items-center gap-2">
                         {confirming ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : <Send className="size-4" aria-hidden="true" />}
-                        {confirming ? "Sending your request…" : "Send booking request"}
+                        {confirming ? "Sending your request…" : online ? "Or send a request — pay at the hotel" : "Send booking request"}
                       </span>
-                      <ArrowBadge />
+                      {!online && <ArrowBadge />}
                     </button>
                     <button type="button" onClick={editDetails} className="mt-3 w-full text-center text-sm text-white/65 hover:text-white">
                       Back to details

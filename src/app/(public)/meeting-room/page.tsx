@@ -10,6 +10,7 @@ import { fill, ILLUSTRATIVE, MEETING_GALLERY_KEYS } from "@/components/public/co
 import { getSiteContent } from "@/server/services/site-content";
 import { NamedIcon } from "@/components/public/icon";
 import { MeetingBooking } from "@/components/public/meeting-booking";
+import { onlinePayAvailable } from "@/server/services/online-pay";
 import { Ornament } from "@/components/public/ornament";
 import { PillLink } from "@/components/public/pill-link";
 import { Reveal, Stagger, StaggerItem } from "@/components/public/reveal";
@@ -95,7 +96,7 @@ export default async function MeetingRoomPage() {
               <h2 className={cn("mt-3 text-balance text-tone", type.h2)}>Check your date and time</h2>
               <p className="mt-4 text-tone/65">See straight away if the room is free, then book it — no account needed.</p>
             </Reveal>
-            <MeetingBooking today={today} price={room.baseRate} capacity={room.maxAdults} />
+            <MeetingBooking today={today} price={room.baseRate} capacity={room.maxAdults} online={await onlinePayAvailable("meeting", settings)} />
           </div>
         </section>
       )}

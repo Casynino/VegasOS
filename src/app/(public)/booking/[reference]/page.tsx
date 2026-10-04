@@ -8,6 +8,8 @@ import { RequestReceived } from "@/components/public/booking/request-received";
 import { formatBusinessDate, formatDateTime, formatTZS, formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { BookingActions } from "@/components/public/booking/booking-actions";
+import { BookingPayOnline } from "@/components/public/booking/pay-online";
+import { bookingPayOnline } from "@/server/services/online-pay";
 import { BookingProgress } from "@/components/public/booking/progress";
 import { addressLines, telHref, whatsappHref } from "@/components/public/contact";
 import { Ornament } from "@/components/public/ornament";
@@ -41,9 +43,16 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
   const [booking, settings] = await Promise.all([getBookingForGuest(reference, token), getSettings()]);
   if (!booking) notFound();
 
-  const status = STATUS[booking.status] ?? { label: booking.status, tone: "muted" as const };
-  const first = booking.rooms[0];
   const tz = settings.timezone;
+  const online = await bookingPayOnline(booking.reference, token!);
+  // Paid online (or at the hotel): said plainly; a booking held while the guest pays says until when.
+  const held = booking.status === "RESERVED" && booking.holdUntil && booking.holdUntil > new Date() ? formatTime(booking.holdUntil, tz) : null;
+  const status = booking.status === "CONFIRMED" && booking.paidAmount > 0
+    ? { label: booking.balanceAmount > 0 ? "Confirmed — part paid" : "Confirmed — paid", tone: "ok" as const }
+    : booking.status === "RESERVED" && held ? { label: `Reserved — held until ${held}`, tone: "ok" as const }
+    : booking.status === "RESERVED" && online.offered ? { label: "Reserved — pay to confirm", tone: "ok" as const }
+    : STATUS[booking.status] ?? { label: booking.status, tone: "muted" as const };
+  const first = booking.rooms[0];
   const nights = first?.nights ?? 0;
   const address = addressLines(settings);
   const isNew = booking.status === "RESERVED" || booking.status === "CONFIRMED";
@@ -143,7 +152,12 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
                 <dd className="font-display text-3xl font-semibold text-gold">{formatTZS(booking.balanceAmount)}</dd>
               </div>
             </dl>
-            <p className="mt-4 text-xs text-white/55">Payment is made at the hotel. Nothing has been charged online.</p>
+            {(online.offered || online.live) && booking.balanceAmount > 0 && (
+              <div className="mt-5"><BookingPayOnline reference={booking.reference} token={token!} due={booking.balanceAmount} phone={booking.guestPhone ?? ""} live={online.live} held={held} /></div>
+            )}
+            <p className="mt-4 text-xs text-white/55">{booking.balanceAmount <= 0 && booking.paidAmount > 0 ? "Paid in full — thank you."
+              : booking.paidAmount > 0 ? "Received with thanks — the rest can be paid online or at the hotel."
+              : online.offered ? "Pay online now, or at the hotel." : "Payment is made at the hotel. Nothing has been charged online."}</p>
           </section>
 
           <section aria-labelledby="help-title" className="rounded-[2rem] bg-panel p-6 ring-1 ring-tone/[0.07] sm:p-8">
