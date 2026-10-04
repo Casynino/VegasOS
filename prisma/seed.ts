@@ -347,13 +347,40 @@ async function upsertUser(email: string, fullName: string, roleCode: string, pas
   console.log(`Created ${roleCode} account: ${email}`);
 }
 
+/**
+ * The hotel's team, with the same sign-ins as on the test system (owner, 2026-10-04: "use the same accounts"): same
+ * emails, names and roles. Their starting password is SEED_STAFF_PASSWORD — set in Vercel, never written in the code —
+ * and each person chooses their own at their first sign-in.
+ */
+const TEAM: [email: string, name: string, role: string][] = [
+  ["owner@vegas.test", "Owner", "OWNER"],
+  ["admin@vegas.test", "Bashley", "ADMIN"],
+  ["manager@vegas.test", "Manager", "MANAGER"],
+  ["asha@vegas.test", "Asha", "RECEPTIONIST"],
+  ["neema@vegas.test", "Neema", "RECEPTIONIST"],
+  ["rehema@vegas.test", "Rehema", "RECEPTIONIST"],
+  ["chef@vegas.test", "Chef", "KITCHEN"],
+  ["waiter@vegas.test", "Maria", "RESTAURANT"],
+  ["baraka@vegas.test", "Baraka", "RESTAURANT"],
+  ["hamisi@vegas.test", "Hamisi", "RESTAURANT"],
+  ["juma@vegas.test", "Juma", "RESTAURANT"],
+  ["upendo@vegas.test", "Upendo", "RESTAURANT"],
+  ["zawadi@vegas.test", "Zawadi", "RESTAURANT"],
+  ["restaurant@yourhotel.com", "Main Restaurant", "RESTAURANT_SCREEN"],
+];
+
 async function seedUsers() {
+  const teamPassword = process.env.SEED_STAFF_PASSWORD;
+  if (teamPassword) {
+    if (teamPassword.length < 8) throw new Error("SEED_STAFF_PASSWORD must be at least 8 characters.");
+    for (const [email, name, role] of TEAM) await upsertUser(email, name, role, teamPassword, true);
+  }
   const ownerEmail = process.env.SEED_OWNER_EMAIL;
   const ownerPassword = process.env.SEED_OWNER_PASSWORD;
   if (ownerEmail && ownerPassword) {
     await upsertUser(ownerEmail, process.env.SEED_OWNER_NAME ?? "Hotel Owner", "OWNER", ownerPassword, true);
   } else if ((await db.user.count()) === 0) {
-    console.warn("No users exist. Set SEED_OWNER_EMAIL and SEED_OWNER_PASSWORD and re-run the seed.");
+    console.warn("No users exist. Set SEED_STAFF_PASSWORD (the team) or SEED_OWNER_EMAIL and SEED_OWNER_PASSWORD, and re-run the seed.");
   }
 
   if (process.env.SEED_DEV_STAFF === "1") {
