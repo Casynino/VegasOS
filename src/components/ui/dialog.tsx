@@ -54,7 +54,8 @@ function DialogContent({
         data-slot="dialog-content"
         className={cn(
           // Phones: a sheet from the bottom that always fits the screen (its buttons never hide below it); larger screens: centred.
-          "group/dialog fixed top-1/2 left-1/2 z-50 grid max-h-[calc(100svh-1.5rem)] w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto overscroll-contain rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          // One column never wider than the dialog (a long line inside can never push it past a phone's edge).
+          "group/dialog fixed top-1/2 left-1/2 z-50 grid grid-cols-[minmax(0,1fr)] max-h-[calc(100svh-1.5rem)] w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto overscroll-contain rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
           "max-sm:top-auto max-sm:bottom-[max(0.5rem,env(safe-area-inset-bottom))] max-sm:max-w-[calc(100%-1rem)] max-sm:translate-y-0 max-sm:rounded-3xl max-sm:data-open:zoom-in-100 max-sm:data-open:slide-in-from-bottom-6",
           className
         )}

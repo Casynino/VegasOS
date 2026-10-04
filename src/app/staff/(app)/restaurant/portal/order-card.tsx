@@ -88,6 +88,8 @@ export function payBadge(o: PortalOrder) {
   if (o.online === "PAYING") return { text: "Paying online…", tone: "bg-sky-500/10 text-sky-700 ring-sky-500/20 dark:text-sky-300" };
   if (o.online === "NOT_PAID") return { text: `Not paid online${o.due ? ` · ${tzs(o.due)}` : ""}`, tone: "bg-rose-500/10 text-rose-700 ring-rose-500/20 dark:text-rose-300" };
   if (o.settlement === "ROOM") return { text: `Charged to room${o.room ? ` · Room ${o.room}` : ""}`, tone: "bg-violet-500/10 text-violet-700 ring-violet-500/20 dark:text-violet-300" };
+  // Paid online by the customer (nTZS): said plainly, not as an account name.
+  if (o.payment === "PAID" && o.paidTo?.startsWith("NTZS")) return { text: "Paid online · NTZS", tone: "bg-emerald-500/10 text-emerald-700 ring-emerald-500/20 dark:text-emerald-300" };
   if (o.payment === "PAID") return { text: `Paid${o.paidTo ? ` · ${o.paidTo}` : ""}`, tone: "bg-emerald-500/10 text-emerald-700 ring-emerald-500/20 dark:text-emerald-300" };
   if (o.payment === "PENDING_CONFIRMATION") return { text: "Payment pending", tone: "bg-amber-500/10 text-amber-700 ring-amber-500/25 dark:text-amber-300" };
   if (o.payment === "PARTIALLY_PAID") return { text: `Part-paid · ${tzs(o.due ?? 0)} due`, tone: "bg-rose-500/10 text-rose-700 ring-rose-500/20 dark:text-rose-300" };
@@ -807,7 +809,8 @@ export function OrderCard({ o, perms, now, fresh, accounts, rooms, drag, roomy, 
           {/* This person's buttons — always in reach */}
           <div className="sticky bottom-0 mt-5 space-y-2 border-t border-border/70 bg-popover/95 px-5 py-4 backdrop-blur">
             {!desk && action && !(checkPay && perms.pay) && <div className="[&_button]:h-10 [&_button]:rounded-xl [&_button]:text-sm [&_p]:h-10 [&_p]:text-sm">{action}</div>}
-            <div className="flex flex-wrap items-center gap-2">
+            {/* Phones: a tidy two-column grid; larger screens: one row */}
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center [&>*]:min-w-0 max-sm:[&>a]:w-full max-sm:[&>button]:w-full max-sm:[&>button]:justify-center max-sm:[&>div_button]:w-full max-sm:[&>div_button]:justify-center">
               {o.status !== "CANCELLED" && <Link href={`/staff/restaurant-bill?order=${o.id}`} className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-border px-3 text-xs font-semibold text-[oklch(0.84_0.11_82)] hover:bg-muted"><Receipt className="size-3.5" />{done ? "Receipt" : "Bill"} · print / download</Link>}
               {canAdd && <Link href={`/staff/restaurant/pos?add=${o.id}`} className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-sky-500/40 px-3 text-xs font-semibold text-sky-300 hover:bg-sky-500/10"><Plus className="size-3.5" />Add items</Link>}
               {o.status !== "CANCELLED" && <Link href={`/staff/restaurant-slip?order=${o.id}`} className="inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-border px-3 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"><Printer className="size-3.5" />Order slip</Link>}
