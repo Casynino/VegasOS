@@ -8,7 +8,7 @@ import { restaurantMenu } from "@/server/services/online-orders";
 import { scanLocationQr } from "@/server/services/restaurant-locations";
 import { guestTableState, SEAT_COOKIE } from "@/server/services/dining-sessions";
 import { customerPayAccounts } from "@/server/services/payment-accounts";
-import { onlinePayAvailable } from "@/server/services/online-pay";
+import { onlinePayAvailable, tableBillPayOnline } from "@/server/services/online-pay";
 import { RestaurantApp, type AppPlace } from "@/components/restaurant/restaurant-app";
 import { restaurantShell } from "@/components/restaurant/shell";
 
@@ -42,6 +42,9 @@ export default async function TableQrPage({ params }: PageProps<"/t/[token]">) {
   const [title, area] = spot.name.split(" — ");
   const place: AppPlace = spot.kind === "TABLE" ? { kind: "table", title, area: area ?? null } : spot.kind === "COUNTER" ? { kind: "counter", area: area ?? null } : { kind: "main" };
   const { brand, status } = restaurantShell(s);
-  const table = spot.kind === "TABLE" ? await guestTableState(spot.id, (await cookies()).get(SEAT_COOKIE)?.value ?? null) : null;
+  const seat = (await cookies()).get(SEAT_COOKIE)?.value ?? null;
+  const state = spot.kind === "TABLE" ? await guestTableState(spot.id, seat) : null;
+  // Their own table: Pay online for what is due on it.
+  const table = state?.mine && state.mine.due > 0 ? { ...state, pay: await tableBillPayOnline(seat) } : state;
   return <RestaurantApp brand={brand} status={status} menu={menu} place={place} checkout={{ kind: "spot", token, spot: spot.kind, payTo: await customerPayAccounts(), online: await onlinePayAvailable("restaurant", s) }} canOrder={s.publicOrderingEnabled} table={table} />;
 }

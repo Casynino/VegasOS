@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowRight, BedDouble, BellRing, Check, ChevronLeft, Hand, Loader2, Receipt, UtensilsCrossed, X } from "lucide-react";
+import { ArrowRight, BedDouble, BellRing, Check, ChevronLeft, Hand, Loader2, Receipt, ShieldCheck, Smartphone, UtensilsCrossed, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { imDoneAction } from "@/app/t/[token]/actions";
+import { imDoneAction, payTableBillOnlineAction } from "@/app/t/[token]/actions";
+import { useWho } from "./who";
 import type { GuestTable } from "@/server/services/dining-sessions";
 import { Sheet } from "./restaurant-app";
 
@@ -64,6 +65,7 @@ export function TableSessionCard({ table, placeLabel }: { table: GuestTable; pla
               : "Paid — thank you! Take your time."}
           </p>
         )}
+        {m.due > 0 && (table.pay?.live || table.pay?.offered) && <PayBillOnline due={m.due} live={table.pay.live} />}
         <div className="grid grid-cols-2 gap-px border-t border-(--vr-line) bg-(--vr-line)">
           <button type="button" onClick={() => setBill(true)} className="flex h-11 items-center justify-center gap-1.5 bg-(--vr-card) text-[13px] font-semibold transition hover:bg-(--vr-bg)">
             <Receipt className="size-4 text-(--vr-gold-ink)" />Your bill
@@ -81,6 +83,70 @@ function Note({ icon, children }: { icon: React.ReactNode; children: React.React
     <p className="mt-2.5 flex items-start gap-2.5 rounded-2xl bg-(--vr-gold-soft) px-3.5 py-3 text-[13px] leading-snug text-(--vr-gold-ink) ring-1 ring-(--vr-gold)/30">
       <span className="mt-px shrink-0">{icon}</span><span>{children}</span>
     </p>
+  );
+}
+
+const newKey = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (x) => x.toString(16).padStart(2, "0")).join("");
+const phoneOk = (p: string) => /^(?:\+?255|0)?[67]\d{8}$/.test(p.replace(/[\s-]/g, ""));
+
+/** "Pay my bill online": everything due at the table, from the customer's phone (nTZS) — no need to wait for the waiter. */
+function PayBillOnline({ due, live }: { due: number; live: string | null }) {
+  const router = useRouter();
+  const [who] = useWho();
+  const [open, setOpen] = useState(false);
+  const [phone, setPhone] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const key = useRef("");
+  const number = phone ?? who?.phone ?? "";
+  if (live) {
+    return (
+      <Link href={`/pay/${live}`} className="flex items-center gap-2 border-t border-(--vr-line) bg-(--vr-dark) px-3.5 py-2.5 text-[12.5px] font-semibold text-white">
+        <Loader2 className="size-4 shrink-0 animate-spin text-(--vr-gold)" /><span className="flex-1">Your payment is on its way — approve it on your phone</span><span className="text-(--vr-gold)">Open</span>
+      </Link>
+    );
+  }
+  const pay = () => start(async () => {
+    setError(null);
+    if (!phoneOk(number)) { setError("Enter your mobile-money number, e.g. 0712 345 678."); return; }
+    key.current ||= newKey();
+    const r = await payTableBillOnlineAction({ phone: number.trim(), clientKey: key.current });
+    if (!r.ok) { setError(r.error); key.current = ""; return; }
+    router.push(`/pay/${r.data.pay}`);
+  });
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} className="flex w-full items-center gap-2 border-t border-(--vr-line) bg-(--vr-dark) px-3.5 py-2.5 text-left text-[12.5px] font-semibold text-white">
+        <Smartphone className="size-4 shrink-0 text-(--vr-gold)" /><span className="flex-1">Pay my bill online · {tzs(due)}</span><ArrowRight className="size-3.5 text-(--vr-gold)" />
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div className="fixed inset-0 z-50 grid place-items-end bg-[#1d1712]/50 p-4 backdrop-blur-[2px] sm:place-items-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setOpen(false)}>
+            <motion.div role="dialog" aria-modal="true" aria-label="Pay your bill online" onClick={(e) => e.stopPropagation()} initial={{ y: 24 }} animate={{ y: 0 }} exit={{ y: 24 }}
+              className="vr w-full max-w-sm space-y-3 rounded-3xl bg-(--vr-card) p-5 text-(--vr-ink) shadow-2xl">
+              <div className="flex items-start justify-between gap-3">
+                <span className="grid size-11 place-items-center rounded-full bg-(--vr-dark) text-(--vr-gold)"><Smartphone className="size-5" /></span>
+                <button type="button" onClick={() => setOpen(false)} aria-label="Close" className="grid size-9 place-items-center rounded-full ring-1 ring-(--vr-line)"><X className="size-4" /></button>
+              </div>
+              <div>
+                <h2 className="font-display text-[24px] font-semibold leading-tight">Pay your bill online</h2>
+                <p className="mt-1 text-[13px] text-(--vr-muted)">Everything still to pay at your table · <strong className="tabular-nums text-(--vr-ink)">{tzs(due)}</strong></p>
+              </div>
+              <label className="block text-[12.5px] font-medium text-(--vr-ink)/80">Mobile-money number
+                <input value={number} onChange={(e) => setPhone(e.target.value)} type="tel" inputMode="tel" autoComplete="tel" placeholder="e.g. 0712 345 678"
+                  className={cn("mt-1 block h-11 w-full rounded-xl border border-(--vr-line) bg-white px-3.5 text-[16px] outline-none transition focus:border-(--vr-gold) focus:ring-4 focus:ring-(--vr-gold)/15 sm:text-[14px]", number && !phoneOk(number) && "border-amber-400")} />
+              </label>
+              {error && <p role="alert" className="rounded-xl bg-rose-50 px-3 py-2 text-[12.5px] text-rose-800 ring-1 ring-rose-200">{error}</p>}
+              <button type="button" disabled={pending} onClick={pay} className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-(--vr-dark) text-[14px] font-semibold text-white disabled:opacity-60">
+                {pending ? <Loader2 className="size-4 animate-spin" /> : <Smartphone className="size-4 text-(--vr-gold)" />}Pay {tzs(due)}
+              </button>
+              <p className="text-center text-[11.5px] text-(--vr-muted)">M-Pesa, Airtel Money, Tigo Pesa or HaloPesa — approve the request on your phone with your PIN.</p>
+              <p className="flex items-center justify-center gap-1.5 text-[11px] font-medium text-(--vr-muted)"><ShieldCheck className="size-3.5 text-(--vr-gold-ink)" />Secure payment powered by NTZS</p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }
 

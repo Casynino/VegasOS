@@ -4,7 +4,8 @@ import { db } from "@/server/db";
 import { checkIn, createReservation } from "@/server/services/reservations";
 import { onlinePayStates, setOrderStatus } from "@/server/services/restaurant";
 import { placeOnlineOrder } from "@/server/services/online-orders";
-import { addItemsByTrackToken } from "@/server/services/restaurant-locations";
+import { addItemsByTrackToken, placeLocationOrder } from "@/server/services/restaurant-locations";
+import { seatAtTable } from "@/server/services/dining-sessions";
 import { placeStayOrder } from "@/server/services/guest-comms";
 import { createWebsiteBooking } from "@/server/services/public-booking";
 import { createWebsiteMeetingBooking } from "@/server/services/booking-requests";
@@ -15,7 +16,7 @@ import { customerOnlinePayments, onlinePaymentTotals, onlinePayments, reconcileO
 import { paymentsByMethod } from "@/server/services/finance";
 import { ONLINE_RECORDER_ID } from "@/server/services/mobile-payments";
 import {
-  assertCanPayOnline, bookAndPayOnline, invoicePayOnline, payInvoiceOnline, payStayBillOnline, payTripOnline, stayBillPayOnline, tripForCustomer, bookingPayOnline, cancelCustomerPayment, ONLINE_BOOKING_HOLD_MINUTES, payBookingOnline, customerPaymentByToken, livePaymentForOrder, onlinePayAvailable, payForNewOrder, payOrderOnline, retryCustomerPayment,
+  assertCanPayOnline, payTableBillOnline, tableBillPayOnline, bookAndPayOnline, invoicePayOnline, payInvoiceOnline, payStayBillOnline, payTripOnline, stayBillPayOnline, tripForCustomer, bookingPayOnline, cancelCustomerPayment, ONLINE_BOOKING_HOLD_MINUTES, payBookingOnline, customerPaymentByToken, livePaymentForOrder, onlinePayAvailable, payForNewOrder, payOrderOnline, retryCustomerPayment,
 } from "@/server/services/online-pay";
 import { addDays, businessDateOf, zonedInstant } from "@/lib/time/business-date";
 import { chefActor, managerActor, resetBusinessData, roomType } from "../support/helpers";
@@ -170,6 +171,28 @@ describe("restaurant: Pay online", () => {
     delete process.env.NTZS_API_KEY;
     expect(await onlinePayAvailable("restaurant")).toBe(false);
     expect(sent).toHaveLength(0);
+  });
+});
+
+describe("at a table: Pay my bill online", () => {
+  it("everything due at the table in one payment — each order paid once nTZS confirms", async () => {
+    const table = await db.restaurantLocation.findFirstOrThrow({ where: { kind: "TABLE", isActive: true, qrActive: true }, orderBy: { number: "asc" } });
+    const p = phone();
+    const seat = await seatAtTable(table.qrToken, { name: "Table Payer", phone: p }, null);
+    const a = await placeLocationOrder(table.qrToken, { clientKey: key(), items: [{ menuItemId: BEER, quantity: 1 }], seatToken: seat.token });
+    const b = await placeLocationOrder(table.qrToken, { clientKey: key(), items: [{ menuItemId: BEER, quantity: 2 }], seatToken: seat.token });
+    expect(await tableBillPayOnline(seat.token)).toEqual({ offered: true, live: null });
+    expect(await tableBillPayOnline("not-my-seat-token-at-all-000")).toEqual({ offered: false, live: null });
+
+    const pay = await payTableBillOnline(seat.token, { phone: p, clientKey: key(), ip: ip() });
+    const mp = await db.mobilePayment.findUniqueOrThrow({ where: { publicToken: pay.token } });
+    expect(mp.amount).toBe(a.total + b.total);
+    expect(new Set(mp.orderIds)).toEqual(new Set([a.id, b.id]));
+    expect((await tableBillPayOnline(seat.token)).live).toBe(pay.token);
+    expect((await nTzsConfirms(pay.token))!.status).toBe("PAID");
+    const orders = await db.restaurantOrder.findMany({ where: { id: { in: [a.id, b.id] } } });
+    expect(orders.every((o) => o.paymentStatus === "PAID")).toBe(true);
+    expect(await tableBillPayOnline(seat.token)).toEqual({ offered: false, live: null });
   });
 });
 

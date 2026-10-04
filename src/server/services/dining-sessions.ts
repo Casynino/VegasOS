@@ -455,6 +455,8 @@ export type GuestTable = {
   };
   /** They were moved: the table they are at now (when it is not the one scanned). */
   movedTo: string | null;
+  /** Pay online (nTZS) for what is due at the table: offered now, and a payment already on its way. */
+  pay?: { offered: boolean; live: string | null } | null;
 };
 
 /** What a table's page shows this phone: its own session (by its private seat cookie), someone else's table, a reservation — or free. */

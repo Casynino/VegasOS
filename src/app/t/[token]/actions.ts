@@ -10,7 +10,7 @@ import { rateLimit } from "@/server/rate-limit";
 import { parseInput } from "@/server/validation";
 import { notifyOrderCustomer } from "@/server/services/online-orders";
 import { identifyAtLocation, placeLocationOrder } from "@/server/services/restaurant-locations";
-import { assertCanPayOnline, payForNewOrder } from "@/server/services/online-pay";
+import { assertCanPayOnline, payForNewOrder, payTableBillOnline } from "@/server/services/online-pay";
 import type { PlacedOrder } from "@/app/order/actions";
 import { customerRequestBill, SEAT_COOKIE, SEAT_HOURS, seatAtTable } from "@/server/services/dining-sessions";
 
@@ -84,5 +84,17 @@ export async function placeTableOrderAction(input: z.input<typeof Order>): Promi
     after(() => notifyOrderCustomer(o.id, "RECEIVED"));
     revalidatePath("/staff/restaurant", "layout");
     return { number: o.number, track: o.trackToken!, pay: paying?.pay ?? null, payError: paying?.payError ?? null };
+  });
+}
+
+const PayBill = z.object({ phone: z.string().trim().min(9, "Enter your mobile-money number.").max(30), clientKey: z.string().regex(/^[a-f0-9]{32}$/) });
+
+/** "Pay my bill online" at the table (this phone's seat): everything still due, worked out on the server. Returns the payment page. */
+export async function payTableBillOnlineAction(input: z.input<typeof PayBill>): Promise<ActionResult<{ pay: string }>> {
+  return runAction(async () => {
+    const { ipAddress } = await requestMeta();
+    const d = parseInput(PayBill, input);
+    const r = await payTableBillOnline(await seatToken(), { phone: d.phone, clientKey: d.clientKey, ip: ipAddress });
+    return { pay: r.token };
   });
 }

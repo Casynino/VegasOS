@@ -7,6 +7,7 @@ import { rateLimit } from "../rate-limit";
 import { ntzsEnabled, ntzsPhone } from "./ntzs";
 import { cancelMobilePayment, checkMobilePayment, maskPhone, requestMobilePayment, type PromptTarget } from "./mobile-payments";
 import { guestStayBill } from "./stay-bill";
+import { OPEN_SESSION, seatOf } from "./dining-core";
 import type { HotelSettings, MobilePayment } from "@/generated/prisma/client";
 import { formatTime } from "@/lib/format";
 import { TRIP_TYPE_LABEL } from "@/lib/transport-meta";
@@ -261,6 +262,34 @@ export async function payInvoiceOnline(verifyToken: string, input: { phone: stri
   const t = await invoiceTarget(verifyToken);
   if (!t) throw new AppError("Nothing is owed on this invoice.", "CONFLICT");
   return startCustomerPayment({ target: t.target, phone: input.phone, clientKey: input.clientKey, source: "INVOICE_LINK", service: "invoices", ip: input.ip });
+}
+
+/** The seated customer's table (their private seat): the orders on it still to pay — never what went on a room bill. */
+async function tableOrdersDue(seatToken: string | null) {
+  const seat = await seatOf(seatToken);
+  if (!seat || !OPEN_SESSION.includes(seat.member.session.status)) return [];
+  const orders = await db.restaurantOrder.findMany({
+    where: { sessionId: seat.member.session.id, status: { not: "CANCELLED" }, settlement: { not: "ROOM" } }, select: { id: true, total: true, paidAmount: true },
+  });
+  return orders.filter((o) => o.total > o.paidAmount).map((o) => o.id);
+}
+
+/** A table's bill: Pay online offered for what is due on it (and a payment already on its way). */
+export async function tableBillPayOnline(seatToken: string | null) {
+  const ids = await tableOrdersDue(seatToken);
+  if (!ids.length) return { offered: false, live: null };
+  const live = await db.mobilePayment.findFirst({
+    where: { purpose: "RESTAURANT", initiator: "CUSTOMER", status: "PENDING", completedAt: null, orderIds: { hasSome: ids }, expiresAt: { gt: new Date() } },
+    orderBy: { createdAt: "desc" }, select: { publicToken: true },
+  });
+  return { offered: await onlinePayAvailable("restaurant"), live: live?.publicToken ?? null };
+}
+
+/** "Pay my bill online" at the table: everything still due on the table's orders, worked out here, in one payment. */
+export async function payTableBillOnline(seatToken: string | null, input: { phone: string; clientKey: string | null; ip: string | null }) {
+  const ids = await tableOrdersDue(seatToken);
+  if (!ids.length) throw new AppError("Nothing to pay right now.", "CONFLICT");
+  return startCustomerPayment({ target: { purpose: "RESTAURANT", orderIds: ids }, phone: input.phone, clientKey: input.clientKey, source: "TABLE_QR", service: "restaurant", ip: input.ip });
 }
 
 export type CustomerPayStatus = "PENDING" | "PAID" | "FAILED" | "EXPIRED" | "CANCELLED";
