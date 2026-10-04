@@ -66,7 +66,7 @@ export function GuestsOwing({ b, canPay, compact, show, methods }: { b: InHouseB
                   <td className="px-4 py-2.5 text-right">
                     <span className="inline-flex gap-1.5">
                       {canPay && (methods && !x.companyPays
-                        ? <CollectButton reservationId={x.reservationId} guest={x.guest} rooms={x.rooms.join(", ")} outstanding={x.outstanding} owedSoFar={x.owedSoFar} methods={methods} />
+                        ? <CollectButton reservationId={x.reservationId} guest={x.guest} rooms={x.rooms.join(", ")} outstanding={x.outstanding} owedSoFar={x.owedSoFar} methods={methods} phone={x.phone} />
                         : <Link href={`/staff/check-out?id=${x.reservationId}#workspace`} className="inline-flex items-center gap-1 rounded-lg bg-foreground px-2.5 py-1 text-xs font-semibold text-background hover:opacity-90"><Wallet className="size-3.5" />Collect</Link>)}
                       <Link href={`/staff/reservations/${x.reservationId}`} className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted">View</Link>
                     </span>

@@ -217,7 +217,11 @@ export interface OrderInput {
  * How a restaurant payment is recorded: into which account, the reference — and, at the Restaurant
  * Counter, which waiter physically brought the money (never the official collector).
  */
-export type PayInput = { accountId: string; reference?: string | null; handedOverById?: string | null };
+export type PayInput = {
+  accountId?: string | null; reference?: string | null; handedOverById?: string | null;
+  /** Recorded automatically through a payment method's own account (nTZS mobile-money prompts) — never from a staff screen. */
+  methodId?: string | null;
+};
 
 export interface OrderContext {
   /** Placed by the customer themselves (no staff member): never "pay now"; room charges only for a verified stay. */
@@ -644,7 +648,7 @@ async function refreshPaymentTx(tx: Tx, orderId: string) {
  * who collected it. When the hotel asks for it, a waiter's payment waits for reception to
  * confirm it (reception's and managers' own payments are confirmed at once).
  */
-async function payOrderTx(tx: Tx, id: string, input: PayInput, actor: Actor, now: Date, opts: { online?: boolean; noCollector?: boolean } = {}) {
+async function payOrderTx(tx: Tx, id: string, input: PayInput, actor: Actor, now: Date, opts: { online?: boolean; noCollector?: boolean; viaNtzs?: boolean } = {}) {
   const { o, unpaid, fee, amount } = await outstandingTx(tx, id);
   if (o.status === "CANCELLED") throw new AppError("This order was cancelled.");
   if (o.settlement === "ROOM") throw new AppError("This order is on the guest's room bill — it is paid at check-out.");
@@ -654,7 +658,9 @@ async function payOrderTx(tx: Tx, id: string, input: PayInput, actor: Actor, now
   if (await tx.reservationCharge.count({ where: { restaurantOrderId: id, isVoided: false } })) throw new AppError("This order is still on a room bill — remove it from the room bill first.", "CONFLICT");
   const settings = await getSettingsTx(tx);
   const businessDate = businessDateOf(now, stayConfig(settings));
-  const paid = await resolveAccountTx(tx, { accountId: input.accountId });
+  // A staff screen names the account; the automatic nTZS recording names its payment method (the nTZS account is never
+  // offered to staff, so it can only be reached this way).
+  const paid = await resolveAccountTx(tx, opts.viaNtzs && input.methodId ? { methodId: input.methodId } : { accountId: input.accountId });
   const reference = input.reference?.trim() || null;
   // Every restaurant payment counts as confirmed as it is recorded — nobody confirms payments by hand (owner, 2026-10-04).
   // Paid online by the customer: recorded automatically — "Payment not received" undoes it if the money never arrives.
@@ -683,7 +689,9 @@ async function payOrderTx(tx: Tx, id: string, input: PayInput, actor: Actor, now
     data: {
       orderId: id, amount, fee, accountId: paid.account.id, paymentMethodId: paid.method.id, reference,
       collectedById: opts.noCollector ? null : actor.userId ?? null, collectedByRole: actor.role ?? null, collectedAt: now, atCounter, online, handedOverById: broughtBy?.id ?? null,
-      ...(confirmed && (auto
+      ...(confirmed && (opts.viaNtzs
+        ? { confirmedById: null, confirmedByRole: "Automatic — nTZS mobile money", confirmedAt: now }
+        : auto
         ? { confirmedById: null, confirmedByRole: "Automatic — paid online", confirmedAt: now }
         : { confirmedById: actor.userId ?? null, confirmedByRole: actor.role ?? null, confirmedAt: now })),
     },
@@ -693,18 +701,65 @@ async function payOrderTx(tx: Tx, id: string, input: PayInput, actor: Actor, now
   await tx.restaurantOrder.update({ where: { id }, data: { accountId: paid.account.id, paymentReference: reference, paidAt: now } });
   const updated = await refreshPaymentTx(tx, id);
   await tx.restaurantOrderEvent.create({
-    data: { orderId: id, from: o.status, to: o.status, ...by(actor), at: now, note: auto
+    data: { orderId: id, from: o.status, to: o.status, ...by(actor), at: now, note: opts.viaNtzs
+      ? `Paid by mobile money (nTZS prompt) · TZS ${amount.toLocaleString("en-US")}${reference ? ` · Ref ${reference}` : ""} · confirmed by nTZS`
+      : auto
       ? `Paid online by the customer · TZS ${amount.toLocaleString("en-US")} · ${paid.account.name}${reference ? ` · Ref ${reference}` : ""} · recorded automatically`
       : `Payment received${atCounter ? " at the Restaurant Counter" : ""} · TZS ${amount.toLocaleString("en-US")} · ${paid.account.name}${reference ? ` · Ref ${reference}` : ""}${broughtBy ? ` · brought by ${broughtBy.fullName.replace(/\s*\(.*\)/, "")}` : ""}${confirmed ? "" : " · waiting to be confirmed"}` },
   });
   await audit(tx, actor, {
     action: "restaurant_order.paid", entityType: "RestaurantOrder", entityId: id,
     before: { paymentStatus: o.paymentStatus, paidAmount: o.paidAmount },
-    after: { paymentStatus: updated.paymentStatus, paidAmount: updated.paidAmount, amount, account: paid.account.name, reference, payment: payment.id, confirmed, ...(atCounter && { recordedThrough: "Restaurant Counter" }), ...(online && { paidOnline: true, automatic: auto }), ...(broughtBy && { broughtBy: broughtBy.fullName }) },
+    after: { paymentStatus: updated.paymentStatus, paidAmount: updated.paidAmount, amount, account: paid.account.name, reference, payment: payment.id, confirmed, ...(atCounter && { recordedThrough: "Restaurant Counter" }), ...(online && { paidOnline: true, automatic: auto }), ...(opts.viaNtzs && { nTZS: true }), ...(broughtBy && { broughtBy: broughtBy.fullName }) },
   });
   await completeIfSettledTx(tx, updated, actor, now);
   if (o.sessionId) await refreshSessionTx(tx, o.sessionId, actor, now);
   return updated;
+}
+
+/**
+ * What is due on these orders for a mobile-money prompt (nTZS): refused when one is cancelled, on a room bill (paid at
+ * check-out), or waiting for the check of the customer's own online payment — never asked twice.
+ */
+export async function ordersDueForPrompt(orderIds: string[]) {
+  const ids = [...new Set(orderIds)];
+  if (!ids.length) throw new AppError("Choose the order to be paid.", "VALIDATION");
+  let total = 0;
+  const due: { id: string; number: string; amount: number; customerPhone: string | null; customerName: string | null }[] = [];
+  for (const id of ids) {
+    const { o, amount } = await outstandingTx(db as unknown as Tx, id);
+    if (o.status === "CANCELLED") throw new AppError(`Order ${o.number} was cancelled.`, "CONFLICT");
+    if (o.settlement === "ROOM") throw new AppError(`Order ${o.number} is on the guest's room bill — it is paid at check-out.`, "CONFLICT");
+    if ((await awaitingOnlineTx(db as unknown as Tx, [id])).length) throw new AppError(`The customer already paid order ${o.number} online — check their payment instead.`, "CONFLICT");
+    if (await db.reservationCharge.count({ where: { restaurantOrderId: id, isVoided: false } })) throw new AppError(`Order ${o.number} is still on a room bill.`, "CONFLICT");
+    if (amount <= 0) continue;
+    total += amount;
+    due.push({ id, number: o.number, amount, customerPhone: o.customerPhone, customerName: o.customerName });
+  }
+  if (!total) throw new AppError(ids.length > 1 ? "This bill is already paid." : "This order is already paid.", "CONFLICT");
+  return { total, orders: due };
+}
+
+/**
+ * nTZS confirmed a mobile-money payment for these orders: each order still due is paid in full, as long as the money
+ * received covers it — never more than came in (an order with items added since the prompt waits for the rest).
+ * Returns the payments made and what is left over.
+ */
+export async function payOrdersFromMobileTx(tx: Tx, orderIds: string[], received: number, input: PayInput, actor: Actor, now: Date) {
+  let left = received;
+  const paid: { orderId: string; paymentId: string; amount: number }[] = [];
+  for (const id of [...new Set(orderIds)].sort()) {
+    await tx.$queryRaw`SELECT "id" FROM "restaurant_orders" WHERE "id" = ${id} FOR UPDATE`;
+    const { o, amount } = await outstandingTx(tx, id);
+    if (o.status === "CANCELLED" || o.settlement === "ROOM" || amount <= 0 || amount > left) continue;
+    if ((await awaitingOnlineTx(tx, [id])).length) continue;
+    if (await tx.reservationCharge.count({ where: { restaurantOrderId: id, isVoided: false } })) continue;
+    await payOrderTx(tx, id, input, actor, now, { viaNtzs: true });
+    const p = await tx.restaurantOrderPayment.findFirstOrThrow({ where: { orderId: id, status: "POSTED" }, orderBy: { createdAt: "desc" }, select: { id: true, amount: true } });
+    paid.push({ orderId: id, paymentId: p.id, amount: p.amount });
+    left -= p.amount;
+  }
+  return { paid, left };
 }
 
 /** A pay-later order is paid (at the table / counter / on delivery / by phone): the sales are recorded now, by income line. */

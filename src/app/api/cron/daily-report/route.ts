@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { runDailyReportJob } from "@/server/services/daily-report";
 import { retryShiftReports } from "@/server/services/shift-report";
 import { runStaffPeriodJob } from "@/server/services/staff-report";
+import { sweepMobilePayments } from "@/server/services/mobile-payments";
 import { refreshOverdueInvoices } from "@/server/services/invoices";
 import { refreshBookingStates } from "@/server/services/booking-holds";
 import { db } from "@/server/db";
@@ -47,9 +48,11 @@ export async function GET(req: Request) {
     // …then shift reports: any closed shift still without its report gets it, and an unsent message to the Boss is
     // tried again — the rest waits for the next run.
     const shifts = await retryShiftReports(new Date(), Math.min(20_000, left()), until).catch((e) => { console.error("[cron] shift reports failed", e); return null; });
+    // Mobile-money prompts (nTZS) still waiting — a confirmation that never arrived is asked for again.
+    const mobile = left() > 5_000 ? await sweepMobilePayments(new Date(), until - 3_000).catch((e) => { console.error("[cron] mobile payments failed", e); return null; }) : null;
     // Guests' arrival reminders last (a slow provider must never take the reports' time), within what is left.
     if (left() > 16_000) await sendArrivalReminders(await businessToday(), until).catch((e) => console.error("[cron] arrival reminders failed", e));
-    return Response.json({ ok: true, ...result, shifts, periods });
+    return Response.json({ ok: true, ...result, shifts, periods, mobile });
   } catch (e) {
     console.error("[cron] daily report failed", e);
     return Response.json({ ok: false, error: "Daily report job failed" }, { status: 500 });

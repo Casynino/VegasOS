@@ -8,7 +8,7 @@ export async function resetBusinessData() {
     TRUNCATE "room_nights", "reservation_rooms", "reservation_guests", "reservation_charges", "payments",
       "invoice_items", "invoices", "reservations", "guests", "audit_logs", "room_status_history", "room_blocks",
       "expense_approvals", "expenses", "revenue_transactions", "actual_shifts", "staff_reports",
-      "shift_schedules", "shift_handover_notes", "booking_groups", "thank_you_notes", "daily_reports", "notification_deliveries", "corporate_customers", "ledger_entries", "cash_counts", "restaurant_orders", "restaurant_order_events", "guest_messages", "room_qr_codes", "stock_request_items", "stock_requests", "dining_sessions", "dining_session_members", "dining_seats", "dining_session_events", "table_moves", "table_reservations", "inventory_movements", "recipe_lines", "inventory_items", "suppliers", "asset_movements", "assets" CASCADE`);
+      "shift_schedules", "shift_handover_notes", "booking_groups", "thank_you_notes", "daily_reports", "notification_deliveries", "corporate_customers", "ledger_entries", "cash_counts", "restaurant_orders", "restaurant_order_events", "guest_messages", "room_qr_codes", "stock_request_items", "stock_requests", "dining_sessions", "dining_session_members", "dining_seats", "dining_session_events", "table_moves", "table_reservations", "inventory_movements", "recipe_lines", "inventory_items", "suppliers", "asset_movements", "assets", "mobile_payments" CASCADE`);
   // Uploaded files, except website / menu photos (a cascade would take the menu with it).
   await db.$executeRawUnsafe(`DELETE FROM "stored_files" s WHERE NOT EXISTS (SELECT 1 FROM "media_assets" m WHERE m."fileId" = s."id")`);
   await db.room.updateMany({ data: { status: "AVAILABLE", statusNote: null } });

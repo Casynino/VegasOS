@@ -12,13 +12,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatTZS } from "@/lib/format";
 import type { PayAccount } from "@/lib/pay-account";
+import { SendToPhone } from "@/components/staff/mobile-pay";
 
 /**
  * COLLECT, right where the guest is listed: a small window with the amount owed already filled in, how it was received
  * and a reference — saved on the guest's bill without leaving the page (the same payment as at checkout).
  */
-export function CollectButton({ reservationId, guest, rooms, outstanding, owedSoFar, methods }: {
+export function CollectButton({ reservationId, guest, rooms, outstanding, owedSoFar, methods, phone = null }: {
   reservationId: string; guest: string; rooms: string; outstanding: number; owedSoFar: number; methods: PayAccount[];
+  /** The guest's phone on file — for a mobile-money prompt. */
+  phone?: string | null;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -50,6 +53,8 @@ export function CollectButton({ reservationId, guest, rooms, outstanding, owedSo
               </>
             )}
           </ActionForm>
+          <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.14em] text-muted-foreground"><span className="h-px flex-1 bg-border" />or<span className="h-px flex-1 bg-border" /></div>
+          <SendToPhone target={{ kind: "stay", reservationId }} amount={outstanding} editableAmount phone={phone} who={guest} onPaid={() => setOpen(false)} />
         </DialogContent>
       </Dialog>
     </>

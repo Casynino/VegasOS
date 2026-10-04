@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AccountSelect } from "@/components/staff/finance/account-select";
+import { SendToPhone } from "@/components/staff/mobile-pay";
 import { BroughtBySelect } from "@/components/staff/brought-by-select";
 import { ReceiptActions } from "@/components/ordering/receipt-actions";
 import type { PayAccount } from "@/lib/pay-account";
@@ -80,6 +81,8 @@ export function BillToolbar({ orderId, scope, can, place, room, count, fileName,
           <Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Reference (M-Pesa code / card slip) — optional" />
           {paying && <BroughtBySelect value={broughtBy} onChange={setBroughtBy} prefill={waiterId} />}
           <Button disabled={pending || !account} onClick={record}>{pending && <Loader2 className="animate-spin" />}Record TZS {due.toLocaleString("en-US")}</Button>
+          {/* Or a mobile-money prompt to the customer's phone for the whole bill — recorded by itself when they approve. */}
+          {unpaid.length > 0 && due > 0 && <SendToPhone target={{ kind: "orders", orderIds: unpaid, handedOverById: broughtBy || null }} amount={due} onPaid={() => setPaying(false)} />}
         </DialogContent>
       </Dialog>
     </div>

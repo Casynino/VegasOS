@@ -158,7 +158,7 @@ export default async function CheckInPage({ searchParams }: PageProps<"/staff/ch
           <ArrivalCard key={`${booking.id}-${booking.netAmount}-${booking.paidAmount}`} a={toCard(booking)} today={today}
             canAssign={can(user, "reservations.edit")} canOverride={can(user, "reservations.checkin_override")} canEditDates={can(user, "reservations.edit")} canDiscount={discountLimit(user.permissions, await getSettings()) > 0} discountMax={discountLimit(user.permissions, await getSettings())} checkoutTime={formatMinutesLabel(settings.checkoutMinutes)}
             methods={can(user, "payments.record") ? methods : []}
-            payment={<>{companyNote}{can(user, "payments.record") && <PaymentPanel reservationId={booking.id} balance={booking.balanceAmount} paid={booking.paidAmount} canRefund={false} methods={methods} />}</>} />
+            payment={<>{companyNote}{can(user, "payments.record") && <PaymentPanel reservationId={booking.id} balance={booking.balanceAmount} paid={booking.paidAmount} canRefund={false} methods={methods} phone={booking.guest.phone} who={booking.guest.fullName} />}</>} />
         ) : (
           <EmptyState icon={<LogIn />} title={wanted ? "This booking is no longer waiting to check in" : "Nobody to check in"}
             description={wanted ? "It may already be checked in, cancelled, or more than a year away. Pick another guest from the list." : "When guests book, they appear in the list on the left. Guests without a booking come in as a walk-in."}

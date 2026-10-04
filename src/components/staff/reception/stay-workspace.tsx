@@ -15,6 +15,7 @@ import { ActionForm, FieldError } from "@/components/staff/action-form";
 import { Initials } from "@/components/dashboard/kit";
 import { DiscountChips, DiscountEditor } from "./discount-editor";
 import { DESK_DISCOUNT_MAX } from "@/lib/discounts";
+import { SendToPhone } from "@/components/staff/mobile-pay";
 import { ChargeComposer, GuestTab, type RecentItem, type TabCharge } from "./room-charges";
 import type { BillMenu } from "@/server/services/restaurant";
 import { CompanyBillBox } from "./company-bill-box";
@@ -424,7 +425,7 @@ export function StayWorkspace({ s, methods, perms, recent, menu = null, menuPayN
               <ChargeComposer reservationId={s.id} roomLabel={roomsLabel} recent={recent} methods={methods} canPay={perms.pay} menu={menu} menuPayNow={menuPayNow} onPosted={() => setPanel(null)} />
             </div>
           )}
-          {panel === "pay" && (
+          {panel === "pay" && (<>
             <ActionForm action={recordPaymentAction} resetOnSuccess onSuccess={() => { setPanel(null); router.refresh(); }} className="mt-4 space-y-2 rounded-2xl border border-border/70 p-3">
               {({ pending: p, fieldErrors: e }) => (
                 <>
@@ -439,7 +440,9 @@ export function StayWorkspace({ s, methods, perms, recent, menu = null, menuPayN
                 </>
               )}
             </ActionForm>
-          )}
+            {/* Or a mobile-money prompt to the guest's phone (outside the form: Enter there never records a payment by hand). */}
+            {s.balance > 0 && <SendToPhone target={{ kind: "stay", reservationId: s.id }} amount={s.balance} editableAmount phone={s.phone} who={s.guest} onPaid={() => setPanel(null)} className="mt-2" />}
+          </>)}
 
           {s.tab.length > 0 && (
             <div className="mt-4 border-t border-dashed border-border pt-3">

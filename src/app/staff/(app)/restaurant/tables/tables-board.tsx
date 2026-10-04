@@ -30,6 +30,7 @@ import { useLiveOrders } from "@/components/staff/sounds";
 import { useIsRestaurantDevice, useWaiterPin, type WaiterPinValue } from "@/components/staff/waiter-pin";
 import { TransferDialog } from "@/components/staff/transfer-dialog";
 import { BroughtBySelect } from "@/components/staff/brought-by-select";
+import { SendToPhone } from "@/components/staff/mobile-pay";
 import { takeTableAction, transferTableAction } from "../waiter-actions";
 import { type HotelGuest, ReservationDialog, type TableOption } from "../reservations/reservation-form";
 import {
@@ -1254,6 +1255,9 @@ function PayDialog({ s, accounts, waiterId, onClose }: { s: SessionView; account
           <Button className="h-10 flex-1 bg-emerald-600 text-white hover:bg-emerald-500" disabled={pending || !accountId} onClick={pay}>{pending ? <Loader2 className="animate-spin" /> : <Wallet />}Paid {tzs(s.money.due)}</Button>
           <Button variant="ghost" className="h-10" onClick={onClose}>Cancel</Button>
         </div>
+        {/* Or a mobile-money prompt to the customer's phone for everything still due on the table (nTZS). */}
+        {s.money.due > 0 && <SendToPhone target={{ kind: "orders", orderIds: s.orders.filter((o) => o.due > 0 && !o.onRoom).map((o) => o.id), handedOverById: broughtBy || null }}
+          amount={s.money.due} phone={s.customer.phone} who={s.customer.name} onPaid={onClose} />}
       </DialogContent>
     </Dialog>
   );

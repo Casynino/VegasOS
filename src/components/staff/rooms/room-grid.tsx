@@ -32,6 +32,7 @@ import { ChargeComposer, type RecentItem } from "@/components/staff/reception/ro
 import type { BillMenu } from "@/server/services/restaurant";
 import { MeetingButtons } from "@/app/staff/(app)/reservations/[id]/panels";
 import { QuickBook } from "./quick-book";
+import { SendToPhone } from "@/components/staff/mobile-pay";
 import { RoomHistoryInline, TransportInline } from "./room-panels";
 import { InsightHeader, InsightHistory, InsightRows, MeetingInsightBody, MeetingInsightHeader, useMeetingInsight, useRoomInsight } from "./room-insight";
 import { RoomDecisions } from "@/components/staff/manager-decisions";
@@ -420,7 +421,7 @@ function RoomPanel({ room, perms, overdue, onDone, today, methods, menu, recent,
           <DiscountEditor key={`pay-${stay.discountPerNight}`} reservationId={stay.reservationId} canEdit max={perms.discountMax ?? DESK_DISCOUNT_MAX}
             room={{ id: stay.reservationRoomId, number: room.number, ratePerNight: stay.ratePerNight, discountPerNight: stay.discountPerNight, nights: stay.nights }} />
         )}
-        {stay && panel === "pay" && <PayHere reservationId={stay.reservationId} balance={stay.balance} methods={methods} onDone={() => setPanel(null)} />}
+        {stay && panel === "pay" && <PayHere reservationId={stay.reservationId} balance={stay.balance} methods={methods} phone={stay.guestPhone} who={stay.guestName} onDone={() => setPanel(null)} />}
 
         {panel === "history" && <RoomHistoryInline roomId={room.id} roomNumber={room.number} />}
         {panel === "qr" && qr && <RoomQrBox room={room} qr={qr} />}
@@ -620,6 +621,8 @@ export function CheckOutHere({ stay, roomNumber, methods, canPay, canCharge, can
 
           {owes && (canPay && methods.length ? (
             <div className="space-y-2">
+              {/* The guest pays by mobile money from their phone: once recorded, the bill above updates — then check out. */}
+              <SendToPhone target={{ kind: "stay", reservationId: stay.reservationId }} amount={bill.balance} phone={stay.guestPhone} who={stay.guestName} />
               <div className="flex flex-wrap gap-1.5">
                 {methods.map((m) => (
                   <button key={m.id} type="button" onClick={() => setAccountId(m.id)} aria-pressed={accountId === m.id}
@@ -858,7 +861,7 @@ function MeetingRoomPanel({ room, perms, today, methods, menu, recent, qr, onPag
               menu={perms.order ? menu : null} menuPayNow={!!perms.orderPayNow} onPosted={() => setPanel(null)} />
           </div>
         )}
-        {stay && panel === "pay" && <PayHere reservationId={stay.reservationId} balance={stay.balance} methods={methods} onDone={() => setPanel(null)} />}
+        {stay && panel === "pay" && <PayHere reservationId={stay.reservationId} balance={stay.balance} methods={methods} phone={stay.guestPhone} who={stay.guestName} onDone={() => setPanel(null)} />}
         {panel === "history" && <RoomHistoryInline roomId={room.id} roomNumber={room.number} />}
         {panel === "qr" && qr && <RoomQrBox room={room} qr={qr} />}
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3 text-xs text-muted-foreground">
@@ -871,10 +874,11 @@ function MeetingRoomPanel({ room, perms, today, methods, menu, recent, qr, onPag
 }
 
 /** Take a payment for this stay or meeting, right in the card. */
-function PayHere({ reservationId, balance, methods, onDone }: { reservationId: string; balance: number; methods: PayAccount[]; onDone: () => void }) {
+function PayHere({ reservationId, balance, methods, phone = null, who = null, onDone }: { reservationId: string; balance: number; methods: PayAccount[]; phone?: string | null; who?: string | null; onDone: () => void }) {
   const router = useRouter();
   return (
-    // Re-mounts when the balance changes (e.g. after a discount) so the amount is always the full balance.
+    <div className="space-y-2">
+    {/* Re-mounts when the balance changes (e.g. after a discount) so the amount is always the full balance. */}
     <ActionForm key={balance} action={recordPaymentAction} resetOnSuccess onSuccess={() => { onDone(); router.refresh(); }} className="space-y-3 rounded-2xl border border-border/70 bg-muted/30 p-4">
       {({ pending: saving, fieldErrors: e }) => (
         <>
@@ -890,6 +894,9 @@ function PayHere({ reservationId, balance, methods, onDone }: { reservationId: s
         </>
       )}
     </ActionForm>
+    {/* Or a mobile-money prompt to the guest's phone: recorded by itself when they approve. */}
+    {balance > 0 && <SendToPhone target={{ kind: "stay", reservationId }} amount={balance} editableAmount phone={phone} who={who} onPaid={onDone} />}
+    </div>
   );
 }
 

@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { TransferDialog } from "@/components/staff/transfer-dialog";
 import { useWaiterPin, type WaiterPinValue } from "@/components/staff/waiter-pin";
 import { BroughtBySelect } from "@/components/staff/brought-by-select";
+import { SendToPhone } from "@/components/staff/mobile-pay";
 import type { PayAccount } from "@/lib/pay-account";
 import { cn } from "@/lib/utils";
 import { IconAction, WhatsAppGlyph } from "./icon-action";
@@ -442,6 +443,8 @@ export function OrderCard({ o, perms, now, fresh, accounts, rooms, drag, roomy, 
         </motion.button>
         {payingNow && <button type="button" onClick={() => setPayingNow(false)} className="shrink-0 px-2 text-sm font-medium text-muted-foreground hover:text-foreground">Leave it</button>}
       </div>
+      {/* Or a mobile-money prompt to the customer's phone (nTZS) — the payment is recorded by itself when they approve. */}
+      {!payingNow && unpaid && <SendToPhone target={{ kind: "orders", orderIds: [o.id], handedOverById: broughtBy || null }} amount={due} phone={o.phone} who={o.customer} className="mt-2.5" />}
     </>
   );
   // Someone who does not record payments (a waiter, a manager watching): what is due, and who records it.

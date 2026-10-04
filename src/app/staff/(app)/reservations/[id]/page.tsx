@@ -542,7 +542,7 @@ export default async function ReservationPage({ params, searchParams }: PageProp
               </div>
               {perms.pay && (
                 <PaymentPanel reservationId={r.id} balance={r.balanceAmount} paid={r.paidAmount} canRefund={perms.reverse}
-                  methods={methods} />
+                  methods={methods} phone={r.guest.phone} who={r.guest.fullName} />
               )}
             </div>
             <div className="mt-4 space-y-2 border-t border-dashed border-border pt-3 text-sm">
