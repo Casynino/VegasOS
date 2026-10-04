@@ -3164,10 +3164,16 @@ model MobilePayment {
   orderPaymentIds String[]            @default([])
   lastError       String?
   completedAt     DateTime?
+  /// Money that came in but needs a person (more than owed, the bill changed, could not be recorded) — until resolved.
+  attentionAt     DateTime?
+  resolvedAt      DateTime?
+  resolvedById    String?
+  resolvedNote    String?
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
 
   @@index([status, createdAt])
   @@index([reservationId])
+  @@index([attentionAt, resolvedAt])
   @@map("mobile_payments")
 }

@@ -46,6 +46,18 @@ export async function requestMobilePayment(target: PromptTarget, rawPhone: strin
     if (amount > r.balanceAmount) throw new AppError(`That is more than the guest owes (${fmt(r.balanceAmount)}).`, "VALIDATION", { amount: "Exceeds balance" });
     reservationId = r.id; name = r.guest.fullName;
   } else {
+    if (target.handedOverById) {
+      const ok = await db.user.count({
+        where: {
+          id: target.handedOverById, isActive: true,
+          role: { AND: [
+            { permissions: { some: { permission: { code: "restaurant.serve" } } } },
+            { permissions: { none: { permission: { code: { in: ["restaurant.device", "dashboard.manager", "dashboard.owner", "dashboard.admin"] } } } } },
+          ] },
+        },
+      });
+      if (!ok) throw new AppError("Choose the waiter who brought the order.", "VALIDATION", { handedOverById: "Invalid" });
+    }
     const due = await ordersDueForPrompt(target.orderIds);
     amount = due.total; orderIds = due.orders.map((o) => o.id); name = due.orders[0]?.customerName ?? null;
   }
@@ -98,11 +110,30 @@ async function promptActor(mp: MobilePayment): Promise<Actor & { userId: string 
  * Safe to call from the webhook, the screen and the scheduled run at the same time (the row is locked).
  */
 export async function settleMobilePayment(id: string, info: { received?: number | null; pspReference?: string | null; source: "webhook" | "check" | "sweep" }, now = new Date()) {
+  try {
+    return await recordMobilePayment(id, info, now);
+  } catch (e) {
+    // The money came in but could not go on the bill (a rule of the bill refused it): keep it as received, needing
+    // attention — shown to staff, never retried forever. Anything else (the database busy…) is tried again.
+    if (!(e instanceof AppError) || e.code === "NOT_FOUND") throw e;
+    const received = Math.round(info.received && info.received > 0 ? info.received : 0);
+    const flagged = await db.mobilePayment.updateMany({
+      where: { id, completedAt: null, paymentId: null },
+      data: { status: "COMPLETED", completedAt: now, pspReference: info.pspReference ?? undefined, attentionAt: now,
+        lastError: `${received ? fmt(received) : "The money"} came in by nTZS but could not be recorded: ${e.message} — record it by hand or refund it.`.slice(0, 500) },
+    });
+    if (flagged.count) await audit(db, { label: "nTZS" }, { action: "mobile_payment.needs_attention", entityType: "MobilePayment", entityId: id, after: { reason: e.message, received } });
+    return { mp: await db.mobilePayment.findUniqueOrThrow({ where: { id } }), recorded: false };
+  }
+}
+
+async function recordMobilePayment(id: string, info: { received?: number | null; pspReference?: string | null; source: "webhook" | "check" | "sweep" }, now: Date) {
   return db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT "id" FROM "mobile_payments" WHERE "id" = ${id} FOR UPDATE`;
     const mp = await tx.mobilePayment.findUnique({ where: { id } });
     if (!mp) throw new AppError("Payment prompt not found.", "NOT_FOUND");
-    if (mp.status === "COMPLETED") return { mp, recorded: false };
+    // Recorded already (whatever its status says now): never twice.
+    if (mp.status === "COMPLETED" || mp.completedAt || mp.paymentId || mp.orderPaymentIds.length) return { mp, recorded: false };
     const received = Math.round(info.received && info.received > 0 ? info.received : mp.amount);
     const actor = await promptActor(mp);
     const method = await tx.paymentMethod.findUniqueOrThrow({ where: { code: NTZS_METHOD }, select: { id: true } });
@@ -115,7 +146,7 @@ export async function settleMobilePayment(id: string, info: { received?: number 
       // Never more than is owed now (another payment or a discount since the prompt): the rest is flagged, not lost.
       const amount = Math.min(received, Math.max(0, r.balanceAmount));
       if (amount > 0) {
-        const p = await recordPaymentTx(tx, { reservationId: mp.reservationId, amount, methodId: method.id, accountId: null, reference, notes: `Mobile-money prompt to ${maskPhone(mp.phone)} · confirmed by nTZS` }, actor);
+        const p = await recordPaymentTx(tx, { reservationId: mp.reservationId, amount, methodId: method.id, accountId: null, reference, notes: `Mobile-money prompt to ${maskPhone(mp.phone)} · confirmed by nTZS`, internal: true }, actor);
         paymentId = p.id;
       }
       if (received > amount) note = `${fmt(received - amount)} more than ${r.reference} still owed came in by nTZS — refund it or put it on another bill.`;
@@ -127,7 +158,7 @@ export async function settleMobilePayment(id: string, info: { received?: number 
 
     const done = await tx.mobilePayment.update({
       where: { id },
-      data: { status: "COMPLETED", completedAt: now, paymentId, orderPaymentIds, pspReference: info.pspReference ?? mp.pspReference, lastError: note },
+      data: { status: "COMPLETED", completedAt: now, paymentId, orderPaymentIds, pspReference: info.pspReference ?? mp.pspReference, lastError: note, attentionAt: note ? now : null },
     });
     await audit(tx, actor, {
       action: "mobile_payment.completed", entityType: "MobilePayment", entityId: id,
@@ -146,7 +177,8 @@ export async function checkMobilePayment(id: string, source: "check" | "sweep" =
   if (!res.ok) return mp; // nTZS not answering: still waiting
   if (depositCompleted(res.data.status)) return (await settleMobilePayment(id, { received: res.data.amountTzs ?? null, pspReference: res.data.pspReference ?? null, source }, now)).mp;
   if (mp.status === "PENDING" && depositFailed(res.data.status)) {
-    return db.mobilePayment.update({ where: { id }, data: { status: "FAILED", lastError: `The customer did not pay (${res.data.status}).` } });
+    await db.mobilePayment.updateMany({ where: { id, status: "PENDING", completedAt: null }, data: { status: "FAILED", lastError: `The customer did not pay (${res.data.status}).` } });
+    return db.mobilePayment.findUniqueOrThrow({ where: { id } });
   }
   return mp;
 }
@@ -156,9 +188,10 @@ export async function cancelMobilePayment(id: string, actor: Actor) {
   const mp = await db.mobilePayment.findUnique({ where: { id } });
   if (!mp) throw new AppError("Payment prompt not found.", "NOT_FOUND");
   if (mp.status !== "PENDING") return mp;
-  const out = await db.mobilePayment.update({ where: { id }, data: { status: "CANCELLED" } });
-  await audit(db, actor, { action: "mobile_payment.cancelled", entityType: "MobilePayment", entityId: id, after: { amount: mp.amount } });
-  return out;
+  // Only a prompt still waiting is cancelled (one being recorded right now stays recorded).
+  const done = await db.mobilePayment.updateMany({ where: { id, status: "PENDING", completedAt: null }, data: { status: "CANCELLED" } });
+  if (done.count) await audit(db, actor, { action: "mobile_payment.cancelled", entityType: "MobilePayment", entityId: id, after: { amount: mp.amount } });
+  return db.mobilePayment.findUniqueOrThrow({ where: { id } });
 }
 
 /**
@@ -177,8 +210,8 @@ export async function sweepMobilePayments(now = new Date(), deadline = Date.now(
     const mp = await checkMobilePayment(w.id, "sweep", now).catch(() => null);
     checked += 1;
     if (mp?.status === "PENDING" && now.getTime() - w.createdAt.getTime() > PROMPT_EXPIRES_MS) {
-      await db.mobilePayment.update({ where: { id: w.id }, data: { status: "EXPIRED" } });
-      expired += 1;
+      const r = await db.mobilePayment.updateMany({ where: { id: w.id, status: "PENDING", completedAt: null }, data: { status: "EXPIRED" } });
+      expired += r.count;
     }
   }
   return { checked, expired };
@@ -192,4 +225,21 @@ export async function findMobilePayment(ref: { depositId?: string | null; refere
   }
   if (ref.reference && /^[a-z0-9]{20,40}$/i.test(ref.reference)) return db.mobilePayment.findUnique({ where: { id: ref.reference } });
   return null;
+}
+
+/** Mobile-money that came in but needs a person (more than was owed, the bill changed, or it could not be recorded). */
+export async function mobilePaymentsNeedingAttention(purpose?: "RESERVATION" | "RESTAURANT") {
+  const rows = await db.mobilePayment.findMany({
+    where: { attentionAt: { not: null }, resolvedAt: null, ...(purpose ? { purpose } : {}) },
+    orderBy: { attentionAt: "desc" }, take: 30,
+    select: { id: true, amount: true, phone: true, purpose: true, lastError: true, attentionAt: true, reservationId: true, orderIds: true, pspReference: true, depositId: true, requestedBy: { select: { fullName: true } }, reservation: { select: { reference: true, guest: { select: { fullName: true } } } } },
+  });
+  return rows.map((r) => ({ ...r, phone: maskPhone(r.phone) }));
+}
+
+/** Someone dealt with it (refunded, recorded by hand or put on another bill): it leaves the list. */
+export async function resolveMobilePaymentAttention(id: string, note: string, actor: Actor & { userId: string }) {
+  const r = await db.mobilePayment.updateMany({ where: { id, attentionAt: { not: null }, resolvedAt: null }, data: { resolvedAt: new Date(), resolvedById: actor.userId, resolvedNote: note.slice(0, 300) } });
+  if (!r.count) throw new AppError("Already dealt with.", "CONFLICT");
+  await audit(db, actor, { action: "mobile_payment.resolved", entityType: "MobilePayment", entityId: id, after: { note } });
 }

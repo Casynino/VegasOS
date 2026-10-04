@@ -28,7 +28,7 @@ export type AppPlace =
   | { kind: "table"; title: string; area: string | null }
   | { kind: "counter"; area: string | null }
   | { kind: "main" }
-  | { kind: "public"; table: string | null }
+  | { kind: "public"; table: string | null; /** The place pill (a room card with nobody checked in: "Room 103"). */ label?: string | null; note?: string | null; room?: boolean }
   | { kind: "room"; room: string; guest: string; meeting: boolean; fee: number; stayHref: string; orders: { number: string; status: string; total: number; track: string | null }[] }
   | { kind: "more"; number: string; place: string; total: number; backHref: string };
 
@@ -46,7 +46,7 @@ function placeLine(place: AppPlace) {
     case "counter": return `Counter${place.area ? ` · ${place.area}` : ""}`;
     case "room": return `${place.meeting ? "Meeting room" : "Room"} ${place.room}`;
     case "more": return `Adding to #${place.number}`;
-    case "public": return place.table ? place.table : "Restaurant order";
+    case "public": return place.label ?? (place.table ? place.table : "Restaurant order");
     default: return "Restaurant order";
   }
 }
@@ -57,11 +57,11 @@ function placeNote(place: AppPlace) {
     case "counter": return "Served at the counter · pay when you are done";
     case "room": return place.meeting ? "Served in your meeting room · on its bill" : `Delivered to your room · on your room bill${place.fee ? ` · delivery ${tzs(place.fee)}` : ""}`;
     case "more": return `${place.place} · same order, same bill`;
-    default: return "Eat here or take out · pay when it is served";
+    default: return (place.kind === "public" && place.note) || "Eat here or take out · pay when it is served";
   }
 }
 const PlaceIcon = ({ place, className }: { place: AppPlace; className?: string }) =>
-  place.kind === "room" ? <BedDouble className={className} /> : place.kind === "counter" ? <Store className={className} /> : place.kind === "more" ? <Plus className={className} /> : <UtensilsCrossed className={className} />;
+  place.kind === "room" || (place.kind === "public" && place.room) ? <BedDouble className={className} /> : place.kind === "counter" ? <Store className={className} /> : place.kind === "more" ? <Plus className={className} /> : <UtensilsCrossed className={className} />;
 
 /**
  * VEGAS RESTAURANT — the ordering app every QR opens (a table, the counter, the main QR, a

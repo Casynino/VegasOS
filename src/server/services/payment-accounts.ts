@@ -31,6 +31,8 @@ export async function resolveAccountTx(
   tx: Client,
   input: { accountId?: string | null; methodId?: string | null },
   use: "payments" | "expenses" = "payments",
+  /** The automatic nTZS recording — the only way into the nTZS account (never by hand, never an expense). */
+  opts: { internal?: boolean } = {},
 ) {
   const field = "accountId";
   if (input.accountId) {
@@ -49,6 +51,7 @@ export async function resolveAccountTx(
     const method = await tx.paymentMethod.findUnique({ where: { id: input.methodId }, include: { account: true } });
     if (!method || !method.isActive) throw new AppError("Choose where the money went.", "VALIDATION", { [field]: "Required" });
     if (!method.account || !method.account.isActive) throw new AppError("Choose where the money went.", "VALIDATION", { [field]: "Required" });
+    if (method.account.code === "NTZS" && !opts.internal) throw new AppError("The nTZS account moves only when nTZS confirms a payment — choose another account.", "VALIDATION", { [field]: "Not allowed" });
     return { account: method.account, method };
   }
   throw new AppError(use === "payments" ? "Choose where the money was received." : "Choose where the money was paid from.", "VALIDATION", { [field]: "Required" });

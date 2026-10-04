@@ -4,6 +4,7 @@ import { recentChargeItems } from "@/server/services/payments";
 import { discountLimit } from "@/lib/discounts";
 import { AlertTriangle, ArrowRight, Banknote, BedDouble, BedSingle, CalendarPlus, Car, CheckCircle2, ChevronRight, Clock, ConciergeBell, Inbox, KeyRound, LogIn, LogOut, Luggage, NotebookTabs, Plane, Receipt, Sunrise, Users, Wallet, Wrench } from "lucide-react";
 import { REQUEST_TYPE_LABEL } from "@/lib/request-meta";
+import { mobilePaymentsNeedingAttention } from "@/server/services/mobile-payments";
 import { can, getMyOpenShift, requireUser } from "@/server/auth";
 import { needsOwnShift } from "@/lib/permissions";
 import { businessToday, getSettings } from "@/server/settings";
@@ -108,6 +109,8 @@ export async function FrontDeskToday() {
     db.reservation.count({ where: { kind: "STAY", status: "CHECKED_IN", departureDate: tomorrowDb } }),
   ]);
   const tomorrowRooms = arrivingTomorrow.reduce((t, r) => t + r.rooms.length, 0);
+  // Mobile money (nTZS) that came in but did not fit the bill — someone must deal with it.
+  const mobileToCheck = can(user, "payments.record") ? (await mobilePaymentsNeedingAttention()).length : 0;
   const todayParts: TodayPart[] = [
     { label: "Arrivals", icon: <LogIn />, tone: "sky", href: "/staff/check-in", value: board.arrivals.length, unit: "to check in",
       done: arrivedToday, of: arrivedToday + board.arrivals.length, note: arrivedToday + board.arrivals.length ? `${arrivedToday} of ${arrivedToday + board.arrivals.length} checked in` : "Nobody due today" },
@@ -131,6 +134,7 @@ export async function FrontDeskToday() {
     owing.length > 0 && { tone: "rose", icon: <Wallet />, group: "Money", title: `${owing.length} leaving today still owe${owing.length === 1 ? "s" : ""} money`, detail: `${formatTZS(owing.reduce((s, r) => s + owes(r), 0))} to collect before checkout`, href: "/staff/check-out" },
     snap.unpaidAfterCheckout.count > 0 && { tone: "rose", icon: <Receipt />, group: "Money", title: `${snap.unpaidAfterCheckout.count} unpaid after checkout`, detail: "Past guests with an open balance", href: "#unpaid" },
     snap.maintenance.length > 0 && { tone: "slate", icon: <Wrench />, group: "Rooms", title: `${snap.maintenance.length} room${snap.maintenance.length === 1 ? "" : "s"} under maintenance`, detail: "Not available to sell", href: "/staff/rooms" },
+    mobileToCheck > 0 && { tone: "rose", icon: <Wallet />, group: "Money", title: `${mobileToCheck} mobile-money payment${mobileToCheck === 1 ? "" : "s"} to check`, detail: "Came in by nTZS but did not fit the bill — refund or apply it", href: "/staff/collections#ntzs" },
     openRequests.some((q) => q.status === "NEW") && { tone: "gold", icon: <ConciergeBell />, group: "Guests", title: `${openRequests.filter((q) => q.status === "NEW").length} guest request${openRequests.filter((q) => q.status === "NEW").length === 1 ? "" : "s"} waiting`, detail: "Nobody has accepted yet — open it and tap Accept", href: "#requests" },
   ].filter(Boolean) as AttentionItem[];
 

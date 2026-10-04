@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, ArrowUpRight, BedDouble, Banknote, Clock, CreditCard, Landmark, RotateCcw, Search, ShieldCheck, Smartphone, Store, Undo2, UtensilsCrossed, Wallet } from "lucide-react";
 import { can, getMyOpenShift, requirePagePermission } from "@/server/auth";
+import { mobilePaymentsNeedingAttention } from "@/server/services/mobile-payments";
+import { MobileMoneyAttention, type AttentionRow } from "../mobile-pay/attention";
 import { inHouseGuestIds, isDeskUser } from "@/server/desk";
 import { isRestaurantDevice, needsOwnShift } from "@/lib/permissions";
 import { db } from "@/server/db";
@@ -169,8 +171,19 @@ export default async function CollectionsPage({ searchParams }: PageProps<"/staf
 
   // "Served by" only means something for restaurant payments — a page of room payments shows who collected each one.
   const waiterRows = rows.some((r) => r.source === "RESTAURANT");
+  // nTZS mobile money that needs a person (those who take payments, and managers); the Counter sees the restaurant's.
+  const takesPay = can(user, "payments.record") || can(user, "revenue.record");
+  const attention: AttentionRow[] = takesPay || supervisor
+    ? (await mobilePaymentsNeedingAttention(device ? "RESTAURANT" : undefined)).map((m) => ({
+      id: m.id, amount: m.amount, phone: m.phone, purpose: m.purpose, note: m.lastError, at: (m.attentionAt ?? new Date()).toISOString(),
+      where: m.reservation ? `${m.reservation.guest.fullName} · ${m.reservation.reference}` : `${m.orderIds.length} restaurant order${m.orderIds.length === 1 ? "" : "s"}`,
+      by: m.requestedBy.fullName.replace(/\s*\(.*\)/, ""), reference: m.pspReference ?? m.depositId, href: m.reservationId ? `/staff/reservations/${m.reservationId}` : null,
+    }))
+    : [];
+
   return (
     <div className="w-full space-y-4">
+      <MobileMoneyAttention rows={attention} />
       {/* Title and period */}
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">

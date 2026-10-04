@@ -51,25 +51,42 @@ export function SendToPhone({ target, amount, phone = "", editableAmount = false
   const [waiting, setWaiting] = useState<Waiting | null>(null);
   const [pending, start] = useTransition();
   const startedAt = useRef(0);
-
-  // Follow the prompt until it is paid, refused or given up.
+  const lastAmount = useRef(amount);
   useEffect(() => {
-    if (!waiting || waiting.status !== "PENDING") return;
-    const t = setInterval(async () => {
-      if (Date.now() - startedAt.current > GIVE_UP_MS) { clearInterval(t); return; }
-      const r = await promptStatusAction({ id: waiting.id });
-      if (!r.ok) return;
-      setWaiting((w) => (w && w.id === r.data.id ? { ...w, status: r.data.status, note: r.data.note } : w));
-      if (r.data.status === "COMPLETED") {
-        toast.success(`${fmt(r.data.amount)} received by mobile money — recorded.`, { description: r.data.note ?? undefined, duration: 9000 });
-        router.refresh();
-        onPaid?.();
-      } else if (r.data.status === "FAILED" || r.data.status === "EXPIRED") {
-        toast.error(r.data.note ?? "The customer did not pay.", { duration: 9000 });
+    if (lastAmount.current !== amount) { lastAmount.current = amount; setAsk(String(Math.max(0, Math.round(amount)))); }
+  }, [amount]);
+
+  // Follow the prompt until it is paid, refused or given up — one question at a time (a slow nTZS never piles up
+  // requests, and "paid" is announced once).
+  const waitingId = waiting?.status === "PENDING" ? waiting.id : null;
+  const onPaidRef = useRef(onPaid);
+  useEffect(() => { onPaidRef.current = onPaid; });
+  useEffect(() => {
+    if (!waitingId) return;
+    let stopped = false, timer: ReturnType<typeof setTimeout> | undefined;
+    const tick = async () => {
+      if (stopped) return;
+      if (Date.now() - startedAt.current > GIVE_UP_MS) {
+        setWaiting((w) => (w && w.id === waitingId ? { ...w, note: "Still not confirmed — check again later; it is recorded by itself if they pay." } : w));
+        return;
       }
-    }, POLL_MS);
-    return () => clearInterval(t);
-  }, [waiting, router, onPaid]);
+      const r = await promptStatusAction({ id: waitingId }).catch(() => null);
+      if (stopped) return;
+      if (r?.ok && r.data.status !== "PENDING") {
+        setWaiting((w) => (w && w.id === r.data.id ? { ...w, status: r.data.status, note: r.data.note } : w));
+        if (r.data.status === "COMPLETED") {
+          if (r.data.note) toast.warning("Mobile money received — needs attention", { description: r.data.note, duration: 15000 });
+          else toast.success(`${fmt(r.data.amount)} received by mobile money — recorded.`, { duration: 9000 });
+          router.refresh();
+          onPaidRef.current?.();
+        } else if (r.data.status === "FAILED" || r.data.status === "EXPIRED") toast.error(r.data.note ?? "The customer did not pay.", { duration: 9000 });
+        return;
+      }
+      timer = setTimeout(tick, POLL_MS);
+    };
+    timer = setTimeout(tick, POLL_MS);
+    return () => { stopped = true; if (timer) clearTimeout(timer); };
+  }, [waitingId, router]);
 
   if (!available) return null;
   const amt = Number(ask) || 0;
@@ -102,14 +119,14 @@ export function SendToPhone({ target, amount, phone = "", editableAmount = false
           </span>
           <span className="min-w-0 flex-1 leading-tight">
             <span className="block font-semibold">
-              {s === "COMPLETED" ? `Paid · ${fmt(waiting.amount)} recorded` : s === "PENDING" ? `Waiting for ${who ? who.split(" ")[0] : "the customer"} to approve…` : s === "CANCELLED" ? "Stopped waiting" : "Not paid"}
+              {s === "COMPLETED" ? (waiting.note ? "Received — needs attention" : `Paid · ${fmt(waiting.amount)} recorded`) : s === "PENDING" ? `Waiting for ${who ? who.split(" ")[0] : "the customer"} to approve…` : s === "CANCELLED" ? "Stopped waiting" : "Not paid"}
             </span>
             <span className="text-xs text-muted-foreground">
               {s === "PENDING" ? `${fmt(waiting.amount)} prompt sent to ${waiting.phone} — they enter their PIN on the phone. This updates by itself.` : waiting.note ?? `${fmt(waiting.amount)} · ${waiting.phone}`}
             </span>
           </span>
           {s === "PENDING" && <button type="button" onClick={cancel} disabled={pending} className="shrink-0 rounded-lg px-2 py-1 text-[11px] font-semibold text-muted-foreground ring-1 ring-border hover:bg-muted hover:text-foreground">Cancel</button>}
-          {(s === "FAILED" || s === "EXPIRED" || s === "CANCELLED") && <button type="button" onClick={() => setWaiting(null)} className="shrink-0 rounded-lg px-2 py-1 text-[11px] font-semibold ring-1 ring-border hover:bg-muted">Try again</button>}
+          {s !== "PENDING" && <button type="button" onClick={() => { setWaiting(null); setOpen(false); setAsk(String(Math.max(0, Math.round(amount)))); }} className="shrink-0 rounded-lg px-2 py-1 text-[11px] font-semibold ring-1 ring-border hover:bg-muted">{s === "COMPLETED" ? "New prompt" : "Try again"}</button>}
         </div>
       </div>
     );

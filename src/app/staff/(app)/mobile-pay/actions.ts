@@ -8,7 +8,7 @@ import { AppError, runAction } from "@/server/errors";
 import { parseInput } from "@/server/validation";
 import { deskOnlyHotelOrders } from "@/server/desk";
 import { ntzsEnabled } from "@/server/services/ntzs";
-import { cancelMobilePayment, checkMobilePayment, maskPhone, requestMobilePayment } from "@/server/services/mobile-payments";
+import { cancelMobilePayment, checkMobilePayment, maskPhone, requestMobilePayment, resolveMobilePaymentAttention } from "@/server/services/mobile-payments";
 
 async function actor(user: CurrentUser) {
   const { ipAddress } = await requestMeta();
@@ -71,4 +71,15 @@ export async function cancelPromptAction(input: { id: string }) {
     const { id } = parseInput(z.object({ id: z.string().min(1).max(40) }), input);
     return view(await cancelMobilePayment(id, await actor(user)));
   }, "Stopped waiting for the payment.");
+}
+
+/** Mobile money that needed a person was dealt with (refunded, recorded by hand, put on another bill) — with a note. */
+export async function resolveMobileAttentionAction(input: { id: string; note: string }) {
+  return runAction(async () => {
+    const user = await authorize("payments.record", "revenue.record");
+    const d = parseInput(z.object({ id: z.string().min(1).max(40), note: z.string().trim().min(3, "Say what was done (e.g. refunded to the guest).").max(300) }), input);
+    await resolveMobilePaymentAttention(d.id, d.note, await actor(user));
+    refresh();
+    return null;
+  }, "Marked as dealt with.");
 }

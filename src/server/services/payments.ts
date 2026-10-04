@@ -28,7 +28,7 @@ export async function recordReservationPayment(
 /** Records a payment inside an existing transaction (used by "record payment & check out"). */
 export async function recordPaymentTx(
   tx: Prisma.TransactionClient,
-  input: { reservationId: string; amount: number; accountId?: string | null; methodId?: string | null; reference?: string | null; notes?: string | null; kind?: "PAYMENT" | "REFUND" },
+  input: { reservationId: string; amount: number; accountId?: string | null; methodId?: string | null; reference?: string | null; notes?: string | null; kind?: "PAYMENT" | "REFUND"; /** The automatic nTZS recording. */ internal?: boolean },
   actor: Actor,
 ) {
   if (!actor.userId) throw new AppError("Payments must be recorded by a signed-in staff member.", "FORBIDDEN");
@@ -38,7 +38,7 @@ export async function recordPaymentTx(
   await tx.$queryRaw`SELECT "id" FROM "reservations" WHERE "id" = ${input.reservationId} FOR UPDATE`;
   const r = await tx.reservation.findUnique({ where: { id: input.reservationId } });
   if (!r) throw new AppError("Reservation not found.", "NOT_FOUND");
-  const { account, method } = await resolveAccountTx(tx, input);
+  const { account, method } = await resolveAccountTx(tx, input, "payments", { internal: !!input.internal && kind === "PAYMENT" });
 
   if (kind === "PAYMENT" && input.amount > r.balanceAmount) {
     throw new AppError(

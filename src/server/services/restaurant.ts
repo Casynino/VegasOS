@@ -660,7 +660,7 @@ async function payOrderTx(tx: Tx, id: string, input: PayInput, actor: Actor, now
   const businessDate = businessDateOf(now, stayConfig(settings));
   // A staff screen names the account; the automatic nTZS recording names its payment method (the nTZS account is never
   // offered to staff, so it can only be reached this way).
-  const paid = await resolveAccountTx(tx, opts.viaNtzs && input.methodId ? { methodId: input.methodId } : { accountId: input.accountId });
+  const paid = await resolveAccountTx(tx, opts.viaNtzs && input.methodId ? { methodId: input.methodId } : { accountId: input.accountId }, "payments", { internal: !!opts.viaNtzs });
   const reference = input.reference?.trim() || null;
   // Every restaurant payment counts as confirmed as it is recorded — nobody confirms payments by hand (owner, 2026-10-04).
   // Paid online by the customer: recorded automatically — "Payment not received" undoes it if the money never arrives.
@@ -684,7 +684,8 @@ async function payOrderTx(tx: Tx, id: string, input: PayInput, actor: Actor, now
       select: { id: true, fullName: true },
     })
     : null;
-  if (input.handedOverById && !broughtBy) throw new AppError("Choose the waiter who brought the money.", "VALIDATION", { handedOverById: "Invalid" });
+  // (nTZS confirms long after the prompt: a waiter no longer valid is simply not noted — the money is still recorded.)
+  if (input.handedOverById && !broughtBy && !opts.viaNtzs) throw new AppError("Choose the waiter who brought the money.", "VALIDATION", { handedOverById: "Invalid" });
   const payment = await tx.restaurantOrderPayment.create({
     data: {
       orderId: id, amount, fee, accountId: paid.account.id, paymentMethodId: paid.method.id, reference,

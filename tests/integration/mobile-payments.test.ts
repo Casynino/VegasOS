@@ -4,7 +4,8 @@ import { db } from "@/server/db";
 import { checkIn, createReservation } from "@/server/services/reservations";
 import { recordReservationPayment } from "@/server/services/payments";
 import { createRestaurantOrder } from "@/server/services/restaurant";
-import { cancelMobilePayment, checkMobilePayment, requestMobilePayment, settleMobilePayment, sweepMobilePayments } from "@/server/services/mobile-payments";
+import { cancelMobilePayment, checkMobilePayment, mobilePaymentsNeedingAttention, requestMobilePayment, resolveMobilePaymentAttention, settleMobilePayment, sweepMobilePayments } from "@/server/services/mobile-payments";
+import { resolveAccountTx } from "@/server/services/payment-accounts";
 import { ntzsPhone, verifyNtzsWebhook } from "@/server/services/ntzs";
 import { addDays, businessDateOf, zonedInstant } from "@/lib/time/business-date";
 import { counterActor, managerActor as anyManager, receptionistActor as anyReceptionist, resetBusinessData, roomType, waiterActor } from "../support/helpers";
@@ -186,3 +187,44 @@ describe("restaurant orders", () => {
     expect((await db.mobilePayment.findUniqueOrThrow({ where: { id: mp.id } })).lastError).toMatch(/no longer matched/);
   });
 });
+
+describe("safety (review, 2026-10-04)", () => {
+  it("a Cancel that lands after the payment was recorded never leads to a second recording", async () => {
+    const r = await stayOwing("Race Guest");
+    const recep = signed(await anyReceptionist());
+    const mp = await requestMobilePayment({ purpose: "RESERVATION", reservationId: r.id, amount: 40_000 }, "0712 555 001", recep);
+    await settleMobilePayment(mp.id, { received: 40_000, source: "webhook" });
+    // The receptionist's Cancel arrives afterwards: it does nothing to a recorded prompt.
+    expect((await cancelMobilePayment(mp.id, recep)).status).toBe("COMPLETED");
+    // Even a row someone forced back (old data): settle sees the payment and does not record it again.
+    await db.mobilePayment.update({ where: { id: mp.id }, data: { status: "CANCELLED" } });
+    deposits[mp.depositId!].status = "completed";
+    await db.mobilePayment.update({ where: { id: mp.id }, data: { createdAt: new Date(Date.now() - 5 * 60_000) } });
+    await sweepMobilePayments(new Date());
+    expect(await db.payment.count({ where: { reservationId: r.id } })).toBe(1);
+  });
+
+  it("money that cannot go on the bill is kept as received and listed for a person — not retried forever", async () => {
+    const r = await stayOwing("Settled Guest");
+    const recep = signed(await anyReceptionist());
+    const mp = await requestMobilePayment({ purpose: "RESERVATION", reservationId: r.id, amount: 30_000 }, "0712 555 001", recep);
+    // The guest paid everything in cash meanwhile: nothing left to put this on.
+    await recordReservationPayment({ reservationId: r.id, amount: r.balanceAmount, accountId: "acct_cash" }, recep);
+    await settleMobilePayment(mp.id, { received: 30_000, source: "webhook" });
+    const after = await db.mobilePayment.findUniqueOrThrow({ where: { id: mp.id } });
+    expect(after).toMatchObject({ status: "COMPLETED", paymentId: null });
+    expect(after.attentionAt).not.toBeNull();
+    const list = await mobilePaymentsNeedingAttention();
+    expect(list.map((x) => x.id)).toContain(mp.id);
+    await resolveMobilePaymentAttention(mp.id, "Refunded to the guest by M-Pesa", recep);
+    expect((await mobilePaymentsNeedingAttention()).map((x) => x.id)).not.toContain(mp.id);
+  });
+
+  it("the nTZS account is never reachable by hand — not for a payment, not for an expense", async () => {
+    await expect(resolveAccountTx(db, { accountId: "acct_ntzs" })).rejects.toThrow(/does not receive payments/);
+    await expect(resolveAccountTx(db, { methodId: "pm_ntzs" })).rejects.toThrow(/moves only when nTZS confirms/);
+    await expect(resolveAccountTx(db, { methodId: "pm_ntzs" }, "expenses")).rejects.toThrow(/moves only when nTZS confirms/);
+    expect((await resolveAccountTx(db, { methodId: "pm_ntzs" }, "payments", { internal: true })).account.code).toBe("NTZS");
+  });
+});
+
