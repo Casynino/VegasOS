@@ -65,6 +65,8 @@ const Order = z.object({
   email: z.union([z.literal(""), z.email("Enter a valid email.").max(160)]).optional(),
   kind: z.enum(["DINE_IN", "TAKEAWAY", "PICKUP"]).optional(),
   where: z.string().trim().max(40).optional(),
+  /** Eating here at a free table they picked. */
+  tableId: z.string().min(1).max(40).optional(),
   deliveryAddress: z.string().trim().max(200).optional(),
   paidFirst: z.object({ proofId: z.string().min(1).max(40), accountId: z.string().min(1).max(40), reference: z.string().trim().max(60).optional(), expectedTotal: z.number().int().nonnegative().max(100_000_000).optional() }).optional(),
   /** "Pay online" (nTZS): the mobile-money number the payment request goes to. */
@@ -79,7 +81,7 @@ export async function placeTableOrderAction(input: z.input<typeof Order>): Promi
     await rateLimit(`table-order:${ipAddress ?? "unknown"}`, 12, 600);
     const d = parseInput(Order, input);
     if (d.payOnline) await assertCanPayOnline("restaurant", d.payOnline.phone);
-    const o = await placeLocationOrder(d.token, { clientKey: d.clientKey, items: d.items, notes: d.notes, name: d.name, phone: d.phone, email: d.email || null, kind: d.kind, where: d.where, deliveryAddress: d.deliveryAddress, paidFirst: d.payOnline ? null : d.paidFirst, payOnline: !!d.payOnline, seatToken: await seatToken() });
+    const o = await placeLocationOrder(d.token, { clientKey: d.clientKey, items: d.items, notes: d.notes, name: d.name, phone: d.phone, email: d.email || null, kind: d.kind, where: d.where, tableId: d.tableId, deliveryAddress: d.deliveryAddress, paidFirst: d.payOnline ? null : d.paidFirst, payOnline: !!d.payOnline, seatToken: await seatToken() });
     const paying = d.payOnline ? await payForNewOrder(o, { phone: d.payOnline.phone, clientKey: d.clientKey, ip: ipAddress }) : null;
     after(() => notifyOrderCustomer(o.id, "RECEIVED"));
     revalidatePath("/staff/restaurant", "layout");

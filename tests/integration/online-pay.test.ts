@@ -4,7 +4,7 @@ import { db } from "@/server/db";
 import { checkIn, createReservation } from "@/server/services/reservations";
 import { onlinePayStates, setOrderStatus } from "@/server/services/restaurant";
 import { placeOnlineOrder } from "@/server/services/online-orders";
-import { addItemsByTrackToken, placeLocationOrder } from "@/server/services/restaurant-locations";
+import { addItemsByTrackToken, freeTables, placeLocationOrder } from "@/server/services/restaurant-locations";
 import { seatAtTable } from "@/server/services/dining-sessions";
 import { placeStayOrder } from "@/server/services/guest-comms";
 import { createWebsiteBooking } from "@/server/services/public-booking";
@@ -208,6 +208,29 @@ describe("at a table: Pay my bill online", () => {
     const orders = await db.restaurantOrder.findMany({ where: { id: { in: [a.id, b.id] } } });
     expect(orders.every((o) => o.paymentStatus === "PAID")).toBe(true);
     expect(await tableBillPayOnline(seat.token)).toEqual({ offered: false, live: null });
+  });
+});
+
+describe("eating here: pick a free table", () => {
+  it("only free tables are offered; the order goes to the table picked; a table taken meanwhile is refused", async () => {
+    const main = await db.restaurantLocation.findFirstOrThrow({ where: { kind: "MAIN" } });
+    const free = await freeTables();
+    expect(free.length).toBeGreaterThan(1);
+    const [t1, t2] = free;
+    const order = await placeLocationOrder(main.qrToken, { clientKey: key(), items: [{ menuItemId: BEER, quantity: 1 }], name: "Picks A Table", phone: phone(), kind: "DINE_IN", tableId: t1.id });
+    expect(order.locationId).toBe(t1.id);
+    expect(order.type).toBe("DINE_IN");
+
+    // Someone sits at the second table: it is no longer offered, and choosing it is refused.
+    const t2loc = await db.restaurantLocation.findUniqueOrThrow({ where: { id: t2.id } });
+    await seatAtTable(t2loc.qrToken, { name: "Seated First", phone: phone() }, null);
+    expect((await freeTables()).some((t) => t.id === t2.id)).toBe(false);
+    await expect(placeLocationOrder(main.qrToken, { clientKey: key(), items: [{ menuItemId: BEER, quantity: 1 }], name: "Too Late", phone: phone(), kind: "DINE_IN", tableId: t2.id }))
+      .rejects.toThrow(/just taken/);
+
+    // From the menu too.
+    const web = await placeOnlineOrder({ clientKey: key(), items: [{ menuItemId: BEER, quantity: 1 }], name: "Menu Picker", phone: phone(), kind: "DINE_IN", tableId: t1.id });
+    expect(web.locationId).toBe(t1.id);
   });
 });
 

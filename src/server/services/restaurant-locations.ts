@@ -8,7 +8,8 @@ import { prettyPhone, shortName, validPhone } from "@/lib/guest-messages";
 import { normalizePhone, resolveGuest } from "./guests";
 import { orderCustomerName, paidFirstTx, type PaidFirst } from "./online-orders";
 import { addOrderItemsTx, CLOSED_STATUSES, createRestaurantOrderTx, LOCATION_SOURCE } from "./restaurant";
-import { HOLD_AFTER_MIN, lockSessionTx, OPEN_SESSION, seatOf } from "./dining-core";
+import { HOLD_AFTER_MIN, holdingReservationTx, lockSessionTx, OPEN_SESSION, seatOf } from "./dining-core";
+import type { Tx } from "../db";
 import type { Actor } from "./reservations";
 
 /**
@@ -236,6 +237,32 @@ export interface LocationOrderInput {
   payOnline?: boolean;
   /** Main restaurant QR only: where they are sitting, if they want to say. */
   where?: string | null;
+  /** Main restaurant QR, eating here: the free table they picked — the order goes to that table. */
+  tableId?: string | null;
+}
+
+/** A table a customer eating here can pick when ordering (main restaurant QR, the menu): free now — nobody seated, not held. */
+export type FreeTable = { id: string; name: string; area: "INSIDE" | "OUTSIDE" | null };
+export async function freeTables(now = new Date()): Promise<FreeTable[]> {
+  const tables = await db.restaurantLocation.findMany({
+    where: { kind: "TABLE", isActive: true, blockedAs: null, openSession: null },
+    orderBy: [{ area: "asc" }, { number: "asc" }], select: { id: true, name: true, area: true },
+  });
+  const held = await db.tableReservation.findMany({
+    where: { locationId: { in: tables.map((t) => t.id) }, status: { in: ["BOOKED", "CONFIRMED"] }, reservedFor: { gte: new Date(now.getTime() - HOLD_AFTER_MIN * 60_000), lte: new Date(now.getTime() + 60 * 60_000) } },
+    select: { locationId: true },
+  });
+  const taken = new Set(held.map((h) => h.locationId));
+  return tables.filter((t) => !taken.has(t.id));
+}
+
+/** The table a customer picked is still free (checked again as the order goes in) — or a clear "choose another". */
+export async function pickedTableTx(tx: Tx, tableId: string, now: Date) {
+  const t = await tx.restaurantLocation.findUnique({ where: { id: tableId }, select: { id: true, kind: true, isActive: true, blockedAs: true, name: true } });
+  if (!t || t.kind !== "TABLE" || !t.isActive || t.blockedAs) throw new AppError("That table cannot be chosen — please pick another.", "VALIDATION", { tableId: "Invalid" });
+  const busy = (await tx.diningSession.findUnique({ where: { openAtId: t.id }, select: { id: true } })) || (await holdingReservationTx(tx, t.id, now));
+  if (busy) throw new AppError(`${t.name.split(" — ")[0]} was just taken — please pick another table.`, "CONFLICT", { tableId: "Taken" });
+  return t;
 }
 
 /**
@@ -281,10 +308,12 @@ export async function placeLocationOrder(token: string, input: LocationOrderInpu
         session.locationId = live.locationId;
       }
       const guestId = seated ? seated.member.guest.id : await resolveGuest(tx, { fullName: name, phone, email: input.email?.trim() || null });
+      // Eating here from the restaurant's own QR, at a free table they picked: the order goes to that table.
+      const picked = l.kind === "MAIN" && kind === "DINE_IN" && input.tableId ? await pickedTableTx(tx, input.tableId, now) : null;
       return createRestaurantOrderTx(tx, {
         type: kind, settlement: "UNPAID", items: input.items, notes: input.notes?.trim().slice(0, 300) || null, customerName: name,
         // Take out is not at the table: it does not keep the table busy or join its bill. A moved customer's order goes to their table now.
-        locationId: kind === "TAKEAWAY" ? null : session?.locationId ?? l.id, tableLabel: where, deliveryAddress: address || null,
+        locationId: kind === "TAKEAWAY" ? null : picked?.id ?? session?.locationId ?? l.id, tableLabel: picked ? null : where, deliveryAddress: address || null,
       }, { userId: null, label: `${name} (${l.name})` }, now, {
         byCustomer: true, source: LOCATION_SOURCE[l.kind], guestId, customerPhone: phone, customerEmail: (seated?.member.guest.email ?? input.email)?.trim() || null, clientKey: input.clientKey, paidFirst, payOnline: !!input.payOnline,
         sessionId: session?.id ?? null,

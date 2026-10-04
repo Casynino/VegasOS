@@ -1,4 +1,5 @@
 import "server-only";
+import { pickedTableTx } from "./restaurant-locations";
 import { db, type Tx } from "../db";
 import { AppError, isUniqueViolation } from "../errors";
 import { getSettings } from "../settings";
@@ -105,6 +106,8 @@ export interface OnlineOrderInput {
   /** "Pay online" (nTZS) instead: the payment request follows once the order is in (see online-pay). */
   payOnline?: boolean;
   tableLabel?: string | null;
+  /** Eating here at a free table they picked: the order goes to that table. */
+  tableId?: string | null;
   /** Scanned from a printed public menu QR (restaurant tables, reception) rather than the website. */
   fromQr?: boolean;
 }
@@ -135,9 +138,11 @@ export async function placeOnlineOrder(input: OnlineOrderInput, now = new Date()
       const paidFirst = !input.payOnline && (input.kind === "TAKEAWAY" || input.paidFirst) ? await paidFirstTx(tx, input.paidFirst, now) : null;
       // One customer, saved once: the phone finds them (or they are saved now).
       const guestId = await resolveGuest(tx, { fullName: name, phone, email: input.email?.trim() || null });
+      const picked = input.kind === "DINE_IN" && input.tableId ? await pickedTableTx(tx, input.tableId, now) : null;
       return createRestaurantOrderTx(tx, {
         type: input.kind, settlement: "UNPAID", items: input.items, notes: input.notes?.trim().slice(0, 300) || null, customerName: name,
-        tableLabel: input.kind === "DINE_IN" ? input.tableLabel?.trim().slice(0, 40) || null : null, deliveryAddress: address || null,
+        locationId: picked?.id ?? null,
+        tableLabel: input.kind === "DINE_IN" && !picked ? input.tableLabel?.trim().slice(0, 40) || null : null, deliveryAddress: address || null,
       }, { userId: null, label: `${name} (online)` }, now, {
         byCustomer: true, source: input.fromQr ? "PUBLIC_QR" : "WEBSITE", guestId, customerPhone: phone, customerEmail: input.email?.trim() || null, clientKey: input.clientKey, paidFirst, payOnline: !!input.payOnline,
       });

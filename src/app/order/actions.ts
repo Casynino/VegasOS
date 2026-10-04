@@ -19,6 +19,8 @@ const Order = z.object({
   email: z.union([z.literal(""), z.email("Enter a valid email.").max(160)]).optional(),
   kind: z.enum(["DINE_IN", "TAKEAWAY", "PICKUP"]),
   tableLabel: z.string().trim().max(40).optional(),
+  /** Eating here at a free table they picked. */
+  tableId: z.string().min(1).max(40).optional(),
   deliveryAddress: z.string().trim().max(200).optional(),
   paidFirst: z.object({ proofId: z.string().min(1).max(40), accountId: z.string().min(1).max(40), reference: z.string().trim().max(60).optional(), expectedTotal: z.number().int().nonnegative().max(100_000_000).optional() }).optional(),
   fromQr: z.boolean().optional(),
@@ -39,7 +41,7 @@ export async function placeOnlineOrderAction(input: z.input<typeof Order>): Prom
     if (d.payOnline) await assertCanPayOnline("restaurant", d.payOnline.phone);
     const order = await placeOnlineOrder({
       clientKey: d.clientKey, items: d.items, notes: d.notes, name: d.name, phone: d.phone, email: d.email || null,
-      kind: d.kind, tableLabel: d.tableLabel, deliveryAddress: d.deliveryAddress, paidFirst: d.payOnline ? null : d.paidFirst, fromQr: d.fromQr, payOnline: !!d.payOnline,
+      kind: d.kind, tableLabel: d.tableLabel, tableId: d.tableId, deliveryAddress: d.deliveryAddress, paidFirst: d.payOnline ? null : d.paidFirst, fromQr: d.fromQr, payOnline: !!d.payOnline,
     });
     const paying = d.payOnline ? await payForNewOrder(order, { phone: d.payOnline.phone, clientKey: d.clientKey, ip: ipAddress }) : null;
     revalidatePath("/staff/restaurant", "layout");
