@@ -7,6 +7,7 @@ import { Check, Loader2, Lock, Receipt, RotateCcw, Smartphone, X } from "lucide-
 import type { CustomerPayView } from "@/server/services/online-pay";
 import { cancelPayAction, payStatusAction, retryPayAction } from "../actions";
 import { cn } from "@/lib/utils";
+import { NetworkMarks } from "@/components/payments/networks";
 
 const tzs = (n: number) => `TZS ${Math.round(n).toLocaleString("en-US")}`;
 const POLL_MS = 3000;
@@ -121,7 +122,10 @@ export function PayStatus({ initial }: { initial: CustomerPayView }) {
           </>
         )}
       </div>
-      <p className="flex items-center justify-center gap-1.5 border-t border-(--vr-line) bg-(--vr-bg) px-4 py-3 text-[11.5px] text-(--vr-muted)"><Lock className="size-3.5" />Secure payment powered by NTZS</p>
+      <div className="space-y-2 border-t border-(--vr-line) bg-(--vr-bg) px-4 py-3">
+        <NetworkMarks center label={null} />
+        <p className="flex items-center justify-center gap-1.5 text-[11.5px] text-(--vr-muted)"><Lock className="size-3.5" />Secure payment powered by <span className="font-semibold tracking-wide text-(--vr-ink)/80">NTZS</span></p>
+      </div>
     </section>
   );
 }

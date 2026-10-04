@@ -9,6 +9,7 @@ import { formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { ArrowBadge } from "./pill-link";
 import { pillGold } from "./ui";
+import { NetworkMarks } from "@/components/payments/networks";
 
 const newKey = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (x) => x.toString(16).padStart(2, "0")).join("");
 const phoneOk = (p: string) => /^(?:\+?255|0)?[67]\d{8}$/.test(p.replace(/[\s-]/g, ""));
@@ -68,6 +69,7 @@ export function PayOnlineCard({ due, phone, live, held, action }: {
         </span>
         <ArrowBadge />
       </button>
+      <NetworkMarks dark />
       <p className="flex items-center gap-1.5 text-[11px] font-medium text-white/55"><ShieldCheck className="size-3.5 text-gold" aria-hidden="true" />Secure payment powered by NTZS</p>
     </div>
   );

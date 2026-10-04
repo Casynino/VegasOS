@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { ArrowBadge } from "../pill-link";
 import { fieldError, fieldInput, fieldLabel, fieldTextarea, pillGold, type } from "../ui";
 import { BookingProgress } from "./progress";
+import { NetworkMarks } from "@/components/payments/networks";
 
 /** Structural copy of the review payload returned by reviewBookingAction. */
 export interface ReviewData {
@@ -388,7 +389,8 @@ export function GuestStep({
                           </span>
                           <ArrowBadge />
                         </button>
-                        <p className="text-xs leading-relaxed text-white/55">M-Pesa, Airtel Money, Mixx by Yas or HaloPesa — approve the request on your phone with your PIN. We hold your room while you pay.</p>
+                        <NetworkMarks dark />
+                        <p className="text-xs leading-relaxed text-white/55">A prompt comes to your phone — enter your PIN to approve. We hold your room while you pay.</p>
                         <p className="flex items-center gap-1.5 text-[11px] font-medium text-white/55"><ShieldCheck className="size-3.5 text-gold" aria-hidden="true" />Secure payment powered by NTZS</p>
                       </div>
                     )}

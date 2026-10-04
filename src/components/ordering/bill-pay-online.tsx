@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, ShieldCheck, Smartphone } from "lucide-react";
 import type { ActionResult } from "@/server/errors";
 import { cn } from "@/lib/utils";
+import { NetworkMarks } from "@/components/payments/networks";
 
 const tzs = (v: number) => `TZS ${v.toLocaleString("en-US")}`;
 const newKey = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (x) => x.toString(16).padStart(2, "0")).join("");
@@ -61,7 +62,8 @@ export function BillPayOnline({ due, live, action }: {
         className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[#1d1712] text-[14.5px] font-semibold text-white transition hover:bg-black disabled:opacity-60">
         {pending ? <Loader2 className="size-4 animate-spin" /> : <Smartphone className="size-4" />}Pay {tzs(due)} now
       </button>
-      <p className="text-center text-[11.5px] text-black/55">M-Pesa, Airtel Money, Mixx by Yas or HaloPesa — approve the request on your phone with your PIN.</p>
+      <NetworkMarks center />
+      <p className="text-center text-[11.5px] text-black/55">A prompt comes to your phone — enter your PIN to approve.</p>
       <p className="flex items-center justify-center gap-1.5 text-[11px] font-medium text-black/50"><ShieldCheck className="size-3.5 text-[#9a7428]" />Secure payment powered by NTZS</p>
     </section>
   );

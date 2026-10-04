@@ -8,6 +8,7 @@ import { ArrowRight, BedDouble, BellRing, Check, ChevronLeft, Hand, Loader2, Rec
 import { cn } from "@/lib/utils";
 import { imDoneAction, payTableBillOnlineAction } from "@/app/t/[token]/actions";
 import { useWho } from "./who";
+import { NetworkMarks } from "@/components/payments/networks";
 import type { GuestTable } from "@/server/services/dining-sessions";
 import { Sheet } from "./restaurant-app";
 
@@ -140,7 +141,8 @@ function PayBillOnline({ due, live }: { due: number; live: string | null }) {
               <button type="button" disabled={pending} onClick={pay} className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-(--vr-dark) text-[14px] font-semibold text-white disabled:opacity-60">
                 {pending ? <Loader2 className="size-4 animate-spin" /> : <Smartphone className="size-4 text-(--vr-gold)" />}Pay {tzs(due)}
               </button>
-              <p className="text-center text-[11.5px] text-(--vr-muted)">M-Pesa, Airtel Money, Mixx by Yas or HaloPesa — approve the request on your phone with your PIN.</p>
+              <NetworkMarks center />
+              <p className="text-center text-[11.5px] text-(--vr-muted)">A prompt comes to your phone — enter your PIN to approve.</p>
               <p className="flex items-center justify-center gap-1.5 text-[11px] font-medium text-(--vr-muted)"><ShieldCheck className="size-3.5 text-(--vr-gold-ink)" />Secure payment powered by NTZS</p>
             </motion.div>
           </motion.div>

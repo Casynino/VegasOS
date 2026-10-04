@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { BedDouble, Check, CircleCheck, CreditCard, Loader2, Lock, MapPin, Phone, Plus, Receipt, ShoppingBag, Smartphone, UserRound, UtensilsCrossed } from "lucide-react";
+import { BedDouble, BellRing, Bike, Check, ChefHat, CircleCheck, CreditCard, KeyRound, Loader2, Lock, MapPin, Phone, Plus, Receipt, ShoppingBag, Smartphone, UserRound, UtensilsCrossed } from "lucide-react";
+import { NetworkMarks } from "@/components/payments/networks";
 import { cn } from "@/lib/utils";
 import { identifyAtTableAction, placeTableOrderAction } from "@/app/t/[token]/actions";
 import { addItemsByTrackAction, placeOnlineOrderAction } from "@/app/order/actions";
@@ -50,9 +51,6 @@ function afterOrder(res: { track: string | null; pay: string | null; payError: s
   return res.track ? `/order/${res.track}?new=1${res.payError ? "&pay=0" : ""}` : null;
 }
 
-/** Mobile-money networks a "Pay now" prompt can go to (names only — no logos). */
-const NETWORKS = ["M-Pesa", "Airtel", "Mixx by Yas", "HaloPesa"];
-
 /**
  * HOW WOULD YOU LIKE TO PAY — one card, "Pay now" first: mobile money on the customer's phone (the prompt comes to it;
  * where online payment is off, mobile money or bank with the proof), then paying later (the bill, the room bill). The
@@ -63,8 +61,8 @@ function PaymentChoice({ way, setWay, later, online, phone, setPhone, after, pro
   /** Paying later here ("Add to my bill", "Bill to my room"…) — none for take out. */
   later: { label: string; hint: string; icon?: typeof Receipt } | null;
   online: boolean; phone: string; setPhone: (v: string) => void;
-  /** What happens once it is paid ("We start your order"…). */
-  after: string;
+  /** The third step — what happens once it is paid. */
+  after: { text: string; icon: typeof Receipt };
   /** Where online payment is off: paying now with the proof of payment. */
   proof: React.ReactNode;
 }) {
@@ -104,36 +102,37 @@ function WayRow({ on, onSelect, icon: Icon, title, hint, tag, children }: {
   );
 }
 
-/** "Pay now" opened: the number the prompt goes to, the networks, the three steps and who carries the payment. */
-function PayNowDetails({ phone, setPhone, after }: { phone: string; setPhone: (v: string) => void; after: string }) {
+/** "Pay now" opened: the number the prompt goes to, the networks, three small steps and who carries the payment. */
+function PayNowDetails({ phone, setPhone, after }: { phone: string; setPhone: (v: string) => void; after: { text: string; icon: typeof Receipt } }) {
   const ok = payPhoneOk(phone);
-  const steps = ["A prompt comes to this phone", "Enter your PIN to approve", after];
+  const steps: { text: string; icon: typeof Receipt }[] = [{ text: "Prompt on your phone", icon: BellRing }, { text: "Enter your PIN", icon: KeyRound }, after];
   return (
-    <div className="space-y-3.5 rounded-2xl bg-(--vr-card) p-3.5 ring-1 ring-(--vr-line)">
+    <div className="space-y-4 rounded-2xl bg-(--vr-card) p-3.5 shadow-[0_10px_28px_-22px_rgba(29,23,18,0.9)] ring-1 ring-(--vr-line)">
       <label className="block">
         <span className="text-[12px] font-medium text-(--vr-ink)/75">Mobile-money number</span>
         <span className="relative mt-1 block">
           <Phone className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-(--vr-muted)" />
           <input value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" inputMode="tel" autoComplete="tel" placeholder="0712 345 678" aria-invalid={!!phone && !ok}
-            className={cn("block h-12 w-full rounded-xl border bg-white pl-10 pr-10 text-[16px] tracking-wide tabular-nums outline-none transition placeholder:text-(--vr-muted)/60 focus:ring-4 focus:ring-(--vr-gold)/15 sm:text-[15px]",
+            className={cn("block h-12 w-full rounded-xl border bg-white pl-10 pr-10 text-[16px] font-medium tracking-wide tabular-nums outline-none transition placeholder:font-normal placeholder:text-(--vr-muted)/60 focus:ring-4 focus:ring-(--vr-gold)/15 sm:text-[15px]",
               phone && !ok ? "border-amber-400" : "border-(--vr-line) focus:border-(--vr-gold)")} />
           {ok && <CircleCheck className="pointer-events-none absolute right-3.5 top-1/2 size-[18px] -translate-y-1/2 text-emerald-600" />}
         </span>
         {phone && !ok && <span className="mt-1 block text-[11.5px] text-amber-700">A Tanzanian mobile-money number, e.g. 0712 345 678</span>}
       </label>
-      <div className="flex flex-wrap gap-1">
-        {NETWORKS.map((n) => <span key={n} className="whitespace-nowrap rounded-full bg-(--vr-bg) px-2 py-[3px] text-[10.5px] font-medium text-(--vr-ink)/70 ring-1 ring-(--vr-line)">{n}</span>)}
-      </div>
-      <ol className="grid grid-cols-3 gap-2">
-        {steps.map((t, i) => (
-          <li key={t} className="rounded-xl bg-(--vr-bg) px-2 py-2.5 text-center">
-            <span className="mx-auto grid size-6 place-items-center rounded-full bg-(--vr-dark) text-[11px] font-bold text-(--vr-gold)">{i + 1}</span>
-            <span className="mt-1.5 block text-[11px] leading-snug text-(--vr-ink)/75">{t}</span>
+      <NetworkMarks />
+      <ol className="relative grid grid-cols-3">
+        <span aria-hidden className="absolute left-[16.7%] right-[16.7%] top-[15px] h-px bg-linear-to-r from-(--vr-gold)/70 via-(--vr-gold)/35 to-(--vr-gold)/70" />
+        {steps.map(({ text, icon: Icon }, i) => (
+          <li key={text} className="relative text-center">
+            <span className="mx-auto grid size-[30px] place-items-center rounded-full bg-(--vr-dark) text-(--vr-gold) ring-4 ring-(--vr-card)">
+              <Icon className="size-[14px]" />
+            </span>
+            <span className="mt-1.5 block text-[10.5px] font-medium leading-tight text-(--vr-ink)/70"><span className="text-(--vr-gold-ink)">{i + 1}.</span> {text}</span>
           </li>
         ))}
       </ol>
-      <p className="flex items-center justify-center gap-1.5 border-t border-dashed border-(--vr-line) pt-3 text-[11.5px] text-(--vr-muted)">
-        <Lock className="size-3.5 shrink-0 text-(--vr-gold-ink)" />Secure payment powered by NTZS
+      <p className="flex items-center justify-center gap-1.5 rounded-xl bg-(--vr-bg) py-2 text-[11px] font-medium text-(--vr-muted)">
+        <Lock className="size-3 shrink-0 text-(--vr-gold-ink)" />Secure payment powered by <span className="font-semibold tracking-wide text-(--vr-ink)/80">NTZS</span>
       </p>
     </div>
   );
@@ -326,7 +325,7 @@ function SpotCheckout({ config, items, total, who, onWho, onDone, seated }: {
       {takeOut && <DeliveryAddress value={address} onChange={setAddress} />}
       <PaymentChoice way={takeOut ? "NOW" : way} setWay={setWay} online={online} phone={payPhone} setPhone={setPayPhone}
         later={takeOut ? null : { label: main ? "Pay after" : "Add to my bill", hint: "Pay when you are done — cash, card or mobile money" }}
-        after={takeOut ? "We start and bring it to you" : "Your order goes to the kitchen"}
+        after={takeOut ? { text: "We bring it to you", icon: Bike } : { text: "Kitchen starts", icon: ChefHat }}
         proof={<PayFirst total={total} accounts={config.payTo} value={pay} onChange={setPay} />} />
       {open && !payNow && (
         <div className="space-y-1.5 rounded-2xl bg-(--vr-gold-soft) p-3">
@@ -399,7 +398,7 @@ function PublicCheckout({ config, items, total, who, onWho, onDone }: {
         : <label className={label}>Table <span className="font-normal text-(--vr-muted)">· optional</span><input value={table} onChange={(e) => setTable(e.target.value)} placeholder="e.g. Table 4" className={field} /></label>}
       <PaymentChoice way={takeOut ? "NOW" : way} setWay={setWay} online={online} phone={payPhone} setPhone={setPayPhone}
         later={takeOut ? null : { label: "Pay after", hint: "Pay when you are done — cash, card or mobile money" }}
-        after={takeOut ? "We start and bring it to you" : "Your order goes to the kitchen"}
+        after={takeOut ? { text: "We bring it to you", icon: Bike } : { text: "Kitchen starts", icon: ChefHat }}
         proof={<PayFirst total={total} accounts={config.payTo} value={pay} onChange={setPay} />} />
       <Notes value={notes} onChange={setNotes} />
       <input value={trap} onChange={(e) => setTrap(e.target.value)} tabIndex={-1} autoComplete="off" aria-hidden className="hidden" name="website" />
@@ -445,7 +444,7 @@ function RoomCheckout({ config, items, total, onDone }: { config: Extract<Checko
       {config.guest && <WhoCard who={{ name: config.guest, phone: "" }} sub={config.where.replace(/^the /, "The ")} />}
       <PaymentChoice way={way} setWay={setWay} online={online} phone={payPhone} setPhone={setPayPhone}
         later={{ label: "Bill to my room", hint: "Added to your room bill — settle at check-out", icon: BedDouble }}
-        after={`Brought to ${config.where.replace(/^the /, "the ")}`}
+        after={{ text: /meeting/i.test(config.where) ? "Brought to your meeting" : "Sent to your room", icon: BedDouble }}
         proof={<PayFirst total={total} accounts={config.payTo ?? []} value={pay} onChange={setPay} />} />
       <p className="flex items-start gap-2 rounded-xl bg-(--vr-gold-soft) px-3 py-2.5 text-[12.5px] text-(--vr-gold-ink)"><BedDouble className="mt-0.5 size-4 shrink-0" />
         {payNow ? `Delivered to ${config.where} — paid now, so it is not added to your room bill.` : `Delivered to ${config.where} and added to your room bill — you settle everything at check-out.`}
