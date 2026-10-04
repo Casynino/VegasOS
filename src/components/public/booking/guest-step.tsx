@@ -390,7 +390,7 @@ export function GuestStep({
                           <ArrowBadge />
                         </button>
                         <NetworkMarks dark />
-                        <p className="text-xs leading-relaxed text-white/55">A prompt comes to your phone — enter your PIN to approve. We hold your room while you pay.</p>
+                        <p className="text-xs leading-relaxed text-white/55">You will get a payment request on your phone — enter your PIN to pay. We hold your room while you pay.</p>
                         <p className="flex items-center gap-1.5 text-[11px] font-medium text-white/55"><ShieldCheck className="size-3.5 text-gold" aria-hidden="true" />Secure payment powered by NTZS</p>
                       </div>
                     )}

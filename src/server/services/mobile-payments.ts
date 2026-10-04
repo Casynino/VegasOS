@@ -55,7 +55,7 @@ export type PromptOptions = {
  * the waiting attempt (or throws with a clear message).
  */
 export async function requestMobilePayment(target: PromptTarget, rawPhone: string, actor: (Actor & { userId: string }) | null, now = new Date(), opts: PromptOptions = {}) {
-  if (!ntzsEnabled()) throw new AppError(actor ? "Mobile-money prompts are not set up yet — add the nTZS key in the server settings." : "Online payment is not available right now — please pay at the hotel.", "CONFLICT");
+  if (!ntzsEnabled()) throw new AppError(actor ? "Mobile money requests are not set up yet — add the nTZS key in the server settings." : "Online payment is not available right now — please pay at the hotel.", "CONFLICT");
   const customer = !actor;
   // The same press again: the same attempt (no second prompt, no second payment).
   if (opts.clientKey) {
@@ -124,7 +124,7 @@ export async function requestMobilePayment(target: PromptTarget, rawPhone: strin
     });
     // A customer pressing Pay again (another tab, a new phone) sees the prompt already on its way; staff are told.
     if (live && customer) return { mp: live, reused: true };
-    if (live) throw new AppError("A payment prompt for this bill is already waiting on the customer's phone — ask them to approve it, or cancel it first.", "CONFLICT");
+    if (live) throw new AppError("A payment request for this bill is already waiting on the customer's phone — ask them to confirm it, or cancel it first.", "CONFLICT");
     const mp = await tx.mobilePayment.create({
       data: {
         purpose: target.purpose, amount, phone, reservationId, orderIds, tripId, invoiceId, livemode: ntzsLive(), requestedById: actor?.userId ?? null,
@@ -155,7 +155,7 @@ export async function requestMobilePayment(target: PromptTarget, rawPhone: strin
     console.warn("[ntzs] prompt not confirmed by nTZS — kept waiting", { id: mp.id, httpStatus: res.status ?? null, error: res.error });
     await db.mobilePayment.updateMany({
       where: { id: mp.id, status: "PENDING", completedAt: null },
-      data: { lastError: `nTZS did not confirm the request (${res.error}) — if the prompt reached the phone, approving it is recorded by itself.`.slice(0, 500), expiresAt: new Date(now.getTime() + CUSTOMER_EXPIRES_MS) },
+      data: { lastError: `nTZS did not confirm the request (${res.error}) — if it reached the phone and they pay, it is still recorded automatically.`.slice(0, 500), expiresAt: new Date(now.getTime() + CUSTOMER_EXPIRES_MS) },
     });
     const waiting = await db.mobilePayment.findUniqueOrThrow({ where: { id: mp.id } });
     return { ...waiting, instructions: null, reused: false };
@@ -236,7 +236,7 @@ async function recordMobilePayment(id: string, info: { received?: number | null;
   return db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT "id" FROM "mobile_payments" WHERE "id" = ${id} FOR UPDATE`;
     const mp = await tx.mobilePayment.findUnique({ where: { id } });
-    if (!mp) throw new AppError("Payment prompt not found.", "NOT_FOUND");
+    if (!mp) throw new AppError("Payment request not found.", "NOT_FOUND");
     // Recorded already (whatever its status says now): never twice.
     if (mp.status === "COMPLETED" || mp.completedAt || mp.paymentId || mp.orderPaymentIds.length) return { mp, recorded: false };
     const received = Math.round(info.received && info.received > 0 ? info.received : mp.amount);
@@ -251,7 +251,7 @@ async function recordMobilePayment(id: string, info: { received?: number | null;
       // Never more than is owed now (another payment or a discount since the prompt): the rest is flagged, not lost.
       const amount = Math.min(received, Math.max(0, r.balanceAmount));
       if (amount > 0) {
-        const p = await recordPaymentTx(tx, { reservationId: mp.reservationId, amount, methodId: method.id, accountId: null, reference, notes: `Mobile-money prompt to ${maskPhone(mp.phone)} · confirmed by nTZS`, internal: true }, actor);
+        const p = await recordPaymentTx(tx, { reservationId: mp.reservationId, amount, methodId: method.id, accountId: null, reference, notes: `Mobile money request to ${maskPhone(mp.phone)} · confirmed by nTZS`, internal: true }, actor);
         paymentId = p.id;
       }
       if (received > amount) note = `${fmt(received - amount)} more than ${r.reference} still owed came in by nTZS — refund it or put it on another bill.`;
@@ -295,7 +295,7 @@ async function recordMobilePayment(id: string, info: { received?: number | null;
  */
 export async function checkMobilePaymentWithAnswer(id: string, source: "check" | "sweep" = "check", now = new Date()): Promise<{ mp: MobilePayment; answered: boolean; ntzsStatus: string | null; error: string | null }> {
   const mp = await db.mobilePayment.findUnique({ where: { id } });
-  if (!mp) throw new AppError("Payment prompt not found.", "NOT_FOUND");
+  if (!mp) throw new AppError("Payment request not found.", "NOT_FOUND");
   if (mp.status === "COMPLETED" || !mp.depositId) return { mp, answered: false, ntzsStatus: null, error: mp.depositId ? null : "nTZS gave no reference for this request" };
   await db.mobilePayment.update({ where: { id }, data: { lastCheckedAt: now } });
   const res = await getNtzsDeposit(mp.depositId);
@@ -324,7 +324,7 @@ export async function checkMobilePayment(id: string, source: "check" | "sweep" =
 /** Staff stop waiting (the customer will pay another way). If the money still comes in, it is recorded all the same. */
 export async function cancelMobilePayment(id: string, actor: Actor) {
   const mp = await db.mobilePayment.findUnique({ where: { id } });
-  if (!mp) throw new AppError("Payment prompt not found.", "NOT_FOUND");
+  if (!mp) throw new AppError("Payment request not found.", "NOT_FOUND");
   if (mp.status !== "PENDING") return mp;
   // Paid already (the customer approved just now)? Then it is recorded, not cancelled — nobody collects it again.
   const asked = mp.depositId ? await checkMobilePayment(id).catch(() => mp) : mp;

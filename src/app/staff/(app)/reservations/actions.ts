@@ -295,7 +295,7 @@ export async function createReservationAction(input: z.input<typeof CreateSchema
     const { prompt, ...data } = parseInput(CreateSchema, input);
     if (data.checkInNow && !user.permissions.has("reservations.check_in")) throw new AppError("You cannot check guests in.", "FORBIDDEN");
     if ((data.payment || prompt) && !user.permissions.has("payments.record")) throw new AppError("You cannot record payments.", "FORBIDDEN");
-    if (prompt && data.payment) throw new AppError("Choose one way to pay — at the desk, or a prompt to the phone.", "VALIDATION");
+    if (prompt && data.payment) throw new AppError("Choose one way to pay — mobile money or another payment method.", "VALIDATION");
     const actor = await actorFor(user);
     const r = await createReservation(
       {
@@ -313,7 +313,7 @@ export async function createReservationAction(input: z.input<typeof CreateSchema
         const mp = await requestMobilePayment({ purpose: "RESERVATION", reservationId: r.id, amount: prompt.amount }, prompt.phone, { ...actor, userId: user.id });
         sent = { id: mp.id };
       } catch (e) {
-        promptError = e instanceof AppError ? e.message : "The prompt could not be sent.";
+        promptError = e instanceof AppError ? e.message : "The payment request could not be sent.";
       }
     }
     refresh();

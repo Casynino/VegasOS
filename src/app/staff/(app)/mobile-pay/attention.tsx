@@ -20,7 +20,7 @@ export function MobileMoneyAttention({ rows }: { rows: AttentionRow[] }) {
   return (
     <section id="ntzs" className="scroll-mt-24 rounded-3xl border border-amber-500/40 bg-amber-500/[0.06] p-4 sm:p-5">
       <h2 className="flex items-center gap-2 text-base font-semibold"><AlertTriangle className="size-4 text-amber-600 dark:text-amber-300" />Mobile money to check <span className="text-sm font-normal text-muted-foreground">({rows.length})</span></h2>
-      <p className="mt-0.5 text-xs text-muted-foreground">Money that came in by an nTZS prompt but did not fit the bill. Refund it, record it by hand or put it on the right bill — then say what you did.</p>
+      <p className="mt-0.5 text-xs text-muted-foreground">Mobile money (nTZS) that came in but did not fit the bill. Refund it, record it by hand or put it on the right bill — then say what you did.</p>
       <ul className="mt-3 space-y-2">{rows.map((r) => <Row key={r.id} r={r} />)}</ul>
     </section>
   );

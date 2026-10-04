@@ -35,7 +35,7 @@ export async function sendStayPromptAction(input: { reservationId: string; amoun
     const d = parseInput(z.object({ reservationId: z.string().min(1).max(40), amount: z.coerce.number().int().positive("Enter the amount."), phone: z.string().trim().max(30).optional() }), input);
     let phone = d.phone;
     if (!phone) phone = (await db.reservation.findUnique({ where: { id: d.reservationId }, select: { guest: { select: { phone: true } } } }))?.guest.phone ?? "";
-    if (!phone) throw new AppError("Enter the guest's mobile-money number.", "VALIDATION", { phone: "Required" });
+    if (!phone) throw new AppError("Enter the guest's phone number.", "VALIDATION", { phone: "Required" });
     const mp = await requestMobilePayment({ purpose: "RESERVATION", reservationId: d.reservationId, amount: d.amount }, phone, await actor(user));
     return { ...view(mp), instructions: mp.instructions };
   });

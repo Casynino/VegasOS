@@ -737,7 +737,7 @@ async function payOrderTx(tx: Tx, id: string, input: PayInput, actor: Actor, now
   const updated = await refreshPaymentTx(tx, id);
   await tx.restaurantOrderEvent.create({
     data: { orderId: id, from: o.status, to: o.status, ...by(actor), at: now, note: opts.viaNtzs
-      ? `Paid by mobile money (nTZS prompt) · TZS ${amount.toLocaleString("en-US")}${reference ? ` · Ref ${reference}` : ""} · confirmed by nTZS`
+      ? `Paid by mobile money (nTZS) · TZS ${amount.toLocaleString("en-US")}${reference ? ` · Ref ${reference}` : ""} · confirmed by nTZS`
       : auto
       ? `Paid online by the customer · TZS ${amount.toLocaleString("en-US")} · ${paid.account.name}${reference ? ` · Ref ${reference}` : ""} · recorded automatically`
       : `Payment received${atCounter ? " at the Restaurant Counter" : ""} · TZS ${amount.toLocaleString("en-US")} · ${paid.account.name}${reference ? ` · Ref ${reference}` : ""}${broughtBy ? ` · brought by ${broughtBy.fullName.replace(/\s*\(.*\)/, "")}` : ""}${confirmed ? "" : " · waiting to be confirmed"}` },

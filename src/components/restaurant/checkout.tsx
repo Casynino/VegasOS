@@ -103,7 +103,7 @@ function WayRow({ on, onSelect, icon: Icon, title, sub, children }: {
 /** "Pay now" opened: the number, three small steps, and who carries the payment — few words. */
 function PayNowDetails({ phone, setPhone, after }: { phone: string; setPhone: (v: string) => void; after: { text: string; icon: typeof Receipt } }) {
   const ok = payPhoneOk(phone);
-  const steps: { text: string; icon: typeof Receipt }[] = [{ text: "Get the prompt", icon: BellRing }, { text: "Enter your PIN", icon: KeyRound }, after];
+  const steps: { text: string; icon: typeof Receipt }[] = [{ text: "Check your phone", icon: BellRing }, { text: "Enter your PIN", icon: KeyRound }, after];
   return (
     <div className="space-y-4 rounded-2xl bg-(--vr-card) p-3.5 shadow-[0_10px_28px_-22px_rgba(29,23,18,0.9)] ring-1 ring-(--vr-line)">
       <label className="block">

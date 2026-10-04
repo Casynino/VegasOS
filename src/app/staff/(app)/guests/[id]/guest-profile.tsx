@@ -286,7 +286,7 @@ export async function GuestProfile({ id, user }: { id: string; user: CurrentUser
 
           {/* Online payments (nTZS) — what they paid online, and attempts that did not go through */}
           {online.length > 0 && (
-            <Card title="Online payments" count={online.length} sub="Paid by mobile money through NTZS — online by the customer, or a prompt sent by staff.">
+            <Card title="Online payments" count={online.length} sub="Paid by mobile money through NTZS — paid online by the customer, or a payment request sent by staff.">
               <ul className="divide-y divide-border/60">
                 {online.map((m) => (
                   <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">

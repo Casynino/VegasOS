@@ -219,7 +219,7 @@ export function BookingForm(props: {
     if (!guest.fullName.trim()) return toast.error("Enter the guest's name.");
     if (!validPhone(guest.phone)) { document.getElementById("g-phone")?.focus(); return toast.error("Enter the guest's phone number — the booking details are sent to it."); }
     if (lines.length === 0) return toast.error("Add at least one room.");
-    if (payMethod === PROMPT && payNow > 0 && !validPhone((promptPhone ?? guest.phone).trim())) return toast.error("Enter the guest's mobile-money number for the prompt.");
+    if (payMethod === PROMPT && payNow > 0 && !validPhone((promptPhone ?? guest.phone).trim())) return toast.error("Enter the guest's phone number to send the payment request.");
     if (extras.some((x) => !x.item.trim() || !(Number(x.unitPrice) > 0))) return toast.error("Give each room-service item a name and a price.");
     if (pinned && !pinnedFree) return toast.error(`Room ${pinned.number} is not free for these dates. Change the dates, or choose "Any room".`);
     if (overCredit && !props.canApproveCredit) return toast.error(`${company!.companyName} does not have enough credit left. Ask a manager to approve it.`);
@@ -251,8 +251,8 @@ export function BookingForm(props: {
         companyName: meetingMode ? companyName.trim() || undefined : undefined,
       });
       if (res.ok) {
-        toast.success(`${checkInNow ? "Checked in" : "Reserved"} — ${res.data.reference}${res.data.prompt ? " · prompt sent to the phone" : ""}`);
-        if (res.data.promptError) toast.error(`The prompt was not sent: ${res.data.promptError} Send it again from the booking.`, { duration: 10000 });
+        toast.success(`${checkInNow ? "Checked in" : "Reserved"} — ${res.data.reference}${res.data.prompt ? " · payment request sent to their phone" : ""}`);
+        if (res.data.promptError) toast.error(`The payment request was not sent: ${res.data.promptError} Send it again from the booking.`, { duration: 10000 });
         // Straight to the booking with the WhatsApp message ready (booking details, or the welcome for a walk-in) —
         // and, after "Send to phone", watching that payment until the guest approves it.
         const q = new URLSearchParams(meetingMode ? {} : { sent: checkInNow ? "welcome" : "new" });
@@ -905,20 +905,24 @@ export function BookingForm(props: {
               <div className="space-y-2.5 rounded-2xl border border-border/70 p-3.5">
                 <p className="flex items-center justify-between text-xs font-semibold">
                   <span className="inline-flex items-center gap-1.5"><Wallet className="size-3.5" />{checkInNow ? "Payment" : "Deposit"}</span>
-                  <span className="font-normal text-muted-foreground">{checkInNow ? "Paid at the desk?" : "Optional"}</span>
+                  {!checkInNow && <span className="font-normal text-muted-foreground">Optional</span>}
                 </p>
-                {/* The main way: a prompt to the guest's phone (nTZS) — paid there, recorded by itself */}
+                {/* The main way: a payment request to the guest's phone (nTZS) — they pay there, it is recorded automatically */}
                 {props.mobilePay && (
-                  <button type="button" aria-pressed={payMethod === PROMPT} onClick={() => setPayMethod(PROMPT)}
-                    className={cn("flex w-full items-center gap-2.5 rounded-xl border p-2.5 text-left transition", payMethod === PROMPT ? "border-sky-500/60 bg-sky-500/[0.09]" : "border-border hover:bg-muted")}>
-                    <span className={cn("grid size-9 shrink-0 place-items-center rounded-lg", payMethod === PROMPT ? "bg-sky-600 text-white" : "bg-sky-500/12 text-sky-600 dark:text-sky-300")}><Smartphone className="size-4" /></span>
-                    <span className="min-w-0 flex-1 leading-tight"><span className="block text-sm font-semibold">Send to phone</span><NetworkMarks label={null} compact className="mt-1" /></span>
-                    {payMethod === PROMPT && <CheckCircle2 className="size-4 shrink-0 text-sky-600 dark:text-sky-300" />}
-                  </button>
+                  <div className={cn("rounded-xl border p-2.5 transition", payMethod === PROMPT ? "border-sky-500/60 bg-sky-500/[0.09]" : "border-border hover:bg-muted")}>
+                    <button type="button" aria-pressed={payMethod === PROMPT} onClick={() => setPayMethod(PROMPT)} className="flex w-full items-center gap-2.5 text-left">
+                      <span className={cn("grid size-9 shrink-0 place-items-center rounded-lg", payMethod === PROMPT ? "bg-sky-600 text-white" : "bg-sky-500/12 text-sky-600 dark:text-sky-300")}><Smartphone className="size-4" /></span>
+                      <span className="min-w-0 flex-1 leading-tight"><span className="block text-sm font-semibold">Mobile money</span><NetworkMarks label={null} compact className="mt-1" /></span>
+                      {payMethod === PROMPT && <CheckCircle2 className="size-4 shrink-0 text-sky-600 dark:text-sky-300" />}
+                    </button>
+                    {payMethod === PROMPT && (
+                      <Input aria-label="Guest's phone number" type="tel" inputMode="tel" value={promptPhone ?? guest.phone} onChange={(e) => setPromptPhone(e.target.value)} placeholder="Phone number, e.g. 0712 345 678" className="mt-2.5 h-10 text-sm tabular-nums" />
+                    )}
+                  </div>
                 )}
-                {props.mobilePay && <p className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Or taken at the desk</p>}
+                {props.mobilePay && <p className="pt-0.5 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Other payment methods</p>}
                 <div className="flex flex-wrap gap-1.5">
-                  <button type="button" aria-pressed={!payMethod} onClick={() => setPayMethod(null)}
+                  <button type="button" aria-pressed={!payMethod} onClick={() => setPayMethod(null)} title="No payment now"
                     className={cn("rounded-lg border px-2.5 py-1.5 text-xs font-medium", !payMethod ? "border-foreground bg-foreground text-background" : "border-border hover:bg-muted")}>Not now</button>
                   {props.methods.map((m) => (
                     <button key={m.id} type="button" aria-pressed={payMethod === m.id}
@@ -926,20 +930,17 @@ export function BookingForm(props: {
                       className={cn("rounded-lg border px-2.5 py-1.5 text-xs font-medium", payMethod === m.id ? "border-emerald-600 bg-emerald-600 text-white" : "border-border hover:bg-muted")}>{m.name}</button>
                   ))}
                 </div>
-                {payMethod === PROMPT && (
-                  <Input aria-label="Guest's mobile-money number" type="tel" inputMode="tel" value={promptPhone ?? guest.phone} onChange={(e) => setPromptPhone(e.target.value)} placeholder="Their number, e.g. 0712 345 678" className="h-10 text-sm tabular-nums" />
-                )}
                 {payMethod && (
                   <>
                     <div className="grid grid-cols-[1fr_auto] gap-2">
-                      <Input aria-label="Amount received" type="number" min={1} step={1000} value={payAmount === "" ? String(guestPart) : payAmount} onChange={(e) => setPayAmount(e.target.value)} className="h-10 text-base font-semibold tabular-nums" />
+                      <Input aria-label={payMethod === PROMPT ? "Amount to request" : "Amount received"} type="number" min={1} step={1000} value={payAmount === "" ? String(guestPart) : payAmount} onChange={(e) => setPayAmount(e.target.value)} className="h-10 text-base font-semibold tabular-nums" />
                       <button type="button" onClick={() => setPayAmount("")} className={cn("rounded-lg border px-2.5 text-xs font-medium", payAmount === "" ? "border-emerald-600 text-emerald-700 dark:text-emerald-300" : "border-border hover:bg-muted")}>Full</button>
                     </div>
                     {payMethod !== PROMPT && <Input aria-label="Reference" value={payRef} onChange={(e) => setPayRef(e.target.value)} placeholder="M-Pesa / bank ref (optional)" className="h-9 text-xs" />}
                     {(() => {
                       const paid = payNow;
                       // A prompt is not money yet: say what will be asked for.
-                      if (payMethod === PROMPT && paid <= guestPart) return <p className="text-xs font-medium text-sky-700 dark:text-sky-300">Asks for {formatTZS(paid)}{paid < guestPart ? ` — ${formatTZS(guestPart - paid)} left after` : " — the full amount"}</p>;
+                      if (payMethod === PROMPT && paid <= guestPart) return <p className="text-xs font-medium text-sky-700 dark:text-sky-300">{paid < guestPart ? `Requests ${formatTZS(paid)} — ${formatTZS(guestPart - paid)} still to pay after` : `Requests the full ${formatTZS(paid)}`}</p>;
                       if (paid > guestPart) return <p className="text-xs font-medium text-rose-600 dark:text-rose-400">More than the {companyPart > 0 ? "guest's part" : "total"} ({formatTZS(guestPart)}).</p>;
                       if (paid === guestPart) return <p className="flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400"><CheckCircle2 className="size-3.5" />Fully paid</p>;
                       return <p className="text-xs text-amber-700 dark:text-amber-400">Still owes {formatTZS(guestPart - paid)}</p>;
@@ -962,13 +963,13 @@ export function BookingForm(props: {
             <Button className="h-12 w-full rounded-2xl text-sm font-semibold" onClick={submit} disabled={saving || lines.length === 0 || payNow > guestPart || (overCredit && !props.canApproveCredit)}>
               {saving ? <Loader2 className="animate-spin" /> : checkInNow ? <LogIn /> : <CalendarCheck />}
               {payNow > 0 && payMethod === PROMPT
-                ? `${checkInNow ? "Check in" : "Save"} & send ${formatTZS(payNow)} to phone`
+                ? `${checkInNow ? "Check in" : "Save"} & request ${formatTZS(payNow)}`
                 : payNow > 0
                 ? `Receive ${formatTZS(payNow)} & ${checkInNow ? "check in" : "save"}`
                 : checkInNow ? "Check in now" : "Save reservation"}
             </Button>
             <p className="text-center text-[11px] text-muted-foreground">
-              {payMethod === PROMPT ? "The booking is saved, then the prompt goes to the phone — paid there, the booking is confirmed by itself."
+              {payMethod === PROMPT ? `The guest gets a payment request on their phone and confirms it with their PIN. Once paid, it is recorded automatically${checkInNow ? "" : " and the booking is confirmed"}.`
                 : payMethod ? "Booking and payment are saved together — the booking is confirmed."
                 : checkInNow ? "You can also receive the payment later on the stay screen."
                   : companyPart > 0 ? "Billed to the company — the booking is confirmed."

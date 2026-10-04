@@ -176,7 +176,7 @@ export function MeetingBooking({ today, price, capacity, online = false }: { tod
                   {paying ? <Loader2 className="size-4 animate-spin" /> : <Smartphone className="size-4" />} Pay TZS {n(fresh.price)} & confirm
                 </button>
                 <NetworkMarks />
-                <p className="text-xs leading-relaxed text-tone/60">A prompt comes to your phone — enter your PIN to approve. The time is held for you while you pay.</p>
+                <p className="text-xs leading-relaxed text-tone/60">You will get a payment request on your phone — enter your PIN to pay. The time is held for you while you pay.</p>
                 <p className="flex items-center gap-1.5 text-[11px] font-medium text-tone/55"><ShieldCheck className="size-3.5 text-accent-ink" />Secure payment powered by NTZS</p>
                 <button type="submit" disabled={booking || paying} className="text-sm font-medium text-tone/70 underline-offset-4 hover:text-tone hover:underline">
                   {booking ? "Sending your request…" : "Or send a request — pay at the hotel"}

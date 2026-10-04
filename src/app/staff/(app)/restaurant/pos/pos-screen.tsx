@@ -240,7 +240,7 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
     : settlement === "UNPAID" ? (type === "ROOM_SERVICE"
       ? `The guest pays when it arrives — ${canPay ? "record the payment then." : "the Restaurant Counter records the payment."}`
       : `The customer pays when it is served — ${canPay ? "record the payment on the order then." : "the Restaurant Counter records the payment."}`)
-    : viaPhone ? "A prompt goes to their phone — they enter their PIN, and it is recorded by itself."
+    : viaPhone ? "The customer gets a payment request on their phone and confirms it with their PIN. It is recorded automatically."
     : "Paid now — the money goes into the account you pick.";
 
   return (
@@ -510,16 +510,16 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
                     <div className={cn("rounded-2xl border p-3 transition", viaPhone ? "border-sky-500/60 bg-sky-500/[0.08]" : "border-border")}>
                       <button type="button" onClick={() => { pickedAccount.current = true; setAccountId(PROMPT); }} aria-pressed={viaPhone} className="flex w-full items-center gap-2.5 text-left">
                         <span className={cn("grid size-9 shrink-0 place-items-center rounded-xl", viaPhone ? "bg-sky-600 text-white" : "bg-sky-500/12 text-sky-600 dark:text-sky-300")}><Smartphone className="size-4" /></span>
-                        <span className="min-w-0 flex-1 leading-tight"><span className="block text-sm font-semibold">Send to phone</span><NetworkMarks label={null} compact className="mt-1" /></span>
+                        <span className="min-w-0 flex-1 leading-tight"><span className="block text-sm font-semibold">Mobile money</span><NetworkMarks label={null} compact className="mt-1" /></span>
                         {viaPhone && <Check className="size-4 shrink-0 text-sky-600 dark:text-sky-300" />}
                       </button>
                       {viaPhone && (
-                        <input value={promptPhone ?? (sameCustomer ? tableCustomer?.phone ?? "" : phone)} onChange={(e) => setPromptPhone(e.target.value)} type="tel" inputMode="tel" aria-label="Their mobile-money number"
-                          placeholder="Their number, e.g. 0712 345 678" className={cn(field, "mt-2.5 h-10 tabular-nums")} />
+                        <input value={promptPhone ?? (sameCustomer ? tableCustomer?.phone ?? "" : phone)} onChange={(e) => setPromptPhone(e.target.value)} type="tel" inputMode="tel" aria-label="Customer's phone number"
+                          placeholder="Phone number, e.g. 0712 345 678" className={cn(field, "mt-2.5 h-10 tabular-nums")} />
                       )}
                     </div>
                   )}
-                  {mobileOk && <p className="pt-0.5 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Or taken by hand</p>}
+                  {mobileOk && <p className="pt-0.5 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Other payment methods</p>}
                   <div className="grid grid-cols-2 gap-1.5">
                     {accounts.map((a) => (
                       <button key={a.id} type="button" onClick={() => { pickedAccount.current = true; setAccountId(a.id); }} aria-pressed={accountId === a.id}
@@ -548,7 +548,7 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
                 ready ? "bg-linear-to-b from-[oklch(0.87_0.085_86)] to-[oklch(0.7_0.12_76)] text-[oklch(0.2_0.03_60)] shadow-[0_10px_24px_-12px_oklch(0.7_0.12_80)] ring-1 ring-inset ring-white/30 hover:brightness-105" : "bg-muted text-muted-foreground")}>
               {pending ? <Loader2 className="animate-spin" /> : joining ? <Plus /> : <ChefHat />}{lines.length ? joining ? `Add to ${shortNo(joining.number)} · ${formatTZS(total)}` : `Send to kitchen · ${formatTZS(total)}` : "Add items to the order"}
             </motion.button>
-            {lines.length > 0 && !ready && <p className="text-center text-[11px] text-muted-foreground">{needsGuest && !guest ? (hotelOnly ? "Pick the hotel guest's room first — reception orders are for guests staying here." : "Choose the guest's room first.") : roomByStay && !stay ? (ownStays.length ? (settlement === "ROOM" ? "Tap the customer's room to charge it." : "Tap the customer's room — the food goes there.") : noRoom) : !phoneOk ? "Add the customer's phone — every order needs one." : viaPhone ? "Enter their mobile-money number for the prompt." : "Choose the account the money goes into."}</p>}
+            {lines.length > 0 && !ready && <p className="text-center text-[11px] text-muted-foreground">{needsGuest && !guest ? (hotelOnly ? "Pick the hotel guest's room first — reception orders are for guests staying here." : "Choose the guest's room first.") : roomByStay && !stay ? (ownStays.length ? (settlement === "ROOM" ? "Tap the customer's room to charge it." : "Tap the customer's room — the food goes there.") : noRoom) : !phoneOk ? "Add the customer's phone — every order needs one." : viaPhone ? "Enter the customer's phone number to send the payment request." : "Choose the account the money goes into."}</p>}
           </footer>
         </aside>
       </div>
@@ -570,7 +570,7 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
               </ul>
               {sent.settlement === "PROMPT" ? (
                 <>
-                  {sent.promptError && <p className="rounded-xl bg-rose-500/10 px-3 py-2 text-xs text-rose-700 dark:text-rose-300">The prompt did not go: {sent.promptError} Send it again below.</p>}
+                  {sent.promptError && <p className="rounded-xl bg-rose-500/10 px-3 py-2 text-xs text-rose-700 dark:text-rose-300">The payment request was not sent: {sent.promptError} Send it again below.</p>}
                   <SendToPhone target={{ kind: "orders", orderIds: [sent.id] }} amount={sent.total} phone={sent.promptPhone ?? ""} resume={sent.prompt ?? null} />
                 </>
               ) : <p className="text-center text-xs text-muted-foreground">{sent.added ? "The kitchen has the new items — the bill shows everything." : sent.settlement === "ROOM" ? "On the room bill — paid at check-out." : sent.settlement === "PAY_NOW" ? "Paid." : "Not paid yet — print the bill for the customer when they are ready to pay."}</p>}

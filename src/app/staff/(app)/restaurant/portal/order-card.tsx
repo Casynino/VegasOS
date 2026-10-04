@@ -447,7 +447,7 @@ export function OrderCard({ o, perms, now, fresh, accounts, rooms, drag, roomy, 
   const prompt = !payingNow && unpaid;
   const byHand = (
     <>
-      <p className="mb-1.5 mt-3.5 text-xs font-semibold text-muted-foreground">{prompt ? "Received by hand through" : "How are they paying?"}</p>
+      <p className="mb-1.5 mt-3.5 text-xs font-semibold text-muted-foreground">{prompt ? "Paid another way" : "How are they paying?"}</p>
       <AccountPicker accounts={accounts} value={account} onChange={setAccount} />
       <label className="mb-1.5 mt-3.5 block text-xs font-semibold text-muted-foreground" htmlFor={`ref-${o.id}`}>Reference (M-Pesa code, card slip) — optional</label>
       <Input id={`ref-${o.id}`} value={reference} onChange={(e) => setReference(e.target.value)} placeholder="e.g. SGH4K2L9PQ" className="h-10 font-mono text-sm uppercase placeholder:normal-case" />

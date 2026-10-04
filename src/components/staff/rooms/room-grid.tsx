@@ -623,7 +623,7 @@ export function CheckOutHere({ stay, roomNumber, methods, canPay, canCharge, can
             <div className="space-y-2">
               {/* The guest pays by mobile money from their phone: once recorded, the bill above updates — then check out. */}
               {stay.balance > 0 && <SendToPhone target={{ kind: "stay", reservationId: stay.reservationId }} amount={Math.min(bill.balance, stay.balance)} editableAmount phone={stay.guestPhone} who={stay.guestName} primary />}
-              {stay.balance > 0 && bill.balance > stay.balance && <p className="text-[11px] text-muted-foreground">A phone prompt covers up to {formatTZS(stay.balance)} — the extra night{bill.overstayNights === 1 ? "" : "s"} ({formatTZS(bill.balance - stay.balance)}) are received at check-out.</p>}
+              {stay.balance > 0 && bill.balance > stay.balance && <p className="text-[11px] text-muted-foreground">The mobile money request covers up to {formatTZS(stay.balance)} — the extra night{bill.overstayNights === 1 ? "" : "s"} ({formatTZS(bill.balance - stay.balance)}) are received at check-out.</p>}
               <OtherWays label="Or receive cash, LIPA or bank" fold={stay.balance > 0}>
               <div className="flex flex-wrap gap-1.5">
                 {methods.map((m) => (

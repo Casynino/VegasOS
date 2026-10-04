@@ -63,7 +63,7 @@ export function BillPayOnline({ due, live, action }: {
         {pending ? <Loader2 className="size-4 animate-spin" /> : <Smartphone className="size-4" />}Pay {tzs(due)} now
       </button>
       <NetworkMarks center />
-      <p className="text-center text-[11.5px] text-black/55">A prompt comes to your phone — enter your PIN to approve.</p>
+      <p className="text-center text-[11.5px] text-black/55">You will get a payment request on your phone — enter your PIN to pay.</p>
       <p className="flex items-center justify-center gap-1.5 text-[11px] font-medium text-black/50"><ShieldCheck className="size-3.5 text-[#9a7428]" />Secure payment powered by NTZS</p>
     </section>
   );
