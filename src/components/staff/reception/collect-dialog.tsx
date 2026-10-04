@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatTZS } from "@/lib/format";
 import type { PayAccount } from "@/lib/pay-account";
-import { SendToPhone } from "@/components/staff/mobile-pay";
+import { OtherWays, SendToPhone } from "@/components/staff/mobile-pay";
 
 /**
  * COLLECT, right where the guest is listed: a small window with the amount owed already filled in, how it was received
@@ -34,6 +34,9 @@ export function CollectButton({ reservationId, guest, rooms, outstanding, owedSo
             <DialogTitle>{guest}</DialogTitle>
             <DialogDescription>Room {rooms} · owes {formatTZS(outstanding)}{owedSoFar !== outstanding ? ` (${formatTZS(owedSoFar)} for the nights so far)` : ""}</DialogDescription>
           </DialogHeader>
+          {/* The main way: a prompt to the guest's phone (nTZS) — recorded by itself; cash, LIPA or bank folded below. */}
+          <SendToPhone target={{ kind: "stay", reservationId }} amount={outstanding} editableAmount phone={phone} who={guest} onPaid={() => setOpen(false)} primary />
+          <OtherWays>
           <ActionForm action={recordPaymentAction} resetOnSuccess onSuccess={() => { setOpen(false); router.refresh(); }} className="space-y-3">
             {({ pending, fieldErrors: e }) => (
               <>
@@ -53,8 +56,7 @@ export function CollectButton({ reservationId, guest, rooms, outstanding, owedSo
               </>
             )}
           </ActionForm>
-          <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.14em] text-muted-foreground"><span className="h-px flex-1 bg-border" />or<span className="h-px flex-1 bg-border" /></div>
-          <SendToPhone target={{ kind: "stay", reservationId }} amount={outstanding} editableAmount phone={phone} who={guest} onPaid={() => setOpen(false)} />
+          </OtherWays>
         </DialogContent>
       </Dialog>
     </>

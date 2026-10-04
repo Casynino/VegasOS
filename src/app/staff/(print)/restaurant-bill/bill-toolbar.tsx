@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AccountSelect } from "@/components/staff/finance/account-select";
-import { SendToPhone } from "@/components/staff/mobile-pay";
+import { OtherWays, SendToPhone } from "@/components/staff/mobile-pay";
 import { BroughtBySelect } from "@/components/staff/brought-by-select";
 import { ReceiptActions } from "@/components/ordering/receipt-actions";
 import type { PayAccount } from "@/lib/pay-account";
@@ -60,7 +60,7 @@ export function BillToolbar({ orderId, scope, can, place, room, count, fileName,
       <ReceiptActions fileName={fileName} onDone={(how) => { void logBillPrintedAction({ orderId, how, total, scope }); }} />
       {pay && due > 0 && (
         <Button onClick={() => setPaying(true)} className="h-11 w-full bg-linear-to-b from-[oklch(0.87_0.085_86)] to-[oklch(0.7_0.12_76)] text-[15px] font-semibold text-[oklch(0.2_0.03_60)] hover:brightness-105">
-          <Wallet />Record payment · TZS {due.toLocaleString("en-US")}
+          <Wallet />Take payment · TZS {due.toLocaleString("en-US")}
         </Button>
       )}
       {!pay && due > 0 && <p className="text-center text-xs text-black/55">The Restaurant Counter records the payment.</p>}
@@ -77,12 +77,16 @@ export function BillToolbar({ orderId, scope, can, place, room, count, fileName,
             <DialogTitle>Payment · TZS {due.toLocaleString("en-US")}</DialogTitle>
             <DialogDescription>Pays {unpaid.length} unpaid order{unpaid.length === 1 ? "" : "s"} on this bill — recorded as restaurant and bar income into the account you choose.</DialogDescription>
           </DialogHeader>
-          {pay && <AccountSelect accounts={pay} value={account} onChange={setAccount} />}
-          <Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Reference (M-Pesa code / card slip) — optional" />
-          {paying && <BroughtBySelect value={broughtBy} onChange={setBroughtBy} prefill={waiterId} />}
-          <Button disabled={pending || !account} onClick={record}>{pending && <Loader2 className="animate-spin" />}Record TZS {due.toLocaleString("en-US")}</Button>
-          {/* Or a mobile-money prompt to the customer's phone for the whole bill — recorded by itself when they approve. */}
-          {unpaid.length > 0 && due > 0 && <SendToPhone target={{ kind: "orders", orderIds: unpaid, handedOverById: broughtBy || null }} amount={due} onPaid={() => setPaying(false)} />}
+          {/* The main way: a prompt to the customer's phone for the whole bill — recorded by itself when they approve. */}
+          {unpaid.length > 0 && due > 0 && <SendToPhone target={{ kind: "orders", orderIds: unpaid, handedOverById: broughtBy || null }} amount={due} onPaid={() => setPaying(false)} primary />}
+          <OtherWays>
+            <div className="grid gap-3">
+              {pay && <AccountSelect accounts={pay} value={account} onChange={setAccount} />}
+              <Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Reference (M-Pesa code / card slip) — optional" />
+              {paying && <BroughtBySelect value={broughtBy} onChange={setBroughtBy} prefill={waiterId} />}
+              <Button disabled={pending || !account} onClick={record}>{pending && <Loader2 className="animate-spin" />}Record TZS {due.toLocaleString("en-US")}</Button>
+            </div>
+          </OtherWays>
         </DialogContent>
       </Dialog>
     </div>

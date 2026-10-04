@@ -7,7 +7,7 @@ import { Ban, CalendarPlus, CalendarRange, Check, CheckCircle2, Clock, FileText,
 import type { ActionResult } from "@/server/errors";
 import { formatBusinessDate, formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { SendToPhone } from "@/components/staff/mobile-pay";
+import { OtherWays, SendToPhone } from "@/components/staff/mobile-pay";
 import { ActionForm, FieldError } from "@/components/staff/action-form";
 import { Button, buttonVariants } from "@/components/ui/button";
 import Link from "next/link";
@@ -327,17 +327,21 @@ function DiscountDialog({ reservationId, room, onClose }: { reservationId: strin
   );
 }
 
-export function PaymentPanel({ reservationId, balance, paid, methods, canRefund, phone = null, who = null }: {
+export function PaymentPanel({ reservationId, balance, paid, methods, canRefund, phone = null, who = null, resume = null }: {
   reservationId: string; balance: number; paid: number; methods: PayAccount[]; canRefund: boolean;
   /** The guest's phone and name — for a mobile-money prompt. */
   phone?: string | null; who?: string | null;
+  /** A prompt sent as the booking was made, still waiting — followed here until the guest pays. */
+  resume?: { id: string; amount: number; phone: string } | null;
 }) {
   const router = useRouter();
   const [refund, setRefund] = useState(false);
   if (balance <= 0 && !(canRefund && paid > 0)) return null;
   return (
     <>
-    <ActionForm action={recordPaymentAction} resetOnSuccess onSuccess={() => { setRefund(false); router.refresh(); }} className="mt-3 space-y-2 border-t pt-3">
+    {(balance > 0 || resume) && !refund && <SendToPhone target={{ kind: "stay", reservationId }} amount={balance} editableAmount phone={phone} who={who} resume={resume} className="mt-3" primary />}
+    <OtherWays label="Or record a payment or refund by hand" className="mt-2" fold={balance > 0 || !!resume}>
+    <ActionForm action={recordPaymentAction} resetOnSuccess onSuccess={() => { setRefund(false); router.refresh(); }} className="space-y-2">
       {({ pending, fieldErrors: e }) => (
         <>
           <input type="hidden" name="reservationId" value={reservationId} />
@@ -358,7 +362,7 @@ export function PaymentPanel({ reservationId, balance, paid, methods, canRefund,
         </>
       )}
     </ActionForm>
-    {balance > 0 && !refund && <SendToPhone target={{ kind: "stay", reservationId }} amount={balance} editableAmount phone={phone} who={who} className="mt-2" />}
+    </OtherWays>
     </>
   );
 }

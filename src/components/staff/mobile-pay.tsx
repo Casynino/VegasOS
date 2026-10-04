@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Check, Loader2, Smartphone, X } from "lucide-react";
+import { Check, ChevronDown, Loader2, Smartphone, X } from "lucide-react";
+import { NetworkMarks } from "@/components/payments/networks";
 import { cancelPromptAction, mobilePayAvailableAction, promptStatusAction, sendOrdersPromptAction, sendStayPromptAction } from "@/app/staff/(app)/mobile-pay/actions";
 import { cn } from "@/lib/utils";
 
@@ -13,7 +14,7 @@ const GIVE_UP_MS = 10 * 60_000;
 
 // Asked once per page: is nTZS set up, and does this person take payments?
 let availability: Promise<boolean> | null = null;
-function useMobilePayAvailable() {
+export function useMobilePayAvailable() {
   const [ok, setOk] = useState(false);
   useEffect(() => {
     let alive = true;
@@ -31,7 +32,7 @@ type Waiting = { id: string; amount: number; phone: string; status: string; note
  * They approve it on their phone; the payment is recorded by itself (on the guest's bill, or the order / table bill)
  * and the screen updates. Shown only where nTZS is set up and to those who take payments.
  */
-export function SendToPhone({ target, amount, phone = "", editableAmount = false, who, onPaid, className }: {
+export function SendToPhone({ target, amount, phone = "", editableAmount = false, who, onPaid, className, resume = null, primary = false }: {
   target: Target;
   /** The amount to ask for (a guest's bill: up to what they owe, changeable when `editableAmount`). */
   amount: number;
@@ -42,15 +43,20 @@ export function SendToPhone({ target, amount, phone = "", editableAmount = false
   who?: string | null;
   onPaid?: () => void;
   className?: string;
+  /** A prompt already sent (e.g. as the booking was made): followed from the start. */
+  resume?: { id: string; amount: number; phone: string } | null;
+  /** The main way to pay here (owner, 2026-10-05: nTZS first, cash/LIPA/bank as other ways): shown open, ready to send. */
+  primary?: boolean;
 }) {
   const available = useMobilePayAvailable();
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(primary);
   const [number, setNumber] = useState(phone ?? "");
   const [ask, setAsk] = useState(String(Math.max(0, Math.round(amount))));
-  const [waiting, setWaiting] = useState<Waiting | null>(null);
+  const [waiting, setWaiting] = useState<Waiting | null>(resume ? { ...resume, status: "PENDING", note: null } : null);
   const [pending, start] = useTransition();
   const startedAt = useRef(0);
+  useEffect(() => { if (resume && !startedAt.current) startedAt.current = Date.now(); }, [resume]);
   const lastAmount = useRef(amount);
   useEffect(() => {
     if (lastAmount.current !== amount) { lastAmount.current = amount; setAsk(String(Math.max(0, Math.round(amount)))); }
@@ -149,11 +155,13 @@ export function SendToPhone({ target, amount, phone = "", editableAmount = false
 
   return (
     <div className={cn("space-y-2 rounded-xl border border-sky-500/40 bg-sky-500/[0.05] p-3", className)}>
-      <div className="flex items-center justify-between gap-2">
-        <p className="flex items-center gap-1.5 text-sm font-semibold"><Smartphone className="size-4 text-sky-600 dark:text-sky-300" />Send a payment prompt</p>
-        <button type="button" onClick={() => setOpen(false)} aria-label="Close" className="grid size-7 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"><X className="size-4" /></button>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-sky-600 text-white"><Smartphone className="size-4" /></span>
+          <span className="min-w-0 leading-tight"><span className="block text-sm font-semibold">Send to phone</span><NetworkMarks label={null} compact className="mt-1" /></span>
+        </div>
+        {!primary && <button type="button" onClick={() => setOpen(false)} aria-label="Close" className="grid size-7 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"><X className="size-4" /></button>}
       </div>
-      <p className="text-[11px] text-muted-foreground">M-Pesa, Airtel Money, Mixx by Yas, HaloPesa… The customer approves it on their phone; the payment is recorded by itself.</p>
       <div className={cn("grid gap-2", editableAmount && "grid-cols-2")}>
         <input value={number} onChange={(e) => setNumber(e.target.value)} type="tel" inputMode="tel" placeholder="Their number, e.g. 0712 345 678" aria-label="Mobile-money number"
           className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-sky-500/30" />
@@ -166,6 +174,29 @@ export function SendToPhone({ target, amount, phone = "", editableAmount = false
         className="flex h-10 w-full items-center justify-center gap-1.5 rounded-lg bg-sky-600 text-sm font-semibold text-white transition hover:bg-sky-500 disabled:opacity-60">
         {pending ? <Loader2 className="size-4 animate-spin" /> : <Smartphone className="size-4" />}Send prompt · {fmt(editableAmount ? amt : amount)}
       </button>
+    </div>
+  );
+}
+
+/**
+ * The other ways to take the money (cash, LIPA, bank…) — under "Send to phone", folded away while nTZS is the main way
+ * (owner, 2026-10-05). Where nTZS is not set up they show as before.
+ */
+export function OtherWays({ children, label = "Or record cash, LIPA or bank", className, fold = true }: {
+  children: React.ReactNode; label?: string; className?: string;
+  /** False when no prompt is offered above (nothing owed): the ways by hand are shown as they are. */
+  fold?: boolean;
+}) {
+  const available = useMobilePayAvailable();
+  const [open, setOpen] = useState(false);
+  if (!available || !fold) return <div className={className}>{children}</div>;
+  return (
+    <div className={className}>
+      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open}
+        className="flex w-full items-center gap-2 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground transition hover:text-foreground">
+        <span className="h-px flex-1 bg-border" />{label}<ChevronDown className={cn("size-3.5 transition", open && "rotate-180")} /><span className="h-px flex-1 bg-border" />
+      </button>
+      {open && <div className="mt-2">{children}</div>}
     </div>
   );
 }

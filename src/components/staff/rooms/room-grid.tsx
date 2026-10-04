@@ -32,7 +32,7 @@ import { ChargeComposer, type RecentItem } from "@/components/staff/reception/ro
 import type { BillMenu } from "@/server/services/restaurant";
 import { MeetingButtons } from "@/app/staff/(app)/reservations/[id]/panels";
 import { QuickBook } from "./quick-book";
-import { SendToPhone } from "@/components/staff/mobile-pay";
+import { OtherWays, SendToPhone } from "@/components/staff/mobile-pay";
 import { RoomHistoryInline, TransportInline } from "./room-panels";
 import { InsightHeader, InsightHistory, InsightRows, MeetingInsightBody, MeetingInsightHeader, useMeetingInsight, useRoomInsight } from "./room-insight";
 import { RoomDecisions } from "@/components/staff/manager-decisions";
@@ -622,8 +622,9 @@ export function CheckOutHere({ stay, roomNumber, methods, canPay, canCharge, can
           {owes && (canPay && methods.length ? (
             <div className="space-y-2">
               {/* The guest pays by mobile money from their phone: once recorded, the bill above updates — then check out. */}
-              {stay.balance > 0 && <SendToPhone target={{ kind: "stay", reservationId: stay.reservationId }} amount={Math.min(bill.balance, stay.balance)} editableAmount phone={stay.guestPhone} who={stay.guestName} />}
+              {stay.balance > 0 && <SendToPhone target={{ kind: "stay", reservationId: stay.reservationId }} amount={Math.min(bill.balance, stay.balance)} editableAmount phone={stay.guestPhone} who={stay.guestName} primary />}
               {stay.balance > 0 && bill.balance > stay.balance && <p className="text-[11px] text-muted-foreground">A phone prompt covers up to {formatTZS(stay.balance)} — the extra night{bill.overstayNights === 1 ? "" : "s"} ({formatTZS(bill.balance - stay.balance)}) are received at check-out.</p>}
+              <OtherWays label="Or receive cash, LIPA or bank" fold={stay.balance > 0}>
               <div className="flex flex-wrap gap-1.5">
                 {methods.map((m) => (
                   <button key={m.id} type="button" onClick={() => setAccountId(m.id)} aria-pressed={accountId === m.id}
@@ -634,6 +635,7 @@ export function CheckOutHere({ stay, roomNumber, methods, canPay, canCharge, can
                 <Input aria-label="Amount received" type="number" min={0} step={1000} value={amount} onChange={(e) => setAmount(e.target.value)} className="h-9" />
                 <Input aria-label="Reference" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="M-Pesa code, receipt…" className="h-9" />
               </div>
+              </OtherWays>
               {approvedOwing && <p className="rounded-lg bg-emerald-500/10 px-2.5 py-1.5 text-[11px] text-emerald-800 dark:text-emerald-300">A manager allowed {first} to leave owing — {stay.leaveOwing!.reason}. Receive what they can pay (or nothing); the rest stays on their account.</p>}
               {short && !approvedOwing && <p className="text-[11px] text-amber-700 dark:text-amber-400">Receive the full {formatTZS(bill.balance)} to check out here. Company bills or leaving a balance: use the <Link href={`/staff/check-out?id=${stay.reservationId}#workspace`} className="underline">full checkout screen</Link>.</p>}
             </div>
@@ -879,6 +881,9 @@ function PayHere({ reservationId, balance, methods, phone = null, who = null, on
   const router = useRouter();
   return (
     <div className="space-y-2">
+    {/* The main way: a prompt to the guest's phone (nTZS) — recorded by itself when they approve. */}
+    {balance > 0 && <SendToPhone target={{ kind: "stay", reservationId }} amount={balance} editableAmount phone={phone} who={who} onPaid={onDone} primary />}
+    <OtherWays fold={balance > 0}>
     {/* Re-mounts when the balance changes (e.g. after a discount) so the amount is always the full balance. */}
     <ActionForm key={balance} action={recordPaymentAction} resetOnSuccess onSuccess={() => { onDone(); router.refresh(); }} className="space-y-3 rounded-2xl border border-border/70 bg-muted/30 p-4">
       {({ pending: saving, fieldErrors: e }) => (
@@ -895,8 +900,7 @@ function PayHere({ reservationId, balance, methods, phone = null, who = null, on
         </>
       )}
     </ActionForm>
-    {/* Or a mobile-money prompt to the guest's phone: recorded by itself when they approve. */}
-    {balance > 0 && <SendToPhone target={{ kind: "stay", reservationId }} amount={balance} editableAmount phone={phone} who={who} onPaid={onDone} />}
+    </OtherWays>
     </div>
   );
 }

@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
-  BedDouble, Check, ChefHat, CircleCheck, CircleDollarSign, HandPlatter, LayoutGrid, Loader2, Maximize2, Minus, NotebookPen, Phone, Plus, Printer, ReceiptText, Search, ShoppingBag, Store, Trash2, UserRound, UtensilsCrossed, Wine, X,
+  BedDouble, Check, ChefHat, CircleCheck, CircleDollarSign, HandPlatter, LayoutGrid, Loader2, Maximize2, Minus, NotebookPen, Phone, Plus, Printer, ReceiptText, Search, ShoppingBag, Smartphone, Store, Trash2, UserRound, UtensilsCrossed, Wine, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -15,6 +15,9 @@ import { accountDetail, type PayAccount } from "@/lib/pay-account";
 import { cn } from "@/lib/utils";
 import type { OrderingMenu } from "@/server/services/restaurant";
 import { addOrderItemsAction, createOrderAction, setOrderStatusAction } from "../actions";
+import { sendOrdersPromptAction } from "../../mobile-pay/actions";
+import { SendToPhone, useMobilePayAvailable } from "@/components/staff/mobile-pay";
+import { NetworkMarks } from "@/components/payments/networks";
 import { validPhone } from "@/lib/guest-messages";
 import { KnownCustomerNote, useKnownCustomer } from "@/components/staff/known-customer";
 import { CustomerFinder } from "@/components/staff/customer-finder";
@@ -37,7 +40,13 @@ export type OpenBill = {
 };
 /** A staying guest as the till sees them (room service, reception's room bills): the room and the name — never their phone or balance. */
 export type PosGuest = { id: string; reference: string; name: string; rooms: string; hasPhone: boolean };
-type Sent = { id: string; number: string; total: number; place: string; lines: { name: string; qty: number; price: number }[]; settlement: string; again: boolean; added?: boolean };
+type Sent = {
+  id: string; number: string; total: number; place: string; lines: { name: string; qty: number; price: number }[]; settlement: string; again: boolean; added?: boolean;
+  /** Paid by a prompt to the customer's phone (nTZS): the prompt being followed — or why it did not go. */
+  prompt?: { id: string; amount: number; phone: string } | null; promptError?: string | null; promptPhone?: string;
+};
+/** "Send to phone" among the ways to pay now — the main way (nTZS); the accounts are for money taken by hand. */
+const PROMPT = "__ntzs_prompt__";
 type OrderType = "DINE_IN" | "TAKEAWAY" | "PICKUP" | "ROOM_SERVICE";
 type Settlement = "PAY_NOW" | "ROOM" | "UNPAID";
 
@@ -91,6 +100,11 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
   const [notes, setNotes] = useState("");
   const [settlementPick, setSettlement] = useState<Settlement>(canPay ? "PAY_NOW" : "UNPAID");
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
+  // Paying now, the main way is a prompt to the customer's phone (nTZS) — chosen as soon as it is available.
+  const mobileOk = useMobilePayAvailable() && canPay;
+  const [promptPhone, setPromptPhone] = useState<string | null>(null);
+  const pickedAccount = useRef(false);
+  useEffect(() => { if (mobileOk && !pickedAccount.current) setAccountId(PROMPT); }, [mobileOk]);
   const [reference, setReference] = useState("");
   const [pending, start] = useTransition();
   const [sent, setSent] = useState<Sent | null>(null);
@@ -148,9 +162,12 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
   const stay = roomByStay ? ownStays.find((x) => x.id === stayId) ?? null : null;
   const noRoom = !sameCustomer && !validPhone(phone) ? "Add the customer's phone first — then their room shows." : known.looking ? "Checking the customer's room…" : "No room for this customer — pay at the restaurant.";
   const phoneOk = guestHasPhone || sameCustomer || validPhone(phone);
+  // "Send to phone": the number the prompt goes to (the customer's, unless changed).
+  const viaPhone = settlement === "PAY_NOW" && accountId === PROMPT;
+  const promptNumber = (promptPhone ?? (sameCustomer ? tableCustomer?.phone ?? "" : phone)).trim();
   // Reception chose a room that is not the (known) customer's own: the reason is required.
   const otherGuestsRoom = verify && !hotelOnly && !forStay && settlement === "ROOM" && !!guest && (sameCustomer || validPhone(phone)) && !ownStays.some((x) => x.id === guest.id);
-  const ready = lines.length > 0 && (joining ? true : (!needsGuest || !!guest) && (!roomByStay || !!stay) && phoneOk && (settlement !== "PAY_NOW" || !!accountId) && (!otherGuestsRoom || roomReason.trim().length >= 3));
+  const ready = lines.length > 0 && (joining ? true : (!needsGuest || !!guest) && (!roomByStay || !!stay) && phoneOk && (settlement !== "PAY_NOW" || !!accountId) && (!viaPhone || validPhone(promptNumber)) && (!otherGuestsRoom || roomReason.trim().length >= 3));
   const tile = guest ? guest.rooms.split(",")[0] : type === "DINE_IN" && location?.number ? `T${location.number}` : null;
   const TypeIcon = TYPES.find((t) => t.v === type)?.icon ?? UtensilsCrossed;
 
@@ -187,21 +204,27 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
     }
     // On the shared Restaurant Counter the waiter making the order says who they are (the order is theirs) —
     // paid now, the payment is the Counter's own record (the waiter is noted as the one who brought it).
-    const pin = waiterId ? { waiterId } : await askPin(settlement === "PAY_NOW" ? "New order — the payment is recorded at the Counter" : "New order");
+    const pin = waiterId ? { waiterId } : await askPin(settlement === "PAY_NOW" && !viaPhone ? "New order — the payment is recorded at the Counter" : "New order");
     if (pin === null) return;
     start(async () => {
       const res = await createOrderAction({
-        type, settlement, pin, items: lines.map((l) => ({ menuItemId: l.item.id, quantity: l.qty })),
+        // Send to phone: the order goes in unpaid and the prompt follows — paid on the phone, recorded by itself.
+        type, settlement: viaPhone ? "UNPAID" : settlement, pin, items: lines.map((l) => ({ menuItemId: l.item.id, quantity: l.qty })),
         reservationId: guest?.id ?? stay?.id ?? null, locationId: type === "DINE_IN" ? location?.id ?? null : null, tableLabel: null,
         // The table's customer stays the customer — the room is only where the bill goes.
         customerName: sameCustomer ? tableCustomer.name : guest ? null : name || null,
         customerPhone: sameCustomer ? tableCustomer.phone : guestHasPhone ? null : phone || null, notes: notes || null,
         customerId: !sameCustomer && !guest && chosen && name.trim() === chosen.name ? chosen.id : null,
-        accountId: settlement === "PAY_NOW" ? accountId : null, reference: settlement === "PAY_NOW" ? reference || null : null,
+        accountId: settlement === "PAY_NOW" && !viaPhone ? accountId : null, reference: settlement === "PAY_NOW" && !viaPhone ? reference || null : null,
         reason: otherGuestsRoom ? roomReason.trim() : null, forStay,
       });
       if (res.ok) {
-        setSent({ id: res.data.id, number: res.data.number, total: res.data.total, place: who, settlement,
+        let prompt: Sent["prompt"] = null, promptError: string | null = null;
+        if (viaPhone) {
+          const p = await sendOrdersPromptAction({ orderIds: [res.data.id], phone: promptNumber, handedOverById: null });
+          if (p.ok) prompt = { id: p.data.id, amount: p.data.amount, phone: p.data.phone }; else promptError = p.error;
+        }
+        setSent({ id: res.data.id, number: res.data.number, total: res.data.total, place: who, settlement: viaPhone ? "PROMPT" : settlement, prompt, promptError, promptPhone: promptNumber,
           lines: lines.map((l) => ({ name: l.item.name, qty: l.qty, price: l.item.price })), again: type === "DINE_IN" ? !!location || !!guest : !!guest });
         setCart({}); setNotes(""); setReference(""); setWaiterId("");
         router.refresh();
@@ -217,6 +240,7 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
     : settlement === "UNPAID" ? (type === "ROOM_SERVICE"
       ? `The guest pays when it arrives — ${canPay ? "record the payment then." : "the Restaurant Counter records the payment."}`
       : `The customer pays when it is served — ${canPay ? "record the payment on the order then." : "the Restaurant Counter records the payment."}`)
+    : viaPhone ? "A prompt goes to their phone — they enter their PIN, and it is recorded by itself."
     : "Paid now — the money goes into the account you pick.";
 
   return (
@@ -482,9 +506,23 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
               )}
               {settlement === "PAY_NOW" && (
                 <div className="mt-2 space-y-2">
+                  {mobileOk && (
+                    <div className={cn("rounded-2xl border p-3 transition", viaPhone ? "border-sky-500/60 bg-sky-500/[0.08]" : "border-border")}>
+                      <button type="button" onClick={() => { pickedAccount.current = true; setAccountId(PROMPT); }} aria-pressed={viaPhone} className="flex w-full items-center gap-2.5 text-left">
+                        <span className={cn("grid size-9 shrink-0 place-items-center rounded-xl", viaPhone ? "bg-sky-600 text-white" : "bg-sky-500/12 text-sky-600 dark:text-sky-300")}><Smartphone className="size-4" /></span>
+                        <span className="min-w-0 flex-1 leading-tight"><span className="block text-sm font-semibold">Send to phone</span><NetworkMarks label={null} compact className="mt-1" /></span>
+                        {viaPhone && <Check className="size-4 shrink-0 text-sky-600 dark:text-sky-300" />}
+                      </button>
+                      {viaPhone && (
+                        <input value={promptPhone ?? (sameCustomer ? tableCustomer?.phone ?? "" : phone)} onChange={(e) => setPromptPhone(e.target.value)} type="tel" inputMode="tel" aria-label="Their mobile-money number"
+                          placeholder="Their number, e.g. 0712 345 678" className={cn(field, "mt-2.5 h-10 tabular-nums")} />
+                      )}
+                    </div>
+                  )}
+                  {mobileOk && <p className="pt-0.5 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Or taken by hand</p>}
                   <div className="grid grid-cols-2 gap-1.5">
                     {accounts.map((a) => (
-                      <button key={a.id} type="button" onClick={() => setAccountId(a.id)} aria-pressed={accountId === a.id}
+                      <button key={a.id} type="button" onClick={() => { pickedAccount.current = true; setAccountId(a.id); }} aria-pressed={accountId === a.id}
                         className={cn("flex items-center justify-between rounded-xl border px-2.5 py-1.5 text-left text-xs leading-tight", accountId === a.id ? "border-emerald-500 bg-emerald-500/10" : "border-border hover:bg-muted")}>
                         <span className="min-w-0"><span className="block truncate font-medium">{a.name}</span><span className="font-mono text-[10px] text-muted-foreground">{a.number ?? "—"}</span></span>
                         {accountId === a.id && <Check className="size-3.5 shrink-0 text-emerald-600" />}
@@ -492,7 +530,7 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
                     ))}
                   </div>
                   {accountDetail(accounts.find((a) => a.id === accountId)) && <p className="truncate text-[11px] text-muted-foreground">{accountDetail(accounts.find((a) => a.id === accountId))}</p>}
-                  <input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Reference (M-Pesa code / card slip) — optional" className={cn(field, "h-9 font-mono text-xs")} />
+                  {!viaPhone && <input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Reference (M-Pesa code / card slip) — optional" className={cn(field, "h-9 font-mono text-xs")} />}
                 </div>
               )}
             </Block>}
@@ -510,7 +548,7 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
                 ready ? "bg-linear-to-b from-[oklch(0.87_0.085_86)] to-[oklch(0.7_0.12_76)] text-[oklch(0.2_0.03_60)] shadow-[0_10px_24px_-12px_oklch(0.7_0.12_80)] ring-1 ring-inset ring-white/30 hover:brightness-105" : "bg-muted text-muted-foreground")}>
               {pending ? <Loader2 className="animate-spin" /> : joining ? <Plus /> : <ChefHat />}{lines.length ? joining ? `Add to ${shortNo(joining.number)} · ${formatTZS(total)}` : `Send to kitchen · ${formatTZS(total)}` : "Add items to the order"}
             </motion.button>
-            {lines.length > 0 && !ready && <p className="text-center text-[11px] text-muted-foreground">{needsGuest && !guest ? (hotelOnly ? "Pick the hotel guest's room first — reception orders are for guests staying here." : "Choose the guest's room first.") : roomByStay && !stay ? (ownStays.length ? (settlement === "ROOM" ? "Tap the customer's room to charge it." : "Tap the customer's room — the food goes there.") : noRoom) : !phoneOk ? "Add the customer's phone — every order needs one." : "Choose the account the money goes into."}</p>}
+            {lines.length > 0 && !ready && <p className="text-center text-[11px] text-muted-foreground">{needsGuest && !guest ? (hotelOnly ? "Pick the hotel guest's room first — reception orders are for guests staying here." : "Choose the guest's room first.") : roomByStay && !stay ? (ownStays.length ? (settlement === "ROOM" ? "Tap the customer's room to charge it." : "Tap the customer's room — the food goes there.") : noRoom) : !phoneOk ? "Add the customer's phone — every order needs one." : viaPhone ? "Enter their mobile-money number for the prompt." : "Choose the account the money goes into."}</p>}
           </footer>
         </aside>
       </div>
@@ -530,7 +568,12 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
                 ))}
                 <li className="flex justify-between py-2 font-semibold"><span>{sent.added ? "Order total now" : "Total"}</span><span className="tabular-nums">{formatTZS(sent.total)}</span></li>
               </ul>
-              <p className="text-center text-xs text-muted-foreground">{sent.added ? "The kitchen has the new items — the bill shows everything." : sent.settlement === "ROOM" ? "On the room bill — paid at check-out." : sent.settlement === "PAY_NOW" ? "Paid." : "Not paid yet — print the bill for the customer when they are ready to pay."}</p>
+              {sent.settlement === "PROMPT" ? (
+                <>
+                  {sent.promptError && <p className="rounded-xl bg-rose-500/10 px-3 py-2 text-xs text-rose-700 dark:text-rose-300">The prompt did not go: {sent.promptError} Send it again below.</p>}
+                  <SendToPhone target={{ kind: "orders", orderIds: [sent.id] }} amount={sent.total} phone={sent.promptPhone ?? ""} resume={sent.prompt ?? null} />
+                </>
+              ) : <p className="text-center text-xs text-muted-foreground">{sent.added ? "The kitchen has the new items — the bill shows everything." : sent.settlement === "ROOM" ? "On the room bill — paid at check-out." : sent.settlement === "PAY_NOW" ? "Paid." : "Not paid yet — print the bill for the customer when they are ready to pay."}</p>}
               <div className="grid gap-2">
                 <Link href={`/staff/restaurant-bill?order=${sent.id}`} className="flex h-11 items-center justify-center gap-2 rounded-xl bg-linear-to-b from-[oklch(0.87_0.085_86)] to-[oklch(0.7_0.12_76)] text-sm font-semibold text-[oklch(0.2_0.03_60)] ring-1 ring-inset ring-white/30 hover:brightness-105"><Printer className="size-4" />Print / download bill</Link>
                 {sent.again && <Button variant="outline" className="h-11" onClick={() => setSent(null)}><Plus />Add more for {sent.place}</Button>}

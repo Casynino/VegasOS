@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ntzsEnabled } from "@/server/services/ntzs";
 import { discountLimit } from "@/lib/discounts";
 import { can, requirePagePermission } from "@/server/auth";
 import { db } from "@/server/db";
@@ -17,7 +18,7 @@ export default async function NewReservationPage({ searchParams }: PageProps<"/s
   const sp = await searchParams;
   const [today, sources, companies, methods] = await Promise.all([
     businessToday(),
-    db.bookingSource.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } }),
+    db.bookingSource.findMany({ where: { isActive: true, code: { not: "HOTEL_QR" } }, orderBy: { sortOrder: "asc" } }),
     businessToday().then(bookingCompanies),
     accountOptions("payments"),
   ]);
@@ -56,6 +57,7 @@ export default async function NewReservationPage({ searchParams }: PageProps<"/s
         discountMax={discountLimit(user.permissions, await getSettings())}
         canCheckIn={can(user, "reservations.check_in")}
         methods={can(user, "payments.record") ? methods : []}
+        mobilePay={ntzsEnabled() && can(user, "payments.record")}
         initialRoom={room?.isActive ? { id: room.id, number: room.number, typeId: room.roomType.id, typeName: room.roomType.name } : null}
         initialArrival={from}
         menu={await billMenu()}

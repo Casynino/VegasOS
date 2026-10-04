@@ -20,6 +20,7 @@ import { changeBilling } from "@/server/services/company-billing";
 import { changeRoom, roomChangeOptions } from "@/server/services/room-changes";
 import { HOTEL_MOVE_CODES } from "@/lib/room-change";
 import { refreshBookingStates } from "@/server/services/booking-holds";
+import { requestMobilePayment } from "@/server/services/mobile-payments";
 import { discountLimit, discountTooBigMessage } from "@/lib/discounts";
 import { SHORT_TIME_MAX_HOURS, shortTimeRate } from "@/lib/short-time";
 import { promoLabel } from "@/lib/pricing";
@@ -279,26 +280,44 @@ const CreateSchema = z.object({
     accountId: z.string().min(1, "Choose where the money was received."),
     reference: z.string().trim().max(80).optional(),
   }).nullable().optional(),
+  /** "Send to phone": a mobile-money prompt (nTZS) to the guest right after the booking is saved — paid on their phone. */
+  prompt: z.object({
+    amount: z.coerce.number().int().positive("Enter the amount."),
+    phone: z.string().trim().min(9, "Enter the guest's mobile-money number.").max(30),
+  }).nullable().optional(),
   specialRequests: z.string().trim().max(1000).optional(),
   internalNotes: z.string().trim().max(1000).optional(),
 });
 
-export async function createReservationAction(input: z.input<typeof CreateSchema>): Promise<ActionResult<{ id: string; reference: string }>> {
+export async function createReservationAction(input: z.input<typeof CreateSchema>): Promise<ActionResult<{ id: string; reference: string; prompt: { id: string } | null; promptError: string | null }>> {
   return runAction(async () => {
     const user = await authorize("reservations.create");
-    const data = parseInput(CreateSchema, input);
+    const { prompt, ...data } = parseInput(CreateSchema, input);
     if (data.checkInNow && !user.permissions.has("reservations.check_in")) throw new AppError("You cannot check guests in.", "FORBIDDEN");
-    if (data.payment && !user.permissions.has("payments.record")) throw new AppError("You cannot record payments.", "FORBIDDEN");
+    if ((data.payment || prompt) && !user.permissions.has("payments.record")) throw new AppError("You cannot record payments.", "FORBIDDEN");
+    if (prompt && data.payment) throw new AppError("Choose one way to pay — at the desk, or a prompt to the phone.", "VALIDATION");
+    const actor = await actorFor(user);
     const r = await createReservation(
       {
         ...data,
         stay: await toStayRequest(data.stay),
         guest: { ...data.guest, email: data.guest.email || null },
       },
-      await actorFor(user),
+      actor,
     );
+    // The booking is saved; now the prompt to the guest's phone — paid there, recorded by itself. If it cannot go,
+    // the booking stays and the prompt can be sent again from it.
+    let sent: { id: string } | null = null, promptError: string | null = null;
+    if (prompt) {
+      try {
+        const mp = await requestMobilePayment({ purpose: "RESERVATION", reservationId: r.id, amount: prompt.amount }, prompt.phone, { ...actor, userId: user.id });
+        sent = { id: mp.id };
+      } catch (e) {
+        promptError = e instanceof AppError ? e.message : "The prompt could not be sent.";
+      }
+    }
     refresh();
-    return { id: r.id, reference: r.reference };
+    return { id: r.id, reference: r.reference, prompt: sent, promptError };
   }, "Booking saved.");
 }
 

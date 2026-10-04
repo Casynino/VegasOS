@@ -6,6 +6,7 @@ import { ArrowLeft, BedDouble, Building2, Car, ClipboardList, Clock3, FileText, 
 import { Occupants } from "@/components/staff/reception/occupants";
 import { can, requirePagePermission } from "@/server/auth";
 import { db } from "@/server/db";
+import { maskPhone } from "@/server/services/mobile-payments";
 import { accountOptions } from "@/server/services/payment-accounts";
 import { businessToday, getSettings } from "@/server/settings";
 import { formatBusinessDate, formatDateTime, formatTZS } from "@/lib/format";
@@ -49,7 +50,11 @@ export const metadata: Metadata = { title: "Reservation" };
 export default async function ReservationPage({ params, searchParams }: PageProps<"/staff/reservations/[id]">) {
   const user = await requirePagePermission("reservations.view");
   const { id } = await params;
-  const sentParam = (await searchParams).sent;
+  const sp = await searchParams;
+  const sentParam = sp.sent;
+  // Just booked with "Send to phone": that prompt, still waiting — the payment panel follows it.
+  const payingId = typeof sp.paying === "string" ? sp.paying.slice(0, 40) : null;
+  const paying = payingId ? await db.mobilePayment.findFirst({ where: { id: payingId, reservationId: id, status: "PENDING" }, select: { id: true, amount: true, phone: true } }) : null;
   const [r, methods, today, history, recent] = await Promise.all([
     db.reservation.findUnique({
       where: { id },
@@ -542,7 +547,8 @@ export default async function ReservationPage({ params, searchParams }: PageProp
               </div>
               {perms.pay && (
                 <PaymentPanel reservationId={r.id} balance={r.balanceAmount} paid={r.paidAmount} canRefund={perms.reverse}
-                  methods={methods} phone={r.guest.phone} who={r.guest.fullName} />
+                  methods={methods} phone={r.guest.phone} who={r.guest.fullName}
+                  resume={paying ? { id: paying.id, amount: paying.amount, phone: maskPhone(paying.phone) } : null} />
               )}
             </div>
             <div className="mt-4 space-y-2 border-t border-dashed border-border pt-3 text-sm">

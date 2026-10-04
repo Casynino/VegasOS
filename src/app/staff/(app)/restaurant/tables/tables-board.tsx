@@ -30,7 +30,7 @@ import { useLiveOrders } from "@/components/staff/sounds";
 import { useIsRestaurantDevice, useWaiterPin, type WaiterPinValue } from "@/components/staff/waiter-pin";
 import { TransferDialog } from "@/components/staff/transfer-dialog";
 import { BroughtBySelect } from "@/components/staff/brought-by-select";
-import { SendToPhone } from "@/components/staff/mobile-pay";
+import { OtherWays, SendToPhone } from "@/components/staff/mobile-pay";
 import { takeTableAction, transferTableAction } from "../waiter-actions";
 import { type HotelGuest, ReservationDialog, type TableOption } from "../reservations/reservation-form";
 import {
@@ -1108,14 +1108,20 @@ function PayPerson({ p, accounts, waiterId, onClose }: { p: Person; accounts: Pa
           <DialogTitle>{p.name} pays — {tzs(p.due)}</DialogTitle>
           <DialogDescription>At the counter · {p.orders.length} order{p.orders.length === 1 ? "" : "s"}. Everything they still owe is paid into the account you choose.</DialogDescription>
         </DialogHeader>
-        <p className="text-sm font-medium">Received through</p>
-        <AccountPicker accounts={accounts} value={accountId} onChange={setAccountId} />
-        <Input value={reference} onChange={(e) => setReference(e.target.value)} maxLength={80} placeholder="Reference (M-Pesa / card slip) — optional" className="font-mono uppercase placeholder:font-sans placeholder:normal-case" />
-        <BroughtBySelect value={broughtBy} onChange={setBroughtBy} prefill={waiterId} />
-        <div className="flex gap-2">
-          <Button className="h-10 flex-1 bg-emerald-600 text-white hover:bg-emerald-500" disabled={pending || !accountId} onClick={pay}>{pending ? <Loader2 className="animate-spin" /> : <Wallet />}Paid {tzs(p.due)}</Button>
-          <Button variant="ghost" className="h-10" onClick={onClose}>Cancel</Button>
-        </div>
+        {/* The main way: a prompt to the customer's phone for everything they still owe (nTZS). */}
+        {p.due > 0 && <SendToPhone target={{ kind: "orders", orderIds: p.orders.filter((o) => o.due > 0).map((o) => o.id), handedOverById: broughtBy || null }}
+          amount={p.due} phone={p.phone} who={p.name} onPaid={onClose} primary />}
+        <OtherWays fold={p.due > 0}>
+          <div className="space-y-3">
+            <AccountPicker accounts={accounts} value={accountId} onChange={setAccountId} />
+            <Input value={reference} onChange={(e) => setReference(e.target.value)} maxLength={80} placeholder="Reference (M-Pesa / card slip) — optional" className="font-mono uppercase placeholder:font-sans placeholder:normal-case" />
+            <BroughtBySelect value={broughtBy} onChange={setBroughtBy} prefill={waiterId} />
+            <div className="flex gap-2">
+              <Button className="h-10 flex-1 bg-emerald-600 text-white hover:bg-emerald-500" disabled={pending || !accountId} onClick={pay}>{pending ? <Loader2 className="animate-spin" /> : <Wallet />}Paid {tzs(p.due)}</Button>
+              <Button variant="ghost" className="h-10" onClick={onClose}>Cancel</Button>
+            </div>
+          </div>
+        </OtherWays>
       </DialogContent>
     </Dialog>
   );
@@ -1247,17 +1253,20 @@ function PayDialog({ s, accounts, waiterId, onClose }: { s: SessionView; account
           <DialogTitle>Receive the payment — {tzs(s.money.due)}</DialogTitle>
           <DialogDescription>{s.customer.name} · {s.table} · {s.money.orders} order{s.money.orders === 1 ? "" : "s"}. Everything still due on the table is paid into the account you choose.</DialogDescription>
         </DialogHeader>
-        <p className="text-sm font-medium">Received through</p>
-        <AccountPicker accounts={accounts} value={accountId} onChange={setAccountId} />
-        <Input value={reference} onChange={(e) => setReference(e.target.value)} maxLength={80} placeholder="Reference (M-Pesa / card slip) — optional" className="font-mono uppercase placeholder:font-sans placeholder:normal-case" />
-        <BroughtBySelect value={broughtBy} onChange={setBroughtBy} prefill={waiterId} />
-        <div className="flex gap-2">
-          <Button className="h-10 flex-1 bg-emerald-600 text-white hover:bg-emerald-500" disabled={pending || !accountId} onClick={pay}>{pending ? <Loader2 className="animate-spin" /> : <Wallet />}Paid {tzs(s.money.due)}</Button>
-          <Button variant="ghost" className="h-10" onClick={onClose}>Cancel</Button>
-        </div>
-        {/* Or a mobile-money prompt to the customer's phone for everything still due on the table (nTZS). */}
+        {/* The main way: a prompt to the customer's phone for everything still due on the table (nTZS). */}
         {s.money.due > 0 && <SendToPhone target={{ kind: "orders", orderIds: s.orders.filter((o) => o.due > 0 && !o.onRoom).map((o) => o.id), handedOverById: broughtBy || null }}
-          amount={s.money.due} phone={s.customer.phone} who={s.customer.name} onPaid={onClose} />}
+          amount={s.money.due} phone={s.customer.phone} who={s.customer.name} onPaid={onClose} primary />}
+        <OtherWays fold={s.money.due > 0}>
+          <div className="space-y-3">
+            <AccountPicker accounts={accounts} value={accountId} onChange={setAccountId} />
+            <Input value={reference} onChange={(e) => setReference(e.target.value)} maxLength={80} placeholder="Reference (M-Pesa / card slip) — optional" className="font-mono uppercase placeholder:font-sans placeholder:normal-case" />
+            <BroughtBySelect value={broughtBy} onChange={setBroughtBy} prefill={waiterId} />
+            <div className="flex gap-2">
+              <Button className="h-10 flex-1 bg-emerald-600 text-white hover:bg-emerald-500" disabled={pending || !accountId} onClick={pay}>{pending ? <Loader2 className="animate-spin" /> : <Wallet />}Paid {tzs(s.money.due)}</Button>
+              <Button variant="ghost" className="h-10" onClick={onClose}>Cancel</Button>
+            </div>
+          </div>
+        </OtherWays>
       </DialogContent>
     </Dialog>
   );

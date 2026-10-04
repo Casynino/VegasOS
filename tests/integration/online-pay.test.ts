@@ -222,7 +222,8 @@ describe("eating here: pick a free table", () => {
     expect(order.type).toBe("DINE_IN");
 
     // Someone sits at the second table: it is no longer offered, and choosing it is refused.
-    const t2loc = await db.restaurantLocation.findUniqueOrThrow({ where: { id: t2.id } });
+    // (Its QR may have been switched off by another test — sitting down by QR needs it on.)
+    const t2loc = await db.restaurantLocation.update({ where: { id: t2.id }, data: { qrActive: true } });
     await seatAtTable(t2loc.qrToken, { name: "Seated First", phone: phone() }, null);
     expect((await freeTables()).some((t) => t.id === t2.id)).toBe(false);
     await expect(placeLocationOrder(main.qrToken, { clientKey: key(), items: [{ menuItemId: BEER, quantity: 1 }], name: "Too Late", phone: phone(), kind: "DINE_IN", tableId: t2.id }))

@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { TransferDialog } from "@/components/staff/transfer-dialog";
 import { useWaiterPin, type WaiterPinValue } from "@/components/staff/waiter-pin";
 import { BroughtBySelect } from "@/components/staff/brought-by-select";
-import { SendToPhone } from "@/components/staff/mobile-pay";
+import { OtherWays, SendToPhone } from "@/components/staff/mobile-pay";
 import type { PayAccount } from "@/lib/pay-account";
 import { cn } from "@/lib/utils";
 import { IconAction, WhatsAppGlyph } from "./icon-action";
@@ -442,10 +442,12 @@ export function OrderCard({ o, perms, now, fresh, accounts, rooms, drag, roomy, 
       cancelNote={o.settlement === "ROOM" ? "Its items come off the guest's room bill (kept on record as cancelled)." : o.paid === 0 ? "Nothing was paid yet — it is kept on record as cancelled." : "Its payment is reversed and its sale voided (kept on record as cancelled). Give any refund separately."} />
   );
 
-  // "Pay at the restaurant": the account, the reference, who brought it (on the Counter) and the button.
-  const payForm = (
+  // "Pay at the restaurant": a prompt to the customer's phone (nTZS) first — recorded by itself when they approve; the
+  // account, the reference, who brought it (on the Counter) and the button folded below it.
+  const prompt = !payingNow && unpaid;
+  const byHand = (
     <>
-      <p className="mb-1.5 mt-3.5 text-xs font-semibold text-muted-foreground">How are they paying?</p>
+      <p className="mb-1.5 mt-3.5 text-xs font-semibold text-muted-foreground">{prompt ? "Received by hand through" : "How are they paying?"}</p>
       <AccountPicker accounts={accounts} value={account} onChange={setAccount} />
       <label className="mb-1.5 mt-3.5 block text-xs font-semibold text-muted-foreground" htmlFor={`ref-${o.id}`}>Reference (M-Pesa code, card slip) — optional</label>
       <Input id={`ref-${o.id}`} value={reference} onChange={(e) => setReference(e.target.value)} placeholder="e.g. SGH4K2L9PQ" className="h-10 font-mono text-sm uppercase placeholder:normal-case" />
@@ -457,10 +459,14 @@ export function OrderCard({ o, perms, now, fresh, accounts, rooms, drag, roomy, 
         </motion.button>
         {payingNow && <button type="button" onClick={() => setPayingNow(false)} className="shrink-0 px-2 text-sm font-medium text-muted-foreground hover:text-foreground">Leave it</button>}
       </div>
-      {/* Or a mobile-money prompt to the customer's phone (nTZS) — the payment is recorded by itself when they approve. */}
-      {!payingNow && unpaid && <SendToPhone target={{ kind: "orders", orderIds: [o.id], handedOverById: broughtBy || null }} amount={due} phone={o.phone} who={o.customer} className="mt-2.5" />}
     </>
   );
+  const payForm = prompt ? (
+    <>
+      <SendToPhone target={{ kind: "orders", orderIds: [o.id], handedOverById: broughtBy || null }} amount={due} phone={o.phone} who={o.customer} className="mt-3.5" primary />
+      <OtherWays className="mt-2">{byHand}</OtherWays>
+    </>
+  ) : byHand;
   // Someone who does not record payments (a waiter, a manager watching): what is due, and who records it.
   const servedUnpaid = o.status === "DELIVERED" && perms.serve && !perms.watch;
   const notPaid = (
