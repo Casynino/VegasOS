@@ -1,0 +1,50 @@
+"use server";
+
+import { z } from "zod";
+import { requestMeta } from "@/server/auth";
+import { runAction, type ActionResult } from "@/server/errors";
+import { rateLimit } from "@/server/rate-limit";
+import { parseInput } from "@/server/validation";
+import { askFromStay, placeStayOrder } from "@/server/services/guest-comms";
+
+const Order = z.object({
+  token: z.string().regex(/^[A-Za-z0-9_-]{16,64}$/),
+  items: z.array(z.object({ menuItemId: z.string().min(1).max(80), quantity: z.number().int().min(1).max(20) })).min(1, "Add something from the menu.").max(30),
+  notes: z.string().trim().max(300).optional(),
+  clientKey: z.string().regex(/^[a-f0-9]{32}$/).optional(),
+  paidFirst: z.object({ proofId: z.string().min(1).max(40), accountId: z.string().min(1).max(40), reference: z.string().trim().max(60).optional(), expectedTotal: z.number().int().nonnegative().max(100_000_000).optional() }).optional(),
+});
+
+/** The guest orders from their stay link: room service, charged to their room. */
+export async function placeStayOrderAction(input: z.input<typeof Order>): Promise<ActionResult<{ number: string; total: number; track: string | null }>> {
+  return runAction(async () => {
+    const { ipAddress } = await requestMeta();
+    // Guests on the hotel Wi-Fi share one address: a loose limit per address, the real one per stay link.
+    await rateLimit(`stay-order-ip:${ipAddress ?? "unknown"}`, 60, 600);
+    const d = parseInput(Order, input);
+    await rateLimit(`stay-order:${d.token}`, 10, 600);
+    const order = await placeStayOrder(d.token, { items: d.items, notes: d.notes, clientKey: d.clientKey, paidFirst: d.paidFirst });
+    return { number: order.number, total: order.total, track: order.trackToken };
+  });
+}
+
+const TOKEN = /^[A-Za-z0-9_-]{16,64}$/;
+const Ask = z.object({
+  token: z.string().regex(TOKEN),
+  type: z.enum(["TOWELS", "CLEANING", "MAINTENANCE", "GENERAL"]),
+  description: z.string().trim().max(300).optional(),
+  clientKey: z.string().regex(/^[a-f0-9]{32}$/).optional(),
+});
+
+/** The guest asks reception for something (towels, cleaning, a repair…) — it lands on Requests for someone to accept. */
+export async function askFromStayAction(input: z.input<typeof Ask>): Promise<ActionResult<{ id: string }>> {
+  return runAction(async () => {
+    const { ipAddress } = await requestMeta();
+    // Guests on the hotel Wi-Fi share one address: a loose limit per address, the real one per stay link / room card.
+    await rateLimit(`stay-ask-ip:${ipAddress ?? "unknown"}`, 60, 600);
+    const d = parseInput(Ask, input);
+    await rateLimit(`stay-ask:${d.token}`, 10, 600);
+    const r = await askFromStay(d.token, { type: d.type, description: d.description, clientKey: d.clientKey });
+    return { id: r.id };
+  });
+}

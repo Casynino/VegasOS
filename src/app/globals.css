@@ -1,0 +1,472 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+/* Public website theme (visitor light/dark), independent of the staff app. */
+@custom-variant pub-dark (&:where([data-pub-theme="dark"], [data-pub-theme="dark"] *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-inter);
+  --font-display: var(--font-cormorant);
+  --color-gold: var(--gold);
+  --color-gold-foreground: var(--gold-foreground);
+  --color-ink: var(--ink);
+  --color-canvas: var(--canvas);
+  --color-paper: var(--pub-paper);
+  --color-paper-deep: var(--pub-paper-deep);
+  --color-panel: var(--pub-panel);
+  --color-tone: var(--pub-tone);
+  --color-accent-ink: var(--pub-accent-ink);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  --canvas: oklch(0.965 0.008 85);
+  --background: oklch(0.985 0.003 85);
+  --foreground: oklch(0.18 0.015 265);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.22 0.02 265);
+  --primary-foreground: oklch(0.985 0 0);
+  --gold: oklch(0.72 0.12 80);
+  --gold-foreground: oklch(0.18 0.02 265);
+  --ink: oklch(0.16 0.02 265);
+  --success: oklch(0.6 0.15 150);
+  --warning: oklch(0.75 0.15 75);
+  --info: oklch(0.6 0.15 250);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  /* Staff night mode: warm "lobby at night" — charcoal with bronze, never blue-black. */
+  color-scheme: dark;
+  --canvas: oklch(0.145 0.008 70);
+  --background: oklch(0.17 0.009 70);
+  --foreground: oklch(0.95 0.01 85);
+  --card: oklch(0.195 0.011 70);
+  --card-foreground: oklch(0.95 0.01 85);
+  --popover: oklch(0.21 0.012 70);
+  --popover-foreground: oklch(0.95 0.01 85);
+  --primary: oklch(0.8 0.11 82);
+  --primary-foreground: oklch(0.18 0.02 70);
+  --gold: oklch(0.8 0.115 82);
+  --gold-foreground: oklch(0.18 0.02 70);
+  --ink: oklch(0.16 0.02 70);
+  --success: oklch(0.7 0.15 150);
+  --warning: oklch(0.8 0.15 75);
+  --info: oklch(0.7 0.13 250);
+  --secondary: oklch(0.25 0.012 70);
+  --secondary-foreground: oklch(0.95 0.01 85);
+  --muted: oklch(0.245 0.012 70);
+  --muted-foreground: oklch(0.7 0.015 80);
+  --accent: oklch(0.26 0.014 70);
+  --accent-foreground: oklch(0.95 0.01 85);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0.02 85 / 9%);
+  --input: oklch(1 0.02 85 / 14%);
+  --ring: oklch(0.8 0.11 82 / 60%);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --sidebar: oklch(0.195 0.011 70);
+  --sidebar-foreground: oklch(0.95 0.01 85);
+  --sidebar-primary: oklch(0.8 0.11 82);
+  --sidebar-primary-foreground: oklch(0.18 0.02 70);
+  --sidebar-accent: oklch(0.26 0.014 70);
+  --sidebar-accent-foreground: oklch(0.95 0.01 85);
+  --sidebar-border: oklch(1 0 0 / 9%);
+  --sidebar-ring: oklch(0.8 0.11 82 / 60%);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+/* ─────────────────────────────────────────────────────────────────────────
+   PUBLIC WEBSITE (src/app/(public)) — view transitions + skeleton shimmer.
+   Scoped to the public site's class names; does not affect /staff.
+   ───────────────────────────────────────────────────────────────────────── */
+::view-transition {
+  pointer-events: none;
+}
+::view-transition-group(site-header) {
+  animation: none;
+  z-index: 100;
+}
+::view-transition-old(site-header) {
+  display: none;
+}
+::view-transition-new(site-header) {
+  animation: none;
+}
+::view-transition-old(.vlh-page) {
+  animation: 160ms ease-in both vlh-fade reverse;
+}
+::view-transition-new(.vlh-page) {
+  animation:
+    260ms ease-out 120ms both vlh-fade,
+    420ms cubic-bezier(0.22, 1, 0.36, 1) both vlh-rise;
+}
+::view-transition-group(.vlh-morph) {
+  animation-duration: 450ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+/* A waiting-for-you card in the restaurant portal: the bell rings, the glow breathes. */
+@keyframes vlh-bell {
+  0%, 55%, 100% { transform: rotate(0); }
+  10%, 30% { transform: rotate(14deg); }
+  20%, 40% { transform: rotate(-14deg); }
+}
+@keyframes vlh-alert {
+  0%, 100% { box-shadow: inset 0 0 0 0 transparent; }
+  50% { box-shadow: inset 0 0 28px 0 rgba(255, 255, 255, 0.06); }
+}
+@keyframes vlh-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes vlh-rise {
+  from { translate: 0 14px; }
+  to { translate: 0 0; }
+}
+@keyframes vlh-shimmer {
+  100% { transform: translateX(100%); }
+}
+.vlh-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.vlh-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.55), transparent);
+  animation: vlh-shimmer 1.6s infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(*),
+  ::view-transition-new(*),
+  ::view-transition-group(*) {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+  }
+  .vlh-shimmer::after {
+    animation: none;
+  }
+}
+
+/* Public website: scroll-driven reveals (pure CSS, progressive enhancement). */
+@keyframes vlh-reveal-in {
+  from { opacity: 0; translate: 0 32px; }
+  to { opacity: 1; translate: 0 0; }
+}
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .vlh-reveal {
+      animation: vlh-reveal-in linear both;
+      animation-timeline: view();
+      animation-range: entry calc(var(--vlh-i, 0) * 4%) entry calc(45% + var(--vlh-i, 0) * 4%);
+    }
+  }
+}
+
+/* ─────────────── Public website: cinematic motion & light system ───────────────
+   One motion language: slow scale (Ken Burns / scroll zoom), soft fades, mask
+   reveals. Transform/opacity/clip-path only (GPU friendly). Everything is off
+   with prefers-reduced-motion and content is always visible without JS. */
+@keyframes vlh-kb-a {
+  from { transform: scale(1.16) translate3d(-1.5%, -1%, 0); }
+  to { transform: scale(1.03) translate3d(1%, 0.8%, 0); }
+}
+@keyframes vlh-kb-b {
+  from { transform: scale(1.03) translate3d(1.2%, 0.5%, 0); }
+  to { transform: scale(1.16) translate3d(-1.2%, -1.2%, 0); }
+}
+@keyframes vlh-zoom-settle {
+  from { scale: 1.16; }
+  to { scale: 1; }
+}
+@keyframes vlh-clip-in {
+  from { clip-path: inset(10% 8% 10% 8% round 2rem); opacity: 0.4; }
+  to { clip-path: inset(0 0 0 0 round 2rem); opacity: 1; }
+}
+@keyframes vlh-drift {
+  from { translate: 0 -7%; }
+  to { translate: 0 7%; }
+}
+@keyframes vlh-sweep {
+  0%, 72% { transform: translateX(-130%) skewX(-18deg); }
+  100% { transform: translateX(260%) skewX(-18deg); }
+}
+@keyframes vlh-progress {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@keyframes vlh-float {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 -8px; }
+}
+@keyframes vlh-glow {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 0.9; }
+}
+
+.vlh-kb-a { animation: vlh-kb-a 18s cubic-bezier(0.25, 0.1, 0.25, 1) both; }
+.vlh-kb-b { animation: vlh-kb-b 18s cubic-bezier(0.25, 0.1, 0.25, 1) both; }
+.vlh-progress { transform-origin: left; animation: vlh-progress linear both; }
+@keyframes vlh-progress-y { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+.vlh-progress-y { transform-origin: top; animation: vlh-progress-y linear both; }
+.vlh-float { animation: vlh-float 7s ease-in-out infinite; }
+.vlh-glow { animation: vlh-glow 9s ease-in-out infinite; }
+
+/* Premium glass: translucent, thin bright edge, inner highlight, deep soft shadow. */
+.vlh-glass {
+  background: linear-gradient(140deg, rgb(255 255 255 / 0.16), rgb(255 255 255 / 0.05) 55%, rgb(255 255 255 / 0.08));
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  backdrop-filter: blur(22px) saturate(140%);
+  border: 1px solid rgb(255 255 255 / 0.18);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.22), 0 30px 80px -30px rgb(0 0 0 / 0.75);
+}
+.vlh-glass-dark {
+  background: linear-gradient(150deg, rgb(28 23 17 / 0.78), rgb(16 13 10 / 0.62));
+  -webkit-backdrop-filter: blur(22px) saturate(130%);
+  backdrop-filter: blur(22px) saturate(130%);
+  border: 1px solid rgb(255 255 255 / 0.1);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08), 0 40px 90px -40px rgb(0 0 0 / 0.85);
+}
+
+/* Fine film grain over photography (static — no animation cost). */
+.vlh-grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.09;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* A slow band of light passing over a surface every few seconds. */
+.vlh-sweep { position: relative; overflow: hidden; isolation: isolate; }
+.vlh-sweep::before {
+  content: "";
+  position: absolute;
+  inset: -20% auto -20% 0;
+  width: 35%;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.13), transparent);
+  animation: vlh-sweep 9s ease-in-out infinite;
+}
+
+/* Outlined editorial numerals. */
+.vlh-outline { color: transparent; -webkit-text-stroke: 1px currentColor; }
+
+/* Image hover: slow zoom inside a stable frame. */
+.vlh-zoom-frame { overflow: hidden; }
+.vlh-zoom-frame .vlh-zoom-target { transition: transform 1.4s cubic-bezier(0.22, 1, 0.36, 1); }
+.vlh-zoom-frame:hover .vlh-zoom-target,
+.vlh-zoom-frame:focus-within .vlh-zoom-target { transform: scale(1.07); }
+
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    /* Photo slowly settles from a gentle zoom as it crosses the viewport. */
+    .vlh-scroll-zoom {
+      animation: vlh-zoom-settle linear both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 60%;
+    }
+    /* Mask reveal: the frame opens as it enters. */
+    .vlh-clip {
+      animation: vlh-clip-in linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 90%;
+    }
+    /* Parallax drift for large background photos. */
+    .vlh-parallax {
+      animation: vlh-drift linear both;
+      animation-timeline: view();
+      animation-range: cover 0% cover 100%;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vlh-kb-a, .vlh-kb-b, .vlh-float, .vlh-glow, .vlh-progress, .vlh-progress-y { animation: none !important; }
+  .vlh-sweep::before { display: none; }
+  .vlh-zoom-frame .vlh-zoom-target { transition: none; }
+}
+
+/* ─────────────── Public website: light / dark theme tokens ─────────────── */
+:root {
+  --pub-paper: #f5efe4;
+  --pub-paper-deep: #ece5d8;
+  --pub-panel: #ffffff;
+  --pub-tone: #15120e;
+  --pub-accent-ink: #7a5f24;
+}
+:root[data-pub-theme="dark"] {
+  --pub-paper: #13110e;
+  --pub-paper-deep: #1a1612;
+  --pub-panel: #1d1914;
+  --pub-tone: #f2ebdf;
+  --pub-accent-ink: #dcbd72;
+  color-scheme: dark;
+}
+/* Dark mode: light "paper" sections become night glass with a lit top edge and faint star-grid. */
+:root[data-pub-theme="dark"] .bg-paper { background-color: rgb(19 17 14 / 0.5); }
+:root[data-pub-theme="dark"] .bg-paper-deep { background-color: rgb(26 22 18 / 0.75); }
+:root[data-pub-theme="dark"] .bg-panel { background-color: rgb(29 25 20 / 0.7); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+:root[data-pub-theme="dark"] .bg-paper {
+  background-image:
+    radial-gradient(circle at 1px 1px, rgb(255 255 255 / 0.05) 1px, transparent 0),
+    radial-gradient(ellipse 60% 40% at 80% 0%, oklch(0.72 0.12 80 / 0.1), transparent 70%);
+  background-size: 28px 28px, 100% 100%;
+}
+@keyframes vlh-dash { to { stroke-dashoffset: -12; } }
+/* HUD panels over bright photography: same glass, a touch more smoke for legibility. */
+.vlh-glass.vlh-hud {
+  background: linear-gradient(140deg, rgb(255 255 255 / 0.15), rgb(255 255 255 / 0.03) 60%), rgb(13 11 8 / 0.38);
+}
+
+/* Night sky: full-width dark sections (and the footer) are slightly see-through
+   so the fixed starfield glows behind them. Cards and tiles stay solid. */
+section:is([class~="bg-[#15120e]"], [class~="bg-[#0d0b08]"], [class~="bg-[#110e0b]"], [class~="bg-[#140f0a]"], [class~="bg-[#1a1510]"], [class~="bg-[#100d0a]"]),
+footer:is([class~="bg-[#100d0a]"], [class~="bg-[#15120e]"]) {
+  background-color: rgb(13 11 8 / 0.42);
+}
+
+/* Ordering pages: the dish showcase's story bars and the sliding strip of dishes. */
+@keyframes vlh-fill {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@keyframes vlh-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+@keyframes vlh-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
+/* The restaurant ordering app (every QR, the public menu): warm cream, white cards, espresso ink, one gold accent. */
+.vr {
+  --vr-bg: #f6f1e9;
+  --vr-card: #fffdf9;
+  --vr-ink: #1d1712;
+  --vr-muted: #6f6457;
+  --vr-line: #e8dfd1;
+  --vr-gold: #d4a345;
+  --vr-gold-ink: #8a6420;
+  --vr-gold-soft: #f5ead2;
+  --vr-dark: #1d1712;
+  color-scheme: light;
+}
+
+/* Phones and tablets: typing never zooms the page. iOS zooms in on any field under 16px and stays
+   zoomed on the next pages (the app looked "cut off" after signing in) — so fields use 16px there. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+  select,
+  textarea {
+    font-size: max(16px, 1em);
+  }
+}
+
+/* Phones: a table marked data-stack shows each row as a small card (its first cell as the title,
+   the others labelled from the table's headings) — no sideways scrolling. See StackTableLabels. */
+@media (max-width: 639px) {
+  table[data-stack] { min-width: 0 !important; width: 100%; }
+  table[data-stack] thead { display: none; }
+  table[data-stack] tbody, table[data-stack] tfoot { display: block; }
+  table[data-stack] tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.45rem 1rem; padding: 0.8rem 0.1rem; border-bottom: 1px solid var(--border); }
+  table[data-stack] tr:last-child { border-bottom: 0; }
+  table[data-stack] td, table[data-stack] th { display: block; min-width: 0; padding: 0 !important; text-align: left !important; white-space: normal !important; overflow-wrap: anywhere; }
+  table[data-stack] td::before { content: attr(data-label); display: block; margin-bottom: 1px; font-size: 10px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted-foreground); }
+  table[data-stack] td[data-label=""]::before { display: none; }
+  table[data-stack] td:first-child { grid-column: 1 / -1; font-weight: 600; }
+  table[data-stack] td:first-child::before { display: none; }
+  table[data-stack] td[colspan] { grid-column: 1 / -1; }
+  table[data-stack] td:empty, table[data-stack] td[data-blank] { display: none; }
+  table[data-stack] tfoot tr { border-top: 1px dashed var(--border); }
+}

@@ -1,0 +1,58 @@
+// Generated tiny blur placeholders for /public/images (next/image placeholder="blur").
+// Regenerate when photos change (sharp → 12px WebP → base64).
+export const BLUR: Record<string, string> = {
+  "/images/amenity/amenity-01.webp": "data:image/webp;base64,UklGRmoAAABXRUJQVlA4IF4AAADQAwCdASoMABIAPu1iqU2ppaOiMAgBMB2JQBOgBDwQL2dIcwP8nAAA/q635QZFVgJewP8dRE/xMw/jppvCdGtFDVctqshJgllfuKAU0RLvHTO+x19dWMUhS/QEsAAA",
+  "/images/bath/bath-01.webp": "data:image/webp;base64,UklGRkgAAABXRUJQVlA4IDwAAACQAQCdASoMAAgAA4BaJaQAAlyHQgAA/uin8cve1HDeExkWdWDx3xdQMB2fs4KWQ98xqjsTv52Ft+YwAAA=",
+  "/images/bath/bath-02.webp": "data:image/webp;base64,UklGRmoAAABXRUJQVlA4IF4AAAAQBACdASoMABIAPu1iqk4ppaQiMAgBMB2JZQCw7CHhJvlqtw2Qe/bgYAD+2NhXeSX4eZ+fbBLSFrgN1ieIL1L35isjZ0xnUdR/oCvpfukoGPsk6J8WHn2UguYLJgAA",
+  "/images/bath/bath-03.webp": "data:image/webp;base64,UklGRjwAAABXRUJQVlA4IDAAAACwAQCdASoMAAgAA4BaJYgCdADW2XzQAP617vyUcpa2Ly37XjWn2XXeX6YdfqvgAAA=",
+  "/images/bath/bath-04.webp": "data:image/webp;base64,UklGRj4AAABXRUJQVlA4IDIAAACwAQCdASoMAAgAA4BaJQBOgCEu+kAwAP3Oj0850Jj0mbKg2I2DsJDM3KKKPxGGdYAAAA==",
+  "/images/bath/bath-05.webp": "data:image/webp;base64,UklGRjwAAABXRUJQVlA4IDAAAADQAQCdASoMAAgAA4BaJZQCdAED5kT3AAD+VDqauR2IrXEcP1XdpjQZJBnCcgPyAAA=",
+  "/images/bath/bath-06.webp": "data:image/webp;base64,UklGRkwAAABXRUJQVlA4IEAAAADwAQCdASoMAAgAA4BaJQBOgB6TRJICooAA/uGmsH0Xlgmcbd4J7HQM6+BeFY+ys5mVRqdzOtOgmWUN9OLhjzIA",
+  "/images/bath/bath-07.webp": "data:image/webp;base64,UklGRkQAAABXRUJQVlA4IDgAAADwAQCdASoMAAgAA4BaJZQCdADbm97P5wAA/spdYZzKSkC+ZUScDRtQmurCOilfpzGdeFS0+p6AAA==",
+  "/images/bath/bath-08.webp": "data:image/webp;base64,UklGRkYAAABXRUJQVlA4IDoAAACwAQCdASoMAAgAA4BaJQBOgB9EDcNYAP7tZqqNSh76om9DqiO1HxGc5r+ocw9i0Kv7/2J7k/Z2vQAA",
+  "/images/bath/bath-09.webp": "data:image/webp;base64,UklGRkIAAABXRUJQVlA4IDYAAADwAQCdASoMABAAA4BaJYwCdADcoQtK6bAA21HnJmEpcXLpJ0wbsfuZrbK393KTFgFi5ulUAAA=",
+  "/images/bath/bath-10.webp": "data:image/webp;base64,UklGRj4AAABXRUJQVlA4IDIAAADQAQCdASoMAAkAA4BaJYwCdADFN9kAAAD8sfg90nuTAxdwGNG5lEBMnO2o0PVnTOWoAA==",
+  "/images/bath/bath-11.webp": "data:image/webp;base64,UklGRjwAAABXRUJQVlA4IDAAAAAQAgCdASoMAAkAA4BaJZQCdAEDfuMqc1eAAPyqIR2/XGqlbTt0fIKovSFWoN2AAAA=",
+  "/images/bath/bath-12.webp": "data:image/webp;base64,UklGRkAAAABXRUJQVlA4IDQAAADQAQCdASoMAAkAA4BaJZQCdACqqGQUgAD0U5StKlm7W0xa7YV5MRRLkCynQBGGgUMmgAAA",
+  "/images/bath/bath-13.webp": "data:image/webp;base64,UklGRkAAAABXRUJQVlA4IDQAAADwAQCdASoMAAkAA4BaJZQCdAEXIawdmAAA9FOEf3acvePfkVDeb5hze/4E8nhiGLRs4AAA",
+  "/images/bath/bath-14.webp": "data:image/webp;base64,UklGRjwAAABXRUJQVlA4IDAAAADQAQCdASoMAAkAA4BaJZQCdADhOaNRAAD7gtaiLYxHEc2x2puFYwENBpLZCFv8EAA=",
+  "/images/bath/bath-15.webp": "data:image/webp;base64,UklGRkQAAABXRUJQVlA4IDgAAADQAQCdASoMAAkAA4BaJZQCdAEKUP45AAD76cVMuy4B8NsyxHPt0Oj6Yr4ho3DdrQkTlfE0jiUAAA==",
+  "/images/bath/bath-16.webp": "data:image/webp;base64,UklGRjgAAABXRUJQVlA4ICwAAABwAQCdASoMAAkAA4BaJaQAAk4x8AD9TAZEo63hPBlLqXoL0dugG/loljUAAA==",
+  "/images/exterior/exterior-01.webp": "data:image/webp;base64,UklGRloAAABXRUJQVlA4IE4AAADQAQCdASoMAAgAA4BaJbACdADZoc/agAD45F0WCau8JjONv10dAEc6qDrNIACcQA5QwO8dzCRH4WdeycUwXtbh15xZNertVaBrY1yAAAA=",
+  "/images/exterior/exterior-02.webp": "data:image/webp;base64,UklGRloAAABXRUJQVlA4IE4AAADwAQCdASoMAAgAA4BaJYgCdADcq6QgGkAA/iUhsNqskuRXyNbk3KtfxUHmg4J9nZxMOy+LGGGmFo1ep3EHP6M849wswiGi1NK7VA5AAAA=",
+  "/images/lobby/lobby-01.webp": "data:image/webp;base64,UklGRloAAABXRUJQVlA4IE4AAAAQAgCdASoMAAgAA4BaJbACdAEftUhbuMd4AP6JH/YYMYwj/cNqI5j6jCMNNigbsO/fkRuFPHnC7DYJQhxBllXw8CwciQNz08HGZ6/XgAA=",
+  "/images/lobby/lobby-02.webp": "data:image/webp;base64,UklGRloAAABXRUJQVlA4IE4AAABQAgCdASoMAAgAA4BaJbACdH8AF8h0IUUUJYAA/ps7SaYOdnU9ulsnbRKePeHLO9oTmftDlVmjuuPOqwp64uJjzeM6eMxCfq2gMdCgAAA=",
+  "/images/lobby/lobby-03.webp": "data:image/webp;base64,UklGRlgAAABXRUJQVlA4IEwAAADwAQCdASoMAAgAA4BaJZgCdAEfpvRL5AAA/kj8SyTROn1osncsNb8i/8COqzvBlvigMsY6675j+/aDaInk+JFFHC8rpYou87fIAAAA",
+  "/images/room-blue/room-blue-01.webp": "data:image/webp;base64,UklGRlIAAABXRUJQVlA4IEYAAADQAQCdASoMAAgAA4BaJZACdAEQLEFUoAD5fZGueQXYt+SsUwlgu9hsdAvB4IB2f9JTYTsnx2KlYYNmjBcxJYZkha4eQAAA",
+  "/images/room-blue/room-blue-02.webp": "data:image/webp;base64,UklGRl4AAABXRUJQVlA4IFIAAADwAQCdASoMAAgAA4BaJbACsAD6DlHSaAAA/vOCcG0ziHh5lN+ztUhTjbNIjypAGtTeA2RaF37mwE/E98E5shc6PSRHBpG7B2kayRYpMcn7gAAA",
+  "/images/room-blue/room-blue-03.webp": "data:image/webp;base64,UklGRlgAAABXRUJQVlA4IEwAAADQAQCdASoMAAkAA4BaJbAC7ADaOctLAAD3OCHWYw6rHaMi0+7disUjUUS+erzsUdl47v9LMdactI1TgRefbzAjwHnIl688Nw8zWGAA",
+  "/images/room-blue/room-blue-04.webp": "data:image/webp;base64,UklGRlIAAABXRUJQVlA4IEYAAACQAQCdASoMAAkAA4BaJZQAAYr3PwAA20ZKXPlCJpG+fBtFpXM4r1xh4PABoxHXO2JfCoE6iit6oI7GW5tZm2lb4Cr2MAAA",
+  "/images/room-blue/room-blue-05.webp": "data:image/webp;base64,UklGRlwAAABXRUJQVlA4IFAAAAAQAgCdASoMABAAA4BaJYwC/ODdnMVD0kgAAP7BgMMORqnZD/r35D9sWVCnnnnmuqU5gy9fSbAF5rqiEUxq5iErT/40FwC3QFSeZydW5LLAAA==",
+  "/images/room-blue/room-blue-06.webp": "data:image/webp;base64,UklGRlAAAABXRUJQVlA4IEQAAACwAQCdASoMAAkAA4BaJZQAAh77WTsAAPzxYjeFUAWMMp4XDT8wQjyNF0YwPZp7ccmqTbrWP9T9lWry+c/Y9AEC4ZsAAA==",
+  "/images/room-blue/room-blue-07.webp": "data:image/webp;base64,UklGRlwAAABXRUJQVlA4IFAAAAAwAgCdASoMAAkAA4BaJQBYheAQUpOd4CA3AADLQneOg9Ib4KPnizFjDy/AWWDsiKWCQL44DByr0yNPKvTfFGX3TLJ0HxMvljdN2VamhOKAAA==",
+  "/images/room-blue/room-blue-08.webp": "data:image/webp;base64,UklGRloAAABXRUJQVlA4IE4AAADwAQCdASoMAAkAA4BaJYwCw7YrxsLWPgAA+kSnfyR6L3NhfV/gSg6s5cdWyog8bXIrYuJOjUoGDwuxucJTsLls3y02HLja2is9MsAAAAA=",
+  "/images/room-blue/room-blue-09.webp": "data:image/webp;base64,UklGRmQAAABXRUJQVlA4IFgAAAAQAgCdASoMABAAA4BaJZQCw7DhTMIWN1aoAP6tToXXWaA2RD6IxONfAHox6jeQhQ0CukXQBhCHjXx4sbW8uZTJC/na7NzpQ8AmGIsN7H5UaJI294VwAAAA",
+  "/images/room-blue/room-blue-10.webp": "data:image/webp;base64,UklGRmIAAABXRUJQVlA4IFYAAAAwAgCdASoMABAAA4BaJZQAD5AvRwCuvvVAAADKsLCWWHsCypjQ2HG1u8jjY8hunX5yq2EfJOXvo8DY7P70miAdz+laLaBEOy/x1ac8vceIJSYwmSBUAA==",
+  "/images/room-blue/room-blue-11.webp": "data:image/webp;base64,UklGRlYAAABXRUJQVlA4IEoAAADQAQCdASoMAAkAA4BaJQBdgBtsOZn3EAD9/eu/BFkjPbQKP8CXlIfHoIBVSmzEh7+/ZImSIb8wWceHZZ4MFlYI5eGsDkJGTxMAAA==",
+  "/images/room-blue/room-blue-12.webp": "data:image/webp;base64,UklGRlYAAABXRUJQVlA4IEoAAADQAQCdASoMAAkAA4BaJYwCdADhSSOY4AD97F+910OpPizFpyvwQ2Q8E2ph9Jw81CsK3amFA5jAGWIEshoo3DwE214PsjDM3QAAAA==",
+  "/images/room-blue/room-blue-13.webp": "data:image/webp;base64,UklGRlAAAABXRUJQVlA4IEQAAADQAQCdASoMAAkAA4BaJYwAAl3FKGCS7AD+B1PbRoNk8AOf0MLQ48kjmaHzxeA8IA8lxaPMBP73WgPkq0eIejtajQAAAA==",
+  "/images/room-blue/room-blue-14.webp": "data:image/webp;base64,UklGRlAAAABXRUJQVlA4IEQAAACQAQCdASoMAAkAA4BaJYwAAk4y1gAA/gdFHrtKTssyukHmm2QFfOaYkohWXKohkqdzeXF7pbSPcL+yXfAOIpdx8uo0AA==",
+  "/images/room-blue/room-blue-15.webp": "data:image/webp;base64,UklGRk4AAABXRUJQVlA4IEIAAACwAQCdASoMAAkAA4BaJZQC7AELJtXAAP7arDtDBzBdepPe1vxbu0qVQ+p5DXI3nfUk6K3g0Ih8hieByefNRsMk+AA=",
+  "/images/room-blue/room-blue-16.webp": "data:image/webp;base64,UklGRlQAAABXRUJQVlA4IEgAAAAQAgCdASoMAAkAA4BaJYwCdADhaCIoeOQAAPyrgdgHHWyA+Na9LL9m/Ul9CeEwfDuE8VL0WZQMcr7AhdOt+QAfJpTDM8+4AAA=",
+  "/images/room-blue/room-blue-17.webp": "data:image/webp;base64,UklGRlQAAABXRUJQVlA4IEgAAADQAQCdASoMAAkAA4BaJYwCdAC9qZM3AAD4WOR+BGcyEETGx7Ox/PFwpYRCoTJATrnBCVo8+9xPtxcn7Sy1NI5VkXJgvPO7uAA=",
+  "/images/room-blue/room-blue-18.webp": "data:image/webp;base64,UklGRlQAAABXRUJQVlA4IEgAAADQAQCdASoMAAkAA4BaJQBWABwwxE1LYAD+5ubnvNbWJ5mkzrkbTOqw7jGI8LRthLmnY9mb51sCa8P0ukWZ04a9rP1fIdQAAAA=",
+  "/images/room-blue/room-blue-19.webp": "data:image/webp;base64,UklGRmIAAABXRUJQVlA4IFYAAADwAQCdASoMABAAA4BaJQBOgB/es7FyLYAA30cWGLLQPSQeC9dqj+K4lkPh+/jzTcQvrRXWyzDJltT9Vpy3ddA7kF/nM3fKiFhJwATAvLZsOGSgVoAAAA==",
+  "/images/room-blue/room-blue-20.webp": "data:image/webp;base64,UklGRlIAAABXRUJQVlA4IEYAAADQAQCdASoMAAkAA4BaJYwCw7C1Hy81IAD8rGvlYTKuaAIvGApgQo6UPFdC8Jhl0zKTpo1vJ6sjs02U51jhP39SlOhVgAAA",
+  "/images/room-red/room-red-01.webp": "data:image/webp;base64,UklGRpYAAABXRUJQVlA4IIoAAAAQBACdASoMABUAPu1iqU2ppaOiMAgBMB2JQBWABEBPvmZWlsL713inAAD8tO89MirAaXYPkXW2tFcEwS5EJhkweNKBe7t0DsUfiyYWSH0ScyjQJWE3HuqPQ/4XvQL63Vl0A/eNaQ0nDf8jxPo1tmTv4KIlvGzc7uBReXOMCfrGT+k2vOl1C7ChAAA=",
+  "/images/room-red/room-red-02.webp": "data:image/webp;base64,UklGRpQAAABXRUJQVlA4IIgAAADwAwCdASoMABUAPu1iqU2ppaOiMAgBMB2JQBOgA0im65XmMPwmrYGAAP7D8b1xoRc2XTtyaweCWZuwT+2FI7Cy7H8uvFMdQ3mRC/aXedZlgtm5BupDc2exwALKkRp8Jpryy0lR59ut0K2l/eILk3cNxU8mVbugwASD/t2nuaPCFYYfJ83Ka+AA",
+  "/images/room-red/room-red-03.webp": "data:image/webp;base64,UklGRpQAAABXRUJQVlA4IIgAAABQBACdASoMABUAPu1iqU2ppaOiMAgBMB2JQBWAMYTcmLjsf70QMsMuo8ggAP7DbcTbE3grMsTxwfwobiOP1cNzHae/CKNHqqY2LMf82SKwyPhEVt54WUwKEY07ll9ecOacEGMxqPz50HJs5fpUTLPAOyUOgkPmp1j/9jl2q9AUzjJADjmC4AAA",
+  "/images/room-red/room-red-04.webp": "data:image/webp;base64,UklGRl4AAABXRUJQVlA4IFIAAADQAQCdASoMAAgAA4BaJQBOgBt0gvqigAD+zFkd80U307ez5lyGXrHnJI1qXbAifoXFDKy4yTU2kkI68g+pUh6DABpq9f/nx0zb9CJHURUOHgAA",
+  "/images/room-red/room-red-05.webp": "data:image/webp;base64,UklGRl4AAABXRUJQVlA4IFIAAADwAQCdASoMAAgAA4BaJaACdAEahNZxQrgA/tmr6KlaS7usU1EdafB2Hdt5aejakuD7yswkTe4Zwzdlb/Fdh/1iMrW0Sdavo7pw/b5TSkq1lkAA",
+  "/images/room-red/room-red-06.webp": "data:image/webp;base64,UklGRmAAAABXRUJQVlA4IFQAAADwAQCdASoMAAgAA4BaJbACdAEQ5M2AKwAA4n+Mhx+o+5QzECFpzIv6evUncHHRhuWsFh5DKRcYelWTJ488v8xF88yG8IVqZFid4BGsp5yL1/mWAAA=",
+  "/images/room-red/room-red-07.webp": "data:image/webp;base64,UklGRlgAAABXRUJQVlA4IEwAAAAQAgCdASoMAAgAA4BaJYgCdADhjigv6noAAP5NqX22InmMnleEojEA5t5xLmeLSyo2+ECQ7jeWsdxWxYlGqphA78sVPGL4KTyrndAA"
+};
+
+export function blurFor(src: string): { placeholder: "blur"; blurDataURL: string } | Record<string, never> {
+  const b = BLUR[src];
+  return b ? { placeholder: "blur", blurDataURL: b } : {};
+}

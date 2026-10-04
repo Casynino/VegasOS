@@ -1,0 +1,1306 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import {
+  ArrowRight, BadgePercent, BedDouble, Building2, CalendarCheck, CalendarDays, Check, CheckCircle2, Circle, Clock, DoorOpen, Loader2, LogIn, LogOut, Minus, Plus, Presentation, Search, Trash2, UserCheck, Users, UsersRound, Wallet, X,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { formatBusinessDate, formatTime, formatTZS } from "@/lib/format";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { DiscountChips } from "@/components/staff/reception/discount-editor";
+import { SHORT_TIME_MAX_HOURS } from "@/lib/short-time";
+import { hoursBetween } from "@/lib/meeting";
+import { CHARGE_TYPES, type ChargeTypeCode } from "@/lib/charge-types";
+import { PAYMENT_TERMS, termsLabel, type BillTo } from "@/lib/billing";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { NativeSelect } from "@/components/ui/native-select";
+import { validPhone } from "@/lib/guest-messages";
+import { IdPicker, NationalityPicker } from "@/components/staff/id-nationality";
+import { checkAvailabilityAction, createReservationAction, searchGuestsAction, type AvailabilityResult } from "../actions";
+import type { PayAccount } from "@/lib/pay-account";
+import type { BillMenu } from "@/server/services/restaurant";
+import { MenuOrder, picksPayload, picksTotal, type MenuPick } from "@/components/staff/reception/menu-order";
+import { GroupForm } from "../../groups/new/group-form";
+import { StayDatePicker, longDate } from "@/components/staff/date-picker";
+import type { BookingCompany, CompanyStaff } from "@/lib/company-staff";
+import { QuickCompanyDialog } from "@/components/staff/company/quick-company";
+
+type Mode = "overnight" | "walkIn" | "dayUse" | "meeting" | "group";
+type Guest = {
+  id?: string | null; fullName: string; phone: string; email: string; idType: string; idNumber: string; nationality: string; address: string;
+  /** Returning guest: completed stays and the last one. */
+  stays?: number; lastStay?: string | null; reference?: string | null; vip?: boolean;
+  /** Same phone as another customer, but staff confirmed it is someone else. */
+  createNew?: boolean;
+};
+type Line = { key: number; roomTypeId: string; roomId: string; adults: number; children: number; discountPerNight: string; discountReason: string };
+
+const LBL = "text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground";
+
+const EMPTY_GUEST: Guest = { id: null, fullName: "", phone: "", email: "", idType: "", idNumber: "", nationality: "", address: "" };
+
+export function BookingForm(props: {
+  initialMode: Mode; today: string; tomorrow: string;
+  sources: { code: string; name: string }[];
+  corporates: (BookingCompany & { billTo: BillTo; covers: string[] })[];
+  preselectCompany?: string | null;
+  /** Manager: may approve a company booking that goes over its credit limit. */
+  canApproveCredit?: boolean;
+  /** Manager: may confirm a booking without payment. */
+  canConfirmUnpaid?: boolean;
+  /** How long an unpaid booking holds its room (0 = no automatic release). */
+  holdHours?: number;
+  /** Default invoice payment terms (days). */
+  invoiceTerms?: number;
+  /** Most this user may take off a room per night (null = no desk limit). */
+  discountMax: number; canCheckIn: boolean;
+  /** Payment methods for taking money at the desk; empty when the user cannot record payments. */
+  methods: PayAccount[];
+  initialGuest?: Guest | null;
+  /** Booking a specific room (from the room board): pre-selected, and checked against the dates. */
+  initialRoom?: { id: string; number: string; typeId: string; typeName: string } | null;
+  initialArrival?: string | null;
+  /** The restaurant & bar menu: food & drinks picked while booking (with photos, menu prices). */
+  menu?: BillMenu | null;
+}) {
+  const router = useRouter();
+  const [mode, setMode] = useState<Mode>(props.initialMode);
+  const plusDay = (d: string) => { const x = new Date(`${d}T00:00:00Z`); x.setUTCDate(x.getUTCDate() + 1); return x.toISOString().slice(0, 10); };
+  const [arrival, setArrival] = useState(props.initialArrival ?? props.today);
+  const [departure, setDeparture] = useState(props.initialArrival ? plusDay(props.initialArrival) : props.tomorrow);
+  const [pinned, setPinned] = useState(props.initialRoom ?? null);
+  const [nights, setNights] = useState(1);
+  // Short time: starts now (guest at the desk) or at a chosen date & time; 1–7 hours.
+  const [shortNow, setShortNow] = useState(true);
+  const [dayUse, setDayUse] = useState(() => ({ ...darNow(), hours: 3 }));
+  // Meeting room: a date, a start and an end (priced per booking).
+  const [meet, setMeet] = useState(() => ({ date: props.initialArrival ?? props.today, start: "09:00", end: "13:00" }));
+  const [companyName, setCompanyName] = useState("");
+  const meetingMode = mode === "meeting";
+  const [source, setSource] = useState(props.initialMode === "walkIn" ? "WALK_IN" : props.preselectCompany ? "CORPORATE" : "PHONE");
+  const [avail, setAvail] = useState<AvailabilityResult | null>(null);
+  const [availError, setAvailError] = useState<string | null>(null);
+  const [checking, startChecking] = useTransition();
+  const [lines, setLines] = useState<Line[]>([]);
+  const [guest, setGuest] = useState<Guest>(props.initialGuest ?? EMPTY_GUEST);
+  // Payment decides: paid now / company invoice → confirmed; not paid → pending (room held for a while).
+  const [status, setStatus] = useState<"RESERVED" | "CONFIRMED" | "INQUIRY">("RESERVED");
+  // Who pays: the guest, or a company — an invoice always means the company pays the whole bill.
+  // Companies added from this form (before the page refreshes) are usable straight away.
+  const [addedCompanies, setAddedCompanies] = useState<BookingCompany[]>([]);
+  const corporates = [...addedCompanies.filter((a) => !props.corporates.some((c) => c.id === a.id)).map((c) => ({ ...c, billTo: "COMPANY" as BillTo, covers: [] as string[] })), ...props.corporates];
+  const [newCompany, setNewCompany] = useState(false);
+  const firstCompany = props.corporates.find((c) => c.id === props.preselectCompany) ?? null;
+  const [corporateId, setCorporateId] = useState(firstCompany?.id ?? "");
+  const [billTo, setBillTo] = useState<BillTo>(firstCompany ? "COMPANY" : "GUEST");
+  const [terms, setTerms] = useState<number | null>(null);
+  const [creditReason, setCreditReason] = useState("");
+  const company = corporates.find((c) => c.id === corporateId) ?? null;
+  function pickCompany(id: string) {
+    setCorporateId(id);
+    const c = corporates.find((x) => x.id === id);
+    if (!c) { setBillTo("GUEST"); return; }
+    setBillTo("COMPANY");
+    setTerms(null);
+  }
+  const [externalRef, setExternalRef] = useState("");
+  const [requests, setRequests] = useState("");
+  const [notes, setNotes] = useState("");
+  const [saving, startSaving] = useTransition();
+  // Payment taken now (walk-in / short time, or a deposit). null method = not paying now.
+  const [payMethod, setPayMethod] = useState<string | null>(null);
+  const [payAmount, setPayAmount] = useState<string>("");
+  const [payRef, setPayRef] = useState("");
+  // Room service & extras ordered at check-in / while booking.
+  const [extras, setExtras] = useState<{ key: number; type: ChargeTypeCode; item: string; qty: number; unitPrice: string }[]>([]);
+  // Food & drinks picked from the menu (priced by the server from the menu when saving).
+  const [menuPicks, setMenuPicks] = useState<MenuPick[]>([]);
+  const [roomService, setRoomService] = useState(false);
+  const addExtra = (type: ChargeTypeCode) => setExtras((xs) => [...xs, { key: keyRef.current++, type, item: CHARGE_TYPES.find((c) => c.code === type)!.label, qty: 1, unitPrice: "" }]);
+  const setExtra = (key: number, patch: Partial<(typeof extras)[number]>) => setExtras((xs) => xs.map((x) => (x.key === key ? { ...x, ...patch } : x)));
+  const keyRef = useRef(1);
+
+  const stay = useMemo(() => {
+    if (mode === "overnight") return { kind: "overnight" as const, arrivalDate: arrival, departureDate: departure };
+    if (mode === "walkIn") return { kind: "walkIn" as const, nights };
+    if (mode === "meeting") return { kind: "meeting" as const, date: meet.date, startTime: meet.start, endTime: meet.end };
+    return { kind: "dayUse" as const, date: dayUse.date, startTime: dayUse.startTime, hours: dayUse.hours };
+  }, [mode, arrival, departure, nights, dayUse, meet]);
+  const checkInNow = mode === "walkIn" || (mode === "dayUse" && shortNow);
+
+  // Re-check availability whenever the stay or source changes.
+  useEffect(() => {
+    if (mode === "group") return; // the group form checks its own rooms
+    const handle = setTimeout(() => {
+      startChecking(async () => {
+        const res = await checkAvailabilityAction({ stay, sourceCode: source, checkInNow });
+        if (res.ok) {
+          setAvail(res.data);
+          setAvailError(null);
+        } else {
+          setAvail(null);
+          setAvailError(res.error);
+        }
+      });
+    }, 250);
+    return () => clearTimeout(handle);
+  }, [stay, source, mode, checkInNow]);
+
+  const typeById = useMemo(() => new Map(avail?.types.map((t) => [t.id, t]) ?? []), [avail]);
+  const pinnedFree = !!pinned && !!typeById.get(pinned.typeId)?.rooms.some((r) => r.id === pinned.id);
+
+  // Booking a specific room: add it as soon as it is free for the chosen dates.
+  useEffect(() => {
+    if (!pinned || !pinnedFree || lines.some((l) => l.roomId === pinned.id)) return;
+    const t = typeById.get(pinned.typeId)!;
+    setLines((ls) => [{ key: keyRef.current++, roomTypeId: pinned.typeId, roomId: pinned.id, adults: Math.min(meetingMode ? 10 : 2, t.maxAdults), children: 0, discountPerNight: "0", discountReason: "" }, ...ls]);
+  }, [pinned, pinnedFree, typeById, lines, meetingMode]);
+
+  function addRoom(typeId: string) {
+    const t = typeById.get(typeId);
+    if (!t) return;
+    const used = lines.filter((l) => l.roomTypeId === typeId).length;
+    if (used >= t.rooms.length) return toast.error(`No more ${t.name} rooms free for these dates.`);
+    setLines((ls) => [...ls, { key: keyRef.current++, roomTypeId: typeId, roomId: "", adults: Math.min(meetingMode ? 10 : 2, t.maxAdults), children: 0, discountPerNight: "0", discountReason: "" }]);
+  }
+
+  const update = (key: number, patch: Partial<Line>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
+
+  // Display-only estimate; the server recalculates everything on save.
+  // A chosen room that is no longer free after a date change falls back to auto-assign.
+  const validRoomId = (l: Line) => (typeById.get(l.roomTypeId)?.rooms.some((r) => r.id === l.roomId) ? l.roomId : "");
+  // Display-only: one room's price for the stay — base − promotion (from the server) − manual discount.
+  // The server prices everything again when saving; this mirrors the same rules.
+  const lineQuote = (l: Line) => {
+    const t = typeById.get(l.roomTypeId);
+    if (!t || !avail) return null;
+    const units = avail.stay.units;
+    const room = t.rooms.find((r) => r.id === validRoomId(l));
+    const promoTotal = room?.promoTotal ?? t.promoTotal;
+    const promotion = room?.promotion ?? t.promotion;
+    const promoPerNight = Math.round(promoTotal / Math.max(1, units));
+    const manual = avail.stay.isDayUse && !avail.meeting ? 0 : Math.min(Number(l.discountPerNight) || 0, Math.max(0, t.baseRate - promoPerNight));
+    // Nights can cost differently (weekend, holiday, season): the server adds up each night's own price.
+    const gross = room?.grossTotal ?? t.grossTotal ?? t.baseRate * units;
+    return { t, units, gross, promotion, promoTotal, promoPerNight, manual, manualTotal: manual * units, net: gross - promoTotal - manual * units, perNight: t.baseRate - promoPerNight - manual };
+  };
+  const rooms$ = lines.reduce((e, l) => {
+    const q = lineQuote(l);
+    if (!q) return e;
+    return { gross: e.gross + q.gross, promo: e.promo + q.promoTotal, manual: e.manual + q.manualTotal, net: e.net + q.net, promotions: q.promotion ? [...new Set([...e.promotions, q.promotion.name])] : e.promotions };
+  }, { gross: 0, promo: 0, manual: 0, net: 0, promotions: [] as string[] });
+  const menuTotal = picksTotal(menuPicks);
+  // Room service to a guest checking in now adds the delivery fee (one order).
+  const menuFee = menuPicks.length && roomService && checkInNow ? props.menu?.fee ?? 0 : 0;
+  const extrasTotal = extras.reduce((t, x) => t + x.qty * (Number(x.unitPrice) || 0), 0) + menuTotal + menuFee;
+  const estimate = { ...rooms$, extras: extrasTotal, net: rooms$.net + extrasTotal };
+  // Empty amount = the full total (it follows the total when rooms or nights change).
+  // The company's part (never taken at the desk) and what is left for the guest.
+  // Invoice: the company pays everything on the bill — room, food, drinks and extras.
+  const companyPart = !company || billTo === "GUEST" ? 0 : estimate.net;
+  const guestPart = estimate.net - companyPart;
+  const overCredit = company?.available != null && companyPart > company.available;
+  const payNow = payMethod ? (payAmount === "" ? guestPart : Math.round(Number(payAmount) || 0)) : 0;
+
+
+  function submit() {
+    if (!guest.fullName.trim()) return toast.error("Enter the guest's name.");
+    if (!validPhone(guest.phone)) { document.getElementById("g-phone")?.focus(); return toast.error("Enter the guest's phone number — the booking details are sent to it."); }
+    if (lines.length === 0) return toast.error("Add at least one room.");
+    if (extras.some((x) => !x.item.trim() || !(Number(x.unitPrice) > 0))) return toast.error("Give each room-service item a name and a price.");
+    if (pinned && !pinnedFree) return toast.error(`Room ${pinned.number} is not free for these dates. Change the dates, or choose "Any room".`);
+    if (overCredit && !props.canApproveCredit) return toast.error(`${company!.companyName} does not have enough credit left. Ask a manager to approve it.`);
+    if (overCredit && creditReason.trim().length < 3) return toast.error("Say why the company may go over its credit limit.");
+    startSaving(async () => {
+      const res = await createReservationAction({
+        sourceCode: source,
+        externalReference: externalRef || undefined,
+        status,
+        checkInNow,
+        // "Now" means the moment the button is pressed.
+        stay: mode === "dayUse" && shortNow ? { ...stay, ...darNow() } : stay,
+        guest: { ...guest, id: guest.id || null },
+        corporateCustomerId: corporateId || null,
+        billing: company ? { billTo: "COMPANY", covers: [], paymentTermDays: terms } : null,
+        creditOverride: overCredit ? { reason: creditReason.trim() } : null,
+        rooms: lines.map((l) => ({
+          roomTypeId: l.roomTypeId, roomId: validRoomId(l) || null, adults: l.adults, children: l.children,
+          discountPerNight: Number(l.discountPerNight) || 0,
+          discountReason: l.discountReason || null,
+        })),
+        charges: extras.length ? extras.map((x) => ({ type: x.type, item: x.item.trim(), qty: x.qty, unitPrice: Math.round(Number(x.unitPrice)) })) : null,
+        menuItems: menuPicks.length ? picksPayload(menuPicks) : null,
+        menuRoomService: roomService && checkInNow,
+        payment: payMethod && payNow > 0 ? { amount: payNow, accountId: payMethod, reference: payRef || undefined } : null,
+        specialRequests: requests || undefined,
+        internalNotes: notes || undefined,
+        companyName: meetingMode ? companyName.trim() || undefined : undefined,
+      });
+      if (res.ok) {
+        toast.success(`${checkInNow ? "Checked in" : "Reserved"} — ${res.data.reference}`);
+        // Straight to the booking with the WhatsApp message ready (booking details, or the welcome for a walk-in).
+        router.push(`/staff/reservations/${res.data.id}${meetingMode ? "" : checkInNow ? "?sent=welcome" : "?sent=new"}`);
+      } else {
+        toast.error(res.error);
+        if (res.code === "UNAVAILABLE") {
+          // Availability changed while booking: refresh it and let staff re-pick.
+          setLines([]);
+          setAvail(null);
+        }
+      }
+    });
+  }
+
+  const MODES = [
+    { m: "walkIn" as const, label: "Walk-in now", hint: "Guest is at the desk", icon: DoorOpen },
+    { m: "overnight" as const, label: "Reserve for later", hint: "Hold a room for dates", icon: CalendarDays },
+    { m: "dayUse" as const, label: "Short time", hint: "A few hours", icon: Clock },
+    { m: "meeting" as const, label: "Meeting room", hint: "Start – end time", icon: Presentation },
+    { m: "group" as const, label: "Group booking", hint: "Many rooms · one bill", icon: UsersRound },
+  ];
+  // The kinds of booking — compact tiles that fit in one row on a wide screen.
+  const tiles = (
+    <div className="@container">
+      <div className="grid grid-cols-2 gap-2 @[36rem]:grid-cols-3 @[46rem]:grid-cols-5" role="tablist" aria-label="Kind of booking">
+        {MODES.map(({ m, label, hint, icon: I }) => {
+          const on = mode === m;
+          const off = m === "walkIn" && !props.canCheckIn;
+          return (
+            <button key={m} type="button" role="tab" aria-selected={on} disabled={off}
+              onClick={() => { setMode(m); setLines([]); if (m === "walkIn") setSource("WALK_IN"); else if (source === "WALK_IN") setSource("PHONE"); }}
+              // Five in a row: icon above the words while space is tight, beside them on a wide screen.
+              className={cn("group flex items-center gap-2.5 rounded-2xl border bg-card px-3 py-2.5 text-left transition-all disabled:opacity-40 @[46rem]:flex-col @[46rem]:items-start @[46rem]:gap-2 @[70rem]:flex-row @[70rem]:items-center",
+                on ? "border-[oklch(0.75_0.13_80)] bg-[oklch(0.75_0.13_80)]/[0.08] shadow-[0_10px_30px_-18px_oklch(0.75_0.13_80)]" : "border-border/70 hover:-translate-y-0.5 hover:border-foreground/20")}>
+              <span className={cn("grid size-9 shrink-0 place-items-center rounded-xl [&_svg]:size-[18px]", on ? "bg-[oklch(0.75_0.13_80)] text-black" : "bg-muted text-foreground/70")}><I /></span>
+              <span className="min-w-0">
+                <span className="block truncate text-[13px] font-semibold leading-tight">{label}</span>
+                <span className="block truncate text-[11px] leading-tight text-muted-foreground">{hint}</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+  const nightsNow = avail && !avail.stay.isDayUse ? avail.stay.nights : null;
+  const setNightsFromArrival = (n: number) => setDeparture(addDaysIso(arrival, n));
+  const totalFree = avail?.types.reduce((n, t) => n + t.rooms.length, 0) ?? 0;
+  const totalRooms = avail?.types.reduce((n, t) => n + t.rooms.length + t.busy.length, 0) ?? 0;
+  const nextFree = avail?.types.flatMap((t) => t.busy.map((b) => b.freeFrom)).filter((d): d is string => !!d).sort()[0] ?? null;
+  /** Move the booking to start on `date`, keeping the number of nights (and optionally book that exact room). */
+  const jumpTo = (date: string, room: { id: string; number: string; typeId: string; typeName: string } | null) => {
+    const n = Math.max(1, avail?.stay.nights ?? 1);
+    setLines([]);
+    setArrival(date); setDeparture(addDaysIso(date, n));
+    if (room) setPinned(room);
+    toast.success(`Moved to ${formatBusinessDate(date)} → ${formatBusinessDate(addDaysIso(date, n))}${room ? ` · room ${room.number}` : ""}.`);
+  };
+  const chosenIds = new Set(lines.map((l) => validRoomId(l)).filter(Boolean));
+  const steps = [
+    { label: mode === "dayUse" || meetingMode ? "Time" : "Dates", done: !!avail },
+    { label: "Room", done: lines.length > 0 },
+    { label: "Guest & phone", done: !!guest.fullName.trim() && validPhone(guest.phone) },
+  ];
+
+  /** Tap a chosen room again to take it off the booking. */
+  function removeRoom(roomId: string) {
+    setLines((ls) => ls.filter((l) => validRoomId(l) !== roomId));
+    if (pinned?.id === roomId) setPinned(null); // otherwise the pinned room is added straight back
+  }
+
+  function addSpecific(typeId: string, roomId: string) {
+    const t = typeById.get(typeId);
+    if (!t || chosenIds.has(roomId)) return;
+    setLines((ls) => [...ls, { key: keyRef.current++, roomTypeId: typeId, roomId, adults: Math.min(meetingMode ? 10 : 2, t.maxAdults), children: 0, discountPerNight: "0", discountReason: "" }]);
+  }
+
+  if (mode === "group") {
+    return (
+      <div className="space-y-4">
+        {tiles}
+        <GroupForm today={props.today} sources={props.sources} companies={corporates} preselectCompany={props.preselectCompany} defaultTerms={props.invoiceTerms} menu={props.menu ?? null} />
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-4">
+    {tiles}
+    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="min-w-0 space-y-4">
+
+        {pinned && (
+          <div className={cn("flex flex-wrap items-center gap-3 rounded-2xl border p-3.5", !avail ? "border-border" : pinnedFree ? "border-emerald-500/40 bg-emerald-500/[0.06]" : "border-rose-500/40 bg-rose-500/[0.06]")}>
+            <RoomBadge number={pinned.number} />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold">Room {pinned.number} · {pinned.typeName}</p>
+              <p className={cn("text-xs", !avail ? "text-muted-foreground" : pinnedFree ? "text-emerald-700 dark:text-emerald-300" : "text-rose-700 dark:text-rose-300")}>
+                {!avail ? "Checking the dates…" : pinnedFree ? "Free for these dates — already added below." : "Taken for these dates. Change the dates, or pick any free room."}
+              </p>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => { setLines((ls) => ls.filter((l) => l.roomId !== pinned.id)); setPinned(null); }}>Any room instead</Button>
+          </div>
+        )}
+
+        {/* 1 — When */}
+        <Step n={1} title={meetingMode ? "Meeting time" : mode === "dayUse" ? "Short time" : mode === "walkIn" ? "How long" : "Dates"} done={!!avail}
+          aside={checking ? <Loader2 className="size-4 animate-spin text-muted-foreground" /> : null}>
+          {mode === "overnight" && (
+            <div className="space-y-3">
+              <div className="@container"><div className="grid items-stretch gap-2 @[36rem]:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+                <StayDatePicker label="Check-in" value={arrival} min={props.today} today={props.today} availability range={{ from: arrival, to: departure }} time={avail ? formatTime(avail.stay.startAt) : undefined}
+                  onChange={(v) => { setArrival(v); if (v >= departure) setDeparture(nextDay(v)); }} />
+                <span className="flex items-center justify-center gap-1 px-1 text-center @[36rem]:flex-col">
+                  <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold tabular-nums">{nightsNow ?? "–"} night{nightsNow === 1 ? "" : "s"}</span>
+                  <ArrowRight className="size-4 text-muted-foreground" />
+                </span>
+                <StayDatePicker label="Check-out" value={departure} min={nextDay(arrival)} today={props.today} availability range={{ from: arrival, to: departure }} onChange={setDeparture} time={avail ? formatTime(avail.stay.endAt) : undefined} />
+              </div></div>
+              <QuickNights value={nightsNow} onPick={setNightsFromArrival} />
+            </div>
+          )}
+          {mode === "walkIn" && (
+            <div className="space-y-3">
+              <div className="@container"><div className="grid items-stretch gap-2 @[36rem]:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+                <StayDatePicker label="Check-in" value={props.today} today={props.today} readOnly time={avail ? formatTime(avail.stay.startAt) : undefined} hint="the guest is here now" />
+                <span className="flex items-center justify-center gap-1 px-1 text-center @[36rem]:flex-col">
+                  <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold tabular-nums">{nights} night{nights === 1 ? "" : "s"}</span>
+                  <ArrowRight className="size-4 text-muted-foreground" />
+                </span>
+                <StayDatePicker label="Check-out" value={addDaysIso(props.today, nights)} min={nextDay(props.today)} max={addDaysIso(props.today, 90)} today={props.today}
+                  availability range={{ from: props.today, to: addDaysIso(props.today, nights) }} time={avail ? formatTime(avail.stay.endAt) : undefined}
+                  onChange={(v) => setNights(Math.max(1, Math.round((Date.parse(v) - Date.parse(props.today)) / 86_400_000)))} />
+              </div></div>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="w-36"><Stepper value={nights} min={1} max={90} onChange={setNights} /></div>
+                <QuickNights value={nights} onPick={setNights} />
+              </div>
+            </div>
+          )}
+          {mode === "dayUse" && (
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-1.5">
+                {props.canCheckIn && (
+                  <button type="button" aria-pressed={shortNow} onClick={() => { setShortNow(true); setLines([]); setDayUse((d) => ({ ...d, ...darNow() })); }}
+                    className={cn("rounded-xl border px-3.5 py-2 text-left text-xs transition-colors", shortNow ? "border-foreground bg-foreground text-background" : "border-border hover:bg-muted")}>
+                    <span className="block font-semibold">Guest is here — start now</span><span className="opacity-70">Checked in straight away</span>
+                  </button>
+                )}
+                <button type="button" aria-pressed={!shortNow || !props.canCheckIn} onClick={() => { setShortNow(false); setLines([]); }}
+                  className={cn("rounded-xl border px-3.5 py-2 text-left text-xs transition-colors", !shortNow || !props.canCheckIn ? "border-foreground bg-foreground text-background" : "border-border hover:bg-muted")}>
+                  <span className="block font-semibold">Reserve a time</span><span className="opacity-70">Later today, tonight or another day</span>
+                </button>
+              </div>
+              {!(shortNow && props.canCheckIn) && (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <StayDatePicker label="Date" size="sm" value={dayUse.date} min={props.today} today={props.today} availability onChange={(v) => setDayUse({ ...dayUse, date: v })} />
+                  <TimeBox id="du-from" label="Starts at" value={dayUse.startTime} onChange={(v) => setDayUse({ ...dayUse, startTime: v })} />
+                </div>
+              )}
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium text-muted-foreground">How many hours? <span className="font-normal">(most {SHORT_TIME_MAX_HOURS})</span></p>
+                <div className="flex flex-wrap gap-1.5">
+                  {Array.from({ length: SHORT_TIME_MAX_HOURS }, (_, i) => i + 1).map((h) => (
+                    <button key={h} type="button" aria-pressed={dayUse.hours === h} onClick={() => setDayUse({ ...dayUse, hours: h })}
+                      className={cn("h-10 min-w-12 rounded-xl border px-3 text-sm font-semibold tabular-nums transition-colors", dayUse.hours === h ? "border-foreground bg-foreground text-background" : "border-border hover:bg-muted")}>
+                      {h}h
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <p className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-dashed border-[oklch(0.75_0.13_80)]/50 bg-[oklch(0.75_0.13_80)]/[0.06] px-3 py-2 text-xs">
+                <span className="font-semibold text-[oklch(0.5_0.11_76)] dark:text-[oklch(0.8_0.12_80)]">Short-time price: 25% off the room</span>
+                <span className="text-muted-foreground">No overnight · no breakfast · no extra discount</span>
+              </p>
+            </div>
+          )}
+
+          {meetingMode && (
+            <div className="space-y-3">
+              <div className="grid gap-2 sm:grid-cols-3">
+                <StayDatePicker label="Date" size="sm" value={meet.date} min={props.today} today={props.today} onChange={(v) => setMeet({ ...meet, date: v })} />
+                <TimeBox id="mt-start" label="Starts at" value={meet.start} onChange={(v) => setMeet({ ...meet, start: v })} />
+                <TimeBox id="mt-end" label="Ends at" value={meet.end} onChange={(v) => setMeet({ ...meet, end: v })} />
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {([["Morning", "08:00", "12:00"], ["Afternoon", "13:00", "17:00"], ["Half day", "09:00", "13:00"], ["Full day", "08:00", "17:00"]] as const).map(([label, a, b]) => {
+                  const on = meet.start === a && meet.end === b;
+                  return (
+                    <button key={label} type="button" aria-pressed={on} onClick={() => setMeet({ ...meet, start: a, end: b })}
+                      className={cn("rounded-xl border px-3 py-1.5 text-left text-xs transition-colors", on ? "border-foreground bg-foreground text-background" : "border-border hover:bg-muted")}>
+                      <span className="block font-semibold">{label}</span><span className="tabular-nums opacity-70">{a}–{b}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-dashed border-violet-500/40 bg-violet-500/[0.06] px-3 py-2 text-xs">
+                <span className="font-semibold text-violet-700 dark:text-violet-300">One price per booking</span>
+                <span className="text-muted-foreground">The room is free again from the end time · extras go on the same bill</span>
+              </p>
+            </div>
+          )}
+
+          {avail && !avail.stay.isDayUse && !avail.meeting && (
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              {avail.stay.isLateArrival
+                ? "Came in after midnight, before 04:00 — this counts as last night, so checkout is 11:00 this morning."
+                : "The hotel day starts at 04:00 — anyone arriving from 04:00 checks out at 11:00 after their last night."}
+            </p>
+          )}
+          {avail && (avail.stay.isDayUse || avail.meeting) && (
+            <div className="mt-3 overflow-hidden rounded-2xl border border-border/70 bg-gradient-to-br from-muted/60 to-muted/20">
+              <div className="grid items-center gap-3 px-4 py-4 sm:grid-cols-[1fr_auto_1fr]">
+                <div className="flex items-center gap-3">
+                  <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-emerald-500/12 text-emerald-700 dark:text-emerald-300"><LogIn className="size-5" /></span>
+                  <div className="min-w-0 leading-tight">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{avail.meeting ? "Starts" : "Check-in"}</p>
+                    <p className="text-base font-semibold">{relDay(avail.stay.startAt)} <span className="text-muted-foreground">·</span> {formatTime(avail.stay.startAt)}</p>
+                    <p className="truncate text-xs text-muted-foreground">{longDate(darDate(avail.stay.startAt))}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 text-muted-foreground sm:flex-col sm:gap-1">
+                  <span className="hidden h-px w-10 bg-border sm:block" />
+                  <span className="rounded-full bg-background px-3 py-1 text-xs font-semibold text-foreground ring-1 ring-border/70 tabular-nums">
+                    {avail.stay.isDayUse ? `${Math.round((Date.parse(avail.stay.endAt) - Date.parse(avail.stay.startAt)) / 3_600_000)} hours` : `${avail.stay.nights} night${avail.stay.nights === 1 ? "" : "s"}`}
+                  </span>
+                  <ArrowRight className="size-4" />
+                </div>
+                <div className="flex items-center gap-3 sm:justify-end sm:text-right">
+                  <div className="min-w-0 leading-tight sm:order-first">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{avail.meeting ? "Ends" : avail.stay.isDayUse ? "Leaves" : "Check-out"}</p>
+                    <p className="text-base font-semibold text-[oklch(0.5_0.11_76)] dark:text-[oklch(0.8_0.12_80)]">{relDay(avail.stay.endAt)} <span className="text-muted-foreground">·</span> {formatTime(avail.stay.endAt)}</p>
+                    <p className="truncate text-xs text-muted-foreground">{longDate(darDate(avail.stay.endAt))}</p>
+                  </div>
+                  <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[oklch(0.75_0.13_80)]/15 text-[oklch(0.5_0.11_76)] dark:text-[#f0cf86]"><LogOut className="size-5" /></span>
+                </div>
+              </div>
+              {!avail.stay.isDayUse && (
+                <p className="border-t border-border/60 bg-background/40 px-4 py-2 text-[11px] text-muted-foreground">
+                  {avail.stay.isLateArrival
+                    ? "Came in after midnight, before 04:00 — this counts as last night, so checkout is 11:00 this morning."
+                    : "The hotel day starts at 04:00 — anyone arriving from 04:00 checks out at 11:00 after their last night."}
+                </p>
+              )}
+            </div>
+          )}
+          {availError && <p className="mt-3 text-sm text-destructive">{availError}</p>}
+
+          <div className="mt-4 space-y-1.5">
+            <p className="text-xs font-medium text-muted-foreground">How did they book?</p>
+            <div className="flex flex-wrap gap-1.5">
+              {props.sources.map((s) => (
+                <button key={s.code} type="button" onClick={() => setSource(s.code)} aria-pressed={source === s.code}
+                  className={cn("rounded-full border px-3 py-1 text-xs font-medium transition-colors", source === s.code ? "border-foreground bg-foreground text-background" : "border-border hover:bg-muted")}>{s.name}</button>
+              ))}
+            </div>
+          </div>
+        </Step>
+
+        {/* 2 — Room */}
+        <Step n={2} title={meetingMode ? "Meeting room" : "Room"} done={lines.length > 0}
+          aside={avail && (
+            <span className="text-xs text-muted-foreground">
+              <strong className={cn(totalFree ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")}>{totalFree}</strong> of {totalRooms} rooms free
+            </span>
+          )}>
+          {!avail && !availError && <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />Finding free rooms…</p>}
+          {avail && totalFree === 0 && (
+            <p className="mb-3 rounded-xl border border-dashed border-rose-500/40 p-3 text-center text-sm text-rose-700 dark:text-rose-300">
+              {meetingMode ? "Already booked for part of that time — choose another time." : "Fully booked for these dates."}{nextFree && mode === "overnight" ? <> The first room free again is on <strong>{formatBusinessDate(nextFree)}</strong> — tap a grey room to move to its date.</> : ""}
+            </p>
+          )}
+          {avail && (
+            <>
+              <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5"><span className="size-3 rounded border-2 border-emerald-500/50 bg-emerald-500/10" />Free — tap to choose</span>
+                <span className="inline-flex items-center gap-1.5"><span className="size-3 rounded bg-[oklch(0.75_0.13_80)]" />Chosen</span>
+                <span className="inline-flex items-center gap-1.5"><span className="size-3 rounded bg-sky-500/30" />Guest in</span>
+                <span className="inline-flex items-center gap-1.5"><span className="size-3 rounded bg-violet-500/30" />Booked</span>
+                <span className="inline-flex items-center gap-1.5"><span className="size-3 rounded bg-orange-500/30" />Needs cleaning</span>
+                <span className="inline-flex items-center gap-1.5"><span className="size-3 rounded bg-zinc-500/30" />Maintenance</span>
+              </div>
+              <div className="divide-y divide-border/60 overflow-hidden rounded-2xl border border-border/70">
+                {avail.types.map((t) => {
+                  const left = t.rooms.filter((r) => !chosenIds.has(r.id)).length - lines.filter((l) => l.roomTypeId === t.id && !validRoomId(l)).length;
+                  const full = t.rooms.length === 0;
+                  const typeNext = t.busy.map((b) => b.freeFrom).filter((d): d is string => !!d).sort()[0] ?? null;
+                  const all = [...t.rooms.map((r) => ({ ...r, free: true as const })), ...t.busy.map((b) => ({ ...b, free: false as const }))]
+                    .sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true }));
+                  // Rooms grouped by floor (101 → floor 1): the way staff know the building.
+                  const floors = [...all.reduce((m, r) => m.set(r.number.slice(0, -2) || "0", [...(m.get(r.number.slice(0, -2) || "0") ?? []), r]), new Map<string, typeof all>())];
+                  const roomButton = (r: (typeof all)[number]) => {
+                    if (r.free) {
+                      const taken = chosenIds.has(r.id);
+                      const notReady = r.status !== "AVAILABLE" && r.status !== "READY";
+                      return (
+                        <button key={r.id} type="button" aria-pressed={taken} onClick={() => (taken ? removeRoom(r.id) : addSpecific(t.id, r.id))}
+                          title={taken ? `Room ${r.number} chosen — tap again to remove` : notReady ? `Room ${r.number} — cleaned before the guest arrives` : `Choose room ${r.number}`}
+                          className={cn("flex h-12 w-[3.9rem] flex-col items-center justify-center rounded-xl border-2 text-[15px] font-bold leading-none tabular-nums transition-all active:scale-95",
+                            taken ? "border-[oklch(0.75_0.13_80)] bg-[oklch(0.75_0.13_80)] text-black shadow-[0_6px_16px_-8px_oklch(0.75_0.13_80)]" : "border-emerald-500/35 bg-card hover:-translate-y-0.5 hover:border-[oklch(0.75_0.13_80)] hover:bg-[oklch(0.75_0.13_80)]/10")}>
+                          {r.number}
+                          <span className={cn("mt-1 text-[9px] font-semibold uppercase tracking-wide", taken ? "text-black/70" : "text-emerald-600 dark:text-emerald-400")}>{taken ? "Chosen" : notReady ? "Clean 1st" : "Free"}</span>
+                        </button>
+                      );
+                    }
+                    const tone = r.reason === "IN_USE" ? "bg-sky-500/12 text-sky-800 dark:text-sky-200" : r.reason === "BOOKED" ? "bg-violet-500/12 text-violet-800 dark:text-violet-200"
+                      : r.reason === "NOT_CLEAN" ? "bg-orange-500/12 text-orange-800 dark:text-orange-200" : "bg-zinc-500/15 text-zinc-600 dark:text-zinc-300";
+                    const label = r.reason === "NOT_CLEAN" ? "Cleaning" : r.reason === "OUT_OF_ORDER" ? "Repair" : r.time ? r.time.split("–")[0] + "–" : r.freeFrom ? shortDate(r.freeFrom) : r.reason === "IN_USE" ? "In use" : "Booked";
+                    const canJump = mode === "overnight" && !!r.freeFrom;
+                    return (
+                      <button key={r.id} type="button"
+                        onClick={() => {
+                          if (canJump) { jumpTo(r.freeFrom!, { id: r.id, number: r.number, typeId: t.id, typeName: t.name }); return; }
+                          toast.info(r.reason === "NOT_CLEAN" ? `Room ${r.number} needs cleaning. Mark it clean on the Rooms board, then check the guest in.` :
+                            `Room ${r.number} is ${r.reason === "OUT_OF_ORDER" ? "under maintenance" : r.time ? `booked ${r.time}${r.guest ? ` (${r.guest})` : ""}` : "taken"}${r.freeFrom ? ` — free again on ${formatBusinessDate(r.freeFrom)}` : ""}.`);
+                        }}
+                        title={[`Room ${r.number}`, r.reason === "IN_USE" ? (r.time ? "in use" : "guest in") : r.reason === "BOOKED" ? "booked" : r.reason === "OUT_OF_ORDER" ? "under maintenance" : "needs cleaning", r.time, r.guest, r.freeFrom ? `free again ${formatBusinessDate(r.freeFrom)}` : null, canJump ? "tap to book it from that date" : null].filter(Boolean).join(" · ")}
+                        className={cn("flex h-12 w-[3.9rem] flex-col items-center justify-center rounded-xl text-[15px] font-bold leading-none tabular-nums opacity-75 transition-opacity hover:opacity-100", tone)}>
+                        <span className="opacity-60">{r.number}</span>
+                        <span className="mt-1 text-[9px] font-semibold uppercase tracking-wide">{label}</span>
+                      </button>
+                    );
+                  };
+                  return (
+                    <div key={t.id} className={cn("grid gap-3 p-3.5 md:grid-cols-[13.5rem_1fr] md:items-center", full && "bg-muted/20")}>
+                      {/* Type */}
+                      <div className="flex items-center gap-3">
+                        <div className="relative size-16 shrink-0 overflow-hidden rounded-xl bg-[#17130e] ring-1 ring-border/70">
+                          {t.photo && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={t.photo} alt="" className={cn("size-full object-cover", full && "opacity-50 grayscale")} />
+                          )}
+                        </div>
+                        <div className="min-w-0 leading-tight">
+                          <p className="truncate text-sm font-semibold">{t.name}</p>
+                          <p className="text-xs">
+                            {((avail.stay.isDayUse && !avail.meeting) || t.promoPerNight > 0) && <span className="mr-1 text-muted-foreground line-through tabular-nums">{((avail.stay.isDayUse ? t.fullRate : t.baseRate) / 1000).toLocaleString("en-US")}k</span>}
+                            {t.datePrices.length > 0 && !avail.stay.isDayUse ? (
+                              <><strong className="tabular-nums">{formatTZS(Math.round(t.totalNet / Math.max(1, avail.stay.units)))}</strong><span className="text-muted-foreground">/night avg</span>
+                                <span className="ml-1.5 inline-block rounded-full bg-violet-500/12 px-1.5 py-px text-[10px] font-semibold text-violet-700 dark:text-violet-300" title="Some nights have a date price">{t.datePrices.join(", ")}</span></>
+                            ) : (
+                              <><strong className="tabular-nums">{formatTZS(t.baseRate - t.promoPerNight)}</strong><span className="text-muted-foreground">{avail.meeting ? " per booking" : avail.stay.isDayUse ? " short time" : "/night"}</span></>
+                            )}
+                            {t.promotion && <span className="ml-1.5 inline-block rounded-full bg-rose-500/12 px-1.5 py-px text-[10px] font-semibold text-rose-700 dark:text-rose-300" title={t.promotion.name}>{t.promotion.label}</span>}
+                          </p>
+                          <p className="mt-0.5 text-[11px] text-muted-foreground">
+                            <span className={cn("font-semibold", full ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400")}>{full ? "Full" : `${Math.max(0, left)} of ${all.length} free`}</span>
+                            {" · "}<Users className="inline size-3 align-[-2px]" /> {avail.meeting ? `up to ${t.maxAdults} people` : `${t.maxAdults}${t.maxChildren ? `+${t.maxChildren}` : ""}`}
+                          </p>
+                          {avail.meeting && t.schedule && t.schedule.length > 0 && (
+                            <ul className="mt-1.5 space-y-0.5 text-[11px]">
+                              <li className="font-semibold text-muted-foreground">Booked that day</li>
+                              {t.schedule.map((b) => (
+                                <li key={`${b.number}-${b.time}`} className="flex items-center gap-1.5 tabular-nums">
+                                  <span className={cn("size-1.5 rounded-full", b.inUse ? "bg-sky-500" : "bg-violet-500")} />
+                                  <span className="font-medium">{b.time}</span><span className="truncate text-muted-foreground">{b.who}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                          {full ? (
+                            typeNext && (mode === "overnight"
+                              ? <button type="button" onClick={() => jumpTo(typeNext, null)} className="mt-1 text-[11px] font-medium text-[oklch(0.55_0.11_76)] hover:underline dark:text-[oklch(0.8_0.12_80)]">Free {shortDate(typeNext)} →</button>
+                              : <p className="mt-1 text-[11px] text-muted-foreground">Free {shortDate(typeNext)}</p>)
+                          ) : (
+                            !avail.meeting && <button type="button" disabled={left <= 0} onClick={() => addRoom(t.id)} className="mt-1 text-[11px] font-medium text-[oklch(0.55_0.11_76)] hover:underline disabled:opacity-40 dark:text-[oklch(0.8_0.12_80)]">+ Any {t.name.split(" ")[0].toLowerCase()} room</button>
+                          )}
+                        </div>
+                      </div>
+                      {/* Rooms, floor by floor */}
+                      <div className="flex min-w-0 flex-wrap gap-2">
+                        {floors.map(([floor, rooms]) => (
+                          <div key={floor} className="rounded-2xl bg-muted/40 p-1.5">
+                            <p className="px-1 pb-1 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">{floorName(floor)}</p>
+                            <div className="flex flex-wrap gap-1.5">{rooms.map(roomButton)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {lines.length > 0 && (
+            <div className="mt-4 space-y-2.5">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Chosen {lines.length === 1 ? "room" : `rooms (${lines.length})`}</p>
+              {lines.length > 1 && !meetingMode && (
+                <p className="rounded-xl border border-dashed border-violet-500/40 bg-violet-500/[0.06] px-3 py-2 text-xs">
+                  A different guest in each room (a team, a family)? <button type="button" onClick={() => { setMode("group"); setLines([]); }} className="font-semibold text-violet-700 underline-offset-2 hover:underline dark:text-violet-300">Make it a group booking →</button> — each room its own guest and booking, one bill for the group.
+                </p>
+              )}
+              {lines.map((l) => {
+                const t = typeById.get(l.roomTypeId);
+                if (!t) return null;
+                const rid = validRoomId(l);
+                const number = t.rooms.find((r) => r.id === rid)?.number ?? null;
+                const takenByOthers = new Set(lines.filter((o) => o.key !== l.key && o.roomId).map((o) => o.roomId));
+                const d = avail?.stay.isDayUse && !avail.meeting ? 0 : Number(l.discountPerNight) || 0;
+                const lq = lineQuote(l)!;
+                const units = avail?.stay.units ?? 1;
+                return (
+                  <div key={l.key} className="rounded-2xl border border-border/70 bg-muted/30 p-3">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <RoomBadge number={number} />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold">{t.name}</p>
+                        <div className="mt-0.5 w-44 max-w-full">
+                        <NativeSelect value={rid} onChange={(e) => update(l.key, { roomId: e.target.value })} aria-label="Room number" className="h-7 w-full text-xs">
+                          <option value="">Any free room (auto)</option>
+                          {t.rooms.filter((r) => !takenByOthers.has(r.id)).map((r) => (
+                            <option key={r.id} value={r.id}>Room {r.number}{r.status !== "AVAILABLE" && r.status !== "READY" ? ` (${r.status.toLowerCase()})` : ""}</option>
+                          ))}
+                        </NativeSelect>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {avail?.meeting ? (
+                          <MiniStepper label="Attendees" value={l.adults} min={1} max={t.maxAdults} onChange={(v) => update(l.key, { adults: v })} />
+                        ) : (
+                          <>
+                            <MiniStepper label="Adults" value={l.adults} min={1} max={t.maxAdults} onChange={(v) => update(l.key, { adults: v })} />
+                            <MiniStepper label="Kids" value={l.children} min={0} max={t.maxChildren} onChange={(v) => update(l.key, { children: v })} />
+                          </>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-semibold tabular-nums">{formatTZS(lq.net)}</p>
+                        <p className="text-[11px] text-muted-foreground tabular-nums">{formatTZS(lq.perNight)}{avail?.meeting ? " per booking" : avail?.stay.isDayUse ? "" : ` × ${units}`}</p>
+                      </div>
+                      <button type="button" aria-label="Remove room" onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))} className="grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-rose-600"><Trash2 className="size-4" /></button>
+                    </div>
+                    {lq.promotion && (
+                      <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg bg-rose-500/[0.07] px-2.5 py-1.5 text-xs">
+                        <span className="font-semibold text-rose-700 dark:text-rose-300">Promotion: {lq.promotion.name} · {lq.promotion.label}</span>
+                        <span className="text-muted-foreground tabular-nums">{formatTZS(t.baseRate)} − {formatTZS(lq.promoPerNight)} = {formatTZS(t.baseRate - lq.promoPerNight)}/night · set by Admin</span>
+                      </p>
+                    )}
+                    {(!avail?.stay.isDayUse || avail.meeting) && props.discountMax > 0 && <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-dashed border-border pt-2.5">
+                      <span className="inline-flex items-center gap-1 text-xs font-medium"><BadgePercent className="size-3.5 text-emerald-600" />Discount</span>
+                      <div className="min-w-0 flex-1">
+                        <DiscountChips value={d} rate={t.baseRate - lq.promoPerNight} max={props.discountMax}
+                          onChange={(v) => update(l.key, { discountPerNight: String(v) })} />
+                      </div>
+                    </div>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Step>
+
+        {lines.length === 0 && !props.initialGuest ? (
+          <div className="flex items-center gap-3 rounded-2xl border border-dashed border-border px-4 py-4 text-sm text-muted-foreground">
+            <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-xs font-semibold">3</span>
+            {meetingMode ? "Pick the meeting room above — then enter who is booking." : "Pick a room above — then enter who is staying."}
+          </div>
+        ) : (
+          <>
+            <GuestCard guest={guest} setGuest={setGuest} meeting={meetingMode ? { company: companyName, setCompany: setCompanyName } : null}
+              staff={company && company.staff.length ? { company: company.companyName, people: company.staff } : null} />
+
+            <Step n={4} title={meetingMode ? "Food, drinks & extras" : "Room service & extras"} done={extras.length + menuPicks.length > 0} optional>
+              {props.menu && props.menu.categories.length > 0 && (
+                <div className="mb-5 space-y-3">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Food &amp; drinks from the menu</p>
+                  <MenuOrder menu={props.menu} picks={menuPicks} onChange={setMenuPicks} extraLine={menuFee > 0 ? { label: "Room service delivery", amount: menuFee } : null} />
+                  {menuPicks.length > 0 && (checkInNow ? (
+                    <label className="flex items-center gap-2 text-xs">
+                      <input type="checkbox" checked={roomService} onChange={(e) => setRoomService(e.target.checked)} />
+                      Deliver to the room (room service{props.menu.fee ? ` · + ${formatTZS(props.menu.fee)}` : ""}) — otherwise served in the restaurant / bar
+                    </label>
+                  ) : (
+                    <p className="text-[11px] text-muted-foreground">The guest arrives later: these go on the bill now as a pre-order at menu prices — tell the kitchen when they arrive.</p>
+                  ))}
+                  {menuPicks.length > 0 && checkInNow && <p className="text-[11px] text-muted-foreground">Saved with the booking: the kitchen &amp; bar get the order, and it goes on the room&apos;s bill.</p>}
+                </div>
+              )}
+              <div className="mb-5 space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{props.menu ? "Not on the menu? Type it in" : "Add an item"}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {CHARGE_TYPES.map((c) => (
+                    <button key={c.code} type="button" onClick={() => addExtra(c.code)}
+                      className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1.5 text-xs font-medium transition-colors hover:border-[oklch(0.75_0.13_80)]/70 hover:bg-[oklch(0.75_0.13_80)]/10">
+                      <Plus className="size-3" />{c.label}
+                    </button>
+                  ))}
+                </div>
+                {extras.length > 0 && (
+                  <ul className="space-y-2">
+                    {extras.map((x) => (
+                      <li key={x.key} className="grid grid-cols-[1fr_auto_7.5rem_auto] items-end gap-2 rounded-xl bg-muted/40 p-2.5">
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{CHARGE_TYPES.find((c) => c.code === x.type)?.label}</p>
+                          <Input value={x.item} onChange={(e) => setExtra(x.key, { item: e.target.value })} placeholder="e.g. Dinner, 2 sodas" className="h-9" aria-label="Item" />
+                        </div>
+                        <MiniStepper label="Qty" value={x.qty} min={1} max={99} onChange={(v) => setExtra(x.key, { qty: v })} />
+                        <div className="space-y-1">
+                          <p className="text-[10px] text-muted-foreground">Price each (TZS)</p>
+                          <Input type="number" min={0} step={500} value={x.unitPrice} onChange={(e) => setExtra(x.key, { unitPrice: e.target.value })} className="h-9 tabular-nums" aria-label="Price each" autoFocus={!x.unitPrice} />
+                        </div>
+                        <button type="button" aria-label="Remove item" onClick={() => setExtras((xs) => xs.filter((y) => y.key !== x.key))} className="grid size-9 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-rose-600"><Trash2 className="size-4" /></button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {extrasTotal > 0 && <p className="flex justify-between px-1 text-sm"><span className="text-muted-foreground">Food, drinks &amp; extras</span><strong className="tabular-nums">{formatTZS(extrasTotal)}</strong></p>}
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {mode !== "walkIn" && !checkInNow && (
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label className="text-xs">If the guest does not pay now</Label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {([
+                        ["RESERVED", props.holdHours ? `Hold the room ${props.holdHours} h, then release it` : "Hold the room until they pay"],
+                        ["INQUIRY", "Enquiry only · does not hold the room"],
+                        ...(props.canConfirmUnpaid ? [["CONFIRMED", "Confirm without payment (manager)"] as const] : []),
+                      ] as const).map(([v, label]) => (
+                        <button key={v} type="button" onClick={() => setStatus(v)} aria-pressed={status === v}
+                          className={cn("rounded-full border px-3 py-1 text-xs font-medium", status === v ? "border-foreground bg-foreground text-background" : "border-border hover:bg-muted")}>{label}</button>
+                      ))}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">A payment now (even a deposit) or a company invoice confirms the booking straight away.</p>
+                  </div>
+                )}
+                <div className="space-y-1.5"><Label htmlFor="extref" className="text-xs">Their reference (e.g. Booking.com no.)</Label><Input id="extref" value={externalRef} onChange={(e) => setExternalRef(e.target.value)} /></div>
+                <div className="space-y-1.5"><Label htmlFor="requests" className="text-xs">{meetingMode ? "Special requirements" : "Guest requests"}</Label><Textarea id="requests" rows={2} value={requests} onChange={(e) => setRequests(e.target.value)} placeholder={meetingMode ? "e.g. projector, U-shape seating, tea break at 10:30" : "e.g. airport pickup, extra pillow"} /></div>
+                <div className="space-y-1.5"><Label htmlFor="notes" className="text-xs">Staff notes</Label><Textarea id="notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Only staff see this" /></div>
+              </div>
+            </Step>
+          </>
+        )}
+      </div>
+
+      {/* The ticket */}
+      <aside className="lg:sticky lg:top-20 lg:self-start">
+        <div className="overflow-hidden rounded-3xl border border-border/70 bg-card shadow-[0_2px_4px_rgba(15,23,42,0.03),0_22px_48px_-24px_rgba(15,23,42,0.45)]">
+          {/* Dates */}
+          <div className="relative overflow-hidden bg-[#15110c] px-5 pb-5 pt-4 text-white">
+            <div className="pointer-events-none absolute -right-16 -top-20 size-56 rounded-full bg-[oklch(0.75_0.13_80)]/25 blur-3xl" />
+            <div className="relative flex items-center justify-between">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#f0cf86]">{MODES.find((x) => x.m === mode)!.label}</p>
+              <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-white/40">Vegas Luxury</span>
+            </div>
+            {avail ? (
+              <div className="relative mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                <TicketDate label={avail.meeting ? "Starts" : "Check-in"} date={darDate(avail.stay.startAt)} time={formatTime(avail.stay.startAt)} />
+                <div className="flex flex-col items-center gap-1 px-1">
+                  <span className="whitespace-nowrap rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold ring-1 ring-white/15">
+                    {avail.meeting ? `${hoursBetween(avail.stay.startAt, avail.stay.endAt)} h` : avail.stay.isDayUse ? `${dayUse.hours} hour${dayUse.hours === 1 ? "" : "s"}` : `${avail.stay.nights} night${avail.stay.nights === 1 ? "" : "s"}`}
+                  </span>
+                  <span className="flex w-16 items-center gap-1 text-white/30"><span className="h-px flex-1 border-t border-dashed border-white/30" /><ArrowRight className="size-3" /></span>
+                </div>
+                <TicketDate label={avail.meeting ? "Ends" : "Check-out"} date={darDate(avail.stay.endAt)} time={formatTime(avail.stay.endAt)} right />
+              </div>
+            ) : <p className="relative mt-4 text-sm text-white/60">Choose the dates…</p>}
+          </div>
+          {/* Tear line */}
+          <div className="relative h-0 border-t-2 border-dashed border-border">
+            <span className="absolute -left-3.5 -top-3.5 size-7 rounded-full border border-border/70 bg-canvas" />
+            <span className="absolute -right-3.5 -top-3.5 size-7 rounded-full border border-border/70 bg-canvas" />
+          </div>
+
+          <div className="space-y-4 p-5 text-sm">
+            {/* The booking: room(s) and who stays */}
+            <div className="overflow-hidden rounded-2xl border border-border/70 bg-muted/25">
+              {lines.length === 0 ? (
+                <div className="flex items-center gap-3 px-3.5 py-3 text-muted-foreground">
+                  <span className="grid size-11 shrink-0 place-items-center rounded-xl border border-dashed border-border"><BedDouble className="size-4" /></span>
+                  <span className="text-xs">No room yet — tap a room number.</span>
+                </div>
+              ) : (
+                <ul className="divide-y divide-border/60">
+                  {lines.map((l) => {
+                    const t = typeById.get(l.roomTypeId);
+                    if (!t) return null;
+                    const number = t.rooms.find((r) => r.id === validRoomId(l))?.number;
+                    const tq = lineQuote(l)!;
+                    return (
+                      <li key={l.key} className="flex items-center gap-3 px-3.5 py-3">
+                        <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-[oklch(0.75_0.13_80)] text-[15px] font-bold tabular-nums text-black shadow-[0_6px_14px_-8px_oklch(0.75_0.13_80)]">
+                          {number ?? <BedDouble className="size-4" />}
+                        </span>
+                        <span className="min-w-0 flex-1 leading-tight">
+                          <span className="block truncate text-[15px] font-semibold">{number ? `Room ${number}` : "Any free room"}</span>
+                          <span className="mt-0.5 flex items-center gap-1.5 truncate text-[11px] text-muted-foreground">
+                            {avail?.meeting ? `${t.name} · ${l.adults} attendee${l.adults === 1 ? "" : "s"}` : <>{t.name}<span className="text-border">|</span><Users className="size-3" />{l.adults + l.children}</>}
+                          </span>
+                        </span>
+                        <span className="text-right leading-tight">
+                          <span className="block text-[15px] font-semibold tabular-nums">{formatTZS(tq.net).replace("TZS ", "")}</span>
+                          {tq.promoPerNight + tq.manual > 0
+                            ? <span className="block text-[10px] font-medium text-emerald-600 dark:text-emerald-400">−{((tq.promoPerNight + tq.manual) / 1000).toLocaleString("en-US")}k{avail?.meeting ? "" : " a night"}</span>
+                            : <span className="block text-[10px] text-muted-foreground">TZS</span>}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              <div className="flex items-center gap-3 border-t border-border/60 bg-background/40 px-3.5 py-3">
+                <span className={cn("grid size-11 shrink-0 place-items-center rounded-full text-sm font-bold", guest.fullName.trim() ? "bg-sky-500/15 text-sky-700 ring-1 ring-sky-500/30 dark:text-sky-300" : "border border-dashed border-border text-muted-foreground")}>
+                  {guest.fullName.trim() ? guest.fullName.trim().split(/\s+/).filter((w) => /^\p{L}/u.test(w)).map((x) => x[0]).slice(0, 2).join("").toUpperCase() : <UserCheck className="size-4" />}
+                </span>
+                <span className="min-w-0 flex-1 leading-tight">
+                  <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{meetingMode ? "Customer" : "Guest"}</span>
+                  <span className={cn("block truncate", guest.fullName.trim() ? "text-[15px] font-semibold" : "text-sm text-muted-foreground")}>{guest.fullName.trim() || "Enter the name below"}{meetingMode && companyName.trim() ? ` · ${companyName.trim()}` : ""}</span>
+                  {(guest.phone || guest.id) && <span className="block truncate text-[11px] text-muted-foreground">{[guest.phone, guest.id ? "Returning guest" : null].filter(Boolean).join(" · ")}</span>}
+                </span>
+                {guest.id && <span className="shrink-0 rounded-full bg-emerald-500/12 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">On file</span>}
+              </div>
+            </div>
+
+            {/* Money */}
+            <div className="rounded-2xl border border-border/70 p-3.5">
+              <dl className="space-y-1.5 text-xs">
+                <Row label={meetingMode ? "Meeting room" : "Room price"} value={formatTZS(estimate.gross)} />
+                {estimate.promo > 0 && <Row label={`Promotion${estimate.promotions.length ? ` · ${estimate.promotions.join(", ")}` : ""}`} value={`− ${formatTZS(estimate.promo)}`} green />}
+                {estimate.manual > 0 && <Row label="Discount" value={`− ${formatTZS(estimate.manual)}`} green />}
+                {estimate.extras > 0 && <Row label="Room service & extras" value={`+ ${formatTZS(estimate.extras)}`} />}
+              </dl>
+              <div className="mt-2.5 flex items-baseline justify-between gap-2 border-t border-dashed border-border pt-2.5">
+                <span className="text-xs font-medium text-muted-foreground">{companyPart > 0 ? "Total" : "To pay"}</span>
+                <span className="whitespace-nowrap text-[1.7rem] font-semibold leading-none tracking-tight tabular-nums"><span className="mr-1 text-sm font-medium text-muted-foreground">TZS</span>{estimate.net.toLocaleString("en-US")}</span>
+              </div>
+              {companyPart > 0 && (
+                <dl className="mt-2 space-y-1 text-xs">
+                  <Row label={`${company!.companyName} · invoice`} value={formatTZS(companyPart)} />
+                </dl>
+              )}
+            </div>
+
+            <QuickCompanyDialog open={newCompany} onOpenChange={setNewCompany} onSaved={(c) => { setAddedCompanies((a) => [c, ...a]); setCorporateId(c.id); setBillTo("COMPANY"); setTerms(null); }} />
+            {/* Payment type: pay now · pay at the hotel · company invoice */}
+            {lines.length > 0 && (
+              <WhoPays
+                canPay={props.methods.length > 0} payingNow={!!payMethod}
+                onPayNow={() => { pickCompany(""); setPayMethod(props.methods[0]?.id ?? null); }}
+                onPayAtHotel={() => { pickCompany(""); setPayMethod(null); }}
+                companies={corporates} company={company} terms={terms ?? company?.terms ?? 0} onNewCompany={() => setNewCompany(true)}
+                companyPart={companyPart} overCredit={overCredit} canApprove={!!props.canApproveCredit} creditReason={creditReason}
+                onCompany={pickCompany} onTerms={setTerms} onCreditReason={setCreditReason}
+              />
+            )}
+
+            {/* Payment now */}
+            {props.methods.length > 0 && lines.length > 0 && guestPart > 0 && (payMethod || company) && (
+              <div className="space-y-2.5 rounded-2xl border border-border/70 p-3.5">
+                <p className="flex items-center justify-between text-xs font-semibold">
+                  <span className="inline-flex items-center gap-1.5"><Wallet className="size-3.5" />{checkInNow ? "Payment" : "Deposit"}</span>
+                  <span className="font-normal text-muted-foreground">{checkInNow ? "Paid at the desk?" : "Optional"}</span>
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  <button type="button" aria-pressed={!payMethod} onClick={() => setPayMethod(null)}
+                    className={cn("rounded-lg border px-2.5 py-1.5 text-xs font-medium", !payMethod ? "border-foreground bg-foreground text-background" : "border-border hover:bg-muted")}>Not now</button>
+                  {props.methods.map((m) => (
+                    <button key={m.id} type="button" aria-pressed={payMethod === m.id}
+                      onClick={() => setPayMethod(m.id)}
+                      className={cn("rounded-lg border px-2.5 py-1.5 text-xs font-medium", payMethod === m.id ? "border-emerald-600 bg-emerald-600 text-white" : "border-border hover:bg-muted")}>{m.name}</button>
+                  ))}
+                </div>
+                {payMethod && (
+                  <>
+                    <div className="grid grid-cols-[1fr_auto] gap-2">
+                      <Input aria-label="Amount received" type="number" min={1} step={1000} value={payAmount === "" ? String(guestPart) : payAmount} onChange={(e) => setPayAmount(e.target.value)} className="h-10 text-base font-semibold tabular-nums" />
+                      <button type="button" onClick={() => setPayAmount("")} className={cn("rounded-lg border px-2.5 text-xs font-medium", payAmount === "" ? "border-emerald-600 text-emerald-700 dark:text-emerald-300" : "border-border hover:bg-muted")}>Full</button>
+                    </div>
+                    <Input aria-label="Reference" value={payRef} onChange={(e) => setPayRef(e.target.value)} placeholder="M-Pesa / bank ref (optional)" className="h-9 text-xs" />
+                    {(() => {
+                      const paid = payNow;
+                      if (paid > guestPart) return <p className="text-xs font-medium text-rose-600 dark:text-rose-400">More than the {companyPart > 0 ? "guest's part" : "total"} ({formatTZS(guestPart)}).</p>;
+                      if (paid === guestPart) return <p className="flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400"><CheckCircle2 className="size-3.5" />Fully paid</p>;
+                      return <p className="text-xs text-amber-700 dark:text-amber-400">Still owes {formatTZS(guestPart - paid)}</p>;
+                    })()}
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* What is still missing (nothing shown once everything is filled in) */}
+            {steps.some((st) => !st.done) && (
+              <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                <span>Still to do:</span>
+                {steps.filter((st) => !st.done).map((st) => (
+                  <span key={st.label} className="inline-flex items-center gap-1 rounded-full bg-amber-500/12 px-2 py-0.5 font-medium text-amber-800 dark:text-amber-300"><Circle className="size-2.5" />{st.label}</span>
+                ))}
+              </p>
+            )}
+
+            <Button className="h-12 w-full rounded-2xl text-sm font-semibold" onClick={submit} disabled={saving || lines.length === 0 || payNow > guestPart || (overCredit && !props.canApproveCredit)}>
+              {saving ? <Loader2 className="animate-spin" /> : checkInNow ? <LogIn /> : <CalendarCheck />}
+              {payNow > 0
+                ? `Receive ${formatTZS(payNow)} & ${checkInNow ? "check in" : "save"}`
+                : checkInNow ? "Check in now" : "Save reservation"}
+            </Button>
+            <p className="text-center text-[11px] text-muted-foreground">
+              {payMethod ? "Booking and payment are saved together — the booking is confirmed."
+                : checkInNow ? "You can also receive the payment later on the stay screen."
+                  : companyPart > 0 ? "Billed to the company — the booking is confirmed."
+                    : status === "RESERVED" ? `Not paid: pending${props.holdHours ? ` — the room is held ${props.holdHours} hours, then released` : ""}. A payment confirms it.`
+                      : status === "INQUIRY" ? "Enquiry: the room is not held." : "Confirmed without payment (manager)."}
+            </p>
+          </div>
+        </div>
+      </aside>
+    </div>
+    </div>
+  );
+}
+
+function floorName(f: string) {
+  const n = Number(f);
+  if (!n) return "Ground floor";
+  return `${n}${n === 1 ? "st" : n === 2 ? "nd" : n === 3 ? "rd" : "th"} floor`;
+}
+
+/** The current date and time at the hotel (Dar es Salaam), e.g. { date: "2026-09-25", startTime: "14:05" }. */
+function darNow() {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Dar_es_Salaam", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
+    .formatToParts(new Date()).map((p) => [p.type, p.value]));
+  return { date: `${parts.year}-${parts.month}-${parts.day}`, startTime: `${parts.hour}:${parts.minute}` };
+}
+
+/** Calendar date at the hotel for an instant (ISO string). */
+function darDate(iso: string) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Dar_es_Salaam", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso));
+}
+
+/** "Today" / "Tomorrow" / "Sat 27 Sept" for an instant, from the hotel's point of view. */
+function relDay(iso: string) {
+  const d = darDate(iso);
+  const today = darNow().date;
+  if (d === today) return "Today";
+  const t = new Date(`${today}T00:00:00Z`); t.setUTCDate(t.getUTCDate() + 1);
+  if (d === t.toISOString().slice(0, 10)) return "Tomorrow";
+  return new Date(`${d}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+}
+
+function shortDate(d: string) {
+  return new Date(`${d}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+}
+
+function TicketDate({ label, date, time, right }: { label: string; date: string; time: string; right?: boolean }) {
+  const d = new Date(`${date}T00:00:00Z`);
+  return (
+    <div className={cn("min-w-0 leading-tight", right && "text-right")}>
+      <p className="text-[10px] uppercase tracking-wider text-white/45">{label}</p>
+      <p className="mt-1 text-2xl font-semibold tabular-nums">{d.getUTCDate()} <span className="text-base font-medium text-white/80">{d.toLocaleDateString("en-GB", { month: "short", timeZone: "UTC" })}</span></p>
+      <p className="text-[11px] text-white/55">{d.toLocaleDateString("en-GB", { weekday: "short", timeZone: "UTC" })} · {time}</p>
+    </div>
+  );
+}
+
+function Step({ n, title, done, optional, aside, children }: { n: number; title: string; done: boolean; optional?: boolean; aside?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <section className="rounded-3xl border border-border/70 bg-card p-4 shadow-[0_2px_4px_rgba(15,23,42,0.03)] sm:p-5">
+      <div className="mb-4 flex items-center gap-2.5">
+        <span className={cn("grid size-7 place-items-center rounded-full text-xs font-bold", done ? "bg-emerald-500 text-white" : "bg-foreground text-background")}>{done ? <Check className="size-3.5" /> : n}</span>
+        <h2 className="text-base font-semibold">{title}</h2>
+        {optional && <span className="text-xs text-muted-foreground">optional</span>}
+        <span className="ml-auto">{aside}</span>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function RoomBadge({ number }: { number: string | null }) {
+  return (
+    <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-[#17130e] text-sm font-bold tabular-nums text-[#f0cf86] dark:bg-[oklch(0.75_0.13_80)] dark:text-[#17130e]">
+      {number ?? <BedDouble className="size-4" />}
+    </span>
+  );
+}
+
+function TimeBox({ id, label, value, onChange }: { id: string; label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <label htmlFor={id} className="block rounded-2xl border border-border/70 bg-muted/30 px-3 py-2">
+      <span className="block text-[11px] font-medium text-muted-foreground">{label}</span>
+      <input id={id} type="time" value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-transparent text-sm font-semibold outline-none" />
+    </label>
+  );
+}
+
+function QuickNights({ value, onPick }: { value: number | null; onPick: (n: number) => void }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {[1, 2, 3, 5, 7, 14, 21, 30].map((n) => (
+        <button key={n} type="button" onClick={() => onPick(n)} aria-pressed={value === n}
+          className={cn("rounded-full border px-3 py-1 text-xs font-medium tabular-nums transition-colors", value === n ? "border-foreground bg-foreground text-background" : "border-border hover:bg-muted")}>
+          {n === 30 ? "30 nights · 1 month" : `${n} night${n === 1 ? "" : "s"}`}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function MiniStepper({ label, value, min, max, onChange }: { label: string; value: number; min: number; max: number; onChange: (v: number) => void }) {
+  return (
+    <div className="text-center">
+      <p className="text-[10px] text-muted-foreground">{label}</p>
+      <div className="flex h-7 items-center rounded-lg border border-border bg-card">
+        <button type="button" className="px-1.5 disabled:opacity-30" disabled={value <= min} onClick={() => onChange(value - 1)} aria-label={`Fewer ${label.toLowerCase()}`}><Minus className="size-3" /></button>
+        <span className="w-4 text-center text-xs font-semibold tabular-nums">{value}</span>
+        <button type="button" className="px-1.5 disabled:opacity-30" disabled={value >= max} onClick={() => onChange(value + 1)} aria-label={`More ${label.toLowerCase()}`}><Plus className="size-3" /></button>
+      </div>
+    </div>
+  );
+}
+
+function addDaysIso(d: string, n: number) {
+  const x = new Date(`${d}T00:00:00Z`);
+  x.setUTCDate(x.getUTCDate() + n);
+  return x.toISOString().slice(0, 10);
+}
+
+function nextDay(d: string) {
+  const x = new Date(`${d}T00:00:00Z`);
+  x.setUTCDate(x.getUTCDate() + 1);
+  return x.toISOString().slice(0, 10);
+}
+
+function Row({ label, value, strong, green }: { label: string; value: string; strong?: boolean; green?: boolean }) {
+  return (
+    <div className={cn("flex justify-between text-muted-foreground", strong && "text-base font-semibold", green && "text-emerald-600 dark:text-emerald-400")}>
+      <dt>{label}</dt><dd className="tabular-nums">{value}</dd>
+    </div>
+  );
+}
+
+function Stepper({ value, min, max, onChange, big }: { value: number; min: number; max: number; onChange: (v: number) => void; big?: boolean }) {
+  return (
+    <div className={cn("flex items-center rounded-xl border", big ? "h-12 text-lg font-semibold" : "h-9")}>
+      <button type="button" className="px-2.5 disabled:opacity-30" disabled={value <= min} onClick={() => onChange(value - 1)} aria-label="Decrease"><Minus className="size-4" /></button>
+      <span className="flex-1 text-center tabular-nums">{value}</span>
+      <button type="button" className="px-2.5 disabled:opacity-30" disabled={value >= max} onClick={() => onChange(value + 1)} aria-label="Increase"><Plus className="size-4" /></button>
+    </div>
+  );
+}
+
+type FoundGuest = {
+  id: string; reference: string | null; vip: boolean; fullName: string; phone: string | null; email: string | null; idType: string | null; idNumber: string | null;
+  nationality: string | null; address: string | null; stays: number; lastStay: string | null;
+};
+function toGuest(g: FoundGuest): Guest {
+  return {
+    id: g.id, fullName: g.fullName, phone: g.phone ?? "", email: g.email ?? "", idType: g.idType ?? "", idNumber: g.idNumber ?? "",
+    nationality: g.nationality ?? "", address: g.address ?? "", stays: g.stays, lastStay: g.lastStay, reference: g.reference, vip: g.vip,
+  };
+}
+
+function GuestCard({ guest, setGuest, meeting, staff }: {
+  guest: Guest; setGuest: (g: Guest) => void; meeting?: { company: string; setCompany: (v: string) => void } | null;
+  /** Booking on a company: its people, one tap to book one of them. */
+  staff?: { company: string; people: CompanyStaff[] } | null;
+}) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<Guest[]>([]);
+  const [searching, startSearch] = useTransition();
+
+  useEffect(() => {
+    if (query.trim().length < 2) return;
+    const h = setTimeout(() => startSearch(async () => {
+      const res = await searchGuestsAction(query);
+      if (res.ok) setResults(res.data.map(toGuest));
+    }), 250);
+    return () => clearTimeout(h);
+  }, [query]);
+
+  // Typing a phone number that belongs to a previous guest offers their details instead of a duplicate profile.
+  const [phoneMatch, setPhoneMatch] = useState<Guest | null>(null);
+  const phoneDigits = guest.phone.replace(/\D/g, "");
+  useEffect(() => {
+    if (guest.id || guest.createNew || phoneDigits.length < 9) return;
+    const h = setTimeout(async () => {
+      const res = await searchGuestsAction(phoneDigits);
+      const hit = res.ok ? res.data.find((g) => (g.phone ?? "").replace(/\D/g, "").endsWith(phoneDigits.slice(-9))) : undefined;
+      setPhoneMatch(hit ? toGuest(hit) : null);
+    }, 400);
+    return () => clearTimeout(h);
+  }, [guest.id, guest.createNew, phoneDigits]);
+
+  const set = (k: keyof Guest) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setGuest({ ...guest, [k]: e.target.value });
+
+  return (
+    <Step n={3} title={meeting ? "Customer" : "Guest"} done={!!guest.fullName.trim()}>
+      <div className="space-y-3">
+        {guest.id ? (
+          <div className="flex items-center justify-between rounded-lg border border-green-600/30 bg-green-600/5 px-3 py-2 text-sm">
+            <span className="flex flex-wrap items-center gap-x-2"><UserCheck className="size-4 text-green-700" /> Previous guest: <strong>{guest.fullName}</strong>
+              {guest.stays != null && <span className="text-muted-foreground">· {guest.stays} previous stay{guest.stays === 1 ? "" : "s"}{guest.lastStay && ` · last ${formatBusinessDate(guest.lastStay, true)}`}</span>}
+            </span>
+            <Button size="xs" variant="ghost" onClick={() => setGuest(EMPTY_GUEST)}><X /> Clear</Button>
+          </div>
+        ) : (
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+            <Input className="h-11 rounded-xl pl-8" placeholder="Been here before? Find by name, phone, ID or G-reference…" value={query} onChange={(e) => { setQuery(e.target.value); if (e.target.value.trim().length < 2) setResults([]); }} aria-label="Search guests" />
+            {searching && <Loader2 className="absolute right-2.5 top-2.5 size-4 animate-spin" />}
+            {results.length > 0 && (
+              <ul className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border bg-popover shadow-lg">
+                {results.map((g) => (
+                  <li key={g.id}>
+                    <button type="button" className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-muted"
+                      onClick={() => { setGuest(g); setQuery(""); setResults([]); }}>
+                      <span className="grid size-8 shrink-0 place-items-center rounded-full bg-sky-500/12 text-[11px] font-bold text-sky-700 dark:text-sky-300">{initials(g.fullName)}</span>
+                      <span className="min-w-0 flex-1 leading-tight">
+                        <span className="flex items-center gap-1.5 font-medium">{g.fullName}{g.vip && <span className="rounded-full bg-[oklch(0.75_0.13_80)]/20 px-1.5 text-[9px] font-bold text-[oklch(0.5_0.12_75)] dark:text-[#f0cf86]">VIP</span>}</span>
+                        <span className="block truncate text-xs text-muted-foreground">{[g.reference, g.phone, g.idNumber].filter(Boolean).join(" · ")}</span>
+                      </span>
+                      <span className="shrink-0 text-[11px] text-muted-foreground">{g.stays ? `${g.stays} stay${g.stays === 1 ? "" : "s"}` : "New"}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+        {staff && (
+          <div className="space-y-1.5 rounded-xl border border-[oklch(0.75_0.13_80)]/40 bg-[oklch(0.75_0.13_80)]/[0.06] p-2.5">
+            <p className="text-xs font-medium">People from {staff.company} <span className="font-normal text-muted-foreground">— tap to book one</span></p>
+            <div className="flex flex-wrap gap-1.5">
+              {staff.people.map((s) => (
+                <button key={s.id} type="button" aria-pressed={guest.id === s.id}
+                  onClick={() => setGuest({ ...EMPTY_GUEST, id: s.id, fullName: s.fullName, phone: s.phone ?? "", idType: s.idType ?? "", idNumber: s.idNumber ?? "" })}
+                  className={cn("inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium transition-colors", guest.id === s.id ? "border-foreground bg-foreground text-background" : "border-border bg-card hover:bg-muted")}>
+                  {guest.id === s.id ? <Check className="size-3" /> : <UserCheck className="size-3" />}{s.fullName}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-muted-foreground">Someone new? Type their name below — they are added to {staff.company}&apos;s people.</p>
+          </div>
+        )}
+        {!guest.id && !guest.createNew && phoneMatch && validPhone(guest.phone) && (
+          <ExistingCustomer found={phoneMatch}
+            onUse={() => { setGuest({ ...phoneMatch, phone: phoneMatch.phone || guest.phone }); setPhoneMatch(null); }}
+            onNew={() => { setGuest({ ...guest, createNew: true }); setPhoneMatch(null); }} />
+        )}
+        {!guest.id && guest.createNew && (
+          <p className="flex items-center justify-between gap-2 rounded-xl bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+            <span>A new customer will be saved with this phone.</span>
+            <button type="button" className="font-medium text-foreground underline underline-offset-2" onClick={() => setGuest({ ...guest, createNew: false })}>Undo</button>
+          </p>
+        )}
+        <div className="@container rounded-2xl border border-border/70 bg-muted/20 p-3 sm:p-4">
+          <div className="grid gap-x-4 gap-y-3.5 @[36rem]:grid-cols-2">
+            <label className="block space-y-1.5"><span className={LBL}>Full name <span className="text-rose-500">*</span></span>
+              <Input id="g-name" value={guest.fullName} onChange={set("fullName")} placeholder={meeting ? "Person booking / contact" : "As on their ID"} className="h-11 rounded-xl bg-card text-base font-medium" /></label>
+            <label className="block space-y-1.5"><span className={LBL}>Phone <span className="text-rose-500">*</span> <span className="font-normal normal-case tracking-normal">· WhatsApp</span></span>
+              <Input id="g-phone" type="tel" inputMode="tel" value={guest.phone} onChange={(e) => setGuest({ ...guest, phone: e.target.value, createNew: false })} placeholder="07XX XXX XXX or +44…" required
+                aria-invalid={guest.phone.replace(/\D/g, "").length >= 9 && !validPhone(guest.phone)} className="h-11 rounded-xl bg-card text-base" /></label>
+            {meeting ? (
+              <>
+                <label className="block space-y-1.5"><span className={LBL}>Company <span className="font-normal normal-case tracking-normal">(optional)</span></span>
+                  <Input id="g-company" value={meeting.company} onChange={(e) => meeting.setCompany(e.target.value)} placeholder="e.g. ABC Company" className="h-11 rounded-xl bg-card" /></label>
+                <label className="block space-y-1.5"><span className={LBL}>Email <span className="font-normal normal-case tracking-normal">(optional)</span></span>
+                  <Input id="g-email-m" type="email" value={guest.email} onChange={set("email")} className="h-11 rounded-xl bg-card" /></label>
+              </>
+            ) : (
+              <>
+                <div className="space-y-2 @[36rem]:col-span-2"><span className={LBL}>ID <span className="font-normal normal-case tracking-normal">(optional until check-in)</span></span>
+                  <IdPicker type={guest.idType} number={guest.idNumber} numberId="g-idno"
+                    onType={(v) => setGuest({ ...guest, idType: v })} onNumber={(v) => setGuest({ ...guest, idNumber: v })} />
+                </div>
+                <div className="space-y-2 @[36rem]:col-span-2"><span className={LBL}>Nationality</span>
+                  <NationalityPicker value={guest.nationality} onChange={(v) => setGuest({ ...guest, nationality: v })} />
+                </div>
+                <label className="block space-y-1.5"><span className={LBL}>Email <span className="font-normal normal-case tracking-normal">(optional)</span></span>
+                  <Input id="g-email" type="email" value={guest.email} onChange={set("email")} placeholder="name@example.com" className="h-11 rounded-xl bg-card" /></label>
+                <label className="block space-y-1.5"><span className={LBL}>Address <span className="font-normal normal-case tracking-normal">(optional)</span></span>
+                  <Input id="g-addr" value={guest.address} onChange={set("address")} placeholder="City, country" className="h-11 rounded-xl bg-card" /></label>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </Step>
+  );
+}
+
+/** Guest pays (now or later), or the company is invoiced for the whole bill. */
+function WhoPays(p: {
+  canPay: boolean; payingNow: boolean; onPayNow: () => void; onPayAtHotel: () => void;
+  companies: { id: string; companyName: string; terms: number; available: number | null }[];
+  company: { id: string; companyName: string; available: number | null } | null;
+  onNewCompany: () => void;
+  terms: number; companyPart: number; overCredit: boolean; canApprove: boolean; creditReason: string;
+  onCompany: (id: string) => void; onTerms: (n: number) => void; onCreditReason: (s: string) => void;
+}) {
+  const chip = (on: boolean, tone: "dark" | "gold" = "dark") => cn(
+    "h-9 rounded-lg text-xs font-semibold transition-all",
+    on ? (tone === "gold" ? "bg-[oklch(0.75_0.13_80)] text-black shadow-sm" : "bg-card text-foreground shadow-sm ring-1 ring-border") : "text-muted-foreground hover:text-foreground",
+  );
+  return (
+    <div className="space-y-2.5 rounded-2xl border border-border/70 p-3.5">
+      <p className="flex items-center justify-between text-xs font-semibold">
+        <span className="inline-flex items-center gap-1.5"><Building2 className="size-3.5" />Payment type</span>
+        {p.company && <span className="font-normal text-muted-foreground">{termsLabel(p.terms)}</span>}
+      </p>
+      <div className={cn("grid gap-1 rounded-xl bg-muted/70 p-1", p.canPay ? "grid-cols-3" : "grid-cols-2")}>
+        {p.canPay && <button type="button" aria-pressed={!p.company && p.payingNow} onClick={p.onPayNow} className={chip(!p.company && p.payingNow)}>Pay now</button>}
+        <button type="button" aria-pressed={!p.company && !p.payingNow} onClick={p.onPayAtHotel} className={chip(!p.company && !p.payingNow)}>Pay later</button>
+        <button type="button" aria-pressed={!!p.company} onClick={() => !p.company && (p.companies.length ? p.onCompany(p.companies[0].id) : p.onNewCompany())} className={chip(!!p.company, "gold")}>Invoice</button>
+      </div>
+      {!p.company && !p.payingNow && <p className="text-[11px] text-muted-foreground">No money now — the room is held as a pending booking until it is paid.</p>}
+      {p.company && (
+        <>
+          <div className="flex gap-1.5">
+            <NativeSelect aria-label="Company" value={p.company.id} onChange={(e) => (e.target.value === "__new" ? p.onNewCompany() : p.onCompany(e.target.value))} className="h-9 flex-1 text-xs">
+              {p.companies.map((c) => <option key={c.id} value={c.id}>{c.companyName}</option>)}
+              <option value="__new">+ New company…</option>
+            </NativeSelect>
+            <button type="button" onClick={p.onNewCompany} aria-label="New company" title="New company" className="grid size-9 shrink-0 place-items-center rounded-lg border border-border hover:bg-muted"><Plus className="size-4" /></button>
+          </div>
+          <div className="flex flex-wrap items-center gap-1">
+            <span className="mr-1 text-[11px] text-muted-foreground">Pay within</span>
+            {PAYMENT_TERMS.map((d) => (
+              <button key={d} type="button" aria-pressed={p.terms === d} onClick={() => p.onTerms(d)}
+                className={cn("rounded-full border px-2 py-0.5 text-[11px] font-medium", p.terms === d ? "border-foreground bg-foreground text-background" : "border-border hover:bg-muted")}>
+                {d === 0 ? "Now" : `${d} days`}
+              </button>
+            ))}
+          </div>
+          {p.company.available != null && (
+            <p className={cn("text-[11px]", p.overCredit ? "font-semibold text-rose-600 dark:text-rose-400" : "text-muted-foreground")}>
+              Credit left {formatTZS(Math.max(0, p.company.available))}{p.overCredit && ` — this booking puts ${formatTZS(p.companyPart)} on the account`}
+            </p>
+          )}
+          {p.overCredit && (p.canApprove ? (
+            <Input value={p.creditReason} onChange={(e) => p.onCreditReason(e.target.value)} placeholder="Manager approval: why allow it?" className="h-9 text-xs" />
+          ) : (
+            <p className="rounded-lg bg-rose-500/10 px-2.5 py-2 text-[11px] text-rose-700 dark:text-rose-300">Over the company&apos;s credit limit — a manager must approve this booking.</p>
+          ))}
+          <p className="text-[11px] text-muted-foreground">The company pays the whole bill — room, food, drinks and extras all go on its invoice. The guest pays nothing.</p>
+        </>
+      )}
+    </div>
+  );
+}
+
+const initials = (name: string) => name.trim().split(/\s+/).filter((w) => /^\p{L}/u.test(w)).map((x) => x[0]).slice(0, 2).join("").toUpperCase();
+
+/** The phone typed belongs to a saved customer: use them (no duplicate), look at their profile, or save a new person. */
+function ExistingCustomer({ found, onUse, onNew }: { found: Guest; onUse: () => void; onNew: () => void }) {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-sky-500/35 bg-sky-500/[0.06] animate-in fade-in-0 slide-in-from-top-1">
+      <p className="border-b border-sky-500/20 px-3.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-sky-700 dark:text-sky-300">Existing customer found</p>
+      <div className="flex flex-wrap items-center gap-3 px-3.5 py-3">
+        <span className="grid size-11 shrink-0 place-items-center rounded-full bg-sky-500/15 text-sm font-bold text-sky-700 ring-1 ring-sky-500/30 dark:text-sky-300">{initials(found.fullName)}</span>
+        <div className="min-w-0 flex-1 leading-tight">
+          <p className="flex items-center gap-1.5 font-semibold">{found.fullName}{found.vip && <span className="rounded-full bg-[oklch(0.75_0.13_80)]/20 px-1.5 text-[9px] font-bold text-[oklch(0.5_0.12_75)] dark:text-[#f0cf86]">VIP</span>}</p>
+          <p className="truncate text-xs text-muted-foreground">{[found.reference, found.phone, found.email].filter(Boolean).join(" · ")}</p>
+          <p className="text-xs text-muted-foreground">{found.stays ? `${found.stays} previous stay${found.stays === 1 ? "" : "s"}${found.lastStay ? ` · last ${formatBusinessDate(found.lastStay, true)}` : ""}` : "No completed stay yet"}</p>
+        </div>
+        <div className="flex w-full flex-wrap gap-1.5 sm:w-auto">
+          <Button size="sm" onClick={onUse}><UserCheck />Use this customer</Button>
+          <a href={`/staff/guests/${found.id}`} target="_blank" rel="noopener" className={buttonVariants({ size: "sm", variant: "outline" })}>View profile</a>
+          <Button size="sm" variant="ghost" onClick={onNew}>Someone else</Button>
+        </div>
+      </div>
+    </div>
+  );
+}

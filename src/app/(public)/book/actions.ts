@@ -1,0 +1,111 @@
+"use server";
+
+import { redirect } from "next/navigation";
+import { requestMeta } from "@/server/auth";
+import { AppError, runAction, type ActionResult } from "@/server/errors";
+import { rateLimit } from "@/server/rate-limit";
+import { parseInput } from "@/server/validation";
+import { quoteSelection, type Selection } from "@/server/services/public-booking";
+import { submitBookingRequest } from "@/server/services/booking-requests";
+import { DEFAULT_AIRPORT } from "@/server/services/transport";
+import { formatBusinessDate } from "@/lib/format";
+import { bookingSchema, type BookingInput } from "./schema";
+
+export interface BookingReview {
+  typeName: string;
+  rooms: number;
+  nights: number;
+  checkIn: string;
+  checkOut: string;
+  checkInTime: string;
+  checkoutTime: string;
+  adults: number;
+  children: number;
+  ratePerNight: number;
+  discountPerNight: number;
+  grossAmount: number;
+  discountAmount: number;
+  netAmount: number;
+  pickup: { flightNumber: string; date: string; time: string; airport: string; passengers: number } | null;
+}
+
+function toSelection(v: BookingInput): Selection {
+  return { checkIn: v.checkIn, checkOut: v.checkOut, adults: v.adults, children: v.children, typeSlug: v.type, rooms: v.rooms };
+}
+
+function parse(formData: FormData): BookingInput {
+  const v = parseInput(bookingSchema, formData);
+  if (v.company) throw new AppError("We couldn’t process this request. Please call us to book.", "VALIDATION");
+  return v;
+}
+
+/** Step 3 → 4: validate guest details and re-price the stay from live data. */
+export async function reviewBookingAction(_prev: ActionResult<BookingReview> | undefined, formData: FormData): Promise<ActionResult<BookingReview>> {
+  return runAction(async () => {
+    const { ipAddress } = await requestMeta();
+    await rateLimit(`web-review:${ipAddress ?? "unknown"}`, 30, 600);
+    const v = parse(formData);
+    const q = await quoteSelection(toSelection(v));
+    return {
+      typeName: q.type.name,
+      rooms: v.rooms,
+      nights: q.nights,
+      checkIn: formatBusinessDate(v.checkIn, true),
+      checkOut: formatBusinessDate(v.checkOut, true),
+      checkInTime: q.checkInTime,
+      checkoutTime: q.checkoutTime,
+      adults: v.adults,
+      children: v.children,
+      ratePerNight: q.ratePerNight,
+      discountPerNight: q.discountPerNight,
+      grossAmount: q.grossAmount,
+      discountAmount: q.discountAmount,
+      netAmount: q.netAmount,
+      pickup:
+        v.pickup === "yes" && v.flightNumber && v.pickupDate && v.pickupTime
+          ? {
+              flightNumber: v.flightNumber.toUpperCase(),
+              date: formatBusinessDate(v.pickupDate),
+              time: v.pickupTime,
+              airport: v.airport || DEFAULT_AIRPORT,
+              passengers: typeof v.passengers === "number" ? v.passengers : v.adults + v.children,
+            }
+          : null,
+    };
+  });
+}
+
+/**
+ * Step 4 → request received. The website never creates a reservation: it files
+ * a booking request that staff confirm (re-checking availability and price).
+ */
+export async function confirmBookingAction(_prev: ActionResult<null> | undefined, formData: FormData): Promise<ActionResult<null>> {
+  let target: string | null = null;
+  const result = await runAction(async () => {
+    const { ipAddress } = await requestMeta();
+    await rateLimit(`web-book:${ipAddress ?? "unknown"}`, 5, 600);
+    const v = parse(formData);
+    const request = await submitBookingRequest(
+      toSelection(v),
+      {
+        fullName: v.fullName, phone: v.phone, email: v.email || null, nationality: v.nationality || null,
+        specialRequests: v.specialRequests || null, expectedArrivalTime: v.expectedArrivalTime,
+      },
+      ipAddress,
+      v.pickup === "yes" && v.flightNumber && v.pickupDate && v.pickupTime
+        ? {
+            flightNumber: v.flightNumber,
+            arrivalDate: v.pickupDate,
+            arrivalTime: v.pickupTime,
+            airport: v.airport || null,
+            passengers: typeof v.passengers === "number" ? v.passengers : null,
+            notes: v.pickupNotes || null,
+          }
+        : null,
+    );
+    target = `/booking/${request.reference}?token=${encodeURIComponent(request.manageToken)}`;
+    return null;
+  });
+  if (result.ok && target) redirect(target);
+  return result;
+}

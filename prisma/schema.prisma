@@ -1,0 +1,3125 @@
+// Vegas Luxury Hotel — core relational schema.
+//
+// Conventions
+// - All money is stored as whole Tanzanian shillings (TZS) in Int columns.
+// - `businessDate` columns are hotel business dates (04:00 → 03:59), computed
+//   only by HotelBusinessDateService. Never derive them from calendar midnight.
+// - Financial and historical records are never hard-deleted; they are voided,
+//   reversed, cancelled or deactivated instead.
+// - Constraints Prisma cannot express (range exclusion, partial unique
+//   indexes, checks) live in hand-written SQL inside the migrations.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────────────────────── Access control ─────────────────────────────
+
+model Role {
+  id          String           @id @default(cuid())
+  code        String           @unique // OWNER, MANAGER, RECEPTIONIST, ...
+  name        String
+  description String?
+  isSystem    Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  permissions RolePermission[]
+  users       User[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String           @id @default(cuid())
+  code        String           @unique // e.g. reservations.create
+  description String
+  roles       RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model User {
+  id                 String    @id @default(cuid())
+  email              String    @unique
+  fullName           String
+  phone              String?
+  passwordHash       String
+  roleId             String
+  role               Role      @relation(fields: [roleId], references: [id])
+  isActive           Boolean   @default(true)
+  mustChangePassword Boolean   @default(false)
+  /// The top-bar bell switched off by this person — silent in every tab, browser and device they use.
+  alertSoundOff      Boolean   @default(false)
+  lastLoginAt        DateTime?
+  /// (No longer used: a waiter is now picked from the list on the Restaurant Counter — no code.)
+  staffCode          String?   @unique
+  /// (Earlier: a hashed PIN for the same purpose — no longer used; the staff ID replaced it.)
+  pinHash            String?
+  pinSetAt           DateTime?
+  pinFailedCount     Int       @default(0)
+  pinLockedUntil     DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  sessions                  Session[]
+  auditLogs                 AuditLog[]
+  reservationsCreated       Reservation[]            @relation("ReservationCreatedBy")
+  leaveOwingApproved        Reservation[]            @relation("ReservationLeaveOwingBy")
+  reservationRoomsIn        ReservationRoom[]        @relation("CheckedInBy")
+  reservationRoomsOut       ReservationRoom[]        @relation("CheckedOutBy")
+  paymentsRecorded          Payment[]                @relation("PaymentRecordedBy")
+  paymentsReversed          Payment[]                @relation("PaymentReversedBy")
+  expensesCreated           Expense[]                @relation("ExpenseCreatedBy")
+  ledgerEntriesCreated      LedgerEntry[]            @relation("LedgerEntryCreatedBy")
+  ledgerEntriesReversed     LedgerEntry[]            @relation("LedgerEntryReversedBy")
+  cashCountsMade            CashCount[]              @relation("CashCountBy")
+  cashCountsReviewed        CashCount[]              @relation("CashCountReviewedBy")
+  expenseApprovals          ExpenseApproval[]
+  roomStatusChanges         RoomStatusHistory[]
+  roomBlocksCreated         RoomBlock[]
+  invoicesCreated           Invoice[]
+  revenueRecorded           RevenueTransaction[]     @relation("RevenueRecordedBy")
+  scheduledShifts           ShiftSchedule[]          @relation("ScheduledUser")
+  schedulesCreated          ShiftSchedule[]          @relation("ScheduleCreatedBy")
+  actualShifts              ActualShift[]
+  handoverNotes             ShiftHandoverNote[]
+  settingsUpdates           HotelSettings[]
+  tripsDriven               TransportTrip[]          @relation("TripDriver")
+  tripsCreated              TransportTrip[]          @relation("TripCreatedBy")
+  tripsConfirmed            TransportTrip[]          @relation("TripConfirmedBy")
+  tripPricesAdjusted        TransportTrip[]          @relation("TripPriceAdjustedBy")
+  requestsAssigned          ServiceRequest[]         @relation("RequestAssignee")
+  staffReports              StaffReport[]            @relation("StaffReports")
+  requestsCreated           ServiceRequest[]         @relation("RequestCreatedBy")
+  roomAssignments           RoomAssignment[]
+  mediaCreated              MediaAsset[]
+  bookingRequestsAssigned   BookingRequest[]         @relation("RequestAssignedTo")
+  bookingRequestsHandled    BookingRequest[]         @relation("RequestHandledBy")
+  bookingRequestEvents      BookingRequestEvent[]
+  menuItemsCreated          MenuItem[]               @relation("MenuItemCreatedBy")
+  menuItemsUpdated          MenuItem[]               @relation("MenuItemUpdatedBy")
+  restaurantOrders          RestaurantOrder[]        @relation("RestaurantOrderCreatedBy")
+  restaurantOrdersReady     RestaurantOrder[]        @relation("RestaurantOrderReadyBy")
+  restaurantOrdersCancelled RestaurantOrder[]        @relation("RestaurantOrderCancelledBy")
+  restaurantOrdersAccepted  RestaurantOrder[]        @relation("RestaurantOrderAcceptedBy")
+  restaurantOrdersTaken     RestaurantOrder[]        @relation("RestaurantOrderTakenBy")
+  restaurantOrdersDelivered RestaurantOrder[]        @relation("RestaurantOrderDeliveredBy")
+  restaurantOrderEvents     RestaurantOrderEvent[]   @relation("RestaurantOrderEvents")
+  restaurantOrdersAssigned  RestaurantOrder[]        @relation("RestaurantOrderAssignedTo")
+  tablesBlocked             RestaurantLocation[]     @relation("RestaurantLocationBlockedBy")
+  tablesWaited              RestaurantLocation[]     @relation("RestaurantLocationWaiter")
+  roomsServed               Room[]                   @relation("RoomServiceWaiter")
+  diningSessionsWaited      DiningSession[]          @relation("DiningSessionWaiter")
+  restaurantItemsAdded      RestaurantOrderItem[]    @relation("RestaurantOrderItemAddedBy")
+  restaurantPaysCollected   RestaurantOrderPayment[] @relation("RestaurantPaymentCollectedBy")
+  restaurantPaysConfirmed   RestaurantOrderPayment[] @relation("RestaurantPaymentConfirmedBy")
+  restaurantPaysReversed    RestaurantOrderPayment[] @relation("RestaurantPaymentReversedBy")
+  restaurantPaysHandedOver  RestaurantOrderPayment[] @relation("RestaurantPaymentHandedOverBy")
+  restaurantLocationsQr     RestaurantLocation[]     @relation("RestaurantLocationQrBy")
+  roomQrCodesGenerated      RoomQrCode[]             @relation("RoomQrGeneratedBy")
+  stockRequests             StockRequest[]           @relation("StockRequestBy")
+  stockRequestsDecided      StockRequest[]           @relation("StockRequestDecidedBy")
+  stockRequestsPurchased    StockRequest[]           @relation("StockRequestPurchasedBy")
+  stockRequestsApproved     StockRequest[]           @relation("StockRequestFinalApprovedBy")
+  stockRequestEvents        StockRequestEvent[]      @relation("StockRequestEventBy")
+  inventoryRecorded         InventoryMovement[]      @relation("InventoryRecordedBy")
+  inventoryApproved         InventoryMovement[]      @relation("InventoryApprovedBy")
+  assetsCreated             Asset[]                  @relation("AssetCreatedBy")
+  assetMoves                AssetMovement[]          @relation("AssetMovedBy")
+  diningSessionsStarted     DiningSession[]          @relation("DiningSessionStartedBy")
+  diningSessionsClosed      DiningSession[]          @relation("DiningSessionClosedBy")
+  diningMembersAdded        DiningSessionMember[]    @relation("DiningMemberAddedBy")
+  diningSessionEvents       DiningSessionEvent[]     @relation("DiningSessionEventBy")
+  tableMoves                TableMove[]              @relation("TableMoveBy")
+  tableReservationsCreated  TableReservation[]       @relation("TableReservationCreatedBy")
+  tableReservationsUpdated  TableReservation[]       @relation("TableReservationUpdatedBy")
+  groupsCreated             BookingGroup[]           @relation("GroupCreatedBy")
+  groupsFinalized           BookingGroup[]           @relation("GroupFinalizedBy")
+  thankYouNotes             ThankYouNote[]           @relation("ThankYouNotesMade")
+  guestMessagesSent         GuestMessage[]           @relation("GuestMessagesSent")
+  shiftsClosed              ActualShift[]            @relation("ShiftClosedBy")
+  assignmentsFrom           WaiterAssignment[]       @relation("AssignmentFrom")
+  assignmentsTo             WaiterAssignment[]       @relation("AssignmentTo")
+
+  @@map("users")
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  tokenHash  String   @unique // SHA-256 of the cookie token; raw token is never stored
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+// Fixed-window rate limiting that works on serverless (no in-memory state).
+model RateLimitBucket {
+  key         String   @id
+  count       Int
+  windowStart DateTime
+
+  @@map("rate_limit_buckets")
+}
+
+// ──────────────────────────────── Settings ────────────────────────────────
+
+// Single-row table (id = 1). Read only through HotelSettingsService.
+model HotelSettings {
+  id                         Int      @id @default(1)
+  hotelName                  String   @default("Vegas Luxury Hotel")
+  tagline                    String?  @default("Comfort • Style • Excellence")
+  addressLine                String?  @default("Mlimani City Roundabout, behind Mwenge Tower")
+  postalAddress              String?  @default("P.O. Box 40081")
+  city                       String?  @default("Dar es Salaam")
+  country                    String?  @default("Tanzania")
+  phone                      String?  @default("+255 710 223 344")
+  email                      String?  @default("vegasluxuryhotel@gmail.com")
+  website                    String?  @default("www.vegasluxuryhotel.co.tz")
+  whatsapp                   String?  @default("+255710223344")
+  mapUrl                     String?
+  currency                   String   @default("TZS")
+  timezone                   String   @default("Africa/Dar_es_Salaam")
+  businessDayStartMinutes    Int      @default(240) // 04:00
+  standardCheckInMinutes     Int      @default(840) // 14:00
+  checkoutMinutes            Int      @default(660) // 11:00
+  lateArrivalMinutes         Int      @default(960) // 16:00
+  defaultDiscountPerNight    Int      @default(20000) // legacy: replaced by promotions (see Promotion)
+  // Manual discounts given by staff to one guest (per room, per night).
+  manualDiscountMax          Int      @default(20000)
+  receptionCanDiscount       Boolean  @default(true)
+  managerCanDiscount         Boolean  @default(true)
+  applyDiscountToWebsite     Boolean  @default(true)
+  expenseApprovalThreshold   Int      @default(200000)
+  /// Stock purchases: the final approval must be by someone other than the buyer.
+  purchaseApproverMustDiffer Boolean  @default(false)
+  invoicePrefix              String   @default("VLH-INV-")
+  invoiceNextNumber          Int      @default(1)
+  invoiceDefaultDueDays      Int      @default(14)
+  taxName                    String?
+  taxRatePercent             Decimal? @db.Decimal(5, 2)
+  taxIncludedInRates         Boolean  @default(true)
+  reportEnabled              Boolean  @default(true)
+  /// Each waiter's / receptionist's shift report goes to the report recipients by WhatsApp when the shift ends.
+  shiftReportEnabled         Boolean  @default(true)
+  reportRecipients           Json     @default("[]") // [{ name, phone, channel }]
+  publicBookingEnabled       Boolean  @default(true)
+  maxAdvanceBookingDays      Int      @default(365)
+  // Guest-facing operational info (welcome card, website) — null = not shown.
+  wifiNetwork                String?
+  wifiPassword               String?
+  receptionHours             String?  @default("24 hours")
+  breakfastHours             String?
+  restaurantHours            String?
+  barHours                   String?
+  // Stay policies (configurable, never hard-coded)
+  lateCheckoutFee            Int      @default(0)
+  /// Added to every room-service order (delivery to the room).
+  roomServiceFee             Int      @default(2000)
+  earlyDeparturePolicy       String   @default("CHARGE_USED_NIGHTS") // CHARGE_USED_NIGHTS | CHARGE_ONE_EXTRA_NIGHT | CHARGE_FULL_STAY
+  airportTransferPrice       Int? // null = free / quoted separately
+  // A booking without payment holds its room only this long (0 = until the arrival day), then the room is free again.
+  unpaidHoldHours            Int      @default(24)
+  // Paid booking that is cancelled or does not arrive: RETAIN_PAYMENT (non-refundable) | REFUND_DUE
+  noShowPolicy               String   @default("RETAIN_PAYMENT")
+  // No-show cut-off (minutes after midnight; before the business-day start = the night after arrival, e.g. 60 = 01:00).
+  noShowCutoffMinutes        Int      @default(60)
+  // At the cut-off: also release the room automatically (otherwise a manager presses "Release room").
+  noShowAutoRelease          Boolean  @default(false)
+  // Guest moves to a cheaper room: NO_REFUND (keeps the price paid) | CREDIT (difference owed back; a refund is separate) | CHOOSE (staff pick, credit needs a manager)
+  roomDowngradePolicy        String   @default("CHOOSE")
+  // Paid booking moves to dates that cost more: the extra is paid at the change.
+  dateChangePayNow           Boolean  @default(true)
+  // Moves to cheaper dates than what was paid: CREDIT (owed back / used later; a refund is separate) | NO_REFUND (price stays as paid)
+  dateChangeExcessPolicy     String   @default("NO_REFUND")
+  // Arrival-day reminder to the guest. Channel "MANUAL" = reception sends it (WhatsApp button); others are providers in messaging.ts.
+  arrivalReminderChannel     String   @default("MANUAL")
+  arrivalReminderTemplate    String?
+  // Invoice "Pay into" details and terms — shown on every invoice (null = not shown).
+  bankName                   String?
+  bankAccountName            String?
+  bankAccountNumber          String?
+  bankBranch                 String?
+  bankSwift                  String?
+  mobileMoneyName            String? // e.g. "M-Pesa Lipa Namba"
+  mobileMoneyNumber          String?
+  mobileMoneyAccountName     String?
+  invoiceTerms               String?
+  // Guest thank-you note at check-out (null = the built-in wording).
+  thankYouMessage            String?
+  thankYouSignoff            String?
+  thankYouPromoTitle         String?
+  thankYouPromoText          String?
+  thankYouRebookText         String?
+  // Guest messages: the hotel's own wording (null = built-in) and which events are sent automatically when a provider is connected.
+  bookingMessageTemplate     String?
+  welcomeMessageTemplate     String?
+  guestNotifications         Json     @default("{}")
+  // Online ordering (menu QR / website)
+  publicOrderingEnabled      Boolean  @default(true)
+  /// Minutes the kitchen usually needs — shown to customers only when set.
+  orderPrepMinutes           Int?
+  /// Restaurant portal sounds: a new order (for the cook) and a ready order (for waiters).
+  orderSoundsEnabled         Boolean  @default(true)
+  orderSoundVolume           Int      @default(80)
+  newOrderSound              String   @default("bell")
+  readyOrderSound            String   @default("chime")
+  /// ONCE = one sound per order | REPEAT = repeat until someone acts on it
+  orderSoundMode             String   @default("REPEAT")
+  orderSoundEverySeconds     Int      @default(20)
+  /// Payments a waiter collects wait for reception (or a manager) to confirm them.
+  orderPaymentConfirm        Boolean  @default(true)
+  instagramUrl               String?
+  facebookUrl                String?
+  updatedAt                  DateTime @updatedAt
+  updatedById                String?
+  updatedBy                  User?    @relation(fields: [updatedById], references: [id])
+
+  @@map("hotel_settings")
+}
+
+model BookingSource {
+  id              String           @id @default(cuid())
+  code            String           @unique // WEBSITE, BOOKING_COM, WALK_IN, ...
+  name            String
+  isActive        Boolean          @default(true)
+  isSystem        Boolean          @default(false) // WEBSITE cannot be removed
+  sortOrder       Int              @default(0)
+  reservations    Reservation[]
+  bookingRequests BookingRequest[]
+  groups          BookingGroup[]
+
+  @@map("booking_sources")
+}
+
+model PaymentMethod {
+  id             String                   @id @default(cuid())
+  code           String                   @unique // CASH, BANK, MOBILE_MONEY, CARD, OTHER
+  name           String
+  isActive       Boolean                  @default(true)
+  sortOrder      Int                      @default(0)
+  payments       Payment[]
+  expenses       Expense[]
+  revenueTxns    RevenueTransaction[]
+  restaurantPays RestaurantOrderPayment[]
+  /// Where money taken with this method goes (e.g. Cash → Cash drawer).
+  accountId      String?
+  account        MoneyAccount?            @relation(fields: [accountId], references: [id])
+
+  @@map("payment_methods")
+}
+
+// ───────────────────────────── Rooms & inventory ─────────────────────────────
+
+model Amenity {
+  id        String            @id @default(cuid())
+  code      String            @unique
+  name      String
+  icon      String? // lucide icon name
+  sortOrder Int               @default(0)
+  roomTypes RoomTypeAmenity[]
+
+  @@map("amenities")
+}
+
+/// Guest bedrooms are sold by the night; meeting rooms by a start–end time on one day.
+enum RoomCategory {
+  GUEST_ROOM
+  MEETING_ROOM
+}
+
+model RoomType {
+  id               String            @id @default(cuid())
+  code             String            @unique // STANDARD, DOUBLE_DELUXE, ..., MEETING_ROOM
+  name             String
+  /// Meeting rooms use the same rooms, reservations, folio and payments, but are booked by time
+  /// and reported apart (Meeting Room revenue, utilisation — never guest-room occupancy).
+  category         RoomCategory      @default(GUEST_ROOM)
+  slug             String            @unique
+  baseRate         Int // TZS per night (meeting room: per booking) — the only source of room prices
+  displayRateUsd   Int? // indicative USD price shown on the website
+  maxAdults        Int               @default(2)
+  maxChildren      Int               @default(1)
+  bedType          String?
+  sizeSqm          Int?
+  shortDescription String?
+  description      String?
+  images           Json              @default("[]") // ["/images/rooms/...jpg"]
+  isActive         Boolean           @default(true)
+  isPublic         Boolean           @default(true)
+  sortOrder        Int               @default(0)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  rooms            Room[]
+  amenities        RoomTypeAmenity[]
+  reservationRooms ReservationRoom[]
+  media            MediaAsset[]
+  bookingRequests  BookingRequest[]
+
+  @@map("room_types")
+}
+
+model RoomTypeAmenity {
+  roomTypeId String
+  amenityId  String
+  roomType   RoomType @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
+  amenity    Amenity  @relation(fields: [amenityId], references: [id], onDelete: Cascade)
+
+  @@id([roomTypeId, amenityId])
+  @@map("room_type_amenities")
+}
+
+enum RoomStatus {
+  AVAILABLE
+  RESERVED
+  OCCUPIED
+  DIRTY
+  CLEANING
+  READY
+  MAINTENANCE
+  OUT_OF_SERVICE
+}
+
+model Room {
+  id               String              @id @default(cuid())
+  number           String              @unique
+  roomTypeId       String
+  roomType         RoomType            @relation(fields: [roomTypeId], references: [id])
+  floor            Int?
+  status           RoomStatus          @default(AVAILABLE)
+  statusNote       String?
+  statusChangedAt  DateTime            @default(now())
+  /// The waiter a manager put in charge of this room's room service (its food & drink orders go to them).
+  serviceWaiterId  String?
+  serviceWaiter    User?               @relation("RoomServiceWaiter", fields: [serviceWaiterId], references: [id])
+  isActive         Boolean             @default(true) // inactive = removed from inventory, history kept
+  notes            String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  statusHistory    RoomStatusHistory[]
+  blocks           RoomBlock[]
+  reservationRooms ReservationRoom[]
+  bookingRequests  BookingRequest[]
+  movesFrom        RoomAssignment[]    @relation("MoveFrom")
+  movesTo          RoomAssignment[]    @relation("MoveTo")
+  serviceRequests  ServiceRequest[]
+  qrCode           RoomQrCode?
+
+  @@index([roomTypeId])
+  @@index([status])
+  @@map("rooms")
+}
+
+model RoomStatusHistory {
+  id          String     @id @default(cuid())
+  roomId      String
+  room        Room       @relation(fields: [roomId], references: [id])
+  fromStatus  RoomStatus
+  toStatus    RoomStatus
+  note        String?
+  changedById String?
+  changedBy   User?      @relation(fields: [changedById], references: [id])
+  changedAt   DateTime   @default(now())
+
+  @@index([roomId, changedAt])
+  @@map("room_status_history")
+}
+
+enum RoomBlockType {
+  MAINTENANCE
+  OUT_OF_SERVICE
+}
+
+// A dated period during which a room cannot be sold. Drives historical
+// sellable inventory for occupancy; `endDate` null = open-ended.
+model RoomBlock {
+  id          String        @id @default(cuid())
+  roomId      String
+  room        Room          @relation(fields: [roomId], references: [id])
+  type        RoomBlockType
+  startDate   DateTime      @db.Date // business date, inclusive
+  endDate     DateTime?     @db.Date // business date, exclusive
+  reason      String?
+  createdById String?
+  createdBy   User?         @relation(fields: [createdById], references: [id])
+  createdAt   DateTime      @default(now())
+  closedAt    DateTime?
+
+  @@index([roomId, startDate])
+  @@map("room_blocks")
+}
+
+// ─────────────────────────────── Customers ───────────────────────────────
+
+model Guest {
+  id                  String                @id @default(cuid())
+  /// Customer reference shown to staff (G-7K2M9Q) — never the database id.
+  reference           String?               @unique @default(dbgenerated("('G-'::text || upper(substr(md5(((random())::text || (clock_timestamp())::text)), 1, 6)))"))
+  fullName            String
+  phone               String?
+  /// A second number (e.g. work phone).
+  altPhone            String?
+  email               String?
+  idType              String? // PASSPORT, NATIONAL_ID, DRIVING_LICENCE, ...
+  idNumber            String?
+  nationality         String?
+  address             String?
+  notes               String?
+  preferences         String?
+  dateOfBirth         DateTime?             @db.Date
+  vip                 Boolean               @default(false)
+  /// How the guest likes to be contacted: WHATSAPP | SMS | EMAIL | CALL.
+  preferredChannel    String?
+  /// Agreed to promotions / offers (booking messages are sent regardless — they are part of the stay).
+  marketingConsent    Boolean               @default(false)
+  marketingConsentAt  DateTime?
+  tags                String[]              @default([])
+  /// Removed by a manager: personal details wiped, hidden from lists and lookups — stays and payments stay in the books.
+  deletedAt           DateTime?
+  corporateCustomerId String?
+  corporateCustomer   CorporateCustomer?    @relation(fields: [corporateCustomerId], references: [id])
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  reservations        Reservation[]
+  trips               TransportTrip[]
+  serviceRequests     ServiceRequest[]
+  bookingRequests     BookingRequest[]
+  reservationGuests   ReservationGuest[]
+  invoices            Invoice[]
+  groupsContact       BookingGroup[]
+  messages            GuestMessage[]
+  restaurantOrders    RestaurantOrder[]
+  diningSessions      DiningSession[]
+  diningMemberships   DiningSessionMember[]
+  tableReservations   TableReservation[]
+
+  @@index([phone])
+  @@index([email])
+  @@index([fullName])
+  @@map("guests")
+}
+
+/// Who settles a stay: the guest, the company, or split by what the company covers.
+enum BillTo {
+  GUEST
+  COMPANY
+  SPLIT
+  /// Member of a group booking: the group's payer (its company, or its contact person) pays the whole bill.
+  GROUP
+}
+
+enum CorporateStatus {
+  ACTIVE
+  ON_HOLD
+  INACTIVE
+}
+
+model CorporateCustomer {
+  id                  String          @id @default(cuid())
+  companyName         String
+  contactPerson       String?
+  phone               String?
+  email               String?
+  address             String?
+  taxId               String? // TIN
+  vrn                 String? // VAT registration number
+  registrationNo      String? // company registration (BRELA) number
+  /// What the account is: a company, a family, an organization… (the group booking form shows each type's own accounts).
+  kind                GroupType       @default(COMPANY)
+  creditLimit         Int?
+  paymentTermDays     Int             @default(30)
+  billingNotes        String?
+  billingAddress      String?
+  /// Usual arrangement for this company's bookings (can be changed per booking).
+  defaultBillTo       BillTo          @default(COMPANY)
+  defaultCovers       String[]        @default([]) // for SPLIT: ROOM, FOOD, DRINKS, LAUNDRY, TRANSPORT, OTHER
+  /// true = stays go onto one open (draft) invoice that is sent later, e.g. monthly.
+  consolidateInvoices Boolean         @default(false)
+  status              CorporateStatus @default(ACTIVE)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  guests              Guest[]
+  reservations        Reservation[]
+  invoices            Invoice[]
+  payments            Payment[]
+  groups              BookingGroup[]
+
+  @@index([companyName])
+  @@map("corporate_customers")
+}
+
+// ─────────────────────────────── Reservations ───────────────────────────────
+
+enum ReservationStatus {
+  INQUIRY
+  RESERVED
+  CONFIRMED
+  CHECKED_IN
+  CHECKED_OUT
+  CANCELLED
+  NO_SHOW
+}
+
+/// What a reservation books: overnight / short-time guest rooms, or a meeting room by time.
+/// Set once at booking from the room type's category; lists and reports read it.
+enum ReservationKind {
+  STAY
+  MEETING
+}
+
+// ─────────────────────────────── Group bookings ───────────────────────────────
+
+enum GroupType {
+  COMPANY
+  FAMILY
+  ORGANIZATION
+  GOVERNMENT
+  EVENT
+  OTHER
+}
+
+/// How the rooms a group pays for are invoiced: one invoice for the group, or one per room.
+enum GroupBilling {
+  COMBINED
+  SEPARATE
+}
+
+enum GroupStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+/**
+ * A group booking: rooms that belong together (a company's staff, a family, an
+ * event). Every room stays its own Reservation — own guest, dates, price, folio,
+ * check-in and check-out. The group only links them, names who pays (its
+ * company, or its contact person) and holds the group invoices.
+ */
+model BookingGroup {
+  id                  String             @id @default(cuid())
+  reference           String             @unique // GRP-7K2M9Q
+  name                String // "ABC Company", "Chuwa family"
+  type                GroupType          @default(OTHER)
+  /// Company groups: the company account that pays (credit, terms, receivables).
+  corporateCustomerId String?
+  corporateCustomer   CorporateCustomer? @relation(fields: [corporateCustomerId], references: [id])
+  /// Primary contact; pays the group's bill when there is no company.
+  contactGuestId      String
+  contactGuest        Guest              @relation(fields: [contactGuestId], references: [id])
+  sourceId            String
+  source              BookingSource      @relation(fields: [sourceId], references: [id])
+  billing             GroupBilling       @default(COMBINED)
+  paymentTermDays     Int?
+  notes               String?
+  /// Billing profile (used on invoices when there is no company account; a company uses its own).
+  address             String?
+  billingAddress      String?
+  taxId               String?
+  vrn                 String?
+  registrationNo      String?
+  /// Where invoices and statements are sent.
+  billingEmail        String?
+  billingNotes        String?
+  status              GroupStatus        @default(ACTIVE)
+  /// The group bill was finalized: every room had left and the final group invoice was made.
+  finalizedAt         DateTime?
+  finalizedById       String?
+  finalizedBy         User?              @relation("GroupFinalizedBy", fields: [finalizedById], references: [id])
+  finalInvoiceId      String?
+  /// Cached from the rooms: earliest arrival, latest departure.
+  arrivalDate         DateTime           @db.Date
+  departureDate       DateTime           @db.Date
+  createdById         String?
+  createdBy           User?              @relation("GroupCreatedBy", fields: [createdById], references: [id])
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  reservations        Reservation[]
+  invoices            Invoice[]
+
+  @@index([arrivalDate])
+  @@index([name])
+  @@index([corporateCustomerId])
+  @@map("booking_groups")
+}
+
+model Reservation {
+  id                  String             @id @default(cuid())
+  reference           String             @unique // VLH-7K2M9Q
+  kind                ReservationKind    @default(STAY)
+  /// Group booking this room booking belongs to (a company, family or event booking several rooms).
+  groupId             String?
+  group               BookingGroup?      @relation(fields: [groupId], references: [id])
+  manageToken         String             @unique // opaque token for the guest's "view booking" link
+  sourceId            String
+  source              BookingSource      @relation(fields: [sourceId], references: [id])
+  externalReference   String? // e.g. Booking.com confirmation number
+  guestId             String
+  guest               Guest              @relation(fields: [guestId], references: [id])
+  corporateCustomerId String?
+  corporateCustomer   CorporateCustomer? @relation(fields: [corporateCustomerId], references: [id])
+  billTo              BillTo             @default(GUEST)
+  companyCovers       String[]           @default([]) // SPLIT only — see src/lib/billing.ts
+  paymentTermDays     Int? // company invoice terms for this stay (null = the company's terms)
+  /// Company name for a booking by a company that has no company account (e.g. a meeting room booking).
+  companyName         String?
+  status              ReservationStatus  @default(RESERVED)
+  adults              Int                @default(1)
+  children            Int                @default(0)
+  arrivalDate         DateTime           @db.Date // first business date of stay
+  departureDate       DateTime           @db.Date // business date of checkout (== arrival for day-use)
+  specialRequests     String?
+  internalNotes       String?
+  eta                 String? // expected arrival time HH:MM
+  /// Unpaid booking: the room is held until this moment; then the booking lapses and the room is free again.
+  holdUntil           DateTime?
+  /// The guest told the hotel they will arrive late: the booking stays active past the no-show cut-off.
+  lateArrivalNotedAt  DateTime?
+  /// A manager's approval to let the guest check out still owing (up to this much), with the reason — reception can then check them out.
+  leaveOwingUpTo      Int?
+  leaveOwingReason    String?
+  leaveOwingAt        DateTime?
+  leaveOwingById      String?
+  leaveOwingBy        User?              @relation("ReservationLeaveOwingBy", fields: [leaveOwingById], references: [id])
+  lateArrivalNote     String?
+  /// Arrival-day reminder prepared / sent.
+  reminderSentAt      DateTime?
+  welcomeChecklist    Json? // { guestVerified, roomReady, keyIssued, wifiGiven, breakfastExplained, facilitiesExplained, requestsConfirmed, transportConfirmed }
+  // Reserved for future OTA/channel-manager integrations (raw payload, sync ids). Manual OTA entries leave it null.
+  externalData        Json?
+
+  // Cached totals — written only by ReservationFinancialService inside the
+  // same transaction as the change that affects them.
+  grossAmount         Int @default(0)
+  discountAmount      Int @default(0)
+  chargesAmount       Int @default(0)
+  netAmount           Int @default(0)
+  paidAmount          Int @default(0)
+  companyBilledAmount Int @default(0) // moved to company invoices (the company owes it now, not the guest)
+  balanceAmount       Int @default(0) // net − paid − companyBilled
+
+  createdById  String?
+  createdBy    User?     @relation("ReservationCreatedBy", fields: [createdById], references: [id])
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  businessDate DateTime  @db.Date // business date the booking was made
+  confirmedAt  DateTime?
+  cancelledAt  DateTime?
+  cancelReason String?
+  noShowAt     DateTime?
+
+  rooms            ReservationRoom[]
+  guests           ReservationGuest[]
+  charges          ReservationCharge[]
+  payments         Payment[]
+  invoices         Invoice[]
+  /// The guest's own link to their booking page (/stay/…), sent with the booking and welcome messages.
+  guestToken       String?             @unique
+  guestMessages    GuestMessage[]
+  thankYouNotes    ThankYouNote[]
+  restaurantOrders RestaurantOrder[]
+  invoiceItems     InvoiceItem[]
+  trips            TransportTrip[]
+  requests         ServiceRequest[]
+  bookingRequest   BookingRequest?
+
+  @@index([status])
+  @@index([kind, arrivalDate])
+  @@index([groupId])
+  @@index([arrivalDate])
+  @@index([departureDate])
+  @@index([businessDate])
+  @@index([sourceId])
+  @@index([guestId])
+  @@index([corporateCustomerId])
+  @@map("reservations")
+}
+
+model ReservationGuest {
+  reservationId String
+  guestId       String
+  reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  guest         Guest       @relation(fields: [guestId], references: [id])
+  isPrimary     Boolean     @default(false)
+
+  @@id([reservationId, guestId])
+  @@map("reservation_guests")
+}
+
+// One physical room within a reservation. The exclusion constraint
+// `reservation_rooms_no_overlap` (see migration SQL) guarantees a room can
+// never hold two active stays whose [startAt, endAt) ranges overlap.
+model ReservationRoom {
+  id                    String            @id @default(cuid())
+  reservationId         String
+  reservation           Reservation       @relation(fields: [reservationId], references: [id])
+  roomId                String
+  room                  Room              @relation(fields: [roomId], references: [id])
+  roomTypeId            String
+  roomType              RoomType          @relation(fields: [roomTypeId], references: [id])
+  status                ReservationStatus @default(RESERVED)
+  startAt               DateTime // planned (then actual) occupancy start
+  endAt                 DateTime // planned (then actual) occupancy end
+  arrivalDate           DateTime          @db.Date
+  departureDate         DateTime          @db.Date
+  nights                Int // 0 for day-use
+  isDayUse              Boolean           @default(false)
+  isLateArrival         Boolean           @default(false)
+  adults                Int               @default(1)
+  children              Int               @default(0)
+  ratePerNight          Int // snapshot of RoomType.baseRate at booking time
+  discountPerNight      Int               @default(0)
+  discountOverridden    Boolean           @default(false)
+  discountReason        String?
+  /// Who set the manual discount and when (shown in the ledger next to the discount).
+  discountSetById       String?
+  discountSetAt         DateTime?
+  /// No-show: the room stays held until it is released (then it can be sold again; the booking stays as NO SHOW).
+  releasedAt            DateTime?
+  releasedById          String?
+  // Promotion that priced the booked nights (snapshot at booking; each night keeps its own in RoomNight).
+  promotionId           String?
+  promotionName         String?
+  promoDiscountPerNight Int               @default(0)
+  grossAmount           Int
+  discountAmount        Int
+  netAmount             Int
+  checkedInAt           DateTime?
+  checkedInById         String?
+  checkedInBy           User?             @relation("CheckedInBy", fields: [checkedInById], references: [id])
+  checkedOutAt          DateTime?
+  checkedOutById        String?
+  checkedOutBy          User?             @relation("CheckedOutBy", fields: [checkedOutById], references: [id])
+  lateCheckoutUntil     DateTime?
+  lateCheckoutNote      String?
+  earlyDepartureReason  String?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  nightsLedger          RoomNight[]
+  assignments           RoomAssignment[]
+
+  @@index([reservationId])
+  @@index([roomId, startAt])
+  @@index([status])
+  @@map("reservation_rooms")
+}
+
+// One row per sold room per business date (day-use = one row, isDayUse).
+// The single source for rooms sold, room nights, occupancy and room revenue.
+model RoomNight {
+  id                String          @id @default(cuid())
+  reservationRoomId String
+  reservationRoom   ReservationRoom @relation(fields: [reservationRoomId], references: [id], onDelete: Cascade)
+  roomId            String
+  roomTypeId        String
+  sourceId          String
+  businessDate      DateTime        @db.Date
+  isDayUse          Boolean         @default(false)
+  grossAmount       Int // base price for this night (snapshot)
+  discountAmount    Int // promoDiscount + manualDiscount
+  netAmount         Int
+  promoDiscount     Int             @default(0)
+  manualDiscount    Int             @default(0)
+  promotionId       String?
+  promotionName     String?
+  /// Date price used for this night (weekend / holiday / season), if any.
+  priceRuleId       String?
+  priceRuleName     String?
+  /// Given free by a manager / the MD / the owner (e.g. extra nights on the house): nothing to pay for this night.
+  complimentary     Boolean         @default(false)
+  compReason        String?
+  compById          String?
+  /// This night's share of a manager's discount on the guest's whole bill (part of manualDiscount).
+  billDiscount      Int             @default(0)
+
+  @@unique([reservationRoomId, businessDate])
+  @@index([businessDate])
+  @@index([roomTypeId, businessDate])
+  @@index([sourceId, businessDate])
+  @@map("room_nights")
+}
+
+// Extra folio charges posted to a reservation (laundry, room service, ...).
+model ReservationCharge {
+  id                String           @id @default(cuid())
+  reservationId     String
+  reservation       Reservation      @relation(fields: [reservationId], references: [id])
+  description       String
+  amount            Int
+  kind              RevenueKind      @default(OTHER) // restaurant/bar charges posted to the room count as restaurant/bar revenue
+  category          String? // LATE_CHECKOUT, TRANSPORT, ROOM_UPGRADE, RESTAURANT, BAR, LAUNDRY, ROOM_SERVICE_FEE, OTHER
+  /// The restaurant / bar order charged to the room.
+  restaurantOrderId String?
+  restaurantOrder   RestaurantOrder? @relation(fields: [restaurantOrderId], references: [id])
+  /// The menu item this line is (food / drink picked from the menu) — its photo shows on the guest's tab.
+  menuItemId        String?
+  menuItem          MenuItem?        @relation(fields: [menuItemId], references: [id])
+  businessDate      DateTime         @db.Date
+  isVoided          Boolean          @default(false)
+  voidReason        String?
+  createdById       String?
+  createdAt         DateTime         @default(now())
+
+  @@index([reservationId])
+  @@index([businessDate])
+  @@map("reservation_charges")
+}
+
+// ─────────────────────────── Payments & invoices ───────────────────────────
+
+enum PaymentKind {
+  PAYMENT
+  REFUND
+}
+
+enum PaymentStatus {
+  POSTED
+  REVERSED
+}
+
+model Payment {
+  id                   String              @id @default(cuid())
+  kind                 PaymentKind         @default(PAYMENT)
+  status               PaymentStatus       @default(POSTED)
+  amount               Int // always positive; `kind` gives direction
+  methodId             String
+  method               PaymentMethod       @relation(fields: [methodId], references: [id])
+  /// The hotel account the money went into (or, for a refund, came out of).
+  accountId            String
+  account              MoneyAccount        @relation(fields: [accountId], references: [id])
+  reference            String?
+  notes                String?
+  receivedAt           DateTime            @default(now())
+  businessDate         DateTime            @db.Date
+  reservationId        String?
+  reservation          Reservation?        @relation(fields: [reservationId], references: [id])
+  invoiceId            String?
+  invoice              Invoice?            @relation(fields: [invoiceId], references: [id])
+  corporateCustomerId  String?
+  corporateCustomer    CorporateCustomer?  @relation(fields: [corporateCustomerId], references: [id])
+  recordedById         String
+  recordedBy           User                @relation("PaymentRecordedBy", fields: [recordedById], references: [id])
+  reversedAt           DateTime?
+  reversedById         String?
+  reversedBy           User?               @relation("PaymentReversedBy", fields: [reversedById], references: [id])
+  reversalReason       String?
+  /// Hotel day of the reversal: the payment stays on its own day, the reversal is a separate line on this day.
+  reversalBusinessDate DateTime?           @db.Date
+  corrections          PaymentCorrection[]
+  createdAt            DateTime            @default(now())
+
+  @@index([businessDate])
+  @@index([reversalBusinessDate])
+  @@index([reservationId])
+  @@index([invoiceId])
+  @@index([corporateCustomerId])
+  @@index([accountId, businessDate])
+  /// Each receptionist's collections (their shift, any period).
+  @@index([recordedById, createdAt])
+  @@map("payments")
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+  VOID
+}
+
+model Invoice {
+  id                  String             @id @default(cuid())
+  number              String             @unique
+  status              InvoiceStatus      @default(DRAFT)
+  guestId             String?
+  guest               Guest?             @relation(fields: [guestId], references: [id])
+  corporateCustomerId String?
+  corporateCustomer   CorporateCustomer? @relation(fields: [corporateCustomerId], references: [id])
+  reservationId       String?
+  reservation         Reservation?       @relation(fields: [reservationId], references: [id])
+  /// Group invoice: rooms of a group booking billed together (lines keep their room and guest).
+  groupId             String?
+  group               BookingGroup?      @relation(fields: [groupId], references: [id])
+  issueDate           DateTime?          @db.Date
+  dueDate             DateTime?          @db.Date
+  grossAmount         Int                @default(0)
+  discountAmount      Int                @default(0)
+  netAmount           Int                @default(0)
+  paidAmount          Int                @default(0)
+  balanceAmount       Int                @default(0)
+  notes               String?
+  paymentTermDays     Int?
+  /// Random token for the public "scan to verify" page (set when issued).
+  verifyToken         String?            @unique
+  createdById         String
+  createdBy           User               @relation(fields: [createdById], references: [id])
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  cancelledAt         DateTime?
+  cancelReason        String?
+  items               InvoiceItem[]
+  payments            Payment[]
+
+  @@index([status])
+  @@index([corporateCustomerId])
+  @@index([groupId])
+  @@index([dueDate])
+  @@map("invoices")
+}
+
+enum InvoiceItemKind {
+  ROOM
+  CHARGE
+  MEETING_ROOM
+  OTHER
+}
+
+model InvoiceItem {
+  id             String          @id @default(cuid())
+  invoiceId      String
+  invoice        Invoice         @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  kind           InvoiceItemKind
+  description    String
+  quantity       Int             @default(1)
+  unitAmount     Int
+  grossAmount    Int
+  discountAmount Int             @default(0)
+  netAmount      Int
+  sortOrder      Int             @default(0)
+  sourceType     String? // RESERVATION_ROOM | CHARGE — lets issued invoices gain adjustment lines without rewriting history
+  sourceId       String?
+  /// Company billing: the stay this line was moved from (lowers that stay's guest balance).
+  reservationId  String?
+  reservation    Reservation?    @relation(fields: [reservationId], references: [id])
+  guestName      String?
+  roomNumber     String?
+  serviceFrom    DateTime?       @db.Date
+  serviceTo      DateTime?       @db.Date
+
+  @@index([invoiceId])
+  @@index([reservationId])
+  @@map("invoice_items")
+}
+
+// ─────────────────────────────── Expenses ───────────────────────────────
+
+model ExpenseCategory {
+  id        String        @id @default(cuid())
+  code      String        @unique
+  name      String
+  icon      String? // lucide icon name
+  isActive  Boolean       @default(true)
+  sortOrder Int           @default(0)
+  expenses  Expense[]
+  items     ExpenseItem[]
+
+  @@map("expense_categories")
+}
+
+/// An expense type staff pick when recording (e.g. "Water bill — DAWASA"). Staff can add new ones; they are saved for next time.
+model ExpenseItem {
+  id            String          @id @default(cuid())
+  categoryId    String
+  category      ExpenseCategory @relation(fields: [categoryId], references: [id])
+  name          String
+  /// DAILY | MONTHLY (a fixed monthly bill) | OCCASIONAL
+  frequency     String          @default("OCCASIONAL")
+  defaultPayee  String?
+  defaultAmount Int?
+  isActive      Boolean         @default(true)
+  sortOrder     Int             @default(0)
+  useCount      Int             @default(0)
+  lastUsedAt    DateTime?
+  createdById   String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  expenses      Expense[]
+
+  @@unique([categoryId, name])
+  @@index([isActive])
+  @@map("expense_items")
+}
+
+enum ExpenseStatus {
+  RECORDED
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  CORRECTION_REQUESTED
+  VOIDED
+}
+
+model Expense {
+  id              String            @id @default(cuid())
+  number          String?           @unique // EXP-2026-000041
+  /// When this expense corrects an earlier one, the earlier one (cancelled, kept on the register).
+  correctsId      String?
+  categoryId      String
+  category        ExpenseCategory   @relation(fields: [categoryId], references: [id])
+  /// The expense type picked (e.g. "Water bill — DAWASA"); null for older records.
+  itemId          String?
+  item            ExpenseItem?      @relation(fields: [itemId], references: [id])
+  amount          Int
+  businessDate    DateTime          @db.Date
+  spentAt         DateTime          @default(now())
+  paymentMethodId String?
+  paymentMethod   PaymentMethod?    @relation(fields: [paymentMethodId], references: [id])
+  description     String
+  payee           String?
+  reference       String?
+  receiptUrl      String?
+  receiptFileId   String?           @unique
+  receiptFile     StoredFile?       @relation(fields: [receiptFileId], references: [id])
+  notes           String?
+  status          ExpenseStatus     @default(RECORDED)
+  createdById     String
+  createdBy       User              @relation("ExpenseCreatedBy", fields: [createdById], references: [id])
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  voidedAt        DateTime?
+  voidReason      String?
+  /// Account the money left from; empty = the payment method's account (e.g. petty cash overrides).
+  accountId       String?
+  account         MoneyAccount?     @relation(fields: [accountId], references: [id])
+  approvals       ExpenseApproval[]
+  /// Made by a stock purchase's final approval — changed only from the purchase.
+  stockRequest    StockRequest?
+
+  @@index([businessDate])
+  @@index([categoryId, businessDate])
+  @@index([status])
+  @@index([createdById, createdAt])
+  @@map("expenses")
+}
+
+enum ExpenseApprovalAction {
+  SUBMITTED
+  APPROVED
+  REJECTED
+  CORRECTION_REQUESTED
+  RESUBMITTED
+  VOIDED
+}
+
+model ExpenseApproval {
+  id        String                @id @default(cuid())
+  expenseId String
+  expense   Expense               @relation(fields: [expenseId], references: [id])
+  action    ExpenseApprovalAction
+  note      String?
+  actorId   String
+  actor     User                  @relation(fields: [actorId], references: [id])
+  createdAt DateTime              @default(now())
+
+  @@index([expenseId])
+  @@map("expense_approvals")
+}
+
+// ─────────────────────── Restaurant / bar / other revenue ───────────────────────
+
+enum RevenueKind {
+  RESTAURANT
+  BAR
+  OTHER
+  /// The room-service delivery fee — its own income line.
+  ROOM_SERVICE
+  /// Guest transport: airport pickups & drop-offs, meeting and custom trips.
+  TRANSPORT
+}
+
+model RevenueCategory {
+  id           String               @id @default(cuid())
+  code         String               @unique
+  name         String
+  kind         RevenueKind
+  isActive     Boolean              @default(true)
+  sortOrder    Int                  @default(0)
+  transactions RevenueTransaction[]
+
+  @@map("revenue_categories")
+}
+
+// Restaurant, bar and other non-room sales. Kept separate from room revenue.
+model RevenueTransaction {
+  id                String                  @id @default(cuid())
+  categoryId        String
+  category          RevenueCategory         @relation(fields: [categoryId], references: [id])
+  kind              RevenueKind // denormalised from category for fast reporting
+  amount            Int
+  paymentMethodId   String
+  paymentMethod     PaymentMethod           @relation(fields: [paymentMethodId], references: [id])
+  /// The hotel account the sale's money went into.
+  accountId         String
+  account           MoneyAccount            @relation(fields: [accountId], references: [id])
+  /// The restaurant / bar order this sale settles (paid at once).
+  restaurantOrderId String?
+  restaurantOrder   RestaurantOrder?        @relation(fields: [restaurantOrderId], references: [id])
+  /// The restaurant payment that posted this sale (one payment → one sale per income line).
+  orderPaymentId    String?
+  orderPayment      RestaurantOrderPayment? @relation(fields: [orderPaymentId], references: [id])
+  /// The guest trip this sale settles (transport paid directly).
+  transportTripId   String?
+  transportTrip     TransportTrip?          @relation(fields: [transportTripId], references: [id])
+  description       String?
+  notes             String?
+  occurredAt        DateTime                @default(now())
+  businessDate      DateTime                @db.Date
+  recordedById      String
+  recordedBy        User                    @relation("RevenueRecordedBy", fields: [recordedById], references: [id])
+  isVoided          Boolean                 @default(false)
+  voidReason        String?
+  voidedAt          DateTime?
+  createdAt         DateTime                @default(now())
+
+  @@index([businessDate, kind])
+  @@index([recordedById, createdAt])
+  @@map("revenue_transactions")
+}
+
+// ─────────────────────────────── Shifts ───────────────────────────────
+
+// Who is *supposed* to be on reception for a business date.
+model ShiftSchedule {
+  id              String        @id @default(cuid())
+  businessDate    DateTime      @unique @db.Date
+  scheduledUserId String
+  scheduledUser   User          @relation("ScheduledUser", fields: [scheduledUserId], references: [id])
+  notes           String?
+  createdById     String
+  createdBy       User          @relation("ScheduleCreatedBy", fields: [createdById], references: [id])
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  actualShifts    ActualShift[]
+
+  @@map("shift_schedules")
+}
+
+// Who *actually* worked. Partial unique index `actual_shifts_one_open`
+// (migration SQL) allows only one open shift at a time.
+enum ShiftDepartment {
+  RECEPTION
+  RESTAURANT
+}
+
+model ActualShift {
+  id                String          @id @default(cuid())
+  /// Reception: one open shift at a time (the desk). Restaurant: each waiter their own.
+  department        ShiftDepartment @default(RECEPTION)
+  businessDate      DateTime        @db.Date
+  userId            String
+  user              User            @relation(fields: [userId], references: [id])
+  scheduleId        String?
+  schedule          ShiftSchedule?  @relation(fields: [scheduleId], references: [id])
+  isReplacement     Boolean         @default(false)
+  replacementReason String?
+  startedAt         DateTime        @default(now())
+  endedAt           DateTime?
+  closingNote       String?
+  /// Who closed it — the receptionist themselves, or a manager who stepped in (then with the reason).
+  closedById        String?
+  closedBy          User?           @relation("ShiftClosedBy", fields: [closedById], references: [id])
+  closeReason       String?
+  /// The end-of-shift report, made automatically when the shift closes (one per shift).
+  report            ShiftReport?
+
+  @@index([businessDate])
+  @@index([userId])
+  @@index([userId, startedAt])
+  @@index([department, endedAt])
+  @@map("actual_shifts")
+}
+
+enum HandoverNoteKind {
+  SHIFT
+  MANAGER
+  GUEST
+  MAINTENANCE
+}
+
+model ShiftHandoverNote {
+  id           String           @id @default(cuid())
+  businessDate DateTime         @db.Date
+  kind         HandoverNoteKind @default(SHIFT)
+  isImportant  Boolean          @default(false)
+  body         String
+  authorId     String
+  author       User             @relation(fields: [authorId], references: [id])
+  resolvedAt   DateTime?
+  createdAt    DateTime         @default(now())
+
+  @@index([businessDate])
+  @@map("shift_handover_notes")
+}
+
+// ─────────────────────────────── Audit & reporting ───────────────────────────────
+
+/// A message to a guest (booking confirmation, welcome, reminder, thank-you, custom): what was sent, how, by whom.
+model GuestMessage {
+  id                String           @id @default(cuid())
+  guestId           String
+  guest             Guest            @relation(fields: [guestId], references: [id])
+  reservationId     String?
+  reservation       Reservation?     @relation(fields: [reservationId], references: [id])
+  restaurantOrderId String?
+  restaurantOrder   RestaurantOrder? @relation(fields: [restaurantOrderId], references: [id])
+  /// BOOKING_CREATED | BOOKING_CONFIRMED | BOOKING_REMINDER | CHECKIN_DAY | WELCOME | CHECKOUT_REMINDER | THANK_YOU | PAYMENT | CUSTOM
+  type              String
+  /// WHATSAPP | SMS | EMAIL | COPY (reception sends from their phone / email) or a provider name when sent automatically.
+  channel           String
+  to                String?
+  body              String
+  /// SENT (handed to WhatsApp / email / provider) | FAILED
+  status            String           @default("SENT")
+  error             String?
+  sentById          String?
+  sentBy            User?            @relation("GuestMessagesSent", fields: [sentById], references: [id])
+  createdAt         DateTime         @default(now())
+
+  @@index([guestId, createdAt])
+  @@index([reservationId])
+  @@map("guest_messages")
+}
+
+/// The guest's thank-you note, made at check-out from the finished stay. Made again (after an authorized
+/// correction) = a new version; earlier versions are kept, never overwritten.
+model ThankYouNote {
+  id            String      @id @default(cuid())
+  reservationId String
+  reservation   Reservation @relation(fields: [reservationId], references: [id])
+  version       Int
+  /// The guest's own link to their note (sent by WhatsApp / email).
+  token         String      @unique
+  /// The stay as it was when the note was made — guest-facing figures only.
+  snapshot      Json
+  reason        String?
+  createdById   String?
+  createdBy     User?       @relation("ThankYouNotesMade", fields: [createdById], references: [id])
+  createdAt     DateTime    @default(now())
+
+  @@unique([reservationId, version])
+  @@map("thank_you_notes")
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  userId       String?
+  user         User?    @relation(fields: [userId], references: [id])
+  actorLabel   String? // "website", "system", or user name snapshot
+  action       String // e.g. reservation.created
+  entityType   String
+  entityId     String?
+  before       Json?
+  after        Json?
+  ipAddress    String?
+  businessDate DateTime @db.Date
+  createdAt    DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([userId, createdAt])
+  @@index([businessDate])
+  @@index([action])
+  @@map("audit_logs")
+}
+
+model DailyReport {
+  id           String                 @id @default(cuid())
+  businessDate DateTime               @unique @db.Date
+  data         Json // full structured DailyReportService output
+  /// The full report document (sections, tables) frozen when generated — what the page, print and PDF show.
+  document     Json?
+  summaryText  String // message body sent to the Boss
+  generatedAt  DateTime               @default(now())
+  generatedBy  String                 @default("system")
+  /// Made by the 21:00 job (true) or by a person.
+  automatic    Boolean                @default(false)
+  /// 1 for the first report of the day; +1 each time it is regenerated (the earlier ones are kept in versions).
+  version      Int                    @default(1)
+  /// Why it was regenerated (required when a person regenerates it).
+  reason       String?
+  deliveries   NotificationDelivery[]
+  versions     DailyReportVersion[]
+
+  @@map("daily_reports")
+}
+
+/// A waiter's or receptionist's END-OF-SHIFT REPORT — made automatically when the shift closes, from what they
+/// actually did in it (never typed in, never a score): the figures, the full document and the boss's message,
+/// frozen. One per shift (the shift id makes it idempotent); an authorized regeneration keeps the earlier version.
+model ShiftReport {
+  id             String                 @id @default(cuid())
+  shiftId        String                 @unique
+  shift          ActualShift            @relation(fields: [shiftId], references: [id])
+  data           Json
+  document       Json
+  summaryText    String
+  generatedAt    DateTime               @default(now())
+  generatedBy    String                 @default("system")
+  automatic      Boolean                @default(true)
+  version        Int                    @default(1)
+  reason         String?
+  /// The boss's link (no sign-in): random and unguessable, and it expires.
+  shareToken     String                 @unique
+  shareExpiresAt DateTime
+  /// Made while "send shift reports" was off — not sent later by the scheduled run (a person can still send it).
+  sendSkipped    Boolean                @default(false)
+  deliveries     NotificationDelivery[]
+  versions       ShiftReportVersion[]
+
+  @@map("shift_reports")
+}
+
+/// A WEEKLY or MONTHLY staff report — one person's work over the period (from their records: shifts, hours, guests,
+/// payments they recorded…), or the TEAM digest the boss gets (everyone side by side, each linking to their own).
+/// Made automatically once the period has ended; frozen; one per period and person (`key`).
+model StaffReport {
+  id             String                 @id @default(cuid())
+  /// "WEEK:2026-09-28:<userId>" or "WEEK:2026-09-28:TEAM" — the same report is never made twice.
+  key            String                 @unique
+  /// WEEK | MONTH
+  kind           String
+  fromDate       DateTime               @db.Date
+  toDate         DateTime               @db.Date
+  /// The person (null = the team digest).
+  userId         String?
+  user           User?                  @relation("StaffReports", fields: [userId], references: [id])
+  department     ShiftDepartment?
+  data           Json
+  summaryText    String
+  generatedAt    DateTime               @default(now())
+  generatedBy    String                 @default("system")
+  shareToken     String                 @unique
+  shareExpiresAt DateTime
+  deliveries     NotificationDelivery[]
+
+  @@index([userId, kind, fromDate])
+  @@index([kind, fromDate])
+  @@map("staff_reports")
+}
+
+/// An earlier version of a shift report, kept when it is regenerated (who, when, why).
+model ShiftReportVersion {
+  id            String      @id @default(cuid())
+  shiftReportId String
+  shiftReport   ShiftReport @relation(fields: [shiftReportId], references: [id], onDelete: Cascade)
+  version       Int
+  data          Json
+  document      Json
+  summaryText   String
+  generatedAt   DateTime
+  generatedBy   String
+  automatic     Boolean     @default(true)
+  reason        String?
+  replacedBy    String
+  replacedAt    DateTime    @default(now())
+
+  @@unique([shiftReportId, version])
+  @@map("shift_report_versions")
+}
+
+/// An earlier version of a day's report, kept when it is regenerated — reports stay traceable.
+model DailyReportVersion {
+  id            String      @id @default(cuid())
+  dailyReportId String
+  dailyReport   DailyReport @relation(fields: [dailyReportId], references: [id], onDelete: Cascade)
+  version       Int
+  data          Json
+  document      Json?
+  summaryText   String
+  generatedAt   DateTime
+  generatedBy   String
+  automatic     Boolean     @default(false)
+  reason        String?
+  /// Who replaced it, and when.
+  replacedBy    String
+  replacedAt    DateTime    @default(now())
+
+  @@unique([dailyReportId, version])
+  @@map("daily_report_versions")
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+}
+
+model NotificationDelivery {
+  id               String         @id @default(cuid())
+  dailyReportId    String?
+  dailyReport      DailyReport?   @relation(fields: [dailyReportId], references: [id])
+  shiftReportId    String?
+  shiftReport      ShiftReport?   @relation(fields: [shiftReportId], references: [id])
+  staffReportId    String?
+  staffReport      StaffReport?   @relation(fields: [staffReportId], references: [id])
+  reservationId    String?
+  purpose          String // DAILY_REPORT, BOOKING_CONFIRMATION, ...
+  channel          String // WHATSAPP_CALLMEBOT, EMAIL, SMS, ...
+  recipient        String
+  status           DeliveryStatus @default(PENDING)
+  attempts         Int            @default(0)
+  lastError        String?
+  providerResponse String?
+  sentAt           DateTime?
+  deliveredAt      DateTime?
+  /// A send in progress (claimed by one run): no other run sends it until it is done or this is old.
+  claimedAt        DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([status])
+  @@index([dailyReportId])
+  @@index([shiftReportId])
+  /// One delivery per recipient for a report (two runs at once cannot both make one).
+  @@unique([shiftReportId, recipient, channel])
+  @@unique([dailyReportId, recipient, channel])
+  @@unique([staffReportId, recipient, channel])
+  @@map("notification_deliveries")
+}
+
+// Uploaded files (expense receipts). Stored in Postgres so the app needs no
+// separate object store; served only through the authenticated /api/files route.
+model StoredFile {
+  id              String           @id @default(cuid())
+  purpose         String // EXPENSE_RECEIPT | PAYMENT_PROOF | PURCHASE_RECEIPT
+  fileName        String
+  contentType     String
+  size            Int
+  data            Bytes
+  uploadedById    String?
+  createdAt       DateTime         @default(now())
+  expense         Expense?
+  ledgerEntry     LedgerEntry?
+  media           MediaAsset?
+  /// A customer's payment screenshot (take out, paid first).
+  restaurantOrder RestaurantOrder?
+  /// A supplier's receipt for a stock purchase.
+  stockRequest    StockRequest?
+
+  @@map("stored_files")
+}
+
+// Public website contact form submissions.
+model ContactMessage {
+  id        String    @id @default(cuid())
+  name      String
+  email     String?
+  phone     String?
+  subject   String?
+  message   String
+  ipAddress String?
+  handledAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([createdAt])
+  @@map("contact_messages")
+}
+
+// ─────────────────────────── Stay operations ───────────────────────────
+
+// Every room move is kept: original assignment history is never lost.
+model RoomAssignment {
+  id                String          @id @default(cuid())
+  reservationRoomId String
+  reservationRoom   ReservationRoom @relation(fields: [reservationRoomId], references: [id])
+  fromRoomId        String
+  fromRoom          Room            @relation("MoveFrom", fields: [fromRoomId], references: [id])
+  toRoomId          String
+  toRoom            Room            @relation("MoveTo", fields: [toRoomId], references: [id])
+  reason            String?
+  priceDifference   Int? // extra charged for an upgrade (posted as a folio charge)
+  /// CUSTOMER = guest asked (pays the difference) · HOTEL = hotel's fault (free move) · ARRIVAL = room picked at check-in
+  source            String          @default("CUSTOMER")
+  reasonCode        String? // AC_PROBLEM, PLUMBING, … (hotel moves)
+  /// First night in the new room (earlier nights stay in the old room).
+  effectiveDate     DateTime?       @db.Date
+  nights            Int             @default(0)
+  fromTypeName      String?
+  toTypeName        String?
+  /// What the guest was paying for the moved nights, what the new room normally costs for them, and what was charged (+) or credited (−).
+  oldPrice          Int?
+  newStandardPrice  Int?
+  charged           Int             @default(0)
+  /// Free hotel move to a dearer room: the value given to the guest.
+  compensation      Int             @default(0)
+  oldRoomStatus     String?
+  changedById       String?
+  changedBy         User?           @relation(fields: [changedById], references: [id])
+  changedAt         DateTime        @default(now())
+
+  @@index([reservationRoomId])
+  @@map("room_assignments")
+}
+
+// ─────────────────────────── Hotel services ───────────────────────────
+
+enum ServiceCategory {
+  DINING
+  TRANSPORT
+  CONVENIENCE
+  BUSINESS
+  OTHER
+}
+
+// Configurable list of services the hotel actually offers (website + operations).
+model HotelService {
+  id           String          @id @default(cuid())
+  code         String          @unique
+  name         String
+  description  String?
+  category     ServiceCategory @default(OTHER)
+  icon         String? // lucide icon name
+  isActive     Boolean         @default(true)
+  isPublic     Boolean         @default(true)
+  isChargeable Boolean         @default(false)
+  price        Int?
+  priceNote    String? // e.g. "on request"
+  sortOrder    Int             @default(0)
+  updatedAt    DateTime        @updatedAt
+
+  @@map("hotel_services")
+}
+
+// ─────────────────────────── Transport ───────────────────────────
+
+model Vehicle {
+  id          String          @id @default(cuid())
+  name        String
+  plateNumber String?         @unique
+  capacity    Int             @default(4)
+  isActive    Boolean         @default(true)
+  notes       String?
+  trips       TransportTrip[]
+
+  @@map("vehicles")
+}
+
+/// What the hotel offers for guest transport, with the current price (admin sets it).
+/// A trip keeps the price it was made with — changing a price never changes old trips.
+model TransportService {
+  id          String                   @id @default(cuid())
+  code        String                   @unique
+  name        String
+  description String?
+  type        TripType
+  price       Int
+  isActive    Boolean                  @default(true)
+  /// Shown on the website request form.
+  isPublic    Boolean                  @default(true)
+  sortOrder   Int                      @default(0)
+  updatedAt   DateTime                 @updatedAt
+  trips       TransportTrip[]
+  /// Price packages to pick from (e.g. meeting trips by time & distance). None = one price (`price`).
+  options     TransportServiceOption[]
+
+  @@map("transport_services")
+}
+
+/// One price package of a transport service — admin and managers change them any time.
+model TransportServiceOption {
+  id          String           @id @default(cuid())
+  serviceId   String
+  service     TransportService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  price       Int
+  isActive    Boolean          @default(true)
+  sortOrder   Int              @default(0)
+
+  @@index([serviceId])
+  @@map("transport_service_options")
+}
+
+enum TripType {
+  AIRPORT_PICKUP
+  AIRPORT_DROPOFF
+  HOTEL_TRANSFER
+  GUEST_TRANSPORT
+  OTHER
+}
+
+enum TripStatus {
+  REQUESTED
+  CONFIRMED
+  ASSIGNED
+  EN_ROUTE
+  PICKED_UP
+  COMPLETED
+  CANCELLED
+  /// The guest never showed up at the pickup.
+  NO_SHOW
+}
+
+model TransportTrip {
+  id                String               @id @default(cuid())
+  reference         String               @unique
+  type              TripType
+  status            TripStatus           @default(REQUESTED)
+  reservationId     String?
+  reservation       Reservation?         @relation(fields: [reservationId], references: [id])
+  guestId           String?
+  guest             Guest?               @relation(fields: [guestId], references: [id])
+  passengerName     String
+  passengerPhone    String?
+  pickupAt          DateTime
+  businessDate      DateTime             @db.Date
+  pickupLocation    String
+  destination       String
+  flightNumber      String?
+  passengers        Int                  @default(1)
+  driverId          String?
+  driver            User?                @relation("TripDriver", fields: [driverId], references: [id])
+  vehicleId         String?
+  vehicle           Vehicle?             @relation(fields: [vehicleId], references: [id])
+  charge            Int? // null/0 = free; posted to the folio only by staff action
+  chargeId          String? // ReservationCharge created for this trip
+  notes             String?
+  source            String               @default("STAFF") // STAFF | WEBSITE
+  /// The service (and its price at the time) this trip was requested as.
+  serviceId         String?
+  service           TransportService?    @relation(fields: [serviceId], references: [id])
+  passengerEmail    String?
+  bags              Int                  @default(0)
+  /// As given by the guest (website) — the linked reservation is reservationId.
+  reservationRef    String?
+  roomNumber        String?
+  /// Driver arranged by the hotel (no driver login needed): free text, or a driver account (driverId).
+  driverName        String?
+  driverPhone       String?
+  vehicleName       String?
+  vehiclePlate      String?
+  /// The package chosen (name as it was then), e.g. "Half day".
+  priceOption       String?
+  /// Price snapshot: the service price when the trip was made; `charge` is the final price.
+  standardPrice     Int?
+  priceReason       String?
+  priceAdjustedById String?
+  priceAdjustedBy   User?                @relation("TripPriceAdjustedBy", fields: [priceAdjustedById], references: [id])
+  priceAdjustedAt   DateTime?
+  confirmedById     String?
+  confirmedBy       User?                @relation("TripConfirmedBy", fields: [confirmedById], references: [id])
+  confirmedAt       DateTime?
+  /// Paid directly (not on a room bill): the income entry.
+  sales             RevenueTransaction[]
+  paidAt            DateTime?
+  cancelReason      String?
+  createdById       String?
+  createdBy         User?                @relation("TripCreatedBy", fields: [createdById], references: [id])
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  completedAt       DateTime?
+
+  @@index([pickupAt])
+  @@index([status])
+  @@index([driverId, pickupAt])
+  @@map("transport_trips")
+}
+
+// ─────────────────────────── Guest service requests ───────────────────────────
+
+enum RequestType {
+  TOWELS
+  CLEANING
+  MAINTENANCE
+  RESTAURANT
+  TRANSPORT
+  GENERAL
+  OTHER
+  /// A customer complaint — handled by a manager, with how it was resolved.
+  COMPLAINT
+}
+
+enum RequestPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum RequestStatus {
+  NEW
+  ASSIGNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model ServiceRequest {
+  id            String           @id @default(cuid())
+  reservationId String?
+  reservation   Reservation?     @relation(fields: [reservationId], references: [id])
+  roomId        String?
+  room          Room?            @relation(fields: [roomId], references: [id])
+  guestId       String?
+  guest         Guest?           @relation(fields: [guestId], references: [id])
+  type          RequestType
+  priority      RequestPriority  @default(NORMAL)
+  description   String
+  status        RequestStatus    @default(NEW)
+  assignedToId  String?
+  assignedTo    User?            @relation("RequestAssignee", fields: [assignedToId], references: [id])
+  /// The staff member who logged it — none when the guest sent it from their stay link or room QR.
+  createdById   String?
+  createdBy     User?            @relation("RequestCreatedBy", fields: [createdById], references: [id])
+  /// STAFF (logged at reception) | GUEST_LINK | ROOM_QR (the guest asked from their phone).
+  source        String           @default("STAFF")
+  /// The same tap sent twice by the guest's phone makes one request.
+  clientKey     String?          @unique
+  /// When someone accepted it ("I'm on it") — like an order being accepted.
+  acceptedAt    DateTime?
+  businessDate  DateTime         @db.Date
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  completedAt   DateTime?
+  /// The restaurant order it is about (complaints about food, service…).
+  orderId       String?
+  order         RestaurantOrder? @relation(fields: [orderId], references: [id])
+  /// How it was resolved (complaints: what the manager did).
+  resolution    String?
+
+  @@index([status])
+  @@index([reservationId])
+  @@index([orderId])
+  @@index([assignedToId, status])
+  @@map("service_requests")
+}
+
+// ─────────────────────────── Website content (CMS) ───────────────────────────
+
+enum MediaCategory {
+  ROOMS
+  BATHROOMS
+  EXTERIOR
+  RECEPTION
+  RESTAURANT
+  BAR
+  BREAKFAST
+  MEETING_ROOM
+  FACILITIES
+  EXPERIENCE
+  OTHER
+}
+
+// Hotel media library. `url` = bundled static image; `fileId` = uploaded file.
+// `isIllustrative` marks non-hotel imagery so it is never presented as a real facility.
+model MediaAsset {
+  id             String        @id @default(cuid())
+  title          String
+  category       MediaCategory
+  description    String?
+  altText        String
+  url            String?
+  fileId         String?       @unique
+  file           StoredFile?   @relation(fields: [fileId], references: [id])
+  roomTypeId     String?
+  roomType       RoomType?     @relation(fields: [roomTypeId], references: [id])
+  menuItems      MenuItem[]
+  sortOrder      Int           @default(0)
+  isFeatured     Boolean       @default(false)
+  isActive       Boolean       @default(true)
+  isIllustrative Boolean       @default(false)
+  creditText     String?
+  width          Int?
+  height         Int?
+  createdById    String?
+  createdBy      User?         @relation(fields: [createdById], references: [id])
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([category, isActive, sortOrder])
+  @@index([roomTypeId, sortOrder])
+  @@map("media_assets")
+}
+
+// Editable website copy blocks (hero, hotel story, dining, business, location…).
+model SiteContent {
+  key         String   @id
+  value       Json
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+
+  @@map("site_content")
+}
+
+// ─────────────────────── Online booking requests (public website) ───────────────────────
+
+enum BookingRequestStatus {
+  NEW
+  REVIEWING
+  CONTACTED
+  CONFIRMED
+  REJECTED
+  CANCELLED
+  CONVERTED
+}
+
+// A customer's request from the website. It never holds a room by itself; staff
+// review it, contact the customer, and convert it into a Reservation (availability
+// and price are re-checked at conversion). `holdExpiresAt` is reserved for a future
+// temporary-hold feature — unused today, so requests never block inventory.
+model BookingRequest {
+  id                  String                @id @default(cuid())
+  reference           String                @unique // VLH-REQ-XXXXX
+  manageToken         String                @unique // private link for the customer's confirmation page
+  status              BookingRequestStatus  @default(NEW)
+  sourceId            String
+  source              BookingSource         @relation(fields: [sourceId], references: [id])
+  guestId             String? // matched/created customer (by phone); staff can relink
+  guest               Guest?                @relation(fields: [guestId], references: [id])
+  fullName            String
+  phone               String
+  email               String?
+  nationality         String?
+  checkInDate         DateTime              @db.Date
+  checkOutDate        DateTime              @db.Date
+  expectedArrivalTime String? // HH:MM as given by the customer — NOT the official check-in time
+  /// Meeting room request: the asked-for start and end (checkInDate = checkOutDate = the meeting day).
+  meetingStartAt      DateTime?
+  meetingEndAt        DateTime?
+  companyName         String?
+  roomTypeId          String
+  roomType            RoomType              @relation(fields: [roomTypeId], references: [id])
+  requestedRoomId     String? // optional specific room preference
+  requestedRoom       Room?                 @relation(fields: [requestedRoomId], references: [id])
+  roomCount           Int                   @default(1)
+  adults              Int                   @default(1)
+  children            Int                   @default(0)
+  specialRequests     String?
+  notes               String?
+  transportRequested  Boolean               @default(false)
+  transportDetails    Json? // { flightNumber, arrivalDate, arrivalTime, airport, passengers, notes }
+  estimatedNet        Int? // server-side estimate shown to the customer at submission (not binding)
+  assignedToId        String?
+  assignedTo          User?                 @relation("RequestAssignedTo", fields: [assignedToId], references: [id])
+  handledById         String? // staff who confirmed/rejected
+  handledBy           User?                 @relation("RequestHandledBy", fields: [handledById], references: [id])
+  handledAt           DateTime?
+  reservationId       String?               @unique
+  reservation         Reservation?          @relation(fields: [reservationId], references: [id])
+  rejectionReason     String?
+  holdExpiresAt       DateTime? // future: temporary hold with automatic expiry
+  ipAddress           String?
+  businessDate        DateTime              @db.Date
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  events              BookingRequestEvent[]
+
+  @@index([status, createdAt])
+  @@index([phone])
+  @@index([checkInDate])
+  @@index([businessDate])
+  @@map("booking_requests")
+}
+
+enum BookingRequestEventType {
+  SUBMITTED
+  STATUS_CHANGED
+  CONTACTED
+  NOTE
+  ASSIGNED
+  CUSTOMER_LINKED
+  CONVERTED
+}
+
+model BookingRequestEvent {
+  id          String                  @id @default(cuid())
+  requestId   String
+  request     BookingRequest          @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  type        BookingRequestEventType
+  fromStatus  BookingRequestStatus?
+  toStatus    BookingRequestStatus?
+  note        String?
+  contactedAt DateTime?
+  actorId     String?
+  actor       User?                   @relation(fields: [actorId], references: [id])
+  createdAt   DateTime                @default(now())
+
+  @@index([requestId, createdAt])
+  @@map("booking_request_events")
+}
+
+// ─────────────────────────── Pricing: promotions ───────────────────────────
+
+enum PromotionType {
+  PERCENT
+  FIXED
+}
+
+enum PromotionScope {
+  ALL
+  ROOM_TYPES
+  ROOMS
+}
+
+enum PromotionChannel {
+  ALL
+  WEBSITE
+  STAFF
+}
+
+/// Admin-made promotional discount. Applies per night (by business date);
+/// only the most specific one applies (room > room type > all rooms) — never stacked.
+model Promotion {
+  id          String           @id @default(cuid())
+  name        String
+  type        PromotionType
+  value       Int // percent (1–100) or TZS off per night
+  scope       PromotionScope   @default(ALL)
+  roomTypeIds String[]         @default([])
+  roomIds     String[]         @default([])
+  channel     PromotionChannel @default(ALL)
+  startDate   DateTime?        @db.Date // first night (inclusive); null = no start limit
+  endDate     DateTime?        @db.Date // last night (inclusive); required for new promotions
+  /// Nights of the week it applies to (0 = Sunday … 6 = Saturday); empty = every night.
+  daysOfWeek  Int[]            @default([])
+  /// Higher wins when two promotions apply to the same night. Two with the same priority may not overlap.
+  priority    Int              @default(10)
+  isActive    Boolean          @default(true)
+  createdById String?
+  updatedById String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([isActive, startDate, endDate])
+  @@map("promotions")
+}
+
+/// Date-based room price (weekend, holiday, season): replaces the room type's normal price on the nights it covers.
+model PriceRule {
+  id          String         @id @default(cuid())
+  name        String
+  scope       PromotionScope @default(ROOM_TYPES) // ROOM_TYPES or ROOMS (ALL = every room)
+  roomTypeIds String[]       @default([])
+  roomIds     String[]       @default([])
+  price       Int // TZS per night
+  startDate   DateTime       @db.Date // first night (inclusive)
+  endDate     DateTime       @db.Date // last night (inclusive)
+  daysOfWeek  Int[]          @default([])
+  priority    Int            @default(10)
+  isActive    Boolean        @default(true)
+  createdById String?
+  updatedById String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([isActive, startDate, endDate])
+  @@map("price_rules")
+}
+
+// ─────────────────────────── Money accounts & ledger ───────────────────────────
+
+enum MoneyAccountKind {
+  CASH
+  BANK
+  MOBILE_MONEY
+  CARD
+  PETTY_CASH
+  OTHER
+}
+
+/// Where the hotel's money is: cash drawer, bank, mobile money, card terminal, petty cash.
+/// Balance = opening + everything that came in − everything that went out (worked out, never typed).
+/// A hotel payment account — the single source of truth for where money is received
+/// (Cash, Lipa, Lipa M-Pesa, CRDB, NMB …) and where expenses are paid from.
+/// Totals are always computed from recorded transactions, never typed in.
+model MoneyAccount {
+  id                 String                   @id @default(cuid())
+  code               String                   @unique
+  name               String
+  kind               MoneyAccountKind
+  accountNumber      String?
+  holderName         String?
+  currency           String                   @default("TZS")
+  /// Offered when staff record money received.
+  acceptsPayments    Boolean                  @default(true)
+  /// Offered as "Paid from" when recording an expense.
+  acceptsExpenses    Boolean                  @default(true)
+  openingBalance     Int                      @default(0)
+  isActive           Boolean                  @default(true)
+  sortOrder          Int                      @default(0)
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @default(now()) @updatedAt
+  paymentMethods     PaymentMethod[]
+  payments           Payment[]
+  sales              RevenueTransaction[]
+  restaurantOrders   RestaurantOrder[]        @relation("RestaurantOrderAccount")
+  /// Take-out orders the customer says they paid into this account (paid first, to check).
+  customerPaidOrders RestaurantOrder[]        @relation("RestaurantOrderCustomerPaidTo")
+  restaurantPays     RestaurantOrderPayment[]
+  expenses           Expense[]
+  stockPurchases     StockRequest[]
+  entries            LedgerEntry[]            @relation("LedgerEntryAccount")
+  entriesIn          LedgerEntry[]            @relation("LedgerEntryToAccount")
+  cashCounts         CashCount[]
+
+  @@map("money_accounts")
+}
+
+enum LedgerEntryKind {
+  TRANSFER
+  OWNER_CONTRIBUTION
+  OWNER_WITHDRAWAL
+  OTHER_INCOME
+  ADJUSTMENT_IN
+  ADJUSTMENT_OUT
+}
+
+enum LedgerEntryStatus {
+  POSTED
+  REVERSED
+}
+
+/// Money movements that are not a sale, payment or expense: transfers between accounts,
+/// the owner putting money in or taking it out, other income and corrections.
+/// Never deleted — a mistake is reversed (kept on the ledger) and posted again.
+model LedgerEntry {
+  id               String            @id @default(cuid())
+  number           String            @unique // LG-000001
+  kind             LedgerEntryKind
+  status           LedgerEntryStatus @default(POSTED)
+  amount           Int // always positive; kind gives direction
+  accountId        String
+  account          MoneyAccount      @relation("LedgerEntryAccount", fields: [accountId], references: [id])
+  toAccountId      String? // TRANSFER only
+  toAccount        MoneyAccount?     @relation("LedgerEntryToAccount", fields: [toAccountId], references: [id])
+  description      String
+  reference        String?
+  notes            String?
+  occurredAt       DateTime          @default(now())
+  businessDate     DateTime          @db.Date
+  attachmentFileId String?           @unique
+  attachmentFile   StoredFile?       @relation(fields: [attachmentFileId], references: [id])
+  cashCountId      String?           @unique
+  createdById      String
+  createdBy        User              @relation("LedgerEntryCreatedBy", fields: [createdById], references: [id])
+  createdAt        DateTime          @default(now())
+  reversedAt       DateTime?
+  reversedById     String?
+  reversedBy       User?             @relation("LedgerEntryReversedBy", fields: [reversedById], references: [id])
+  reversalReason   String?
+
+  @@index([businessDate])
+  @@index([accountId, businessDate])
+  @@map("ledger_entries")
+}
+
+enum CashCountStatus {
+  OPEN
+  ACCEPTED
+}
+
+/// A physical count of an account (usually the cash drawer) against what the system expects.
+model CashCount {
+  id           String          @id @default(cuid())
+  accountId    String
+  account      MoneyAccount    @relation(fields: [accountId], references: [id])
+  businessDate DateTime        @db.Date
+  countedAt    DateTime        @default(now())
+  expected     Int
+  counted      Int
+  difference   Int // counted − expected
+  note         String?
+  status       CashCountStatus @default(OPEN)
+  countedById  String
+  countedBy    User            @relation("CashCountBy", fields: [countedById], references: [id])
+  reviewedById String?
+  reviewedBy   User?           @relation("CashCountReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt   DateTime?
+  reviewNote   String?
+
+  @@index([accountId, businessDate])
+  @@map("cash_counts")
+}
+
+/// Payment method / reference corrected (e.g. recorded as Cash, really Bank). The amount never changes.
+model PaymentCorrection {
+  id            String   @id @default(cuid())
+  paymentId     String
+  payment       Payment  @relation(fields: [paymentId], references: [id])
+  fromMethodId  String
+  toMethodId    String
+  fromAccountId String?
+  toAccountId   String?
+  fromReference String?
+  toReference   String?
+  amount        Int // the payment's amount, for the record — unchanged
+  reason        String
+  changedById   String
+  changedAt     DateTime @default(now())
+  businessDate  DateTime @db.Date
+
+  @@index([paymentId])
+  @@index([businessDate])
+  @@map("payment_corrections")
+}
+
+// ───────────────────────────── Restaurant & bar ─────────────────────────────
+// Menu prices live here (never in the pages). An order copies each price, so a
+// later price change never alters an old order. Paid at once → sales
+// (RevenueTransaction, with the account); charged to a room → room-bill items
+// (ReservationCharge) that checkout collects.
+
+enum MenuItemType {
+  FOOD
+  DRINK
+}
+
+enum RestaurantOrderType {
+  DINE_IN
+  TAKEAWAY
+  ROOM_SERVICE
+  PICKUP
+}
+
+enum RestaurantOrderStatus {
+  PENDING
+  ACCEPTED
+  PREPARING
+  READY
+  OUT_FOR_DELIVERY
+  DELIVERED
+  COMPLETED
+  CANCELLED
+  /// Takeaway / pickup handed to the customer.
+  COLLECTED
+}
+
+/// Where in the restaurant an order is for: a table (inside / outside), the outside counter, or the main restaurant QR.
+enum RestaurantLocationKind {
+  TABLE
+  COUNTER
+  MAIN
+}
+
+enum DiningArea {
+  INSIDE
+  OUTSIDE
+}
+
+/// How far an order is paid — separate from where it is in the kitchen (a paid order can still be preparing).
+enum OrderPaymentStatus {
+  UNPAID
+  /// Collected by a waiter, waiting for reception to confirm.
+  PENDING_CONFIRMATION
+  /// Items were added after a payment: the rest is still due.
+  PARTIALLY_PAID
+  PAID
+  /// Was paid, then the payment was reversed / given back.
+  REFUNDED
+}
+
+enum RestaurantSettlement {
+  PAY_NOW
+  ROOM
+  /// Not paid yet: paid at the counter / on delivery, recorded by staff later.
+  UNPAID
+}
+
+model MenuCategory {
+  id          String       @id @default(cuid())
+  name        String
+  slug        String       @unique
+  type        MenuItemType
+  /// Which income line its items count under (restaurant or bar).
+  revenueKind RevenueKind
+  description String?
+  sortOrder   Int          @default(0)
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @default(now()) @updatedAt
+  items       MenuItem[]
+
+  @@map("menu_categories")
+}
+
+model MenuItem {
+  id          String                @id @default(cuid())
+  categoryId  String
+  category    MenuCategory          @relation(fields: [categoryId], references: [id])
+  name        String
+  description String?
+  /// Current price in TZS. Orders keep their own copy.
+  price       Int
+  type        MenuItemType
+  subcategory String?
+  imageId     String?
+  image       MediaAsset?           @relation(fields: [imageId], references: [id])
+  /// Temporarily out (e.g. sold out today) — still shown on the menu as unavailable.
+  isAvailable Boolean               @default(true)
+  /// Off the menu entirely.
+  isActive    Boolean               @default(true)
+  /// Shown first under "Recommended" on the ordering screens (chosen by a manager).
+  isFeatured  Boolean               @default(false)
+  sortOrder   Int                   @default(0)
+  createdById String?
+  createdBy   User?                 @relation("MenuItemCreatedBy", fields: [createdById], references: [id])
+  updatedById String?
+  updatedBy   User?                 @relation("MenuItemUpdatedBy", fields: [updatedById], references: [id])
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @default(now()) @updatedAt
+  orderItems  RestaurantOrderItem[]
+  charges     ReservationCharge[]
+  /// What one of this dish uses from the stores (configurable; empty = nothing tracked).
+  recipe      RecipeLine[]
+
+  @@index([categoryId, sortOrder])
+  @@map("menu_items")
+}
+
+model RestaurantOrder {
+  id                 String                   @id @default(cuid())
+  number             String                   @unique // ORD-2026-000001
+  type               RestaurantOrderType
+  status             RestaurantOrderStatus    @default(PENDING)
+  settlement         RestaurantSettlement
+  reservationId      String?
+  reservation        Reservation?             @relation(fields: [reservationId], references: [id])
+  roomNumber         String?
+  customerName       String?
+  /// Snapshot of where it is served ("Table 3 — Outside", "Counter — Outside") — kept even if the table is renamed.
+  tableLabel         String?
+  /// The table / counter / main-restaurant QR it belongs to (null: room orders, staff orders without a table, old orders).
+  locationId         String?
+  location           RestaurantLocation?      @relation(fields: [locationId], references: [id])
+  /// The customer's time at the table this order belongs to (all their orders there, one bill) — null for rooms, take out, the counter and old orders.
+  sessionId          String?
+  session            DiningSession?           @relation(fields: [sessionId], references: [id])
+  /// Take out (TAKEAWAY) ordered by the customer: where to deliver it — street, house or building, landmark.
+  deliveryAddress    String?
+  /// Take out is paid first: the customer's screenshot of the payment, the account they paid and their
+  /// code. Staff check it and record the payment — nothing counts as received until they do.
+  paymentProofFileId String?                  @unique
+  paymentProof       StoredFile?              @relation(fields: [paymentProofFileId], references: [id])
+  customerPaidToId   String?
+  customerPaidTo     MoneyAccount?            @relation("RestaurantOrderCustomerPaidTo", fields: [customerPaidToId], references: [id])
+  customerPayRef     String?
+  customerPaidAt     DateTime?
+  notes              String?
+  foodSubtotal       Int
+  drinksSubtotal     Int
+  serviceFee         Int                      @default(0)
+  total              Int
+  /// Direct (not room-bill) orders: how much is paid so far, and the payment status.
+  /// Taken off by a manager / the MD / the owner (already out of the lines and the total).
+  discountAmount     Int                      @default(0)
+  discountReason     String?
+  discountById       String?
+  paidAmount         Int                      @default(0)
+  paymentStatus      OrderPaymentStatus       @default(UNPAID)
+  /// 1 = the first order; 2, 3… = items the customer added later (the kitchen prepares each round).
+  round              Int                      @default(1)
+  /// Pay now: the hotel account that received the money.
+  accountId          String?
+  account            MoneyAccount?            @relation("RestaurantOrderAccount", fields: [accountId], references: [id])
+  paymentReference   String?
+  businessDate       DateTime                 @db.Date
+  /// Staff who took the order — empty when the guest ordered from their own stay link.
+  createdById        String?
+  createdBy          User?                    @relation("RestaurantOrderCreatedBy", fields: [createdById], references: [id])
+  /// Where the order came from: ROOM_QR | WEBSITE | GUEST_LINK | RECEPTION | RESTAURANT | BAR.
+  source             String                   @default("RESTAURANT")
+  /// The customer (saved once by phone) — a hotel guest or an outside customer.
+  guestId            String?
+  guest              Guest?                   @relation(fields: [guestId], references: [id])
+  customerPhone      String?
+  customerEmail      String?
+  /// The customer's private tracking link (/order/<token>).
+  trackToken         String?                  @unique
+  /// Sent by the customer's screen once per submit — a second tap returns the same order.
+  clientKey          String?                  @unique
+  acceptedAt         DateTime?
+  readyAt            DateTime?
+  readyById          String?
+  readyBy            User?                    @relation("RestaurantOrderReadyBy", fields: [readyById], references: [id])
+  acceptedById       String?
+  acceptedBy         User?                    @relation("RestaurantOrderAcceptedBy", fields: [acceptedById], references: [id])
+  preparingAt        DateTime?
+  /// The waiter who took the ready order out (OUT_FOR_DELIVERY) and when.
+  takenAt            DateTime?
+  takenById          String?
+  takenBy            User?                    @relation("RestaurantOrderTakenBy", fields: [takenById], references: [id])
+  deliveredById      String?
+  deliveredBy        User?                    @relation("RestaurantOrderDeliveredBy", fields: [deliveredById], references: [id])
+  /// Where it was delivered: "Room 305", "Table 07", "Counter".
+  deliveredTo        String?
+  deliveredAt        DateTime?
+  completedAt        DateTime?
+  paidAt             DateTime?
+  cancelledAt        DateTime?
+  cancelledById      String?
+  cancelledBy        User?                    @relation("RestaurantOrderCancelledBy", fields: [cancelledById], references: [id])
+  events             RestaurantOrderEvent[]
+  messages           GuestMessage[]
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  statusChangedAt    DateTime                 @default(now())
+  cancelReason       String?
+  items              RestaurantOrderItem[]
+  payments           RestaurantOrderPayment[]
+  sales              RevenueTransaction[]
+  charges            ReservationCharge[]
+  /// The waiter a manager handed this order to (null: whoever takes it).
+  assignedToId       String?
+  assignedTo         User?                    @relation("RestaurantOrderAssignedTo", fields: [assignedToId], references: [id])
+  complaints         ServiceRequest[]
+  assignments        WaiterAssignment[]
+
+  @@index([businessDate, status])
+  @@index([locationId, status])
+  @@index([sessionId])
+  @@index([paymentStatus])
+  @@index([reservationId])
+  @@index([guestId])
+  @@map("restaurant_orders")
+}
+
+/// A room's permanent QR (/r/<token>): it belongs to the room, never to a guest. Scanning it opens the stay
+/// checked in to that room *now* (found on the server) — or, when the room is free, the room and the menu.
+model RoomQrCode {
+  id            String    @id @default(cuid())
+  roomId        String    @unique
+  room          Room      @relation(fields: [roomId], references: [id])
+  token         String    @unique
+  active        Boolean   @default(true)
+  generatedById String?
+  generatedBy   User?     @relation("RoomQrGeneratedBy", fields: [generatedById], references: [id])
+  regeneratedAt DateTime?
+  revokedAt     DateTime?
+  /// How often it is scanned (and when last) — for the QR list.
+  scanCount     Int       @default(0)
+  lastScannedAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("room_qr_codes")
+}
+
+/// Every step of an order (new → preparing → ready → delivered…), who moved it and when.
+model RestaurantOrderEvent {
+  id      String                 @id @default(cuid())
+  orderId String
+  order   RestaurantOrder        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  from    RestaurantOrderStatus?
+  to      RestaurantOrderStatus
+  byId    String?
+  by      User?                  @relation("RestaurantOrderEvents", fields: [byId], references: [id])
+  byLabel String?
+  /// The role of whoever did it (Mpishi, Waiter, Manager…), as it was at the time.
+  byRole  String?
+  note    String?
+  at      DateTime               @default(now())
+
+  @@index([orderId, at])
+  /// One person's steps (a waiter's history).
+  @@index([byId, at])
+  @@map("restaurant_order_events")
+}
+
+/**
+ * Who is responsible for serving — every change kept, never overwritten: an order routed to its
+ * table's / room's waiter, taken in charge by a waiter (on their phone, or with their PIN on the
+ * restaurant screen), transferred (with the reason), or handed by a manager.
+ */
+model WaiterAssignment {
+  id           String           @id @default(cuid())
+  /// ORDER | TABLE | ROOM
+  scope        String
+  orderId      String?
+  order        RestaurantOrder? @relation(fields: [orderId], references: [id])
+  locationId   String?
+  roomNumber   String?
+  /// ROUTED | TAKEN | TRANSFER | MANAGER | RELEASED
+  kind         String
+  /// SELF (their own device) | PIN (the restaurant screen) | MANAGER | TABLE | ROOM | SHIFT_CLOSE
+  via          String
+  fromUserId   String?
+  fromUser     User?            @relation("AssignmentFrom", fields: [fromUserId], references: [id])
+  toUserId     String?
+  toUser       User?            @relation("AssignmentTo", fields: [toUserId], references: [id])
+  reason       String?
+  byId         String?
+  byLabel      String?
+  byRole       String?
+  /// The account signed in on the device used (the restaurant screen), when not the waiter's own.
+  deviceUserId String?
+  batchId      String?
+  at           DateTime         @default(now())
+
+  @@index([orderId, at])
+  @@index([toUserId, at])
+  @@index([fromUserId, at])
+  @@index([locationId, at])
+  @@map("waiter_assignments")
+}
+
+model RestaurantOrderItem {
+  id             String                  @id @default(cuid())
+  orderId        String
+  order          RestaurantOrder         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItemId     String?
+  menuItem       MenuItem?               @relation(fields: [menuItemId], references: [id])
+  /// Name and price as ordered — never recalculated from today's menu.
+  name           String
+  unitPrice      Int
+  quantity       Int
+  lineTotal      Int
+  /// The part of this line taken off by a discount (lineTotal is after it).
+  discountAmount Int                     @default(0)
+  type           MenuItemType
+  revenueKind    RevenueKind
+  /// Ticked by the cook when this line is done — the order can only be marked ready once every line is.
+  preparedAt     DateTime?
+  /// Which round it came in (1 = the first order; 2+ = added later), when and by whom (null: the customer).
+  round          Int                     @default(1)
+  addedAt        DateTime                @default(now())
+  addedById      String?
+  addedBy        User?                   @relation("RestaurantOrderItemAddedBy", fields: [addedById], references: [id])
+  /// Direct orders: the payment that settled this line (null = still to pay).
+  paymentId      String?
+  payment        RestaurantOrderPayment? @relation(fields: [paymentId], references: [id])
+  /// When this line's ingredients were taken off stock (recipe), once — when it is ready or the order closes.
+  stockUsedAt    DateTime?
+
+  @@index([orderId])
+  @@map("restaurant_order_items")
+}
+
+/**
+ * One payment taken for an order (cash, M-Pesa, card…) into a hotel account: who collected it
+ * and, when a waiter collected it, who at reception confirmed it. Never deleted — a mistake is
+ * reversed (with a reason), which voids its sales and leaves the record.
+ */
+model RestaurantOrderPayment {
+  id              String                @id @default(cuid())
+  orderId         String
+  order           RestaurantOrder       @relation(fields: [orderId], references: [id])
+  amount          Int
+  /// The room-service fee included in this payment (paid with the first payment).
+  fee             Int                   @default(0)
+  accountId       String
+  account         MoneyAccount          @relation(fields: [accountId], references: [id])
+  paymentMethodId String
+  paymentMethod   PaymentMethod         @relation(fields: [paymentMethodId], references: [id])
+  reference       String?
+  collectedById   String?
+  collectedBy     User?                 @relation("RestaurantPaymentCollectedBy", fields: [collectedById], references: [id])
+  collectedByRole String?
+  collectedAt     DateTime              @default(now())
+  /// Recorded through the shared Restaurant Counter account — the restaurant's official payment station
+  /// (the payment is the Counter's, never an individual Counter person's).
+  atCounter       Boolean               @default(false)
+  /// The waiter who physically brought the money to the Counter (optional) — never the official collector.
+  handedOverById  String?
+  handedOverBy    User?                 @relation("RestaurantPaymentHandedOverBy", fields: [handedOverById], references: [id])
+  /// Paid online by the customer (LIPA, with their proof) — recorded and confirmed automatically as the order came in.
+  online          Boolean               @default(false)
+  /// Paid online but the money never reached the account ("Payment not received"): reversed — not counted, never a refund.
+  notReceived     Boolean               @default(false)
+  confirmedById   String?
+  confirmedBy     User?                 @relation("RestaurantPaymentConfirmedBy", fields: [confirmedById], references: [id])
+  confirmedByRole String?
+  confirmedAt     DateTime?
+  /// POSTED | REVERSED
+  status          String                @default("POSTED")
+  reversedById    String?
+  reversedBy      User?                 @relation("RestaurantPaymentReversedBy", fields: [reversedById], references: [id])
+  reversedAt      DateTime?
+  reverseReason   String?
+  items           RestaurantOrderItem[]
+  sales           RevenueTransaction[]
+  createdAt       DateTime              @default(now())
+
+  @@index([orderId])
+  @@index([status, confirmedAt])
+  /// Each waiter's collections, over any period.
+  @@index([collectedById, collectedAt])
+  @@map("restaurant_order_payments")
+}
+
+/**
+ * A place in the restaurant with its own QR code: the tables (Table 1–6 inside, Table 1–6
+ * outside — same numbers, different areas), the outside counter (not a table), and the main
+ * restaurant QR (no table). The id is the identity; the QR token is random and can be
+ * regenerated (the old one stops working at once; past orders keep their link).
+ */
+model RestaurantLocation {
+  id            String                 @id @default(cuid())
+  kind          RestaurantLocationKind
+  area          DiningArea?
+  number        Int?
+  /// "Table 3 — Outside", "Counter — Outside", "Restaurant"
+  name          String
+  qrToken       String                 @unique
+  qrActive      Boolean                @default(true)
+  isActive      Boolean                @default(true)
+  sortOrder     Int                    @default(0)
+  regeneratedAt DateTime?
+  qrById        String?
+  qrBy          User?                  @relation("RestaurantLocationQrBy", fields: [qrById], references: [id])
+  scanCount     Int                    @default(0)
+  lastScannedAt DateTime?
+  /// A manager put the table out for now: UNAVAILABLE | MAINTENANCE (null = usable). Nobody can be seated or order from its QR.
+  blockedAs     String?
+  blockedReason String?
+  blockedAt     DateTime?
+  blockedById   String?
+  blockedBy     User?                  @relation("RestaurantLocationBlockedBy", fields: [blockedById], references: [id])
+  /// The waiter a manager put in charge of this table — every customer seated here (and their orders) goes to them.
+  waiterId      String?
+  waiter        User?                  @relation("RestaurantLocationWaiter", fields: [waiterId], references: [id])
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+  orders        RestaurantOrder[]
+  sessions      DiningSession[]        @relation("DiningSessionLocation")
+  /// The customer at this table now (at most one — see DiningSession.openAtId).
+  openSession   DiningSession?         @relation("DiningSessionOpenAt")
+  movesFrom     TableMove[]            @relation("TableMoveFrom")
+  movesTo       TableMove[]            @relation("TableMoveTo")
+  reservations  TableReservation[]
+
+  @@unique([kind, area, number])
+  @@map("restaurant_locations")
+}
+
+/// A customer's time at a table: from when they sit (they scanned the table's QR and said who they
+/// are, or a waiter seated them) until the whole bill is paid and the table is free again.
+/// The table and its QR are permanent; the session is not — the next customer gets a new one.
+enum DiningSessionStatus {
+  /// Sitting and ordering.
+  ACTIVE
+  /// "I'm done" — or the waiter asked for the bill: waiting for the payment.
+  AWAITING_PAYMENT
+  /// Paid in full — staff clear the table when they leave.
+  PAID
+  /// Cleared by staff after they left (everything paid) — the table is free.
+  CLOSED
+  /// Cleared with nothing ordered (seated by mistake, left without ordering).
+  CANCELLED
+}
+
+model DiningSession {
+  id                 String                @id @default(cuid())
+  /// TS-2026-0001 — shown as "Session #1".
+  number             String                @unique
+  status             DiningSessionStatus   @default(ACTIVE)
+  /// The table they are at now (it changes when they move — every move is kept in TableMove).
+  locationId         String
+  location           RestaurantLocation    @relation("DiningSessionLocation", fields: [locationId], references: [id])
+  /// The same table while the session is open, empty once it ends: the database allows only one open session per table.
+  openAtId           String?               @unique
+  /// The waiter a manager put in charge of this table (their new orders go to them).
+  waiterId           String?
+  waiter             User?                 @relation("DiningSessionWaiter", fields: [waiterId], references: [id])
+  openAt             RestaurantLocation?   @relation("DiningSessionOpenAt", fields: [openAtId], references: [id])
+  /// The customer responsible for the bill (found once by phone in the customer records).
+  guestId            String
+  guest              Guest                 @relation(fields: [guestId], references: [id])
+  guestCount         Int                   @default(1)
+  notes              String?
+  /// QR (scanned and said who they are) | STAFF (a waiter seated them) | RESERVATION | ORDER (a waiter's order at a free table)
+  source             String
+  tableReservationId String?               @unique
+  tableReservation   TableReservation?     @relation(fields: [tableReservationId], references: [id])
+  businessDate       DateTime              @db.Date
+  startedAt          DateTime              @default(now())
+  /// Empty when the customer started it from the QR.
+  startedById        String?
+  startedBy          User?                 @relation("DiningSessionStartedBy", fields: [startedById], references: [id])
+  /// "I'm done" from the customer, or the waiter asked for the bill.
+  billRequestedAt    DateTime?
+  paidAt             DateTime?
+  closedAt           DateTime?
+  closedById         String?
+  closedBy           User?                 @relation("DiningSessionClosedBy", fields: [closedById], references: [id])
+  closeNote          String?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  orders             RestaurantOrder[]
+  members            DiningSessionMember[]
+  moves              TableMove[]
+  events             DiningSessionEvent[]
+
+  @@index([locationId, startedAt])
+  @@index([status])
+  @@index([guestId])
+  @@index([businessDate])
+  @@map("dining_sessions")
+}
+
+/// Who is at the table: the customer responsible for the bill, and anyone a waiter added (they can order from the table's QR too).
+model DiningSessionMember {
+  id        String        @id @default(cuid())
+  sessionId String
+  session   DiningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  guestId   String
+  guest     Guest         @relation(fields: [guestId], references: [id])
+  primary   Boolean       @default(false)
+  addedById String?
+  addedBy   User?         @relation("DiningMemberAddedBy", fields: [addedById], references: [id])
+  addedAt   DateTime      @default(now())
+  seats     DiningSeat[]
+
+  @@unique([sessionId, guestId])
+  @@index([guestId])
+  @@map("dining_session_members")
+}
+
+/// A phone that said who it is at the table (its private cookie, stored hashed) — not asked again while the session lasts.
+model DiningSeat {
+  id        String              @id @default(cuid())
+  memberId  String
+  member    DiningSessionMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  tokenHash String              @unique
+  createdAt DateTime            @default(now())
+
+  @@index([memberId])
+  @@map("dining_seats")
+}
+
+/// The session's own timeline: started, seated, guests, bill asked, paid, closed… (orders and payments keep their own history).
+model DiningSessionEvent {
+  id        String        @id @default(cuid())
+  sessionId String
+  session   DiningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  /// STARTED | MEMBER_ADDED | GUESTS | BILL_REQUESTED | MOVED | PAID | CLOSED | CANCELLED | REOPENED
+  kind      String
+  note      String?
+  byId      String?
+  by        User?         @relation("DiningSessionEventBy", fields: [byId], references: [id])
+  /// "Customer" or the staff member's name at the time.
+  byLabel   String?
+  at        DateTime      @default(now())
+
+  @@index([sessionId, at])
+  @@map("dining_session_events")
+}
+
+/// A table change: a customer moved during their meal, or a reservation moved before they came.
+model TableMove {
+  id                 String             @id @default(cuid())
+  sessionId          String?
+  session            DiningSession?     @relation(fields: [sessionId], references: [id])
+  tableReservationId String?
+  tableReservation   TableReservation?  @relation(fields: [tableReservationId], references: [id])
+  fromLocationId     String
+  fromLocation       RestaurantLocation @relation("TableMoveFrom", fields: [fromLocationId], references: [id])
+  toLocationId       String
+  toLocation         RestaurantLocation @relation("TableMoveTo", fields: [toLocationId], references: [id])
+  reason             String?
+  byId               String?
+  by                 User?              @relation("TableMoveBy", fields: [byId], references: [id])
+  byLabel            String?
+  at                 DateTime           @default(now())
+
+  @@index([sessionId])
+  @@index([tableReservationId])
+  @@map("table_moves")
+}
+
+enum TableReservationStatus {
+  /// Booked, not yet confirmed with the customer.
+  BOOKED
+  CONFIRMED
+  /// The customer came: it became a dining session.
+  SEATED
+  CANCELLED
+  NO_SHOW
+}
+
+/// A table booked ahead (by phone, WhatsApp, at reception). It holds the table around its time —
+/// shown as Reserved, never as occupied; when the customer comes a waiter seats them.
+model TableReservation {
+  id           String                 @id @default(cuid())
+  /// TR-2026-0001
+  reference    String                 @unique
+  /// A party booked on several tables: one reservation per table, the same party id on each (null: one table).
+  partyId      String?
+  status       TableReservationStatus @default(BOOKED)
+  locationId   String
+  location     RestaurantLocation     @relation(fields: [locationId], references: [id])
+  guestId      String
+  guest        Guest                  @relation(fields: [guestId], references: [id])
+  /// When they come.
+  reservedFor  DateTime
+  /// The hotel day it is for (lists by day).
+  date         DateTime               @db.Date
+  guestCount   Int
+  notes        String?
+  createdById  String?
+  createdBy    User?                  @relation("TableReservationCreatedBy", fields: [createdById], references: [id])
+  /// Who last changed it (edited, confirmed, moved, seated, cancelled, no-show).
+  updatedById  String?
+  updatedBy    User?                  @relation("TableReservationUpdatedBy", fields: [updatedById], references: [id])
+  confirmedAt  DateTime?
+  seatedAt     DateTime?
+  cancelledAt  DateTime?
+  cancelReason String?
+  noShowAt     DateTime?
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+  session      DiningSession?
+  moves        TableMove[]
+
+  @@index([locationId, reservedFor])
+  @@index([date, status])
+  @@index([guestId])
+  @@index([partyId])
+  @@map("table_reservations")
+}
+
+/**
+ * A department asks for stock (ingredients, drinks, supplies) → a manager reviews it (approve
+ * for purchase / send back / reject) → someone buys it and records what was ACTUALLY bought
+ * (quantities, prices, supplier, receipt, the account that paid) → a manager gives the final
+ * approval, and only then, in one step: the stock is received, ONE company expense is created
+ * (the ledger and the account read it) and the request is completed. A request is never money.
+ */
+model StockRequest {
+  id                  String               @id @default(cuid())
+  number              String               @unique // SR-2026-0001
+  /// The department's code (KITCHEN, BAR, RESTAURANT, HOUSEKEEPING…) — kept as it was when asked.
+  department          String
+  departmentId        String?
+  inventoryDepartment InventoryDepartment? @relation(fields: [departmentId], references: [id])
+  /// SUBMITTED | SENT_BACK | APPROVED | PURCHASING | PENDING_APPROVAL | COMPLETED | REJECTED | CANCELLED
+  status              String               @default("SUBMITTED")
+  urgent              Boolean              @default(false)
+  neededBy            DateTime?            @db.Date
+  /// What it is for ("for the weekend wedding").
+  reason              String?
+  note                String?
+  requestedById       String
+  requestedBy         User                 @relation("StockRequestBy", fields: [requestedById], references: [id])
+  /// The review: approved for purchase, sent back or rejected — by whom, when, why.
+  decidedById         String?
+  decidedBy           User?                @relation("StockRequestDecidedBy", fields: [decidedById], references: [id])
+  decidedAt           DateTime?
+  decisionNote        String?
+  // The purchase — what was actually bought (never the requested amounts).
+  purchaseNumber      String?              @unique // P-2026-0001
+  purchasedById       String?
+  purchasedBy         User?                @relation("StockRequestPurchasedBy", fields: [purchasedById], references: [id])
+  purchasedAt         DateTime?
+  supplierId          String?
+  supplier            Supplier?            @relation(fields: [supplierId], references: [id])
+  /// A seller not in the suppliers list (market stall…).
+  supplierName        String?
+  receiptNumber       String?
+  receiptFileId       String?              @unique
+  receiptFile         StoredFile?          @relation(fields: [receiptFileId], references: [id])
+  /// Why there is no receipt (when none).
+  noReceiptReason     String?
+  /// The company account the money came from.
+  accountId           String?
+  account             MoneyAccount?        @relation(fields: [accountId], references: [id])
+  purchaseNote        String?
+  /// The actual amount paid (the sum of the bought lines).
+  purchaseTotal       Int?
+  submittedAt         DateTime?
+  /// The last "send back for correction" of the purchase, and why.
+  correctionNote      String?
+  // Final approval: stock received + the one expense.
+  finalApprovedById   String?
+  finalApprovedBy     User?                @relation("StockRequestFinalApprovedBy", fields: [finalApprovedById], references: [id])
+  finalApprovedAt     DateTime?
+  expenseId           String?              @unique
+  expense             Expense?             @relation(fields: [expenseId], references: [id])
+  receivedAt          DateTime?
+  cancelledAt         DateTime?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  items               StockRequestItem[]
+  events              StockRequestEvent[]
+
+  @@index([status, createdAt])
+  @@index([departmentId])
+  @@map("stock_requests")
+}
+
+model StockRequestItem {
+  id              String             @id @default(cuid())
+  requestId       String
+  request         StockRequest       @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  name            String
+  /// The stock item it is (null: "something else" — not kept in stock, only on the expense).
+  inventoryItemId String?
+  inventoryItem   InventoryItem?     @relation(fields: [inventoryItemId], references: [id])
+  /// Asked for.
+  quantity        Float
+  /// kg, pcs, crates, litres… (as asked)
+  unit            String
+  note            String?
+  /// What the manager approved for purchase (null = as asked).
+  approvedQty     Float?
+  /// Taken off the list by the manager (kept for the history).
+  removedAt       DateTime?
+  /// Actually bought — in the stock item's unit when it is a stock item. 0 = not bought.
+  purchasedQty    Float?
+  unitPrice       Int?
+  lineTotal       Int?
+  expiresOn       DateTime?          @db.Date
+  /// The stock received for this line at the final approval (never twice).
+  movementId      String?            @unique
+  movement        InventoryMovement? @relation(fields: [movementId], references: [id])
+
+  @@index([requestId])
+  @@index([inventoryItemId])
+  @@map("stock_request_items")
+}
+
+/// Everything that happened to a stock request — who (and in what role), from → to, why, what changed.
+model StockRequestEvent {
+  id         String       @id @default(cuid())
+  requestId  String
+  request    StockRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  action     String
+  fromStatus String?
+  toStatus   String?
+  byId       String?
+  by         User?        @relation("StockRequestEventBy", fields: [byId], references: [id])
+  byLabel    String?
+  byRole     String?
+  reason     String?
+  before     Json?
+  after      Json?
+  at         DateTime     @default(now())
+
+  @@index([requestId, at])
+  @@map("stock_request_events")
+}
+
+// ─────────────────────────────── Inventory (hotel-wide) ───────────────────────────────
+
+/// Who holds stock: Kitchen, Restaurant, Bar, Housekeeping, Maintenance, Reception, Office, General hotel… (configurable).
+model InventoryDepartment {
+  id         String              @id @default(cuid())
+  code       String              @unique
+  name       String              @unique
+  sortOrder  Int                 @default(0)
+  isActive   Boolean             @default(true)
+  createdAt  DateTime            @default(now())
+  items      InventoryItem[]
+  categories InventoryCategory[]
+  movements  InventoryMovement[]
+  assets     Asset[]
+  requests   StockRequest[]
+
+  @@map("inventory_departments")
+}
+
+/// Kitchen food, Beverages, Housekeeping, Maintenance, Restaurant supplies, Office… (configurable).
+model InventoryCategory {
+  id           String               @id @default(cuid())
+  name         String               @unique
+  /// The department new items in this category usually belong to.
+  departmentId String?
+  department   InventoryDepartment? @relation(fields: [departmentId], references: [id])
+  sortOrder    Int                  @default(0)
+  isActive     Boolean              @default(true)
+  createdAt    DateTime             @default(now())
+  items        InventoryItem[]
+
+  @@map("inventory_categories")
+}
+
+model Supplier {
+  id          String              @id @default(cuid())
+  name        String              @unique
+  contactName String?
+  phone       String?
+  email       String?
+  notes       String?
+  isActive    Boolean             @default(true)
+  createdAt   DateTime            @default(now())
+  items       InventoryItem[]
+  movements   InventoryMovement[]
+  assets      Asset[]
+  purchases   StockRequest[]
+
+  @@map("suppliers")
+}
+
+/// One thing the hotel keeps in stock, counted in its own unit (KG, L, BOTTLE, PIECE…).
+model InventoryItem {
+  id           String              @id @default(cuid())
+  name         String
+  sku          String?             @unique
+  categoryId   String
+  category     InventoryCategory   @relation(fields: [categoryId], references: [id])
+  departmentId String
+  department   InventoryDepartment @relation(fields: [departmentId], references: [id])
+  /// KG | G | L | ML | BOTTLE | CAN | CARTON | PIECE | BOX | PACK | DOZEN | … (see lib/inventory.ts)
+  unit         String
+  /// On hand now, in `unit` (3 decimals). Only stock movements change it.
+  quantity     Float               @default(0)
+  minStock     Float?
+  reorderLevel Float?
+  maxStock     Float?
+  /// TZS per unit (the last price paid).
+  costPerUnit  Int                 @default(0)
+  supplierId   String?
+  supplier     Supplier?           @relation(fields: [supplierId], references: [id])
+  location     String?
+  /// Receipts ask for an expiry date.
+  tracksExpiry Boolean             @default(false)
+  isActive     Boolean             @default(true)
+  notes        String?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  movements    InventoryMovement[]
+  recipeLines  RecipeLine[]
+  requestLines StockRequestItem[]
+
+  @@unique([departmentId, name])
+  @@index([categoryId])
+  @@map("inventory_items")
+}
+
+/**
+ * Every change to stock, never edited: received, used, sold (recipe), wasted, counted, adjusted.
+ * `change` is signed, in the item's unit; `before`/`after` are the stock either side (set when it
+ * is posted). Waste recorded by staff waits for a manager (PENDING) and only then moves the stock.
+ */
+model InventoryMovement {
+  id            String               @id @default(cuid())
+  itemId        String
+  item          InventoryItem        @relation(fields: [itemId], references: [id])
+  /// RECEIVE | USE | SALE | WASTE | COUNT | ADJUST
+  kind          String
+  /// See lib/inventory.ts (KITCHEN_USAGE, DAMAGED, SPOILED, MEASUREMENT…).
+  reason        String
+  note          String?
+  change        Float
+  before        Float?
+  after         Float?
+  unit          String
+  unitCost      Int?
+  totalCost     Int?
+  supplierId    String?
+  supplier      Supplier?            @relation(fields: [supplierId], references: [id])
+  /// Delivery note / invoice number, or the order number for a sale.
+  reference     String?
+  expiresOn     DateTime?            @db.Date
+  /// An expiring delivery someone has dealt with (used up or thrown away).
+  expiryCleared Boolean              @default(false)
+  /// Where it was used (usage) — defaults to the item's department.
+  departmentId  String?
+  department    InventoryDepartment? @relation(fields: [departmentId], references: [id])
+  orderId       String?
+  /// POSTED | PENDING | REJECTED
+  status        String               @default("POSTED")
+  recordedById  String?
+  recordedBy    User?                @relation("InventoryRecordedBy", fields: [recordedById], references: [id])
+  recordedAt    DateTime             @default(now())
+  approvedById  String?
+  approvedBy    User?                @relation("InventoryApprovedBy", fields: [approvedById], references: [id])
+  approvedAt    DateTime?
+  decisionNote  String?
+  /// The purchase line it was received for (stock requests).
+  purchaseLine  StockRequestItem?
+
+  @@index([itemId, recordedAt])
+  @@index([recordedAt])
+  @@index([status, kind])
+  @@index([orderId])
+  @@map("inventory_movements")
+}
+
+/// A dish's recipe line: one Beef Burger uses 150 g of Beef (converted to the stock item's unit).
+model RecipeLine {
+  id         String        @id @default(cuid())
+  menuItemId String
+  menuItem   MenuItem      @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  itemId     String
+  item       InventoryItem @relation(fields: [itemId], references: [id])
+  quantity   Float
+  unit       String
+
+  @@unique([menuItemId, itemId])
+  @@index([itemId])
+  @@map("recipe_lines")
+}
+
+/**
+ * The hotel's physical things (not used up): beds, TVs, air conditioners, fridges, kitchen and
+ * restaurant equipment, computers, POS devices, furniture. Kept apart from consumable stock.
+ */
+model Asset {
+  id           String               @id @default(cuid())
+  /// Asset ID, e.g. AST-0001 (given by the system; can be changed to a tag already on the item).
+  code         String               @unique
+  name         String
+  /// Beds, Furniture, TVs & electronics, Air conditioners, Kitchen equipment… (free; the list grows as you type).
+  category     String
+  location     String?
+  departmentId String?
+  department   InventoryDepartment? @relation(fields: [departmentId], references: [id])
+  quantity     Int                  @default(1)
+  purchaseDate DateTime?            @db.Date
+  /// TZS, for the whole line (all `quantity`).
+  purchaseCost Int?
+  /// NEW | GOOD | FAIR | POOR | DAMAGED
+  condition    String               @default("GOOD")
+  /// IN_USE | IN_STORE | UNDER_REPAIR | OUT_OF_ORDER | DISPOSED | LOST
+  status       String               @default("IN_USE")
+  supplierId   String?
+  supplier     Supplier?            @relation(fields: [supplierId], references: [id])
+  serialNumber String?
+  /// The person or department responsible for it.
+  assignedTo   String?
+  notes        String?
+  createdById  String?
+  createdBy    User?                @relation("AssetCreatedBy", fields: [createdById], references: [id])
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  moves        AssetMovement[]
+
+  @@index([category])
+  @@index([status])
+  @@map("assets")
+}
+
+/// An asset moved (Restaurant → Meeting room), or its condition / status changed — who, when, why.
+model AssetMovement {
+  id        String   @id @default(cuid())
+  assetId   String
+  asset     Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  /// MOVED | CONDITION | STATUS | ASSIGNED
+  kind      String
+  fromValue String?
+  toValue   String?
+  /// For a move of part of a line (e.g. 4 of 20 chairs) — the rest stays.
+  quantity  Int?
+  note      String?
+  movedById String?
+  movedBy   User?    @relation("AssetMovedBy", fields: [movedById], references: [id])
+  at        DateTime @default(now())
+
+  @@index([assetId, at])
+  @@index([at])
+  @@map("asset_movements")
+}
