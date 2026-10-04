@@ -283,7 +283,7 @@ const CreateSchema = z.object({
   /** "Send to phone": a mobile-money prompt (nTZS) to the guest right after the booking is saved — paid on their phone. */
   prompt: z.object({
     amount: z.coerce.number().int().positive("Enter the amount."),
-    phone: z.string().trim().min(9, "Enter the guest's mobile-money number.").max(30),
+    phone: z.string().trim().min(9, "Enter the guest's phone number.").max(30),
   }).nullable().optional(),
   specialRequests: z.string().trim().max(1000).optional(),
   internalNotes: z.string().trim().max(1000).optional(),

@@ -1,21 +1,26 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CalendarPlus, CheckCircle2, DoorOpen, Loader2, Minus, Plus, Presentation, XCircle } from "lucide-react";
+import { CalendarPlus, Check, CheckCircle2, DoorOpen, Loader2, Minus, Plus, Presentation, Smartphone, UserCheck, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { validPhone } from "@/lib/guest-messages";
 import { formatBusinessDate, formatTZS } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { AccountSelect } from "@/components/staff/finance/account-select";
 import type { PayAccount } from "@/lib/pay-account";
-import { checkAvailabilityAction, createReservationAction, type AvailabilityResult } from "@/app/staff/(app)/reservations/actions";
+import { NetworkMarks } from "@/components/payments/networks";
+import { SendToPhone, useMobilePayAvailable } from "@/components/staff/mobile-pay";
+import { checkAvailabilityAction, createReservationAction, searchGuestsAction, type AvailabilityResult } from "@/app/staff/(app)/reservations/actions";
 
 type Mode = "walkIn" | "reserve" | "meeting";
 const plusDays = (d: string, n: number) => { const x = new Date(`${d}T00:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+/** "Mobile money" among the ways to pay: a payment request to the guest's phone (nTZS), recorded by itself when paid. */
+const PROMPT = "__ntzs_prompt__";
+/** A customer already on file with this phone number (one customer per number). */
+type Known = { id: string; fullName: string; reference: string | null; vip: boolean; stays: number; lastStay: string | null; idNumber: string | null };
 const SOURCES = [["PHONE", "Phone"], ["WHATSAPP", "WhatsApp"], ["DIRECT", "At the desk"], ["CORPORATE", "Company"]] as const;
 
 /**
@@ -38,9 +43,36 @@ export function QuickBook({ room, mode, today, from, methods, canPay, onDone }: 
   const [adults, setAdults] = useState(mode === "meeting" ? 6 : 1);
   const [children, setChildren] = useState(0);
   const [source, setSource] = useState<string>(mode === "walkIn" ? "WALK_IN" : "PHONE");
-  const [paid, setPaid] = useState(mode === "walkIn" && canPay && methods.length > 0);
-  const [account, setAccount] = useState(methods[0]?.id ?? "");
+  // How it is paid now: a mobile money request (the main way), an account for money taken by hand, or "" = later.
+  const mobileOk = useMobilePayAvailable() && canPay;
+  const [payWay, setPayWay] = useState(mode === "walkIn" && canPay ? methods[0]?.id ?? "" : "");
+  const picked = useRef(false);
+  useEffect(() => { if (mobileOk && mode === "walkIn" && !picked.current) setPayWay(PROMPT); }, [mobileOk, mode]);
+  const pick = (way: string) => { picked.current = true; setPayWay(way); };
+  const [promptPhone, setPromptPhone] = useState<string | null>(null);
   const [ref, setRef] = useState("");
+  // Saved with a mobile money request: followed right here until the guest pays.
+  const [sent, setSent] = useState<{ reservationId: string; reference: string; prompt: { id: string; amount: number; phone: string } | null; error: string | null } | null>(null);
+
+  // The phone is the customer's key: a number already on file brings back who they are (name, ID) — no retyping,
+  // no second profile. "Someone else" keeps the typed details as a new customer.
+  const [lookup, setLookup] = useState<{ digits: string; hit: Known | null } | null>(null);
+  const [someoneElse, setSomeoneElse] = useState(false);
+  const phoneDigits = guest.phone.replace(/\D/g, "");
+  const known = !someoneElse && lookup && lookup.digits === phoneDigits ? lookup.hit : null;
+  useEffect(() => {
+    if (someoneElse || phoneDigits.length < 9) return;
+    let alive = true;
+    const h = setTimeout(async () => {
+      const res = await searchGuestsAction(phoneDigits).catch(() => null);
+      if (!alive) return;
+      const hit = res?.ok ? res.data.find((g) => (g.phone ?? "").replace(/\D/g, "").endsWith(phoneDigits.slice(-9))) : undefined;
+      setLookup({ digits: phoneDigits, hit: hit ? { id: hit.id, fullName: hit.fullName, reference: hit.reference, vip: hit.vip, stays: hit.stays, lastStay: hit.lastStay, idNumber: hit.idNumber } : null });
+      // Fill in what staff have not typed yet.
+      if (hit) setGuest((g) => ({ ...g, fullName: g.fullName.trim() ? g.fullName : hit.fullName, idNumber: g.idNumber.trim() ? g.idNumber : hit.idNumber ?? "" }));
+    }, 350);
+    return () => { alive = false; clearTimeout(h); };
+  }, [phoneDigits, someoneElse]);
   const [avail, setAvail] = useState<AvailabilityResult | null>(null);
   const [availError, setAvailError] = useState<string | null>(null);
   const [checking, startCheck] = useTransition();
@@ -68,18 +100,28 @@ export function QuickBook({ room, mode, today, from, methods, canPay, onDone }: 
     if (!free) return toast.error(`Room ${room.number} is not free for that time.`);
     if (guest.fullName.trim().length < 2) return toast.error(mode === "meeting" ? "Enter who is booking." : "Enter the guest's name.");
     if (!validPhone(guest.phone)) return toast.error("Enter the phone number — the booking details are sent to it.");
+    const viaPhone = payWay === PROMPT && total > 0;
+    const promptNumber = (promptPhone ?? guest.phone).trim();
+    if (viaPhone && !validPhone(promptNumber)) return toast.error("Enter the guest's phone number to send the payment request.");
     startSave(async () => {
       const res = await createReservationAction({
         sourceCode: mode === "walkIn" ? "WALK_IN" : source,
         status: "RESERVED",
         checkInNow: mode === "walkIn",
         stay,
-        guest: { fullName: guest.fullName.trim(), phone: guest.phone.trim(), idNumber: guest.idNumber.trim() || undefined, idType: guest.idNumber.trim() ? "NATIONAL_ID" : undefined },
+        guest: { id: known && !someoneElse ? known.id : undefined, createNew: someoneElse || undefined, fullName: guest.fullName.trim(), phone: guest.phone.trim(), idNumber: guest.idNumber.trim() || undefined, idType: guest.idNumber.trim() ? "NATIONAL_ID" : undefined },
         rooms: [{ roomTypeId: room.typeId, roomId: room.id, adults, children: mode === "meeting" ? 0 : children }],
         companyName: mode === "meeting" ? company.trim() || undefined : undefined,
         specialRequests: needs.trim() || undefined,
-        payment: paid && canPay && account && total > 0 ? { amount: total, accountId: account, reference: ref.trim() || undefined } : null,
+        payment: canPay && payWay && !viaPhone && total > 0 ? { amount: total, accountId: payWay, reference: ref.trim() || undefined } : null,
+        prompt: viaPhone ? { amount: total, phone: promptNumber } : null,
       });
+      if (res.ok && viaPhone) {
+        // Stay here and follow the payment until the guest pays (it is recorded by itself, even if this is closed).
+        toast.success(`${mode === "walkIn" ? `Checked in to room ${room.number}` : mode === "meeting" ? "Meeting booked" : `Room ${room.number} reserved`} — ${res.data.reference}${res.data.prompt ? " · payment request sent" : ""}`);
+        setSent({ reservationId: res.data.id, reference: res.data.reference, prompt: res.data.prompt ? { id: res.data.prompt.id, amount: total, phone: promptNumber } : null, error: res.data.promptError });
+        return;
+      }
       if (res.ok) {
         toast.success(mode === "walkIn" ? `Checked in to room ${room.number} — ${res.data.reference}` : mode === "meeting" ? `Meeting booked — ${res.data.reference}` : `Room ${room.number} reserved — ${res.data.reference}`, {
           action: { label: mode === "meeting" ? "Open" : "Send on WhatsApp", onClick: () => router.push(`/staff/reservations/${res.data.id}${mode === "meeting" ? "" : mode === "walkIn" ? "?sent=welcome" : "?sent=new"}`) },
@@ -92,6 +134,21 @@ export function QuickBook({ room, mode, today, from, methods, canPay, onDone }: 
 
   const Icon = mode === "walkIn" ? DoorOpen : mode === "meeting" ? Presentation : CalendarPlus;
   const title = mode === "walkIn" ? `Walk-in — check in to room ${room.number} now` : mode === "meeting" ? "Book a meeting" : `Reserve room ${room.number}`;
+  const close = () => { onDone(); router.refresh(); };
+
+  if (sent) {
+    return (
+      <div className="space-y-3 rounded-2xl border border-border/70 bg-muted/30 p-4 text-sm">
+        <p className="flex items-center gap-2 font-semibold"><CheckCircle2 className="size-4 text-emerald-600 dark:text-emerald-400" />
+          {mode === "walkIn" ? `${guest.fullName.trim().split(" ")[0]} is checked in to room ${room.number}` : mode === "meeting" ? "Meeting booked" : `Room ${room.number} reserved`} · {sent.reference}</p>
+        {sent.error && <p className="rounded-xl bg-rose-500/10 px-3 py-2 text-xs text-rose-700 dark:text-rose-300">The payment request was not sent: {sent.error} Send it again below.</p>}
+        <SendToPhone target={{ kind: "stay", reservationId: sent.reservationId }} amount={total} editableAmount phone={promptPhone ?? guest.phone} who={guest.fullName}
+          resume={sent.prompt} onPaid={close} primary />
+        <Button variant="outline" className="h-10 w-full" onClick={close}>Done</Button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3 rounded-2xl border border-border/70 bg-muted/30 p-4 text-sm">
       <p className="flex items-center gap-2 font-semibold"><Icon className="size-4" />{title}</p>
@@ -139,16 +196,32 @@ export function QuickBook({ room, mode, today, from, methods, canPay, onDone }: 
         )}
       </div>
 
-      {/* Who */}
+      {/* Who — the phone first: a number already on file brings the customer back */}
       <div className="grid gap-2 sm:grid-cols-2">
+        <Input value={guest.phone} onChange={(e) => { setGuest({ ...guest, phone: e.target.value }); setSomeoneElse(false); }} placeholder="Phone (WhatsApp) *" type="tel" inputMode="tel" aria-label="Phone" required className="h-10" />
         <Input value={guest.fullName} onChange={(e) => setGuest({ ...guest, fullName: e.target.value })} placeholder={mode === "meeting" ? "Person booking *" : "Guest's full name *"} aria-label="Name" className="h-10" />
-        <Input value={guest.phone} onChange={(e) => setGuest({ ...guest, phone: e.target.value })} placeholder="Phone (WhatsApp) *" inputMode="tel" aria-label="Phone" required className="h-10" />
+        {known && !someoneElse && (
+          <div className="flex items-center gap-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/[0.07] px-3 py-2 sm:col-span-2">
+            <UserCheck className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+            <span className="min-w-0 flex-1 leading-tight">
+              <span className="flex items-center gap-1.5 font-semibold">{known.fullName}{known.vip && <span className="rounded-full bg-[oklch(0.75_0.13_80)]/20 px-1.5 text-[9px] font-bold text-[#f0cf86]">VIP</span>}</span>
+              <span className="block truncate text-[11px] text-muted-foreground">Returning guest{known.stays ? ` · ${known.stays} stay${known.stays === 1 ? "" : "s"}${known.lastStay ? `, last ${formatBusinessDate(known.lastStay, true)}` : ""}` : ""}{known.reference ? ` · ${known.reference}` : ""}</span>
+            </span>
+            <button type="button" onClick={() => setSomeoneElse(true)} className="shrink-0 rounded-lg px-2 py-1 text-[11px] font-medium text-muted-foreground ring-1 ring-border hover:bg-muted hover:text-foreground">Someone else</button>
+          </div>
+        )}
+        {someoneElse && phoneDigits.length >= 9 && (
+          <p className="flex items-center justify-between gap-2 rounded-xl bg-muted/60 px-3 py-1.5 text-[11px] text-muted-foreground sm:col-span-2">
+            <span>Saved as a new customer with this number.</span>
+            <button type="button" className="font-medium text-foreground underline underline-offset-2" onClick={() => setSomeoneElse(false)}>Undo</button>
+          </p>
+        )}
         {mode === "meeting"
           ? <Input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Company (optional)" aria-label="Company" className="h-10" />
           : <Input value={guest.idNumber} onChange={(e) => setGuest({ ...guest, idNumber: e.target.value })} placeholder="ID / passport no. (optional)" aria-label="ID number" className="h-10" />}
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-muted-foreground">{mode === "meeting" ? "People" : "Adults"}</span><Step value={adults} min={1} max={maxAdults} onChange={setAdults} label={mode === "meeting" ? "people" : "adults"} />
-          {mode !== "meeting" && (type?.maxChildren ?? 0) > 0 && <><span className="text-xs text-muted-foreground">Kids</span><Step value={children} min={0} max={type?.maxChildren ?? 0} onChange={setChildren} label="kids" /></>}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 sm:col-span-2">
+          <span className="inline-flex items-center gap-2"><span className="text-xs text-muted-foreground">{mode === "meeting" ? "People" : "Adults"}</span><Step value={adults} min={1} max={maxAdults} onChange={setAdults} label={mode === "meeting" ? "people" : "adults"} /></span>
+          {mode !== "meeting" && (type?.maxChildren ?? 0) > 0 && <span className="inline-flex items-center gap-2"><span className="text-xs text-muted-foreground">Kids</span><Step value={children} min={0} max={type?.maxChildren ?? 0} onChange={setChildren} label="kids" /></span>}
         </div>
       </div>
       {mode === "meeting" && <Input value={needs} onChange={(e) => setNeeds(e.target.value)} placeholder="Special requirements (projector, seating…)" aria-label="Requirements" className="h-10" />}
@@ -159,23 +232,43 @@ export function QuickBook({ room, mode, today, from, methods, canPay, onDone }: 
         </div>
       )}
 
-      {/* Money */}
-      {canPay && methods.length > 0 && total > 0 && (
+      {/* Money — mobile money first; cash, LIPA, bank as other payment methods */}
+      {canPay && (methods.length > 0 || mobileOk) && total > 0 && (
         <div className="space-y-2 rounded-xl border border-border/70 bg-card p-3">
-          <label className="flex items-center gap-2 text-xs font-medium"><input type="checkbox" checked={paid} onChange={(e) => setPaid(e.target.checked)} />Paid now — {formatTZS(total)}</label>
-          {paid && (
-            <div className="grid gap-2 sm:grid-cols-2">
-              <AccountSelect accounts={methods} value={account} onChange={setAccount} />
-              <Input value={ref} onChange={(e) => setRef(e.target.value)} placeholder="Reference (M-Pesa code…)" aria-label="Reference" className="h-9" />
+          <p className="flex items-center justify-between text-xs font-semibold"><span>Payment · {formatTZS(total)}</span>{mode !== "walkIn" && <span className="font-normal text-muted-foreground">Optional</span>}</p>
+          {mobileOk && (
+            <div className={cn("rounded-xl border p-2.5 transition", payWay === PROMPT ? "border-sky-500/60 bg-sky-500/[0.09]" : "border-border hover:bg-muted")}>
+              <button type="button" aria-pressed={payWay === PROMPT} onClick={() => pick(PROMPT)} className="flex w-full items-center gap-2.5 text-left">
+                <span className={cn("grid size-9 shrink-0 place-items-center rounded-lg", payWay === PROMPT ? "bg-sky-600 text-white" : "bg-sky-500/12 text-sky-600 dark:text-sky-300")}><Smartphone className="size-4" /></span>
+                <span className="min-w-0 flex-1 leading-tight"><span className="block text-sm font-semibold">Mobile money</span><NetworkMarks label={null} compact className="mt-1" /></span>
+                {payWay === PROMPT && <CheckCircle2 className="size-4 shrink-0 text-sky-600 dark:text-sky-300" />}
+              </button>
+              {payWay === PROMPT && (
+                <Input value={promptPhone ?? guest.phone} onChange={(e) => setPromptPhone(e.target.value)} type="tel" inputMode="tel" aria-label="Phone number for the payment request"
+                  placeholder="Phone number, e.g. 0712 345 678" className="mt-2.5 h-10 tabular-nums" />
+              )}
             </div>
           )}
-          {!paid && mode !== "walkIn" && <p className="text-[11px] text-muted-foreground">Not paid: the room is held as a pending booking until it is paid.</p>}
+          {mobileOk && methods.length > 0 && <p className="pt-0.5 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Other payment methods</p>}
+          <div className="flex flex-wrap gap-1.5">
+            <button type="button" aria-pressed={!payWay} onClick={() => pick("")} className={chip(!payWay)}>{mode === "walkIn" ? "Pay at check-out" : "Pay later"}</button>
+            {methods.map((m) => (
+              <button key={m.id} type="button" aria-pressed={payWay === m.id} onClick={() => pick(m.id)} className={chip(payWay === m.id)}>
+                {payWay === m.id && <Check className="-ml-0.5 mr-1 inline size-3" />}{m.name}
+              </button>
+            ))}
+          </div>
+          {payWay && payWay !== PROMPT && <Input value={ref} onChange={(e) => setRef(e.target.value)} placeholder="Reference (M-Pesa code, receipt…) — optional" aria-label="Reference" className="h-9" />}
+          {!payWay && <p className="text-[11px] text-muted-foreground">{mode === "walkIn" ? "Checked in now — the bill is paid at check-out." : "Not paid: the room is held as a pending booking until it is paid."}</p>}
+          {payWay === PROMPT && <p className="text-[11px] text-muted-foreground">The guest confirms it on their phone with their PIN — it is recorded automatically.</p>}
         </div>
       )}
 
       <Button className="h-11 w-full" disabled={saving || !free} onClick={save}>
         {saving ? <Loader2 className="animate-spin" /> : <Icon />}
-        {mode === "walkIn" ? `Check in now${total ? ` · ${formatTZS(total)}` : ""}` : mode === "meeting" ? "Book the meeting" : "Reserve the room"}
+        {payWay === PROMPT && total > 0
+          ? `${mode === "walkIn" ? "Check in" : mode === "meeting" ? "Book" : "Reserve"} & request ${formatTZS(total)}`
+          : mode === "walkIn" ? `Check in now${total ? ` · ${formatTZS(total)}` : ""}` : mode === "meeting" ? "Book the meeting" : "Reserve the room"}
       </Button>
       <p className="text-center text-[11px] text-muted-foreground">
         Need more (several rooms, discount, company invoice, extras)? <Link href={`/staff/reservations/new?${new URLSearchParams({ room: room.id, ...(mode === "walkIn" ? { mode: "walkin" } : mode === "meeting" ? { mode: "meeting" } : { from: dates.arrival }) })}`} className="underline underline-offset-2">Full booking form</Link>

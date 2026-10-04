@@ -156,9 +156,9 @@ export function SendToPhone({ target, amount, phone = "", editableAmount = false
   return (
     <div className={cn("space-y-2 rounded-xl border border-sky-500/40 bg-sky-500/[0.05] p-3", className)}>
       <div className="flex items-start justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2.5">
+        <div className="flex min-w-0 flex-1 items-center gap-2.5">
           <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-sky-600 text-white"><Smartphone className="size-4" /></span>
-          <span className="min-w-0 leading-tight"><span className="block text-sm font-semibold">Mobile money</span><NetworkMarks label={null} compact className="mt-1" /></span>
+          <span className="min-w-0 flex-1 leading-tight"><span className="block text-sm font-semibold">Mobile money</span><NetworkMarks label={null} compact className="mt-1" /></span>
         </div>
         {!primary && <button type="button" onClick={() => setOpen(false)} aria-label="Close" className="grid size-7 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"><X className="size-4" /></button>}
       </div>

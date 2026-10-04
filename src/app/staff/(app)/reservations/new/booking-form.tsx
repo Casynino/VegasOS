@@ -118,7 +118,8 @@ export function BookingForm(props: {
   const [notes, setNotes] = useState("");
   const [saving, startSaving] = useTransition();
   // Payment taken now (walk-in / short time, or a deposit). null method = not paying now.
-  const [payMethod, setPayMethod] = useState<string | null>(null);
+  // Pay now is picked first (owner, 2026-10-05) — by mobile money when it is set up; "Pay later" is one tap away.
+  const [payMethod, setPayMethod] = useState<string | null>(() => (props.methods.length > 0 ? (props.mobilePay ? PROMPT : props.methods[0]?.id ?? null) : null));
   const [payAmount, setPayAmount] = useState<string>("");
   const [payRef, setPayRef] = useState("");
   // "Send to phone": the number the mobile-money prompt goes to (the guest's own, unless changed).
@@ -891,7 +892,7 @@ export function BookingForm(props: {
             {/* Payment type: pay now · pay at the hotel · company invoice */}
             {lines.length > 0 && (
               <WhoPays
-                canPay={props.methods.length > 0} payingNow={!!payMethod}
+                canPay={props.methods.length > 0} payingNow={!!payMethod} checkInNow={checkInNow}
                 onPayNow={() => { pickCompany(""); setPayMethod(props.mobilePay ? PROMPT : props.methods[0]?.id ?? null); }}
                 onPayAtHotel={() => { pickCompany(""); setPayMethod(null); }}
                 companies={corporates} company={company} terms={terms ?? company?.terms ?? 0} onNewCompany={() => setNewCompany(true)}
@@ -922,8 +923,8 @@ export function BookingForm(props: {
                 )}
                 {props.mobilePay && <p className="pt-0.5 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Other payment methods</p>}
                 <div className="flex flex-wrap gap-1.5">
-                  <button type="button" aria-pressed={!payMethod} onClick={() => setPayMethod(null)} title="No payment now"
-                    className={cn("rounded-lg border px-2.5 py-1.5 text-xs font-medium", !payMethod ? "border-foreground bg-foreground text-background" : "border-border hover:bg-muted")}>Not now</button>
+                  {company && <button type="button" aria-pressed={!payMethod} onClick={() => setPayMethod(null)} title="No payment now"
+                    className={cn("rounded-lg border px-2.5 py-1.5 text-xs font-medium", !payMethod ? "border-foreground bg-foreground text-background" : "border-border hover:bg-muted")}>{checkInNow ? "Pay at check-out" : "Pay later"}</button>}
                   {props.methods.map((m) => (
                     <button key={m.id} type="button" aria-pressed={payMethod === m.id}
                       onClick={() => setPayMethod(m.id)}
@@ -1257,6 +1258,8 @@ function GuestCard({ guest, setGuest, meeting, staff }: {
 /** Guest pays (now or later), or the company is invoiced for the whole bill. */
 function WhoPays(p: {
   canPay: boolean; payingNow: boolean; onPayNow: () => void; onPayAtHotel: () => void;
+  /** Checked in now: paying later means paying at check-out. */
+  checkInNow?: boolean;
   companies: { id: string; companyName: string; terms: number; available: number | null }[];
   company: { id: string; companyName: string; available: number | null } | null;
   onNewCompany: () => void;
@@ -1275,10 +1278,10 @@ function WhoPays(p: {
       </p>
       <div className={cn("grid gap-1 rounded-xl bg-muted/70 p-1", p.canPay ? "grid-cols-3" : "grid-cols-2")}>
         {p.canPay && <button type="button" aria-pressed={!p.company && p.payingNow} onClick={p.onPayNow} className={chip(!p.company && p.payingNow)}>Pay now</button>}
-        <button type="button" aria-pressed={!p.company && !p.payingNow} onClick={p.onPayAtHotel} className={chip(!p.company && !p.payingNow)}>Pay later</button>
+        <button type="button" aria-pressed={!p.company && !p.payingNow} onClick={p.onPayAtHotel} className={cn(chip(!p.company && !p.payingNow), "whitespace-nowrap")}>{p.checkInNow ? "At check-out" : "Pay later"}</button>
         <button type="button" aria-pressed={!!p.company} onClick={() => !p.company && (p.companies.length ? p.onCompany(p.companies[0].id) : p.onNewCompany())} className={chip(!!p.company, "gold")}>Invoice</button>
       </div>
-      {!p.company && !p.payingNow && <p className="text-[11px] text-muted-foreground">No money now — the room is held as a pending booking until it is paid.</p>}
+      {!p.company && !p.payingNow && <p className="text-[11px] text-muted-foreground">{p.checkInNow ? "Checked in now — the bill is paid at check-out." : "No money now — the room is held as a pending booking until it is paid."}</p>}
       {p.company && (
         <>
           <div className="flex gap-1.5">
