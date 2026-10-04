@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CalendarPlus, Check, CheckCircle2, DoorOpen, Loader2, Minus, Plus, Presentation, Smartphone, UserCheck, XCircle } from "lucide-react";
+import { CalendarPlus, Check, CheckCircle2, DoorOpen, Loader2, Minus, Plus, Presentation, Smartphone, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { validPhone } from "@/lib/guest-messages";
 import { formatBusinessDate, formatTZS } from "@/lib/format";
@@ -13,14 +13,13 @@ import { Input } from "@/components/ui/input";
 import type { PayAccount } from "@/lib/pay-account";
 import { NetworkMarks } from "@/components/payments/networks";
 import { SendToPhone, useMobilePayAvailable } from "@/components/staff/mobile-pay";
-import { checkAvailabilityAction, createReservationAction, searchGuestsAction, type AvailabilityResult } from "@/app/staff/(app)/reservations/actions";
+import { KnownCustomerNote, useKnownCustomer } from "@/components/staff/known-customer";
+import { checkAvailabilityAction, createReservationAction, type AvailabilityResult } from "@/app/staff/(app)/reservations/actions";
 
 type Mode = "walkIn" | "reserve" | "meeting";
 const plusDays = (d: string, n: number) => { const x = new Date(`${d}T00:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
 /** "Mobile money" among the ways to pay: a payment request to the guest's phone (nTZS), recorded by itself when paid. */
 const PROMPT = "__ntzs_prompt__";
-/** A customer already on file with this phone number (one customer per number). */
-type Known = { id: string; fullName: string; reference: string | null; vip: boolean; stays: number; lastStay: string | null; idNumber: string | null };
 const SOURCES = [["PHONE", "Phone"], ["WHATSAPP", "WhatsApp"], ["DIRECT", "At the desk"], ["CORPORATE", "Company"]] as const;
 
 /**
@@ -54,25 +53,12 @@ export function QuickBook({ room, mode, today, from, methods, canPay, onDone }: 
   // Saved with a mobile money request: followed right here until the guest pays.
   const [sent, setSent] = useState<{ reservationId: string; reference: string; prompt: { id: string; amount: number; phone: string } | null; error: string | null } | null>(null);
 
-  // The phone is the customer's key: a number already on file brings back who they are (name, ID) — no retyping,
-  // no second profile. "Someone else" keeps the typed details as a new customer.
-  const [lookup, setLookup] = useState<{ digits: string; hit: Known | null } | null>(null);
+  // The phone is the customer's key: a number already on file brings back who they are (their name fills in) — no
+  // retyping, no second profile. "Someone else" keeps the typed details as a new customer.
   const [someoneElse, setSomeoneElse] = useState(false);
+  const lookup = useKnownCustomer(someoneElse ? "" : guest.phone, (c) => setGuest((g) => ({ ...g, fullName: g.fullName.trim() ? g.fullName : c.name })));
+  const known = someoneElse ? null : lookup.customer;
   const phoneDigits = guest.phone.replace(/\D/g, "");
-  const known = !someoneElse && lookup && lookup.digits === phoneDigits ? lookup.hit : null;
-  useEffect(() => {
-    if (someoneElse || phoneDigits.length < 9) return;
-    let alive = true;
-    const h = setTimeout(async () => {
-      const res = await searchGuestsAction(phoneDigits).catch(() => null);
-      if (!alive) return;
-      const hit = res?.ok ? res.data.find((g) => (g.phone ?? "").replace(/\D/g, "").endsWith(phoneDigits.slice(-9))) : undefined;
-      setLookup({ digits: phoneDigits, hit: hit ? { id: hit.id, fullName: hit.fullName, reference: hit.reference, vip: hit.vip, stays: hit.stays, lastStay: hit.lastStay, idNumber: hit.idNumber } : null });
-      // Fill in what staff have not typed yet.
-      if (hit) setGuest((g) => ({ ...g, fullName: g.fullName.trim() ? g.fullName : hit.fullName, idNumber: g.idNumber.trim() ? g.idNumber : hit.idNumber ?? "" }));
-    }, 350);
-    return () => { alive = false; clearTimeout(h); };
-  }, [phoneDigits, someoneElse]);
   const [avail, setAvail] = useState<AvailabilityResult | null>(null);
   const [availError, setAvailError] = useState<string | null>(null);
   const [checking, startCheck] = useTransition();
@@ -109,7 +95,7 @@ export function QuickBook({ room, mode, today, from, methods, canPay, onDone }: 
         status: "RESERVED",
         checkInNow: mode === "walkIn",
         stay,
-        guest: { id: known && !someoneElse ? known.id : undefined, createNew: someoneElse || undefined, fullName: guest.fullName.trim(), phone: guest.phone.trim(), idNumber: guest.idNumber.trim() || undefined, idType: guest.idNumber.trim() ? "NATIONAL_ID" : undefined },
+        guest: { id: known?.id, createNew: someoneElse || undefined, fullName: guest.fullName.trim(), phone: guest.phone.trim(), idNumber: guest.idNumber.trim() || undefined, idType: guest.idNumber.trim() ? "NATIONAL_ID" : undefined },
         rooms: [{ roomTypeId: room.typeId, roomId: room.id, adults, children: mode === "meeting" ? 0 : children }],
         companyName: mode === "meeting" ? company.trim() || undefined : undefined,
         specialRequests: needs.trim() || undefined,
@@ -197,18 +183,12 @@ export function QuickBook({ room, mode, today, from, methods, canPay, onDone }: 
       </div>
 
       {/* Who — the phone first: a number already on file brings the customer back */}
-      <div className="grid gap-2 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <Input value={guest.phone} onChange={(e) => { setGuest({ ...guest, phone: e.target.value }); setSomeoneElse(false); }} placeholder="Phone (WhatsApp) *" type="tel" inputMode="tel" aria-label="Phone" required className="h-10" />
         <Input value={guest.fullName} onChange={(e) => setGuest({ ...guest, fullName: e.target.value })} placeholder={mode === "meeting" ? "Person booking *" : "Guest's full name *"} aria-label="Name" className="h-10" />
-        {known && !someoneElse && (
-          <div className="flex items-center gap-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/[0.07] px-3 py-2 sm:col-span-2">
-            <UserCheck className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-            <span className="min-w-0 flex-1 leading-tight">
-              <span className="flex items-center gap-1.5 font-semibold">{known.fullName}{known.vip && <span className="rounded-full bg-[oklch(0.75_0.13_80)]/20 px-1.5 text-[9px] font-bold text-[#f0cf86]">VIP</span>}</span>
-              <span className="block truncate text-[11px] text-muted-foreground">Returning guest{known.stays ? ` · ${known.stays} stay${known.stays === 1 ? "" : "s"}${known.lastStay ? `, last ${formatBusinessDate(known.lastStay, true)}` : ""}` : ""}{known.reference ? ` · ${known.reference}` : ""}</span>
-            </span>
-            <button type="button" onClick={() => setSomeoneElse(true)} className="shrink-0 rounded-lg px-2 py-1 text-[11px] font-medium text-muted-foreground ring-1 ring-border hover:bg-muted hover:text-foreground">Someone else</button>
-          </div>
+        {!someoneElse && (
+          <KnownCustomerNote phone={guest.phone} lookup={lookup} className="min-w-0 sm:col-span-2"
+            action={known && <button type="button" onClick={() => setSomeoneElse(true)} className="shrink-0 rounded-lg px-2 py-1 text-[11px] font-medium text-muted-foreground ring-1 ring-border hover:bg-muted hover:text-foreground">Someone else</button>} />
         )}
         {someoneElse && phoneDigits.length >= 9 && (
           <p className="flex items-center justify-between gap-2 rounded-xl bg-muted/60 px-3 py-1.5 text-[11px] text-muted-foreground sm:col-span-2">

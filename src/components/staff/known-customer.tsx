@@ -36,7 +36,7 @@ export function useKnownCustomer(phone: string, onFound?: (c: KnownCustomer) => 
 }
 
 /** Under the phone field: who this number is — or that a new customer will be saved with it. */
-export function KnownCustomerNote({ phone, lookup, className }: { phone: string; lookup: CustomerLookup; className?: string }) {
+export function KnownCustomerNote({ phone, lookup, className, action }: { phone: string; lookup: CustomerLookup; className?: string; /** e.g. "Someone else", at the right of a found customer. */ action?: React.ReactNode }) {
   if (!validPhone(phone) || lookup.failed) return null;
   if (lookup.looking) return <p className={cn("flex items-center gap-1.5 px-1 text-xs text-muted-foreground", className)}><Loader2 className="size-3.5 animate-spin" />Checking the number…</p>;
   const c = lookup.customer;
@@ -59,6 +59,7 @@ export function KnownCustomerNote({ phone, lookup, className }: { phone: string;
         </span>
         <span className="block truncate text-[11px] text-muted-foreground">Known customer{facts.length ? ` · ${facts.join(" · ")}` : ""}{c.reference ? ` · ${c.reference}` : ""}</span>
       </span>
+      {action}
     </div>
   );
 }
