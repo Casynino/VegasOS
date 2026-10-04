@@ -9,9 +9,13 @@ import { placeStayOrder } from "@/server/services/guest-comms";
 import { createWebsiteBooking } from "@/server/services/public-booking";
 import { createWebsiteMeetingBooking } from "@/server/services/booking-requests";
 import { expireUnpaidHolds } from "@/server/services/booking-holds";
+import { createTransportRequest } from "@/server/services/transport";
+import { createManualInvoice, issueInvoice } from "@/server/services/invoices";
+import { customerOnlinePayments, onlinePaymentTotals, onlinePayments, reconcileOnlinePayments } from "@/server/services/online-payments-admin";
+import { paymentsByMethod } from "@/server/services/finance";
 import { ONLINE_RECORDER_ID } from "@/server/services/mobile-payments";
 import {
-  assertCanPayOnline, bookAndPayOnline, bookingPayOnline, cancelCustomerPayment, ONLINE_BOOKING_HOLD_MINUTES, payBookingOnline, customerPaymentByToken, livePaymentForOrder, onlinePayAvailable, payForNewOrder, payOrderOnline, retryCustomerPayment,
+  assertCanPayOnline, bookAndPayOnline, invoicePayOnline, payInvoiceOnline, payStayBillOnline, payTripOnline, stayBillPayOnline, tripForCustomer, bookingPayOnline, cancelCustomerPayment, ONLINE_BOOKING_HOLD_MINUTES, payBookingOnline, customerPaymentByToken, livePaymentForOrder, onlinePayAvailable, payForNewOrder, payOrderOnline, retryCustomerPayment,
 } from "@/server/services/online-pay";
 import { addDays, businessDateOf, zonedInstant } from "@/lib/time/business-date";
 import { chefActor, managerActor, resetBusinessData, roomType } from "../support/helpers";
@@ -37,7 +41,7 @@ beforeEach(async () => {
   await resetBusinessData();
   await db.menuItem.updateMany({ where: { id: BEER }, data: { isAvailable: true, isActive: true } });
   await db.hotelSettings.updateMany({
-    data: { publicOrderingEnabled: true, onlinePayEnabled: true, onlinePayRestaurant: true, onlinePayRoomService: true, onlinePayStayBill: true, onlinePayBooking: true, onlinePayMeeting: true },
+    data: { publicOrderingEnabled: true, onlinePayEnabled: true, onlinePayRestaurant: true, onlinePayRoomService: true, onlinePayStayBill: true, onlinePayBooking: true, onlinePayMeeting: true, onlinePayTransport: true, onlinePayInvoices: true },
   });
   process.env.NTZS_API_KEY = "ntzs_test_unit";
   process.env.NTZS_WEBHOOK_SECRET = "whsec_unit";
@@ -286,6 +290,125 @@ describe("room booking and the meeting room: Pay online", () => {
       .rejects.toThrow(/not available/);
     expect(await db.reservation.count()).toBe(before);
     await db.hotelSettings.updateMany({ data: { onlinePayMeeting: true } });
+  });
+});
+
+/** nTZS confirms the payment behind this page; the page (asked again) shows the result. */
+async function nTzsConfirms(token: string) {
+  deposits[await depositOf(token)].status = "completed";
+  await db.mobilePayment.updateMany({ where: { publicToken: token }, data: { lastCheckedAt: null } });
+  return customerPaymentByToken(token, { check: true });
+}
+
+describe("guest bills, transport and invoices: Pay online", () => {
+  it("a staying guest pays their bill from their stay link — never a company's bill; the room QR payer goes back to the room", async () => {
+    const mgr = await managerActor();
+    const st = await roomType("STANDARD");
+    const r = await createReservation({
+      sourceCode: "PHONE", guest: { fullName: "Bill Payer", phone: phone() }, stay: { kind: "overnight", arrivalDate: today(), departureDate: addDays(today(), 2) },
+      rooms: [{ roomTypeId: st.id, roomId: st.rooms[0].id, adults: 1, children: 0, discountPerNight: 0 }],
+    }, mgr, zonedInstant(addDays(today(), -1), 12 * 60, TZ));
+    await checkIn(r.id, mgr, null, new Date());
+    const stay = await db.reservation.findUniqueOrThrow({ where: { id: r.id } });
+    const offer = await stayBillPayOnline({ guestToken: stay.guestToken! });
+    expect(offer).toMatchObject({ offered: true, live: null, due: stay.balanceAmount });
+
+    const p = await payStayBillOnline({ guestToken: stay.guestToken! }, { phone: phone(), clientKey: key(), ip: ip() });
+    expect((await db.mobilePayment.findUniqueOrThrow({ where: { publicToken: p.token } })).amount).toBe(stay.balanceAmount);
+    expect((await customerPaymentByToken(p.token))!.back!.href).toBe(`/stay/${stay.guestToken}`);
+    expect((await stayBillPayOnline({ guestToken: stay.guestToken! })).live).toBe(p.token);
+    const paid = await nTzsConfirms(p.token);
+    expect(paid!.status).toBe("PAID");
+    expect((await db.reservation.findUniqueOrThrow({ where: { id: r.id } })).balanceAmount).toBe(0);
+    await expect(payStayBillOnline({ guestToken: stay.guestToken! }, { phone: phone(), clientKey: key(), ip: ip() })).rejects.toThrow(/Nothing is owed/);
+
+    await db.reservation.update({ where: { id: r.id }, data: { billTo: "COMPANY" } });
+    expect((await stayBillPayOnline({ guestToken: stay.guestToken! })).offered).toBe(false);
+  });
+
+  it("a website trip is paid online once, at its price — its income into the nTZS account; a custom trip waits for its price", async () => {
+    const pickup = await db.transportService.findUniqueOrThrow({ where: { code: "AIRPORT_PICKUP" } });
+    const trip = await createTransportRequest({
+      serviceId: pickup.id, passengerName: "Flying Guest", passengerPhone: phone(), date: addDays(today(), 3), time: "18:30",
+      airport: "Julius Nyerere International Airport (DAR)", flightNumber: "TK603", passengers: 2, bags: 2,
+    }, { source: "WEBSITE" });
+    expect(trip.payToken).toBeTruthy();
+    const view = await tripForCustomer(trip.payToken!);
+    expect(view).toMatchObject({ due: trip.charge, online: true, paid: false });
+
+    const p = await payTripOnline(trip.payToken!, { phone: phone(), clientKey: key(), ip: ip() });
+    expect((await db.mobilePayment.findUniqueOrThrow({ where: { publicToken: p.token } })).amount).toBe(trip.charge);
+    expect((await customerPaymentByToken(p.token))!.back!.href).toBe(`/transport/trip/${trip.payToken}`);
+    expect((await nTzsConfirms(p.token))!.status).toBe("PAID");
+    const t = await db.transportTrip.findUniqueOrThrow({ where: { id: trip.id }, include: { sales: { include: { account: true } } } });
+    expect(t.paidAt).not.toBeNull();
+    expect(t.sales).toHaveLength(1);
+    expect(t.sales[0]).toMatchObject({ amount: trip.charge, kind: "TRANSPORT", recordedById: ONLINE_RECORDER_ID });
+    expect(t.sales[0].account!.code).toBe("NTZS");
+    expect((await tripForCustomer(trip.payToken!))!.paid).toBe(true);
+    await expect(payTripOnline(trip.payToken!, { phone: phone(), clientKey: key(), ip: ip() })).rejects.toThrow(/already paid/);
+
+    const custom = await db.transportService.findUniqueOrThrow({ where: { code: "CUSTOM" } });
+    const ride = await createTransportRequest({ serviceId: custom.id, passengerName: "City Guest", passengerPhone: phone(), date: addDays(today(), 2), time: "10:00", destination: "Mlimani City", passengers: 1 }, { source: "WEBSITE" });
+    expect((await tripForCustomer(ride.payToken!))!.online).toBe(false);
+    await expect(payTripOnline(ride.payToken!, { phone: phone(), clientKey: key(), ip: ip() })).rejects.toThrow(/confirm this trip's price/);
+  });
+
+  it("an issued invoice is paid online from its link — what is still owed, recorded on the invoice", async () => {
+    const mgr = await managerActor();
+    const guest = await db.guest.create({ data: { fullName: "Invoice Customer", phone: phone() } });
+    const draft = await createManualInvoice({ guestId: guest.id, lines: [{ description: "Conference package", quantity: 1, unitAmount: 150_000 }] }, mgr);
+    expect((await invoicePayOnline(draft.verifyToken ?? "x".repeat(20))).offered).toBe(false); // a draft is never payable
+    await issueInvoice(draft.id, mgr);
+    const inv = await db.invoice.findUniqueOrThrow({ where: { id: draft.id } });
+    expect(await invoicePayOnline(inv.verifyToken!)).toMatchObject({ offered: true, due: 150_000 });
+
+    const p = await payInvoiceOnline(inv.verifyToken!, { phone: phone(), clientKey: key(), ip: ip() });
+    expect((await customerPaymentByToken(p.token))).toMatchObject({ what: `Invoice ${inv.number}`, amount: 150_000 });
+    expect((await nTzsConfirms(p.token))!.status).toBe("PAID");
+    const after = await db.invoice.findUniqueOrThrow({ where: { id: inv.id }, include: { payments: { include: { method: true } } } });
+    expect(after).toMatchObject({ status: "PAID", balanceAmount: 0, paidAmount: 150_000 });
+    expect(after.payments).toHaveLength(1);
+    expect(after.payments[0]).toMatchObject({ amount: 150_000, recordedById: ONLINE_RECORDER_ID });
+    expect(after.payments[0].method.code).toBe("NTZS");
+    expect((await invoicePayOnline(inv.verifyToken!)).offered).toBe(false);
+  });
+});
+
+describe("admin: online payments, reconciliation, reports", () => {
+  it("lists every attempt; the books match what nTZS confirmed; a difference is listed; the daily report says NTZS online", async () => {
+    const a = await orderPayingOnline();
+    expect((await nTzsConfirms(a.token))!.status).toBe("PAID");
+    const b = await orderPayingOnline();
+    deposits[await depositOf(b.token)].status = "failed";
+    await db.mobilePayment.updateMany({ where: { publicToken: b.token }, data: { lastCheckedAt: null } });
+    await customerPaymentByToken(b.token, { check: true });
+
+    const day = today();
+    const totals = await onlinePaymentTotals(day, day);
+    expect(totals.paid).toEqual({ count: 1, amount: a.order.total });
+    expect(totals.failed).toBe(1);
+    const rows = await onlinePayments({ from: day, to: day, status: "all", purpose: null, q: "" });
+    expect(rows.map((r) => r.status).sort()).toEqual(["COMPLETED", "FAILED"]);
+    expect(rows.find((r) => r.status === "COMPLETED")).toMatchObject({ by: "Customer, online", reference: "MP777ABC", amount: a.order.total });
+    expect((await onlinePayments({ from: day, to: day, status: "failed", purpose: "RESTAURANT", q: "" })).length).toBe(1);
+
+    let recon = await reconcileOnlinePayments(day, day);
+    expect(recon).toMatchObject({ confirmed: 1, matched: 1, recorded: a.order.total, issues: [] });
+    // A payment taken off the books by hand: reconciliation lists it.
+    await db.restaurantOrderPayment.updateMany({ where: { orderId: a.order.id }, data: { status: "REVERSED" } });
+    recon = await reconcileOnlinePayments(day, day);
+    expect(recon.issues).toHaveLength(1);
+    expect(recon.issues[0].problem).toMatch(/not on the hotel's books/);
+    await db.restaurantOrderPayment.updateMany({ where: { orderId: a.order.id }, data: { status: "POSTED" } });
+
+    const report = await paymentsByMethod(day, day);
+    expect(report.rows.find((r) => r.code === "NTZS")).toMatchObject({ method: "NTZS online", amount: a.order.total });
+
+    // The customer's profile: their online payments.
+    const guestId = (await db.restaurantOrder.findUniqueOrThrow({ where: { id: a.order.id } })).guestId!;
+    const history = await customerOnlinePayments(guestId);
+    expect(history[0]).toMatchObject({ status: "COMPLETED", amount: a.order.total, online: true, reference: "MP777ABC" });
   });
 });
 

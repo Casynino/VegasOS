@@ -259,30 +259,39 @@ export async function recordInvoicePayment(
 ) {
   if (!actor.userId) throw new AppError("Sign in required.", "UNAUTHENTICATED");
   if (!Number.isInteger(input.amount) || input.amount <= 0) throw new AppError("Enter a positive whole amount.", "VALIDATION", { amount: "Invalid" });
-  return db.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT "id" FROM "invoices" WHERE "id" = ${input.invoiceId} FOR UPDATE`;
-    const inv = await tx.invoice.findUnique({ where: { id: input.invoiceId } });
-    if (!inv) throw new AppError("Invoice not found.", "NOT_FOUND");
-    if (inv.reservationId) throw new AppError("Record this payment on the reservation — the invoice follows it automatically.");
-    if (!["ISSUED", "PARTIALLY_PAID", "OVERDUE"].includes(inv.status)) throw new AppError("Only issued invoices can receive payments.");
-    if (input.amount > inv.balanceAmount) throw new AppError(`Amount exceeds the balance of TZS ${inv.balanceAmount.toLocaleString("en-TZ")}.`, "VALIDATION", { amount: "Too much" });
-    const { account, method } = await resolveAccountTx(tx, input);
-    const settings = await getSettingsTx(tx);
-    const now = new Date();
-    const today = businessDateOf(now, stayConfig(settings));
-    if (input.receivedOn && input.receivedOn > today) throw new AppError("The payment date cannot be in the future.", "VALIDATION", { receivedOn: "Future" });
-    const day = input.receivedOn ?? today;
-    const p = await tx.payment.create({
-      data: {
-        amount: input.amount, methodId: method.id, accountId: account.id, reference: input.reference?.trim() || null, notes: input.notes?.trim() || null,
-        receivedAt: day === today ? now : zonedInstant(day, 12 * 60, settings.timezone),
-        businessDate: toDbDate(day), invoiceId: inv.id,
-        corporateCustomerId: inv.corporateCustomerId, recordedById: actor.userId!,
-      },
-    });
-    await syncInvoice(tx, inv.id);
-    await audit(tx, actor, { action: "payment.created", entityType: "Payment", entityId: p.id, after: { invoice: inv.number, amount: input.amount, account: account.name, method: method.code, receivedOn: day, reference: p.reference } });
+  return db.$transaction((tx) => recordInvoicePaymentTx(tx, input, actor));
+}
+
+/** A payment on an issued (company / group) invoice — by hand, or the automatic nTZS recording (`internal`). */
+export async function recordInvoicePaymentTx(
+  tx: Tx,
+  input: { invoiceId: string; amount: number; accountId?: string | null; methodId?: string | null; reference?: string | null; notes?: string | null; receivedOn?: BusinessDate | null },
+  actor: Actor,
+  opts: { internal?: boolean } = {},
+) {
+  await tx.$queryRaw`SELECT "id" FROM "invoices" WHERE "id" = ${input.invoiceId} FOR UPDATE`;
+  const inv = await tx.invoice.findUnique({ where: { id: input.invoiceId } });
+  if (!inv) throw new AppError("Invoice not found.", "NOT_FOUND");
+  if (inv.reservationId) throw new AppError("Record this payment on the reservation — the invoice follows it automatically.");
+  if (!["ISSUED", "PARTIALLY_PAID", "OVERDUE"].includes(inv.status)) throw new AppError("Only issued invoices can receive payments.");
+  if (input.amount > inv.balanceAmount) throw new AppError(`Amount exceeds the balance of TZS ${inv.balanceAmount.toLocaleString("en-TZ")}.`, "VALIDATION", { amount: "Too much" });
+  const { account, method } = await resolveAccountTx(tx, input, "payments", { internal: opts.internal });
+  const settings = await getSettingsTx(tx);
+  const now = new Date();
+  const today = businessDateOf(now, stayConfig(settings));
+  if (input.receivedOn && input.receivedOn > today) throw new AppError("The payment date cannot be in the future.", "VALIDATION", { receivedOn: "Future" });
+  const day = input.receivedOn ?? today;
+  const p = await tx.payment.create({
+    data: {
+      amount: input.amount, methodId: method.id, accountId: account.id, reference: input.reference?.trim() || null, notes: input.notes?.trim() || null,
+      receivedAt: day === today ? now : zonedInstant(day, 12 * 60, settings.timezone),
+      businessDate: toDbDate(day), invoiceId: inv.id,
+      corporateCustomerId: inv.corporateCustomerId, recordedById: actor.userId!,
+    },
   });
+  await syncInvoice(tx, inv.id);
+  await audit(tx, actor, { action: "payment.created", entityType: "Payment", entityId: p.id, after: { invoice: inv.number, amount: input.amount, account: account.name, method: method.code, receivedOn: day, reference: p.reference } });
+  return p;
 }
 
 /** Mark issued invoices past their due date as OVERDUE (run nightly and on read). */

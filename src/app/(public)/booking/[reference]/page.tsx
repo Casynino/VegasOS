@@ -8,7 +8,8 @@ import { RequestReceived } from "@/components/public/booking/request-received";
 import { formatBusinessDate, formatDateTime, formatTZS, formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { BookingActions } from "@/components/public/booking/booking-actions";
-import { BookingPayOnline } from "@/components/public/booking/pay-online";
+import { PayOnlineCard } from "@/components/public/pay-online-card";
+import { payBookingOnlineAction } from "./actions";
 import { bookingPayOnline } from "@/server/services/online-pay";
 import { BookingProgress } from "@/components/public/booking/progress";
 import { addressLines, telHref, whatsappHref } from "@/components/public/contact";
@@ -153,7 +154,7 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
               </div>
             </dl>
             {(online.offered || online.live) && booking.balanceAmount > 0 && (
-              <div className="mt-5"><BookingPayOnline reference={booking.reference} token={token!} due={booking.balanceAmount} phone={booking.guestPhone ?? ""} live={online.live} held={held} /></div>
+              <div className="mt-5"><PayOnlineCard due={booking.balanceAmount} phone={booking.guestPhone ?? ""} live={online.live} held={held} action={payBookingOnlineAction.bind(null, { reference: booking.reference, token: token! })} /></div>
             )}
             <p className="mt-4 text-xs text-white/55">{booking.balanceAmount <= 0 && booking.paidAmount > 0 ? "Paid in full — thank you."
               : booking.paidAmount > 0 ? "Received with thanks — the rest can be paid online or at the hotel."

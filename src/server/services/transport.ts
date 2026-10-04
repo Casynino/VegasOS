@@ -1,4 +1,5 @@
 import "server-only";
+import { randomBytes } from "node:crypto";
 import { db } from "../db";
 import { audit, type AuditActor } from "../audit";
 import { AppError } from "../errors";
@@ -188,6 +189,8 @@ export async function createTransportRequest(input: TransportRequestInput, via: 
         passengers: input.passengers, bags,
         standardPrice: price, charge: price, priceOption: option?.name ?? null,
         notes: input.notes?.trim() || null, source: staff ? "STAFF" : "WEBSITE", createdById: staff?.userId ?? null,
+        // The customer's private link to pay it online and see it (website requests).
+        payToken: staff ? null : randomBytes(16).toString("base64url"),
       },
     });
     await audit(tx, staff ?? { label: "website" }, { action: "transport.requested", entityType: "TransportTrip", entityId: trip.id,
@@ -380,6 +383,30 @@ export async function payTripDirect(tripId: string, input: { accountId: string; 
     await audit(tx, actor, { action: "transport.paid", entityType: "TransportTrip", entityId: t.id, after: { amount: t.charge, account: account.name, reference: input.reference ?? null, sale: sale.id } });
     return sale;
   });
+}
+
+/**
+ * A trip the customer paid online (nTZS confirmed it): its income into the nTZS account, once — only when what came in
+ * covers its price and it is not paid or billed already (otherwise the money is left for a person to deal with).
+ */
+export async function payTripFromMobileTx(tx: Tx, tripId: string, received: number, input: { methodId: string; reference: string }, actor: Actor & { userId: string }) {
+  await tx.$queryRaw`SELECT "id" FROM "transport_trips" WHERE "id" = ${tripId} FOR UPDATE`;
+  const t = await load(tx, tripId);
+  if (t.status === "CANCELLED" || t.status === "NO_SHOW" || billed(t) || !t.charge || t.charge <= 0 || received < t.charge) return { saleId: null, left: received };
+  const { account, method } = await resolveAccountTx(tx, { methodId: input.methodId }, "payments", { internal: true });
+  const category = await tx.revenueCategory.findUniqueOrThrow({ where: { code: "TRANSPORT" } });
+  const settings = await getSettingsTx(tx);
+  const now = new Date();
+  const sale = await tx.revenueTransaction.create({
+    data: {
+      categoryId: category.id, kind: "TRANSPORT", amount: t.charge, paymentMethodId: method.id, accountId: account.id, transportTripId: t.id,
+      description: `${tripLabel(t)} · ${t.passengerName}`, notes: input.reference,
+      occurredAt: now, businessDate: toDbDate(businessDateOf(now, stayConfig(settings))), recordedById: actor.userId,
+    },
+  });
+  await tx.transportTrip.update({ where: { id: t.id }, data: { paidAt: now } });
+  await audit(tx, actor, { action: "transport.paid", entityType: "TransportTrip", entityId: t.id, after: { amount: t.charge, account: account.name, reference: input.reference, sale: sale.id, via: "nTZS (paid online)" } });
+  return { saleId: sale.id, left: received - t.charge };
 }
 
 // ─────────────────────────── Screens & reports ───────────────────────────

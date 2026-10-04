@@ -9,6 +9,7 @@ import { businessToday } from "@/server/settings";
 import { siteOrigin } from "@/server/site-origin";
 import { ensureGuestToken, guestMessage, guestTimeline } from "@/server/services/guest-comms";
 import { customerFootprint, customerHistory } from "@/server/services/guests";
+import { customerOnlinePayments } from "@/server/services/online-payments-admin";
 import { formatBusinessDate, formatDateTime, formatTime, formatTZS } from "@/lib/format";
 import { fromDbDate, toDbDate } from "@/lib/time/business-date";
 import { RESERVATION_STATUS_META } from "@/lib/reservation-status";
@@ -59,6 +60,8 @@ export async function GuestProfile({ id, user }: { id: string; user: CurrentUser
   const ordered = { ...mine, status: { not: "CANCELLED" as const } };
   const canRemove = can(user, "guests.delete") && !g.deletedAt;
   const roomMoney = can(user, "reservations.view") || can(user, "reports.view");
+  // Money is for reception and managers — never a waiter.
+  const online = roomMoney ? await customerOnlinePayments(id) : [];
   const canStays = can(user, "reservations.view");
   const [{ events, messages }, orders, orderCount, orderMoney, table, tableBookings, footprint, requests, trips, h] = await Promise.all([
     guestTimeline(g.id),
@@ -280,6 +283,28 @@ export async function GuestProfile({ id, user }: { id: string; user: CurrentUser
 
           {/* Everything with us: hotel, restaurant, room service, payments, charges */}
           <EverythingWithUs h={h} roomMoney={roomMoney} canStays={canStays} />
+
+          {/* Online payments (nTZS) — what they paid online, and attempts that did not go through */}
+          {online.length > 0 && (
+            <Card title="Online payments" count={online.length} sub="Paid by mobile money through NTZS — online by the customer, or a prompt sent by staff.">
+              <ul className="divide-y divide-border/60">
+                {online.map((m) => (
+                  <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">
+                    <span className="min-w-0 leading-tight">
+                      {m.href ? <Link href={m.href} className="font-medium underline-offset-2 hover:underline">{m.what}</Link> : <span className="font-medium">{m.what}</span>}
+                      <span className="block text-xs text-muted-foreground">{formatDateTime(m.at)} · {m.online ? "paid online" : "sent by staff"}{m.reference ? ` · ref ${m.reference}` : ""}</span>
+                    </span>
+                    <span className="text-right">
+                      <span className="block font-semibold tabular-nums">{formatTZS(m.amount)}</span>
+                      <span className={cn("text-[11px] font-semibold", m.status === "COMPLETED" ? "text-emerald-700 dark:text-emerald-300" : m.status === "PENDING" ? "text-sky-700 dark:text-sky-300" : "text-muted-foreground")}>
+                        {m.status === "COMPLETED" ? "Paid" : m.status === "PENDING" ? "Waiting" : m.status === "FAILED" ? "Failed" : m.status === "EXPIRED" ? "Timed out" : "Cancelled"}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
 
           {/* History */}
           <Card title="History" sub="Everything that happened with this customer, newest first.">

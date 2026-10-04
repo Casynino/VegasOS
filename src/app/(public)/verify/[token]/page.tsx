@@ -8,6 +8,9 @@ import { fromDbDate } from "@/lib/time/business-date";
 import { formatBusinessDate, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { container, cream, eyebrow } from "@/components/public/ui";
+import { PayOnlineCard } from "@/components/public/pay-online-card";
+import { invoicePayOnline } from "@/server/services/online-pay";
+import { payInvoiceOnlineAction } from "./actions";
 
 export const metadata: Metadata = {
   title: "Verify invoice",
@@ -22,10 +25,11 @@ export const metadata: Metadata = {
 export default async function VerifyInvoicePage({ params }: PageProps<"/verify/[token]">) {
   const { token } = await params;
   if (!/^[A-Za-z0-9_-]{16,64}$/.test(token)) notFound();
-  const [inv, s, today] = await Promise.all([
+  const [inv, s, today, online] = await Promise.all([
     db.invoice.findUnique({ where: { verifyToken: token }, include: { corporateCustomer: { select: { companyName: true } }, guest: { select: { fullName: true } }, group: { select: { name: true } } } }),
     getSettings(),
     businessToday(),
+    invoicePayOnline(token),
   ]);
   if (!inv || inv.status === "DRAFT") notFound();
   const dead = inv.status === "VOID" || inv.status === "CANCELLED";
@@ -65,6 +69,11 @@ export default async function VerifyInvoicePage({ params }: PageProps<"/verify/[
             <span className="text-[10px] font-semibold uppercase tracking-[0.2em] opacity-70">Still owed</span>
             <span className="text-3xl font-semibold tabular-nums"><span className="mr-1 text-sm opacity-60">{s.currency}</span>{formatNumber(dead ? 0 : Math.max(0, inv.balanceAmount))}</span>
           </div>
+          {!dead && (online.offered || online.live) && (
+            <div className="bg-[#15110c] px-6 pb-6 text-white">
+              <PayOnlineCard due={online.due} phone="" live={online.live} action={payInvoiceOnlineAction.bind(null, token)} />
+            </div>
+          )}
         </div>
         <p className="mx-auto mt-6 max-w-lg text-center text-sm text-[#6b6258]">
           Questions about this invoice? Call {s.phone ?? "the hotel"}{s.email ? ` or email ${s.email}` : ""}. Always quote {inv.number} with your payment.

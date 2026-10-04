@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { requestMeta } from "@/server/auth";
 import { AppError, runAction, type ActionResult } from "@/server/errors";
-import { assertCanPayOnline, payForNewOrder } from "@/server/services/online-pay";
+import { assertCanPayOnline, payForNewOrder, payStayBillOnline } from "@/server/services/online-pay";
 import { rateLimit } from "@/server/rate-limit";
 import { parseInput } from "@/server/validation";
 import { askFromStay, placeStayOrder } from "@/server/services/guest-comms";
@@ -54,5 +54,17 @@ export async function askFromStayAction(input: z.input<typeof Ask>): Promise<Act
     await rateLimit(`stay-ask:${d.token}`, 10, 600);
     const r = await askFromStay(d.token, { type: d.type, description: d.description, clientKey: d.clientKey });
     return { id: r.id };
+  });
+}
+
+const PayBill = z.object({ phone: z.string().trim().min(9, "Enter your mobile-money number.").max(30), clientKey: z.string().regex(/^[a-f0-9]{32}$/) });
+
+/** "Pay online" for the guest's bill from their stay link (bound to the link on the page): what is owed, worked out on the server. */
+export async function payStayBillOnlineAction(token: string, input: z.input<typeof PayBill>): Promise<ActionResult<{ pay: string }>> {
+  return runAction(async () => {
+    const { ipAddress } = await requestMeta();
+    const d = parseInput(PayBill, input);
+    const r = await payStayBillOnline({ guestToken: z.string().regex(/^[A-Za-z0-9_-]{16,64}$/).parse(token) }, { phone: d.phone, clientKey: d.clientKey, ip: ipAddress });
+    return { pay: r.token };
   });
 }

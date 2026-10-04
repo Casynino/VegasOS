@@ -8,6 +8,7 @@ const TABS = [
   { href: "/staff/finance/accounts", label: "Accounts" },
   { href: "/staff/finance/ledger", label: "General ledger" },
   { href: "/staff/finance/receivables", label: "Who owes us" },
+  { href: "/staff/finance/online", label: "Online payments" },
   { href: "/staff/finance/rooms", label: "Room performance" },
   { href: "/staff/finance/staff", label: "Staff activity" },
   { href: "/staff/finance/history", label: "Edit history" },

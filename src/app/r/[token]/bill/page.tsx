@@ -4,6 +4,8 @@ import { getSettings } from "@/server/settings";
 import { accountOptions } from "@/server/services/payment-accounts";
 import { guestStayBill } from "@/server/services/stay-bill";
 import { GuestBillPage } from "@/components/ordering/guest-bill-page";
+import { stayBillPayOnline } from "@/server/services/online-pay";
+import { payRoomBillOnlineAction } from "@/app/r/[token]/actions";
 
 export const metadata: Metadata = { title: "Your bill", robots: { index: false, follow: false }, referrer: "no-referrer" };
 export const dynamic = "force-dynamic";
@@ -11,7 +13,7 @@ export const dynamic = "force-dynamic";
 /** The guest's room bill — print it or keep it as a PDF / picture. */
 export default async function GuestStayBillPage({ params }: PageProps<"/r/[token]/bill">) {
   const { token } = await params;
-  const [bill, settings, accounts] = await Promise.all([guestStayBill({ roomQrToken: token }), getSettings(), accountOptions("payments")]);
+  const [bill, settings, accounts, online] = await Promise.all([guestStayBill({ roomQrToken: token }), getSettings(), accountOptions("payments"), stayBillPayOnline({ roomQrToken: token })]);
   if (!bill) notFound();
-  return <GuestBillPage bill={bill} settings={settings} payTo={accounts.filter((a) => a.number && a.kind !== "CASH")} back={`/r/${token}?view=guest`} />;
+  return <GuestBillPage bill={bill} settings={settings} payTo={accounts.filter((a) => a.number && a.kind !== "CASH")} pay={online.offered || online.live ? { due: online.due, live: online.live, action: payRoomBillOnlineAction.bind(null, token) } : null} back={`/r/${token}?view=guest`} />;
 }

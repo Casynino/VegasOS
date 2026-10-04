@@ -7,6 +7,7 @@ import { AppError, runAction, type ActionResult } from "@/server/errors";
 import { rateLimit } from "@/server/rate-limit";
 import { parseInput } from "@/server/validation";
 import { createTransportRequest } from "@/server/services/transport";
+import { payTripOnline } from "@/server/services/online-pay";
 
 const schema = z.object({
   serviceId: z.string().min(1, "Choose a service."),
@@ -28,7 +29,7 @@ const schema = z.object({
   company: z.string().max(0).optional(), // honeypot
 });
 
-export type TransportReceipt = { reference: string; name: string; service: string; option: string | null; date: string; time: string; price: number; pickup: boolean; custom: boolean };
+export type TransportReceipt = { reference: string; name: string; service: string; option: string | null; date: string; time: string; price: number; pickup: boolean; custom: boolean; /** The trip's private page (status, Pay online). */ page: string | null };
 
 /** A guest asks for transport — no account, no password. Starts PENDING; the hotel calls to confirm. */
 export async function requestTransportAction(input: z.input<typeof schema>): Promise<ActionResult<TransportReceipt>> {
@@ -44,6 +45,19 @@ export async function requestTransportAction(input: z.input<typeof schema>): Pro
     return {
       reference: trip.reference, name: d.passengerName.split(/\s+/)[0], service: service?.name ?? "Transport", option: trip.priceOption,
       date: d.date, time: d.time, price: trip.charge ?? 0, pickup: service?.type === "AIRPORT_PICKUP", custom: service?.type === "GUEST_TRANSPORT",
+      page: trip.payToken ? `/transport/trip/${trip.payToken}` : null,
     };
+  });
+}
+
+const Pay = z.object({ phone: z.string().trim().min(9, "Enter your mobile-money number.").max(30), clientKey: z.string().regex(/^[a-f0-9]{32}$/) });
+
+/** "Pay online" for a website trip (bound to its private link): its price, worked out on the server. Returns the payment page. */
+export async function payTripOnlineAction(token: string, input: z.input<typeof Pay>): Promise<ActionResult<{ pay: string }>> {
+  return runAction(async () => {
+    const { ipAddress } = await requestMeta();
+    const d = parseInput(Pay, input);
+    const r = await payTripOnline(z.string().regex(/^[A-Za-z0-9_-]{16,40}$/).parse(token), { phone: d.phone, clientKey: d.clientKey, ip: ipAddress });
+    return { pay: r.token };
   });
 }

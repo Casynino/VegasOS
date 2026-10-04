@@ -43,6 +43,8 @@ export const NAV: NavSection[] = [
       // Invoices are not in the sidebar (the owner's choice) — they open from a booking, a group or a company.
       { href: "/staff/corporate", label: "Companies", icon: "Building2", anyOf: ["corporate.view"] },
       { href: "/staff/finance/receivables", label: "Who owes us", icon: "HandCoins", anyOf: ["finance.view"] },
+      // nTZS — the hotel's one online payment: status, on/off per service, every attempt, reconciliation.
+      { href: "/staff/finance/online", label: "Online payments", icon: "Smartphone", anyOf: ["finance.view"] },
       { href: "/staff/finance/history", label: "Edit history", icon: "History", anyOf: ["finance.view"] },
       { href: "/staff/finance/ledger", label: "General ledger", icon: "ArrowLeftRight", anyOf: ["ledger.view", "finance.view"] },
     ],

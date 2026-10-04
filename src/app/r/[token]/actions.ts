@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { requestMeta } from "@/server/auth";
 import { AppError, runAction, type ActionResult } from "@/server/errors";
-import { assertCanPayOnline, payForNewOrder } from "@/server/services/online-pay";
+import { assertCanPayOnline, payForNewOrder, payStayBillOnline } from "@/server/services/online-pay";
 import { rateLimit } from "@/server/rate-limit";
 import { parseInput } from "@/server/validation";
 import { askFromRoomQr, placeRoomQrOrder } from "@/server/services/room-qr";
@@ -54,5 +54,17 @@ export async function askFromRoomQrAction(input: z.input<typeof Ask>): Promise<A
     await rateLimit(`room-qr-ask:${d.token}`, 10, 600);
     const r = await askFromRoomQr(d.token, { type: d.type, description: d.description, clientKey: d.clientKey });
     return { id: r.id };
+  });
+}
+
+const PayBill = z.object({ phone: z.string().trim().min(9, "Enter your mobile-money number.").max(30), clientKey: z.string().regex(/^[a-f0-9]{32}$/) });
+
+/** "Pay online" for the bill of the guest staying in this room (from the room's QR card): what is owed, worked out on the server. */
+export async function payRoomBillOnlineAction(token: string, input: z.input<typeof PayBill>): Promise<ActionResult<{ pay: string }>> {
+  return runAction(async () => {
+    const { ipAddress } = await requestMeta();
+    const d = parseInput(PayBill, input);
+    const r = await payStayBillOnline({ roomQrToken: z.string().regex(TOKEN).parse(token) }, { phone: d.phone, clientKey: d.clientKey, ip: ipAddress });
+    return { pay: r.token };
   });
 }

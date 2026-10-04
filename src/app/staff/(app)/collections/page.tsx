@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, ArrowUpRight, BedDouble, Banknote, Clock, CreditCard, Landmark, RotateCcw, Search, ShieldCheck, Smartphone, Store, Undo2, UtensilsCrossed, Wallet } from "lucide-react";
 import { can, getMyOpenShift, requirePagePermission } from "@/server/auth";
-import { mobilePaymentsNeedingAttention } from "@/server/services/mobile-payments";
+import { onlineAttentionRows } from "@/server/services/online-payments-admin";
 import { MobileMoneyAttention, type AttentionRow } from "../mobile-pay/attention";
 import { inHouseGuestIds, isDeskUser } from "@/server/desk";
 import { isRestaurantDevice, needsOwnShift } from "@/lib/permissions";
@@ -174,11 +174,7 @@ export default async function CollectionsPage({ searchParams }: PageProps<"/staf
   // nTZS mobile money that needs a person (those who take payments, and managers); the Counter sees the restaurant's.
   const takesPay = can(user, "payments.record") || can(user, "revenue.record");
   const attention: AttentionRow[] = takesPay || supervisor
-    ? (await mobilePaymentsNeedingAttention(device ? "RESTAURANT" : undefined)).map((m) => ({
-      id: m.id, amount: m.amount, phone: m.phone, purpose: m.purpose, note: m.lastError, at: (m.attentionAt ?? new Date()).toISOString(),
-      where: m.reservation ? `${m.reservation.guest.fullName} · ${m.reservation.reference}` : `${m.orderIds.length} restaurant order${m.orderIds.length === 1 ? "" : "s"}`,
-      by: m.requestedBy?.fullName.replace(/\s*\(.*\)/, "") ?? "the customer (online)", reference: m.pspReference ?? m.depositId, href: m.reservationId ? `/staff/reservations/${m.reservationId}` : null,
-    }))
+    ? await onlineAttentionRows(device ? "RESTAURANT" : undefined)
     : [];
 
   return (

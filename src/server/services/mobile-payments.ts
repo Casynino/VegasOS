@@ -5,6 +5,8 @@ import { audit } from "../audit";
 import { AppError, isUniqueViolation } from "../errors";
 import { recordPaymentTx } from "./payments";
 import { ordersDueForPrompt, payOrdersFromMobileTx } from "./restaurant";
+import { payTripFromMobileTx } from "./transport";
+import { recordInvoicePaymentTx } from "./invoices";
 import { createNtzsDeposit, depositCompleted, depositFailed, getNtzsDeposit, ntzsEnabled, ntzsLive, ntzsPhone, NTZS_MIN_TZS } from "./ntzs";
 import type { Actor } from "./reservations";
 import type { MobilePayment } from "@/generated/prisma/client";
@@ -28,10 +30,13 @@ const fmt = (n: number) => `TZS ${Math.round(n).toLocaleString("en-US")}`;
 
 export type PromptTarget =
   | { purpose: "RESERVATION"; reservationId: string; amount: number }
-  | { purpose: "RESTAURANT"; orderIds: string[]; handedOverById?: string | null };
+  | { purpose: "RESTAURANT"; orderIds: string[]; handedOverById?: string | null }
+  | { purpose: "TRANSPORT"; tripId: string }
+  | { purpose: "INVOICE"; invoiceId: string };
 
-/** What a prompt is for, as one key — one live prompt per bill ("RES:<id>", "ORD:<sorted ids>"). */
-const targetKeyOf = (t: PromptTarget, orderIds: string[]) => (t.purpose === "RESERVATION" ? `RES:${t.reservationId}` : `ORD:${[...orderIds].sort().join(",")}`);
+/** What a prompt is for, as one key — one live prompt per bill ("RES:<id>", "ORD:<sorted ids>", "TRIP:<id>", "INV:<id>"). */
+const targetKeyOf = (t: PromptTarget, orderIds: string[]) =>
+  t.purpose === "RESERVATION" ? `RES:${t.reservationId}` : t.purpose === "TRANSPORT" ? `TRIP:${t.tripId}` : t.purpose === "INVOICE" ? `INV:${t.invoiceId}` : `ORD:${[...orderIds].sort().join(",")}`;
 /** A customer's prompt is given up sooner than a staff one (they are looking at their phone). */
 const CUSTOMER_EXPIRES_MS = 10 * 60_000; // a phone's prompt times out within minutes; an abandoned payment never holds an order long
 const newToken = () => randomBytes(18).toString("base64url");
@@ -59,8 +64,23 @@ export async function requestMobilePayment(target: PromptTarget, rawPhone: strin
   const phone = ntzsPhone(rawPhone);
   if (!phone) throw new AppError(customer ? "Enter your mobile-money number, e.g. 0712 345 678." : "Enter the customer's mobile-money number, e.g. 0712 345 678.", "VALIDATION", { phone: "Invalid" });
 
-  let amount: number, name: string | null = null, reservationId: string | null = null, orderIds: string[] = [];
-  if (target.purpose === "RESERVATION") {
+  let amount: number, name: string | null = null, reservationId: string | null = null, orderIds: string[] = [], tripId: string | null = null, invoiceId: string | null = null;
+  if (target.purpose === "TRANSPORT") {
+    // A trip: its price, worked out here — once, and never for a trip paid, billed or closed.
+    const t = await db.transportTrip.findUnique({ where: { id: target.tripId }, select: { id: true, status: true, charge: true, chargeId: true, paidAt: true, passengerName: true, sales: { where: { isVoided: false }, select: { id: true } } } });
+    if (!t) throw new AppError("Trip not found.", "NOT_FOUND");
+    if (t.status === "CANCELLED" || t.status === "NO_SHOW") throw new AppError("This trip is closed — nothing to pay.", "CONFLICT");
+    if (t.chargeId || t.paidAt || t.sales.length) throw new AppError("This trip is already paid or on a bill.", "CONFLICT");
+    if (!t.charge || t.charge <= 0) throw new AppError("This trip has no price yet — we confirm it with you first.", "CONFLICT");
+    amount = t.charge; tripId = t.id; name = t.passengerName;
+  } else if (target.purpose === "INVOICE") {
+    // An issued invoice (a company's or a group's): what is still owed on it.
+    const inv = await db.invoice.findUnique({ where: { id: target.invoiceId }, select: { id: true, status: true, balanceAmount: true, reservationId: true, corporateCustomer: { select: { companyName: true } } } });
+    if (!inv) throw new AppError("Invoice not found.", "NOT_FOUND");
+    if (inv.reservationId) throw new AppError("This invoice follows its booking — pay the booking instead.", "CONFLICT");
+    if (!["ISSUED", "PARTIALLY_PAID", "OVERDUE"].includes(inv.status) || inv.balanceAmount <= 0) throw new AppError("Nothing is owed on this invoice.", "CONFLICT");
+    amount = inv.balanceAmount; invoiceId = inv.id; name = inv.corporateCustomer?.companyName ?? null;
+  } else if (target.purpose === "RESERVATION") {
     const r = await db.reservation.findUnique({ where: { id: target.reservationId }, select: { id: true, status: true, balanceAmount: true, guest: { select: { fullName: true } } } });
     if (!r) throw new AppError("Booking not found.", "NOT_FOUND");
     if (r.status === "CANCELLED" || r.status === "NO_SHOW") throw new AppError("This booking is closed — nothing to pay.", "CONFLICT");
@@ -94,7 +114,7 @@ export async function requestMobilePayment(target: PromptTarget, rawPhone: strin
     const live = await tx.mobilePayment.findFirst({
       where: {
         status: "PENDING", completedAt: null,
-        OR: [{ targetKey }, ...(reservationId ? [{ reservationId }] : [{ orderIds: { hasSome: orderIds } }])],
+        OR: [{ targetKey }, ...(reservationId ? [{ reservationId }] : tripId ? [{ tripId }] : invoiceId ? [{ invoiceId }] : [{ orderIds: { hasSome: orderIds } }])],
         createdAt: { gt: new Date(now.getTime() - (customer ? CUSTOMER_EXPIRES_MS : PROMPT_BUSY_MS)) },
       },
       orderBy: { createdAt: "desc" },
@@ -104,7 +124,7 @@ export async function requestMobilePayment(target: PromptTarget, rawPhone: strin
     if (live) throw new AppError("A payment prompt for this bill is already waiting on the customer's phone — ask them to approve it, or cancel it first.", "CONFLICT");
     const mp = await tx.mobilePayment.create({
       data: {
-        purpose: target.purpose, amount, phone, reservationId, orderIds, livemode: ntzsLive(), requestedById: actor?.userId ?? null,
+        purpose: target.purpose, amount, phone, reservationId, orderIds, tripId, invoiceId, livemode: ntzsLive(), requestedById: actor?.userId ?? null,
         initiator: customer ? "CUSTOMER" : "STAFF", source: opts.source ?? (customer ? "WEBSITE" : "DESK"), publicToken: newToken(), clientKey: opts.clientKey ?? null,
         targetKey, expiresAt: new Date(now.getTime() + (customer ? CUSTOMER_EXPIRES_MS : PROMPT_EXPIRES_MS)),
         handedOverById: target.purpose === "RESTAURANT" ? target.handedOverById ?? null : null,
@@ -207,6 +227,21 @@ async function recordMobilePayment(id: string, info: { received?: number | null;
       const out = await payOrdersFromMobileTx(tx as unknown as Tx, mp.orderIds, received, { methodId: method.id, reference, handedOverById: mp.handedOverById }, actor, now);
       orderPaymentIds = out.paid.map((p) => p.paymentId);
       if (out.left > 0) note = `${fmt(out.left)} came in by nTZS but the order(s) no longer matched (paid already, changed or cancelled) — check the bill and refund or apply it.`;
+    } else if (mp.purpose === "TRANSPORT" && mp.tripId) {
+      const out = await payTripFromMobileTx(tx as unknown as Tx, mp.tripId, received, { methodId: method.id, reference }, actor);
+      if (out.left > 0) note = out.saleId
+        ? `${fmt(out.left)} more than the trip's price came in by nTZS — refund it or put it on another bill.`
+        : `${fmt(out.left)} came in by nTZS but the trip no longer matched (paid, billed, its price changed or it was cancelled) — check it and refund or apply it.`;
+    } else if (mp.purpose === "INVOICE" && mp.invoiceId) {
+      await tx.$queryRaw`SELECT "id" FROM "invoices" WHERE "id" = ${mp.invoiceId} FOR UPDATE`;
+      const inv = await tx.invoice.findUniqueOrThrow({ where: { id: mp.invoiceId }, select: { number: true, status: true, balanceAmount: true } });
+      const open = ["ISSUED", "PARTIALLY_PAID", "OVERDUE"].includes(inv.status);
+      const amount = open ? Math.min(received, Math.max(0, inv.balanceAmount)) : 0;
+      if (amount > 0) {
+        const p = await recordInvoicePaymentTx(tx as unknown as Tx, { invoiceId: mp.invoiceId, amount, methodId: method.id, accountId: null, reference, notes: `Paid online from ${maskPhone(mp.phone)} · confirmed by nTZS` }, actor, { internal: true });
+        paymentId = p.id;
+      }
+      if (received > amount) note = `${fmt(received - amount)} more than invoice ${inv.number} still owed came in by nTZS — refund it or put it on another bill.`;
     }
 
     const done = await tx.mobilePayment.update({

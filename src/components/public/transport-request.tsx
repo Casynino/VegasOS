@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Car, Check, CheckCircle2, Loader2, PlaneLanding, PlaneTakeoff } from "lucide-react";
+import Link from "next/link";
+import { Car, Check, CheckCircle2, Loader2, PlaneLanding, PlaneTakeoff, Smartphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AIRPORTS, isFromPrice } from "@/lib/transport-meta";
 import { requestTransportAction, type TransportReceipt } from "@/app/(public)/transport/actions";
@@ -24,7 +25,7 @@ function ServiceIcon({ type, className }: { type: string; className?: string }) 
  * needs, send. No account and no password — a phone number is required so the
  * hotel can call to confirm. The request stays pending until the hotel confirms.
  */
-export function TransportRequest({ services, today, initial }: { services: PublicService[]; today: string; initial?: string | null }) {
+export function TransportRequest({ services, today, initial, online = false }: { services: PublicService[]; today: string; initial?: string | null; /** Pay online (nTZS) offered for transport. */ online?: boolean }) {
   const [serviceId, setServiceId] = useState(services.find((s) => s.type === initial || s.id === initial)?.id ?? services[0]?.id ?? "");
   const [optionId, setOptionId] = useState("");
   const [f, setF] = useState({
@@ -75,6 +76,11 @@ export function TransportRequest({ services, today, initial }: { services: Publi
           ))}
         </dl>
         <p className="mt-5 text-xs text-tone/55">Keep your reference. The request is confirmed only when we call or message you.</p>
+        {done.page && (
+          <Link href={done.page} className={cn(pillGold, pillPad, "mt-6 h-12 w-full justify-center sm:w-auto")}>
+            {online && !done.custom && done.price > 0 ? <><Smartphone className="size-4" />Pay TZS {n(done.price)} online</> : "View your trip"}
+          </Link>
+        )}
         <button type="button" onClick={() => { setDone(null); setF((x) => ({ ...x, date: "", time: "", flightNumber: "", notes: "" })); }} className="mt-6 text-sm font-medium text-tone underline-offset-4 hover:underline">Request another trip</button>
       </div>
     );
@@ -174,7 +180,7 @@ export function TransportRequest({ services, today, initial }: { services: Publi
         <div>
           <p className="text-sm text-tone/60">{service?.name ?? "Transport"}{option ? ` · ${option.name}` : ""}</p>
           <p className="font-display text-3xl leading-none text-tone tabular-nums">{needsOption ? <span className="text-xl text-tone/55">Choose a package</span> : `${service?.type === "GUEST_TRANSPORT" ? "From " : ""}TZS ${n(price)}`}</p>
-          <p className="mt-1 text-xs text-tone/55">{service?.type === "GUEST_TRANSPORT" ? "Starting price — we confirm the final price with you. " : ""}Pay after the trip, or add it to your room bill if you are staying with us.</p>
+          <p className="mt-1 text-xs text-tone/55">{service?.type === "GUEST_TRANSPORT" ? "Starting price — we confirm the final price with you. " : ""}{online && service?.type !== "GUEST_TRANSPORT" ? "Pay online once you send it, after the trip, or on your room bill if you are staying with us." : "Pay after the trip, or add it to your room bill if you are staying with us."}</p>
         </div>
         <button type="submit" disabled={pending || !serviceId || needsOption} className={cn(pillGold, pillPad, "shrink-0 whitespace-nowrap")}>
           {pending && <Loader2 className="size-4 animate-spin" />}Request transport

@@ -4,21 +4,23 @@ import { useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LoaderCircle, ShieldCheck, Smartphone } from "lucide-react";
-import { payBookingOnlineAction } from "@/app/(public)/booking/[reference]/actions";
+import type { ActionResult } from "@/server/errors";
 import { formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { ArrowBadge } from "../pill-link";
-import { pillGold } from "../ui";
+import { ArrowBadge } from "./pill-link";
+import { pillGold } from "./ui";
 
 const newKey = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (x) => x.toString(16).padStart(2, "0")).join("");
 const phoneOk = (p: string) => /^(?:\+?255|0)?[67]\d{8}$/.test(p.replace(/[\s-]/g, ""));
 
 /**
- * PAY ONLINE on the booking's private page: what is still owed, from the guest's phone (nTZS) — the amount is worked
- * out on the server. A payment already on its way is opened again rather than asked twice.
+ * PAY ONLINE on the website's private pages (a booking, a trip, an invoice) — on a dark panel: what is still owed, from
+ * the customer's phone (nTZS); the amount is worked out on the server (`action` is bound to that page's link). A
+ * payment already on its way is opened again rather than asked twice.
  */
-export function BookingPayOnline({ reference, token, due, phone, live, held }: {
-  reference: string; token: string; due: number; phone: string;
+export function PayOnlineCard({ due, phone, live, held, action }: {
+  due: number; phone: string;
+  action: (input: { phone: string; clientKey: string }) => Promise<ActionResult<{ pay: string }>>;
   /** The payment page of a payment on its way now. */
   live: string | null;
   /** "15:40" — the room is held until then (a booking made while paying online). */
@@ -44,7 +46,7 @@ export function BookingPayOnline({ reference, token, due, phone, live, held }: {
     setError(null);
     if (!phoneOk(number)) { setError("Enter your mobile-money number, e.g. 0712 345 678."); return; }
     key.current ||= newKey();
-    const r = await payBookingOnlineAction({ reference, token, phone: number.trim(), clientKey: key.current });
+    const r = await action({ phone: number.trim(), clientKey: key.current });
     if (!r.ok) { setError(r.error); key.current = ""; return; }
     router.push(`/pay/${r.data.pay}`);
   });

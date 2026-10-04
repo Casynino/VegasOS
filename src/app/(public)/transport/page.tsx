@@ -3,6 +3,7 @@ import Image from "next/image";
 import { MessageCircle, PhoneCall, PlaneLanding, ShieldCheck } from "lucide-react";
 import { businessToday, getSettings } from "@/server/settings";
 import { transportServices } from "@/server/services/transport";
+import { onlinePayAvailable } from "@/server/services/online-pay";
 import { cn } from "@/lib/utils";
 import { Ornament } from "@/components/public/ornament";
 import { PillLink } from "@/components/public/pill-link";
@@ -66,7 +67,7 @@ export default async function TransportPage({ searchParams }: PageProps<"/transp
             <p className="mt-4 text-tone/65">No account needed. We call or WhatsApp you to confirm — your request is confirmed only then.</p>
           </Reveal>
           {services.length > 0
-            ? <TransportRequest services={services.map((x) => ({ id: x.id, name: x.name, description: x.description, type: x.type, price: x.price, options: x.options.map((o) => ({ id: o.id, name: o.name, description: o.description, price: o.price })) }))} today={today} initial={typeof sp.service === "string" ? sp.service : null} />
+            ? <TransportRequest services={services.map((x) => ({ id: x.id, name: x.name, description: x.description, type: x.type, price: x.price, options: x.options.map((o) => ({ id: o.id, name: o.name, description: o.description, price: o.price })) }))} today={today} initial={typeof sp.service === "string" ? sp.service : null} online={await onlinePayAvailable("transport", s)} />
             : <p className="text-center text-tone/65">Transport requests are paused right now — please call us.</p>}
         </div>
       </section>

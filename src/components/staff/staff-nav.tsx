@@ -3,13 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Activity, Armchair, ArrowLeftRight, Banknote, BarChart3, Coins, BedDouble, BookOpenText, Boxes, Building2, BusFront, CalendarCheck, CalendarClock, CalendarDays, CalendarPlus, CalendarRange, Car, CirclePlus, ClipboardCheck, ClipboardList, Clock, ConciergeBell, Contact, DoorClosed, DoorOpen, FileChartColumn, FileText, Globe, HandCoins, HandPlatter, History, Hotel, Inbox, Landmark, Layers, LayoutDashboard, LayoutGrid, MessageSquareText, NotebookText, Presentation, Receipt, ReceiptText, Settings, ShieldCheck, Sofa, Tags, TrendingUp, UserCog, Users, UtensilsCrossed, Wallet, type LucideIcon,
+  Activity, Armchair, ArrowLeftRight, Banknote, BarChart3, Coins, BedDouble, BookOpenText, Boxes, Building2, BusFront, CalendarCheck, CalendarClock, CalendarDays, CalendarPlus, CalendarRange, Car, CirclePlus, ClipboardCheck, ClipboardList, Clock, ConciergeBell, Contact, DoorClosed, DoorOpen, FileChartColumn, FileText, Globe, HandCoins, HandPlatter, History, Hotel, Inbox, Landmark, Layers, LayoutDashboard, LayoutGrid, MessageSquareText, NotebookText, Presentation, Receipt, ReceiptText, Settings, ShieldCheck, Smartphone, Sofa, Tags, TrendingUp, UserCog, Users, UtensilsCrossed, Wallet, type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { NavSection } from "./nav-config";
 
 const ICONS: Record<string, LucideIcon> = {
-  Activity, Armchair, ArrowLeftRight, Banknote, BarChart3, Coins, BedDouble, BookOpenText, Boxes, Building2, BusFront, CalendarCheck, CalendarClock, CalendarDays, CalendarPlus, CalendarRange, Car, CirclePlus, ClipboardCheck, ClipboardList, Clock, ConciergeBell, Contact, DoorClosed, DoorOpen, FileChartColumn, FileText, Globe, HandCoins, HandPlatter, History, Hotel, Inbox, Landmark, Layers, LayoutDashboard, MessageSquareText, NotebookText, Presentation, Receipt, ReceiptText, Settings, ShieldCheck, Sofa, Tags, TrendingUp, UserCog, Users, UtensilsCrossed, Wallet,
+  Activity, Armchair, ArrowLeftRight, Banknote, BarChart3, Coins, BedDouble, BookOpenText, Boxes, Building2, BusFront, CalendarCheck, CalendarClock, CalendarDays, CalendarPlus, CalendarRange, Car, CirclePlus, ClipboardCheck, ClipboardList, Clock, ConciergeBell, Contact, DoorClosed, DoorOpen, FileChartColumn, FileText, Globe, HandCoins, HandPlatter, History, Hotel, Inbox, Landmark, Layers, LayoutDashboard, MessageSquareText, NotebookText, Presentation, Receipt, ReceiptText, Settings, ShieldCheck, Smartphone, Sofa, Tags, TrendingUp, UserCog, Users, UtensilsCrossed, Wallet,
 };
 
 /**

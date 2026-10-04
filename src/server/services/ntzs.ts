@@ -116,3 +116,13 @@ export function verifyNtzsWebhook(rawBody: string, signature: string | null, tim
   const at = Number.isFinite(n) ? (n > 1e12 ? n : n * 1000) : Date.parse(timestamp);
   return Number.isFinite(at) && Math.abs(now - at) <= 10 * 60_000;
 }
+
+/**
+ * "Test connection" (Online payments page): nTZS answers and accepts the hotel's key. Asks for a deposit that does not
+ * exist — no money moves; "not found" means the key was accepted.
+ */
+export async function testNtzsConnection(): Promise<{ ok: true; live: boolean } | { ok: false; error: string }> {
+  const res = await call<NtzsDeposit>("GET", "/deposits/connection-check");
+  if (res.ok || res.status === 404) return { ok: true, live: ntzsLive() };
+  return { ok: false, error: res.error };
+}

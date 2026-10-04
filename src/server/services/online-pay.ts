@@ -6,8 +6,10 @@ import { getSettings } from "../settings";
 import { rateLimit } from "../rate-limit";
 import { ntzsEnabled, ntzsPhone } from "./ntzs";
 import { cancelMobilePayment, checkMobilePayment, maskPhone, requestMobilePayment, type PromptTarget } from "./mobile-payments";
+import { guestStayBill } from "./stay-bill";
 import type { HotelSettings, MobilePayment } from "@/generated/prisma/client";
 import { formatTime } from "@/lib/format";
+import { TRIP_TYPE_LABEL } from "@/lib/transport-meta";
 
 /**
  * PAY ONLINE — the hotel's one customer-facing online payment (owner, 2026-10-04): wherever a customer pays online
@@ -174,6 +176,93 @@ export async function payBookingOnline(reference: string, token: string, input: 
   });
 }
 
+type StayLink = { guestToken: string } | { roomQrToken: string };
+const liveForReservation = async (reservationId: string) => (await db.mobilePayment.findFirst({
+  where: { reservationId, initiator: "CUSTOMER", status: "PENDING", completedAt: null, expiresAt: { gt: new Date() } },
+  orderBy: { createdAt: "desc" }, select: { publicToken: true },
+}))?.publicToken ?? null;
+
+/** A staying guest's bill (their stay link, or the room's QR card): Pay online offered for what they owe. */
+export async function stayBillPayOnline(where: StayLink) {
+  const bill = await guestStayBill(where);
+  if (!bill || bill.totals.balance <= 0) return { offered: false, live: null, due: 0 };
+  return { offered: await onlinePayAvailable("stayBill"), live: await liveForReservation(bill.id), due: bill.totals.balance };
+}
+
+/** "Pay online" for a staying guest's bill: what is owed now, worked out here (a company's bill is never shown or paid here). */
+export async function payStayBillOnline(where: StayLink, input: { phone: string; clientKey: string | null; ip: string | null }) {
+  const bill = await guestStayBill(where);
+  if (!bill) throw new AppError("This bill was not found.", "NOT_FOUND");
+  if (bill.totals.balance <= 0) throw new AppError("Nothing is owed — thank you.", "CONFLICT");
+  return startCustomerPayment({
+    target: { purpose: "RESERVATION", reservationId: bill.id, amount: bill.totals.balance }, phone: input.phone, clientKey: input.clientKey,
+    source: "guestToken" in where ? "STAY_LINK" : "ROOM_QR", service: "stayBill", ip: input.ip,
+  });
+}
+
+// ───────────── Transport and invoices ─────────────
+
+/** A website trip by its private link: what online payment needs to know about it. */
+const tripByLink = (payToken: string) => /^[A-Za-z0-9_-]{16,40}$/.test(payToken)
+  ? db.transportTrip.findUnique({ where: { payToken }, include: { sales: { where: { isVoided: false }, select: { id: true } } } }) : Promise.resolve(null);
+const tripDue = (t: { status: string; charge: number | null; chargeId: string | null; paidAt: Date | null; sales: { id: string }[] }) =>
+  t.status === "CANCELLED" || t.status === "NO_SHOW" || t.chargeId || t.paidAt || t.sales.length ? 0 : t.charge ?? 0;
+
+/** A website trip's own page: the trip, and Pay online offered for its price. */
+export async function tripForCustomer(payToken: string) {
+  const t = await tripByLink(payToken);
+  if (!t) return null;
+  const due = tripDue(t);
+  const live = due > 0 ? (await db.mobilePayment.findFirst({
+    where: { tripId: t.id, initiator: "CUSTOMER", status: "PENDING", completedAt: null, expiresAt: { gt: new Date() } }, orderBy: { createdAt: "desc" }, select: { publicToken: true },
+  }))?.publicToken ?? null : null;
+  return {
+    reference: t.reference, type: t.type, status: t.status, pickupAt: t.pickupAt, pickupLocation: t.pickupLocation, destination: t.destination, flightNumber: t.flightNumber,
+    passengers: t.passengers, name: t.passengerName, phone: t.passengerPhone, price: t.charge ?? 0, option: t.priceOption, paid: !!(t.paidAt || t.sales.length), onBill: !!t.chargeId,
+    due, live, online: due > 0 && t.type !== "GUEST_TRANSPORT" ? await onlinePayAvailable("transport") : false,
+  };
+}
+
+/** "Pay online" for a website trip (its own page, or right after asking for it): its price, worked out here. */
+export async function payTripOnline(payToken: string, input: { phone: string; clientKey: string | null; ip: string | null }) {
+  const t = await tripByLink(payToken);
+  if (!t) throw new AppError("Trip not found.", "NOT_FOUND");
+  // A custom trip's price is a starting price — confirmed with the guest first, then paid.
+  if (t.type === "GUEST_TRANSPORT" && !t.confirmedAt) throw new AppError("We confirm this trip's price with you first — then you can pay.", "CONFLICT");
+  return startCustomerPayment({ target: { purpose: "TRANSPORT", tripId: t.id }, phone: input.phone, clientKey: input.clientKey, source: "TRANSPORT", service: "transport", ip: input.ip });
+}
+
+/**
+ * What an invoice's link can pay online: an issued company / group invoice is paid itself; a booking's invoice follows
+ * its booking, so the booking is paid (never more than either still owes).
+ */
+async function invoiceTarget(verifyToken: string): Promise<{ target: PromptTarget; due: number; liveWhere: { invoiceId: string } | { reservationId: string } } | null> {
+  if (!/^[A-Za-z0-9_-]{16,64}$/.test(verifyToken)) return null;
+  const inv = await db.invoice.findUnique({ where: { verifyToken }, select: { id: true, status: true, balanceAmount: true, reservationId: true } });
+  if (!inv || !["ISSUED", "PARTIALLY_PAID", "OVERDUE"].includes(inv.status) || inv.balanceAmount <= 0) return null;
+  if (!inv.reservationId) return { target: { purpose: "INVOICE", invoiceId: inv.id }, due: inv.balanceAmount, liveWhere: { invoiceId: inv.id } };
+  const r = await db.reservation.findUnique({ where: { id: inv.reservationId }, select: { status: true, balanceAmount: true } });
+  const due = r && r.status !== "CANCELLED" && r.status !== "NO_SHOW" ? Math.min(inv.balanceAmount, r.balanceAmount) : 0;
+  return due > 0 ? { target: { purpose: "RESERVATION", reservationId: inv.reservationId, amount: due }, due, liveWhere: { reservationId: inv.reservationId } } : null;
+}
+
+/** An invoice by its "scan to verify" link: Pay online offered for what is still owed. */
+export async function invoicePayOnline(verifyToken: string) {
+  const t = await invoiceTarget(verifyToken);
+  if (!t) return { offered: false, live: null, due: 0 };
+  const live = await db.mobilePayment.findFirst({
+    where: { ...t.liveWhere, initiator: "CUSTOMER", status: "PENDING", completedAt: null, expiresAt: { gt: new Date() } }, orderBy: { createdAt: "desc" }, select: { publicToken: true },
+  });
+  return { offered: await onlinePayAvailable("invoices"), live: live?.publicToken ?? null, due: t.due };
+}
+
+/** "Pay online" for an invoice from its link: what is still owed, worked out here. */
+export async function payInvoiceOnline(verifyToken: string, input: { phone: string; clientKey: string | null; ip: string | null }) {
+  const t = await invoiceTarget(verifyToken);
+  if (!t) throw new AppError("Nothing is owed on this invoice.", "CONFLICT");
+  return startCustomerPayment({ target: t.target, phone: input.phone, clientKey: input.clientKey, source: "INVOICE_LINK", service: "invoices", ip: input.ip });
+}
+
 export type CustomerPayStatus = "PENDING" | "PAID" | "FAILED" | "EXPIRED" | "CANCELLED";
 export type CustomerPayView = {
   token: string; status: CustomerPayStatus; amount: number; phone: string; what: string; reference: string; at: string; paidAt: string | null;
@@ -210,6 +299,22 @@ export async function customerPaymentByToken(token: string, opts: { check?: bool
 
 /** What was paid for, and where the customer goes back to. */
 async function describe(mp: MobilePayment) {
+  if (mp.purpose === "TRANSPORT" && mp.tripId) {
+    const t = await db.transportTrip.findUnique({ where: { id: mp.tripId }, select: { reference: true, type: true, payToken: true } });
+    return {
+      what: t ? `${TRIP_TYPE_LABEL[t.type]} ${t.reference}` : "Transport",
+      back: t?.payToken ? { href: `/transport/trip/${t.payToken}`, label: "View your trip" } : { href: "/transport", label: "Back to transport" },
+      receipt: null, unpaidNote: null,
+    };
+  }
+  if (mp.purpose === "INVOICE" && mp.invoiceId) {
+    const inv = await db.invoice.findUnique({ where: { id: mp.invoiceId }, select: { number: true, verifyToken: true } });
+    return {
+      what: inv ? `Invoice ${inv.number}` : "Invoice",
+      back: inv?.verifyToken ? { href: `/verify/${inv.verifyToken}`, label: "View the invoice" } : null,
+      receipt: null, unpaidNote: null,
+    };
+  }
   if (mp.purpose === "RESTAURANT") {
     const orders = await db.restaurantOrder.findMany({ where: { id: { in: mp.orderIds } }, select: { number: true, trackToken: true, type: true, status: true, paymentStatus: true, payOnlineAt: true }, orderBy: { createdAt: "asc" } });
     const open = orders.filter((o) => o.status !== "CANCELLED" && o.paymentStatus !== "PAID");
@@ -236,12 +341,26 @@ async function describe(mp: MobilePayment) {
         unpaidNote: r.status === "CANCELLED" ? "The booking was released — please book again." : held ? `We hold your booking until ${held} — try again to confirm it.` : null,
         what: r.kind === "MEETING" ? `Meeting room booking ${r.reference}` : booking ? `Room booking ${r.reference}` : `Your bill · ${r.reference}`,
         back: booking ? { href: `/booking/${r.reference}?token=${r.manageToken}`, label: "View your booking" }
+          : mp.source === "ROOM_QR" ? await roomPageOf(mp.reservationId)
+          : mp.source === "INVOICE_LINK" ? await invoicePageOf(mp.reservationId)
           : r.guestToken ? { href: `/stay/${r.guestToken}`, label: "Back to your stay" } : null,
         receipt: null,
       };
     }
   }
   return { what: "Payment", back: null, receipt: null, unpaidNote: null };
+}
+
+/** Paid from a booking's invoice link: back to that invoice. */
+async function invoicePageOf(reservationId: string) {
+  const inv = await db.invoice.findFirst({ where: { reservationId, verifyToken: { not: null } }, orderBy: { createdAt: "desc" }, select: { verifyToken: true } });
+  return inv?.verifyToken ? { href: `/verify/${inv.verifyToken}`, label: "View the invoice" } : null;
+}
+
+/** Paid from the room's QR card: back to that room's page (never the guest's private stay link). */
+async function roomPageOf(reservationId: string) {
+  const qr = await db.roomQrCode.findFirst({ where: { active: true, room: { reservationRooms: { some: { reservationId, status: "CHECKED_IN" } } } }, select: { token: true } });
+  return qr ? { href: `/r/${qr.token}?view=guest`, label: "Back to your room" } : null;
 }
 
 /** The customer stops waiting (they will pay another way). Money that still comes in is recorded all the same. */
@@ -264,12 +383,18 @@ export async function retryCustomerPayment(token: string, input: { phone?: strin
   if (old.purpose === "RESTAURANT") {
     target = { purpose: "RESTAURANT", orderIds: old.orderIds };
     service = orderService(old.source);
+  } else if (old.purpose === "TRANSPORT" && old.tripId) {
+    target = { purpose: "TRANSPORT", tripId: old.tripId };
+    service = "transport";
+  } else if (old.purpose === "INVOICE" && old.invoiceId) {
+    target = { purpose: "INVOICE", invoiceId: old.invoiceId };
+    service = "invoices";
   } else {
     const r = old.reservationId ? await db.reservation.findUnique({ where: { id: old.reservationId }, select: { balanceAmount: true, kind: true, status: true } }) : null;
     if (r?.status === "CANCELLED" || r?.status === "NO_SHOW") throw new AppError("This booking was released — please book again.", "CONFLICT");
     if (!r || r.balanceAmount <= 0) throw new AppError("Nothing is owed any more.", "CONFLICT");
     target = { purpose: "RESERVATION", reservationId: old.reservationId!, amount: Math.min(old.amount, r.balanceAmount) };
-    service = old.source === "BOOKING_PAGE" || old.source === "WEBSITE" ? (r.kind === "MEETING" ? "meeting" : "booking") : "stayBill";
+    service = old.source === "BOOKING_PAGE" || old.source === "WEBSITE" ? (r.kind === "MEETING" ? "meeting" : "booking") : old.source === "INVOICE_LINK" ? "invoices" : "stayBill";
   }
   return startCustomerPayment({ target, phone: input.phone || old.phone, clientKey: input.clientKey, source: old.source ?? "WEBSITE", service, ip: input.ip });
 }
