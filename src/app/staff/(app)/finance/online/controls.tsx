@@ -3,9 +3,9 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Check, Loader2, PlugZap } from "lucide-react";
+import { Check, Loader2, PlugZap, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { saveOnlinePaySettingsAction, testNtzsConnectionAction } from "./actions";
+import { checkAllOnlinePaymentsAction, checkOnlinePaymentAction, saveOnlinePaySettingsAction, testNtzsConnectionAction } from "./actions";
 
 /** "Test connection": asks nTZS with the hotel's key — no money moves. */
 export function TestConnection() {
@@ -66,5 +66,37 @@ function Toggle({ label, hint, on, onChange, disabled, strong }: { label: string
         <span className={cn("absolute left-0.5 top-0.5 size-5 rounded-full bg-white shadow transition-transform", on ? "translate-x-5" : "translate-x-0")} />
       </button>
     </label>
+  );
+}
+
+/** "Check with nTZS" on one payment not recorded: money nTZS has is recorded at once. */
+export function CheckPayment({ id }: { id: string }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  return (
+    <button type="button" disabled={pending} onClick={() => start(async () => {
+      const r = await checkOnlinePaymentAction({ id });
+      if (!r.ok) { toast.error(r.error); return; }
+      if (r.data.status === "COMPLETED") toast.success("nTZS has the money — the payment is recorded."); else toast.info(`nTZS says: ${r.data.text}.`);
+      router.refresh();
+    })} className="mt-1 inline-flex h-7 items-center gap-1 rounded-lg border border-border px-2 text-[11px] font-medium hover:bg-muted disabled:opacity-60">
+      {pending ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}Check with nTZS
+    </button>
+  );
+}
+
+/** "Check all with nTZS": every payment of the last two days not recorded yet. */
+export function CheckAllPayments() {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  return (
+    <button type="button" disabled={pending} onClick={() => start(async () => {
+      const r = await checkAllOnlinePaymentsAction();
+      if (!r.ok) { toast.error(r.error); return; }
+      toast.success(r.data.checked ? `Checked ${r.data.checked} payment${r.data.checked === 1 ? "" : "s"} with nTZS.` : "Nothing waiting to check.");
+      router.refresh();
+    })} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border px-3 text-sm font-medium hover:bg-muted disabled:opacity-60">
+      {pending ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}Check unrecorded with nTZS
+    </button>
   );
 }

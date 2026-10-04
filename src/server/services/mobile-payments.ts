@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { db, type Tx } from "../db";
 import { audit } from "../audit";
 import { AppError, isUniqueViolation } from "../errors";
+import { rateLimit } from "../rate-limit";
 import { recordPaymentTx } from "./payments";
 import { ordersDueForPrompt, payOrdersFromMobileTx } from "./restaurant";
 import { payTripFromMobileTx } from "./transport";
@@ -63,6 +64,8 @@ export async function requestMobilePayment(target: PromptTarget, rawPhone: strin
   }
   const phone = ntzsPhone(rawPhone);
   if (!phone) throw new AppError(customer ? "Enter your mobile-money number, e.g. 0712 345 678." : "Enter the customer's mobile-money number, e.g. 0712 345 678.", "VALIDATION", { phone: "Invalid" });
+  // Before asking again: an earlier attempt for this bill that was approved late is recorded first — never paid twice.
+  await settleLateAttempts(target, now);
 
   let amount: number, name: string | null = null, reservationId: string | null = null, orderIds: string[] = [], tripId: string | null = null, invoiceId: string | null = null;
   if (target.purpose === "TRANSPORT") {
@@ -150,6 +153,22 @@ export async function requestMobilePayment(target: PromptTarget, rawPhone: strin
     after: { amount, phone: maskPhone(phone), purpose: target.purpose, reservationId, orders: orderIds.length, depositId: res.data.id, live: sent.livemode, by: customer ? "customer" : "staff", source: sent.source },
   });
   return { ...sent, instructions: res.data.instructions ?? null, reused: false };
+}
+
+/**
+ * Earlier attempts for the same bill (the last few hours) that ended without being recorded — timed out, stopped,
+ * marked failed — are asked about once more: money nTZS did collect is recorded before anything new is asked.
+ */
+async function settleLateAttempts(target: PromptTarget, now: Date) {
+  const bill = target.purpose === "RESERVATION" ? { reservationId: target.reservationId }
+    : target.purpose === "TRANSPORT" ? { tripId: target.tripId }
+    : target.purpose === "INVOICE" ? { invoiceId: target.invoiceId }
+    : { orderIds: { hasSome: target.orderIds } };
+  const late = await db.mobilePayment.findMany({
+    where: { ...bill, status: { in: ["EXPIRED", "FAILED", "CANCELLED"] }, completedAt: null, depositId: { not: null }, createdAt: { gt: new Date(now.getTime() - 6 * 3_600_000) } },
+    orderBy: { createdAt: "desc" }, take: 3, select: { id: true },
+  });
+  for (const m of late) await checkMobilePayment(m.id, "check", now).catch(() => null);
 }
 
 /** What a customer sees when nTZS refuses: plain words, never the provider's technical message. */
@@ -261,9 +280,14 @@ export async function checkMobilePayment(id: string, source: "check" | "sweep" =
   const mp = await db.mobilePayment.findUnique({ where: { id } });
   if (!mp) throw new AppError("Payment prompt not found.", "NOT_FOUND");
   if (mp.status === "COMPLETED" || !mp.depositId) return mp;
+  await db.mobilePayment.update({ where: { id }, data: { lastCheckedAt: now } });
   const res = await getNtzsDeposit(mp.depositId);
   if (!res.ok) return mp; // nTZS not answering: still waiting
+  // Money that came in is recorded whatever our side says now (waiting, timed out, stopped, marked failed).
   if (depositCompleted(res.data.status)) return (await settleMobilePayment(id, { received: res.data.amountTzs ?? null, pspReference: res.data.pspReference ?? null, source }, now)).mp;
+  if (!depositFailed(res.data.status) && res.data.status !== "submitted" && res.data.status !== "pending" && res.data.status !== "processing") {
+    console.info(`[ntzs] deposit ${mp.depositId} reads "${res.data.status || "(no status)"}" — still waiting`);
+  }
   if (mp.status === "PENDING" && depositFailed(res.data.status)) {
     await db.mobilePayment.updateMany({ where: { id, status: "PENDING", completedAt: null }, data: { status: "FAILED", lastError: `The customer did not pay (${res.data.status}).` } });
     return db.mobilePayment.findUniqueOrThrow({ where: { id } });
@@ -288,9 +312,11 @@ export async function cancelMobilePayment(id: string, actor: Actor) {
  */
 export async function sweepMobilePayments(now = new Date(), deadline = Date.now() + 10_000) {
   if (!ntzsEnabled()) return { checked: 0, expired: 0 };
+  // Everything not recorded from the last two days — waiting, and also stopped / timed out / marked failed (a customer
+  // can approve late): nTZS is asked again, the longest-unchecked first.
   const waiting = await db.mobilePayment.findMany({
-    where: { status: { in: ["PENDING", "CANCELLED"] }, depositId: { not: null }, createdAt: { gt: new Date(now.getTime() - 48 * 3_600_000), lt: new Date(now.getTime() - 60_000) } },
-    orderBy: { createdAt: "asc" }, take: 30, select: { id: true, status: true, createdAt: true },
+    where: { status: { in: ["PENDING", "CANCELLED", "EXPIRED", "FAILED"] }, completedAt: null, depositId: { not: null }, createdAt: { gt: new Date(now.getTime() - 48 * 3_600_000), lt: new Date(now.getTime() - 60_000) } },
+    orderBy: [{ lastCheckedAt: { sort: "asc", nulls: "first" } }, { createdAt: "asc" }], take: 30, select: { id: true, status: true, createdAt: true },
   });
   let checked = 0, expired = 0;
   for (const w of waiting) {
@@ -303,6 +329,24 @@ export async function sweepMobilePayments(now = new Date(), deadline = Date.now(
     }
   }
   return { checked, expired };
+}
+
+/**
+ * While staff use the system: payments not recorded yet are checked with nTZS — at most every two minutes, and only
+ * when one has not been asked about for a while (runs after the page is sent, never slowing it).
+ */
+export async function sweepMobilePaymentsIfDue(now = new Date()) {
+  if (!ntzsEnabled()) return;
+  const due = await db.mobilePayment.count({
+    where: {
+      status: { in: ["PENDING", "CANCELLED", "EXPIRED", "FAILED"] }, completedAt: null, depositId: { not: null },
+      createdAt: { gt: new Date(now.getTime() - 48 * 3_600_000), lt: new Date(now.getTime() - 60_000) },
+      OR: [{ lastCheckedAt: null }, { lastCheckedAt: { lt: new Date(now.getTime() - 2 * 60_000) } }],
+    },
+  });
+  if (!due) return;
+  try { await rateLimit("ntzs-sweep", 1, 120); } catch { return; }
+  await sweepMobilePayments(now, Date.now() + 8_000);
 }
 
 /** The webhook: find the prompt nTZS is talking about (by its deposit id, or our reference). */

@@ -14,7 +14,9 @@ import { createTransportRequest } from "@/server/services/transport";
 import { createManualInvoice, issueInvoice } from "@/server/services/invoices";
 import { customerOnlinePayments, onlinePaymentTotals, onlinePayments, reconcileOnlinePayments } from "@/server/services/online-payments-admin";
 import { paymentsByMethod } from "@/server/services/finance";
-import { ONLINE_RECORDER_ID } from "@/server/services/mobile-payments";
+import { ONLINE_RECORDER_ID, sweepMobilePayments } from "@/server/services/mobile-payments";
+import { createHmac } from "node:crypto";
+import { POST as ntzsWebhook } from "@/app/api/webhooks/ntzs/route";
 import {
   assertCanPayOnline, payTableBillOnline, tableBillPayOnline, bookAndPayOnline, invoicePayOnline, payInvoiceOnline, payStayBillOnline, payTripOnline, stayBillPayOnline, tripForCustomer, bookingPayOnline, cancelCustomerPayment, ONLINE_BOOKING_HOLD_MINUTES, payBookingOnline, customerPaymentByToken, livePaymentForOrder, onlinePayAvailable, payForNewOrder, payOrderOnline, retryCustomerPayment,
 } from "@/server/services/online-pay";
@@ -37,6 +39,8 @@ const today = () => businessDateOf(new Date());
 
 let deposits: Record<string, { status: string; amountTzs: number }> = {};
 let sent: Record<string, unknown>[] = [];
+/** nTZS's GET answer wrapped ({ data: … }) instead of at the top level. */
+let wrapGet = false;
 
 beforeEach(async () => {
   await resetBusinessData();
@@ -46,7 +50,7 @@ beforeEach(async () => {
   });
   process.env.NTZS_API_KEY = "ntzs_test_unit";
   process.env.NTZS_WEBHOOK_SECRET = "whsec_unit";
-  deposits = {}; sent = [];
+  deposits = {}; sent = []; wrapGet = false;
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const url = String(input);
     if (url.endsWith("/deposits") && init?.method === "POST") {
@@ -57,7 +61,10 @@ beforeEach(async () => {
       return new Response(JSON.stringify({ id, status: "submitted", amountTzs: body.amountTzs, paymentMethod: "mobile_money" }), { status: 201 });
     }
     const m = url.match(/\/deposits\/([^/?]+)$/);
-    if (m && deposits[m[1]]) return new Response(JSON.stringify({ id: m[1], ...deposits[m[1]], pspReference: "MP777ABC" }), { status: 200 });
+    if (m && deposits[m[1]]) {
+      const d = { id: m[1], ...deposits[m[1]], pspReference: "MP777ABC" };
+      return new Response(JSON.stringify(wrapGet ? { data: d } : d), { status: 200 });
+    }
     return new Response(JSON.stringify({ error: { code: "not_found", message: "Not found" } }), { status: 404 });
   });
 });
@@ -432,6 +439,86 @@ describe("admin: online payments, reconciliation, reports", () => {
     const guestId = (await db.restaurantOrder.findUniqueOrThrow({ where: { id: a.order.id } })).guestId!;
     const history = await customerOnlinePayments(guestId);
     expect(history[0]).toMatchObject({ status: "COMPLETED", amount: a.order.total, online: true, reference: "MP777ABC" });
+  });
+});
+
+/** A webhook from nTZS, signed with the hotel's secret. */
+function webhook(body: unknown) {
+  const raw = JSON.stringify(body), ts = String(Math.floor(Date.now() / 1000));
+  const sig = createHmac("sha256", "whsec_unit").update(`${ts}.${raw}`).digest("hex");
+  return ntzsWebhook(new Request("http://hotel.test/api/webhooks/ntzs", { method: "POST", body: raw, headers: { "x-webhook-signature": sig, "x-webhook-timestamp": ts } }));
+}
+const paidNow = async (orderId: string) => (await db.restaurantOrder.findUniqueOrThrow({ where: { id: orderId } })).paymentStatus;
+
+describe("nTZS confirmations (live incident, 2026-10-04: paid, minted — but not recorded)", () => {
+  it("a deposit nTZS reads as \"minted\" is paid — also when its answer is wrapped", async () => {
+    const a = await orderPayingOnline();
+    deposits[await depositOf(a.token)].status = "minted";
+    wrapGet = true;
+    expect((await customerPaymentByToken(a.token, { check: true }))!.status).toBe("PAID");
+    expect(await paidNow(a.order.id)).toBe("PAID");
+  });
+
+  it("the webhook is understood in nTZS's shapes: event or type, depositId or id, a status in the data — or it asks nTZS", async () => {
+    const a = await orderPayingOnline();
+    const depA = await depositOf(a.token);
+    const ok = await webhook({ event: "deposit.minted", data: { id: depA, amountTzs: a.order.total, status: "minted" } });
+    expect(ok.status).toBe(200);
+    expect(await paidNow(a.order.id)).toBe("PAID");
+    // The same call again changes nothing.
+    await webhook({ event: "deposit.minted", data: { id: depA, amountTzs: a.order.total } });
+    expect(await db.restaurantOrderPayment.count({ where: { orderId: a.order.id } })).toBe(1);
+
+    // An event we do not know about one of our payments: nTZS is asked — and it says minted.
+    const b = await orderPayingOnline();
+    const depB = await depositOf(b.token);
+    deposits[depB].status = "minted";
+    expect((await webhook({ type: "deposit.updated", data: { depositId: depB } })).status).toBe(200);
+    expect(await paidNow(b.order.id)).toBe("PAID");
+
+    // Found by our own reference when nTZS sends no deposit id.
+    const c = await orderPayingOnline();
+    const mpC = await db.mobilePayment.findUniqueOrThrow({ where: { publicToken: c.token } });
+    await webhook({ type: "deposit.completed", data: { externalReference: mpC.id, amountTzs: c.order.total } });
+    expect(await paidNow(c.order.id)).toBe("PAID");
+
+    // Not signed: refused, nothing recorded.
+    const d = await orderPayingOnline();
+    const bad = await ntzsWebhook(new Request("http://hotel.test/api/webhooks/ntzs", { method: "POST", body: JSON.stringify({ type: "deposit.completed", data: { depositId: await depositOf(d.token) } }) }));
+    expect(bad.status).toBe(401);
+    expect(await paidNow(d.order.id)).toBe("UNPAID");
+  });
+
+  it("approved late (after the page gave up): opening it again, the scheduled run and Try again all find the money — never asked twice", async () => {
+    // Timed out on our side, then nTZS has it: the page shows paid.
+    const a = await orderPayingOnline();
+    await db.mobilePayment.updateMany({ where: { publicToken: a.token }, data: { status: "EXPIRED", lastCheckedAt: null } });
+    deposits[await depositOf(a.token)].status = "minted";
+    expect((await customerPaymentByToken(a.token, { check: true }))!.status).toBe("PAID");
+
+    // The scheduled run picks up a timed-out one too.
+    const b = await orderPayingOnline();
+    await db.mobilePayment.updateMany({ where: { publicToken: b.token }, data: { status: "EXPIRED", createdAt: new Date(Date.now() - 5 * 60_000) } });
+    deposits[await depositOf(b.token)].status = "completed";
+    await sweepMobilePayments();
+    expect(await paidNow(b.order.id)).toBe("PAID");
+
+    // "Try again" on an attempt that went through: the same page, paid — no second prompt to the phone.
+    const c = await orderPayingOnline();
+    await db.mobilePayment.updateMany({ where: { publicToken: c.token }, data: { status: "FAILED" } });
+    deposits[await depositOf(c.token)].status = "minted";
+    const before = sent.length;
+    const again = await retryCustomerPayment(c.token, { clientKey: key(), ip: ip() });
+    expect(again).toEqual({ token: c.token, reused: true });
+    expect(sent.length).toBe(before);
+    expect(await paidNow(c.order.id)).toBe("PAID");
+
+    // A new payment for a bill whose earlier attempt went through late: that one is recorded first, nothing new asked.
+    const d = await orderPayingOnline();
+    await db.mobilePayment.updateMany({ where: { publicToken: d.token }, data: { status: "CANCELLED" } });
+    deposits[await depositOf(d.token)].status = "minted";
+    await expect(payOrderOnline(d.order.trackToken!, { phone: d.phone, clientKey: key(), ip: ip() })).rejects.toThrow(/already paid/);
+    expect(await paidNow(d.order.id)).toBe("PAID");
   });
 });
 

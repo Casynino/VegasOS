@@ -8,6 +8,7 @@ import { db } from "@/server/db";
 import { AppError, runAction, type ActionResult } from "@/server/errors";
 import { parseInput } from "@/server/validation";
 import { testNtzsConnection } from "@/server/services/ntzs";
+import { checkMobilePayment, sweepMobilePayments } from "@/server/services/mobile-payments";
 import { ONLINE_SERVICES } from "@/server/services/online-pay";
 import { onlinePayFlag } from "@/server/services/online-payments-admin";
 
@@ -42,5 +43,28 @@ export async function testNtzsConnectionAction(): Promise<ActionResult<{ live: b
     const r = await testNtzsConnection();
     if (!r.ok) throw new AppError(r.error, "CONFLICT");
     return { live: r.live };
+  });
+}
+
+const STATUS_WORD: Record<string, string> = { COMPLETED: "Paid — recorded", PENDING: "Still waiting", FAILED: "Not paid", EXPIRED: "Not paid (timed out)", CANCELLED: "Not paid (stopped)" };
+
+/** "Check with nTZS": ask nTZS about one payment now — money it has is recorded (once), whatever our side said. */
+export async function checkOnlinePaymentAction(input: { id: string }): Promise<ActionResult<{ status: string; text: string }>> {
+  return runAction(async () => {
+    await authorize("finance.view", "payments.record", "revenue.record");
+    const id = z.string().min(10).max(40).parse(input.id);
+    const mp = await checkMobilePayment(id, "check");
+    revalidatePath("/staff", "layout");
+    return { status: mp.status, text: STATUS_WORD[mp.status] ?? mp.status };
+  });
+}
+
+/** "Check all with nTZS": every payment of the last two days not recorded yet. */
+export async function checkAllOnlinePaymentsAction(): Promise<ActionResult<{ checked: number }>> {
+  return runAction(async () => {
+    await authorize("finance.view", "payments.record", "revenue.record");
+    const r = await sweepMobilePayments(new Date(), Date.now() + 20_000);
+    revalidatePath("/staff", "layout");
+    return { checked: r.checked };
   });
 }

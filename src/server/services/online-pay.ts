@@ -306,7 +306,10 @@ export async function customerPaymentByToken(token: string, opts: { check?: bool
   if (!/^[A-Za-z0-9_-]{16,40}$/.test(token)) return null;
   let mp = await db.mobilePayment.findUnique({ where: { publicToken: token } });
   if (!mp) return null;
-  if (opts.check && mp.status === "PENDING" && (!mp.lastCheckedAt || Date.now() - mp.lastCheckedAt.getTime() > CHECK_EVERY_MS)) {
+  // Asked again while it waits — and also when it timed out, was stopped or marked failed but nTZS may still have the
+  // money (a late approval): opening the page shows "paid" once nTZS has it. Never more often than every few seconds.
+  const unrecorded = !mp.completedAt && (mp.status === "PENDING" || (!!mp.depositId && Date.now() - mp.createdAt.getTime() < 48 * 3_600_000));
+  if (opts.check && unrecorded && (!mp.lastCheckedAt || Date.now() - mp.lastCheckedAt.getTime() > CHECK_EVERY_MS)) {
     await db.mobilePayment.update({ where: { id: mp.id }, data: { lastCheckedAt: new Date() } });
     mp = await checkMobilePayment(mp.id).catch(() => mp!);
     if (mp.status === "PENDING" && mp.expiresAt && mp.expiresAt < new Date()) {
@@ -404,9 +407,11 @@ export async function cancelCustomerPayment(token: string) {
  * out again (never more than is owed now). Returns the new payment page's token.
  */
 export async function retryCustomerPayment(token: string, input: { phone?: string | null; clientKey: string | null; ip: string | null }) {
-  const old = await db.mobilePayment.findUnique({ where: { publicToken: token } });
-  if (!old || old.initiator !== "CUSTOMER") throw new AppError("Payment not found.", "NOT_FOUND");
-  if (old.status === "COMPLETED") throw new AppError("This payment is already done.", "CONFLICT");
+  const found = await db.mobilePayment.findUnique({ where: { publicToken: token } });
+  if (!found || found.initiator !== "CUSTOMER") throw new AppError("Payment not found.", "NOT_FOUND");
+  // The last attempt may have gone through after all (approved late): asked first — then it is "paid", never asked twice.
+  const old = found.status !== "COMPLETED" && found.depositId ? await checkMobilePayment(found.id).catch(() => found) : found;
+  if (old.status === "COMPLETED") return { token, reused: true };
   if (old.status === "PENDING") await cancelMobilePayment(old.id, { label: "Customer · online" });
   let target: PromptTarget, service: OnlineService;
   if (old.purpose === "RESTAURANT") {

@@ -79,9 +79,9 @@ function friendly(code: string | undefined, message: string | undefined, status:
  * Ask the customer's phone for a payment. The money is collected to the hotel's nTZS account (its treasury, or the
  * wallet of NTZS_USER_ID); `reference` is ours and comes back on the webhook.
  */
-export function createNtzsDeposit(input: { amountTzs: number; phone: string; reference: string; name?: string | null }) {
+export async function createNtzsDeposit(input: { amountTzs: number; phone: string; reference: string; name?: string | null }): Promise<Result<NtzsDeposit>> {
   const userId = process.env.NTZS_USER_ID || null;
-  return call<NtzsDeposit>("POST", "/deposits", {
+  const res = await call<unknown>("POST", "/deposits", {
     amountTzs: Math.round(input.amountTzs),
     paymentMethod: "mobile_money",
     phoneNumber: input.phone,
@@ -89,17 +89,45 @@ export function createNtzsDeposit(input: { amountTzs: number; phone: string; ref
     externalReference: input.reference,
     ...(userId ? { userId } : { endUser: { reference: input.reference, ...(input.name ? { name: input.name.slice(0, 80) } : {}), phone: input.phone } }),
   });
+  if (!res.ok) return res;
+  const d = readDeposit(res.data);
+  if (!d.id) return { ok: false, error: "nTZS did not return the payment's id — try again." };
+  const raw = (res.data ?? {}) as { instructions?: unknown; data?: { instructions?: unknown } };
+  const instructions = typeof raw.instructions === "string" ? raw.instructions : typeof raw.data?.instructions === "string" ? raw.data.instructions : undefined;
+  return { ok: true, data: { ...d, instructions } };
 }
 
 /** A deposit's state now (when no webhook came — the scheduled check and the screen waiting for it ask). */
-export function getNtzsDeposit(id: string) {
-  return call<NtzsDeposit>("GET", `/deposits/${encodeURIComponent(id)}`);
+export async function getNtzsDeposit(id: string): Promise<Result<NtzsDeposit>> {
+  const res = await call<unknown>("GET", `/deposits/${encodeURIComponent(id)}`);
+  if (!res.ok) return res;
+  return { ok: true, data: readDeposit(res.data, id) };
 }
 
-/** Paid? nTZS says "completed" once the money is in (mobile money settles in real time). */
-export const depositCompleted = (status: string | null | undefined) => (status ?? "").toLowerCase() === "completed";
+/** A deposit as nTZS sends it — at the top level, or wrapped ({ data: … } / { deposit: … }); amounts as a number or text. */
+export function readDeposit(raw: unknown, fallbackId: string | null = null): NtzsDeposit {
+  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const inner = [o.deposit, o.data].find((x) => x && typeof x === "object" && !Array.isArray(x)) as Record<string, unknown> | undefined;
+  const d = inner && ("status" in inner || "id" in inner || "depositId" in inner) ? inner : o;
+  const str = (...v: unknown[]) => { const x = v.find((y) => typeof y === "string" && y.trim()); return typeof x === "string" ? x.trim() : null; };
+  const num = (...v: unknown[]) => { for (const y of v) { const n = typeof y === "number" ? y : typeof y === "string" ? Number(y) : NaN; if (Number.isFinite(n) && n > 0) return n; } return undefined; };
+  return {
+    id: str(d.id, d.depositId, d.deposit_id) ?? fallbackId ?? "",
+    status: (str(d.status, d.state) ?? "").toLowerCase(),
+    amountTzs: num(d.amountTzs, d.amount_tzs, d.amount),
+    pspReference: str(d.pspReference, d.psp_reference, d.providerReference),
+    txHash: str(d.txHash, d.tx_hash),
+    externalReference: str(d.externalReference, d.external_reference),
+  };
+}
+
+/**
+ * Paid? Once the customer's mobile money is in, nTZS mints the TZS to the hotel's treasury: the deposit reads
+ * "minted" (its dashboard) or "completed" (its documentation) — either way the money is the hotel's.
+ */
+export const depositCompleted = (status: string | null | undefined) => /^(completed|complete|minted|success|succeeded|successful|paid|settled|credited)$/i.test((status ?? "").trim());
 /** A deposit that will never complete (the customer refused, the prompt expired…) — whatever word nTZS uses for it. */
-export const depositFailed = (status: string | null | undefined) => /fail|reject|cancel|expire|declin|error|revers/i.test(status ?? "");
+export const depositFailed = (status: string | null | undefined) => !depositCompleted(status) && /fail|reject|cancel|expire|declin|error|revers/i.test(status ?? "");
 
 /**
  * The webhook is genuine: HMAC-SHA256 (hex) of `${timestamp}.${rawBody}` with NTZS_WEBHOOK_SECRET, and recent (10 min —

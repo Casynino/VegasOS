@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import { FinanceTabs, PeriodPicker, periodLabel, readPeriod } from "@/components/staff/finance/finance-nav";
 import { AutoSelect } from "@/components/staff/finance/auto-select";
 import { MobileMoneyAttention } from "../../mobile-pay/attention";
-import { OnlinePaySwitches, TestConnection } from "./controls";
+import { CheckAllPayments, CheckPayment, OnlinePaySwitches, TestConnection } from "./controls";
 
 export const metadata: Metadata = { title: "Online payments" };
 
@@ -64,7 +64,7 @@ export default async function OnlinePaymentsPage({ searchParams }: PageProps<"/s
                 <p className="text-sm text-muted-foreground">{!state.connected ? "Not set up" : active ? `Connected · active · ${state.live ? "live" : "test"} mode` : "Connected · switched off"}</p>
               </div>
             </div>
-            {state.connected && <TestConnection />}
+            {state.connected && <div className="flex flex-wrap items-center gap-2"><TestConnection /><CheckAllPayments /></div>}
           </div>
           <dl className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
             <Fact ok={state.connected} label="API key" value={state.connected ? `Set on the server (${state.live ? "live" : "test"})` : "Missing — add NTZS_API_KEY"} />
@@ -144,6 +144,7 @@ export default async function OnlinePaymentsPage({ searchParams }: PageProps<"/s
                     <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", STATUS[r.status]?.cls)}>{STATUS[r.status]?.label ?? r.status}</span>
                     {r.attention && <span className="mt-1 block max-w-56 text-xs text-amber-700 dark:text-amber-300">{r.attention}</span>}
                     {r.error && <span className="mt-1 block max-w-56 text-xs text-muted-foreground">{r.error}</span>}
+                    {r.status !== "COMPLETED" && r.reference && <span className="block"><CheckPayment id={r.id} /></span>}
                   </td>
                   <td className="px-4 py-2.5 font-mono text-xs">{r.reference ?? "—"}{!r.live && <span className="ml-1 rounded bg-muted px-1 py-px font-sans text-[10px]">test</span>}</td>
                   <td className="px-4 py-2.5 text-xs">{r.by}</td>

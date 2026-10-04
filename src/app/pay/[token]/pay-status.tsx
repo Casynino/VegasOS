@@ -10,6 +10,8 @@ import { cn } from "@/lib/utils";
 
 const tzs = (n: number) => `TZS ${Math.round(n).toLocaleString("en-US")}`;
 const POLL_MS = 3000;
+/** Not completed on our side: nTZS is still asked now and then for a while (a late approval shows "paid" by itself). */
+const LATE_POLL_MS = 10_000, LATE_FOR_MS = 5 * 60_000;
 
 /** Waiting → paid / not completed — follows the payment by itself; "paid" only once the hotel's server confirmed it. */
 export function PayStatus({ initial }: { initial: CustomerPayView }) {
@@ -21,23 +23,36 @@ export function PayStatus({ initial }: { initial: CustomerPayView }) {
   const key = useRef<string>("");
 
   useEffect(() => {
-    if (v.status !== "PENDING") return;
+    if (v.status === "PAID") return;
+    const late = v.status !== "PENDING", since = Date.now();
     let stopped = false, timer: ReturnType<typeof setTimeout> | undefined;
     const tick = async () => {
       const r = await payStatusAction({ token: v.token }).catch(() => null);
       if (stopped) return;
-      if (r?.ok) setV(r.data);
-      if (!r?.ok || r.data.status === "PENDING") timer = setTimeout(tick, POLL_MS);
+      if (r?.ok && r.data.status !== v.status) { setV(r.data); return; }
+      if (late && Date.now() - since > LATE_FOR_MS) return;
+      timer = setTimeout(tick, late ? LATE_POLL_MS : POLL_MS);
     };
-    timer = setTimeout(tick, POLL_MS);
+    timer = setTimeout(tick, late ? LATE_POLL_MS : POLL_MS);
     return () => { stopped = true; if (timer) clearTimeout(timer); };
   }, [v.status, v.token]);
+
+  // "I have paid": ask nTZS again now.
+  const recheck = () => start(async () => {
+    setError(null);
+    const r = await payStatusAction({ token: v.token });
+    if (!r.ok) { setError(r.error); return; }
+    setV(r.data);
+    if (r.data.status !== "PAID") setError("Not received yet. If money left your account, it shows here by itself within a few minutes.");
+  });
 
   const retry = () => start(async () => {
     setError(null);
     key.current ||= crypto.randomUUID();
     const r = await retryPayAction({ token: v.token, phone: phone.trim() || undefined, clientKey: key.current });
     if (!r.ok) { setError(r.error); key.current = ""; return; }
+    // The last attempt went through after all: the same page, now paid.
+    if (r.data.token === v.token) { const s = await payStatusAction({ token: v.token }); if (s.ok) setV(s.data); return; }
     router.replace(`/pay/${r.data.token}`);
   });
   const cancel = () => start(async () => {
@@ -90,7 +105,10 @@ export function PayStatus({ initial }: { initial: CustomerPayView }) {
         )}
         {v.canRetry && (
           <>
-            <p className="text-center text-[14px] text-(--vr-muted)">{v.message} Nothing was taken from your account. You can try again.</p>
+            <p className="text-center text-[14px] text-(--vr-muted)">{v.message} If you approved it and money left your account, it shows here by itself — otherwise try again.</p>
+            <button type="button" onClick={recheck} disabled={pending} className="flex h-11 w-full items-center justify-center gap-2 rounded-full text-[14px] font-medium ring-1 ring-(--vr-line) disabled:opacity-60">
+              {pending ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}I have paid — check again
+            </button>
             <label className="block text-[12.5px] font-medium text-(--vr-ink)/80">Mobile-money number <span className="font-normal text-(--vr-muted)">· {v.phone} if left empty</span>
               <input value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" inputMode="tel" placeholder="0712 345 678"
                 className="mt-1 block h-12 w-full rounded-xl border border-(--vr-line) bg-white px-3.5 text-[16px] outline-none focus:border-(--vr-gold) focus:ring-4 focus:ring-(--vr-gold)/15" />
