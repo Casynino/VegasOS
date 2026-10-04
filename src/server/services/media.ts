@@ -1,4 +1,5 @@
 import "server-only";
+import { del, put } from "@vercel/blob";
 import { db, type Tx } from "../db";
 import { audit, type AuditActor } from "../audit";
 import { AppError } from "../errors";
@@ -33,15 +34,32 @@ export async function uploadMedia(
   if (file.size > MEDIA_MAX_BYTES) throw new AppError("Image is larger than 8 MB — export a smaller version.", "VALIDATION", { file: "Too large" });
   if (!MEDIA_TYPES.includes(file.type)) throw new AppError("Use a JPG, PNG, WebP or AVIF image.", "VALIDATION", { file: "Wrong type" });
   if (!input.altText.trim()) throw new AppError("Describe the image for screen readers (alt text).", "VALIDATION", { altText: "Required" });
+  // On the live site the photo goes to Vercel Blob (fast, and the database keeps only its link); without Blob
+  // (this computer) it is stored in the database as before.
+  const safeName = file.name.toLowerCase().replace(/[^a-z0-9.]+/g, "-").replace(/^-+|-+$/g, "").slice(-80) || "photo";
+  const blob = process.env.BLOB_READ_WRITE_TOKEN
+    ? await put(`media/${input.category.toLowerCase()}/${safeName}`, file, { access: "public", contentType: file.type, addRandomSuffix: true })
+    : null;
+  try {
+    return await saveMedia(input, file, blob?.url ?? null, actor);
+  } catch (e) {
+    if (blob) await del(blob.url).catch(() => {}); // nothing left behind when saving failed
+    throw e;
+  }
+}
+
+async function saveMedia(
+  input: Parameters<typeof uploadMedia>[0], file: File, blobUrl: string | null, actor: AuditActor & { userId: string },
+) {
   return db.$transaction(async (tx) => {
-    const stored = await tx.storedFile.create({
+    const stored = blobUrl ? null : await tx.storedFile.create({
       data: { purpose: "MEDIA", fileName: file.name.slice(0, 120), contentType: file.type, size: file.size, data: new Uint8Array(await file.arrayBuffer()), uploadedById: actor.userId },
     });
     const last = await tx.mediaAsset.aggregate({ where: { category: input.category }, _max: { sortOrder: true } });
     const media = await tx.mediaAsset.create({
       data: {
         title: input.title.trim() || file.name, category: input.category, altText: input.altText.trim(), description: input.description?.trim() || null,
-        fileId: stored.id, roomTypeId: input.roomTypeId || null, sortOrder: (last._max.sortOrder ?? 0) + 1,
+        url: blobUrl, fileId: stored?.id ?? null, roomTypeId: input.roomTypeId || null, sortOrder: (last._max.sortOrder ?? 0) + 1,
         isIllustrative: !!input.isIllustrative, creditText: input.creditText?.trim() || null, createdById: actor.userId,
       },
     });

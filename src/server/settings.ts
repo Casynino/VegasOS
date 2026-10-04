@@ -1,6 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { db, type Tx } from "./db";
+import { isUniqueViolation } from "./errors";
 import type { HotelSettings } from "@/generated/prisma/client";
 import { businessDateOf, type BusinessDate, type BusinessDayConfig } from "@/lib/time/business-date";
 import type { StayConfig } from "@/lib/time/stay";
@@ -9,7 +10,13 @@ import type { StayConfig } from "@/lib/time/stay";
 export const getSettings = cache(async (): Promise<HotelSettings> => {
   const row = await db.hotelSettings.findUnique({ where: { id: 1 } });
   if (row) return row;
-  return db.hotelSettings.upsert({ where: { id: 1 }, update: {}, create: { id: 1 } });
+  // A new database: make the row — two requests (or build workers) doing it at once is fine, the other one's row is read.
+  try {
+    return await db.hotelSettings.create({ data: { id: 1 } });
+  } catch (e) {
+    if (isUniqueViolation(e)) return db.hotelSettings.findUniqueOrThrow({ where: { id: 1 } });
+    throw e;
+  }
 });
 
 export async function getSettingsTx(tx: Tx): Promise<HotelSettings> {
