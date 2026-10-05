@@ -139,8 +139,6 @@ export function StayTop({ stay, info }: { stay: GuestStay; info: StayInfo }) {
             : info.contact.mapHref && !inHouse ? <QuickLink icon={MapPin} label="Directions" href={info.contact.mapHref} external /> : null}
           <QuickLink icon={ConciergeBell} label="Reception" onClick={() => setSheet("reception")} />
         </QuickRow>
-      {/* In the room: the Wi-Fi right away — no tapping around for it (owner, 2026-10-06). */}
-      {inHouse && !info.meeting && info.wifi?.network && <WifiCard wifi={info.wifi} className="mt-5" />}
       <PhotoViewer photos={info.photos} start={viewing} title={info.room ? place : info.types || info.hotel} onClose={() => setViewing(null)} />
 
       {/* ── The bill and the orders; what they can ask for the room (staying) or their booking (before / after) ── */}
@@ -314,65 +312,47 @@ const wifiCode = (network: string, password: string | null) => {
   return password ? `WIFI:T:WPA;S:${esc(network)};P:${esc(password)};;` : `WIFI:T:nopass;S:${esc(network)};;`;
 };
 
-/** THE WI-FI, on the guest's page while they stay: the network, the password to copy, and a code for another device. */
-function WifiCard({ wifi, className }: { wifi: { network: string | null; password: string | null }; className?: string }) {
-  const [qr, setQr] = useState(false);
-  if (!wifi.network) return null;
-  return (
-    <section aria-labelledby="wifi-title" className={cn(card, "overflow-hidden", className)}>
-      <div className="flex items-center gap-3 px-4 pb-1 pt-4 sm:px-5">
-        <span className="grid size-10 shrink-0 place-items-center rounded-full bg-(--vr-gold)/15 text-(--vr-gold-ink)"><Wifi className="size-[18px]" /></span>
-        <div className="min-w-0">
-          <h2 id="wifi-title" className="text-[15px] font-semibold leading-tight">Wi-Fi</h2>
-          <p className="text-[12.5px] text-(--vr-muted)">Free in your room and around the hotel</p>
-        </div>
-      </div>
-      <dl className="mx-4 mt-2 divide-y divide-(--vr-line) border-t border-(--vr-line) sm:mx-5">
-        <div className="flex min-h-12 items-center justify-between gap-3 py-2">
-          <dt className="text-[13px] text-(--vr-muted)">Network</dt>
-          <dd className="min-w-0 truncate text-right text-[15.5px] font-semibold">{wifi.network}</dd>
-        </div>
-        <div className="flex min-h-14 items-center justify-between gap-3 py-2">
-          <div className="min-w-0">
-            <dt className="text-[13px] text-(--vr-muted)">Password</dt>
-            <dd className="mt-0.5 truncate font-mono text-[17px] font-semibold tracking-wide">{wifi.password || "No password"}</dd>
-          </div>
-          {wifi.password && <CopyButton text={wifi.password} />}
-        </div>
-      </dl>
-      <button type="button" onClick={() => setQr((v) => !v)} aria-expanded={qr}
-        className="flex min-h-12 w-full items-center justify-between gap-3 border-t border-(--vr-line) px-4 text-left text-[13px] font-medium text-(--vr-gold-ink) sm:px-5">
-        {qr ? "Hide the code" : "Connect another device — scan a code"}<ChevronRight className={cn("size-4 transition-transform", qr && "rotate-90")} />
-      </button>
-      {qr && (
-        <div className="flex flex-col items-center gap-2 border-t border-(--vr-line) px-4 py-5">
-          <div className="size-44 rounded-2xl bg-white p-3 ring-1 ring-(--vr-line)" role="img" aria-label={`Wi-Fi code for ${wifi.network}`}
-            dangerouslySetInnerHTML={{ __html: qrSvg(wifiCode(wifi.network, wifi.password), "#14110c", "M") }} />
-          <p className="text-center text-[12.5px] text-(--vr-muted)">Point the other phone&apos;s camera at it to join.</p>
-        </div>
-      )}
-    </section>
-  );
-}
-
+/**
+ * THE WI-FI — opened from the Wi-Fi button while the guest stays (owner, 2026-10-06: shown when they tap it, not on the
+ * page): the Wi-Fi name and the password, each to copy, and a code to join another device.
+ */
 function WifiPanel({ info }: { info: StayInfo }) {
+  const [qr, setQr] = useState(false);
+  const w = info.wifi;
   return (
     <>
-      <SheetHead title="Wi-Fi" text="Free for guests, in your room and around the hotel." />
-      {info.wifi?.network ? (
-        <dl className="mt-4 divide-y divide-(--vr-line) border-y border-(--vr-line)">
-          <div className="flex min-h-14 items-center justify-between gap-3 py-2.5">
-            <dt className="text-[13px] text-(--vr-muted)">Network</dt>
-            <dd className="min-w-0 truncate text-right text-[16px] font-semibold">{info.wifi.network}</dd>
-          </div>
-          <div className="flex min-h-14 items-center justify-between gap-3 py-2.5">
-            <div className="min-w-0">
-              <dt className="text-[13px] text-(--vr-muted)">Password</dt>
-              <dd className="mt-0.5 truncate font-mono text-[17px] font-semibold tracking-wide">{info.wifi.password || "No password"}</dd>
+      <SheetHead title="Wi-Fi" text="Free in your room and around the hotel." />
+      {w?.network ? (
+        <>
+          <dl className="mt-4 divide-y divide-(--vr-line) border-y border-(--vr-line)">
+            <div className="flex min-h-16 items-center justify-between gap-3 py-3">
+              <div className="min-w-0">
+                <dt className="text-[13px] text-(--vr-muted)">Wi-Fi name</dt>
+                <dd className="mt-1 truncate text-[18px] font-semibold">{w.network}</dd>
+              </div>
+              <CopyButton text={w.network} />
             </div>
-            {info.wifi.password && <CopyButton text={info.wifi.password} />}
-          </div>
-        </dl>
+            <div className="flex min-h-16 items-center justify-between gap-3 py-3">
+              <div className="min-w-0">
+                <dt className="text-[13px] text-(--vr-muted)">Password</dt>
+                <dd className="mt-1 truncate font-mono text-[19px] font-semibold tracking-wide">{w.password || "No password"}</dd>
+              </div>
+              {w.password && <CopyButton text={w.password} />}
+            </div>
+          </dl>
+          <p className="mt-3 text-[13px] leading-snug text-(--vr-muted)">Open your phone&apos;s Wi-Fi settings, choose <span className="font-medium text-(--vr-ink)">{w.network}</span> and paste the password.</p>
+          <button type="button" onClick={() => setQr((v) => !v)} aria-expanded={qr}
+            className="mt-2 flex min-h-11 w-full items-center justify-between gap-3 text-left text-[13px] font-medium text-(--vr-gold-ink)">
+            {qr ? "Hide the code" : "Connect another device — scan a code"}<ChevronRight className={cn("size-4 transition-transform", qr && "rotate-90")} />
+          </button>
+          {qr && (
+            <div className="flex flex-col items-center gap-2 pb-2 pt-1">
+              <div className="size-44 rounded-2xl bg-white p-3 ring-1 ring-(--vr-line)" role="img" aria-label={`Wi-Fi code for ${w.network}`}
+                dangerouslySetInnerHTML={{ __html: qrSvg(wifiCode(w.network, w.password), "#14110c", "M") }} />
+              <p className="text-center text-[12.5px] text-(--vr-muted)">Point the other phone&apos;s camera at it to join.</p>
+            </div>
+          )}
+        </>
       ) : (
         <p className="mt-4 border-y border-(--vr-line) py-3.5 text-[14px]">Ask reception for the Wi-Fi password — they will be happy to help.</p>
       )}
