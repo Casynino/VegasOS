@@ -9,14 +9,14 @@ import { cn } from "@/lib/utils";
 import { CONTACT, EXPERTISE, LIVE, MORE, STACK, type Project } from "./work";
 import s from "./nino.module.css";
 
-const TITLE = "Nino — Full-stack developer & product designer";
+const TITLE = "Nino — Systems scientist & developer";
 const DESCRIPTION = "Websites, mobile apps and business systems, from the first idea to the live product. 14+ platforms delivered for clients in Tanzania & Zambia.";
 
 export const metadata: Metadata = {
   title: { absolute: TITLE },
   description: DESCRIPTION,
   alternates: { canonical: "/nino" },
-  openGraph: { type: "profile", title: TITLE, description: DESCRIPTION, images: [{ url: "/nino/og.jpg", width: 1200, height: 630, alt: "NINO. — Full-stack developer & product designer", type: "image/jpeg" }] },
+  openGraph: { type: "profile", title: TITLE, description: DESCRIPTION, images: [{ url: "/nino/og.jpg", width: 1200, height: 630, alt: "NINO. — Systems scientist & developer", type: "image/jpeg" }] },
   twitter: { card: "summary_large_image", title: TITLE, description: DESCRIPTION, images: ["/nino/og.jpg"] },
 };
 export const viewport: Viewport = { themeColor: "#0a0a0b" };
@@ -55,42 +55,44 @@ export default function NinoPage() {
       </header>
 
       <main id="top">
-        {/* ── Hero ── */}
-        <section className={cn(wrap, "pb-14 pt-12 sm:pb-20 sm:pt-20")}>
-          <p className={cn(eyebrow, s.rise)}>Full-stack developer &amp; product designer</p>
-          <h1 className={cn(s.wordmark, s.rise, s.rise2, "mt-6 select-none")} aria-label="Nino">
-            NINO<span className="text-[var(--accent)]">.</span>
-          </h1>
-          <div className={cn(s.rise, s.rise3, "mt-10 grid gap-8 border-t border-[var(--rule)] pt-8 md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] md:gap-16")}>
-            <p className="max-w-2xl text-balance text-xl leading-snug text-[var(--ink)] sm:text-2xl">
-              I design and build the software businesses run on — websites, mobile apps, booking and payment systems, and the dashboards
-              behind them. <span className="text-[var(--muted)]">From the first idea to the live product.</span>
-            </p>
-            <div className="flex flex-col items-start gap-5 md:items-end md:text-right">
-              <p className="inline-flex items-center gap-2.5 rounded-full border border-[var(--rule)] bg-[var(--card)] px-3.5 py-1.5 text-[13px] text-[var(--muted)]">
-                <span className={cn(s.pulse, "size-2 rounded-full bg-[var(--accent)]")} aria-hidden="true" />Available for select projects
+        {/* ── Hero: compact — the name, one line on what I do, and the way in; the work starts just below. ── */}
+        <section className={cn(wrap, "pb-10 pt-10 sm:pb-14 sm:pt-16")}>
+          <div className="grid items-end gap-8 lg:grid-cols-[auto_minmax(0,1fr)] lg:gap-16">
+            <div>
+              <p className={cn(eyebrow, s.rise)}>Systems scientist &amp; developer</p>
+              <h1 className={cn(s.wordmark, s.rise, s.rise2, "mt-4 select-none")} aria-label="Nino">
+                NINO<span className="text-[var(--accent)]">.</span>
+              </h1>
+            </div>
+            <div className={cn(s.rise, s.rise3, "lg:pb-3")}>
+              <p className="max-w-xl text-pretty text-lg leading-snug text-[var(--ink)] sm:text-xl">
+                I design and build the software businesses run on — websites, mobile apps, booking and payment systems, and the
+                dashboards behind them. <span className="text-[var(--muted)]">From the first idea to the live product.</span>
               </p>
-              <div className="flex flex-wrap gap-2.5 md:justify-end">
+              <div className="mt-6 flex flex-wrap items-center gap-2.5">
                 <a href="#work" className={cn("inline-flex h-11 items-center gap-2 rounded-full bg-[var(--ink)] px-5 text-sm font-semibold text-[#0a0a0b] transition hover:bg-white", focus)}>
                   See the work<ArrowDown className="size-4" aria-hidden="true" />
                 </a>
                 <a href={wa(CONTACT.whatsapp[0].digits)} {...ext} className={cn("inline-flex h-11 items-center gap-2 rounded-full border border-[var(--rule)] px-5 text-sm font-semibold transition-colors hover:border-[var(--muted)]", focus)}>
                   <MessageCircle className="size-4" aria-hidden="true" />WhatsApp me<span className="sr-only"> (opens WhatsApp)</span>
                 </a>
+                <span className="inline-flex items-center gap-2 px-1 text-[13px] text-[var(--muted)]">
+                  <span className={cn(s.pulse, "size-2 rounded-full bg-[var(--accent)]")} aria-hidden="true" />Available for select projects
+                </span>
               </div>
             </div>
           </div>
 
-          {/* The facts, as given — nothing rounded up. */}
-          <dl className="mt-14 grid grid-cols-1 divide-y divide-[var(--rule)] border-y border-[var(--rule)] sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+          {/* The facts, as given — nothing rounded up; small, one line. */}
+          <dl className={cn(s.rise, s.rise3, "mt-10 flex flex-wrap gap-x-8 gap-y-3 border-y border-[var(--rule)] py-4 sm:gap-x-12")}>
             {[
-              { big: "14+", small: "Platforms delivered" },
-              { big: "TZ · ZM", small: "Clients in Tanzania & Zambia" },
-              { big: "Master's", small: "Business & systems science" },
+              { big: "14+", small: "platforms delivered" },
+              { big: String(LIVE.length), small: "sites live right now" },
+              { big: "TZ · ZM", small: "clients in Tanzania & Zambia" },
             ].map((f) => (
-              <div key={f.small} className="flex flex-row-reverse items-baseline justify-between gap-4 py-5 sm:flex-col-reverse sm:items-start sm:justify-end sm:gap-2 sm:px-6 sm:py-7 sm:first:pl-0">
-                <dt className="text-right text-sm text-[var(--muted)] sm:text-left">{f.small}</dt>
-                <dd className="text-3xl font-black tracking-[-0.04em] sm:text-5xl">{f.big}</dd>
+              <div key={f.small} className="flex items-baseline gap-2.5">
+                <dd className="text-xl font-black tracking-[-0.03em] sm:text-2xl">{f.big}</dd>
+                <dt className="order-2 text-[13px] text-[var(--muted)]">{f.small}</dt>
               </div>
             ))}
           </dl>
@@ -147,9 +149,8 @@ export default function NinoPage() {
               <div className="mt-8 rounded-3xl border border-[var(--rule)] p-6 sm:p-7">
                 <p className={eyebrow}>Business first, then code</p>
                 <p className="mt-3 text-pretty text-[17px] leading-relaxed text-[var(--muted)]">
-                  My background is business and systems science — a master&apos;s degree. Before I design a screen I map how the business
-                  really works: who does what, where the money goes, what must never go wrong. Then I build the system around it — which
-                  is how a hotel website becomes the tool the whole team runs the hotel on.
+                  Before I design a screen I map how the business really works — who does what, where the money goes. Then I build
+                  the system around it.
                 </p>
               </div>
             </div>

@@ -38,7 +38,7 @@
   font-weight: 900;
   letter-spacing: -0.075em;
   line-height: 0.78;
-  font-size: clamp(6.5rem, 30vw, 25rem);
+  font-size: clamp(5rem, 22vw, 11rem);
   margin-left: -0.04em;
 }
 
