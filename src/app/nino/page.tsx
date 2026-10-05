@@ -88,7 +88,6 @@ export default function NinoPage() {
             {[
               { big: "14+", small: "platforms delivered" },
               { big: String(LIVE.length), small: "sites live right now" },
-              { big: "TZ · ZM", small: "clients in Tanzania & Zambia" },
             ].map((f) => (
               <div key={f.small} className="flex items-baseline gap-2.5">
                 <dd className="text-xl font-black tracking-[-0.03em] sm:text-2xl">{f.big}</dd>
