@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { toJpeg, toPng } from "html-to-image";
-import { Download, ExternalLink, Loader2, Printer } from "lucide-react";
+import { Camera, Download, ExternalLink, Loader2, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { NETWORK_MARKS } from "@/components/payments/networks";
@@ -66,57 +66,47 @@ export function QrPreview({ card, hotel, phone, printHref, fileName, className }
 }
 
 /**
- * The printed card — a hotel doorway (owner, 2026-10-05: "new, very nice cards, fewer words — people should see it
- * and say wow"). Deep espresso with fine art-deco rays; a gold arch, like the entrance, frames the QR (white tile,
- * the logo in its middle, the crest at the arch's top); under it only the place in big serif type and one short
- * line; at the foot "We accept" and the mobile-money networks, small. Every size follows the card's width (cqw), so
+ * The printed card (owner, 2026-10-05: clean — "no funny stuff around the QR", few words, a small "use your camera"
+ * line on every card). Deep espresso with a soft glow and faint art-deco rays; the crest and the hotel's name; the
+ * place in big serif type and one short line; the QR alone on a clean white tile (the logo in its middle); a tiny
+ * camera hint; and "We accept" with the mobile-money networks, small. Every size follows the card's width (cqw), so
  * screen, print and download are the same picture.
  */
 export function QrPrintCard({ card, hotel }: { card: Printable; hotel: string; phone?: string | null }) {
   const c = cardCopy(card);
   return (
     <article id={`qr-${card.id}`} className="@container relative aspect-[105/148] w-full overflow-hidden rounded-[22px] bg-[#0c0806] text-center text-white shadow-[0_24px_50px_-28px_rgba(10,7,4,0.9)] [print-color-adjust:exact] print:rounded-none print:shadow-none">
-      {/* Light falls from the arch: a warm glow, art-deco rays, a double gold frame */}
-      <div aria-hidden className="absolute inset-0 bg-[radial-gradient(ellipse_85%_60%_at_50%_40%,#2b2015_0%,#17100b_55%,#0c0806_100%)]" />
-      <div aria-hidden className="absolute inset-0 opacity-[0.28] [background:repeating-conic-gradient(from_-90deg_at_50%_36%,rgba(227,189,106,0.6)_0deg_0.5deg,transparent_0.5deg_6deg)] [mask-image:radial-gradient(ellipse_75%_58%_at_50%_36%,#000_25%,transparent_72%)]" />
-      <div aria-hidden className="absolute inset-[3cqw] rounded-[3cqw] border border-[#e3bd6a]/50 print:rounded-none" />
-      <div aria-hidden className="absolute inset-[4.3cqw] rounded-[2cqw] border border-[#e3bd6a]/15 print:rounded-none" />
-      {/* art-deco corner marks */}
+      <div aria-hidden className="absolute inset-0 bg-[radial-gradient(ellipse_85%_55%_at_50%_58%,#2a1f14_0%,#17100b_55%,#0c0806_100%)]" />
+      <div aria-hidden className="absolute inset-0 opacity-[0.16] [background:repeating-conic-gradient(from_-90deg_at_50%_58%,rgba(227,189,106,0.6)_0deg_0.5deg,transparent_0.5deg_6deg)] [mask-image:radial-gradient(ellipse_75%_55%_at_50%_58%,#000_30%,transparent_75%)]" />
+      <div aria-hidden className="absolute inset-[3cqw] rounded-[3cqw] border border-[#e3bd6a]/45 print:rounded-none" />
       {["left-[3cqw] top-[3cqw]", "right-[3cqw] top-[3cqw] rotate-90", "bottom-[3cqw] right-[3cqw] rotate-180", "bottom-[3cqw] left-[3cqw] -rotate-90"].map((p) => (
         <span key={p} aria-hidden className={cn("absolute size-[6cqw] border-l-[0.5cqw] border-t-[0.5cqw] border-[#e3bd6a]", p)} />
       ))}
 
-      <div className="relative flex h-full flex-col items-center px-[9cqw] pb-[7.5cqw] pt-[8.5cqw]">
-        <p className="text-[2.2cqw] font-semibold uppercase tracking-[0.5em] text-[#e3bd6a]/85">{hotel}</p>
+      <div className="relative flex h-full flex-col items-center px-[9cqw] pb-[7.5cqw] pt-[8cqw]">
+        <span className="grid size-[10cqw] place-items-center rounded-full bg-[#0c0806] ring-[0.35cqw] ring-[#e3bd6a]">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/logo-192.png" alt="" className="size-[88%] rounded-full" />
+        </span>
+        <p className="mt-[2.4cqw] text-[2.1cqw] font-semibold uppercase tracking-[0.5em] text-[#e3bd6a]/85">{hotel}</p>
 
-        {/* The arch — the QR is the doorway */}
-        <div className="relative mt-[7cqw]">
-          <span aria-hidden className="absolute -inset-x-[1.8cqw] -top-[1.8cqw] bottom-0 rounded-t-full border-[0.2cqw] border-b-0 border-[#e3bd6a]/40" />
-          <div className="relative w-[62cqw] rounded-t-full border-[0.55cqw] border-b-0 border-[#e3bd6a] px-[4cqw] pt-[17cqw] shadow-[inset_0_10cqw_14cqw_-10cqw_rgba(227,189,106,0.25)]">
-            {/* the crest at the top of the arch */}
-            <span className="absolute left-1/2 top-[3.2cqw] grid size-[11cqw] -translate-x-1/2 place-items-center rounded-full bg-[#0c0806] ring-[0.4cqw] ring-[#e3bd6a]">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/brand/logo-192.png" alt="" className="size-[88%] rounded-full" />
-            </span>
-            <div className="relative rounded-[3cqw] bg-white p-[2.8cqw] shadow-[0_2cqw_6cqw_-1cqw_rgba(0,0,0,0.6)]">
-              <span className="block aspect-square w-full [&_path[stroke]]:stroke-[#120d09] [&_svg]:size-full" dangerouslySetInnerHTML={{ __html: card.qr }} />
-              <span className="absolute left-1/2 top-1/2 grid size-[10.5cqw] -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-white p-[0.8cqw]">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/brand/logo-192.png" alt="" className="size-full rounded-full" />
-              </span>
-            </div>
-          </div>
-          {/* the threshold: a gold line with a diamond at each end */}
-          <span aria-hidden className="absolute -inset-x-[5cqw] -bottom-[1.6cqw] flex items-center">
-            <span className="size-[1.6cqw] rotate-45 bg-[#e3bd6a]" /><span className="h-[0.3cqw] flex-1 bg-[#e3bd6a]" /><span className="size-[1.6cqw] rotate-45 bg-[#e3bd6a]" />
+        {c.eyebrow && <p className="mt-[5cqw] text-[2.1cqw] font-semibold uppercase tracking-[0.4em] text-white/55">{c.eyebrow}</p>}
+        <p className={cn("font-display text-[10cqw] font-semibold leading-[0.95] tracking-tight [font-feature-settings:'lnum'_1] lining-nums", c.eyebrow ? "mt-[1.4cqw]" : "mt-[5.5cqw]")}>{c.title}</p>
+        <p className="mt-[1.8cqw] font-display text-[4.4cqw] italic leading-none" style={{ color: GOLD }}>{c.call}</p>
+
+        {/* The QR, clean: a white tile, the logo in the middle (the QR tolerates it) */}
+        <div className="relative mt-[5.5cqw] w-[56cqw] rounded-[3.4cqw] bg-white p-[3cqw] shadow-[0_2.5cqw_7cqw_-2cqw_rgba(0,0,0,0.7)]">
+          <span className="block aspect-square w-full [&_path[stroke]]:stroke-[#120d09] [&_svg]:size-full" dangerouslySetInnerHTML={{ __html: card.qr }} />
+          <span className="absolute left-1/2 top-1/2 grid size-[11cqw] -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-white p-[0.8cqw]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/logo-192.png" alt="" className="size-full rounded-full" />
           </span>
         </div>
+        {/* How — very small */}
+        <p className="mt-[2.6cqw] flex items-center justify-center gap-[1.2cqw] text-[2.05cqw] tracking-wide text-white/55">
+          <Camera className="size-[2.6cqw] shrink-0" style={{ color: GOLD }} strokeWidth={1.6} />Open your phone camera and point it here
+        </p>
 
-        {c.eyebrow && <p className="mt-[6cqw] text-[2.2cqw] font-semibold uppercase tracking-[0.4em] text-white/55">{c.eyebrow}</p>}
-        <p className={cn("font-display text-[10.5cqw] font-semibold leading-[0.95] tracking-tight [font-feature-settings:'lnum'_1] lining-nums", c.eyebrow ? "mt-[1.4cqw]" : "mt-[6.5cqw]")}>{c.title}</p>
-        <p className="mt-[1.8cqw] font-display text-[4.6cqw] italic leading-none" style={{ color: GOLD }}>{c.call}</p>
-
-        {/* We accept — small, at the foot */}
         <div className="mt-auto w-full">
           <p className="flex items-center justify-center gap-[2cqw] text-[1.9cqw] font-semibold uppercase tracking-[0.42em] text-white/55">
             <span aria-hidden className="h-px w-[8cqw] bg-[#e3bd6a]/45" />We accept<span aria-hidden className="h-px w-[8cqw] bg-[#e3bd6a]/45" />

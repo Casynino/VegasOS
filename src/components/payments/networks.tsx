@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 export const NETWORK_MARKS: { key: string; label: string; className: string; body: React.ReactNode }[] = [
   {
     key: "mpesa", label: "M-Pesa", className: "bg-[#e60000] text-white",
-    body: <><span aria-hidden className="size-[0.62em] shrink-0 rounded-full bg-[#7ab800] ring-1 ring-white/70" />m-pesa</>,
+    body: <><span aria-hidden className="size-[0.62em] shrink-0 rounded-full bg-[#7ab800]" />m-pesa</>,
   },
   { key: "airtel", label: "Airtel Money", className: "bg-white text-[#e40000] ring-1 ring-black/[0.07]", body: <>airtel</> },
   {
