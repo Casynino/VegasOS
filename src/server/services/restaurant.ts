@@ -1009,6 +1009,12 @@ export async function addOrderItemsTx(tx: Tx, id: string, items: { menuItemId: s
   if (!o) throw new AppError("Order not found.", "NOT_FOUND");
   if (CLOSED_STATUSES.includes(o.status)) throw new AppError(o.status === "CANCELLED" ? "This order was cancelled." : "This order is closed — start a new order.");
   if (o.status === "READY" || o.status === "OUT_FOR_DELIVERY") throw new AppError("This order is already on its way — add the new items once it is served.");
+  // Take out never starts unpaid: once the kitchen has it (paid), or once it was paid with the customer's proof, more
+  // from the customer is a new order — paid first too.
+  if (opts.byCustomer && (o.type === "TAKEAWAY" || o.type === "PICKUP")) {
+    if (o.status !== "PENDING") throw new AppError("Your take-out order is already being prepared — please place a new order for the extra items.", "CONFLICT");
+    if (o.paymentProofFileId && !o.payOnlineAt) throw new AppError("Your take-out order is already paid — please place a new order for the extra items.", "CONFLICT");
+  }
   if ((await awaitingOnlineTx(tx, [id])).length) throw new AppError("This order was paid online and its payment is not checked yet — confirm it first, or start a new order for the extra items.", "CONFLICT");
   if ((await payingByPhoneTx(tx, [id], now)).size) throw new AppError(opts.byCustomer ? "Your payment for this order is still on its way — add more once it is done." : PAYING_BY_PHONE, "CONFLICT");
   // A hotel order (room service, or on a room bill) grows only while the guest is staying — and, on a room bill,
@@ -1406,6 +1412,8 @@ export async function cancelRestaurantOrder(id: string, reason: string, actor: A
     const o = await tx.restaurantOrder.findUnique({ where: { id } });
     if (!o) throw new AppError("Order not found.", "NOT_FOUND");
     if (o.status === "CANCELLED") throw new AppError("This order is already cancelled.");
+    // The customer's payment is on its way from their phone: it cannot be stopped from here — wait for it to finish.
+    if ((await payingByPhoneTx(tx, [id], now)).size) throw new AppError(PAYING_BY_PHONE, "CONFLICT");
     const early = o.status === "PENDING" || o.status === "ACCEPTED";
     if (!early && !actor.permissions?.has("revenue.void")) throw new AppError("The kitchen has started this order — ask a manager to cancel it.", "FORBIDDEN");
     await voidOrderMoneyTx(tx, o, `Order cancelled: ${reason.trim()}`, actor, now);
@@ -1500,6 +1508,7 @@ export async function declineRestaurantOrder(id: string, reason: string, soldOut
     if (!o) throw new AppError("Order not found.", "NOT_FOUND");
     assertCanPrepare(actor, o.items);
     if (!["PENDING", "ACCEPTED", "PREPARING"].includes(o.status)) throw new AppError(o.status === "CANCELLED" ? "This order is already cancelled." : "This order is already ready — it can no longer be declined.");
+    if ((await payingByPhoneTx(tx, [id], now)).size) throw new AppError(PAYING_BY_PHONE, "CONFLICT");
     // Declined because the online payment never arrived: that payment was never money — not a refund. Only those who
     // check the accounts (the Counter, reception) can say so; anyone else declining it owes the customer a refund.
     const checksMoney = !!actor.permissions?.has("restaurant.payments.confirm") && !!actor.permissions?.has("revenue.record");

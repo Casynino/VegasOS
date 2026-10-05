@@ -83,7 +83,8 @@ export default async function HotelQrPage({ searchParams }: PageProps<"/staff/ho
   ]);
   const shown = list === "online" ? rows.filter(paidOnline).slice(0, LIST_TAKE) : rows;
   const onlineToday = madeToday.filter(paidOnline);
-  const waitingHotel = waiting.filter((r) => r.payWay === "HOTEL").length;
+  // Booked to pay later: not paid, no room held — whoever pays first gets it.
+  const notHeld = waiting.filter((r) => !r.roomHeld).length;
 
   const views: QrCodeView[] = codes.map((c) => ({
     id: c.id, label: c.label, placement: c.placement, url: c.url, qr: c.qr, active: c.active, scans: c.scans,
@@ -124,7 +125,7 @@ export default async function HotelQrPage({ searchParams }: PageProps<"/staff/ho
         <div className="sm:col-span-2 2xl:col-span-1"><StatTile label="Scans today" value={String(scansToday)} icon={<QrCode />} tone="violet" sub="Booking page opened" /></div>
         <div className="sm:col-span-2 2xl:col-span-1"><StatTile label="New bookings" value={String(madeToday.length)} icon={<CalendarCheck />} tone="gold" sub={madeToday.length ? formatTZS(madeToday.reduce((t, r) => t + r.amount, 0)) : "None yet today"} href="?list=today#bookings" /></div>
         <div className="sm:col-span-2 2xl:col-span-1"><StatTile label="Arriving today" value={String(arriving.length)} icon={<LogIn />} tone="sky" sub="Booked from the QR" href="?list=arriving#bookings" /></div>
-        <div className="sm:col-span-3 2xl:col-span-1"><StatTile label="Waiting to pay" value={String(waiting.length)} icon={<Clock />} tone="amber" sub={waitingHotel ? `${waitingHotel} pay at the hotel` : "Rooms held for payment"} href="?list=waiting#bookings" /></div>
+        <div className="sm:col-span-3 2xl:col-span-1"><StatTile label="Waiting to pay" value={String(waiting.length)} icon={<Clock />} tone="amber" sub={notHeld ? `${notHeld} not paid · room not held` : "Held while the guest pays"} href="?list=waiting#bookings" /></div>
         <div className="col-span-2 sm:col-span-3 2xl:col-span-1"><StatTile label="Paid online today" value={String(onlineToday.length)} icon={<Smartphone />} tone="emerald" sub={onlineToday.length ? formatTZS(onlineToday.reduce((t, r) => t + r.paid, 0)) : "Secure payment by NTZS"} href="?list=online#bookings" /></div>
       </section>
 
@@ -133,7 +134,7 @@ export default async function HotelQrPage({ searchParams }: PageProps<"/staff/ho
         {(setup.canManage || setup.canSeeNumbers) && (
           <Panel title="Switches" subtitle={setup.canManage ? "Saved as soon as you flip them" : "Set by the Admin"}>
             <QrSwitches canManage={setup.canManage} canOpenFinance={can(user, "finance.view")}
-              setup={{ bookingOn: setup.bookingOn, payAtHotel: setup.payAtHotel, payOnline: setup.payOnline, onlinePaySwitchedOn: setup.onlinePaySwitchedOn, ntzsConnected: setup.ntzsConnected, unpaidHoldHours: setup.unpaidHoldHours, onlineHoldMinutes: setup.onlineHoldMinutes, holdLimits: setup.holdLimits }} />
+              setup={{ bookingOn: setup.bookingOn, payAtHotel: setup.payAtHotel, payOnline: setup.payOnline, onlinePaySwitchedOn: setup.onlinePaySwitchedOn, ntzsConnected: setup.ntzsConnected, onlineHoldMinutes: setup.onlineHoldMinutes }} />
           </Panel>
         )}
       </div>

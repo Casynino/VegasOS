@@ -16,14 +16,19 @@ export default async function OrderMorePage({ params }: PageProps<"/order/[token
   const { token } = await params;
   const [o, s] = await Promise.all([orderByTrackToken(token), getSettings()]);
   if (!o) notFound();
-  if (!CAN_ADD.includes(o.status)) {
+  // Take out never starts unpaid: once the kitchen has it, more is a new order (paid first too).
+  const takeOutStarted = (o.type === "TAKEAWAY" || o.type === "PICKUP") && o.status !== "CANCELLED" && (o.status !== "PENDING" || (!!o.customerPaidAt && !o.payOnlineAt));
+  if (!CAN_ADD.includes(o.status) || takeOutStarted) {
     const onWay = ["READY", "OUT_FOR_DELIVERY"].includes(o.status);
     return (
       <main className="vr grid min-h-svh place-items-center bg-(--vr-bg) px-6 text-center text-(--vr-ink)">
         <div className="max-w-sm">
-          <h1 className="font-display text-3xl font-semibold">{onWay ? "Your order is on its way" : "This order is closed"}</h1>
-          <p className="mt-2 text-sm text-(--vr-muted)">{onWay ? "Add more once it has arrived — or ask the waiter." : "Scan the QR again to start a new order, or ask a waiter."}</p>
-          <Link href={`/order/${token}`} className="mt-6 inline-flex h-12 items-center rounded-full bg-(--vr-dark) px-6 text-sm font-semibold text-white">Back to order #{o.number}</Link>
+          <h1 className="font-display text-3xl font-semibold">{takeOutStarted ? "Your take-out order is being prepared" : onWay ? "Your order is on its way" : "This order is closed"}</h1>
+          <p className="mt-2 text-sm text-(--vr-muted)">{takeOutStarted ? "Place a new order for the extra items." : onWay ? "Add more once it has arrived — or ask the waiter." : "Scan the QR again to start a new order, or ask a waiter."}</p>
+          <div className="mt-6 flex flex-wrap justify-center gap-2">
+            {takeOutStarted && <Link href="/order" className="inline-flex h-12 items-center rounded-full bg-(--vr-dark) px-6 text-sm font-semibold text-white">New order</Link>}
+            <Link href={`/order/${token}`} className={takeOutStarted ? "inline-flex h-12 items-center rounded-full px-6 text-sm font-semibold ring-1 ring-(--vr-line)" : "inline-flex h-12 items-center rounded-full bg-(--vr-dark) px-6 text-sm font-semibold text-white"}>Back to order #{o.number}</Link>
+          </div>
         </div>
       </main>
     );

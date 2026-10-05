@@ -51,7 +51,7 @@ export default async function IncomePage({ searchParams }: PageProps<"/staff/pay
     incomeRows(p.from, p.to),
     inHouseBalances(today),
     db.reservation.findMany({
-      where: { status: { in: ["RESERVED", "CONFIRMED"] }, arrivalDate: { gte: toDbDate(today), lte: toDbDate(addDays(today, 1)) }, balanceAmount: { gt: 0 } },
+      where: { status: { in: ["RESERVED", "CONFIRMED", "INQUIRY"] }, arrivalDate: { gte: toDbDate(today), lte: toDbDate(addDays(today, 1)) }, balanceAmount: { gt: 0 } },
       include: { guest: { select: { fullName: true } }, rooms: { select: { room: { select: { number: true } } } } }, orderBy: { arrivalDate: "asc" },
     }),
     db.moneyAccount.findMany({ orderBy: { sortOrder: "asc" } }),
@@ -239,7 +239,7 @@ export default async function IncomePage({ searchParams }: PageProps<"/staff/pay
                   <li key={r.id} className="flex items-center gap-3 px-4 py-3">
                     <div className="min-w-0 flex-1 leading-tight">
                       <p className="truncate text-sm font-semibold">{r.guest.fullName}</p>
-                      <p className="truncate text-xs text-muted-foreground">Room {r.rooms.map((x) => x.room.number).join(", ")} · arriving {r.arrivalDate.toISOString().slice(0, 10) === today ? "today" : "tomorrow"} · not paid</p>
+                      <p className="truncate text-xs text-muted-foreground">Room {r.rooms.map((x) => x.room.number).join(", ")} · arriving {r.arrivalDate.toISOString().slice(0, 10) === today ? "today" : "tomorrow"} · {r.status === "INQUIRY" ? "not paid · room not held" : "not paid"}</p>
                     </div>
                     <div className="shrink-0 text-right">
                       <p className="text-sm font-semibold tabular-nums">{formatTZS(r.balanceAmount)}</p>

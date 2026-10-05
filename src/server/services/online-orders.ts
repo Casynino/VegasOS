@@ -1,5 +1,5 @@
 import "server-only";
-import { pickedTableTx } from "./restaurant-locations";
+import { pickedTableTx, sitAtPickedTableTx } from "./restaurant-locations";
 import { db, type Tx } from "../db";
 import { AppError, isUniqueViolation } from "../errors";
 import { getSettings } from "../settings";
@@ -127,30 +127,36 @@ export async function placeOnlineOrder(input: OnlineOrderInput, now = new Date()
   if (input.kind === "TAKEAWAY" && address.length < 5) throw new AppError("Please add the delivery address — street, house or building, and a landmark.", "VALIDATION", { deliveryAddress: "Required" });
   if (!input.items.length || input.items.length > 30) throw new AppError("Add something from the menu.", "VALIDATION");
   const same = await db.restaurantOrder.findUnique({ where: { clientKey: input.clientKey } });
-  if (same) return same; // the same tap sent twice
+  if (same) return Object.assign(same, { seat: null as string | null }); // the same tap sent twice
   const phone = normalizePhone(input.phone)!;
 
+  let seat: string | null = null;
   try {
-    return await db.$transaction(async (tx) => {
+    const order = await db.$transaction(async (tx) => {
       const recent = await tx.restaurantOrder.count({ where: { customerPhone: phone, source: { in: ["PUBLIC_QR", "WEBSITE"] }, createdAt: { gte: new Date(now.getTime() - 30 * 60_000) } } });
       if (recent >= ORDER_LIMIT) throw new AppError("You have sent several orders just now — please call us for more.", "VALIDATION");
       // Take out is always paid first (online, or with the proof of payment); eating here may be paid now too.
       const paidFirst = !input.payOnline && (input.kind === "TAKEAWAY" || input.paidFirst) ? await paidFirstTx(tx, input.paidFirst, now) : null;
       // One customer, saved once: the phone finds them (or they are saved now).
       const guestId = await resolveGuest(tx, { fullName: name, phone, email: input.email?.trim() || null });
+      // Eating here at a free table they picked: the order goes to that table — theirs now (their session starts there).
       const picked = input.kind === "DINE_IN" && input.tableId ? await pickedTableTx(tx, input.tableId, now) : null;
+      const sat = picked ? await sitAtPickedTableTx(tx, picked.id, guestId, now) : null;
+      seat = sat?.seat ?? null;
       return createRestaurantOrderTx(tx, {
         type: input.kind, settlement: "UNPAID", items: input.items, notes: input.notes?.trim().slice(0, 300) || null, customerName: name,
         locationId: picked?.id ?? null,
         tableLabel: input.kind === "DINE_IN" && !picked ? input.tableLabel?.trim().slice(0, 40) || null : null, deliveryAddress: address || null,
       }, { userId: null, label: `${name} (online)` }, now, {
         byCustomer: true, source: input.fromQr ? "PUBLIC_QR" : "WEBSITE", guestId, customerPhone: phone, customerEmail: input.email?.trim() || null, clientKey: input.clientKey, paidFirst, payOnline: !!input.payOnline,
+        sessionId: sat?.sessionId ?? null,
       });
     });
+    return Object.assign(order, { seat });
   } catch (e) {
     if (isUniqueViolation(e)) {
       const again = await db.restaurantOrder.findUnique({ where: { clientKey: input.clientKey } });
-      if (again) return again;
+      if (again) return Object.assign(again, { seat: null as string | null });
     }
     throw e;
   }

@@ -10,9 +10,7 @@ import { setHotelQrSettingsAction } from "./actions";
 
 export type QrSetupView = {
   bookingOn: boolean; payAtHotel: boolean; payOnline: boolean; onlinePaySwitchedOn: boolean; ntzsConnected: boolean;
-  unpaidHoldHours: number; onlineHoldMinutes: number;
-  /** Pay at the hotel only for stays up to maxNights, and (with no hold time) arrivals up to toArrivalMaxDays ahead. */
-  holdLimits: { maxNights: number; toArrivalMaxDays: number };
+  onlineHoldMinutes: number;
 };
 
 /**
@@ -37,17 +35,13 @@ export function QrSwitches({ setup, canManage, canOpenFinance }: { setup: QrSetu
       setState({ enabled: res.data.enabled, payAtHotel: res.data.payAtHotel });
       toast.success(key === "enabled"
         ? (value ? "Booking from the QR is on." : "Booking from the QR is off — the QR still shows the hotel, and guests are asked to call reception.")
-        : (value ? "Guests may now reserve and pay at the hotel." : "Pay at the hotel is off — guests pay online to book."));
+        : (value ? "Guests may now book and pay later — the room is held only once it is paid." : "Pay later is off — guests pay online to book."));
       router.refresh();
     });
   };
 
-  // Said as it is: a held room is released when not paid in time — "pay when they arrive" only without a hold time.
-  const h = setup.unpaidHoldHours;
-  const lim = setup.holdLimits;
-  const payAtHotelHint = h > 0
-    ? `Guests may reserve now and pay later — the room is held for ${h} hour${h === 1 ? "" : "s"}, then released if not paid. Stays over ${lim.maxNights} nights, or when many rooms already wait for payment, pay now.`
-    : `Guests may reserve now and pay when they arrive — the room is held until the arrival day's cut-off. Up to ${lim.toArrivalMaxDays} days ahead and ${lim.maxNights} nights; beyond that they pay now.`;
+  // Said as it is (owner, 2026-10-05): paying is what reserves a room — a booking to pay later holds none.
+  const payAtHotelHint = "Guests may book now and pay later (online from their booking, or at the hotel). The room is not held until it is paid — whoever pays first gets it.";
   const noWayToPay = state.enabled && !state.payAtHotel && !setup.payOnline;
 
   return (
@@ -58,7 +52,7 @@ export function QrSwitches({ setup, canManage, canOpenFinance }: { setup: QrSetu
             hint={state.enabled ? "Guests can book a room from any working QR." : "Off: the QR still shows the hotel and its rooms, but guests are asked to call reception to book."} />
         </li>
         <li className="px-3.5 py-3">
-          <Toggle label="Pay at the hotel" on={state.payAtHotel} busy={saving === "payAtHotel"} disabled={!canManage} onChange={(v) => flip("payAtHotel", v)}
+          <Toggle label="Pay later" on={state.payAtHotel} busy={saving === "payAtHotel"} disabled={!canManage} onChange={(v) => flip("payAtHotel", v)}
             hint={payAtHotelHint} />
         </li>
         <li className="flex items-start justify-between gap-3 px-3.5 py-3">
@@ -82,7 +76,7 @@ export function QrSwitches({ setup, canManage, canOpenFinance }: { setup: QrSetu
       </ul>
       {noWayToPay && (
         <p className="flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
-          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />No way to pay is on — guests cannot finish a booking. Switch on Pay at the hotel, or online payment for room bookings.
+          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />No way to pay is on — guests cannot finish a booking. Switch on Pay later, or online payment for room bookings.
         </p>
       )}
       {!canManage && <p className="text-xs text-muted-foreground">Only the Admin changes these.</p>}

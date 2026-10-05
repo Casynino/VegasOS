@@ -9,6 +9,12 @@ import { AppError } from "../errors";
 /** Stay statuses that hold a room and earn room revenue. */
 export const REVENUE_STATUSES: ReservationStatus[] = ["RESERVED", "CONFIRMED", "CHECKED_IN", "CHECKED_OUT"];
 export const ACTIVE_STATUSES: ReservationStatus[] = ["RESERVED", "CONFIRMED", "CHECKED_IN"];
+/**
+ * Stay statuses that carry their price: those above, and a booking that holds no room yet (INQUIRY — book now, pay
+ * later, owner 2026-10-05), so the guest sees what they will pay and can pay it. Such a night is never counted as sold:
+ * every report reads the nights of held (RESERVED / CONFIRMED / CHECKED_IN) or earned (EARNED_NIGHT) stays only.
+ */
+export const PRICED_STATUSES: ReservationStatus[] = [...REVENUE_STATUSES, "INQUIRY"];
 
 /**
  * Room revenue rule: a booked night is only a price (what the guest will owe).
@@ -35,7 +41,7 @@ export async function syncRoomNights(tx: Tx, reservationRoomId: string): Promise
     where: { id: reservationRoomId },
     include: { reservation: { select: { sourceId: true, source: { select: { code: true } } } }, roomType: { select: { baseRate: true } }, nightsLedger: true },
   });
-  if (!REVENUE_STATUSES.includes(rr.status)) {
+  if (!PRICED_STATUSES.includes(rr.status)) {
     await tx.roomNight.deleteMany({ where: { reservationRoomId } });
     return;
   }
@@ -126,7 +132,7 @@ export async function recalculateReservation(tx: Tx, reservationId: string): Pro
     },
   });
 
-  const billable = reservation.rooms.filter((r) => REVENUE_STATUSES.includes(r.status));
+  const billable = reservation.rooms.filter((r) => PRICED_STATUSES.includes(r.status));
   const gross = billable.reduce((s, r) => s + r.grossAmount, 0);
   const discount = billable.reduce((s, r) => s + r.discountAmount, 0);
   const charges = reservation.charges.reduce((s, c) => s + c.amount, 0);

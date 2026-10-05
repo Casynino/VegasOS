@@ -1,6 +1,6 @@
 import "server-only";
 import { timeRange } from "@/lib/meeting";
-import { refreshBookingStates } from "./booking-holds";
+import { expireUnpaidHolds, refreshBookingStates } from "./booking-holds";
 import { db } from "../db";
 import { arrivalReminderText } from "@/lib/arrival-reminder";
 import type { Prisma } from "@/generated/prisma/client";
@@ -104,19 +104,23 @@ export async function getReceptionBoard(today: BusinessDate, now = new Date()) {
 
 export type ReceptionBoard = Awaited<ReturnType<typeof getReceptionBoard>>;
 
-/** Bookings still to check in whose first night falls in `arrival`, with guest, source, rooms and pickup. */
+/**
+ * Bookings still to check in whose first night falls in `arrival`, with guest, source, rooms and pickup — also those
+ * booked online to pay later (no room held: at the desk they take any free room and pay).
+ */
+const WAITING: ("RESERVED" | "CONFIRMED" | "INQUIRY")[] = ["RESERVED", "CONFIRMED", "INQUIRY"];
 function findArrivals(arrival: { lte?: Date; gte?: Date; gt?: Date }, stillStayingOn: Date, extra: Prisma.ReservationWhereInput = {}) {
   return db.reservation.findMany({
     where: {
       ...extra,
-      status: { in: ["RESERVED", "CONFIRMED"] },
+      status: { in: WAITING },
       // Still staying on that day — a short-time (day-use) booking leaves the same day it arrives.
-      rooms: { some: { status: { in: ["RESERVED", "CONFIRMED"] }, arrivalDate: arrival, OR: [{ departureDate: { gt: stillStayingOn } }, { isDayUse: true, departureDate: { gte: stillStayingOn } }] } },
+      rooms: { some: { status: { in: WAITING }, arrivalDate: arrival, OR: [{ departureDate: { gt: stillStayingOn } }, { isDayUse: true, departureDate: { gte: stillStayingOn } }] } },
     },
     include: {
       guest: { select: { id: true, fullName: true, phone: true, email: true, idType: true, idNumber: true, nationality: true, _count: { select: { reservations: true } } } },
       source: { select: { name: true } },
-      rooms: { where: { status: { in: ["RESERVED", "CONFIRMED"] } }, include: { room: { select: { id: true, number: true, status: true } }, roomType: { select: { id: true, name: true } } } },
+      rooms: { where: { status: { in: WAITING } }, include: { room: { select: { id: true, number: true, status: true } }, roomType: { select: { id: true, name: true } } } },
       trips: { where: { status: { not: "CANCELLED" } }, select: { flightNumber: true, pickupAt: true } },
     },
     orderBy: [{ arrivalDate: "asc" }, { eta: "asc" }, { createdAt: "asc" }],
@@ -143,13 +147,23 @@ async function toArrivalCards(arrivals: Awaited<ReturnType<typeof findArrivals>>
         : { startAt: rr.startAt < now ? rr.startAt : now, endAt: rr.endAt, arrivalDate: arrival, departureDate: fromDbDate(rr.departureDate), isDayUse: rr.isDayUse };
       const booked = typeOf.get(rr.roomTypeId);
       const free = withOptions ? await findAvailableRooms({ stay, excludeReservationRoomId: rr.id }) : [];
+      const freeNow = free.some((o) => o.id === rr.room.id);
+      // Booked to pay later: its room was never held — a guest who paid first may have it now (on the booking's own
+      // dates: a room only busy today, while the guest asks to come early, was not taken from them; nor a room someone
+      // is still in).
+      const freeOnItsDates = rr.status === "INQUIRY" && withOptions && !freeNow && early && (await findAvailableRooms({
+        stay: { startAt: rr.startAt, endAt: rr.endAt, arrivalDate: arrival, departureDate: fromDbDate(rr.departureDate), isDayUse: rr.isDayUse }, roomIds: [rr.room.id],
+      })).length > 0;
+      const taken = rr.status === "INQUIRY" && withOptions && !freeNow && !freeOnItsDates && rr.room.status !== "OCCUPIED";
+      // Not held and not free for these nights (someone in it, or today only for an early arrival): not offered as ready.
+      const busy = rr.status === "INQUIRY" && withOptions && !freeNow && !taken;
       const options = free
         .filter((o) => o.roomTypeId === rr.roomTypeId || (!!booked && typeOf.get(o.roomTypeId)?.baseRate === booked.baseRate))
         .sort((a, b) => Number(b.roomTypeId === rr.roomTypeId) - Number(a.roomTypeId === rr.roomTypeId) || a.number.localeCompare(b.number, undefined, { numeric: true }));
       return {
         id: rr.id, roomTypeName: rr.roomType.name, arrival, departure: fromDbDate(rr.departureDate),
         nights: rr.nights, adults: rr.adults, children: rr.children, ratePerNight: rr.ratePerNight, discountPerNight: rr.discountPerNight,
-        current: { id: rr.room.id, number: rr.room.number, status: rr.room.status, ready: CHECK_IN_READY.includes(rr.room.status), type: rr.roomType.name, sameType: true },
+        current: { id: rr.room.id, number: rr.room.number, status: rr.room.status, ready: !taken && !busy && CHECK_IN_READY.includes(rr.room.status), type: rr.roomType.name, sameType: true, taken, busy },
         options: options.map((o) => ({
           id: o.id, number: o.number, status: o.status, ready: CHECK_IN_READY.includes(o.status),
           type: typeOf.get(o.roomTypeId)?.name ?? rr.roomType.name, sameType: o.roomTypeId === rr.roomTypeId,
@@ -165,6 +179,7 @@ async function toArrivalCards(arrivals: Awaited<ReturnType<typeof findArrivals>>
  * `days` days, shown for preparation (dates must change to check in early).
  */
 export async function getCheckInList(today: BusinessDate, now = new Date(), days = 14) {
+  await expireUnpaidHolds(now);
   const d = toDbDate(today);
   const [due, upcoming] = await Promise.all([
     findArrivals({ lte: d }, d).then((r) => toArrivalCards(r, now)),
@@ -176,6 +191,7 @@ export type CheckInArrival = Awaited<ReturnType<typeof getCheckInList>>["due"][n
 
 /** One waiting booking with its free-room options (for the check-in workspace), or null. */
 export async function getCheckInBooking(reservationId: string, today: BusinessDate, now = new Date()) {
+  await expireUnpaidHolds(now);
   const d = toDbDate(today);
   const rows = await findArrivals({ lte: toDbDate(addDays(today, 366)) }, d, { id: reservationId });
   return rows.length ? (await toArrivalCards(rows, now, true, today))[0] : null;
@@ -206,7 +222,7 @@ export async function getArrivalsSummary(today: BusinessDate) {
   const settings = await getSettings();
   const [expected, checkedIn, noShows] = await Promise.all([
     db.reservation.findMany({
-      where: { status: { in: ["RESERVED", "CONFIRMED"] }, arrivalDate: { lte: d } },
+      where: { status: { in: WAITING }, arrivalDate: { lte: d } },
       select: {
         id: true, reference: true, eta: true, lateArrivalNotedAt: true, lateArrivalNote: true, status: true, paidAmount: true, arrivalDate: true, departureDate: true,
         balanceAmount: true, netAmount: true, billTo: true, holdUntil: true, kind: true, companyName: true, group: { select: { name: true } },
@@ -228,6 +244,8 @@ export async function getArrivalsSummary(today: BusinessDate) {
     /** A meeting room booking: its time (Start meeting instead of check-in). */
     meeting: r.kind === "MEETING" && r.rooms[0] ? { time: timeRange(r.rooms[0].startAt, r.rooms[0].endAt), contact: r.companyName ? r.guest.fullName : null } : null,
     late: !!r.lateArrivalNotedAt, lateNote: r.lateArrivalNote, paid: r.paidAmount > 0, pending: r.status === "RESERVED",
+    /** Booked online to pay later: not paid, no room held (at the desk: any free room, and the payment). */
+    notHeld: r.status === "INQUIRY",
     // For the "to check in" list on the front desk.
     roomTypes: r.rooms.map((x) => ({ number: x.room.number, type: x.roomType.name, meeting: x.roomType.category === "MEETING_ROOM" })),
     arrival: fromDbDate(r.arrivalDate), departure: fromDbDate(r.departureDate), nights: r.rooms.reduce((m, x) => Math.max(m, x.nights), 0),

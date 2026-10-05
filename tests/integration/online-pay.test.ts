@@ -2,10 +2,10 @@ import { randomInt } from "node:crypto";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/server/db";
 import { checkIn, createReservation } from "@/server/services/reservations";
-import { onlinePayStates, setOrderStatus } from "@/server/services/restaurant";
+import { cancelRestaurantOrder, declineRestaurantOrder, onlinePayStates, setOrderStatus } from "@/server/services/restaurant";
 import { placeOnlineOrder } from "@/server/services/online-orders";
 import { addItemsByTrackToken, freeTables, placeLocationOrder } from "@/server/services/restaurant-locations";
-import { seatAtTable } from "@/server/services/dining-sessions";
+import { guestTableState, seatAtTable } from "@/server/services/dining-sessions";
 import { placeStayOrder } from "@/server/services/guest-comms";
 import { createWebsiteBooking } from "@/server/services/public-booking";
 import { createWebsiteMeetingBooking } from "@/server/services/booking-requests";
@@ -229,9 +229,83 @@ describe("eating here: pick a free table", () => {
     await expect(placeLocationOrder(main.qrToken, { clientKey: key(), items: [{ menuItemId: BEER, quantity: 1 }], name: "Too Late", phone: phone(), kind: "DINE_IN", tableId: t2.id }))
       .rejects.toThrow(/just taken/);
 
-    // From the menu too.
-    const web = await placeOnlineOrder({ clientKey: key(), items: [{ menuItemId: BEER, quantity: 1 }], name: "Menu Picker", phone: phone(), kind: "DINE_IN", tableId: t1.id });
-    expect(web.locationId).toBe(t1.id);
+    // The table picked is theirs now: nobody else can pick it — from the menu either.
+    expect((await freeTables()).some((t) => t.id === t1.id)).toBe(false);
+    await expect(placeOnlineOrder({ clientKey: key(), items: [{ menuItemId: BEER, quantity: 1 }], name: "Menu Picker", phone: phone(), kind: "DINE_IN", tableId: t1.id }))
+      .rejects.toThrow(/just taken/);
+    // A free table picked from the menu: the order goes there, and it is theirs too.
+    const t3 = (await freeTables())[0];
+    const web = await placeOnlineOrder({ clientKey: key(), items: [{ menuItemId: BEER, quantity: 1 }], name: "Menu Picker", phone: phone(), kind: "DINE_IN", tableId: t3.id });
+    expect(web).toMatchObject({ locationId: t3.id, sessionId: expect.any(String), seat: expect.any(String) });
+  });
+});
+
+describe("restaurant QR: found in verification", () => {
+  it("a table picked on the main QR is taken: not offered again, refused to another party, a stranger scanning it is not seated", async () => {
+    const main = await db.restaurantLocation.findFirstOrThrow({ where: { kind: "MAIN" } });
+    const [t1] = await freeTables();
+    const p = phone();
+    const order = await placeLocationOrder(main.qrToken, { clientKey: key(), items: [{ menuItemId: BEER, quantity: 1 }], name: "Picks A Table", phone: p, kind: "DINE_IN", tableId: t1.id });
+    expect(order).toMatchObject({ locationId: t1.id, sessionId: expect.any(String), seat: expect.any(String) });
+    expect((await freeTables()).some((t) => t.id === t1.id)).toBe(false);
+    await expect(placeOnlineOrder({ clientKey: key(), items: [{ menuItemId: BEER, quantity: 1 }], name: "Another Party", phone: phone(), kind: "DINE_IN", tableId: t1.id }))
+      .rejects.toThrow(/just taken/);
+    const loc = await db.restaurantLocation.update({ where: { id: t1.id }, data: { qrActive: true } });
+    expect((await seatAtTable(loc.qrToken, { name: "Stranger", phone: phone() }, null)).state).toBe("in_use");
+    // The customer who picked it is at home there: welcomed back, their order on that table's bill.
+    expect((await seatAtTable(loc.qrToken, { name: "Picks A Table", phone: p }, null)).state).toBe("welcome_back");
+    expect((await guestTableState(loc.id, order.seat)).mine?.orders.map((o) => o.track)).toContain(order.trackToken);
+  });
+
+  it("an order picked onto a table before picking started a session still keeps the table taken (only its customer sits down)", async () => {
+    const [t1] = await freeTables();
+    const p = phone();
+    // As such orders were made before (no session at the table).
+    await placeOnlineOrder({ clientKey: key(), items: [{ menuItemId: BEER, quantity: 1 }], name: "Old Picker", phone: p, kind: "DINE_IN" })
+      .then((o) => db.restaurantOrder.update({ where: { id: o.id }, data: { locationId: t1.id, tableLabel: t1.name } }));
+    expect((await freeTables()).some((t) => t.id === t1.id)).toBe(false);
+    const loc = await db.restaurantLocation.update({ where: { id: t1.id }, data: { qrActive: true } });
+    expect((await guestTableState(loc.id, null)).state).toBe("in_use");
+    expect((await seatAtTable(loc.qrToken, { name: "Stranger", phone: phone() }, null)).state).toBe("in_use");
+    const own = await seatAtTable(loc.qrToken, { name: "Old Picker", phone: p }, null);
+    expect(own.state).toBe("seated");
+    expect((await guestTableState(loc.id, own.token)).mine?.orders).toHaveLength(1);
+  });
+
+  it("take out paid online: once the kitchen has started, the customer cannot add unpaid items", async () => {
+    const { order, token } = await orderPayingOnline("TAKEAWAY");
+    deposits[await depositOf(token)].status = "completed";
+    await db.mobilePayment.updateMany({ where: { publicToken: token }, data: { lastCheckedAt: null } });
+    expect((await customerPaymentByToken(token, { check: true }))!.status).toBe("PAID");
+    await setOrderStatus(order.id, "PREPARING", await chefActor());
+    await expect(addItemsByTrackToken(order.trackToken!, [{ menuItemId: BEER, quantity: 1 }])).rejects.toThrow(/new order/i);
+    const o = await db.restaurantOrder.findUniqueOrThrow({ where: { id: order.id } });
+    expect(o.paymentStatus).toBe("PAID");
+    expect(o.total).toBe(order.total);
+  });
+
+  it("an order whose online payment is on its way cannot be cancelled or declined; paid, it is recorded on the order", async () => {
+    const { order, token } = await orderPayingOnline("DINE_IN");
+    expect((await onlinePayStates([order])).get(order.id)).toBe("PAYING");
+    await expect(cancelRestaurantOrder(order.id, "Customer left", await managerActor())).rejects.toThrow(/paying/i);
+    await expect(declineRestaurantOrder(order.id, "Sold out", [], await chefActor())).rejects.toThrow(/paying/i);
+    deposits[await depositOf(token)].status = "completed";
+    await db.mobilePayment.updateMany({ where: { publicToken: token }, data: { lastCheckedAt: null } });
+    expect((await customerPaymentByToken(token, { check: true }))!.status).toBe("PAID");
+    const mp = await db.mobilePayment.findUniqueOrThrow({ where: { publicToken: token } });
+    expect(mp.attentionAt).toBeNull();
+    expect((await db.restaurantOrder.findUniqueOrThrow({ where: { id: order.id } })).paymentStatus).toBe("PAID");
+  });
+
+  it("refused before reaching the phone: the payment page says why (restaurant words), with nothing to 'check again'", async () => {
+    const k = key(), p = phone();
+    const order = await placeOnlineOrder({ clientKey: k, items: [{ menuItemId: BEER, quantity: 1 }], name: "Refused Again", phone: p, kind: "DINE_IN", payOnline: true });
+    failNext = 422;
+    const started = await payForNewOrder(order, { phone: p, clientKey: k, ip: ip() });
+    const view = (await customerPaymentByToken(started.pay!))!;
+    expect(view).toMatchObject({ status: "FAILED", sent: false });
+    expect(view.message).toMatch(/That number cannot receive/);
+    expect(view.message).not.toMatch(/hotel/);
   });
 });
 
@@ -334,6 +408,38 @@ describe("room booking and the meeting room: Pay online", () => {
     expect((await bookingPayOnline(r.reference, r.manageToken)).live).toBe(again.token);
     await db.reservation.update({ where: { id: r.id }, data: { billTo: "COMPANY" } });
     await expect(payBookingOnline(r.reference, r.manageToken, { phone: b.phone, clientKey: key(), ip: ip() })).rejects.toThrow(/billed to your company/);
+  });
+
+  it("book now, pay later (owner, 2026-10-05): no room held; Pay online from the booking page holds it only while paying — not paid, back to pay later", async () => {
+    const p = phone();
+    const sel = { checkIn: addDays(today(), 18), checkOut: addDays(today(), 20), adults: 2, children: 0, typeSlug: "double-deluxe", rooms: 1 };
+    const b = await createWebsiteBooking(sel, { fullName: "Pays Later", phone: p }, "10.9.9.9", null, { payLater: true });
+    const r = await db.reservation.findUniqueOrThrow({ where: { id: b.id } });
+    expect(r).toMatchObject({ status: "INQUIRY", holdUntil: null, paidAmount: 0 });
+    expect(r.balanceAmount).toBeGreaterThan(0);
+    expect(await bookingPayOnline(r.reference, r.manageToken)).toEqual({ offered: true, live: null });
+
+    const pay = await payBookingOnline(r.reference, r.manageToken, { phone: p, clientKey: key(), ip: ip() });
+    const held = await db.reservation.findUniqueOrThrow({ where: { id: r.id } });
+    expect(held.status).toBe("RESERVED");
+    expect(held.holdUntil!.getTime() - Date.now()).toBeLessThanOrEqual(ONLINE_BOOKING_HOLD_MINUTES * 60_000);
+    expect(sent.at(-1)).toMatchObject({ amountTzs: r.balanceAmount });
+
+    // Not paid: the guest stops the payment — the booking holds no room again at once (no waiting for the hold to
+    // end), and is never cancelled.
+    await cancelCustomerPayment(pay.token);
+    expect(await db.reservation.findUniqueOrThrow({ where: { id: r.id } })).toMatchObject({ status: "INQUIRY", holdUntil: null, cancelledAt: null });
+    await expireUnpaidHolds();
+    expect(await db.reservation.findUniqueOrThrow({ where: { id: r.id } })).toMatchObject({ status: "INQUIRY", holdUntil: null, cancelledAt: null });
+    expect((await customerPaymentByToken(pay.token))!.message).toMatch(/not reserved until it is paid — try again/);
+
+    // Try again: held while paying, confirmed once nTZS confirms.
+    const again = await retryCustomerPayment(pay.token, { clientKey: key(), ip: ip() });
+    expect((await db.reservation.findUniqueOrThrow({ where: { id: r.id } })).status).toBe("RESERVED");
+    deposits[await depositOf(again.token)].status = "completed";
+    await db.mobilePayment.updateMany({ where: { publicToken: again.token }, data: { lastCheckedAt: null } });
+    expect(await customerPaymentByToken(again.token, { check: true })).toMatchObject({ status: "PAID" });
+    expect(await db.reservation.findUniqueOrThrow({ where: { id: r.id } })).toMatchObject({ status: "CONFIRMED", balanceAmount: 0 });
   });
 
   it("the meeting room: booked at once and paid online; switched off, nothing is booked", async () => {

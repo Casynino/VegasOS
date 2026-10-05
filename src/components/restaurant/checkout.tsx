@@ -24,6 +24,9 @@ export type CheckoutConfig =
   | { kind: "room"; target: { kind: "stay" | "room"; token: string }; where: string; guest?: string; payTo?: PayOption[]; online?: boolean }
   | { kind: "more"; token: string; number: string };
 
+/** "ORD-2026-000046" → "46" — the short number the customer sees everywhere else. */
+const shortNo = (n: string) => n.replace(/^ORD-\d{4}-0*/, "");
+
 const tzs = (v: number) => `TZS ${v.toLocaleString("en-US")}`;
 const newKey = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (x) => x.toString(16).padStart(2, "0")).join("");
 const label = "block text-[12.5px] font-medium text-(--vr-ink)/80";
@@ -361,8 +364,8 @@ function SpotCheckout({ config, items, total, who, onWho, onDone, seated }: {
         proof={<PayFirst total={total} accounts={config.payTo} value={pay} onChange={setPay} />} />
       {open && !payNow && (
         <div className="space-y-1.5 rounded-2xl bg-(--vr-gold-soft) p-3">
-          <p className="text-[12.5px] font-semibold text-(--vr-gold-ink)">You have an open order here — #{open.number} · {tzs(open.total)}</p>
-          {[[true, `Add these to order #${open.number}`, "Same order, same bill"], [false, "Start a new order", "A separate order and bill"]].map(([v, t, s]) => (
+          <p className="text-[12.5px] font-semibold text-(--vr-gold-ink)">You have an open order here — #{shortNo(open.number)} · {tzs(open.total)}</p>
+          {[[true, `Add these to order #${shortNo(open.number)}`, "Same order, same bill"], [false, "Start a new order", "A separate order and bill"]].map(([v, t, s]) => (
             <button key={String(v)} type="button" onClick={() => setJoinOpen(v as boolean)} aria-pressed={joinOpen === v}
               className={cn("flex w-full items-center gap-3 rounded-xl bg-white px-3 py-2.5 text-left ring-1 transition", joinOpen === v ? "ring-2 ring-(--vr-dark)" : "ring-(--vr-line)")}>
               <span className={cn("grid size-5 shrink-0 place-items-center rounded-full border-2", joinOpen === v ? "border-(--vr-dark) bg-(--vr-dark) text-white" : "border-(--vr-line)")}>{joinOpen === v && <Check className="size-3" strokeWidth={3} />}</span>
@@ -377,7 +380,7 @@ function SpotCheckout({ config, items, total, who, onWho, onDone, seated }: {
       {payNow && !online && <PayNote>{takeOut ? "Paid first — your order starts right away and we bring it to you. If the payment does not reach us, we call you."
         : "Paid now — your order starts right away. If the payment does not reach us, we call you."}</PayNote>}
       <Footer error={error}>
-        <Submit pending={pending} disabled={!ready} onClick={send} paying={payNow && online && !joining}>{joining ? `Add to order #${open?.number} · ${tzs(total)}` : payNow && online ? `Pay ${tzs(total)} now` : payNow ? `Place paid order · ${tzs(total)}` : `Place order · ${tzs(total)}`}</Submit>
+        <Submit pending={pending} disabled={!ready} onClick={send} paying={payNow && online && !joining}>{joining ? `Add to order #${shortNo(open?.number ?? "")} · ${tzs(total)}` : payNow && online ? `Pay ${tzs(total)} now` : payNow ? `Place paid order · ${tzs(total)}` : `Place order · ${tzs(total)}`}</Submit>
       </Footer>
     </div>
   );
@@ -502,9 +505,9 @@ function MoreCheckout({ config, items, total, onDone }: { config: Extract<Checko
   });
   return (
     <div className="mt-4 space-y-3.5">
-      <p className="flex items-start gap-2 rounded-xl bg-(--vr-gold-soft) px-3 py-2.5 text-[12.5px] text-(--vr-gold-ink)"><Plus className="mt-0.5 size-4 shrink-0" />These join order #{config.number} — the same order and the same bill.</p>
+      <p className="flex items-start gap-2 rounded-xl bg-(--vr-gold-soft) px-3 py-2.5 text-[12.5px] text-(--vr-gold-ink)"><Plus className="mt-0.5 size-4 shrink-0" />These join order #{shortNo(config.number)} — the same order and the same bill.</p>
       <Footer error={error}>
-        <Submit pending={pending} onClick={send}>Add to order #{config.number} · {tzs(total)}</Submit>
+        <Submit pending={pending} onClick={send}>Add to order #{shortNo(config.number)} · {tzs(total)}</Submit>
       </Footer>
     </div>
   );

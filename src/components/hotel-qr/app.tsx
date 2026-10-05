@@ -277,7 +277,7 @@ export function HotelQrApp({ token, landing }: { token: string; landing: QrLandi
           {content}
         </motion.div>
       </AnimatePresence>
-      <DatesSheet open={flow.sheet} onClose={closeSheet} window={w} types={roomTypes.map((t) => ({ slug: t.slug, name: t.name }))}
+      <DatesSheet open={flow.sheet} onClose={closeSheet} window={w} types={roomTypes.map((t) => ({ slug: t.slug, name: t.name, maxAdults: t.maxAdults, maxChildren: t.maxChildren }))}
         initial={{ stay, roomType: flow.roomType }} closed={closed} phone={hotel.phone}
         onSubmit={(next: StayQuery, rt: string | null) => {
           sheetPushed.current = false;

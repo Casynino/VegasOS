@@ -34,6 +34,8 @@ type View = (typeof VIEWS)[number]["key"];
 const FILTERS = [
   { key: "", label: "Everything" },
   { key: "pending", label: "Pending · unpaid" },
+  // Booked online to pay later (or an enquiry): whoever pays first gets the room.
+  { key: "notheld", label: "Not paid · room not held" },
   { key: "paid", label: "Confirmed · paid" },
   { key: "owes", label: "Owes money" },
   { key: "company", label: "Company invoice" },
@@ -49,15 +51,16 @@ type Filter = (typeof FILTERS)[number]["key"];
 const BY_FILTER: Record<Filter, Prisma.ReservationWhereInput> = {
   "": {},
   pending: { status: "RESERVED" },
+  notheld: { status: "INQUIRY" },
   paid: { status: "CONFIRMED" },
-  owes: { balanceAmount: { gt: 0 }, status: { in: ["CHECKED_IN", "CHECKED_OUT", "CONFIRMED", "RESERVED"] } },
+  owes: { balanceAmount: { gt: 0 }, status: { in: ["CHECKED_IN", "CHECKED_OUT", "CONFIRMED", "RESERVED", "INQUIRY"] } },
   company: { billTo: { not: "GUEST" } },
   qr: { source: { code: "HOTEL_QR" } },
   in: { status: "CHECKED_IN" },
   out: { status: "CHECKED_OUT" },
   cancelled: { status: { in: ["CANCELLED", "NO_SHOW"] } },
   noshow: { status: "NO_SHOW", rooms: { some: { status: "NO_SHOW", releasedAt: null } } },
-  late: { lateArrivalNotedAt: { not: null }, status: { in: ["RESERVED", "CONFIRMED"] } },
+  late: { lateArrivalNotedAt: { not: null }, status: { in: ["RESERVED", "CONFIRMED", "INQUIRY"] } },
 };
 
 /** The card's thin bar and soft tint, from its status colour (like the room tiles). */
@@ -89,7 +92,8 @@ export default async function ReservationsPage({ searchParams }: PageProps<"/sta
 
   const byView: Record<View, Prisma.ReservationWhereInput> = {
     // Arriving: stays running today, and short-time / meeting bookings for today (they start and end the same day).
-    arrivals: { rooms: { some: { status: { in: ["RESERVED", "CONFIRMED"] }, OR: [{ arrivalDate: { lte: today }, departureDate: { gt: today } }, { arrivalDate: today, isDayUse: true }] } }, status: { in: ["RESERVED", "CONFIRMED", "INQUIRY"] } },
+    // (Booked to pay later — no room held — they still arrive: listed too.)
+    arrivals: { rooms: { some: { status: { in: ["RESERVED", "CONFIRMED", "INQUIRY"] }, OR: [{ arrivalDate: { lte: today }, departureDate: { gt: today } }, { arrivalDate: today, isDayUse: true }] } }, status: { in: ["RESERVED", "CONFIRMED", "INQUIRY"] } },
     inhouse: { status: "CHECKED_IN" },
     departures: { rooms: { some: { status: "CHECKED_IN", departureDate: { lte: today } } } },
     upcoming: { arrivalDate: { gt: today }, status: { in: ["RESERVED", "CONFIRMED", "INQUIRY"] } },
@@ -147,6 +151,17 @@ export default async function ReservationsPage({ searchParams }: PageProps<"/sta
   const link = (params: Record<string, string>) => `?${new URLSearchParams({ view, ...(q && { q }), ...(filter && { f: filter }), ...params })}`;
 
   /** What is happening with this booking right now, and the next step for reception. */
+  /** A booking waiting for its guest: late, coming late, today, or in some days (null: none of these). */
+  function upcomingSituation(r: (typeof rows)[number], arrival: string, departure: string, nightsLabel: string) {
+    const checkIn = { href: `/staff/check-in?id=${r.id}#workspace`, perm: can(user, "reservations.check_in") };
+    if (arrival < todayStr && departure > todayStr) return { tag: "Late", tone: "bg-amber-500/15 text-amber-800 dark:text-amber-300", note: `Was due ${formatBusinessDate(arrival)}`, action: { label: "Check in", ...checkIn } };
+    if (arrival <= todayStr && r.lateArrivalNotedAt) return { tag: "Late arrival", tone: "bg-violet-500/15 text-violet-700 dark:text-violet-300", note: `${r.eta ? `Around ${r.eta} · ` : ""}room kept`, action: { label: "Check in", ...checkIn } };
+    if (arrival === todayStr) return { tag: "Expected today", tone: "bg-sky-500/15 text-sky-700 dark:text-sky-300", note: r.eta ? `Around ${r.eta} · ${nightsLabel}` : nightsLabel, action: { label: "Check in", ...checkIn } };
+    const days = Math.round((Date.parse(arrival) - Date.parse(todayStr)) / 86_400_000);
+    if (days > 0) return { tag: days === 1 ? "Tomorrow" : `In ${days} days`, tone: "bg-violet-500/15 text-violet-700 dark:text-violet-300", note: `${nightsLabel}${r.eta ? ` · around ${r.eta}` : ""}`, action: { label: "Prepare", ...checkIn } };
+    return null;
+  }
+
   function situation(r: (typeof rows)[number]) {
     const live = r.rooms.filter((x) => x.status === "CHECKED_IN");
     if (r.kind === "MEETING") {
@@ -176,12 +191,10 @@ export default async function ReservationsPage({ searchParams }: PageProps<"/sta
       return { tag: "In the hotel", tone: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300", note: `Leaves ${outDate === addDays(todayStr, 1) ? "tomorrow" : formatBusinessDate(outDate)} · ${hhmm(out)}`, action: { label: "Open stay", ...stay } };
     }
     if (["RESERVED", "CONFIRMED", "INQUIRY"].includes(r.status)) {
-      const checkIn = { href: `/staff/check-in?id=${r.id}#workspace`, perm: can(user, "reservations.check_in") };
-      if (arrival < todayStr && departure > todayStr) return { tag: "Late", tone: "bg-amber-500/15 text-amber-800 dark:text-amber-300", note: `Was due ${formatBusinessDate(arrival)}`, action: { label: "Check in", ...checkIn } };
-      if (arrival <= todayStr && r.lateArrivalNotedAt) return { tag: "Late arrival", tone: "bg-violet-500/15 text-violet-700 dark:text-violet-300", note: `${r.eta ? `Around ${r.eta} · ` : ""}room kept`, action: { label: "Check in", ...checkIn } };
-      if (arrival === todayStr) return { tag: "Expected today", tone: "bg-sky-500/15 text-sky-700 dark:text-sky-300", note: r.eta ? `Around ${r.eta} · ${nightsLabel}` : nightsLabel, action: { label: "Check in", ...checkIn } };
-      const days = Math.round((Date.parse(arrival) - Date.parse(todayStr)) / 86_400_000);
-      if (days > 0) return { tag: days === 1 ? "Tomorrow" : `In ${days} days`, tone: "bg-violet-500/15 text-violet-700 dark:text-violet-300", note: `${nightsLabel}${r.eta ? ` · around ${r.eta}` : ""}`, action: { label: "Prepare", ...checkIn } };
+      const when = upcomingSituation(r, arrival, departure, nightsLabel);
+      // Not paid, no room held (booked online to pay later, or an enquiry): said first — whoever pays first gets the room.
+      if (when && r.status === "INQUIRY") return { ...when, tag: RESERVATION_STATUS_META.INQUIRY.label, tone: RESERVATION_STATUS_META.INQUIRY.className, note: `${when.tag} · ${when.note}` };
+      if (when) return when;
     }
     if (r.status === "NO_SHOW") {
       const held = r.rooms.some((x) => x.status === "NO_SHOW" && !x.releasedAt);

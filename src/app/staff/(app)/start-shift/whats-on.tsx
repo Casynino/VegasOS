@@ -26,8 +26,8 @@ export async function whatsOn(today: BusinessDate, cfg: BusinessDayConfig) {
     db.room.findMany({ where: { isActive: true, status: { in: ["MAINTENANCE", "OUT_OF_SERVICE"] } }, select: { number: true, statusNote: true }, orderBy: { number: "asc" } }),
     db.bookingRequest.count({ where: { status: "NEW" } }),
     db.transportTrip.findMany({ where: { pickupAt: { gte: start, lt: end }, status: { notIn: ["CANCELLED", "COMPLETED", "NO_SHOW"] } }, orderBy: { pickupAt: "asc" }, take: 6, select: { id: true, type: true, pickupAt: true, passengerName: true, destination: true } }),
-    // Booked by guests from the Hotel QR today — real reservations already (not requests to call back).
-    db.reservation.count({ where: { source: { code: "HOTEL_QR" }, status: { not: "INQUIRY" }, createdAt: { gte: start, lt: end } } }),
+    // Booked by guests from the Hotel QR today — real bookings already (pay later ones hold no room until paid).
+    db.reservation.count({ where: { source: { code: "HOTEL_QR" }, createdAt: { gte: start, lt: end } } }),
   ]);
   return { today, arrivals, departures, requests, dirty, broken, online, trips, qr };
 }

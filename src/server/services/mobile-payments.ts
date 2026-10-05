@@ -9,6 +9,7 @@ import { ordersDueForPrompt, payOrdersFromMobileTx } from "./restaurant";
 import { payTripFromMobileTx } from "./transport";
 import { recordInvoicePaymentTx } from "./invoices";
 import { notifyBookingGuestSoon } from "./guest-comms";
+import { holdForPayment, isPayLater, releasePayingHold, type PayingHold } from "./booking-holds";
 import { createNtzsDeposit, depositCompleted, depositFailed, getNtzsDeposit, ntzsEnabled, ntzsLive, ntzsPhone, NTZS_MIN_TZS } from "./ntzs";
 import type { Actor } from "./reservations";
 import type { MobilePayment } from "@/generated/prisma/client";
@@ -71,7 +72,32 @@ export async function requestMobilePayment(target: PromptTarget, rawPhone: strin
   // Before asking again: an earlier attempt for this bill that was approved late is recorded first — never paid twice.
   await settleLateAttempts(target, now);
 
+  // A booking that holds no room yet (book now, pay later): its room is checked again and held while it is paid — or
+  // "just taken". Moved to a room at another price: said first, nothing is asked until they press again (the room stays held).
+  const hold = target.purpose === "RESERVATION" ? await holdForPayment(target.reservationId, actor ?? { label: "Customer · online" }, now) : null;
+  if (hold?.held && hold.after !== hold.before) throw new AppError(priceMoved(hold, customer), "CONFLICT");
+  try {
+    return await promptFor(target, phone, actor, now, opts);
+  } catch (e) {
+    // Nothing went to the phone: the booking stops holding the room again at once (a live request keeps it).
+    if (hold?.held && target.purpose === "RESERVATION") await releasePayingHold(target.reservationId, undefined, now).catch(() => null);
+    throw e;
+  }
+}
+
+/** "Room 104 was just taken — Room 105 (same type) is yours to pay for; the price is now…". */
+function priceMoved(h: PayingHold, customer: boolean) {
+  const m = h.moves[0];
+  const room = m ? `Room ${m.from} was just taken — Room ${m.to} (${m.type}) is kept for you instead. ` : "";
+  return customer
+    ? `${room}The price is now ${fmt(h.after)} (was ${fmt(h.before)}). Press Pay again to pay ${fmt(h.after)}.`
+    : `${m ? `Room ${m.from} was taken by a guest who paid first — the booking moved to Room ${m.to} (${m.type}). ` : ""}The price is now ${fmt(h.after)} (was ${fmt(h.before)}). Check the amount and send again.`;
+}
+
+async function promptFor(target: PromptTarget, phone: string, actor: (Actor & { userId: string }) | null, now: Date, opts: PromptOptions) {
+  const customer = !actor;
   let amount: number, name: string | null = null, reservationId: string | null = null, orderIds: string[] = [], tripId: string | null = null, invoiceId: string | null = null;
+  let payingHold = false;
   if (target.purpose === "TRANSPORT") {
     // A trip: its price, worked out here — once, and never for a trip paid, billed or closed.
     const t = await db.transportTrip.findUnique({ where: { id: target.tripId }, select: { id: true, status: true, charge: true, chargeId: true, paidAt: true, passengerName: true, sales: { where: { isVoided: false }, select: { id: true } } } });
@@ -88,8 +114,11 @@ export async function requestMobilePayment(target: PromptTarget, rawPhone: strin
     if (!["ISSUED", "PARTIALLY_PAID", "OVERDUE"].includes(inv.status) || inv.balanceAmount <= 0) throw new AppError("Nothing is owed on this invoice.", "CONFLICT");
     amount = inv.balanceAmount; invoiceId = inv.id; name = inv.corporateCustomer?.companyName ?? null;
   } else if (target.purpose === "RESERVATION") {
-    const r = await db.reservation.findUnique({ where: { id: target.reservationId }, select: { id: true, status: true, balanceAmount: true, guest: { select: { fullName: true } } } });
+    const r = await db.reservation.findUnique({ where: { id: target.reservationId }, select: { id: true, status: true, balanceAmount: true, externalData: true, holdUntil: true, guest: { select: { fullName: true } } } });
     if (!r) throw new AppError("Booking not found.", "NOT_FOUND");
+    // Held only while it is paid (booked to pay later, or an enquiry): a request staff send times out like the guest's own,
+    // so the room is never kept for hours on a request nobody approves.
+    payingHold = r.status === "RESERVED" && !!r.holdUntil && (isPayLater(r.externalData) || marksPayingHold(r.externalData));
     if (r.status === "CANCELLED" || r.status === "NO_SHOW") throw new AppError("This booking is closed — nothing to pay.", "CONFLICT");
     amount = Math.round(target.amount);
     if (!Number.isInteger(amount) || amount <= 0) throw new AppError("Enter the amount.", "VALIDATION", { amount: "Required" });
@@ -133,7 +162,7 @@ export async function requestMobilePayment(target: PromptTarget, rawPhone: strin
       data: {
         purpose: target.purpose, amount, phone, reservationId, orderIds, tripId, invoiceId, livemode: ntzsLive(), requestedById: actor?.userId ?? null,
         initiator: customer ? "CUSTOMER" : "STAFF", source: opts.source ?? (customer ? "WEBSITE" : "DESK"), publicToken: newToken(), clientKey: opts.clientKey ?? null,
-        targetKey, expiresAt: new Date(now.getTime() + (customer ? CUSTOMER_EXPIRES_MS : PROMPT_EXPIRES_MS)),
+        targetKey, expiresAt: new Date(now.getTime() + (customer || payingHold ? CUSTOMER_EXPIRES_MS : PROMPT_EXPIRES_MS)),
         handedOverById: target.purpose === "RESTAURANT" ? target.handedOverById ?? null : null,
       },
     });
@@ -154,7 +183,7 @@ export async function requestMobilePayment(target: PromptTarget, rawPhone: strin
     const refused = typeof res.status === "number" && res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 409;
     if (refused) {
       await db.mobilePayment.updateMany({ where: { id: mp.id, status: "PENDING", completedAt: null }, data: { status: "FAILED", lastError: res.error.slice(0, 500) } });
-      throw new AppError(customer ? friendlyForCustomer(res.error) : res.error, "CONFLICT");
+      throw new AppError(customer ? friendlyForCustomer(res.error, target.purpose) : res.error, "CONFLICT");
     }
     console.warn("[ntzs] prompt not confirmed by nTZS — kept waiting", { id: mp.id, httpStatus: res.status ?? null, error: res.error });
     await db.mobilePayment.updateMany({
@@ -188,13 +217,25 @@ async function settleLateAttempts(target: PromptTarget, now: Date) {
   for (const m of late) await checkMobilePayment(m.id, "check", now).catch(() => null);
 }
 
-/** What a customer sees when nTZS refuses: plain words, never the provider's technical message. */
-function friendlyForCustomer(error: string) {
+/** What a customer sees when nTZS refuses: plain words, never the provider's technical message — and where else to pay. */
+export function friendlyForCustomer(error: string, purpose: PromptTarget["purpose"] = "RESERVATION") {
+  const elsewhere = purpose === "RESTAURANT" ? "pay at the counter" : purpose === "RESERVATION" ? "pay at the hotel" : "contact us";
   if (/phone|number/i.test(error)) return "That number cannot receive a mobile-money payment request — check it and try again.";
-  if (/amount/i.test(error)) return "This amount cannot be paid online — please pay at the hotel.";
+  if (/amount/i.test(error)) return `This amount cannot be paid online — please ${elsewhere}.`;
   if (/busy|try again|did not answer|timed out/i.test(error)) return "The payment service is busy — please try again in a moment.";
-  return "Online payment is not available right now — please try again, or pay at the hotel.";
+  return `Online payment is not available right now — please try again, or ${elsewhere}.`;
 }
+
+/** Why a request was refused, in a few plain words (the payment page says what to do next itself). */
+export function refusalReason(error: string) {
+  if (/phone|number/i.test(error)) return "That number cannot receive a mobile-money payment request — check it and try again.";
+  if (/amount/i.test(error)) return "This amount cannot be paid online.";
+  if (/busy|try again|did not answer|timed out/i.test(error)) return "The payment service is busy — please try again in a moment.";
+  return "Online payment did not start.";
+}
+
+/** A desk enquiry being paid (see booking-holds: held only while it is paid). */
+const marksPayingHold = (data: unknown) => !!data && typeof data === "object" && !Array.isArray(data) && (data as Record<string, unknown>).payingHold === true;
 
 /** "255712345678" → "0712 ••• 678" (what staff screens and the audit show). */
 export const maskPhone = (p: string) => `0${p.slice(3, 6)} ••• ${p.slice(-3)}`;
@@ -335,6 +376,7 @@ export async function checkMobilePaymentWithAnswer(id: string, source: "check" |
   }
   if (mp.status === "PENDING" && depositFailed(res.data.status)) {
     await db.mobilePayment.updateMany({ where: { id, status: "PENDING", completedAt: null }, data: { status: "FAILED", lastError: `The customer did not pay (${res.data.status}).` } });
+    await paymentEnded(mp, now);
     return { mp: await db.mobilePayment.findUniqueOrThrow({ where: { id } }), answered: true, ntzsStatus: status, error: null };
   }
   return { mp, answered: true, ntzsStatus: status, error: null };
@@ -353,8 +395,21 @@ export async function cancelMobilePayment(id: string, actor: Actor) {
   if (asked.status === "COMPLETED") return asked;
   // Only a prompt still waiting is cancelled (one being recorded right now stays recorded).
   const done = await db.mobilePayment.updateMany({ where: { id, status: "PENDING", completedAt: null }, data: { status: "CANCELLED" } });
-  if (done.count) await audit(db, actor, { action: "mobile_payment.cancelled", entityType: "MobilePayment", entityId: id, after: { amount: mp.amount } });
+  if (done.count) {
+    await audit(db, actor, { action: "mobile_payment.cancelled", entityType: "MobilePayment", entityId: id, after: { amount: mp.amount } });
+    await paymentEnded(mp);
+  }
   return db.mobilePayment.findUniqueOrThrow({ where: { id } });
+}
+
+/**
+ * A booking's payment ended without the money (stopped, declined on the phone): a booking held only while it is paid
+ * (pay later) lets its room go at once — no waiting for the 30 minutes (booking-holds; a live request or any payment
+ * keeps it). Never throws.
+ */
+async function paymentEnded(mp: Pick<MobilePayment, "purpose" | "reservationId">, now = new Date()) {
+  if (mp.purpose !== "RESERVATION" || !mp.reservationId) return;
+  await releasePayingHold(mp.reservationId, undefined, now, { reason: "The payment was not completed — the room is not held" }).catch((e) => console.error("[ntzs] could not let the room go", mp.reservationId, e));
 }
 
 /**

@@ -12,6 +12,7 @@ import type { PayAccount } from "@/lib/pay-account";
 import { changeDatesAction, quickCheckInAction } from "@/app/staff/(app)/reservations/actions";
 import { formatBusinessDate, formatTZS } from "@/lib/format";
 import { ROOM_STATUS_META } from "@/lib/room-status";
+import { RESERVATION_STATUS_META } from "@/lib/reservation-status";
 import { cn } from "@/lib/utils";
 import { IdPicker, NationalityPicker } from "@/components/staff/id-nationality";
 import { Initials } from "@/components/dashboard/kit";
@@ -21,8 +22,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { RoomStatus } from "@/generated/prisma/enums";
 
-/** A room the guest can take: `sameType` false = another type at the same price (the booked rate is kept). */
-type RoomOpt = { id: string; number: string; status: RoomStatus; ready: boolean; type?: string; sameType?: boolean };
+/**
+ * A room the guest can take: `sameType` false = another type at the same price (the booked rate is kept). `taken`: the
+ * booked room of a booking made to pay later (never held) went to a guest who paid first. `busy`: that room is free on
+ * the booked dates but someone is in it for the nights asked now (an early arrival).
+ */
+type RoomOpt = { id: string; number: string; status: RoomStatus; ready: boolean; type?: string; sameType?: boolean; taken?: boolean; busy?: boolean };
 
 export interface ArrivalCardData {
   id: string;
@@ -281,8 +286,11 @@ export function ArrivalCard({ a, today, canAssign, canOverride, canEditDates = f
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-lg font-semibold text-foreground">{a.guest.fullName}</h2>
           <p className="truncate text-xs text-muted-foreground"><span className="font-mono">{a.reference}</span> · booked via {a.source}</p>
+          {a.status === "INQUIRY" && <p className="text-xs text-orange-700 dark:text-orange-300">Take a payment, or give any free room.</p>}
         </div>
         <div className="flex flex-wrap items-center gap-1.5 text-xs font-medium">
+          {/* Booked online to pay later (or an enquiry): not paid, no room held — take a payment or give any free room. */}
+          {a.status === "INQUIRY" && <span className={cn("rounded-full border px-2.5 py-1", RESERVATION_STATUS_META.INQUIRY.className)}>{RESERVATION_STATUS_META.INQUIRY.label}</span>}
           {late && <span className="rounded-full bg-amber-500/15 px-2.5 py-1 text-amber-800 dark:text-amber-300">Late · was due {formatBusinessDate(firstArrival)}</span>}
           {upcoming && <span className="rounded-full bg-sky-500/15 px-2.5 py-1 text-sky-700 dark:text-sky-300">Arrives {formatBusinessDate(firstArrival)}</span>}
           {a.guest.stays > 1 && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/12 px-2.5 py-1 text-emerald-700 dark:text-emerald-300"><UserCheck className="size-3" />Returning guest</span>}
@@ -311,7 +319,7 @@ export function ArrivalCard({ a, today, canAssign, canOverride, canEditDates = f
                   {(() => {
                     // Every room they can take, as tap-to-pick suggestions: the booked one, ready rooms of the same type,
                     // then ready rooms of other types at the same price; rooms being cleaned only for those who may override.
-                    const usable = (o: RoomOpt) => o.ready || (canOverride && (o.status === "DIRTY" || o.status === "CLEANING"));
+                    const usable = (o: RoomOpt) => !o.taken && !o.busy && (o.ready || (canOverride && (o.status === "DIRTY" || o.status === "CLEANING")));
                     const list = [r.current, ...r.options.filter((o) => o.id !== r.current.id && usable(o))]
                       .sort((x, y) => Number(y.id === r.current.id) - Number(x.id === r.current.id) || Number(y.ready) - Number(x.ready) || Number(!!y.sameType) - Number(!!x.sameType));
                     const SHOW = 8;
@@ -348,7 +356,11 @@ export function ArrivalCard({ a, today, canAssign, canOverride, canEditDates = f
                         )}
                         {opt.sameType === false && <p className="text-xs text-muted-foreground">Room {opt.number} is a {opt.type} at the same price — the booked rate stays.</p>}
                     {!reschedule && !r.current.ready && opt.id !== r.current.id && (
-                      <p className="text-xs text-amber-700 dark:text-amber-400">Booked room {r.current.number} is {ROOM_STATUS_META[r.current.status].label.toLowerCase()}, so room {opt.number} is suggested.</p>
+                      <p className="text-xs text-amber-700 dark:text-amber-400">
+                        {r.current.taken ? `Room ${r.current.number} was not held (not paid) and a guest who paid first has it, so room ${opt.number} is suggested.`
+                          : r.current.busy ? `Booked room ${r.current.number} is not free for these nights, so room ${opt.number} is suggested.`
+                          : `Booked room ${r.current.number} is ${ROOM_STATUS_META[r.current.status].label.toLowerCase()}, so room ${opt.number} is suggested.`}
+                      </p>
                     )}
                     {!reschedule && !opt.ready && r.options.every((o) => !o.ready) && (
                       <p className="text-xs text-destructive">No {r.roomTypeName} room is ready yet — pick another room type below (you see its price), or ask housekeeping to finish a room.</p>

@@ -14,7 +14,7 @@ import type { QrConfirmation } from "@/server/services/hotel-qr";
 import { qrBookingStatusAction, qrPayNowAction } from "@/app/b/[token]/actions";
 import { useWho } from "@/components/restaurant/who";
 import { BrandMark, caps, card, darkButton, input, lightButton } from "./ui";
-import { dayLong, guestsText, hotelClock, hotelInstant, newKey, nightsText, payPhoneOk, telHref, tzs, waHref } from "./lib";
+import { dayLong, flowUrl, guestsText, hotelClock, hotelInstant, newKey, nightsText, payPhoneOk, telHref, tzs, waHref } from "./lib";
 
 type Tone = "ok" | "wait" | "warn" | "off";
 const OFFLINE = "No connection — please check your internet and try again.";
@@ -29,6 +29,16 @@ function headline(b: QrConfirmation): { tone: Tone; title: string; line: string 
   if (b.status === "NO_SHOW") return { tone: "off", title: "Booking closed", line: "This booking was closed after the arrival day. Questions? Call us." };
   if (b.status === "CHECKED_IN") return { tone: "ok", title: "You are checked in", line: `Welcome to ${b.hotel.name} — enjoy your stay.` };
   if (b.status === "CHECKED_OUT") return { tone: "ok", title: "Thank you for staying", line: "We hope to welcome you again soon." };
+  // Booked to pay later (or a payment that never started): saved, but nothing is held until it is paid (whoever pays
+  // first gets the room).
+  if (b.status === "INQUIRY" && b.paymentStatus !== "PAYMENT_PENDING") {
+    const tried = b.paymentStatus === "PAYMENT_FAILED" || b.paymentStatus === "PAYMENT_EXPIRED";
+    return { tone: "warn", title: tried ? "Payment not completed" : "Booked — not paid yet", line: `${tried ? "" : thanks}Your room is not reserved until it is paid. Pay now to secure it.` };
+  }
+  // Booked to pay later and kept only while it is paid (Pay now pressed — the room checked again): not reserved yet.
+  if (b.payWay === "HOTEL" && b.status === "RESERVED" && b.paid === 0 && hold && (b.paymentStatus === "PAYMENT_FAILED" || b.paymentStatus === "PAYMENT_EXPIRED")) {
+    return { tone: "warn", title: "Room kept while you pay", line: `Pay now by ${hold} to confirm it — after that the room is not held.` };
+  }
   switch (b.paymentStatus) {
     case "PAID": return { tone: "ok", title: "Booking confirmed", line: `${thanks}We look forward to welcoming you to ${b.hotel.name}.` };
     case "PARTIALLY_PAID": return { tone: "ok", title: "Booking confirmed", line: `${thanks}Part paid — ${tzs(b.balance)} still to pay.` };
@@ -46,7 +56,8 @@ const PAYMENT_WORD: Record<QrConfirmation["paymentStatus"], string> = {
   PAID: "Paid", PARTIALLY_PAID: "Part paid", PAY_AT_HOTEL: "Pay at the hotel", PAYMENT_PENDING: "Waiting for your payment",
   PAYMENT_FAILED: "Not completed", PAYMENT_EXPIRED: "Not completed — time ran out", REFUNDED: "Refunded",
 };
-const paymentWord = (b: QrConfirmation) => (b.paymentStatus === "PAID" && b.ntzsReference ? "Paid online" : PAYMENT_WORD[b.paymentStatus]);
+const paymentWord = (b: QrConfirmation) => (b.paymentStatus === "PAID" && b.ntzsReference ? "Paid online"
+  : !b.roomHeld && b.paymentStatus === "PAY_AT_HOTEL" ? "Not paid — room not held" : PAYMENT_WORD[b.paymentStatus]);
 
 /** The booking as a calendar event (made on the phone, nothing sent anywhere): check-in to check-out, at the hotel's time. */
 function calendarFile(b: QrConfirmation, origin: string) {
@@ -71,7 +82,8 @@ function calendarFile(b: QrConfirmation, origin: string) {
 }
 
 /**
- * BOOKING CONFIRMATION — "Booking confirmed" (paid), "Room reserved" (pay at the hotel) or "Waiting for your payment":
+ * BOOKING CONFIRMATION — "Booking confirmed" (paid), "Booked — not paid yet" (pay later: the room is not held until it
+ * is paid, Pay now first) or "Waiting for your payment":
  * the reference, the room, the dates, the guests, the money, and View booking / Download confirmation / Add to
  * calendar. While a payment is on its way the page asks the server now and then (gently), and changes by itself.
  */
@@ -102,6 +114,11 @@ export function QrConfirmationView({ token, link, initial }: { token: string; li
     return () => { stopped = true; if (timer) clearTimeout(timer); };
   }, [b.paymentStatus, b.status, token, link]);
 
+  /** The booking again from the server (after Pay now changed it: another room, another price). */
+  const reload = async () => {
+    const r = await qrBookingStatusAction(token, link).catch(() => null);
+    if (r?.ok && r.data.state === "ok") setB(r.data.booking);
+  };
   const checkNow = () => startChecking(async () => {
     const r = await qrBookingStatusAction(token, link).catch(() => null);
     if (!r) { toast.error(OFFLINE); return; }
@@ -185,21 +202,21 @@ export function QrConfirmationView({ token, link, initial }: { token: string; li
                   {checking ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4 text-(--vr-gold-ink)" />}I have paid — check again
                 </button>
               )}
-              {b.canPayNow && <PayNow token={token} link={link} amount={b.balance > 0 ? b.balance : b.total} />}
+              {b.canPayNow && <PayNow token={token} link={link} amount={b.balance > 0 ? b.balance : b.total} guestPhone={b.guestPhone} again={againUrl(token, b)} onChanged={reload} />}
             </div>
           )}
 
           {/* ── The booking ── */}
           <section aria-label="Your booking" className={cn(card, "overflow-hidden lg:col-start-1 lg:row-span-2 lg:row-start-1")}>
             <dl className="divide-y divide-(--vr-line)">
-              <Row k={b.rooms.length > 1 ? "Rooms" : "Room"} v={roomsLine} strong />
+              <Row k={b.rooms.length > 1 ? "Rooms" : "Room"} v={roomsLine} strong sub={b.roomHeld || ["CANCELLED", "NO_SHOW", "CHECKED_OUT"].includes(b.status) ? undefined : "Not held until paid"} />
               <Row k="Check-in" v={dayLong(b.checkIn)} sub={`from ${b.checkInTime}`} />
               <Row k="Check-out" v={dayLong(b.checkOut)} sub={`by ${b.checkoutTime}`} />
               <Row k="Stay" v={`${nightsText(b.nights)} · ${guestsText(b.adults, b.children)}`} />
               {b.paid > 0 && <Row k="Amount paid" v={tzs(b.paid)} strong />}
               {(b.paid === 0 || b.balance > 0) && <Row k={b.paid > 0 ? "Total" : "Amount"} v={tzs(b.total)} strong={b.paid === 0} />}
               {b.paid > 0 && b.balance > 0 && <Row k="Still to pay" v={tzs(b.balance)} />}
-              <Row k="Payment" v={paymentWord(b)} badge={b.paymentStatus === "PAID" ? "ok" : b.paymentStatus === "PAYMENT_PENDING" ? "wait" : b.paymentStatus === "PAYMENT_FAILED" || b.paymentStatus === "PAYMENT_EXPIRED" ? "warn" : undefined} />
+              <Row k="Payment" v={paymentWord(b)} badge={b.paymentStatus === "PAID" ? "ok" : b.paymentStatus === "PAYMENT_PENDING" ? "wait" : b.paymentStatus === "PAYMENT_FAILED" || b.paymentStatus === "PAYMENT_EXPIRED" || !b.roomHeld ? "warn" : undefined} />
               {b.ntzsReference && <Row k="Payment reference" v={b.ntzsReference} mono />}
               {b.holdUntil && b.paid === 0 && <Row k="Room held until" v={hotelClock(b.holdUntil, b.timezone)} />}
               {b.arrivalTime && <Row k="Arriving around" v={b.arrivalTime} />}
@@ -254,13 +271,20 @@ function Row({ k, v, sub, strong, mono, badge }: { k: string; v: string; sub?: s
   );
 }
 
-/** "Pay now" for what is still owed (worked out on the server) — a payment request to the guest's phone. */
-function PayNow({ token, link, amount }: { token: string; link: { ref: string; key: string }; amount: number }) {
+/**
+ * "Pay now" for what is still owed (worked out on the server) — a payment request to the guest's phone. A booking made
+ * to pay later is checked again first: its room was just taken → "choose again"; moved to another room at another
+ * price → the new price is shown and they press again.
+ */
+function PayNow({ token, link, amount, guestPhone, again, onChanged }: {
+  token: string; link: { ref: string; key: string }; amount: number; guestPhone: string | null; again: string; onChanged: () => Promise<void>;
+}) {
   const router = useRouter();
   const [who] = useWho();
   const [typed, setTyped] = useState<string | null>(null);
-  const phone = typed ?? who?.phone ?? "";
+  const phone = typed ?? who?.phone ?? guestPhone ?? "";
   const [error, setError] = useState<string | null>(null);
+  const [taken, setTaken] = useState(false);
   const [pending, start] = useTransition();
   const key = useRef<string | null>(null);
   const pay = () => start(async () => {
@@ -269,7 +293,12 @@ function PayNow({ token, link, amount }: { token: string; link: { ref: string; k
     key.current ??= newKey();
     const r = await qrPayNowAction(token, link, { phone: phone.trim(), clientKey: key.current }).catch(() => null);
     if (!r) { toast.error(OFFLINE); return; }
-    if (!r.ok) { key.current = null; setError(r.error); toast.error(r.error); return; }
+    if (!r.ok) {
+      key.current = null; setError(r.error); toast.error(r.error);
+      setTaken(r.code === "UNAVAILABLE");
+      if (r.code === "CONFLICT" || r.code === "UNAVAILABLE") await onChanged();
+      return;
+    }
     key.current = null;
     router.push(`/pay/${r.data.pay}`);
   });
@@ -289,6 +318,7 @@ function PayNow({ token, link, amount }: { token: string; link: { ref: string; k
           aria-invalid={!!error} className={cn(input, "mt-1 font-medium tabular-nums")} />
         {error && <span role="alert" className="mt-1 block text-[12px] font-medium text-rose-700">{error}</span>}
       </label>
+      {taken && <Link href={again} className={cn(lightButton, "h-11 w-full text-[13.5px]")}><RotateCcw className="size-4 text-(--vr-gold-ink)" />Choose another room</Link>}
       <button type="button" onClick={pay} disabled={pending} className={cn(darkButton, "h-12 w-full text-[14.5px]")}>
         {pending ? <Loader2 className="size-4 animate-spin" /> : <Lock className="size-4 text-(--vr-gold)" />}Pay {tzs(amount)} now
       </button>
@@ -297,6 +327,14 @@ function PayNow({ token, link, amount }: { token: string; link: { ref: string; k
       </p>
     </section>
   );
+}
+
+/** "Choose another room": the rooms free for the same stay and party (its room type first) — not the start again. */
+function againUrl(token: string, b: QrConfirmation) {
+  return flowUrl(`/b/${token}`, {
+    view: "results", type: null, room: null, sheet: false, roomType: b.rooms[0]?.typeSlug ?? null,
+    stay: { checkIn: b.checkIn, checkOut: b.checkOut, adults: b.adults, children: b.children },
+  });
 }
 
 /** The confirmation on paper (Download → print or save as PDF): plain, black on white, every detail on one page. */

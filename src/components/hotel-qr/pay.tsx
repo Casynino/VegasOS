@@ -8,13 +8,14 @@ import type { QrQuote } from "@/server/services/hotel-qr";
 import { caps, card, darkButton, input, lightButton, Photo, Problem, Skeleton, StepHeader, StepLayout } from "./ui";
 import { Policies } from "./room";
 import type { Shell } from "./rooms";
-import { dayShort, guestsText, holdWithin, nightsText, payPhoneOk, telHref, tzs, type LastBooking, type StayQuery } from "./lib";
+import { dayShort, guestsText, nightsText, payPhoneOk, telHref, tzs, type LastBooking, type StayQuery } from "./lib";
 
 export type PayWay = "ONLINE" | "HOTEL";
 
 /**
- * HOW WOULD YOU LIKE TO PAY — "Pay now" first (a payment request to the guest's phone, nTZS; the booking is confirmed
- * only when nTZS confirms the money), then "Pay at the hotel" when the hotel offers it (the room is held by its rules).
+ * HOW WOULD YOU LIKE TO PAY — "Pay now" first (a payment request to the guest's phone, nTZS; the room is held while they
+ * pay and the booking is confirmed only when nTZS confirms the money), then "Pay later" when the hotel offers it: the
+ * booking is saved but the room is NOT held until it is paid (owner, 2026-10-05) — said plainly, in a few words.
  * The amount is never sent from here — the server works it out again.
  */
 export function PayView({ shell, stay, number, typeName, photo, quote, way, onWay, payPhone, onPayPhone, payError, trap, onTrap, pending, onBook, onBack }: {
@@ -25,13 +26,11 @@ export function PayView({ shell, stay, number, typeName, photo, quote, way, onWa
   const pay = quote?.pay;
   const none = pay && !pay.online && !pay.atHotel;
   const online = way === "ONLINE";
-  // Pay at the hotel, for these dates: the room is held for the hotel's hold time only (not until the guest arrives).
-  const payLater = !!pay && pay.atHotelKeeps !== "arrival" && pay.holdHours > 0;
   return (
     <StepLayout hotel={shell.hotel} phone={shell.phone} aside={shell.aside}
       header={<StepHeader title="How would you like to pay?" sub={quote ? `Total ${tzs(quote.total)}` : "Your booking"} onBack={onBack} step={4} />}
       cta={none ? null : {
-        label: online ? (quote ? `Pay ${tzs(quote.total)} now` : "Pay now") : "Reserve my room",
+        label: online ? (quote ? `Pay ${tzs(quote.total)} now` : "Pay now") : "Book — pay later",
         onClick: onBook, disabled: !quote, pending,
         icon: online ? <Lock className="size-4 shrink-0 text-(--vr-gold)" /> : <Check className="size-4 shrink-0 text-(--vr-gold)" strokeWidth={3} />,
       }}>
@@ -85,19 +84,15 @@ export function PayView({ shell, stay, number, typeName, photo, quote, way, onWa
             </WayRow>
           )}
           {pay.atHotel && (
-            // Said as it is: kept until the guest arrives — or held for the hotel's hold time and released if not paid.
-            <WayRow on={!online} onSelect={() => onWay("HOTEL")} icon={Building2} title="Pay at the hotel"
-              sub={payLater ? `Reserve now, pay within ${holdWithin(pay.holdHours)}` : "Reserve now, pay when you arrive"}>
+            // Said as it is: the booking is saved, but nothing is held until it is paid — whoever pays first gets the room.
+            <WayRow on={!online} onSelect={() => onWay("HOTEL")} icon={Building2} title="Pay later" sub="Not reserved until paid">
               <p className="rounded-2xl bg-(--vr-card) px-3.5 py-3 text-[12.5px] leading-snug text-(--vr-ink)/75 ring-1 ring-(--vr-line)">
-                {payLater
-                  ? `We keep your room for ${holdWithin(pay.holdHours)}. Pay before then — online from your booking, or at reception — or the room is released.`
-                  : "We keep your room until you arrive. Pay at reception when you check in."}
+                Your booking is saved, but the room is not held until it is paid. Pay now any time from your booking to secure it.
               </p>
             </WayRow>
           )}
         </div>
       )}
-      {pay && !none && !pay.atHotel && pay.atHotelNote && <p className="mt-2.5 px-1 text-[12px] leading-snug text-(--vr-muted)">{pay.atHotelNote}</p>}
 
       {quote && <Policies list={quote.policies.filter((p) => !p.startsWith("Check-in from"))} className="mt-5" />}
       <input value={trap} onChange={(e) => onTrap(e.target.value)} tabIndex={-1} autoComplete="off" aria-hidden className="hidden" name="website" />

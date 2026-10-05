@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { CalendarRange, ChevronRight, Clock3, LogIn, MessageSquareText, Phone, QrCode, Search, Users } from "lucide-react";
-import { QR_PAY_HOTEL_NOTE, QR_PAY_ONLINE_NOTE, type QrBookingRow, type QrPaymentStatus } from "@/server/services/booking-qr";
+import { QR_PAY_HOTEL_NOTE, QR_PAY_HOTEL_NOTE_BEFORE, QR_PAY_ONLINE_NOTE, type QrBookingRow, type QrPaymentStatus } from "@/server/services/booking-qr";
 import type { PayAccount } from "@/lib/pay-account";
 import { CollectButton } from "@/components/staff/reception/collect-dialog";
 import { RESERVATION_STATUS_META } from "@/lib/reservation-status";
@@ -22,8 +22,12 @@ export const QR_LISTS = [
 ] as const;
 export type QrList = (typeof QR_LISTS)[number]["key"];
 
-/** Where the money stands, in reception's words — paid online said plainly, so nobody asks the guest to pay again. */
+/**
+ * Where the money stands, in reception's words — paid online said plainly, so nobody asks the guest to pay again; a
+ * booking to pay later said as what it is: not paid, no room held (whoever pays first gets the room).
+ */
 function payChip(r: QrBookingRow): { text: string; tone: string; dot: string } {
+  if (r.status === "INQUIRY" && r.paid === 0 && r.paymentStatus !== "PAYMENT_PENDING") return { text: "Not paid · room not held", tone: "bg-orange-500/12 text-orange-800 dark:text-orange-300", dot: "bg-orange-500" };
   const online = r.payWay === "ONLINE" || !!r.ntzsReference;
   const map: Record<QrPaymentStatus, { text: string; tone: string; dot: string }> = {
     PAID: online ? { text: "Paid online", tone: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300", dot: "bg-emerald-500" } : { text: "Paid", tone: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300", dot: "bg-emerald-500" },
@@ -38,7 +42,7 @@ function payChip(r: QrBookingRow): { text: string; tone: string; dot: string } {
 }
 
 /** The booking's own notes without the standard line it was made with (the chip already says how they pay). */
-const ownNotes = (n: string | null) => n?.replace(QR_PAY_ONLINE_NOTE, "").replace(QR_PAY_HOTEL_NOTE, "").replace(/\n{2,}/g, "\n").trim() || null;
+const ownNotes = (n: string | null) => n?.replace(QR_PAY_ONLINE_NOTE, "").replace(QR_PAY_HOTEL_NOTE, "").replace(QR_PAY_HOTEL_NOTE_BEFORE, "").replace(/\n{2,}/g, "\n").trim() || null;
 
 /**
  * Bookings made from the Hotel QR — what reception needs at a glance: who, which room, when, how many, and where the
@@ -95,12 +99,13 @@ export function QrBookings({ rows, list, q, newSince, keep, take, today, methods
             const isNew = r.createdAt >= newSince;
             const notes = ownNotes(r.notes);
             const room = r.rooms[0];
-            const open = r.status === "RESERVED" || r.status === "CONFIRMED" || r.status === "CHECKED_IN";
+            const waiting = r.status === "RESERVED" || r.status === "CONFIRMED" || r.status === "INQUIRY";
+            const open = waiting || r.status === "CHECKED_IN";
             // What reception can do right here: take what is owed (not while the guest's own payment is on its way),
             // check in an arrival, send the booking details the guest has not had yet.
             const collect = !!methods && open && !r.companyPays && r.balance > 0 && r.paymentStatus !== "PAYMENT_PENDING";
-            const checkIn = canCheckIn && (r.status === "RESERVED" || r.status === "CONFIRMED") && r.checkIn <= today;
-            const details = !r.detailsSent && (r.status === "RESERVED" || r.status === "CONFIRMED");
+            const checkIn = canCheckIn && waiting && r.checkIn <= today;
+            const details = !r.detailsSent && waiting;
             return (
               <li key={r.id} className="flex flex-col gap-2 rounded-2xl border border-border/70 bg-card p-3.5 transition-colors hover:border-foreground/20 dark:bg-white/[0.035]">
                 <div className="flex items-start justify-between gap-2">
@@ -133,7 +138,7 @@ export function QrBookings({ rows, list, q, newSince, keep, take, today, methods
                       {r.paid > 0 && r.balance > 0 && <span className="ml-1.5 text-xs font-medium text-rose-600 dark:text-rose-400">owes {formatTZS(r.balance)}</span>}
                     </p>
                     <p className="truncate text-[11px] text-muted-foreground">
-                      {r.ntzsReference ? <>NTZS ref <span className="font-mono text-foreground/80">{r.ntzsReference}</span></> : r.payWay === "ONLINE" ? "Paying online (NTZS)" : "Pays at the hotel"}
+                      {r.ntzsReference ? <>NTZS ref <span className="font-mono text-foreground/80">{r.ntzsReference}</span></> : r.payWay === "ONLINE" ? "Paying online (NTZS)" : r.roomHeld ? "Pays at the hotel" : "Pays later — whoever pays first gets the room"}
                     </p>
                   </div>
                   <div className="flex flex-col items-end gap-0.5 text-right">

@@ -88,10 +88,10 @@ export async function OwnerOverview({ searchParams, basePath }: {
       orderBy: { createdAt: "desc" }, take: 4,
       select: { id: true, fullName: true, companyName: true, status: true, checkInDate: true, checkOutDate: true, roomCount: true, meetingStartAt: true, createdAt: true, roomType: { select: { name: true } }, source: { select: { name: true } } },
     }),
-    // Booked by guests themselves from the Hotel QR in the period (real reservations, by the day they were made).
+    // Booked by guests themselves from the Hotel QR in the period (pay now and pay later, by the day they were made).
     db.reservation.groupBy({
       by: ["status"], _count: true,
-      where: { source: { code: "HOTEL_QR" }, status: { not: "INQUIRY" }, businessDate: { gte: toDbDate(range.from), lte: toDbDate(range.to) } },
+      where: { source: { code: "HOTEL_QR" }, businessDate: { gte: toDbDate(range.from), lte: toDbDate(range.to) } },
     }),
   ]);
   const qr = {

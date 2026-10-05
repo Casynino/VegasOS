@@ -1,5 +1,5 @@
 import "server-only";
-import { refreshBookingStates } from "./booking-holds";
+import { isPayLater, PAY_LATER_KEY, refreshBookingStates } from "./booking-holds";
 import { timingSafeEqual } from "node:crypto";
 import { db } from "../db";
 import { AppError } from "../errors";
@@ -365,8 +365,12 @@ export async function quoteSelection(sel: Selection): Promise<SelectionQuote> {
 export type BookedAs = { fullName: string; phone: string | null; email: string | null };
 
 /** What a public page keeps with its booking: where it came from, what was typed, and anything the channel adds. */
-export const publicBookingData = (channel: "WEBSITE" | "HOTEL_QR", bookedAs: BookedAs, extra: Record<string, string> = {}) =>
+export const publicBookingData = (channel: "WEBSITE" | "HOTEL_QR", bookedAs: BookedAs, extra: Record<string, string | boolean> = {}) =>
   ({ channel, bookedAs, ...extra });
+
+/** The note a website booking is made with (staff read it on the booking): how the guest chose to pay. */
+export const WEBSITE_PAY_ONLINE_NOTE = "Website: booked and paying online (nTZS) — confirmed by the payment.";
+export const WEBSITE_PAY_LATER_NOTE = "Website: booked to pay later — not paid, so the room is not held until it is paid.";
 
 /** What the customer typed when booking on a public page (null for a booking made at the desk). */
 export function bookedAsOf(data: unknown): BookedAs | null {
@@ -395,14 +399,20 @@ export interface PickupRequest {
   notes?: string | null;
 }
 
-/** Create a website booking through the single reservation engine. */
-export async function createWebsiteBooking(sel: Selection, guest: WebsiteGuest, ipAddress: string | null, pickup?: PickupRequest | null, opts: { holdMinutes?: number } = {}) {
+/**
+ * Create a website booking through the single reservation engine. Paying online now (`holdMinutes`): held that long
+ * while the guest pays, confirmed by the payment. Paying later (`payLater`, owner 2026-10-05): the booking is made and
+ * reception sees it, but no room is held (INQUIRY) — whoever pays first gets the room; the guest can pay any time from
+ * the booking's page (the room is checked again then).
+ */
+export async function createWebsiteBooking(sel: Selection, guest: WebsiteGuest, ipAddress: string | null, pickup?: PickupRequest | null, opts: { holdMinutes?: number; payLater?: boolean } = {}) {
   const quote = await quoteSelection(sel); // early, friendly checks; the engine re-validates in its transaction
   const actor: Actor = { userId: null, label: "website", ipAddress, permissions: new Set<string>() };
+  const payLater = !!opts.payLater && !opts.holdMinutes;
   const reservation = await createReservation(
     {
       sourceCode: WEBSITE_SOURCE,
-      status: "RESERVED",
+      status: payLater ? "INQUIRY" : "RESERVED",
       // Typed by the customer: found again by their phone only; what they typed stays with the booking.
       guest: {
         fullName: guest.fullName,
@@ -411,12 +421,12 @@ export async function createWebsiteBooking(sel: Selection, guest: WebsiteGuest, 
         nationality: guest.nationality || null,
         selfService: true,
       },
-      externalData: publicBookingData("WEBSITE", { fullName: guest.fullName.trim(), phone: guest.phone.trim() || null, email: guest.email?.trim() || null }),
+      externalData: publicBookingData("WEBSITE", { fullName: guest.fullName.trim(), phone: guest.phone.trim() || null, email: guest.email?.trim() || null }, payLater ? { [PAY_LATER_KEY]: true } : {}),
       stay: { kind: "overnight", arrivalDate: sel.checkIn, departureDate: sel.checkOut },
       rooms: quote.roomRequests, // no discount given → engine applies the standard website discount
       specialRequests: guest.specialRequests || null,
       internalNotes: [
-        opts.holdMinutes ? "Website: booked and paying online (nTZS) — confirmed by the payment." : null,
+        opts.holdMinutes ? WEBSITE_PAY_ONLINE_NOTE : payLater ? WEBSITE_PAY_LATER_NOTE : null,
         pickup ? `Website: airport pickup requested — flight ${pickup.flightNumber.toUpperCase()}, arriving ${pickup.arrivalDate} ${pickup.arrivalTime}.` : null,
       ].filter(Boolean).join(" ") || null,
       eta: guest.expectedArrivalTime && /^([01]\d|2[0-3]):[0-5]\d$/.test(guest.expectedArrivalTime) ? guest.expectedArrivalTime : null,
@@ -478,6 +488,8 @@ export async function getBookingForGuest(reference: string, token: string | unde
     pickup: trip,
     reference: r.reference,
     status: r.status,
+    /** Booked online to pay later: not reserved until it is paid (whoever pays first gets the room) — never "an enquiry". */
+    payLater: isPayLater(r.externalData),
     kind: r.kind,
     holdUntil: r.holdUntil,
     guestName: typed?.fullName ?? r.guest.fullName,

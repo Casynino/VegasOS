@@ -51,7 +51,13 @@ export function PayStatus({ initial }: { initial: CustomerPayView }) {
     setError(null);
     key.current ||= crypto.randomUUID();
     const r = await retryPayAction({ token: v.token, phone: phone.trim() || undefined, clientKey: key.current });
-    if (!r.ok) { setError(r.error); key.current = ""; return; }
+    if (!r.ok) {
+      setError(r.error); key.current = "";
+      // Something changed on the bill (a room checked again at another price…): the amount to try again with, as it is now.
+      const s = await payStatusAction({ token: v.token }).catch(() => null);
+      if (s?.ok) setV(s.data);
+      return;
+    }
     // The last attempt went through after all: the same page, now paid.
     if (r.data.token === v.token) { const s = await payStatusAction({ token: v.token }); if (s.ok) setV(s.data); return; }
     router.replace(`/pay/${r.data.token}`);
@@ -91,6 +97,7 @@ export function PayStatus({ initial }: { initial: CustomerPayView }) {
         )}
         {paid && (
           <>
+            {v.message && <p className="rounded-xl bg-amber-50 px-3 py-2 text-center text-[13px] text-amber-800">{v.message}</p>}
             <dl className="divide-y divide-(--vr-line) rounded-2xl ring-1 ring-(--vr-line)">
               <Row k="Amount" v={tzs(v.amount)} />
               <Row k="For" v={v.what} />
@@ -106,17 +113,20 @@ export function PayStatus({ initial }: { initial: CustomerPayView }) {
         )}
         {v.canRetry && (
           <>
-            <p className="text-center text-[14px] text-(--vr-muted)">{v.message} If you approved it and money left your account, it shows here by itself — otherwise try again.</p>
-            <button type="button" onClick={recheck} disabled={pending} className="flex h-11 w-full items-center justify-center gap-2 rounded-full text-[14px] font-medium ring-1 ring-(--vr-line) disabled:opacity-60">
-              {pending ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}I have paid — check again
-            </button>
+            <p className="text-center text-[14px] text-(--vr-muted)">{v.message}{v.sent ? " If you approved it and money left your account, it shows here by itself — otherwise try again." : ""}</p>
+            {/* Nothing ever reached the phone: there is nothing to check. */}
+            {v.sent && (
+              <button type="button" onClick={recheck} disabled={pending} className="flex h-11 w-full items-center justify-center gap-2 rounded-full text-[14px] font-medium ring-1 ring-(--vr-line) disabled:opacity-60">
+                {pending ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}I have paid — check again
+              </button>
+            )}
             <label className="block text-[12.5px] font-medium text-(--vr-ink)/80">Mobile-money number <span className="font-normal text-(--vr-muted)">· {v.phone} if left empty</span>
               <input value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" inputMode="tel" placeholder="0712 345 678"
                 className="mt-1 block h-12 w-full rounded-xl border border-(--vr-line) bg-white px-3.5 text-[16px] outline-none focus:border-(--vr-gold) focus:ring-4 focus:ring-(--vr-gold)/15" />
             </label>
             {error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-[13px] text-rose-700">{error}</p>}
             <button type="button" onClick={retry} disabled={pending} className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-(--vr-dark) text-[15px] font-semibold text-white disabled:opacity-60">
-              {pending ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4" />}Try again · {tzs(v.amount)}
+              {pending ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4" />}Try again · {tzs(v.retryAmount ?? v.amount)}
             </button>
             {v.back && <Link href={v.back.href} className="block text-center text-[13px] font-medium text-(--vr-muted) underline-offset-4 hover:underline">{v.back.label}</Link>}
           </>
@@ -124,7 +134,7 @@ export function PayStatus({ initial }: { initial: CustomerPayView }) {
       </div>
       <div className="space-y-2 border-t border-(--vr-line) bg-(--vr-bg) px-4 py-3">
         <NetworkMarks center label={null} />
-        <p className="flex items-center justify-center gap-1.5 text-[11.5px] text-(--vr-muted)"><Lock className="size-3.5" />Secure payment powered by <span className="font-semibold tracking-wide text-(--vr-ink)/80">NTZS</span></p>
+        <p className="flex items-center justify-center gap-1.5 text-[11.5px] text-(--vr-muted)"><Lock className="size-3.5" />Secure payment by <span className="font-semibold tracking-wide text-(--vr-ink)/80">NTZS</span></p>
       </div>
     </section>
   );

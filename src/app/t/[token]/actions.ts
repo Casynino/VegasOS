@@ -78,10 +78,15 @@ const Order = z.object({
 export async function placeTableOrderAction(input: z.input<typeof Order>): Promise<ActionResult<PlacedOrder>> {
   return runAction(async () => {
     const { ipAddress } = await requestMeta();
-    await rateLimit(`table-order:${ipAddress ?? "unknown"}`, 12, 600);
+    // Guests on the hotel / restaurant Wi-Fi share one address: a loose limit for it, a tighter one per place and phone
+    // (and each phone can send only a few orders in half an hour — see placeLocationOrder).
+    await rateLimit(`table-order:${ipAddress ?? "unknown"}`, 120, 600);
     const d = parseInput(Order, input);
+    await rateLimit(`table-order:spot:${d.token}:${d.phone?.replace(/\D/g, "").slice(-9) || ipAddress || "unknown"}`, 12, 600);
     if (d.payOnline) await assertCanPayOnline("restaurant", d.payOnline.phone);
     const o = await placeLocationOrder(d.token, { clientKey: d.clientKey, items: d.items, notes: d.notes, name: d.name, phone: d.phone, email: d.email || null, kind: d.kind, where: d.where, tableId: d.tableId, deliveryAddress: d.deliveryAddress, paidFirst: d.payOnline ? null : d.paidFirst, payOnline: !!d.payOnline, seatToken: await seatToken() });
+    // A table they picked is theirs now: this phone is remembered at it (like sitting down there).
+    if (o.seat) (await cookies()).set(SEAT_COOKIE, o.seat, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", maxAge: SEAT_HOURS * 3600 });
     const paying = d.payOnline ? await payForNewOrder(o, { phone: d.payOnline.phone, clientKey: d.clientKey, ip: ipAddress }) : null;
     after(() => notifyOrderCustomer(o.id, "RECEIVED"));
     revalidatePath("/staff/restaurant", "layout");

@@ -193,6 +193,12 @@ describe("ordering from a table, the counter and the main restaurant", () => {
 });
 
 describe("ordering more on the same order", () => {
+  it("take out paid first with the customer's proof never grows with unpaid items: more is a new order", async () => {
+    const o = await placeOnlineOrder({ clientKey: key(), items: [{ menuItemId: SAFARI, quantity: 1 }], name: "Proof Payer", phone: "0713 444 555", kind: "TAKEAWAY", deliveryAddress: "Mikocheni B, Plot 45, near the pharmacy", paidFirst: await paidFirst() });
+    await expect(addItemsByTrackToken(o.trackToken!, [{ menuItemId: SAFARI, quantity: 1 }])).rejects.toThrow(/new order/);
+    expect((await db.restaurantOrder.findUniqueOrThrow({ where: { id: o.id } })).total).toBe(o.total);
+  });
+
   it("after it was served: the new items join the same order, it goes back to the kitchen for round 2, the bill has everything", async () => {
     const out3 = await spot("loc_out_3");
     const o = await placeLocationOrder(out3.qrToken, { clientKey: key(), items: [{ menuItemId: BIRYANI, quantity: 1 }], seatToken: await seatAt(out3.qrToken, "Nino", "0712 000 111") });

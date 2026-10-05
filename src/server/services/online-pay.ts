@@ -5,7 +5,8 @@ import { AppError } from "../errors";
 import { getSettings } from "../settings";
 import { rateLimit } from "../rate-limit";
 import { ntzsEnabled, ntzsPhone } from "./ntzs";
-import { BOOKING_PAY_SOURCES, cancelMobilePayment, checkMobilePayment, maskPhone, requestMobilePayment, type PromptTarget } from "./mobile-payments";
+import { BOOKING_PAY_SOURCES, cancelMobilePayment, checkMobilePayment, maskPhone, refusalReason, requestMobilePayment, type PromptTarget } from "./mobile-payments";
+import { releasePayingHold } from "./booking-holds";
 import { guestStayBill } from "./stay-bill";
 import { qrConfirmPath } from "./booking-qr";
 import { OPEN_SESSION, seatOf } from "./dining-core";
@@ -48,7 +49,9 @@ export async function onlinePayAvailable(service?: OnlineService, settings?: Hot
 export async function startCustomerPayment(input: {
   target: PromptTarget; phone: string; clientKey: string | null; source: string; service: OnlineService; ip: string | null;
 }) {
-  if (!(await onlinePayAvailable(input.service))) throw new AppError("Online payment is not available right now — please pay at the hotel.", "CONFLICT");
+  if (!(await onlinePayAvailable(input.service))) {
+    throw new AppError(`Online payment is not available right now — please ${input.service === "restaurant" ? "pay at the counter" : "pay at the hotel"}.`, "CONFLICT");
+  }
   const phone = ntzsPhone(input.phone);
   if (!phone) throw new AppError("Enter your mobile-money number, e.g. 0712 345 678.", "VALIDATION", { phone: "Invalid" });
   // A phone cannot be flooded with payment requests, nor a device send many (guests on the hotel Wi-Fi share one address).
@@ -107,8 +110,8 @@ export async function livePaymentForOrder(trackToken: string) {
   return mp?.publicToken ?? null;
 }
 
-/** A booking made and paid online keeps its room this long while the guest pays — the payment confirms it. */
-export const ONLINE_BOOKING_HOLD_MINUTES = 30;
+/** A booking made and paid online keeps its room this long while the guest pays — the payment confirms it (booking-holds). */
+export { ONLINE_BOOKING_HOLD_MINUTES } from "./booking-holds";
 
 /** The website's private page of a booking (reference + its manage token). */
 const websiteBookingPage = (b: { reference: string; manageToken: string }) => `/booking/${b.reference}?token=${encodeURIComponent(b.manageToken)}`;
@@ -134,6 +137,15 @@ export async function bookAndPayOnline(input: {
     const ref = made.reservation ? { reference: made.reservation.reference, manageToken: made.reservation.manageToken } : null;
     return { pay: made.publicToken, booking: ref ? pageOf(ref) : null, payError: null, ref };
   }
+  // Rooms held while unpaid are few per person: one number has at most two bookings waiting for its payment at a time,
+  // and one address can start only so many in half an hour (guests on the hotel Wi-Fi share one) — so nobody can make
+  // the hotel look full with bookings they never pay.
+  const payPhone = ntzsPhone(input.phone);
+  const waiting = payPhone ? await db.reservation.count({
+    where: { status: "RESERVED", paidAmount: { lte: 0 }, holdUntil: { gt: new Date() }, mobilePayments: { some: { initiator: "CUSTOMER", phone: payPhone } } },
+  }) : 0;
+  if (waiting >= MAX_WAITING_PER_PHONE) throw new AppError("You already have bookings waiting for your payment — approve the request on your phone, or wait a few minutes.", "CONFLICT");
+  await rateLimit(`book-hold:ip:${input.ip ?? "unknown"}`, 12, 1800);
   // One booking per press — even pressed twice at once (the screen sends a new key after an error).
   const once = `book-once:${input.clientKey}`;
   try { await rateLimit(once, 1, 3600); }
@@ -156,11 +168,19 @@ export async function bookAndPayOnline(input: {
     });
     return { pay: started.token, booking: page, payError: null, ref };
   } catch (e) {
-    const tried = await db.mobilePayment.findUnique({ where: { clientKey }, select: { publicToken: true } });
+    const tried = await db.mobilePayment.findUnique({ where: { clientKey }, select: { publicToken: true, status: true, depositId: true } });
+    // Nothing reached the phone (refused — a wrong number…, or never sent): the room is not kept for the 30 minutes on a
+    // request that cannot be paid. The booking stays, not held — Pay now (or Try again) checks the room again.
+    if (input.service === "booking" && (!tried || (tried.status === "FAILED" && !tried.depositId))) {
+      await releasePayingHold(b.id, undefined, new Date(), { payNow: true }).catch((err) => console.error("[online-pay] could not let the room go", b.reference, err));
+    }
     if (tried?.publicToken) return { pay: tried.publicToken, booking: page, payError: null, ref };
     return { pay: null, booking: page, payError: e instanceof AppError ? e.message : "Online payment could not start — please try again.", ref };
   }
 }
+
+/** Bookings one mobile-money number can have waiting for its payment (each holding a room) at a time. */
+const MAX_WAITING_PER_PHONE = 2;
 
 const sameToken = (a: string, b: string) => {
   const x = Buffer.from(a), y = Buffer.from(b);
@@ -187,7 +207,11 @@ export async function bookingPayOnline(reference: string, token: string) {
   return { offered: await onlinePayAvailable(bookingService(r)), live: live?.publicToken ?? null };
 }
 
-/** "Pay online" from a booking's page (the website's, or the Hotel QR's confirmation — `source`): what is still owed on it, worked out here. */
+/**
+ * "Pay online" from a booking's page (the website's, or the Hotel QR's confirmation — `source`): what is still owed on
+ * it, worked out here. A booking made to pay later holds no room: its room is checked again and held while it is paid
+ * (see requestMobilePayment / booking-holds) — the same room, another of its type, or "just taken".
+ */
 export async function payBookingOnline(reference: string, token: string, input: { phone: string; clientKey: string | null; ip: string | null; source?: "BOOKING_PAGE" | "HOTEL_QR" }) {
   const r = await bookingByLink(reference, token);
   if (!r) throw new AppError("Booking not found.", "NOT_FOUND");
@@ -205,21 +229,29 @@ const liveForReservation = async (reservationId: string) => (await db.mobilePaym
   orderBy: { createdAt: "desc" }, select: { publicToken: true },
 }))?.publicToken ?? null;
 
+/**
+ * Before arrival, paying from the stay link is paying for the booking itself (it secures the room — "Room bookings" on,
+ * the booking confirmed by message, the booking's page to go back to); once in the hotel it is the guest's bill.
+ */
+const beforeArrival = (status: string) => status === "INQUIRY" || status === "RESERVED" || status === "CONFIRMED";
+
 /** A staying guest's bill (their stay link, or the room's QR card): Pay online offered for what they owe. */
 export async function stayBillPayOnline(where: StayLink) {
   const bill = await guestStayBill(where);
-  if (!bill || bill.totals.balance <= 0) return { offered: false, live: null, due: 0 };
-  return { offered: await onlinePayAvailable("stayBill"), live: await liveForReservation(bill.id), due: bill.totals.balance };
+  if (!bill || bill.totals.balance <= 0 || bill.status === "NO_SHOW") return { offered: false, live: null, due: 0 };
+  return { offered: await onlinePayAvailable(beforeArrival(bill.status) ? "booking" : "stayBill"), live: await liveForReservation(bill.id), due: bill.totals.balance };
 }
 
 /** "Pay online" for a staying guest's bill: what is owed now, worked out here (a company's bill is never shown or paid here). */
 export async function payStayBillOnline(where: StayLink, input: { phone: string; clientKey: string | null; ip: string | null }) {
   const bill = await guestStayBill(where);
   if (!bill) throw new AppError("This bill was not found.", "NOT_FOUND");
+  if (bill.status === "NO_SHOW") throw new AppError("This booking is closed — please contact us.", "CONFLICT");
   if (bill.totals.balance <= 0) throw new AppError("Nothing is owed — thank you.", "CONFLICT");
+  const booking = beforeArrival(bill.status);
   return startCustomerPayment({
     target: { purpose: "RESERVATION", reservationId: bill.id, amount: bill.totals.balance }, phone: input.phone, clientKey: input.clientKey,
-    source: "guestToken" in where ? "STAY_LINK" : "ROOM_QR", service: "stayBill", ip: input.ip,
+    source: booking ? "BOOKING_PAGE" : "guestToken" in where ? "STAY_LINK" : "ROOM_QR", service: booking ? "booking" : "stayBill", ip: input.ip,
   });
 }
 
@@ -318,6 +350,10 @@ export type CustomerPayStatus = "PENDING" | "PAID" | "FAILED" | "EXPIRED" | "CAN
 export type CustomerPayView = {
   token: string; status: CustomerPayStatus; amount: number; phone: string; what: string; reference: string; at: string; paidAt: string | null;
   back: { href: string; label: string } | null; receipt: string | null; message: string | null; canRetry: boolean; canCancel: boolean;
+  /** What "Try again" asks now (worked out again: a room re-checked at another price, part paid since…). */
+  retryAmount: number | null;
+  /** A request reached nTZS (it may have reached the phone) — otherwise nothing was ever sent. */
+  sent: boolean;
 };
 
 const STATUS: Record<MobilePayment["status"], CustomerPayStatus> = { PENDING: "PENDING", COMPLETED: "PAID", FAILED: "FAILED", EXPIRED: "EXPIRED", CANCELLED: "CANCELLED" };
@@ -339,15 +375,19 @@ export async function customerPaymentByToken(token: string, opts: { check?: bool
       mp = (await db.mobilePayment.findUnique({ where: { id: mp.id } }))!;
     }
   }
-  const { what, back, receipt, unpaidNote } = await describe(mp);
+  const { what, back, receipt, unpaidNote, paidNote } = await describe(mp);
   const status = STATUS[mp.status];
-  const ended = status === "FAILED" ? "The payment was not completed." : status === "EXPIRED" ? "The payment request ran out of time." : status === "CANCELLED" ? "This payment request was cancelled." : null;
+  // Refused before anything reached the phone: why, in plain words (a wrong number…) — not "was not completed".
+  const refused = status === "FAILED" && !mp.depositId && mp.lastError ? refusalReason(mp.lastError) : null;
+  const ended = refused ?? (status === "FAILED" ? "The payment was not completed." : status === "EXPIRED" ? "The payment request ran out of time." : status === "CANCELLED" ? "This payment request was cancelled." : null);
+  const canRetry = status === "FAILED" || status === "EXPIRED" || status === "CANCELLED";
   return {
     token, status, amount: mp.amount, phone: maskPhone(mp.phone), what, at: mp.createdAt.toISOString(), paidAt: mp.completedAt?.toISOString() ?? null,
     reference: (mp.pspReference || mp.depositId || mp.id).slice(-10).toUpperCase(), back, receipt,
-    message: ended ? [ended, unpaidNote].filter(Boolean).join(" ") : null,
-    canRetry: status === "FAILED" || status === "EXPIRED" || status === "CANCELLED",
-    canCancel: status === "PENDING" && mp.initiator === "CUSTOMER",
+    message: ended ? [ended, unpaidNote].filter(Boolean).join(" ") : status === "PAID" ? paidNote : null,
+    canRetry, canCancel: status === "PENDING" && mp.initiator === "CUSTOMER",
+    retryAmount: canRetry && mp.initiator === "CUSTOMER" ? await retryAmountOf(mp) : null,
+    sent: !!mp.depositId,
   };
 }
 
@@ -358,7 +398,7 @@ async function describe(mp: MobilePayment) {
     return {
       what: t ? `${TRIP_TYPE_LABEL[t.type]} ${t.reference}` : "Transport",
       back: t?.payToken ? { href: `/transport/trip/${t.payToken}`, label: "View your trip" } : { href: "/transport", label: "Back to transport" },
-      receipt: null, unpaidNote: null,
+      receipt: null, unpaidNote: null, paidNote: null,
     };
   }
   if (mp.purpose === "INVOICE" && mp.invoiceId) {
@@ -366,12 +406,17 @@ async function describe(mp: MobilePayment) {
     return {
       what: inv ? `Invoice ${inv.number}` : "Invoice",
       back: inv?.verifyToken ? { href: `/verify/${inv.verifyToken}`, label: "View the invoice" } : null,
-      receipt: null, unpaidNote: null,
+      receipt: null, unpaidNote: null, paidNote: null,
     };
   }
   if (mp.purpose === "RESTAURANT") {
-    const orders = await db.restaurantOrder.findMany({ where: { id: { in: mp.orderIds } }, select: { number: true, trackToken: true, type: true, status: true, paymentStatus: true, payOnlineAt: true }, orderBy: { createdAt: "asc" } });
+    const orders = await db.restaurantOrder.findMany({
+      where: { id: { in: mp.orderIds } }, orderBy: { createdAt: "asc" },
+      select: { number: true, trackToken: true, type: true, status: true, paymentStatus: true, payOnlineAt: true, location: { select: { kind: true, qrToken: true, qrActive: true, isActive: true } } },
+    });
     const open = orders.filter((o) => o.status !== "CANCELLED" && o.paymentStatus !== "PAID");
+    // Paid for orders that were cancelled meanwhile: the money is not lost — staff give it back (it waits for them).
+    const allCancelled = orders.length > 0 && orders.every((o) => o.status === "CANCELLED");
     // Not paid: take out waits for its payment; anything else goes ahead and is paid later.
     const unpaidNote = !open.length ? null
       : open.some((o) => o.payOnlineAt && o.status === "PENDING" && (o.type === "TAKEAWAY" || o.type === "PICKUP")) ? "We start your order once it is paid."
@@ -379,11 +424,14 @@ async function describe(mp: MobilePayment) {
       : "Your order still goes ahead — try again, or pay at the counter when you are done.";
     const nos = orders.map((o) => `#${o.number.replace(/^ORD-\d{4}-0*/, "")}`);
     const track = orders.find((o) => o.trackToken)?.trackToken ?? null;
+    // The table's bill (paid at the table): back to that table — its page shows the whole bill.
+    const table = mp.source === "TABLE_QR" ? orders.find((o) => o.location?.kind === "TABLE" && o.location.isActive && o.location.qrActive)?.location ?? null : null;
     return {
       what: orders.length > 1 ? `Restaurant bill · orders ${nos.join(", ")}` : `Restaurant order ${nos[0] ?? ""}`.trim(),
-      back: track ? { href: `/order/${track}`, label: "View your order" } : null,
-      receipt: track && mp.status === "COMPLETED" ? `/order/${track}/receipt` : null,
+      back: table ? { href: `/t/${table.qrToken}`, label: "Back to your table" } : track ? { href: `/order/${track}`, label: "View your order" } : null,
+      receipt: track && mp.status === "COMPLETED" && !allCancelled ? `/order/${track}/receipt` : null,
       unpaidNote,
+      paidNote: allCancelled ? "Your order was cancelled — we will give your money back. Please ask at the counter." : null,
     };
   }
   if (mp.reservationId) {
@@ -403,18 +451,20 @@ async function describe(mp: MobilePayment) {
       const q = r.bookingQr;
       const qr = booking && q?.active && q.isActive && (!q.regeneratedAt || q.regeneratedAt <= r.createdAt) ? q.token : null;
       return {
-        unpaidNote: r.status === "CANCELLED" ? "The booking was released — please book again." : held ? `We hold your booking until ${held} — try again to confirm it.` : null,
+        unpaidNote: r.status === "CANCELLED" ? "The booking was released — please book again."
+          : held ? `We hold your booking until ${held} — try again to confirm it.`
+          : r.status === "INQUIRY" ? "Your booking is saved, but the room is not reserved until it is paid — try again to secure it." : null,
         what: r.kind === "MEETING" ? `Meeting room booking ${r.reference}` : booking ? `Room booking ${r.reference}` : `Your bill · ${r.reference}`,
         back: qr ? { href: qrConfirmPath(qr, r.reference, r.manageToken), label: "View your booking" }
           : booking ? { href: `/booking/${r.reference}?token=${r.manageToken}`, label: "View your booking" }
           : mp.source === "ROOM_QR" ? await roomPageOf(mp.reservationId)
           : mp.source === "INVOICE_LINK" ? await invoicePageOf(mp.reservationId)
           : r.guestToken ? { href: `/stay/${r.guestToken}`, label: "Back to your stay" } : null,
-        receipt: null,
+        receipt: null, paidNote: null,
       };
     }
   }
-  return { what: "Payment", back: null, receipt: null, unpaidNote: null };
+  return { what: "Payment", back: null, receipt: null, unpaidNote: null, paidNote: null };
 }
 
 /** Paid from a booking's invoice link: back to that invoice. */
@@ -461,8 +511,21 @@ export async function retryCustomerPayment(token: string, input: { phone?: strin
     const r = old.reservationId ? await db.reservation.findUnique({ where: { id: old.reservationId }, select: { balanceAmount: true, kind: true, status: true } }) : null;
     if (r?.status === "CANCELLED" || r?.status === "NO_SHOW") throw new AppError("This booking was released — please book again.", "CONFLICT");
     if (!r || r.balanceAmount <= 0) throw new AppError("Nothing is owed any more.", "CONFLICT");
-    target = { purpose: "RESERVATION", reservationId: old.reservationId!, amount: Math.min(old.amount, r.balanceAmount) };
+    target = { purpose: "RESERVATION", reservationId: old.reservationId!, amount: (await retryAmountOf(old)) ?? r.balanceAmount };
     service = BOOKING_PAY_SOURCES.includes(old.source ?? "") ? (r.kind === "MEETING" ? "meeting" : "booking") : old.source === "INVOICE_LINK" ? "invoices" : "stayBill";
   }
   return startCustomerPayment({ target, phone: input.phone || old.phone, clientKey: input.clientKey, source: old.source ?? "WEBSITE", service, ip: input.ip });
+}
+
+/**
+ * What "Try again" asks for a bill now. A booking paid from its own page (the website, the Hotel QR) is paid whole: what
+ * it costs now — its room may have been checked again at another price, which the guest was shown first. A guest's bill
+ * or an invoice: never more than the last request, nor more than is owed now. (Orders, trips, invoices: worked out as
+ * the request goes.)
+ */
+async function retryAmountOf(old: Pick<MobilePayment, "purpose" | "reservationId" | "amount" | "source">): Promise<number | null> {
+  if (old.purpose !== "RESERVATION" || !old.reservationId) return null;
+  const r = await db.reservation.findUnique({ where: { id: old.reservationId }, select: { balanceAmount: true } });
+  if (!r || r.balanceAmount <= 0) return null;
+  return BOOKING_PAY_SOURCES.includes(old.source ?? "") ? r.balanceAmount : Math.min(old.amount, r.balanceAmount);
 }

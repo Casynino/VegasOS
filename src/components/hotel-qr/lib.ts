@@ -63,11 +63,6 @@ export const guestsText = (adults: number, children: number) =>
 /** "Up to 2 adults and 1 child" */
 export const holdsText = (t: { maxAdults: number; maxChildren: number }) =>
   `Up to ${plural(t.maxAdults, "adult")}${t.maxChildren ? ` and ${plural(t.maxChildren, "child", "children")}` : ""}`;
-/** How long a pay-at-hotel booking keeps its room: "24 hours", "2 days", or until the arrival day. */
-export const holdLength = (hours: number) =>
-  hours <= 0 ? "until your arrival day" : hours % 24 === 0 ? `for ${plural(hours / 24, "day")}` : `for ${plural(hours, "hour")}`;
-/** The time a guest has to pay a held room: "24 hours", "3 days". */
-export const holdWithin = (hours: number) => (hours > 48 && hours % 24 === 0 ? plural(hours / 24, "day") : plural(hours, "hour"));
 
 /** A fresh 32-hex key: one per Book / Pay press (the server makes one booking and one payment per key). */
 export const newKey = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (x) => x.toString(16).padStart(2, "0")).join("");

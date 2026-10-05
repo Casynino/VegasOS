@@ -292,7 +292,8 @@ export function OrderCard({ o, perms, now, fresh, accounts, rooms, drag, roomy, 
     if (res.ok) { toast.success("Payment reversed — the amount is due again."); setReversing(null); router.refresh(); } else toast.error(res.error);
   });
   const picked = accounts.find((a) => a.id === account);
-  const canDecline = canPrep && !desk && ["PENDING", "ACCEPTED", "PREPARING"].includes(o.status);
+  // (Not while the customer's online payment is on its way — it cannot be stopped from here.)
+  const canDecline = canPrep && !desk && ["PENDING", "ACCEPTED", "PREPARING"].includes(o.status) && o.online !== "PAYING";
   // Delivered and on the customer's own room in one go: the room first, then the step.
   const deliverToRoom = (s: PortalStay) => start(async () => {
     const res = await chargeOrderToRoomAction({ id: o.id, reservationId: s.id });
@@ -437,7 +438,7 @@ export function OrderCard({ o, perms, now, fresh, accounts, rooms, drag, roomy, 
   const showPay = o.total != null;
   const secondary = (
     <OrderCardActions id={o.id} number={o.number} total={o.total != null ? tzs(unpaid ? due : o.total) : ""} next={null} nextLabel={null}
-      unpaid={unpaid} canCancel={o.status === "PENDING" || o.status === "ACCEPTED" || perms.cancelLate}
+      unpaid={unpaid} canCancel={(o.status === "PENDING" || o.status === "ACCEPTED" || perms.cancelLate) && o.online !== "PAYING"}
       pay={perms.pay && !desk && !online ? { accounts, waiterId: o.assignedTo?.id ?? null } : null} room={unpaid && !o.paid && !online ? roomBill : null} update={desk ? null : o.update} labelled={roomy}
       cancelNote={o.settlement === "ROOM" ? "Its items come off the guest's room bill (kept on record as cancelled)." : o.paid === 0 ? "Nothing was paid yet — it is kept on record as cancelled." : "Its payment is reversed and its sale voided (kept on record as cancelled). Give any refund separately."} />
   );

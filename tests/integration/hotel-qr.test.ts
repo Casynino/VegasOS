@@ -262,16 +262,19 @@ describe("availability and prices", () => {
 });
 
 describe("booking from the QR", () => {
-  it("pay at hotel: a held reservation from this QR (source HOTEL_QR, the hotel's hold); the customer is found by phone; the same press twice is one booking", async () => {
+  it("pay later: a booking from this QR (source HOTEL_QR) that holds no room until it is paid; the customer is found by phone; the same press twice is one booking", async () => {
     const q = await newQr();
     const p = phone(), k = key();
     const b = await book(q.token, { days: 12, phone: p, name: "Asha Mwema", arrivalTime: "18:30", specialRequest: "Quiet room please", clientKey: k });
     expect(b.r.source.code).toBe("HOTEL_QR");
     expect(b.r.bookingQrId).toBe(q.id);
-    expect(b.r.status).toBe("RESERVED");
-    expect(b.r.holdUntil!.getTime() - Date.now()).toBeGreaterThan(23.9 * 3_600_000);
-    expect(b.r.holdUntil!.getTime() - Date.now()).toBeLessThanOrEqual(24 * 3_600_000);
+    // Owner, 2026-10-05: not paid → not reserved. The room stays free for everyone (whoever pays first gets it).
+    expect(b.r.status).toBe("INQUIRY");
+    expect(b.r.holdUntil).toBeNull();
+    expect(b.r.externalData).toMatchObject({ payLater: true });
+    expect(b.r.netAmount).toBeGreaterThan(0);
     expect(b.r.internalNotes).toContain(QR_PAY_HOTEL_NOTE);
+    expect((await qrSearch(q.token, { ...b.stay, roomType: "double-deluxe" }, { track: false })).types[0].rooms.map((x) => x.number)).toContain(b.roomNumber);
     expect(b.r).toMatchObject({ eta: "18:30", specialRequests: "Quiet room please" });
     expect(b.r.rooms.map((x) => x.room.number)).toEqual([b.roomNumber]);
     expect(b).toMatchObject({ payWay: "HOTEL", payToken: null, payUrl: null, confirmUrl: qrConfirmPath(q.token, b.reference, b.manageToken) });
@@ -300,23 +303,23 @@ describe("booking from the QR", () => {
     expect(c.state).toBe("ok");
     if (c.state !== "ok") return;
     expect(c.booking).toMatchObject({
-      reference: b.reference, status: "RESERVED", confirmed: false, paymentStatus: "PAY_AT_HOTEL", payWay: "HOTEL", rooms: [{ number: b.roomNumber, typeSlug: "double-deluxe" }],
+      reference: b.reference, status: "INQUIRY", confirmed: false, roomHeld: false, paymentStatus: "PAY_AT_HOTEL", payWay: "HOTEL", rooms: [{ number: b.roomNumber, typeSlug: "double-deluxe" }],
       checkIn: b.stay.checkIn, checkOut: b.stay.checkOut, nights: 2, adults: 2, total: b.r.netAmount, paid: 0, balance: b.r.netAmount, canPayNow: true, livePayment: null,
       bookingLink: `/booking/${b.reference}?token=${encodeURIComponent(b.manageToken)}`, arrivalTime: "18:30",
     });
-    expect(c.booking.holdUntil).toBe(b.r.holdUntil!.toISOString());
+    expect(c.booking.holdUntil).toBeNull();
     expect(c.booking.stayLink).toBe(`/stay/${b.r.guestToken}`);
     expect(await qrConfirmation(q.token, b.reference, "x".repeat(32))).toEqual({ state: "not_found" });
     expect(await qrConfirmation(q.token, "VLH-NOPE99", b.manageToken)).toEqual({ state: "not_found" });
     expect(await qrConfirmation(q.token, b.reference, b.manageToken.slice(0, -1))).toEqual({ state: "not_found" });
   });
 
-  it("two people book the same room for the same dates at once: one gets it, the other is told it was just taken", async () => {
+  it("two people pay now for the same room for the same dates at once: one gets it, the other is told it was just taken", async () => {
     const q = await newQr();
     const s = stayIn(18);
     const room = await freeRoom(q.token, s);
     const tries = await Promise.allSettled([1, 2].map((i) => qrBook(q.token, {
-      ...s, roomNumber: room.number, guest: { fullName: `Racer ${i}`, phone: phone() }, pay: i === 1 ? "HOTEL" : "ONLINE", clientKey: key(),
+      ...s, roomNumber: room.number, guest: { fullName: `Racer ${i}`, phone: phone() }, pay: "ONLINE", clientKey: key(),
     }, { ip: ip() })));
     expect(tries.filter((t) => t.status === "fulfilled")).toHaveLength(1);
     const lost = tries.find((t) => t.status === "rejected") as PromiseRejectedResult;
@@ -392,7 +395,8 @@ describe("booking from the QR", () => {
 describe("keeping guests and rooms safe", () => {
   it("a press's key finds only the booking it made — never another guest's, from their phone, dates or room; the key itself is not kept", async () => {
     const q = await newQr();
-    const victim = await book(q.token, { days: 12, name: "Victim Guest" });
+    // (Paid now: their room is held — a booking to pay later holds none.)
+    const victim = await book(q.token, { days: 12, name: "Victim Guest", pay: "ONLINE" });
     const k = key();
     const mine = await book(q.token, { days: 30, name: "Other Guest", clientKey: k });
     // My key again, with the other guest's phone, dates and room: my booking is named — theirs never.
@@ -416,68 +420,60 @@ describe("keeping guests and rooms safe", () => {
   it("a booking that failed (the room was just taken) frees its key: the same press can run again — not 'being made' for an hour", async () => {
     const q = await newQr();
     const s = stayIn(19);
-    const [room, other] = (await qrSearch(q.token, { ...s, roomType: "double-deluxe" }, { track: false })).types[0].rooms;
-    for (const pay of ["HOTEL", "ONLINE"] as const) {
-      const keys = [key(), key()];
-      const target = pay === "HOTEL" ? room.number : other.number;
-      const tries = await Promise.allSettled(keys.map((k, i) => qrBook(q.token, {
-        ...s, roomNumber: target, guest: { fullName: `Racer ${pay} ${i}`, phone: phone() }, pay, clientKey: k,
-      }, { ip: ip() })));
-      const lost = tries.findIndex((t) => t.status === "rejected");
-      expect(lost).toBeGreaterThanOrEqual(0);
-      expect((tries[lost] as PromiseRejectedResult).reason).toMatchObject({ code: "UNAVAILABLE" });
-      expect(await db.rateLimitBucket.count({ where: { key: `book-once:${keys[lost]}` } })).toBe(0);
-      // Pressed again (the answer was lost) for another room: booked — not "being made".
-      const free = (await qrSearch(q.token, s, { track: false })).types.flatMap((t) => t.rooms).find((r) => r.number !== room.number && r.number !== other.number)!;
-      const again = await qrBook(q.token, { ...s, roomNumber: free.number, guest: { fullName: "Second Try", phone: phone() }, pay, clientKey: keys[lost] }, { ip: ip() });
+    const [, other] = (await qrSearch(q.token, { ...s, roomType: "double-deluxe" }, { track: false })).types[0].rooms;
+    // Pay now, two at once for one room: one loses — and its key is free again.
+    const keys = [key(), key()];
+    const tries = await Promise.allSettled(keys.map((k, i) => qrBook(q.token, {
+      ...s, roomNumber: other.number, guest: { fullName: `Racer ${i}`, phone: phone() }, pay: "ONLINE", clientKey: k,
+    }, { ip: ip() })));
+    const lost = tries.findIndex((t) => t.status === "rejected");
+    expect(lost).toBeGreaterThanOrEqual(0);
+    expect((tries[lost] as PromiseRejectedResult).reason).toMatchObject({ code: "UNAVAILABLE" });
+    expect(await db.rateLimitBucket.count({ where: { key: `book-once:${keys[lost]}` } })).toBe(0);
+    // Pay later for that room while it is held for the guest paying: refused — its key is free again too.
+    const later = key();
+    await expect(qrBook(q.token, { ...s, roomNumber: other.number, guest: { fullName: "Too Late", phone: phone() }, pay: "HOTEL", clientKey: later }, { ip: ip() }))
+      .rejects.toMatchObject({ code: "UNAVAILABLE" });
+    expect(await db.rateLimitBucket.count({ where: { key: `book-once:${later}` } })).toBe(0);
+    // Pressed again (the answer was lost) for another room: booked — not "being made".
+    for (const [k, pay] of [[keys[lost], "ONLINE"], [later, "HOTEL"]] as const) {
+      const free = (await qrSearch(q.token, s, { track: false })).types.flatMap((t) => t.rooms).find((r) => r.number !== other.number)!;
+      const again = await qrBook(q.token, { ...s, roomNumber: free.number, guest: { fullName: "Second Try", phone: phone() }, pay, clientKey: k }, { ip: ip() });
       expect(again.reference).toMatch(/^VLH-/);
     }
   });
 
-  it("pay at the hotel has limits that do not depend on the phone typed: long stays, far-ahead holds, a share of the rooms, holds per device", async () => {
+  it("pay later holds no room, so it has no limits by stay, dates or share of the hotel — only a few a day per phone and per device", async () => {
     const q = await newQr();
-    // More than 14 nights: Pay now only (the payment confirms the booking).
+    // A long stay, and a stay far ahead: Pay later offered (nothing is held for them).
     const long = stayIn(10, 15);
     const longRoom = await freeRoom(q.token, long);
-    const lq = await qrQuote(q.token, { ...long, roomNumber: longRoom.number });
-    expect(lq.pay).toMatchObject({ online: true, atHotel: false });
-    expect(lq.pay.atHotelNote).toMatch(/14 nights/);
-    await expect(qrBook(q.token, { ...long, roomNumber: longRoom.number, guest: { fullName: "Long Stay", phone: phone() }, pay: "HOTEL", clientKey: key() }, { ip: ip() }))
-      .rejects.toMatchObject({ code: "CONFLICT" });
-
-    // A 24-hour hold for an arrival in 10 days is "pay within", never "pay when you arrive".
-    const soon = stayIn(10);
-    const soonRoom = await freeRoom(q.token, soon);
-    expect((await qrQuote(q.token, { ...soon, roomNumber: soonRoom.number })).pay).toMatchObject({ atHotel: true, atHotelKeeps: "hold", holdHours: 24 });
-    // No hold time: kept until the guest comes — only for arrivals up to 30 days ahead.
-    await db.hotelSettings.updateMany({ data: { unpaidHoldHours: 0 } });
-    expect((await qrQuote(q.token, { ...soon, roomNumber: soonRoom.number })).pay).toMatchObject({ atHotel: true, atHotelKeeps: "arrival" });
+    expect((await qrQuote(q.token, { ...long, roomNumber: longRoom.number })).pay).toEqual({ online: true, atHotel: true, onlineHoldMinutes: 30 });
+    const lb = await qrBook(q.token, { ...long, roomNumber: longRoom.number, guest: { fullName: "Long Stay", phone: phone() }, pay: "HOTEL", clientKey: key() }, { ip: ip() });
+    expect(await db.reservation.findUniqueOrThrow({ where: { reference: lb.reference }, select: { status: true } })).toEqual({ status: "INQUIRY" });
     const far = stayIn(45);
-    const farQuote = await qrQuote(q.token, { ...far, roomNumber: (await freeRoom(q.token, far)).number });
-    expect(farQuote.pay).toMatchObject({ atHotel: false, online: true });
-    expect(farQuote.pay.atHotelNote).toMatch(/30 days/);
-    await db.hotelSettings.updateMany({ data: { unpaidHoldHours: 24 } });
+    expect((await qrQuote(q.token, { ...far, roomNumber: (await freeRoom(q.token, far)).number })).pay).toMatchObject({ atHotel: true });
 
-    // Unpaid QR holds never cover more than a share of the rooms for the same dates — then Pay now.
-    const rooms = await db.room.count({ where: { isActive: true, roomType: { isActive: true, isPublic: true, category: "GUEST_ROOM" } } });
-    const cap = Math.max(2, Math.ceil(rooms * 0.2));
+    // Many bookings to pay later for the same dates: every room is still offered to everyone.
     const s = { ...stayIn(60), adults: 1 };
     const free = (await qrSearch(q.token, s, { track: false })).types.flatMap((t) => t.rooms.map((r) => r.number));
-    expect(free.length).toBeGreaterThan(cap);
-    for (const n of free.slice(0, cap)) {
-      await qrBook(q.token, { ...s, roomNumber: n, guest: { fullName: "Held Guest", phone: phone() }, pay: "HOTEL", clientKey: key() }, { ip: ip() });
+    for (const n of free.slice(0, 4)) {
+      await qrBook(q.token, { ...s, roomNumber: n, guest: { fullName: "Later Guest", phone: phone() }, pay: "HOTEL", clientKey: key() }, { ip: ip() });
     }
-    const next = free[cap];
-    await expect(qrBook(q.token, { ...s, roomNumber: next, guest: { fullName: "One Too Many", phone: phone() }, pay: "HOTEL", clientKey: key() }, { ip: ip() }))
-      .rejects.toThrow(/not available for these dates/);
-    expect((await qrBook(q.token, { ...s, roomNumber: next, guest: { fullName: "Pays Now", phone: phone() }, pay: "ONLINE", clientKey: key() }, { ip: ip() })).payToken).toBeTruthy();
+    expect((await qrSearch(q.token, s, { track: false })).types.flatMap((t) => t.rooms.map((r) => r.number))).toEqual(free);
 
-    // One device (one address): a few unpaid holds a day, whatever numbers are typed.
+    // One address — guests on the hotel Wi-Fi share one, so more than one guest's few: ten in ten minutes (and a fair
+    // number a day). One number: a few a day, whatever else is typed — and it says what to do instead.
     const addr = ip();
-    for (let i = 0; i < 5; i++) await book(q.token, { days: 70 + i * 3, ip: addr });
-    const s6 = stayIn(90);
-    await expect(qrBook(q.token, { ...s6, roomNumber: (await freeRoom(q.token, s6)).number, guest: { fullName: "Sixth Hold", phone: phone() }, pay: "HOTEL", clientKey: key() }, { ip: addr }))
+    for (let i = 0; i < 10; i++) await book(q.token, { days: 70 + i * 2, ip: addr });
+    const s11 = stayIn(92);
+    await expect(qrBook(q.token, { ...s11, roomNumber: (await freeRoom(q.token, s11)).number, guest: { fullName: "Eleventh Booking", phone: phone() }, pay: "HOTEL", clientKey: key() }, { ip: addr }))
       .rejects.toMatchObject({ code: "RATE_LIMITED" });
+    const p = phone();
+    for (let i = 0; i < 5; i++) await book(q.token, { days: 100 + i * 3, phone: p });
+    const s7 = stayIn(130);
+    await expect(qrBook(q.token, { ...s7, roomNumber: (await freeRoom(q.token, s7)).number, guest: { fullName: "Same Number", phone: p }, pay: "HOTEL", clientKey: key() }, { ip: ip() }))
+      .rejects.toMatchObject({ code: "RATE_LIMITED", message: expect.stringMatching(/Pay now/) });
   });
 
   it("a QR given a new code: the payment page's link back never hands out the new code to a booking made from the old card", async () => {
@@ -531,30 +527,34 @@ describe("keeping guests and rooms safe", () => {
 });
 
 describe("reception and the guest", () => {
-  it("reception's bell: a pay-at-hotel booking rings while it waits; a paid-online one for half an hour after it is paid — each once", async () => {
+  it("reception's bell: a booking to pay later rings (not paid · room not held); a paid-online one for half an hour after it is paid — each once", async () => {
     const q = await newQr();
     const desk = (await receptionistActor()).permissions!;
     const hotel = await book(q.token, { days: 11, name: "Bell Hotel" });
     const online = await book(q.token, { days: 13, pay: "ONLINE", name: "Bell Online" });
     let alerts = await staffAlerts(desk);
     const qrAlerts = () => alerts.filter((a) => a.id.startsWith("hotelqr:"));
-    expect(qrAlerts()).toEqual([expect.objectContaining({ id: `hotelqr:${hotel.r.id}:hotel`, kind: "booking", href: `/staff/reservations/${hotel.r.id}` })]);
-    expect(qrAlerts()[0].text).toMatch(new RegExp(`Bell Hotel · Room ${hotel.roomNumber} · .* · pay at hotel`));
+    expect(qrAlerts()).toEqual([expect.objectContaining({ id: `hotelqr:${hotel.r.id}:later`, kind: "booking", href: `/staff/reservations/${hotel.r.id}` })]);
+    expect(qrAlerts()[0].text).toMatch(new RegExp(`Hotel QR booking — Bell Hotel · Room ${hotel.roomNumber} · .* · not paid · room not held`));
 
     await ntzsConfirms(online.payToken!);
     await customerPaymentByToken(online.payToken!, { check: true });
     alerts = await staffAlerts(desk);
-    expect(qrAlerts().map((a) => a.id).sort()).toEqual([`hotelqr:${hotel.r.id}:hotel`, `hotelqr:${online.r.id}:paid`].sort());
+    expect(qrAlerts().map((a) => a.id).sort()).toEqual([`hotelqr:${hotel.r.id}:later`, `hotelqr:${online.r.id}:paid`].sort());
     expect(qrAlerts().find((a) => a.id.endsWith(":paid"))!.text).toMatch(/paid online/);
 
     await db.reservation.update({ where: { id: online.r.id }, data: { confirmedAt: new Date(Date.now() - 31 * 60_000) } });
     alerts = await staffAlerts(desk);
-    expect(qrAlerts().map((a) => a.id)).toEqual([`hotelqr:${hotel.r.id}:hotel`]);
+    expect(qrAlerts().map((a) => a.id)).toEqual([`hotelqr:${hotel.r.id}:later`]);
+    // A day after it was made it leaves the bell (it stays in the lists: QR bookings, Online, Reservations).
+    await db.reservation.update({ where: { id: hotel.r.id }, data: { createdAt: new Date(Date.now() - 25 * 3_600_000) } });
+    alerts = await staffAlerts(desk);
+    expect(qrAlerts()).toEqual([]);
     // Not for those who do not follow bookings.
     expect((await staffAlerts((await waiterActor()).permissions!)).some((a) => a.id.startsWith("hotelqr:"))).toBe(false);
   });
 
-  it("the guest gets the booking details by message when a provider is connected — pay at hotel at once, paid online once nTZS confirmed (once)", async () => {
+  it("the guest gets the booking details by message when a provider is connected — pay later at once, paid online once nTZS confirmed (once)", async () => {
     process.env.GUEST_NOTIFY_WEBHOOK_URL = "https://notify.test/hook";
     const q = await newQr();
     const hotel = await book(q.token, { days: 21, name: "Text Hotel" });

@@ -103,7 +103,7 @@ export async function FrontDeskToday() {
       })
       : null,
     db.reservation.findMany({
-      where: { kind: "STAY", arrivalDate: tomorrowDb, status: { in: ["RESERVED", "CONFIRMED"] } }, orderBy: [{ eta: "asc" }, { createdAt: "asc" }], take: 30,
+      where: { kind: "STAY", arrivalDate: tomorrowDb, status: { in: ["RESERVED", "CONFIRMED", "INQUIRY"] } }, orderBy: [{ eta: "asc" }, { createdAt: "asc" }], take: 30,
       select: { id: true, eta: true, balanceAmount: true, status: true, guest: { select: { fullName: true } }, rooms: { where: { status: { not: "CANCELLED" } }, select: { roomType: { select: { name: true } }, room: { select: { number: true } } } } },
     }),
     db.reservation.count({ where: { kind: "STAY", status: "CHECKED_IN", departureDate: tomorrowDb } }),
@@ -111,10 +111,10 @@ export async function FrontDeskToday() {
   const tomorrowRooms = arrivingTomorrow.reduce((t, r) => t + r.rooms.length, 0);
   // Mobile money (nTZS) that came in but did not fit the bill — someone must deal with it.
   const mobileToCheck = can(user, "payments.record") ? (await mobilePaymentsNeedingAttention()).length : 0;
-  // The Hotel QR today: bookings guests made from it, and those arriving today not paid yet (pay at the hotel).
+  // The Hotel QR today: bookings guests made from it (pay now and pay later), and those arriving today not paid yet.
   const [qrToday, qrToPay] = can(user, "reservations.view") ? await Promise.all([
-    db.reservation.count({ where: { source: { code: "HOTEL_QR" }, businessDate: todayDb, status: { not: "INQUIRY" } } }),
-    db.reservation.count({ where: { source: { code: "HOTEL_QR" }, arrivalDate: todayDb, status: "RESERVED" } }),
+    db.reservation.count({ where: { source: { code: "HOTEL_QR" }, businessDate: todayDb } }),
+    db.reservation.count({ where: { source: { code: "HOTEL_QR" }, arrivalDate: todayDb, status: { in: ["RESERVED", "INQUIRY"] }, paidAmount: { lte: 0 } } }),
   ]) : [0, 0];
   const todayParts: TodayPart[] = [
     { label: "Arrivals", icon: <LogIn />, tone: "sky", href: "/staff/check-in", value: board.arrivals.length, unit: "to check in",
@@ -135,7 +135,7 @@ export async function FrontDeskToday() {
   const attention: AttentionItem[] = [
     overdue.length > 0 && { tone: "rose", icon: <Clock />, group: "Check-out", title: `${overdue.length} checkout${overdue.length === 1 ? "" : "s"} overdue`, detail: "Past checkout time with no extension — check out or extend", href: `/staff/check-out?id=${overdue[0].id}#workspace` },
     (worksShift ? !myShift : !shift.open) && { tone: "amber", icon: <AlertTriangle />, group: "Shift", title: worksShift ? "You have no active shift" : "No reception shift started", detail: worksShift ? "Start your shift before working the desk" : "Nobody is on reception right now", href: "#shift" },
-    qrToPay > 0 && { tone: "gold", icon: <QrCode />, group: "Bookings", title: `${qrToPay} Hotel QR booking${qrToPay === 1 ? "" : "s"} arriving today not paid yet`, detail: "Reserved from the QR — take the payment at check-in", href: "/staff/hotel-qr?list=arriving#bookings" },
+    qrToPay > 0 && { tone: "gold", icon: <QrCode />, group: "Bookings", title: `${qrToPay} Hotel QR booking${qrToPay === 1 ? "" : "s"} arriving today not paid yet`, detail: "Not paid — the room is held only once paid. Take the payment at check-in (any free room)", href: "/staff/hotel-qr?list=arriving#bookings" },
     board.requestsDue.length > 0 && { tone: "gold", icon: <Inbox />, group: "Bookings", title: `${board.requestsDue.length} online request${board.requestsDue.length === 1 ? "" : "s"} for today not confirmed`, detail: "Call the guest and confirm the booking", href: "/staff/booking-requests" },
     owing.length > 0 && { tone: "rose", icon: <Wallet />, group: "Money", title: `${owing.length} leaving today still owe${owing.length === 1 ? "s" : ""} money`, detail: `${formatTZS(owing.reduce((s, r) => s + owes(r), 0))} to collect before checkout`, href: "/staff/check-out" },
     snap.unpaidAfterCheckout.count > 0 && { tone: "rose", icon: <Receipt />, group: "Money", title: `${snap.unpaidAfterCheckout.count} unpaid after checkout`, detail: "Past guests with an open balance", href: "#unpaid" },
@@ -271,7 +271,7 @@ export async function FrontDeskToday() {
                     <span className="block truncate text-sm font-semibold text-foreground">{r.guest.fullName}</span>
                     <span className="block truncate text-xs text-muted-foreground">{r.rooms.map((x) => `${x.roomTypeName} · ${x.current.number}`).join(", ")}{r.eta ? ` · around ${r.eta}` : ""}</span>
                   </span>
-                  {r.balanceAmount > 0 ? <Pill kind="OWES">Owes {formatTZS(r.balanceAmount)}</Pill> : <Pill kind="PAID">Paid</Pill>}
+                  {r.status === "INQUIRY" ? <Pill kind="OWES">Not paid · room not held</Pill> : r.balanceAmount > 0 ? <Pill kind="OWES">Owes {formatTZS(r.balanceAmount)}</Pill> : <Pill kind="PAID">Paid</Pill>}
                   {canCheckIn && <Link href={`/staff/check-in?id=${r.id}#workspace`} className={buttonVariants({ size: "sm" })}>Check in</Link>}
                 </li>
               ))}
@@ -419,7 +419,7 @@ export async function FrontDeskToday() {
                       <span className="block truncate text-sm font-semibold">{r.guest.fullName}</span>
                       <span className="block truncate text-xs text-muted-foreground">{[...new Set(r.rooms.map((x) => x.roomType.name))].join(", ")}{r.eta ? ` · around ${r.eta}` : ""}{r.rooms.some((x) => !x.room) ? " · room not given yet" : ""}</span>
                     </span>
-                    {r.status === "RESERVED" ? <Pill kind="RESERVED">Not confirmed</Pill> : r.balanceAmount > 0 ? <Pill kind="OWES">Owes {formatTZS(r.balanceAmount)}</Pill> : <Pill kind="PAID">Paid</Pill>}
+                    {r.status === "INQUIRY" ? <Pill kind="OWES">Not paid · room not held</Pill> : r.status === "RESERVED" ? <Pill kind="RESERVED">Not confirmed</Pill> : r.balanceAmount > 0 ? <Pill kind="OWES">Owes {formatTZS(r.balanceAmount)}</Pill> : <Pill kind="PAID">Paid</Pill>}
                   </Link>
                 </li>
               ))}

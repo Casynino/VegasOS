@@ -14,7 +14,7 @@ import { setRoomStatusTx } from "./rooms";
 import { postRoomChargesTx, recordPaymentTx, type ChargeLine } from "./payments";
 import { createRestaurantOrderTx } from "./restaurant";
 import { assertCompanyCredit, billCompanyTx, type InvoiceMode } from "./company-billing";
-import { expireUnpaidHolds, holdDeadline } from "./booking-holds";
+import { expireUnpaidHolds, holdDeadline, isPayLater, secureRoomsTx } from "./booking-holds";
 import { BILLING_GROUP_CODES, companyPays } from "@/lib/billing";
 import { quoteRoom } from "@/lib/pricing";
 import { channelFor, loadPricing, quoteFromPromos, quoteStay } from "./pricing";
@@ -443,16 +443,31 @@ function pickRooms<T extends { id: string }>(rooms: T[], ids?: string[] | null):
   return rooms.filter((r) => ids.includes(r.id));
 }
 
+/**
+ * A booking that holds no room yet (pay later, an enquiry) is about to take one: holds whose time ran out are let go
+ * first, so a lapsed hold never makes its room look taken. (Only then — a booking that holds its room is left as it is.)
+ */
+async function expireHoldsBeforeTaking(where: { reservationId: string } | { id: string }, now = new Date()) {
+  if (await db.reservationRoom.count({ where: { ...where, status: "INQUIRY" } })) await expireUnpaidHolds(now);
+}
+
 export async function confirmReservation(reservationId: string, actor: Actor) {
+  await expireHoldsBeforeTaking({ reservationId });
   return run(async (tx) => {
     const r = await loadForUpdate(tx, reservationId);
     if (!["INQUIRY", "RESERVED"].includes(r.status)) throw new AppError("Only enquiries or pending bookings can be confirmed.");
     const secured = r.paidAmount > 0 || r.billTo !== "GUEST";
     const manager = !!actor.permissions?.has("reservations.confirm_unpaid");
-    const waiting = r.rooms.filter((x) => x.status === "INQUIRY" || x.status === "RESERVED");
     if (!secured && !manager) {
       // Reception can turn an enquiry into a pending booking (room held until the hold time) — not confirm it without payment.
       if (r.status !== "INQUIRY") throw new AppError("Receive a payment (a deposit is enough) to confirm this booking — or ask a manager to confirm it without payment.", "FORBIDDEN");
+      // Booked online to pay later: no room is held until it is paid — whoever pays first gets it (owner, 2026-10-05).
+      if (isPayLater(r.externalData)) throw new AppError("This guest booked online to pay later — the room is held only once it is paid. Take a payment (a deposit is enough), or ask a manager to confirm it.", "FORBIDDEN");
+    }
+    // Not held until now: its room is checked again — the same one, another free one of its type, or "just taken".
+    if (r.status === "INQUIRY") await secureRoomsTx(tx, r.id, actor);
+    const waiting = (await loadForUpdate(tx, reservationId)).rooms.filter((x) => x.status === "INQUIRY" || x.status === "RESERVED");
+    if (!secured && !manager) {
       const settings = await getSettingsTx(tx);
       for (const rr of waiting) { await tx.reservationRoom.update({ where: { id: rr.id }, data: { status: "RESERVED" } }); await syncRoomNights(tx, rr.id); }
       const holdUntil = holdDeadline(settings);
@@ -475,6 +490,7 @@ export async function confirmReservation(reservationId: string, actor: Actor) {
 }
 
 export async function checkIn(reservationId: string, actor: Actor, reservationRoomIds?: string[] | null, now = new Date()) {
+  await expireHoldsBeforeTaking({ reservationId }, now);
   return run((tx) => checkInTx(tx, reservationId, actor, reservationRoomIds, now));
 }
 
@@ -490,8 +506,17 @@ async function checkInTx(
     const cfg = stayConfig(settings);
     const today = businessDateOf(now, cfg);
     const r = await loadForUpdate(tx, reservationId);
-    const targets = pickRooms(r.rooms, reservationRoomIds).filter((x) => x.status === "RESERVED" || x.status === "CONFIRMED");
+    const targets = pickRooms(r.rooms, reservationRoomIds).filter((x) => x.status === "RESERVED" || x.status === "CONFIRMED" || x.status === "INQUIRY");
     if (targets.length === 0) throw new AppError("There are no rooms waiting for check-in on this booking.");
+    // A booking that held no room (pay later): its room may have gone to a guest who paid first — then another room is chosen.
+    const notHeld = targets.filter((x) => x.status === "INQUIRY");
+    if (notHeld.length) await lockRoomTypes(tx, notHeld.map((x) => x.roomTypeId));
+    for (const rr of notHeld) {
+      const stay = { startAt: now < rr.startAt ? now : rr.startAt, endAt: rr.endAt, arrivalDate: fromDbDate(rr.arrivalDate), departureDate: fromDbDate(rr.departureDate), isDayUse: rr.isDayUse };
+      if (!(await findAvailableRooms({ stay, roomIds: [rr.roomId] }, tx)).length) {
+        throw new AppError(`Room ${rr.room.number} was taken by a guest who paid first — choose another free room for this guest.`, "UNAVAILABLE");
+      }
+    }
 
     const warnings: string[] = [];
     for (const rr of targets) {
@@ -968,7 +993,8 @@ async function reassignRoomTx(
   {
     const rr = await tx.reservationRoom.findUnique({ where: { id: reservationRoomId }, include: { room: true, reservation: true } });
     if (!rr) throw new AppError("Booking room not found.", "NOT_FOUND");
-    if (!ACTIVE_STATUSES.includes(rr.status)) throw new AppError("Only active stays can be moved.");
+    // (A booking that holds no room yet — pay later — can be given another room too, e.g. at the desk when it arrives.)
+    if (!ACTIVE_STATUSES.includes(rr.status) && rr.status !== "INQUIRY") throw new AppError("Only active stays can be moved.");
     const newRoom = await tx.room.findUnique({ where: { id: newRoomId }, include: { roomType: true } });
     if (!newRoom || !newRoom.isActive) throw new AppError("Room not found.", "NOT_FOUND");
     if (newRoom.id === rr.roomId) throw new AppError("The guest is already in this room.");
@@ -1046,9 +1072,10 @@ export async function assignAndCheckIn(
   actor: Actor,
   now = new Date(),
 ) {
+  await expireHoldsBeforeTaking({ reservationId }, now);
   return run(async (tx) => {
     const r = await loadForUpdate(tx, reservationId);
-    if (!["RESERVED", "CONFIRMED"].includes(r.status)) throw new AppError(`This booking is ${r.status.toLowerCase().replace("_", " ")} — nothing to check in.`);
+    if (!["RESERVED", "CONFIRMED", "INQUIRY"].includes(r.status)) throw new AppError(`This booking is ${r.status.toLowerCase().replace("_", " ")} — nothing to check in.`);
     for (const a of input.assignments ?? []) {
       const rr = r.rooms.find((x) => x.id === a.reservationRoomId);
       if (!rr) throw new AppError("That room is not part of this booking.", "NOT_FOUND");
@@ -1170,6 +1197,7 @@ export async function changeStayDates(
   opts: { roomId?: string | null; reason?: string | null; payment?: { accountId?: string | null; methodId?: string | null; reference?: string | null } | null } = {},
 ) {
   if (!isBusinessDate(dates.arrivalDate) || !isBusinessDate(dates.departureDate)) throw new AppError("Invalid dates.");
+  await expireHoldsBeforeTaking({ id: reservationRoomId });
   return run((tx) => changeStayDatesTx(tx, reservationRoomId, dates, actor, opts));
 }
 
@@ -1291,7 +1319,8 @@ async function changeStayDatesTx(
     const rr = await tx.reservationRoom.findUnique({ where: { id: reservationRoomId }, include: { room: true, reservation: true, nightsLedger: { orderBy: { businessDate: "asc" } } } });
     if (!rr) throw new AppError("Booking room not found.", "NOT_FOUND");
     if (rr.isDayUse) throw new AppError("Short-time bookings cannot change dates; cancel and rebook instead.");
-    if (!ACTIVE_STATUSES.includes(rr.status)) throw new AppError("Only active stays can change dates.");
+    // (Booked to pay later — no room held — its dates change too: the room is still checked for the new dates.)
+    if (!ACTIVE_STATUSES.includes(rr.status) && rr.status !== "INQUIRY") throw new AppError("Only active stays can change dates.");
     const inHouse = rr.status === "CHECKED_IN";
     if (inHouse && dates.arrivalDate !== fromDbDate(rr.arrivalDate)) throw new AppError("The guest is in-house; only the departure date can change.");
     if (!inHouse && dates.arrivalDate < today) throw new AppError("Arrival cannot be in the past.");

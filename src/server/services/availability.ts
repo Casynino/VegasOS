@@ -1,7 +1,7 @@
 import "server-only";
 import { db, type Tx } from "../db";
-import { addDays, toDbDate, type BusinessDate } from "@/lib/time/business-date";
-import type { Stay } from "@/lib/time/stay";
+import { addDays, businessDateOf, toDbDate, zonedInstant, type BusinessDate } from "@/lib/time/business-date";
+import { DEFAULT_STAY_CONFIG, type Stay } from "@/lib/time/stay";
 import type { RoomCategory, RoomStatus } from "@/generated/prisma/enums";
 
 /**
@@ -14,7 +14,8 @@ import type { RoomCategory, RoomStatus } from "@/generated/prisma/enums";
  *  - the room and its type are active,
  *  - no maintenance / out-of-service block overlaps the stay's business dates,
  *  - no active stay (reserved / confirmed / checked-in) overlaps [startAt, endAt).
- *    A checked-in guest who has overstayed keeps the room until checked out.
+ *    A checked-in guest who has overstayed keeps the room until checked out: past their check-out time they hold it
+ *    through tonight (it is not sold over them — reception checks them out first).
  *  - it is the right kind of room: guest rooms for stays, meeting rooms for
  *    meetings (asking for specific `roomIds` skips this — the caller chose them).
  */
@@ -34,6 +35,17 @@ export interface AvailabilityQuery {
   excludeReservationRoomId?: string | null;
   /** Which rooms to search: guest rooms (default) or meeting rooms. */
   category?: RoomCategory;
+  /** The moment the question is asked (tests); now by default. */
+  now?: Date;
+}
+
+/**
+ * Until when an overnight guest still checked in after their check-out time keeps the room: through tonight — the
+ * check-out time after the current hotel night (owner, 2026-10-05: never sell a room someone is still in). Reception
+ * sees them on the overdue check-out list; once checked out, the room is free.
+ */
+export function inHouseUntil(s: { timezone: string; businessDayStartMinutes: number; checkoutMinutes: number }, now = new Date()): Date {
+  return zonedInstant(addDays(businessDateOf(now, s), 1), s.checkoutMinutes, s.timezone);
 }
 
 export async function findAvailableRooms(q: AvailabilityQuery, client: Tx | typeof db = db): Promise<AvailableRoom[]> {
@@ -46,6 +58,10 @@ export async function findAvailableRooms(q: AvailabilityQuery, client: Tx | type
   const exclude = q.excludeReservationRoomId ?? "";
   const roomIds = q.roomIds && q.roomIds.length ? q.roomIds : null;
   const category = q.category ?? "GUEST_ROOM";
+  const now = q.now ?? new Date();
+  const settings = await client.hotelSettings.findUnique({ where: { id: 1 }, select: { timezone: true, businessDayStartMinutes: true, checkoutMinutes: true } });
+  const nowAt = now.toISOString();
+  const overstayUntil = inHouseUntil(settings ?? DEFAULT_STAY_CONFIG, now).toISOString();
 
   return client.$queryRaw<AvailableRoom[]>`
     SELECT r."id", r."number", r."roomTypeId", r."floor", r."status"
@@ -69,8 +85,12 @@ export async function findAvailableRooms(q: AvailabilityQuery, client: Tx | type
           AND (rr."status" IN ('RESERVED', 'CONFIRMED', 'CHECKED_IN') OR (rr."status" = 'NO_SHOW' AND rr."releasedAt" IS NULL))
           AND tsrange(
                 rr."startAt",
-                CASE WHEN rr."status" = 'CHECKED_IN'
-                     THEN GREATEST(rr."endAt", (now() AT TIME ZONE 'UTC')::timestamp(3))
+                -- Still checked in past the check-out time: an overnight guest keeps the room through tonight
+                -- (a short-time / meeting guest until now) — never sold over them.
+                CASE WHEN rr."status" = 'CHECKED_IN' AND NOT rr."isDayUse" AND rr."endAt" <= ${nowAt}::timestamp
+                     THEN ${overstayUntil}::timestamp
+                     WHEN rr."status" = 'CHECKED_IN'
+                     THEN GREATEST(rr."endAt", ${nowAt}::timestamp)
                      ELSE rr."endAt" END,
                 '[)'
               ) && tsrange(${start}::timestamp, ${end}::timestamp, '[)')
@@ -112,15 +132,21 @@ export interface DayAvailability { free: number; paid: number; unpaid: number }
  * by paid / confirmed bookings (or guests in the hotel), and how many are only
  * held by unpaid bookings — those can still be taken if the booking is not paid.
  */
-export async function dayAvailability(from: BusinessDate, to: BusinessDate) {
+export async function dayAvailability(from: BusinessDate, to: BusinessDate, now = new Date()) {
+  const settings = await db.hotelSettings.findUnique({ where: { id: 1 }, select: { timezone: true, businessDayStartMinutes: true } });
+  const today = toDbDate(businessDateOf(now, settings ?? DEFAULT_STAY_CONFIG));
   const [total, rows] = await Promise.all([
     db.room.count({ where: { isActive: true, roomType: { category: "GUEST_ROOM" } } }),
     db.reservationRoom.findMany({
       where: {
-        status: { in: ["RESERVED", "CONFIRMED", "CHECKED_IN"] }, isDayUse: false, roomType: { category: "GUEST_ROOM" },
-        arrivalDate: { lte: toDbDate(to) }, departureDate: { gt: toDbDate(from) },
+        isDayUse: false, roomType: { category: "GUEST_ROOM" }, arrivalDate: { lte: toDbDate(to) },
+        OR: [
+          { status: { in: ["RESERVED", "CONFIRMED", "CHECKED_IN"] }, departureDate: { gt: toDbDate(from) } },
+          // Still in the room past their check-out time (not checked out yet): the room is taken tonight too.
+          { status: "CHECKED_IN", endAt: { lte: now } },
+        ],
       },
-      select: { roomId: true, arrivalDate: true, departureDate: true, reservation: { select: { status: true } } },
+      select: { roomId: true, status: true, arrivalDate: true, departureDate: true, endAt: true, reservation: { select: { status: true } } },
     }),
   ]);
   const days: Record<string, DayAvailability> = {};
@@ -128,7 +154,8 @@ export async function dayAvailability(from: BusinessDate, to: BusinessDate) {
     const dd = toDbDate(d).getTime();
     const paid = new Set<string>(), unpaid = new Set<string>();
     for (const r of rows) {
-      if (r.arrivalDate.getTime() > dd || r.departureDate.getTime() <= dd) continue;
+      const leaves = r.status === "CHECKED_IN" && r.endAt <= now ? Math.max(r.departureDate.getTime(), today.getTime() + 86_400_000) : r.departureDate.getTime();
+      if (r.arrivalDate.getTime() > dd || leaves <= dd) continue;
       if (r.reservation.status === "RESERVED") unpaid.add(r.roomId); else paid.add(r.roomId);
     }
     for (const id of paid) unpaid.delete(id);

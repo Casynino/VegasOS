@@ -28,7 +28,8 @@ export function StayBar({ stay, onEdit, className }: { stay: StayQuery; onEdit: 
 /**
  * AVAILABLE ROOMS — only rooms the server found free for these dates (bookings, holds, guests in house, maintenance and
  * out-of-service rooms are already left out), each priced for the whole stay by the hotel's pricing. Grouped by type,
- * cheapest first. Nothing free: other dates or a call to reception.
+ * cheapest first. A chosen type that cannot take the party (or is full) never ends here: every other room that fits is
+ * shown, with one short line why. "Nothing free" only when nothing fits these dates: other dates or a call.
  */
 export function ResultsView({ shell, stay, typeFilter, state, imagesOf, onBack, onEdit, onClearType, onSelect, onRetry }: {
   shell: Shell; stay: StayQuery | null; typeFilter: { slug: string; name: string } | null;
@@ -39,6 +40,8 @@ export function ResultsView({ shell, stay, typeFilter, state, imagesOf, onBack, 
   const r = state.result;
   const free = r ? r.types.reduce((t, x) => t + x.available, 0) : 0;
   const people = stay ? stay.adults + stay.children : 0;
+  // The chosen type has nothing for this party: the other rooms that fit are shown instead (said in one line).
+  const other = r?.chosen && r.chosen.state !== "ok" ? r.chosen : null;
   return (
     <StepLayout hotel={shell.hotel} phone={shell.phone} aside={shell.aside} cta={null}
       header={<StepHeader title="Available rooms" sub={state.loading ? "Checking what is free…" : r ? (free ? `${plural(free, "room")} free for your stay` : "Nothing free for these dates") : "Your dates"} onBack={onBack} step={1} />}>
@@ -47,7 +50,7 @@ export function ResultsView({ shell, stay, typeFilter, state, imagesOf, onBack, 
           <button type="button" onClick={onEdit} className={cn(darkButton, "h-11 px-5 text-[14px]")}><CalendarDays className="size-4 text-(--vr-gold)" />Choose dates</button>
         </Problem>
       )}
-      {typeFilter && (
+      {typeFilter && !other && (
         <button type="button" onClick={onClearType} className="mt-2.5 inline-flex h-8 items-center gap-1.5 rounded-full bg-(--vr-gold-soft) pl-3 pr-2 text-[12.5px] font-medium text-(--vr-ink) ring-1 ring-(--vr-gold)/40">
           {typeFilter.name} only<X className="size-3.5 text-(--vr-gold-ink)" /><span className="sr-only">— show every room type</span>
         </button>
@@ -62,15 +65,26 @@ export function ResultsView({ shell, stay, typeFilter, state, imagesOf, onBack, 
         </Problem>
       )}
 
+      {/* Truly nothing that fits these dates (every type was checked): other dates, fewer guests per room, or a call. */}
       {stay && !state.loading && r && r.types.length === 0 && (
-        <Problem title={typeFilter ? `No ${typeFilter.name} free` : "No rooms free for these dates"}
+        <Problem title={r.tooSmall.length ? `No room takes ${plural(people, "guest")}` : "No rooms free for these dates"}
           text={r.tooSmall.length
-            ? `We have rooms free, but none takes ${plural(people, "guest")} in one room. Change the number of guests, or call us and we'll book more than one room for you.`
-            : typeFilter ? "Try another room type or other dates — or call reception." : "Every room is taken for this stay. Try other dates — or call reception, rooms do free up."}>
-          <button type="button" onClick={onEdit} className={cn(darkButton, "h-11 px-5 text-[14px]")}><CalendarDays className="size-4 text-(--vr-gold)" />Try other dates</button>
-          {typeFilter && <button type="button" onClick={onClearType} className={cn(lightButton, "h-11 px-5 text-[14px]")}>Every room type</button>}
+            ? "We have rooms free, but none takes everyone in one room. Change the number of guests, or call us and we'll book more than one room for you."
+            : "Every room is taken for this stay. Try other dates — or call reception, rooms do free up."}>
+          <button type="button" onClick={onEdit} className={cn(darkButton, "h-11 px-5 text-[14px]")}>
+            {r.tooSmall.length ? <Users className="size-4 text-(--vr-gold)" /> : <CalendarDays className="size-4 text-(--vr-gold)" />}{r.tooSmall.length ? "Change guests" : "Try other dates"}
+          </button>
           {shell.phone && <a href={telHref(shell.phone)} className={cn(lightButton, "h-11 px-5 text-[14px]")}><Phone className="size-4 text-(--vr-gold-ink)" />Call reception</a>}
         </Problem>
+      )}
+
+      {stay && !state.loading && r && r.types.length > 0 && other && (
+        <p className="mt-2.5 flex items-start gap-2 rounded-2xl bg-(--vr-gold-soft) px-3.5 py-3 text-[12.5px] leading-snug text-(--vr-ink)/85" role="status">
+          <Users className="mt-px size-4 shrink-0 text-(--vr-gold-ink)" />
+          <span>{other.state === "too_small"
+            ? `A ${other.name} takes ${holdsText(other).toLowerCase()} — here are the rooms free for ${plural(people, "guest")}.`
+            : `No ${other.name} is free for these dates — here are the other free rooms.`}</span>
+        </p>
       )}
 
       {stay && !state.loading && r && r.types.length > 0 && (

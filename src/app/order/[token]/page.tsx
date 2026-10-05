@@ -56,7 +56,9 @@ export default async function TrackOrderPage({ params, searchParams }: PageProps
     : livePay ? "Paying online — approve it on your phone"
     : waitsForPay ? "Waiting for your online payment"
     : room || delivery ? "Pay on delivery" : o.type === "DINE_IN" ? "Pay after your meal" : "Pay at the counter";
-  const canAdd = ["PENDING", "ACCEPTED", "PREPARING", "DELIVERED"].includes(o.status);
+  // Take out never starts unpaid: once the kitchen has it, more is a new order (paid first too).
+  const takeOutStarted = (o.type === "TAKEAWAY" || o.type === "PICKUP") && (o.status !== "PENDING" || (!!o.customerPaidAt && !o.payOnlineAt));
+  const canAdd = ["PENDING", "ACCEPTED", "PREPARING", "DELIVERED"].includes(o.status) && !takeOutStarted;
   const phone = prettyPhone(s.whatsapp || s.phone);
 
   // The headline: where the order is now, in plain words.
@@ -154,7 +156,7 @@ export default async function TrackOrderPage({ params, searchParams }: PageProps
             ? <Link href={`/t/${o.tableQr}`} className="flex h-13 items-center justify-center gap-1.5 rounded-full bg-(--vr-dark) text-sm font-semibold text-white"><Plus className="size-4" />Order more</Link>
             : canAdd
             ? <Link href={`/order/${token}/more`} className="flex h-13 items-center justify-center gap-1.5 rounded-full bg-(--vr-dark) text-sm font-semibold text-white"><Plus className="size-4" />Order more</Link>
-            : <Link href="/order" className="flex h-13 items-center justify-center gap-1.5 rounded-full bg-(--vr-dark) text-sm font-semibold text-white"><UtensilsCrossed className="size-4" />See the menu</Link>}
+            : <Link href="/order" className="flex h-13 items-center justify-center gap-1.5 rounded-full bg-(--vr-dark) text-sm font-semibold text-white"><UtensilsCrossed className="size-4" />{takeOutStarted && !cancelled ? "New order" : "See the menu"}</Link>}
           {s.whatsapp ? (
             <a href={whatsappHref(s.whatsapp, `Hello, about my order #${o.number}`)} target="_blank" rel="noopener" className="flex h-13 items-center justify-center gap-2 rounded-full bg-[#25D366] text-sm font-semibold text-[#073b1f]"><MessageCircle className="size-4" />WhatsApp us</a>
           ) : s.phone ? (

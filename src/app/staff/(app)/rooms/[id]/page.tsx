@@ -57,7 +57,8 @@ export default async function RoomPage({ params }: PageProps<"/staff/rooms/[id]"
   const boardRoom = board.find((r) => r.id === id) ?? null;
   const [nights, moves] = await Promise.all([
     db.roomNight.findMany({
-      where: { roomId: id }, orderBy: { businessDate: "desc" }, take: 400,
+      // (A booking to pay later holds no room — its priced nights are not stays in this room.)
+      where: { roomId: id, reservationRoom: { status: { not: "INQUIRY" } } }, orderBy: { businessDate: "desc" }, take: 400,
       select: { businessDate: true, netAmount: true, reservationRoom: { select: { reservation: { select: { id: true, reference: true, guest: { select: { fullName: true } } } } } } },
     }),
     db.roomAssignment.findMany({ where: { fromRoomId: id, source: "HOTEL" }, select: { reasonCode: true } }),

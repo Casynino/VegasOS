@@ -4,6 +4,7 @@ import { db } from "../db";
 import { worksWaiterShift } from "@/lib/permissions";
 import { REQUEST_TYPE_LABEL } from "@/lib/request-meta";
 import { HOTEL_QR_SOURCE, QR_PAY_ONLINE_NOTE } from "./booking-qr";
+import { PAY_LATER_WHERE } from "./booking-holds";
 import { guestNotifyConnected } from "./guest-notify";
 
 /**
@@ -22,22 +23,24 @@ const no = (n: string) => `#${n.replace(/^ORD-\d{4}-0*/, "")}`;
 const day = (d: Date) => d.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 
 /**
- * Hotel QR bookings reception should know about (owner, 2026-10-05) — made straight into the reservations, so nothing
- * else rings for them: one reserved to pay at the hotel, while it waits; one paid online, for half an hour after nTZS
- * confirmed it. Each rings once (its id never changes) and leaves the list by itself.
+ * Online bookings reception should know about (owner, 2026-10-05) — made straight into the reservations, so nothing
+ * else rings for them: one booked to pay later on the Hotel QR or the website (not paid, room NOT held — whoever pays
+ * first gets it), for a day after it was made; one from the QR paid online, for half an hour after nTZS confirmed it.
+ * Each rings once (its id never changes) and leaves the list by itself.
  */
 async function hotelQrBookings(now: Date) {
   const rows = await db.reservation.findMany({
     where: {
-      source: { code: HOTEL_QR_SOURCE },
       OR: [
-        { status: "RESERVED", paidAmount: { lte: 0 }, mobilePayments: { none: { initiator: "CUSTOMER" } }, OR: [{ holdUntil: null }, { holdUntil: { gt: now } }] },
-        { status: "CONFIRMED", paidAmount: { gt: 0 }, confirmedAt: { gte: new Date(now.getTime() - 30 * 60_000) }, mobilePayments: { some: { initiator: "CUSTOMER", status: "COMPLETED" } } },
+        { source: { code: { in: [HOTEL_QR_SOURCE, "WEBSITE"] } }, status: "INQUIRY", paidAmount: { lte: 0 }, createdAt: { gte: new Date(now.getTime() - 24 * 3_600_000) }, ...PAY_LATER_WHERE },
+        // Made before the rule: reserved to pay at the hotel, held while it waits.
+        { source: { code: HOTEL_QR_SOURCE }, status: "RESERVED", paidAmount: { lte: 0 }, mobilePayments: { none: { initiator: "CUSTOMER" } }, OR: [{ holdUntil: null }, { holdUntil: { gt: now } }] },
+        { source: { code: HOTEL_QR_SOURCE }, status: "CONFIRMED", paidAmount: { gt: 0 }, confirmedAt: { gte: new Date(now.getTime() - 30 * 60_000) }, mobilePayments: { some: { initiator: "CUSTOMER", status: "COMPLETED" } } },
       ],
     },
     orderBy: { createdAt: "asc" }, take: 20,
     select: {
-      id: true, status: true, createdAt: true, confirmedAt: true, arrivalDate: true, departureDate: true, internalNotes: true,
+      id: true, status: true, createdAt: true, confirmedAt: true, arrivalDate: true, departureDate: true, internalNotes: true, source: { select: { code: true } },
       guest: { select: { fullName: true } }, rooms: { where: { status: { not: "CANCELLED" } }, select: { room: { select: { number: true } } } },
       guestMessages: { where: { type: { in: ["BOOKING_CREATED", "BOOKING_CONFIRMED"] }, status: "SENT" }, take: 1, select: { id: true } },
     },
@@ -45,12 +48,13 @@ async function hotelQrBookings(now: Date) {
   // Still paying online (its payment request did not start): not a booking to act on yet.
   return rows.filter((r) => r.status === "CONFIRMED" || !r.internalNotes?.includes(QR_PAY_ONLINE_NOTE)).map((r) => {
     const paid = r.status === "CONFIRMED";
+    const later = r.status === "INQUIRY";
     const rooms = r.rooms.map((x) => x.room.number).join(", ");
     // Without a messaging provider nothing reaches the guest by itself: reception sends the details (one tap on the booking).
     const unsent = !r.guestMessages.length && (!guestNotifyConnected() || now.getTime() - r.createdAt.getTime() > 2 * 60_000);
     return {
-      id: `hotelqr:${r.id}:${paid ? "paid" : "hotel"}`, kind: "booking" as const, href: `/staff/reservations/${r.id}`, at: (paid ? r.confirmedAt ?? r.createdAt : r.createdAt).toISOString(),
-      text: `Hotel QR booking — ${r.guest.fullName}${rooms ? ` · Room ${rooms}` : ""} · ${day(r.arrivalDate)} → ${day(r.departureDate)} · ${paid ? "paid online" : "pay at hotel"}${unsent ? " · booking details not sent yet" : ""}`,
+      id: `hotelqr:${r.id}:${paid ? "paid" : later ? "later" : "hotel"}`, kind: "booking" as const, href: `/staff/reservations/${r.id}`, at: (paid ? r.confirmedAt ?? r.createdAt : r.createdAt).toISOString(),
+      text: `${r.source.code === HOTEL_QR_SOURCE ? "Hotel QR" : "Website"} booking — ${r.guest.fullName}${rooms ? ` · Room ${rooms}` : ""} · ${day(r.arrivalDate)} → ${day(r.departureDate)} · ${paid ? "paid online" : later ? "not paid · room not held" : "pay at hotel"}${unsent ? " · booking details not sent yet" : ""}`,
     };
   });
 }

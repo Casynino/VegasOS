@@ -7,8 +7,8 @@ import { rateLimit } from "@/server/rate-limit";
 import { parseInput } from "@/server/validation";
 import { createWebsiteBooking, quoteSelection, type Selection } from "@/server/services/public-booking";
 import { bookAndPayOnline, ONLINE_BOOKING_HOLD_MINUTES } from "@/server/services/online-pay";
-import { submitBookingRequest } from "@/server/services/booking-requests";
 import { DEFAULT_AIRPORT } from "@/server/services/transport";
+import { notifyBookingGuestSoon } from "@/server/services/guest-comms";
 import { formatBusinessDate } from "@/lib/format";
 import { bookingSchema, type BookingInput } from "./schema";
 
@@ -83,8 +83,9 @@ export async function reviewBookingAction(_prev: ActionResult<BookingReview> | u
 }
 
 /**
- * Step 4 → request received. The website never creates a reservation: it files
- * a booking request that staff confirm (re-checking availability and price).
+ * Step 4 → Book now, pay later (owner, 2026-10-05): the booking is made and reception sees it, but no room is held
+ * until it is paid — whoever pays first gets the room. Then the booking's own page, where the guest can pay any time
+ * (the room is checked again then: the same one, another of its type, or "just taken").
  */
 export async function confirmBookingAction(_prev: ActionResult<null> | undefined, formData: FormData): Promise<ActionResult<null>> {
   let target: string | null = null;
@@ -92,25 +93,20 @@ export async function confirmBookingAction(_prev: ActionResult<null> | undefined
     const { ipAddress } = await requestMeta();
     await rateLimit(`web-book:${ipAddress ?? "unknown"}`, 5, 600);
     const v = parse(formData);
-    const request = await submitBookingRequest(
-      toSelection(v),
-      {
-        fullName: v.fullName, phone: v.phone, email: v.email || null, nationality: v.nationality || null,
-        specialRequests: v.specialRequests || null, expectedArrivalTime: v.expectedArrivalTime,
-      },
-      ipAddress,
-      v.pickup === "yes" && v.flightNumber && v.pickupDate && v.pickupTime
-        ? {
-            flightNumber: v.flightNumber,
-            arrivalDate: v.pickupDate,
-            arrivalTime: v.pickupTime,
-            airport: v.airport || null,
-            passengers: typeof v.passengers === "number" ? v.passengers : null,
-            notes: v.pickupNotes || null,
-          }
-        : null,
-    );
-    target = `/booking/${request.reference}?token=${encodeURIComponent(request.manageToken)}`;
+    // A booking that holds nothing still lands with reception: a number can make only a few a day (anti-spam).
+    const digits = v.phone.replace(/\D/g, "").slice(-9) || "unknown";
+    try { await rateLimit(`web-pay-later:${digits}`, 5, 86_400); } catch (e) {
+      if (e instanceof AppError && e.code === "RATE_LIMITED") throw new AppError("This phone number has made several bookings today — choose Pay now, or call us.", "RATE_LIMITED");
+      throw e;
+    }
+    const b = await createWebsiteBooking(toSelection(v), {
+      fullName: v.fullName, phone: v.phone, email: v.email || null, nationality: v.nationality || null,
+      specialRequests: v.specialRequests || null, expectedArrivalTime: v.expectedArrivalTime,
+    }, ipAddress, pickupOf(v), { payLater: true });
+    // The booking details (and its link, to pay any time) by message, as from the Hotel QR — a number gets only a few a
+    // day, whoever types it. Nothing is sent when no provider is connected.
+    if (await softLimit(`web-text:${digits}`, 3, 86_400)) await notifyBookingGuestSoon(b.id, "BOOKING_CREATED");
+    target = `/booking/${b.reference}?token=${encodeURIComponent(b.manageToken)}`;
     return null;
   });
   if (result.ok && target) redirect(target);
@@ -142,4 +138,9 @@ export async function payAndBookAction(_prev: ActionResult<null> | undefined, fo
   });
   if (result.ok && target) redirect(target);
   return result;
+}
+
+/** A soft limit: false once reached (nothing is refused — something optional is just not done). */
+async function softLimit(key: string, limit: number, seconds: number) {
+  try { await rateLimit(key, limit, seconds); return true; } catch { return false; }
 }

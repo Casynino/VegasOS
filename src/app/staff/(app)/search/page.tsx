@@ -19,7 +19,7 @@ const STATUS_TONE: Record<string, string> = {
   CHECKED_IN: "bg-emerald-600/10 text-emerald-800 dark:text-emerald-300",
   CONFIRMED: "bg-sky-600/10 text-sky-800 dark:text-sky-300",
   RESERVED: "bg-sky-600/10 text-sky-800 dark:text-sky-300",
-  INQUIRY: "bg-muted text-muted-foreground",
+  INQUIRY: "bg-orange-500/10 text-orange-800 dark:text-orange-300",
   CHECKED_OUT: "bg-muted text-muted-foreground",
   CANCELLED: "bg-red-600/10 text-red-800 dark:text-red-300",
   NO_SHOW: "bg-red-600/10 text-red-800 dark:text-red-300",
@@ -77,7 +77,7 @@ export default async function SearchPage({ searchParams }: PageProps<"/staff/sea
                         <p className="flex flex-wrap items-center gap-2 font-semibold">
                           {meeting && r.companyName ? r.companyName : r.guest.fullName}
                           {r.group && <span className="rounded-full bg-violet-500/12 px-2 py-0.5 text-[11px] font-medium text-violet-800 dark:text-violet-200">Group · {r.group.name}</span>}
-                          <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium capitalize", STATUS_TONE[r.status])}>{meeting ? MEETING_STATUS_LABEL[r.status].toLowerCase() : r.status.toLowerCase().replace("_", " ")}</span>
+                          <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium capitalize", STATUS_TONE[r.status])}>{meeting ? MEETING_STATUS_LABEL[r.status].toLowerCase() : r.status === "INQUIRY" ? "not paid · room not held" : r.status.toLowerCase().replace("_", " ")}</span>
                         </p>
                         <p className="text-sm text-muted-foreground">
                           <span className="font-mono text-xs">{r.reference}</span> · {r.guest.phone ?? "no phone"} · {r.source.name}

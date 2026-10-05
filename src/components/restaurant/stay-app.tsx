@@ -213,7 +213,10 @@ function BillCard({ stay, info, payInCard, onPay }: { stay: GuestStay; info: Sta
             ) : owed && info.pay ? (
               <button type="button" onClick={onPay} className={cn(darkButton, "mt-3 h-12 w-full text-[14.5px]")}>Pay {tzs(m.balance)} now<ArrowRight className="size-4 text-(--vr-gold)" /></button>
             ) : (
-              <p className="mt-2 text-[12px] text-(--vr-muted)">{owed ? "Pay at reception, any time before you leave." : "Thank you."}</p>
+              <p className="mt-2 text-[12px] text-(--vr-muted)">
+                {/* Not paid and not arrived: nothing holds the room yet — paying is what reserves it. */}
+                {!owed ? "Thank you." : stay.status === "INQUIRY" ? "Not reserved until paid — call reception to pay and secure it." : "Pay at reception, any time before you leave."}
+              </p>
             )}
           </>
         ) : stay.payer ? (

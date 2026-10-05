@@ -3,14 +3,14 @@ import { createHash } from "node:crypto";
 import { db } from "../db";
 import { AppError } from "../errors";
 import { rateLimit } from "../rate-limit";
-import { getSettings, stayConfig } from "../settings";
+import { getSettings } from "../settings";
 import { formatTZS } from "@/lib/format";
 import { prettyPhone, validPhone } from "@/lib/guest-messages";
-import { addDays, businessDateOf, diffDays, toDbDate, type BusinessDate } from "@/lib/time/business-date";
+import { addDays, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import type { GalleryImage } from "@/components/public/content";
 import type { HotelSettings } from "@/generated/prisma/client";
 import type { BookingQrEventType, ReservationStatus } from "@/generated/prisma/enums";
-import { holdDeadline, noShowCutoff, refreshBookingStates } from "./booking-holds";
+import { expireUnpaidHolds, isPayLater, PAY_LATER_KEY, refreshBookingStates } from "./booking-holds";
 import { findAvailableRooms } from "./availability";
 import { channelFor, loadPricing, quoteFromPromos, quoteStay, type StayQuote } from "./pricing";
 import { createReservation, type Actor } from "./reservations";
@@ -39,6 +39,10 @@ import {
  * hold rules from booking-holds, and paying online from online-pay (nTZS). Nothing the phone sends is trusted: the QR is
  * found again from its token, the room, the price and the money are worked out here each time, and a booking is paid
  * only once nTZS has confirmed it. Nothing returned here carries a database id.
+ *
+ * THE RULE (owner, 2026-10-05) — paying is what reserves a room: Pay now holds the room only while the guest pays (30
+ * minutes) and the booking is confirmed when nTZS confirms the money; Pay later makes the booking (reception sees it)
+ * but holds no room — it stays free for everyone and whoever pays first gets it; paying later re-checks the room.
  */
 
 // ───────────────────────── Shapes the QR app receives ─────────────────────────
@@ -63,22 +67,12 @@ export type QrHotel = {
   checkInTime: string; checkoutTime: string; receptionHours: string | null; breakfastHours: string | null;
 };
 export type QrPayOptions = {
-  /** Pay online (nTZS) offered now. */
+  /** Pay online (nTZS) offered now: the room is held while the guest pays, the booking confirmed by the payment. */
   online: boolean;
-  /** Reserve now and pay at the hotel offered now (for these dates, once they are known). */
+  /** Book now and pay later (at the hotel, or online from the booking) offered now — no room is held until it is paid. */
   atHotel: boolean;
-  /** How long a pay-at-hotel booking keeps its room (0 = until the arrival day). */
-  holdHours: number;
   /** How long a booking keeps its room while the guest pays online. */
   onlineHoldMinutes: number;
-  /**
-   * Pay at the hotel for these dates: the room is kept until the guest arrives ("arrival"), or only for holdHours and
-   * then released if not paid ("hold") — so the screen never promises "pay when you arrive" when that is not so.
-   * Null before the dates are known (the landing).
-   */
-  atHotelKeeps: "arrival" | "hold" | null;
-  /** Pay at the hotel is on, but not for these dates (a long stay, far ahead, or many rooms already waiting): why. */
-  atHotelNote: string | null;
 };
 export type QrLanding = {
   active: true;
@@ -108,10 +102,18 @@ export type QrRoomOffer = {
 };
 export type QrSearchResult = {
   stay: QrStay;
-  /** Room types with free rooms that fit the party, cheapest first, each with its bookable rooms. */
+  /**
+   * Room types with free rooms that fit the party, cheapest first, each with its bookable rooms — only the chosen type
+   * when one was chosen and it has rooms for the party; otherwise every type that has (never a false "nothing free").
+   */
   types: { type: QrRoomTypeInfo; available: number; fromPerNight: number; fromTotal: number; rooms: QrRoomOffer[] }[];
   /** Types with free rooms that one room of cannot hold this party. */
   tooSmall: { slug: string; name: string; maxAdults: number; maxChildren: number; available: number }[];
+  /**
+   * The room type the guest chose, and what it has for them: "ok" (its rooms are shown), "too_small" (free, but one room
+   * takes fewer guests) or "full" (nothing free for these dates) — then `types` shows the other rooms that fit.
+   */
+  chosen: { slug: string; name: string; maxAdults: number; maxChildren: number; state: "ok" | "too_small" | "full" } | null;
 };
 export type QrQuote = {
   stay: QrStay;
@@ -148,8 +150,12 @@ export type QrBooked = {
 };
 export type QrConfirmation = {
   reference: string; status: ReservationStatus; confirmed: boolean;
+  /** A room is kept for this booking (paid, or held while it is being paid) — false for pay later: not held until paid. */
+  roomHeld: boolean;
   /** The first name the guest typed when booking (never the profile it was matched to). */
   guestFirstName: string | null;
+  /** The phone the guest typed when booking (their own link) — the number Pay now offers first. */
+  guestPhone: string | null;
   /** The hotel's time zone, for the times shown (held until, pickup). */
   timezone: string;
   paymentStatus: QrPaymentStatus; payWay: QrPayWay;
@@ -180,48 +186,19 @@ const typeInfo = (t: PublicRoomType): QrRoomTypeInfo => ({
 const fits = (t: { maxAdults: number; maxChildren: number }, p: { adults: number; children: number }) => p.adults <= t.maxAdults && p.children <= t.maxChildren;
 const holds = (t: { maxAdults: number; maxChildren: number }) => `${t.maxAdults} adult${t.maxAdults === 1 ? "" : "s"}${t.maxChildren ? ` and ${t.maxChildren} child${t.maxChildren === 1 ? "" : "ren"}` : ""}`;
 const taken = (number: string) => new AppError(`Sorry — Room ${number} was just booked for these dates. Please choose another room.`, "UNAVAILABLE", { roomNumber: "Taken" });
+/** "255712345678" → "0712 345 678" — how a guest types their own number (Pay now offers it first). */
+const localPhone = (p: string | null) => {
+  const m = p ? /^(?:255|0)?([67]\d{2})(\d{3})(\d{3})$/.exec(p.replace(/\D/g, "")) : null;
+  return m ? `0${m[1]} ${m[2]} ${m[3]}` : p;
+};
 const hotelContact = (s: HotelSettings) => ({ name: s.hotelName, phone: s.phone ? prettyPhone(s.phone) : null, whatsapp: s.whatsapp ? prettyPhone(s.whatsapp) : null });
-const hoursText = (h: number) => (h % 24 === 0 ? `${h / 24} day${h === 24 ? "" : "s"}` : `${h} hour${h === 1 ? "" : "s"}`);
-
-async function payOptions(s: HotelSettings): Promise<QrPayOptions> {
-  return {
-    online: await onlinePayAvailable("booking", s), atHotel: s.hotelQrPayAtHotel, holdHours: s.unpaidHoldHours, onlineHoldMinutes: ONLINE_BOOKING_HOLD_MINUTES,
-    atHotelKeeps: null, atHotelNote: null,
-  };
-}
 
 /**
- * Pay at the hotel holds a room unpaid for whoever types a phone number — so it has limits that do not depend on what
- * the phone sends: stays up to HOLD_MAX_NIGHTS; held until the arrival day (no hold time set) only for arrivals within
- * HOLD_TO_ARRIVAL_MAX_DAYS; and unpaid QR holds never cover more than a share of the hotel's rooms for any dates.
- * Past those, Pay now (the payment confirms the booking).
+ * How the guest can pay. Pay later holds no room (the rule above), so it needs no limits by stay length, dates or a
+ * share of the hotel — only the anti-spam limits per phone and per device in qrBook.
  */
-export const HOLD_MAX_NIGHTS = 14;
-export const HOLD_TO_ARRIVAL_MAX_DAYS = 30;
-const HOLD_MAX_SHARE = 0.2;
-
-/** How the guest can pay for this stay — Pay at the hotel checked against those limits, and what it really means. */
-async function payOptionsFor(s: HotelSettings, p: Pick<StayParams, "checkIn" | "checkOut">, now = new Date()): Promise<QrPayOptions> {
-  const pay = await payOptions(s);
-  if (!pay.atHotel) return pay;
-  const not = (note: string): QrPayOptions => ({ ...pay, atHotel: false, atHotelNote: note });
-  if (diffDays(p.checkIn, p.checkOut) > HOLD_MAX_NIGHTS) return not(`For more than ${HOLD_MAX_NIGHTS} nights, please pay now to book here — or call reception.`);
-  if (s.unpaidHoldHours <= 0 && diffDays(businessDateOf(now, stayConfig(s)), p.checkIn) > HOLD_TO_ARRIVAL_MAX_DAYS) {
-    return not(`To book more than ${HOLD_TO_ARRIVAL_MAX_DAYS} days ahead here, please pay now — or call reception.`);
-  }
-  const [rooms, held] = await Promise.all([
-    db.room.count({ where: { isActive: true, roomType: { isActive: true, isPublic: true, category: "GUEST_ROOM" } } }),
-    db.reservation.count({
-      where: {
-        source: { code: HOTEL_QR_SOURCE }, status: "RESERVED", paidAmount: { lte: 0 }, internalNotes: { contains: QR_PAY_HOTEL_NOTE },
-        OR: [{ holdUntil: null }, { holdUntil: { gt: now } }], arrivalDate: { lt: toDbDate(p.checkOut) }, departureDate: { gt: toDbDate(p.checkIn) },
-      },
-    }),
-  ]);
-  if (held >= Math.max(2, Math.ceil(rooms * HOLD_MAX_SHARE))) return not("Pay at the hotel is not available for these dates — please pay now to book, or call reception.");
-  // Kept until they come only when the hold outlasts the arrival day (or there is no hold time); otherwise "pay within".
-  const end = holdDeadline(s, now);
-  return { ...pay, atHotelKeeps: !end || end >= noShowCutoff(p.checkIn, s) ? "arrival" : "hold" };
+async function payOptions(s: HotelSettings): Promise<QrPayOptions> {
+  return { online: await onlinePayAvailable("booking", s), atHotel: s.hotelQrPayAtHotel, onlineHoldMinutes: ONLINE_BOOKING_HOLD_MINUTES };
 }
 
 /** The hotel's rules, in plain words, from its settings (never written into the page). */
@@ -229,10 +206,8 @@ function policiesOf(s: HotelSettings, pay: QrPayOptions) {
   const w = bookingWindow(s);
   return [
     `Check-in from ${w.checkInTime}. Check-out by ${w.checkoutTime}.`,
-    pay.online ? `Pay online and your booking is confirmed as soon as the payment comes in. We keep the room for ${pay.onlineHoldMinutes} minutes while you pay.` : null,
-    pay.atHotel
-      ? s.unpaidHoldHours > 0 ? `Pay at the hotel: we keep your room for ${hoursText(s.unpaidHoldHours)}. If it is not paid by then, the room is released.` : "Pay at the hotel: we keep your room until your arrival day."
-      : null,
+    pay.online ? `Pay now and your booking is confirmed as soon as the payment comes in. We keep the room for ${pay.onlineHoldMinutes} minutes while you pay.` : null,
+    pay.atHotel ? "Pay later: the room is not reserved until it is paid — whoever pays first gets it." : null,
     s.noShowPolicy === "REFUND_DUE" ? "Paid but cannot come? Tell us and your payment is refunded." : "A paid booking that is cancelled or not used is not refunded.",
     s.lateCheckoutFee > 0 ? `Late check-out: ${formatTZS(s.lateCheckoutFee)}.` : null,
   ].filter((x): x is string => !!x);
@@ -334,21 +309,21 @@ export async function qrLanding(token: string): Promise<QrLanding | QrInactive> 
 
 /**
  * "Check availability": the rooms that can really be booked for these dates — only what the availability engine finds
- * free (no booking, hold or guest in it, not blocked for maintenance or out of service; meeting rooms never) — each
- * priced for the stay by the pricing engine on the Hotel QR's channel. Lapsed holds are released first.
+ * free (no booking held or paid, no guest in it, not blocked for maintenance or out of service; meeting rooms never;
+ * a booking to pay later holds nothing) — each priced for the stay by the pricing engine on the Hotel QR's channel.
+ * Lapsed holds are released first. A chosen room type that cannot take the party (or is full) never ends in "nothing
+ * free": every other room that fits is shown, and `chosen` says why.
  */
 export async function qrSearch(token: string, input: QrStayInput & { roomType?: string | null }, visit: QrVisit = {}): Promise<QrSearchResult> {
   const { qr, settings } = await openQr(token);
   const { params, stay, out } = stayFor(settings, input);
   await refreshBookingStates();
-  let types = await listPublicRoomTypes();
-  if (input.roomType) {
-    types = types.filter((t) => t.slug === input.roomType);
-    if (!types.length) throw new AppError("That room type cannot be booked here.", "VALIDATION", { roomType: "Unknown" });
-  }
+  const types = await listPublicRoomTypes();
+  const pick = input.roomType ? types.find((t) => t.slug === input.roomType) : null;
+  if (input.roomType && !pick) throw new AppError("That room type cannot be booked here.", "VALIDATION", { roomType: "Unknown" });
   const [free, pricing] = await Promise.all([findAvailableRooms({ stay }), loadPricing(db, stay.arrivalDate, addDays(stay.departureDate, -1))]);
   const channel = channelFor(HOTEL_QR_SOURCE);
-  const result: QrSearchResult = { stay: out, types: [], tooSmall: [] };
+  const result: QrSearchResult = { stay: out, types: [], tooSmall: [], chosen: null };
   for (const type of types) {
     const rooms = free.filter((r) => r.roomTypeId === type.id);
     if (!rooms.length) continue; // fully booked for these dates
@@ -364,6 +339,16 @@ export async function qrSearch(token: string, input: QrStayInput & { roomType?: 
     });
   }
   result.types.sort((a, b) => a.fromTotal - b.fromTotal);
+  if (pick) {
+    const state = result.types.some((g) => g.type.slug === pick.slug) ? "ok" : free.some((r) => r.roomTypeId === pick.id) ? "too_small" : "full";
+    result.chosen = { slug: pick.slug, name: pick.name, maxAdults: pick.maxAdults, maxChildren: pick.maxChildren, state };
+    // Its rooms when it has some for the party; otherwise everything else that fits stays on the screen (and why the
+    // chosen one is not among them is said once, by `chosen`).
+    if (state === "ok") {
+      result.types = result.types.filter((g) => g.type.slug === pick.slug);
+      result.tooSmall = [];
+    } else result.tooSmall = result.tooSmall.filter((t) => t.slug !== pick.slug);
+  }
   await track(qr.id, "SEARCH", visit);
   return result;
 }
@@ -379,7 +364,7 @@ export async function qrQuote(token: string, input: QrStayInput & { roomNumber: 
   if (!(await findAvailableRooms({ stay, roomIds: [room.id] })).length) throw taken(room.number);
   // Exactly what the engine will store for this room (syncRoomNights prices the same way).
   const q = await quoteStay(db, { dates: stay.nightDates, base: type.baseRate, roomTypeId: type.id, roomId: room.id, channel: channelFor(HOTEL_QR_SOURCE) });
-  const pay = await payOptionsFor(settings, params);
+  const pay = await payOptions(settings);
   const n = Math.max(1, stay.nights);
   await track(qr.id, "SELECT", visit);
   return {
@@ -456,8 +441,8 @@ function bookedOf(qrToken: string, r: { reference: string; manageToken: string; 
  * — and the booking is made by the reservation engine, which re-checks the room under its lock (two people booking the
  * same room at once: one gets it, the other is told it was just taken). The customer is found by phone, never saved
  * twice (and never shown or changed from here). Pay online: held 30 minutes and its payment request goes for the exact
- * amount (confirmed only when nTZS confirms it). Pay at hotel: held by the hotel's hold rules, within the limits of
- * payOptionsFor, and the guest gets the booking details.
+ * amount (confirmed only when nTZS confirms it). Pay later: the booking is made (reception sees it, the guest gets the
+ * details) but no room is held — whoever pays first gets it; paying later from the booking re-checks the room.
  */
 export async function qrBook(token: string, input: QrBookInput, visit: QrVisit & { ip: string | null }): Promise<QrBooked> {
   const { qr, settings } = await openQr(token);
@@ -465,8 +450,8 @@ export async function qrBook(token: string, input: QrBookInput, visit: QrVisit &
   const eta = timeOf(input.arrivalTime, "arrivalTime");
   const specialRequests = input.specialRequest?.trim().slice(0, 500) || null;
   if (!/^[a-f0-9]{32}$/.test(input.clientKey)) throw new AppError("Please try again.", "VALIDATION");
-  // Bookings hold rooms: a device (guests on the hotel Wi-Fi share one address) cannot make many — counted first,
-  // before anything is looked up.
+  // A device (guests on the hotel Wi-Fi share one address) cannot make many bookings — counted first, before anything
+  // is looked up.
   await rateLimit(`hotel-qr-book:${visit.ip ?? "unknown"}`, 10, 600);
   const way: QrPayWay = input.pay === "ONLINE" ? "ONLINE" : "HOTEL";
   const { params, stay } = stayFor(settings, input);
@@ -483,19 +468,21 @@ export async function qrBook(token: string, input: QrBookInput, visit: QrVisit &
     return bookedOf(token, was, qrPayWay({ internalNotes: was.internalNotes, startedOnline: !!payToken }), payToken, null);
   }
 
-  const pay = await payOptionsFor(settings, params);
+  const pay = await payOptions(settings);
   if (way === "ONLINE" && !pay.online) {
-    throw new AppError(pay.atHotel ? "Paying online is not available right now — please choose Pay at the hotel." : "Booking here is not available right now — please ask reception or call us.", "CONFLICT");
+    throw new AppError(pay.atHotel ? "Paying online is not available right now — please choose Pay later." : "Booking here is not available right now — please ask reception or call us.", "CONFLICT");
   }
   if (way === "HOTEL" && !pay.atHotel) {
-    throw new AppError(pay.atHotelNote ?? (pay.online ? "Please choose Pay now to book here." : "Booking here is not available right now — please ask reception or call us."), "CONFLICT");
+    throw new AppError(pay.online ? "Please choose Pay now to book here." : "Booking here is not available right now — please ask reception or call us.", "CONFLICT");
   }
-  // An unpaid hold: a phone number and a device can make only a few a day (on top of the limits in payOptionsFor).
+  // Pay later holds no room, but it lands with reception: a phone number can make only a few a day — and one address
+  // (guests on the hotel Wi-Fi share one) a fair number more.
   if (way === "HOTEL") {
-    await rateLimit(`hotel-qr-hold:${guest.phone}`, 5, 86_400);
-    await rateLimit(`hotel-qr-hold-ip:${visit.ip ?? "unknown"}`, 5, 86_400);
+    await limited(`hotel-qr-hold:${guest.phone}`, 5, 86_400, "This phone number has made several bookings today — choose Pay now, or ask reception.");
+    await limited(`hotel-qr-hold-ip:${visit.ip ?? "unknown"}`, 40, 86_400, "Too many bookings from this network today — choose Pay now, or ask reception.");
   }
   const { room, type } = await pickRoom(input.roomNumber, params);
+  await expireUnpaidHolds(); // a hold whose time ran out never makes the room look taken
   if (!(await findAvailableRooms({ stay, roomIds: [room.id] })).length) throw taken(room.number);
   await track(qr.id, "ATTEMPT", visit);
 
@@ -504,10 +491,11 @@ export async function qrBook(token: string, input: QrBookInput, visit: QrVisit &
     let r;
     try {
       r = await createReservation({
-        sourceCode: HOTEL_QR_SOURCE, bookingQrId: qr.id, status: "RESERVED",
+        // Pay now: held while the guest pays. Pay later: made, but no room held (INQUIRY) until it is paid.
+        sourceCode: HOTEL_QR_SOURCE, bookingQrId: qr.id, status: way === "ONLINE" ? "RESERVED" : "INQUIRY",
         // Typed by the guest: found again by the phone only; what they typed (and this press's key) stays with the booking.
         guest: { fullName: guest.fullName, phone: guest.phone, email: guest.email, selfService: true },
-        externalData: publicBookingData("HOTEL_QR", guest, { key: keyMark(input.clientKey) }),
+        externalData: publicBookingData("HOTEL_QR", guest, { key: keyMark(input.clientKey), ...(way === "HOTEL" && { [PAY_LATER_KEY]: true }) }),
         stay: { kind: "overnight", arrivalDate: params.checkIn, departureDate: params.checkOut },
         // The chosen room, priced by the engine (no discount from the phone: the Hotel QR sees the website's promotions).
         rooms: [{ roomTypeId: type.id, roomId: room.id, adults: params.adults, children: params.children }],
@@ -543,7 +531,7 @@ export async function qrBook(token: string, input: QrBookInput, visit: QrVisit &
     return bookedOf(token, ref, way, r.pay, r.payError);
   }
 
-  // Pay at hotel: one booking per press, even pressed twice at once.
+  // Pay later: one booking per press, even pressed twice at once.
   const once = `book-once:${input.clientKey}`;
   try { await rateLimit(once, 1, 3600); } catch {
     throw new AppError("Your booking is being made — please wait a moment, then check your booking.", "CONFLICT");
@@ -564,6 +552,14 @@ export async function qrBook(token: string, input: QrBookInput, visit: QrVisit &
 /** A soft limit: false once reached (nothing is refused — something optional is just not done). */
 async function allowed(key: string, limit: number, seconds: number) {
   try { await rateLimit(key, limit, seconds); return true; } catch { return false; }
+}
+
+/** A daily limit that says what to do instead (never "wait a few minutes" for a whole day). */
+async function limited(key: string, limit: number, seconds: number, message: string) {
+  try { await rateLimit(key, limit, seconds); } catch (e) {
+    if (e instanceof AppError && e.code === "RATE_LIMITED") throw new AppError(message, "RATE_LIMITED");
+    throw e;
+  }
 }
 
 // ───────────────────────── 5. The confirmation ─────────────────────────
@@ -591,7 +587,7 @@ export async function qrConfirmation(token: string, reference: string, manageTok
     db.reservation.findUniqueOrThrow({
       where: { reference },
       select: {
-        guestToken: true, internalNotes: true, eta: true,
+        guestToken: true, internalNotes: true, eta: true, externalData: true,
         payments: { where: { status: "POSTED" }, select: { kind: true, amount: true, reference: true, method: { select: { code: true } } } },
         mobilePayments: { where: { initiator: "CUSTOMER" }, orderBy: { createdAt: "desc" }, select: { status: true, expiresAt: true, pspReference: true, depositId: true } },
       },
@@ -608,8 +604,10 @@ export async function qrConfirmation(token: string, reference: string, manageTok
     state: "ok",
     booking: {
       reference: b.reference, status: b.status, confirmed: ["CONFIRMED", "CHECKED_IN", "CHECKED_OUT"].includes(b.status),
-      guestFirstName: b.guestName.trim().split(/\s+/)[0] || null, timezone: s.timezone,
-      paymentStatus: qrPaymentStatus({ paidAmount: b.paidAmount, balanceAmount: b.balanceAmount, refunded }, way, r.mobilePayments[0] ?? null), payWay: way,
+      roomHeld: ["RESERVED", "CONFIRMED", "CHECKED_IN"].includes(b.status),
+      guestFirstName: b.guestName.trim().split(/\s+/)[0] || null, guestPhone: localPhone(b.guestPhone), timezone: s.timezone,
+      paymentStatus: qrPaymentStatus({ paidAmount: b.paidAmount, balanceAmount: b.balanceAmount, refunded }, way, r.mobilePayments[0] ?? null, new Date(), b.status === "RESERVED" && isPayLater(r.externalData)),
+      payWay: way,
       rooms: rooms.map((x) => ({ number: x.roomNumber, typeName: x.typeName, typeSlug: x.typeSlug })),
       checkIn: b.arrivalDate, checkOut: b.departureDate, checkInTime: w.checkInTime, checkoutTime: w.checkoutTime,
       nights: rooms.reduce((m, x) => Math.max(m, x.nights), 0), adults: b.adults, children: b.children,
@@ -624,7 +622,10 @@ export async function qrConfirmation(token: string, reference: string, manageTok
   };
 }
 
-/** "Pay now" from the QR confirmation (a booking held to pay at the hotel, or a payment that did not go through): what is owed, worked out here. */
+/**
+ * "Pay now" from the QR confirmation (a booking made to pay later, or a payment that did not go through): what is owed,
+ * worked out here. A pay-later booking's room is checked again first and held while it is paid (requestMobilePayment).
+ */
 export async function qrPayNow(token: string, reference: string, manageToken: string, input: { phone: string; clientKey: string | null; ip: string | null }) {
   await requireBookingQr(token);
   return payBookingOnline(reference, manageToken, { ...input, source: "HOTEL_QR" });
@@ -639,8 +640,7 @@ export async function hotelQrSetup(actor: Actor) {
   return {
     bookingOn: s.hotelQrEnabled, payAtHotel: s.hotelQrPayAtHotel,
     payOnline: await onlinePayAvailable("booking", s), onlinePaySwitchedOn: s.onlinePayEnabled && s.onlinePayBooking, ntzsConnected: ntzsEnabled(),
-    websiteBookingOn: s.publicBookingEnabled, unpaidHoldHours: s.unpaidHoldHours, onlineHoldMinutes: ONLINE_BOOKING_HOLD_MINUTES,
-    holdLimits: { maxNights: HOLD_MAX_NIGHTS, toArrivalMaxDays: HOLD_TO_ARRIVAL_MAX_DAYS },
+    websiteBookingOn: s.publicBookingEnabled, onlineHoldMinutes: ONLINE_BOOKING_HOLD_MINUTES,
     canManage: canManageHotelQr(actor), canSeeNumbers: canSeeHotelQrNumbers(actor),
   };
 }

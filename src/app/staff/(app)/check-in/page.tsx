@@ -11,6 +11,7 @@ import { getCheckInBooking, getCheckInList, type CheckInArrival } from "@/server
 import { addDays } from "@/lib/time/business-date";
 import { formatBusinessDate, formatMinutesLabel, formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { RESERVATION_STATUS_META } from "@/lib/reservation-status";
 import { ArrivalCard, type ArrivalCardData } from "@/components/staff/reception/arrival-card";
 import { Initials } from "@/components/dashboard/kit";
 import { EmptyState, PageHeader } from "@/components/staff/page-header";
@@ -142,6 +143,8 @@ export default async function CheckInPage({ searchParams }: PageProps<"/staff/ch
                             <span className={cn("block font-semibold tabular-nums", r.balanceAmount > 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400")}>
                               {r.balanceAmount > 0 ? formatTZS(r.balanceAmount).replace("TZS ", "") : "Paid"}
                             </span>
+                            {/* Booked to pay later (or an enquiry): not paid, the room not held. */}
+                            {r.status === "INQUIRY" && <span className="block font-medium text-orange-700 dark:text-orange-300">{RESERVATION_STATUS_META.INQUIRY.label}</span>}
                           </span>
                         </Link>
                       </li>

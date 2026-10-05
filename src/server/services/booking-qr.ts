@@ -11,6 +11,7 @@ import { businessDateOf, businessRangeBounds, fromDbDate, isBusinessDate, toDbDa
 import type { Prisma } from "@/generated/prisma/client";
 import type { BookingQrEventType, MobilePaymentStatus, ReservationStatus } from "@/generated/prisma/enums";
 import type { Actor } from "./reservations";
+import { isPayLater } from "./booking-holds";
 
 /**
  * HOTEL BOOKING QR (owner, 2026-10-05) — "Scan to book your stay": printed codes around the hotel (reception, the
@@ -29,7 +30,9 @@ export const validBookingQrToken = (t: unknown): t is string => typeof t === "st
 
 /** The note a Hotel QR booking is made with — staff read it on the booking; it also tells how the guest chose to pay. */
 export const QR_PAY_ONLINE_NOTE = "Hotel QR: booked and paying online (nTZS) — confirmed by the payment.";
-export const QR_PAY_HOTEL_NOTE = "Hotel QR: reserved to pay at the hotel — the room is held until the hold time, then released if not paid.";
+export const QR_PAY_HOTEL_NOTE = "Hotel QR: booked to pay later — not paid, so the room is not held until it is paid.";
+/** What pay-at-hotel bookings made before the rule of 2026-10-05 say (they held their room for the hotel's hold time). */
+export const QR_PAY_HOTEL_NOTE_BEFORE = "Hotel QR: reserved to pay at the hotel — the room is held until the hold time, then released if not paid.";
 
 /** The QR app's confirmation page of a booking (the manage token is the key; never a database id). */
 export const qrConfirmPath = (qrToken: string, reference: string, manageToken: string) =>
@@ -262,7 +265,7 @@ export type QrPayWay = "ONLINE" | "HOTEL";
 /** How the guest chose to pay: the note the booking was made with — without it, whether they started paying online. */
 export function qrPayWay(r: { internalNotes: string | null; startedOnline: boolean }): QrPayWay {
   if (r.internalNotes?.includes(QR_PAY_ONLINE_NOTE)) return "ONLINE";
-  if (r.internalNotes?.includes(QR_PAY_HOTEL_NOTE)) return "HOTEL";
+  if (r.internalNotes?.includes(QR_PAY_HOTEL_NOTE) || r.internalNotes?.includes(QR_PAY_HOTEL_NOTE_BEFORE)) return "HOTEL";
   return r.startedOnline ? "ONLINE" : "HOTEL";
 }
 
@@ -275,13 +278,15 @@ export function qrPaymentStatus(
   way: QrPayWay,
   latest: { status: MobilePaymentStatus; expiresAt: Date | null } | null,
   now = new Date(),
+  /** Booked to pay later and held right now only while it is paid: its payment is what matters (never "pay at the hotel"). */
+  payingHold = false,
 ): QrPaymentStatus {
   if (r.paidAmount > 0) return r.balanceAmount > 0 ? "PARTIALLY_PAID" : "PAID";
   if (r.refunded > 0) return "REFUNDED";
   const live = latest?.status === "PENDING" && (!latest.expiresAt || latest.expiresAt > now);
   // On its way — or confirmed by nTZS a moment ago and being put on the booking.
   if (live || latest?.status === "COMPLETED") return "PAYMENT_PENDING";
-  if (way === "HOTEL") return "PAY_AT_HOTEL";
+  if (way === "HOTEL" && !payingHold) return "PAY_AT_HOTEL";
   if (!latest) return "PAYMENT_FAILED"; // the payment request could not start
   return latest.status === "EXPIRED" || latest.status === "PENDING" ? "PAYMENT_EXPIRED" : "PAYMENT_FAILED";
 }
@@ -315,6 +320,8 @@ export type QrBookingRow = {
   rooms: { number: string; typeName: string }[]; roomType: string;
   checkIn: BusinessDate; checkOut: BusinessDate; nights: number; adults: number; children: number;
   status: ReservationStatus; paymentStatus: QrPaymentStatus; payWay: QrPayWay;
+  /** A room is kept for it (paid, or held while it is paid). False: booked to pay later — not paid, room not held. */
+  roomHeld: boolean;
   amount: number; paid: number; balance: number; holdUntil: Date | null;
   ntzsReference: string | null; specialRequest: string | null; arrivalTime: string | null; notes: string | null;
   qr: { id: string; label: string } | null; source: "HOTEL_QR"; createdAt: Date;
@@ -332,10 +339,11 @@ export async function qrBookings(actor: Actor, filter: QrBookingsFilter = {}, no
   const view = filter.view ?? "all";
   const where: Prisma.ReservationWhereInput = { source: { code: HOTEL_QR_SOURCE }, ...(filter.qrId ? { bookingQrId: filter.qrId } : {}) };
   const and: Prisma.ReservationWhereInput[] = [];
-  if (view === "waiting") and.push({ status: "RESERVED" });
+  // Waiting to pay: booked to pay later (no room held), or held while the guest pays.
+  if (view === "waiting") and.push({ status: { in: ["RESERVED", "INQUIRY"] } });
   if (view === "paid") and.push({ paidAmount: { gt: 0 } });
-  if (view === "arriving") and.push({ arrivalDate: today, status: { in: ["RESERVED", "CONFIRMED"] } });
-  if (view === "upcoming") and.push({ arrivalDate: { gte: today }, status: { in: ["RESERVED", "CONFIRMED"] } });
+  if (view === "arriving") and.push({ arrivalDate: today, status: { in: ["RESERVED", "CONFIRMED", "INQUIRY"] } });
+  if (view === "upcoming") and.push({ arrivalDate: { gte: today }, status: { in: ["RESERVED", "CONFIRMED", "INQUIRY"] } });
   if (view === "cancelled") and.push({ status: { in: ["CANCELLED", "NO_SHOW"] } });
   if (filter.from && isBusinessDate(filter.from)) and.push({ businessDate: { gte: toDbDate(filter.from) } });
   if (filter.to && isBusinessDate(filter.to)) and.push({ businessDate: { lte: toDbDate(filter.to) } });
@@ -354,7 +362,7 @@ export async function qrBookings(actor: Actor, filter: QrBookingsFilter = {}, no
     take: Math.min(Math.max(1, filter.take ?? 100), 300),
     select: {
       id: true, reference: true, status: true, arrivalDate: true, departureDate: true, adults: true, children: true, netAmount: true, paidAmount: true, balanceAmount: true,
-      holdUntil: true, specialRequests: true, eta: true, internalNotes: true, createdAt: true,
+      holdUntil: true, specialRequests: true, eta: true, internalNotes: true, createdAt: true, externalData: true,
       guest: { select: { fullName: true, phone: true, email: true } },
       bookingQr: { select: { id: true, label: true } },
       rooms: { orderBy: { createdAt: "asc" }, select: { nights: true, status: true, room: { select: { number: true } }, roomType: { select: { name: true } } } },
@@ -373,7 +381,8 @@ export async function qrBookings(actor: Actor, filter: QrBookingsFilter = {}, no
       id: r.id, reference: r.reference, guestName: r.guest.fullName, phone: r.guest.phone, email: r.guest.email,
       rooms: shown.map((x) => ({ number: x.room.number, typeName: x.roomType.name })), roomType: [...new Set(shown.map((x) => x.roomType.name))].join(", "),
       checkIn: fromDbDate(r.arrivalDate), checkOut: fromDbDate(r.departureDate), nights: shown.reduce((m, x) => Math.max(m, x.nights), 0), adults: r.adults, children: r.children,
-      status: r.status, paymentStatus: qrPaymentStatus({ paidAmount: r.paidAmount, balanceAmount: r.balanceAmount, refunded }, way, r.mobilePayments[0] ?? null, now), payWay: way,
+      status: r.status, paymentStatus: qrPaymentStatus({ paidAmount: r.paidAmount, balanceAmount: r.balanceAmount, refunded }, way, r.mobilePayments[0] ?? null, now, r.status === "RESERVED" && isPayLater(r.externalData)), payWay: way,
+      roomHeld: ["RESERVED", "CONFIRMED", "CHECKED_IN"].includes(r.status),
       amount: r.netAmount, paid: r.paidAmount, balance: r.balanceAmount, holdUntil: r.status === "RESERVED" ? r.holdUntil : null,
       ntzsReference: ntzsReferenceOf(r.mobilePayments, r.payments), specialRequest: r.specialRequests, arrivalTime: r.eta, notes: r.internalNotes,
       qr: r.bookingQr, source: "HOTEL_QR" as const, createdAt: r.createdAt,
@@ -392,11 +401,11 @@ export interface BookingQrNumbers {
   selections: number;
   /** "Book" pressed with everything filled in. */
   attempts: number;
-  /** Reservations made from the QR on these days (enquiries excluded). */
+  /** Bookings made from the QR on these days (pay now and pay later). */
   bookings: number;
   /** …of which confirmed (paid, or confirmed by the hotel), in the hotel or gone home. */
   confirmed: number;
-  /** …still waiting: held for payment. */
+  /** …still waiting for their payment: booked to pay later (no room held), or held while the guest pays. */
   waiting: number;
   /** …released or not used (hold ran out, cancelled, no-show). */
   cancelled: number;
@@ -441,7 +450,8 @@ export async function bookingQrAnalytics(actor: Actor, period: { from: BusinessD
     db.bookingQrCode.findMany({ where: qrId ? { id: qrId } : {}, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }], select: { id: true, label: true, active: true, isActive: true } }),
     db.bookingQrEvent.groupBy({ by: ["qrId", "type"], where: { createdAt: { gte: start, lt: end }, ...(qrId ? { qrId } : {}) }, _count: true }),
     db.reservation.findMany({
-      where: { ...resWhere, status: { not: "INQUIRY" }, businessDate: { gte: toDbDate(period.from), lte: toDbDate(period.to) } },
+      // (A QR booking to pay later is INQUIRY — no room held — and is a booking all the same.)
+      where: { ...resWhere, businessDate: { gte: toDbDate(period.from), lte: toDbDate(period.to) } },
       select: { bookingQrId: true, status: true },
     }),
     db.mobilePayment.findMany({
@@ -477,7 +487,7 @@ export async function bookingQrAnalytics(actor: Actor, period: { from: BusinessD
     into(b.bookingQrId, (n) => {
       n.bookings += 1;
       if (CONFIRMED.includes(b.status)) n.confirmed += 1;
-      else if (b.status === "RESERVED") n.waiting += 1;
+      else if (b.status === "RESERVED" || b.status === "INQUIRY") n.waiting += 1;
       else if (b.status === "CANCELLED" || b.status === "NO_SHOW") n.cancelled += 1;
     });
   }

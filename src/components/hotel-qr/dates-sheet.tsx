@@ -7,20 +7,23 @@ import { addDays, diffDays, isBusinessDate } from "@/lib/time/business-date";
 import { cn } from "@/lib/utils";
 import type { QrLanding } from "@/server/services/hotel-qr";
 import { caps, darkButton, lightButton, Stepper, useSheetBehaviour } from "./ui";
-import { dayWeek, nightsText, quickDates, telHref, type StayQuery } from "./lib";
+import { dayWeek, holdsText, nightsText, quickDates, telHref, type StayQuery } from "./lib";
 
 type Window = QrLanding["window"];
+/** A room type to pick, with how many it takes (picking one sets a party that fits it). */
+type TypeChoice = { slug: string; name: string; maxAdults: number; maxChildren: number };
 
 /**
  * "When are you staying?" — a sheet that slides up from the bottom of the phone (a small window on computers): the two
- * dates (the phone's own calendar), quick picks, adults and children, and a room type if they have one in mind. Only
- * dates the hotel takes bookings for can be chosen; the server checks everything again.
+ * dates (the phone's own calendar), quick picks, adults and children, and a room type if they have one in mind (picking
+ * one sets a number of guests it takes — a Standard Single, 1 adult). Only dates the hotel takes bookings for can be
+ * chosen; the server checks everything again.
  */
 export function DatesSheet({ open, onClose, onSubmit, initial, window: w, types, closed, phone }: {
   open: boolean; onClose: () => void;
   onSubmit: (stay: StayQuery, roomType: string | null) => void;
   initial: { stay: StayQuery | null; roomType: string | null };
-  window: Window; types: { slug: string; name: string }[];
+  window: Window; types: TypeChoice[];
   /** Booking here is switched off: why (and the phone instead of the button). */
   closed: string | null; phone: string | null;
 }) {
@@ -53,15 +56,26 @@ export function DatesSheet({ open, onClose, onSubmit, initial, window: w, types,
 }
 
 function DatesForm({ initial, w, types, closed, phone, onSubmit }: {
-  initial: { stay: StayQuery | null; roomType: string | null }; w: Window; types: { slug: string; name: string }[];
+  initial: { stay: StayQuery | null; roomType: string | null }; w: Window; types: TypeChoice[];
   closed: string | null; phone: string | null; onSubmit: (stay: StayQuery, roomType: string | null) => void;
 }) {
   const fresh = initial.stay && initial.stay.checkIn >= w.today ? initial.stay : null;
+  const typeOf = (slug: string | null) => types.find((t) => t.slug === slug) ?? null;
+  // Opened for a room type (before any search): a party it takes. A party they already chose stays as it is.
+  const opened = fresh ? null : typeOf(initial.roomType);
   const [checkIn, setCheckIn] = useState(fresh?.checkIn ?? w.today);
   const [checkOut, setCheckOut] = useState(fresh?.checkOut ?? addDays(w.today, 1));
-  const [adults, setAdults] = useState(Math.min(fresh?.adults ?? 2, w.maxAdults));
-  const [children, setChildren] = useState(Math.min(fresh?.children ?? 0, w.maxChildren));
+  const [adults, setAdults] = useState(Math.max(1, Math.min(fresh?.adults ?? 2, w.maxAdults, opened?.maxAdults ?? w.maxAdults)));
+  const [children, setChildren] = useState(Math.min(fresh?.children ?? 0, w.maxChildren, opened?.maxChildren ?? w.maxChildren));
   const [roomType, setRoomType] = useState<string | null>(initial.roomType);
+  const chosen = typeOf(roomType);
+  const pickType = (slug: string | null) => {
+    setRoomType(slug);
+    const t = typeOf(slug);
+    if (!t) return;
+    setAdults((a) => Math.max(1, Math.min(a, t.maxAdults)));
+    setChildren((c) => Math.min(c, t.maxChildren));
+  };
   const [tried, setTried] = useState(false);
   // The sheet takes the focus (keyboard and screen readers start inside it) — not a date field, which would open a calendar.
   const title = useRef<HTMLHeadingElement>(null);
@@ -123,16 +137,19 @@ function DatesForm({ initial, w, types, closed, phone, onSubmit }: {
         <div className="mt-4">
           <p className={caps}>Room type <span className="font-normal normal-case tracking-normal">· optional</span></p>
           <div className="mt-2 flex flex-wrap gap-1.5" role="radiogroup" aria-label="Room type">
-            {[{ slug: null as string | null, name: "Any room" }, ...types].map((t) => {
+            {[{ slug: null as string | null, name: "Any room" }, ...types.map((t) => ({ slug: t.slug as string | null, name: t.name }))].map((t) => {
               const on = roomType === t.slug;
               return (
-                <button key={t.slug ?? "any"} type="button" role="radio" aria-checked={on} onClick={() => setRoomType(t.slug)}
+                <button key={t.slug ?? "any"} type="button" role="radio" aria-checked={on} onClick={() => pickType(t.slug)}
                   className={cn("h-8 rounded-full px-3.5 text-[12.5px] font-medium ring-1 transition", on ? "bg-(--vr-gold-soft) text-(--vr-ink) ring-(--vr-gold)/50" : "bg-(--vr-card) text-(--vr-ink)/75 ring-(--vr-line) hover:ring-(--vr-gold)")}>
                   {t.name}
                 </button>
               );
             })}
           </div>
+          {chosen && (adults > chosen.maxAdults || children > chosen.maxChildren) && (
+            <p className="mt-2 text-[12px] leading-snug text-(--vr-muted)">A {chosen.name} takes {holdsText(chosen).toLowerCase()} — we&apos;ll show you the rooms that fit everyone.</p>
+          )}
         </div>
       )}
 

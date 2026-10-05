@@ -42,7 +42,7 @@ export async function ensureGuestToken(tx: Tx | typeof db, reservationId: string
 const validToken = (t: string) => /^[A-Za-z0-9_-]{16,64}$/.test(t);
 
 const STATUS_WORD: Record<string, string> = {
-  INQUIRY: "Enquiry", RESERVED: "Reserved", CONFIRMED: "Confirmed", CHECKED_IN: "Checked In", CHECKED_OUT: "Checked Out", CANCELLED: "Cancelled", NO_SHOW: "No-show",
+  INQUIRY: "Booked — not reserved until paid", RESERVED: "Reserved", CONFIRMED: "Confirmed", CHECKED_IN: "Checked In", CHECKED_OUT: "Checked Out", CANCELLED: "Cancelled", NO_SHOW: "No-show",
 };
 /** "2026-09-27" → "27 Sept 2026". */
 /** "2026-09-28" → "Mon, 28 Sept 2026". */
@@ -195,7 +195,7 @@ export async function stayView(where: { guestToken: string } | { id: string }) {
   const meeting = r.kind === "MEETING" && r.rooms[0] ? { start: r.rooms[0].startAt.toISOString(), end: r.rooms[0].endAt.toISOString() } : null;
   // Booked on a public page and not here yet: who it was booked as — never the profile found by the phone typed there
   // (anyone can type a number). Once checked in, reception has met the guest.
-  const typed = r.status === "RESERVED" || r.status === "CONFIRMED" ? bookedAsOf(r.externalData) : null;
+  const typed = r.status === "RESERVED" || r.status === "CONFIRMED" || r.status === "INQUIRY" ? bookedAsOf(r.externalData) : null;
   const who = typed ?? { fullName: r.guest.fullName, phone: r.guest.phone, email: r.guest.email };
   return {
     // Never the private stay link's token: the room QR shows this page to whoever scans the card.

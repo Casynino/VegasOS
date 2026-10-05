@@ -40,7 +40,7 @@ export default async function ControlCentrePage() {
   // The Hotel QR: codes working now and bookings made from it in the last 30 days.
   const [qrCodes, qrBookings30] = can(user, "hotel_qr.manage") ? await Promise.all([
     db.bookingQrCode.count({ where: { isActive: true, active: true } }),
-    db.reservation.count({ where: { source: { code: "HOTEL_QR" }, status: { not: "INQUIRY" }, businessDate: { gte: toDbDate(addDays(today, -29)) } } }),
+    db.reservation.count({ where: { source: { code: "HOTEL_QR" }, businessDate: { gte: toDbDate(addDays(today, -29)) } } }),
   ]) : [0, 0];
   const recipients = Array.isArray(s.reportRecipients) ? s.reportRecipients.length : 0;
   const tax = s.taxRatePercent ? `${s.taxName || "Tax"} ${Number(s.taxRatePercent)}%${s.taxIncludedInRates ? " incl." : ""}` : "Not set";

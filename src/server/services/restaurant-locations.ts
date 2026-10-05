@@ -8,7 +8,7 @@ import { prettyPhone, shortName, validPhone } from "@/lib/guest-messages";
 import { normalizePhone, resolveGuest } from "./guests";
 import { orderCustomerName, paidFirstTx, type PaidFirst } from "./online-orders";
 import { addOrderItemsTx, CLOSED_STATUSES, createRestaurantOrderTx, LOCATION_SOURCE } from "./restaurant";
-import { HOLD_AFTER_MIN, holdingReservationTx, lockSessionTx, OPEN_SESSION, seatOf } from "./dining-core";
+import { HOLD_AFTER_MIN, holdingReservationTx, issueSeatTx, lockLocationTx, lockSessionTx, OPEN_SESSION, seatOf, startSessionTx } from "./dining-core";
 import type { Tx } from "../db";
 import type { Actor } from "./reservations";
 
@@ -248,21 +248,45 @@ export async function freeTables(now = new Date()): Promise<FreeTable[]> {
     where: { kind: "TABLE", isActive: true, blockedAs: null, openSession: null },
     orderBy: [{ area: "asc" }, { number: "asc" }], select: { id: true, name: true, area: true },
   });
-  const held = await db.tableReservation.findMany({
-    where: { locationId: { in: tables.map((t) => t.id) }, status: { in: ["BOOKED", "CONFIRMED"] }, reservedFor: { gte: new Date(now.getTime() - HOLD_AFTER_MIN * 60_000), lte: new Date(now.getTime() + 60 * 60_000) } },
-    select: { locationId: true },
-  });
-  const taken = new Set(held.map((h) => h.locationId));
+  const ids = tables.map((t) => t.id);
+  const [held, loose] = await Promise.all([
+    db.tableReservation.findMany({
+      where: { locationId: { in: ids }, status: { in: ["BOOKED", "CONFIRMED"] }, reservedFor: { gte: new Date(now.getTime() - HOLD_AFTER_MIN * 60_000), lte: new Date(now.getTime() + 60 * 60_000) } },
+      select: { locationId: true },
+    }),
+    db.restaurantOrder.findMany({ where: { ...LOOSE_AT_TABLE, locationId: { in: ids } }, select: { locationId: true } }),
+  ]);
+  const taken = new Set([...held, ...loose].map((h) => h.locationId));
   return tables.filter((t) => !taken.has(t.id));
 }
 
-/** The table a customer picked is still free (checked again as the order goes in) — or a clear "choose another". */
+/**
+ * An order still open at a table but not part of anyone's session there (a table picked before a pick started one, owner
+ * 2026-10-05): someone is eating there — the table is not free.
+ */
+const LOOSE_AT_TABLE = { sessionId: null, type: "DINE_IN", status: OPEN } as const;
+
+/** The table a customer picked is still free (checked again, under the table's lock, as the order goes in) — or a clear "choose another". */
 export async function pickedTableTx(tx: Tx, tableId: string, now: Date) {
   const t = await tx.restaurantLocation.findUnique({ where: { id: tableId }, select: { id: true, kind: true, isActive: true, blockedAs: true, name: true } });
   if (!t || t.kind !== "TABLE" || !t.isActive || t.blockedAs) throw new AppError("That table cannot be chosen — please pick another.", "VALIDATION", { tableId: "Invalid" });
-  const busy = (await tx.diningSession.findUnique({ where: { openAtId: t.id }, select: { id: true } })) || (await holdingReservationTx(tx, t.id, now));
+  await lockLocationTx(tx, t.id);
+  const busy = (await tx.diningSession.findUnique({ where: { openAtId: t.id }, select: { id: true } }))
+    || (await holdingReservationTx(tx, t.id, now))
+    || (await tx.restaurantOrder.findFirst({ where: { ...LOOSE_AT_TABLE, locationId: t.id }, select: { id: true } }));
   if (busy) throw new AppError(`${t.name.split(" — ")[0]} was just taken — please pick another table.`, "CONFLICT", { tableId: "Taken" });
   return t;
+}
+
+/**
+ * Eating here at a table they picked (main restaurant QR, the menu): the table is theirs now — their session starts there
+ * like a customer who sat down and scanned it (nobody else can pick it or be seated at it; their orders are its bill),
+ * and this phone is remembered at it (the seat to keep in its cookie).
+ */
+export async function sitAtPickedTableTx(tx: Tx, tableId: string, guestId: string, now: Date) {
+  const s = await startSessionTx(tx, { locationId: tableId, guestId, source: "ORDER" }, null, now);
+  const member = await tx.diningSessionMember.findFirstOrThrow({ where: { sessionId: s.id, primary: true }, select: { id: true } });
+  return { sessionId: s.id, seat: await issueSeatTx(tx, member.id) };
 }
 
 /**
@@ -286,15 +310,16 @@ export async function placeLocationOrder(token: string, input: LocationOrderInpu
   const name = seated ? seated.member.guest.fullName : await orderCustomerName(input.name, typedPhone);
   if (!input.items.length || input.items.length > 30) throw new AppError("Add something from the menu.", "VALIDATION");
   const same = await db.restaurantOrder.findUnique({ where: { clientKey: input.clientKey } });
-  if (same) return same;
+  if (same) return Object.assign(same, { seat: null as string | null });
   const phone = normalizePhone(typedPhone)!;
   const kind = input.kind === "TAKEAWAY" ? "TAKEAWAY" : input.kind === "PICKUP" && l.kind === "MAIN" ? "PICKUP" : "DINE_IN";
   const address = kind === "TAKEAWAY" ? input.deliveryAddress?.trim().slice(0, 200) ?? "" : "";
   if (kind === "TAKEAWAY" && address.length < 5) throw new AppError("Please add the delivery address — street, house or building, and a landmark.", "VALIDATION", { deliveryAddress: "Required" });
   const where = l.kind === "MAIN" && kind === "DINE_IN" ? input.where?.trim().slice(0, 40) || null : null;
 
+  let seat: string | null = null;
   try {
-    return await db.$transaction(async (tx) => {
+    const order = await db.$transaction(async (tx) => {
       const recent = await tx.restaurantOrder.count({ where: { customerPhone: phone, source: { in: Object.values(LOCATION_SOURCE) }, createdAt: { gte: new Date(now.getTime() - 30 * 60_000) } } });
       if (recent >= ORDER_LIMIT) throw new AppError("You have sent several orders just now — please ask a waiter for more.", "VALIDATION");
       // Take out is always paid first; eating here may be paid now too.
@@ -308,21 +333,24 @@ export async function placeLocationOrder(token: string, input: LocationOrderInpu
         session.locationId = live.locationId;
       }
       const guestId = seated ? seated.member.guest.id : await resolveGuest(tx, { fullName: name, phone, email: input.email?.trim() || null });
-      // Eating here from the restaurant's own QR, at a free table they picked: the order goes to that table.
+      // Eating here from the restaurant's own QR, at a free table they picked: the order goes to that table — theirs now.
       const picked = l.kind === "MAIN" && kind === "DINE_IN" && input.tableId ? await pickedTableTx(tx, input.tableId, now) : null;
+      const sat = picked ? await sitAtPickedTableTx(tx, picked.id, guestId, now) : null;
+      seat = sat?.seat ?? null;
       return createRestaurantOrderTx(tx, {
         type: kind, settlement: "UNPAID", items: input.items, notes: input.notes?.trim().slice(0, 300) || null, customerName: name,
         // Take out is not at the table: it does not keep the table busy or join its bill. A moved customer's order goes to their table now.
         locationId: kind === "TAKEAWAY" ? null : picked?.id ?? session?.locationId ?? l.id, tableLabel: picked ? null : where, deliveryAddress: address || null,
       }, { userId: null, label: `${name} (${l.name})` }, now, {
         byCustomer: true, source: LOCATION_SOURCE[l.kind], guestId, customerPhone: phone, customerEmail: (seated?.member.guest.email ?? input.email)?.trim() || null, clientKey: input.clientKey, paidFirst, payOnline: !!input.payOnline,
-        sessionId: session?.id ?? null,
+        sessionId: session?.id ?? sat?.sessionId ?? null,
       });
     });
+    return Object.assign(order, { seat });
   } catch (e) {
     if (isUniqueViolation(e)) {
       const again = await db.restaurantOrder.findUnique({ where: { clientKey: input.clientKey } });
-      if (again) return again;
+      if (again) return Object.assign(again, { seat: null as string | null });
     }
     throw e;
   }

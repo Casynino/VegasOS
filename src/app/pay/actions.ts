@@ -14,7 +14,10 @@ export async function payStatusAction(input: { token: string }) {
   return runAction(async () => {
     const { token } = parseInput(z.object({ token: Token }), input);
     const { ipAddress } = await requestMeta();
-    await rateLimit(`pay-status:${ipAddress ?? "unknown"}`, 240, 600);
+    // Each payment page asks every few seconds while it waits: counted per payment — and only loosely per address (guests
+    // on the hotel Wi-Fi share one), so one guest's page never stops another's from turning "paid".
+    await rateLimit(`pay-status:${token}`, 300, 600);
+    await rateLimit(`pay-status:ip:${ipAddress ?? "unknown"}`, 2000, 600);
     const view = await customerPaymentByToken(token, { check: true });
     if (!view) throw new Error("Payment not found.");
     return view;

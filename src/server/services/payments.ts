@@ -9,7 +9,7 @@ import { syncInvoice } from "./invoices";
 import { businessDateOf, toDbDate } from "@/lib/time/business-date";
 import { chargeKind, lineDescription, parseLine } from "@/lib/charge-types";
 import type { Actor } from "./reservations";
-import { reopenHoldTx, secureByPaymentTx } from "./booking-holds";
+import { expireUnpaidHolds, reopenHoldTx, secureByPaymentTx } from "./booking-holds";
 import { resolveAccountTx } from "./payment-accounts";
 
 /**
@@ -22,6 +22,8 @@ export async function recordReservationPayment(
   input: { reservationId: string; amount: number; accountId?: string | null; methodId?: string | null; reference?: string | null; notes?: string | null; kind?: "PAYMENT" | "REFUND" },
   actor: Actor,
 ) {
+  // Paying a booking that holds no room yet (pay later) takes one: holds whose time ran out are let go first.
+  if ((input.kind ?? "PAYMENT") === "PAYMENT" && await db.reservationRoom.count({ where: { reservationId: input.reservationId, status: "INQUIRY" } })) await expireUnpaidHolds();
   return db.$transaction((tx) => recordPaymentTx(tx, input, actor));
 }
 

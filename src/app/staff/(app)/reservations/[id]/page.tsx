@@ -7,6 +7,7 @@ import { Occupants } from "@/components/staff/reception/occupants";
 import { can, requirePagePermission } from "@/server/auth";
 import { db } from "@/server/db";
 import { maskPhone } from "@/server/services/mobile-payments";
+import { isPayLater } from "@/server/services/booking-holds";
 import { accountOptions } from "@/server/services/payment-accounts";
 import { businessToday, getSettings } from "@/server/settings";
 import { formatBusinessDate, formatDateTime, formatTZS } from "@/lib/format";
@@ -147,6 +148,9 @@ export default async function ReservationPage({ params, searchParams }: PageProp
   // What the extras are (restaurant, room service, transport…) — adds up to the booking's own charges.
   const extras = folioLines(r.charges.filter((c) => !c.isVoided));
   const waiting = r.rooms.filter((x) => x.status === "RESERVED" || x.status === "CONFIRMED");
+  // Not paid, no room held (booked to pay later, or an enquiry): checked in or cancelled like the others — never a no-show.
+  const notHeld = r.rooms.filter((x) => x.status === "INQUIRY");
+  const payLater = isPayLater(r.externalData);
   const inHouse = r.rooms.filter((x) => x.status === "CHECKED_IN");
   const now = new Date();
   const live = r.rooms.filter((x) => !["CANCELLED", "NO_SHOW"].includes(x.status));
@@ -258,10 +262,10 @@ export default async function ReservationPage({ params, searchParams }: PageProp
           <ReservationActions
             reservationId={r.id}
             status={r.status}
-            canConfirm={perms.edit && (r.status === "RESERVED" || r.status === "INQUIRY")}
-            canCheckIn={perms.checkIn && waiting.length > 0}
+            canConfirm={perms.edit && (r.status === "RESERVED" || (r.status === "INQUIRY" && (!payLater || can(user, "reservations.confirm_unpaid"))))}
+            canCheckIn={perms.checkIn && waiting.length + notHeld.length > 0}
             canCheckOut={perms.checkOut && inHouse.length > 0}
-            canCancel={perms.cancel && waiting.length > 0}
+            canCancel={perms.cancel && waiting.length + notHeld.length > 0}
             canNoShow={perms.cancel && waiting.length > 0 && waiting.every((w) => w.arrivalDate.toISOString().slice(0, 10) <= today)}
             balance={r.balanceAmount}
             paid={r.paidAmount}
@@ -282,6 +286,12 @@ export default async function ReservationPage({ params, searchParams }: PageProp
         {r.lateArrivalNotedAt && ["RESERVED", "CONFIRMED"].includes(r.status) && (
           <p className="flex flex-wrap items-center gap-2 border-t border-sky-500/30 bg-sky-500/10 px-4 py-3 text-sm text-sky-800 sm:px-6 dark:text-sky-300">
             <Clock3 className="size-4 shrink-0" /><span><strong>Late arrival</strong>{r.eta ? ` · expected around ${r.eta}` : ""} — {r.lateArrivalNote}. The room stays reserved.</span>
+          </p>
+        )}
+        {r.status === "INQUIRY" && (
+          <p className="flex flex-wrap items-center gap-2 border-t border-orange-500/30 bg-orange-500/10 px-4 py-3 text-sm text-orange-800 sm:px-6 dark:text-orange-300">
+            <Clock3 className="size-4 shrink-0" />
+            <span><strong>Not paid — the room is not held.</strong> {payLater ? "Booked online to pay later: " : ""}the room stays free for everyone until this booking is paid — whoever pays first gets it. A payment (a deposit is enough) secures it; at check-in give them any free room.</span>
           </p>
         )}
         {r.status === "RESERVED" && (
@@ -344,7 +354,8 @@ export default async function ReservationPage({ params, searchParams }: PageProp
               {r.rooms.map((rr) => {
                 const arrival = rr.arrivalDate.toISOString().slice(0, 10), departure = rr.departureDate.toISOString().slice(0, 10);
                 const rs = RESERVATION_STATUS_META[rr.status];
-                const upcomingRoom = rr.status === "RESERVED" || rr.status === "CONFIRMED";
+                // (Booked to pay later — no room held: reception can still change its dates.)
+                const upcomingRoom = rr.status === "RESERVED" || rr.status === "CONFIRMED" || rr.status === "INQUIRY";
                 return (
                   <div key={rr.id} className="rounded-2xl border border-border/70 p-4">
                     <div className="flex flex-wrap items-center gap-3">
@@ -505,8 +516,8 @@ export default async function ReservationPage({ params, searchParams }: PageProp
                     <div key={a.id} className="rounded-xl border border-border/70 p-2.5">
                       <p className="flex flex-wrap items-center gap-2">
                         <strong>{a.fromRoom.number} → {a.toRoom.number}</strong>
-                        <span className={cn("rounded-full px-2 py-px text-[10px] font-semibold", a.source === "HOTEL" ? "bg-amber-500/15 text-amber-800 dark:text-amber-300" : a.source === "ARRIVAL" ? "bg-muted text-muted-foreground" : "bg-sky-500/12 text-sky-700 dark:text-sky-300")}>
-                          {a.source === "HOTEL" ? "Hotel-initiated" : a.source === "ARRIVAL" ? "Assigned at arrival" : "Customer requested"}
+                        <span className={cn("rounded-full px-2 py-px text-[10px] font-semibold", a.source === "HOTEL" ? "bg-amber-500/15 text-amber-800 dark:text-amber-300" : a.source === "ARRIVAL" || a.source === "PAYMENT" ? "bg-muted text-muted-foreground" : "bg-sky-500/12 text-sky-700 dark:text-sky-300")}>
+                          {a.source === "HOTEL" ? "Hotel-initiated" : a.source === "ARRIVAL" ? "Assigned at arrival" : a.source === "PAYMENT" ? "Room checked again at payment" : "Customer requested"}
                         </span>
                         <span className="text-xs text-muted-foreground">{formatDateTime(a.changedAt)} · {a.changedBy?.fullName ?? "—"}</span>
                       </p>

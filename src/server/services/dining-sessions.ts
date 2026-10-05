@@ -480,12 +480,16 @@ export async function guestTableState(locationId: string, seatToken: string | nu
       },
     };
   }
-  const [open, held] = await Promise.all([
+  const [open, held, loose] = await Promise.all([
     db.diningSession.findUnique({ where: { openAtId: locationId }, select: { id: true } }),
     db.$transaction((tx) => holdingReservationTx(tx, locationId, now)),
+    db.restaurantOrder.findFirst({ where: { ...looseAt(locationId) }, select: { id: true } }),
   ]);
-  return { state: open ? "in_use" : held ? "reserved" : "free", mine: null, movedTo: null };
+  return { state: open || loose ? "in_use" : held ? "reserved" : "free", mine: null, movedTo: null };
 }
+
+/** Open orders at a table that are not part of anyone's session there (a table picked from the menu before picking started one). */
+const looseAt = (locationId: string) => ({ locationId, sessionId: null, type: "DINE_IN" as const, status: { notIn: CLOSED_STATUSES } });
 
 /**
  * The customer at the table says who they are. A free table → their session starts (the table is
@@ -511,12 +515,17 @@ export async function seatAtTable(token: string, input: { name?: string | null; 
         if (!m) return { state: "in_use" as const, name: null, token: null, table: l.name };
         return { state: "welcome_back" as const, name: shortName(m.guest.fullName), token: await issueSeatTx(tx, m.id), table: l.name };
       }
+      // Someone picked this table from the menu and is eating here (their order is open): only they sit down at it.
+      const loose = await tx.restaurantOrder.findMany({ where: looseAt(l.id), select: { id: true, customerPhone: true } });
+      if (loose.some((o) => !samePhone(o.customerPhone, phone))) return { state: "in_use" as const, name: null, token: null, table: l.name };
       const held = await holdingReservationTx(tx, l.id, now);
       if (held && !samePhone(held.guest.phone, phone)) return { state: "reserved" as const, name: null, token: null, table: l.name };
       const s = held
         // The customer who booked this table: their reservation is seated.
         ? await seatPartyTx(tx, held.id, null, now)
         : await startSessionTx(tx, { locationId: l.id, guestId: await resolveGuest(tx, { fullName: await orderCustomerName(input.name, phone), phone }), source: "QR" }, null, now);
+      // Their own orders here join their table's bill.
+      if (loose.length) await tx.restaurantOrder.updateMany({ where: { id: { in: loose.map((o) => o.id) } }, data: { sessionId: s.id } });
       const member = await tx.diningSessionMember.findFirstOrThrow({ where: { sessionId: s.id, primary: true }, include: { guest: { select: { fullName: true } } } });
       return { state: "seated" as const, name: shortName(member.guest.fullName), token: await issueSeatTx(tx, member.id), table: l.name };
     });

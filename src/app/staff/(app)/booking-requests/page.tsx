@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import { timeRange } from "@/lib/meeting";
 import Link from "next/link";
-import { Ban, Banknote, CalendarCheck, ChevronDown, ExternalLink, Globe, Hourglass, Inbox, MessageCircle, Plane, Timer } from "lucide-react";
+import { Ban, Banknote, CalendarCheck, ChevronDown, ChevronRight, ExternalLink, Globe, Hourglass, Inbox, MessageCircle, Plane, QrCode, Timer } from "lucide-react";
 import { can, requirePagePermission } from "@/server/auth";
 import { db } from "@/server/db";
 import { businessToday } from "@/server/settings";
 import { listRequests, REQUEST_TABS, requestStats } from "@/server/services/booking-requests";
+import { PAY_LATER_WHERE } from "@/server/services/booking-holds";
 import { fromDbDate, toDbDate } from "@/lib/time/business-date";
 import { formatDateTime, formatShortDate, formatTZS } from "@/lib/format";
 import { BOOKING_REQUEST_STATUS } from "@/lib/booking-request-meta";
@@ -34,12 +35,22 @@ export default async function BookingRequestsPage({ searchParams }: PageProps<"/
   const watching = can(user, "dashboard.manager") || can(user, "dashboard.owner") || can(user, "dashboard.admin");
   const today = await businessToday();
   const monthStart = `${today.slice(0, 8)}01`;
-  const [{ rows, counts }, types, stats, answered, booked] = await Promise.all([
+  const [{ rows, counts }, types, stats, answered, booked, payLater] = await Promise.all([
     listRequests(tab),
     db.roomType.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" }, select: { slug: true, name: true } }),
     requestStats(monthStart, today),
     db.bookingRequest.findMany({ where: { businessDate: { gte: toDbDate(monthStart), lte: toDbDate(today) }, handledAt: { not: null } }, select: { createdAt: true, handledAt: true } }),
     db.bookingRequest.aggregate({ where: { businessDate: { gte: toDbDate(monthStart), lte: toDbDate(today) }, status: "CONVERTED" }, _sum: { estimatedNet: true } }),
+    // Booked online to pay later (the website, the Hotel QR): real bookings, but no room is held until they are paid.
+    can(user, "reservations.view") ? db.reservation.findMany({
+      where: { status: "INQUIRY", arrivalDate: { gte: toDbDate(today) }, source: { code: { in: ["WEBSITE", "HOTEL_QR"] } }, ...PAY_LATER_WHERE },
+      orderBy: { createdAt: "desc" }, take: 30,
+      select: {
+        id: true, reference: true, createdAt: true, arrivalDate: true, departureDate: true, adults: true, children: true, netAmount: true,
+        guest: { select: { fullName: true, phone: true } }, source: { select: { code: true, name: true } },
+        rooms: { where: { status: "INQUIRY" }, select: { room: { select: { number: true } }, roomType: { select: { name: true } } } },
+      },
+    }) : [],
   ]);
   const openCount = (counts.NEW ?? 0) + (counts.REVIEWING ?? 0) + (counts.CONTACTED ?? 0) + (counts.CONFIRMED ?? 0);
   const countFor = (t: Tab) => (t === "OPEN" ? openCount : t === "ALL" ? Object.values(counts).reduce((a, b) => a + (b ?? 0), 0) : counts[t] ?? 0);
@@ -111,6 +122,47 @@ export default async function BookingRequestsPage({ searchParams }: PageProps<"/
           </div>
         </section>
       </div>
+
+      {payLater.length > 0 && (
+        <section aria-labelledby="pay-later-title" className="space-y-2">
+          <div className="flex flex-wrap items-end justify-between gap-2 px-1">
+            <div>
+              <h2 id="pay-later-title" className="text-sm font-semibold">Booked online — not paid yet</h2>
+              <p className="text-xs text-muted-foreground">The room is not held until it is paid: whoever pays first gets it. The guest can pay online from their booking, or here at check-in.</p>
+            </div>
+          </div>
+          <ul className="divide-y divide-border/60 overflow-hidden rounded-3xl border border-border/70 bg-card">
+            {payLater.map((b) => {
+              const Src = b.source.code === "HOTEL_QR" ? QrCode : Globe;
+              return (
+                <li key={b.id}>
+                  <Link href={`/staff/reservations/${b.id}`} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 px-4 py-3 transition-colors hover:bg-muted/40 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1.1fr)_minmax(0,1fr)_auto] sm:px-5">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{b.guest.fullName}</p>
+                      <p className="truncate text-xs text-muted-foreground">{b.guest.phone}</p>
+                    </div>
+                    <div className="flex items-center gap-3 sm:order-last">
+                      <div className="flex flex-col items-end gap-1">
+                        <span className="rounded-full bg-orange-500/12 px-2.5 py-0.5 text-[11px] font-semibold text-orange-800 dark:text-orange-300">Not paid · room not held</span>
+                        <span className="text-xs font-semibold tabular-nums">{formatTZS(b.netAmount)}</span>
+                      </div>
+                      <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+                    </div>
+                    <div className="col-span-2 min-w-0 text-xs sm:col-span-1">
+                      <p className="font-medium tabular-nums">{formatShortDate(fromDbDate(b.arrivalDate))} → {formatShortDate(fromDbDate(b.departureDate))}</p>
+                      <p className="truncate text-muted-foreground">{b.rooms.map((x) => `${x.roomType.name} (${x.room.number})`).join(", ")} · {b.adults + b.children} guest{b.adults + b.children === 1 ? "" : "s"}</p>
+                    </div>
+                    <div className="col-span-2 min-w-0 text-xs text-muted-foreground sm:col-span-1">
+                      <p className="flex items-center gap-1.5 truncate"><Src className="size-3.5 shrink-0" aria-hidden="true" />{b.source.name} · <span className="font-mono">{b.reference}</span></p>
+                      <p className="truncate">{formatDateTime(b.createdAt)}</p>
+                    </div>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
 
       {/* Status — one bar that slides on phones */}
       <nav aria-label="Filter by status" className="-mx-1 overflow-x-auto px-1 [scrollbar-width:none]">

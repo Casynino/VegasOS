@@ -70,7 +70,8 @@ export function ArrivalsSummary({ s, today, canCheckIn, show = 3 }: { s: Summary
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pl-12 lg:block lg:pl-0">
                         <span className={cn("inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold", st.tone)}>{st.tag}</span>
                         <span className="text-[11px] font-medium lg:mt-1 lg:block">
-                          {p.pending ? <span className="text-amber-700 dark:text-amber-400">Unpaid{p.holdUntil ? ` · held till ${formatDateTime(p.holdUntil)}` : ""}</span>
+                          {p.notHeld ? <span className="text-orange-700 dark:text-orange-400">Not paid · room not held</span>
+                            : p.pending ? <span className="text-amber-700 dark:text-amber-400">Unpaid{p.holdUntil ? ` · held till ${formatDateTime(p.holdUntil)}` : ""}</span>
                             : p.billTo === "GROUP" ? <span className="text-violet-700 dark:text-violet-300">Group pays</span>
                             : p.billTo !== "GUEST" ? <span className="text-violet-700 dark:text-violet-300">Company invoice</span>
                               : <span className="text-emerald-700 dark:text-emerald-400">{p.paidAmount > 0 ? "Paid / deposit" : "Confirmed by manager"}</span>}

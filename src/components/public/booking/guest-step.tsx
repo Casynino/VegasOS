@@ -325,13 +325,13 @@ export function GuestStep({
             aria-labelledby="review-title"
             className="mt-8 lg:mt-10"
           >
-            <h2 id="review-title" ref={headingRef} tabIndex={-1} className={headingCls}>{online ? "Review and confirm" : "Review your request"}</h2>
+            <h2 id="review-title" ref={headingRef} tabIndex={-1} className={headingCls}>{online ? "Review and confirm" : "Review your booking"}</h2>
             <p className={cn(typeScale.small, "mt-2 max-w-[36rem] text-pub-muted")}>{online
-              ? "Check everything below. Pay now and your room is confirmed the moment the payment is approved — or send it as a request and pay at the hotel."
-              : "Check everything below, then send it to our team. Nothing is charged online, and your room is confirmed only when our team contacts you."}</p>
+              ? "Check everything below. Pay now and your room is confirmed the moment the payment is approved — or book now and pay later (the room is not reserved until it is paid)."
+              : "Check everything below, then book. Nothing is charged online — and the room is not reserved until it is paid."}</p>
 
             {confirmError && (
-              <Notice className="mt-6" title={unavailable ? "Availability changed while you were choosing." : payState && !payState.ok ? "We couldn’t start your payment." : "We couldn’t send your request."}>
+              <Notice className="mt-6" title={unavailable ? "Availability changed while you were choosing." : payState && !payState.ok ? "We couldn’t start your payment." : "We couldn’t make your booking."}>
                 <p>{confirmError.error}</p>
                 {unavailable && <Link href={backToRoomsHref} className="mt-2 inline-block font-medium text-pub-fg underline underline-offset-4">See rooms still available</Link>}
               </Notice>
@@ -403,7 +403,7 @@ export function GuestStep({
                   </dl>
                   <p className="mt-3 text-[12.5px] leading-relaxed text-pub-muted">{payingNow
                     ? "Breakfast and Wi-Fi included. Paying now, this is the amount you pay — no card details are needed."
-                    : "Breakfast and Wi-Fi included. The final price is confirmed by our team; you pay at reception — no card details are needed online."}</p>
+                    : "Breakfast and Wi-Fi included. Not reserved until paid — pay any time from your booking page, or at the hotel."}</p>
 
                   {online ? (
                     <div className="mt-6">
@@ -442,8 +442,8 @@ export function GuestStep({
                           on={way === "later"}
                           onSelect={() => setWay("later")}
                           icon={<Wallet className="size-[18px]" strokeWidth={1.6} aria-hidden="true" />}
-                          title="Pay at the hotel"
-                          sub="Send a request — our team confirms by phone or WhatsApp"
+                          title="Pay later"
+                          sub="Not reserved until paid — pay any time from your booking"
                         />
                       </div>
                     </div>
@@ -470,7 +470,7 @@ export function GuestStep({
                         className="h-auto min-h-14 whitespace-normal py-3 text-center"
                         icon={confirming ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : <Send className="size-4" strokeWidth={1.6} aria-hidden="true" />}
                       >
-                        {confirming ? "Sending your request…" : "Send booking request"}
+                        {confirming ? "Booking…" : "Book — pay later"}
                       </Button>
                     )}
                     {payingNow && (
