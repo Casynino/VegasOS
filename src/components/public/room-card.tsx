@@ -1,4 +1,5 @@
 import { ViewTransition } from "react";
+import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { InfoList, LinkButton, MediaFrame, PriceTag, TextLink, typeScale } from "./kit";
@@ -124,6 +125,10 @@ export function RoomCard({
         </H>
         <InfoList items={facts.slice(0, 3)} className="mt-2.5" />
         <PriceTag amount={room.net} from was={discounted ? room.baseRate : null} size="sm" className="mt-auto pt-4" />
+        {/* Say the tile opens the room (the whole tile is the link). */}
+        <span aria-hidden="true" className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-medium text-pub-eyebrow transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none">
+          View room<ArrowRight className="size-3.5" strokeWidth={1.8} />
+        </span>
       </div>
     </article>
   );

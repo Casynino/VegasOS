@@ -128,6 +128,12 @@ export function Rail({
           <span aria-hidden="true" className="shrink-0 font-mono text-[10px] font-medium tabular-nums tracking-[0.2em] text-pub-muted sm:text-[11px]">
             <span className="text-pub-eyebrow">{String(active + 1).padStart(2, "0")}</span> / {String(items.length).padStart(2, "0")}
           </span>
+          {/* Owner, 2026-10-05: "hard to know you can scroll" — say it, until the first swipe. */}
+          {edges.start && (
+            <span aria-hidden="true" className="inline-flex shrink-0 items-center gap-1 text-[12px] font-medium text-pub-eyebrow motion-safe:animate-pulse lg:hidden">
+              Swipe<ChevronRight className="size-3.5" strokeWidth={1.8} />
+            </span>
+          )}
           <span aria-hidden="true" className="relative h-px flex-1 overflow-hidden bg-pub-line">
             <span
               ref={barRef}
@@ -135,7 +141,7 @@ export function Rail({
               style={{ width: "12%", left: "0%" }}
             />
           </span>
-          <div className="hidden gap-2 lg:flex">
+          <div className="flex gap-2">
             <RailButton label="Previous" controls={id} disabled={edges.start} onClick={() => step(-1)}>
               <ChevronLeft className="size-4" strokeWidth={1.6} aria-hidden="true" />
             </RailButton>

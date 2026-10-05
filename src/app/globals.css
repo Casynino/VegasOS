@@ -1327,3 +1327,16 @@ html:has(.pub-site) { background-color: var(--pub-night); }
   table[data-stack] td:empty, table[data-stack] td[data-blank] { display: none; }
   table[data-stack] tfoot tr { border-top: 1px dashed var(--border); }
 }
+
+/* iPhone Safari gives date and time fields their own width (they spill out of narrow columns) and puts the text at the
+   top — make them behave like the other fields on the website and the guests' pages (owner, 2026-10-05). */
+:where(.pub-site, .vr) input:is([type="date"], [type="time"]) {
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 0;
+  max-width: 100%;
+}
+:where(.pub-site, .vr) input:is([type="date"], [type="time"])::-webkit-date-and-time-value {
+  text-align: left;
+  min-height: 1.5em;
+}
