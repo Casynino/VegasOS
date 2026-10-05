@@ -14,7 +14,8 @@ export const selectionSchema = z.object({
 });
 
 export const guestSchema = z.object({
-  fullName: z.string().trim().min(2, "Please enter your full name.").max(120, "Name is too long."),
+  /** Blank for a returning guest (found by their phone): the name we have is used — see the booking actions. */
+  fullName: z.union([z.literal(""), z.string().trim().min(2, "Please enter your full name.").max(120, "Name is too long.")]).optional(),
   phone: z
     .string()
     .trim()

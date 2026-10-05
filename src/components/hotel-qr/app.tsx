@@ -8,7 +8,8 @@ import type { ActionResult } from "@/server/errors";
 import type { QrLanding, QrQuote, QrRoomOffer, QrRoomType, QrSearchResult } from "@/server/services/hotel-qr";
 import type { QrExplore } from "@/server/services/hotel-qr-explore";
 import { qrBookAction, qrQuoteAction, qrSearchAction, recordQrEventAction } from "@/app/b/[token]/actions";
-import { useWho } from "@/components/restaurant/who";
+import { usePhoneLookup, useWho } from "@/components/restaurant/who";
+import { identifyCustomerAction } from "@/app/order/actions";
 import { StaySummary, useBackClose } from "./ui";
 import { DatesSheet } from "./dates-sheet";
 import { Landing } from "./landing";
@@ -160,6 +161,13 @@ function QrFlow({ token, landing, explore, hero }: { token: string; landing: QrL
     ...NO_DETAILS, fullName: saved?.name ?? (who && !who.known ? who.name : ""), phone: saved?.phone ?? who?.phone ?? "", email: who?.email ?? "", ...typed,
   };
   const remembered = !!saved && typed.fullName === undefined && typed.phone === undefined;
+  // The number first (owner, 2026-10-05): someone we know is greeted by name and types nothing more about themselves.
+  const lookup = useCallback(async (p: string) => {
+    const r = await identifyCustomerAction({ phone: p });
+    return r.ok ? r.data.name : null;
+  }, []);
+  const guest = usePhoneLookup(d.phone, lookup);
+  const known = guest.step === "known";
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [extrasOpen, setExtrasOpen] = useState(false);
   const change = (patch: Partial<Details>) => {
@@ -172,6 +180,8 @@ function QrFlow({ token, landing, explore, hero }: { token: string; landing: QrL
     });
   };
   const forget = () => { saveGuest(null); setTyped((t) => ({ ...t, fullName: "", phone: "" })); };
+  /** "Not you?" on the greeting: a new guest on this number — and this phone forgets the last one. */
+  const notMe = () => { guest.notMe(); saveGuest(null); setTyped((t) => ({ ...t, fullName: "" })); };
   /** Show the guest what to fix: open the extras when it is there, and bring the first field into view. */
   const showErrors = (e: Record<string, string>) => {
     setErrors(e);
@@ -201,7 +211,7 @@ function QrFlow({ token, landing, explore, hero }: { token: string; landing: QrL
   const book = () => startSending(async () => {
     const stay = flow.stay, room = flow.room;
     if (!stay || !room || !q) return;
-    const e = checkDetails(d);
+    const e = checkDetails(d, { known });
     if (Object.keys(e).length) { showErrors(e); return; }
     if (payWay === "ONLINE" && !payPhoneOk(payNumber)) {
       setPayError("Enter your mobile-money number, e.g. 0712 345 678.");
@@ -216,7 +226,7 @@ function QrFlow({ token, landing, explore, hero }: { token: string; landing: QrL
     if (key.current?.for !== pressed) key.current = { key: newKey(), for: pressed };
     const res = await qrBookAction(token, {
       checkIn: stay.checkIn, checkOut: stay.checkOut, adults: stay.adults, children: stay.children, roomNumber: room,
-      guest: { fullName: d.fullName.trim(), phone: d.phone.trim(), email: d.email.trim() },
+      guest: { fullName: known ? "" : d.fullName.trim(), phone: d.phone.trim(), email: d.email.trim() },
       arrivalTime: d.arrivalTime, specialRequest: d.specialRequest.trim() || null,
       transportRequest: d.pickup ? { flightNumber: d.flightNumber.trim() || null, arrivalTime: d.landingTime, note: d.pickupNote.trim() || "Airport pickup requested." } : null,
       pay: payWay, payPhone: payWay === "ONLINE" ? payNumber.trim() : null,
@@ -239,7 +249,7 @@ function QrFlow({ token, landing, explore, hero }: { token: string; landing: QrL
     key.current = null;
     const b = res.data;
     // Remembered on this phone only, so the next booking here is two taps ("Not you?" forgets it).
-    saveGuest({ name: d.fullName.trim(), phone: d.phone.trim() });
+    saveGuest({ name: known ? guest.knownName! : d.fullName.trim(), phone: d.phone.trim() });
     saveLastBooking({
       qr: token, reference: b.reference, confirmUrl: b.confirmUrl, payUrl: b.payUrl, payWay: b.payWay,
       room, typeName: q.type.name, checkIn: stay.checkIn, checkOut: stay.checkOut, total: q.total,
@@ -307,7 +317,7 @@ function QrFlow({ token, landing, explore, hero }: { token: string; landing: QrL
   } else if (view === "details" && stay && flow.room) {
     content = <BookView shell={shell} stay={stay} number={flow.room} offer={offer} type={roomType} photo={photo}
       state={{ loading: wantQuote, quote: q, error: quoted && !quoted.ok ? { message: quoted.error, taken: quoted.code === "UNAVAILABLE" } : null }}
-      pay={offered} d={d} errors={errors} onChange={change} remembered={remembered} onForget={forget} extrasOpen={extrasOpen} onExtras={setExtrasOpen}
+      pay={offered} d={d} errors={errors} onChange={change} remembered={remembered} onForget={forget} guest={{ step: guest.step, name: guest.knownName, notMe }} extrasOpen={extrasOpen} onExtras={setExtrasOpen}
       way={payWay} onWay={setWay} payPhone={payNumber} samePhone={payPhone === null}
       onPayPhone={(v) => { setPayPhone(v); setPayError(null); setErrors((e) => { const n = { ...e }; delete n.payPhone; return n; }); }} payError={payError}
       trap={trap} onTrap={setTrap} pending={sending} onBook={book} onBack={() => back({ view: "results", room: null })}

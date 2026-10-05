@@ -1,9 +1,9 @@
 "use client";
 
-import { startTransition, useActionState, useEffect, useRef, useState } from "react";
+import { startTransition, useActionState, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
-import { BellRing, Check, ChevronLeft, KeyRound, LoaderCircle, Lock, Pencil, Plane, Send, Smartphone, Wallet } from "lucide-react";
+import { BellRing, Check, ChevronLeft, KeyRound, LoaderCircle, Lock, Pencil, Phone, Plane, Send, Smartphone, Wallet } from "lucide-react";
 import type { ActionResult } from "@/server/errors";
 import { formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -13,6 +13,8 @@ import fx from "../room-fx.module.css";
 import { BookingProgress } from "./progress";
 import { Notice, guestsLabel } from "./parts";
 import { NetworkMarks } from "@/components/payments/networks";
+import { identifyCustomerAction } from "@/app/order/actions";
+import { usePhoneLookup, useWho } from "@/components/restaurant/who";
 
 /** Structural copy of the review payload returned by reviewBookingAction. */
 export interface ReviewData {
@@ -100,6 +102,19 @@ export function GuestStep({
     passengers: String(selection.adults + selection.children), pickupNotes: "",
   });
   const [wantPickup, setWantPickup] = useState(false);
+  // The number first (owner, 2026-10-05): this device's last number (from a booking or an order here) is filled in, and
+  // someone we know is greeted by name — they type nothing more about themselves.
+  const [device, setDevice] = useWho();
+  const [phoneIn, setPhone] = useState<string | null>(null);
+  const phone = phoneIn ?? (values.phone || device?.phone || "");
+  const lookup = useCallback(async (p: string) => {
+    const r = await identifyCustomerAction({ phone: p });
+    return r.ok ? r.data.name : null;
+  }, []);
+  const guest = usePhoneLookup(phone, lookup);
+  const ready = guest.step === "known" || guest.step === "new";
+  // The name shown back on the review: typed, or the greeting's for a known guest (who sends no name).
+  const [knownAs, setKnownAs] = useState<string | null>(null);
   const [reviewState, runReview, reviewing] = useActionState(reviewAction, undefined);
   // The review step shows once the server has priced the stay, until the guest chooses to edit.
   const [editedAfter, setEditedAfter] = useState<typeof reviewState>(undefined);
@@ -145,6 +160,11 @@ export function GuestStep({
       const raw = fd.get(k);
       if (raw !== null) v[k] = String(raw);
     }
+    if (guest.step === "known") v.fullName = "";
+    setKnownAs(guest.step === "known" ? guest.knownName : null);
+    // Remembered on this device for next time (the website menu and bookings share it).
+    if (guest.step === "known") setDevice({ name: guest.knownName!, phone: v.phone.trim(), email: v.email || device?.email, known: true, address: device?.address });
+    else if (v.fullName.trim().length >= 2) setDevice({ name: v.fullName.trim(), phone: v.phone.trim(), email: v.email || undefined, known: false, address: device?.address });
     setValues(v);
     startTransition(() => runReview(buildFormData(v)));
   }
@@ -189,7 +209,7 @@ export function GuestStep({
             className="mt-8 lg:mt-10"
           >
             <h2 id="details-title" ref={headingRef} tabIndex={-1} className={headingCls}>Your details &amp; arrival</h2>
-            <p className={cn(typeScale.small, "mt-2 max-w-[34rem] text-pub-muted")}>Our reservations team uses these details to contact you and confirm your room.</p>
+            <p className={cn(typeScale.small, "mt-2 max-w-[34rem] text-pub-muted")}>Start with your number — if you have stayed or ordered with us before, we already know you.</p>
 
             {reviewState && !reviewState.ok && (
               <Notice className="mt-6">
@@ -204,26 +224,51 @@ export function GuestStep({
 
               <p className={groupCls}>01<span aria-hidden="true" className="h-px w-6 bg-current opacity-60" />Guest<span aria-hidden="true" className="h-px flex-1 bg-pub-line" /></p>
               <div className="sm:col-span-2">
-                <label htmlFor="fullName" className={field.label}>Full name <span aria-hidden="true">*</span></label>
-                <input id="fullName" name="fullName" required autoComplete="name" defaultValue={values.fullName} {...invalid("fullName")} className={field.input} />
-                {errorOf("fullName")}
-              </div>
-              <div>
                 <label htmlFor="phone" className={field.label}>Phone / WhatsApp <span aria-hidden="true">*</span></label>
-                <input id="phone" name="phone" type="tel" required autoComplete="tel" inputMode="tel" placeholder="+255 7XX XXX XXX" defaultValue={values.phone} {...invalid("phone")} className={field.input} />
+                <span className="relative block">
+                  <Phone className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-pub-faint" aria-hidden="true" />
+                  <input id="phone" name="phone" type="tel" required autoComplete="tel" inputMode="tel" placeholder="0712 345 678" value={phone}
+                    onChange={(e) => setPhone(e.target.value)} {...invalid("phone")} aria-describedby="phone-help" className={cn(field.input, "pl-11 pr-11 tabular-nums")} />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2">
+                    {guest.step === "checking" ? <LoaderCircle className="size-4 animate-spin text-pub-faint" aria-hidden="true" />
+                      : ready ? <span className="grid size-5 place-items-center rounded-full bg-gold text-[#16110a]"><Check className="size-3" strokeWidth={3} aria-hidden="true" /></span> : null}
+                  </span>
+                </span>
+                {guest.step === "phone" && <p id="phone-help" className={field.hint}>e.g. 0712 345 678, or +44 7700 900123 from abroad.</p>}
                 {errorOf("phone")}
               </div>
-              <div>
-                <label htmlFor="email" className={field.label}>Email <span className="normal-case tracking-normal text-pub-muted">(recommended)</span></label>
-                <input id="email" name="email" type="email" autoComplete="email" defaultValue={values.email} {...invalid("email")} className={field.input} />
-                {errorOf("email")}
-              </div>
-              <div className="sm:col-span-2">
-                <label htmlFor="nationality" className={field.label}>Nationality {optional}</label>
-                <input id="nationality" name="nationality" autoComplete="country-name" defaultValue={values.nationality} {...invalid("nationality")} className={field.input} />
-                {errorOf("nationality")}
-              </div>
 
+              {guest.step === "known" && (
+                <div className="flex items-center gap-3 rounded-[0.75rem] border border-pub-line bg-pub-fg/[0.03] p-3 sm:col-span-2" role="status">
+                  <span className="grid size-11 shrink-0 place-items-center rounded-full bg-[#15120e] font-display text-lg text-gold">{guest.knownName!.charAt(0).toUpperCase()}</span>
+                  <span className="min-w-0 flex-1 leading-tight"><span className="block text-sm text-pub-muted">Welcome back</span><span className="block truncate font-medium">{guest.knownName}</span></span>
+                  <button type="button" onClick={guest.notMe} className="min-h-11 shrink-0 px-1 text-sm font-medium underline decoration-pub-line underline-offset-4 hover:decoration-gold">Not you?</button>
+                  {/* A known guest sends no name: the server uses the one it has for this number. */}
+                  <input type="hidden" name="fullName" value="" />
+                </div>
+              )}
+              {guest.step === "new" && (
+                <>
+                  <div className="sm:col-span-2">
+                    <label htmlFor="fullName" className={field.label}>Full name <span aria-hidden="true">*</span></label>
+                    <input id="fullName" name="fullName" required autoComplete="name" autoCapitalize="words"
+                      defaultValue={values.fullName || (device && !device.known && device.phone === phone ? device.name : "")} {...invalid("fullName")} className={field.input} />
+                    {errorOf("fullName")}
+                  </div>
+                  <div>
+                    <label htmlFor="email" className={field.label}>Email <span className="normal-case tracking-normal text-pub-muted">(recommended)</span></label>
+                    <input id="email" name="email" type="email" autoComplete="email" defaultValue={values.email || (device?.phone === phone ? device.email ?? "" : "")} {...invalid("email")} className={field.input} />
+                    {errorOf("email")}
+                  </div>
+                  <div>
+                    <label htmlFor="nationality" className={field.label}>Nationality {optional}</label>
+                    <input id="nationality" name="nationality" autoComplete="country-name" defaultValue={values.nationality} {...invalid("nationality")} className={field.input} />
+                    {errorOf("nationality")}
+                  </div>
+                </>
+              )}
+
+              {ready && (<>
               <p className={cn(groupCls, "mt-4")}>02<span aria-hidden="true" className="h-px w-6 bg-current opacity-60" />Arrival<span aria-hidden="true" className="h-px flex-1 bg-pub-line" /></p>
               <div>
                 <label htmlFor="expectedArrivalTime" className={field.label}>Expected arrival time <span aria-hidden="true">*</span></label>
@@ -302,6 +347,7 @@ export function GuestStep({
                   </div>
                 )}
               </fieldset>
+              </>)}
               {/* Honeypot — hidden from people and assistive tech. */}
               <div className="absolute -left-[9999px] h-px w-px overflow-hidden" aria-hidden="true">
                 <label htmlFor="company">Company</label>
@@ -314,7 +360,7 @@ export function GuestStep({
                 >
                   <ChevronLeft className="size-4" strokeWidth={1.6} aria-hidden="true" /> Back to rooms
                 </Link>
-                <Button type="submit" disabled={reviewing} icon={reviewing ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : "arrow"} className="w-full sm:w-auto sm:min-w-60">
+                <Button type="submit" disabled={reviewing || !ready} icon={reviewing ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : "arrow"} className="w-full sm:w-auto sm:min-w-60">
                   {reviewing ? "Checking…" : online ? "Review booking" : "Review request"}
                 </Button>
               </div>
@@ -360,7 +406,7 @@ export function GuestStep({
                     {review.nights} night{review.nights === 1 ? "" : "s"} · {guestsLabel(review.adults, review.children)}
                   </ReviewRow>
                   <ReviewRow term="Guest" action={<EditButton onClick={editDetails} />}>
-                    <span className="font-medium">{values.fullName}</span>
+                    <span className="font-medium">{values.fullName || knownAs}</span>
                     <span className="block text-pub-muted">{values.phone}{values.email && ` · ${values.email}`}</span>
                     {values.nationality && <span className="block text-pub-muted">{values.nationality}</span>}
                     <span className="block text-pub-muted">Expected arrival {values.expectedArrivalTime}</span>

@@ -1,11 +1,13 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useCallback, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarCheck, CircleCheck, CircleX, LoaderCircle, Lock, Search, Send, Smartphone, Wallet } from "lucide-react";
+import { CalendarCheck, Check, CircleCheck, CircleX, LoaderCircle, Lock, Search, Send, Smartphone, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { bookMeetingAction, checkMeetingAction, payMeetingAction, type MeetingCheck, type MeetingReceipt } from "@/app/(public)/meeting-room/actions";
 import { NetworkMarks } from "@/components/payments/networks";
+import { identifyCustomerAction } from "@/app/order/actions";
+import { usePhoneLookup, useWho } from "@/components/restaurant/who";
 import { Button, Eyebrow, HOTEL_COORDS, HudLabel, InfoList, LinkButton, PriceTag, field, typeScale } from "./kit";
 import { ChoiceRow } from "./services/choice-row";
 import { Field, StepLegend } from "./services/form-field";
@@ -36,6 +38,18 @@ export function MeetingBooking({ today, price, capacity, online = false, name = 
   const router = useRouter();
   const [when, setWhen] = useState({ date: "", start: "09:00", end: "13:00", attendees: "10" });
   const [f, setF] = useState({ fullName: "", companyName: "", phone: "", email: "", requirements: "", notes: "", website: "" });
+  // The number first (owner, 2026-10-05): this device's last number is filled in; someone we know is greeted by name.
+  const [device] = useWho();
+  const [phoneTyped, setPhoneTyped] = useState(false);
+  const phone = phoneTyped ? f.phone : f.phone || device?.phone || "";
+  const lookup = useCallback(async (p: string) => {
+    const r = await identifyCustomerAction({ phone: p });
+    return r.ok ? r.data.name : null;
+  }, []);
+  const guest = usePhoneLookup(phone, lookup);
+  const known = guest.step === "known";
+  /** What is sent: the number shown, and no name for a known guest (the server uses the one it has). */
+  const sent = { ...f, phone, fullName: known ? "" : f.fullName };
   const [check, setCheck] = useState<(MeetingCheck & { for: string }) | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -66,7 +80,7 @@ export function MeetingBooking({ today, price, capacity, online = false, name = 
   function book() {
     setFormError(null);
     startBook(async () => {
-      const res = await bookMeetingAction({ ...when, attendees: Number(when.attendees), ...f });
+      const res = await bookMeetingAction({ ...when, attendees: Number(when.attendees), ...sent });
       if (res.ok) setDone(res.data);
       else {
         setErrors(res.fieldErrors ?? {});
@@ -76,13 +90,13 @@ export function MeetingBooking({ today, price, capacity, online = false, name = 
     });
   }
 
-  const number = payPhone ?? f.phone;
+  const number = payPhone ?? phone;
   function payOnline() {
     setFormError(null);
     if (!payPhoneOk(number)) { setErrors({ payPhone: "Enter your mobile-money number, e.g. 0712 345 678." }); return; }
     payKey.current ||= newKey();
     startPay(async () => {
-      const res = await payMeetingAction({ ...when, attendees: Number(when.attendees), ...f, payPhone: number.trim(), clientKey: payKey.current });
+      const res = await payMeetingAction({ ...when, attendees: Number(when.attendees), ...sent, payPhone: number.trim(), clientKey: payKey.current });
       if (res.ok) { router.push(res.data.next); return; }
       payKey.current = ""; // the next press is a new booking attempt
       setErrors(res.fieldErrors ?? {});
@@ -211,14 +225,30 @@ export function MeetingBooking({ today, price, capacity, online = false, name = 
               <fieldset className="border-t border-pub-line pt-8">
                 <StepLegend step={2}>Your details</StepLegend>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="Full name" required error={errors.fullName}>
-                    <input className={field.input} value={f.fullName} onChange={set("fullName")} autoComplete="name" aria-invalid={!!errors.fullName} aria-required="true" />
+                  <Field label="Phone" required error={errors.phone}>
+                    <span className="relative block">
+                      <input className={cn(field.input, "pr-11 tabular-nums")} value={phone} onChange={(e) => { setPhoneTyped(true); setF((x) => ({ ...x, phone: e.target.value })); }} inputMode="tel" autoComplete="tel" placeholder="0712 345 678" aria-invalid={!!errors.phone} aria-required="true" />
+                      <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2">
+                        {guest.step === "checking" ? <LoaderCircle className="size-4 animate-spin text-pub-faint" aria-hidden="true" />
+                          : guest.step === "known" || guest.step === "new" ? <span className="grid size-5 place-items-center rounded-full bg-gold text-[#16110a]"><Check className="size-3" strokeWidth={3} aria-hidden="true" /></span> : null}
+                      </span>
+                    </span>
                   </Field>
+                  {known ? (
+                    <div role="status" className="flex items-center gap-3 self-end rounded-[0.75rem] border border-pub-line bg-pub-fg/[0.03] p-3">
+                      <span className="grid size-10 shrink-0 place-items-center rounded-full bg-[#15120e] font-display text-lg text-gold">{guest.knownName!.charAt(0).toUpperCase()}</span>
+                      <span className="min-w-0 flex-1 leading-tight"><span className="block text-sm text-pub-muted">Welcome back</span><span className="block truncate font-medium">{guest.knownName}</span></span>
+                      <button type="button" onClick={guest.notMe} className="min-h-11 shrink-0 px-1 text-sm font-medium underline decoration-pub-line underline-offset-4 hover:decoration-gold">Not you?</button>
+                    </div>
+                  ) : guest.step === "new" ? (
+                    <Field label="Full name" required error={errors.fullName}>
+                      <input className={field.input} value={f.fullName} onChange={set("fullName")} autoComplete="name" aria-invalid={!!errors.fullName} aria-required="true" />
+                    </Field>
+                  ) : (
+                    <p className="self-center text-[13px] leading-snug text-pub-muted">Your number first — if you have stayed or ordered with us before, we already know you.</p>
+                  )}
                   <Field label="Company" error={errors.companyName}>
                     <input className={field.input} value={f.companyName} onChange={set("companyName")} autoComplete="organization" placeholder="Optional" />
-                  </Field>
-                  <Field label="Phone" required error={errors.phone}>
-                    <input className={field.input} value={f.phone} onChange={set("phone")} inputMode="tel" autoComplete="tel" placeholder="+255 …" aria-invalid={!!errors.phone} aria-required="true" />
                   </Field>
                   <Field label="Email" error={errors.email}>
                     <input className={field.input} type="email" value={f.email} onChange={set("email")} autoComplete="email" placeholder="Optional" aria-invalid={!!errors.email} />

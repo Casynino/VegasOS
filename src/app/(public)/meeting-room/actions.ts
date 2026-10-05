@@ -1,5 +1,6 @@
 "use server";
 
+import { orderCustomerName } from "@/server/services/online-orders";
 import { z } from "zod";
 import { requestMeta } from "@/server/auth";
 import { AppError, runAction, type ActionResult } from "@/server/errors";
@@ -27,7 +28,8 @@ export async function checkMeetingAction(input: z.input<typeof when>): Promise<A
 
 const booking = when.extend({
   attendees: z.coerce.number().int().min(1, "At least 1 person.").max(500),
-  fullName: z.string().trim().min(2, "Please enter your full name.").max(120),
+  /** Blank for a returning guest (found by their phone): the name we have is used. */
+  fullName: z.union([z.literal(""), z.string().trim().min(2, "Please enter your full name.").max(120)]).optional(),
   companyName: z.string().trim().max(120).optional(),
   phone: z.string().trim().regex(/^\+?[\d\s().-]{7,}$/, "Enter a phone number we can call or WhatsApp."),
   email: z.union([z.literal(""), z.email("Enter a valid email address.").max(160)]).optional(),
@@ -44,7 +46,8 @@ export async function bookMeetingAction(input: z.input<typeof booking>): Promise
     const { ipAddress } = await requestMeta();
     if (input.website) throw new AppError("Please try again.");
     await rateLimit(`web-meeting-book:${ipAddress ?? "unknown"}`, 6, 600);
-    const d = parseInput(booking, input);
+    const p = parseInput(booking, input);
+    const d = { ...p, fullName: await orderCustomerName(p.fullName, p.phone, { field: "fullName", max: 120 }) };
     const r = await submitMeetingRequest({ ...d, email: d.email || null, companyName: d.companyName || null }, ipAddress);
     return { reference: r.reference, manageToken: r.manageToken, name: d.fullName.split(/\s+/)[0], date: r.date, time: r.time, price: r.price, room: r.name };
   });
@@ -61,7 +64,8 @@ export async function payMeetingAction(input: z.input<typeof payOnline>): Promis
     const { ipAddress } = await requestMeta();
     if (input.website) throw new AppError("Please try again.");
     await rateLimit(`web-meeting-book:${ipAddress ?? "unknown"}`, 6, 600);
-    const d = parseInput(payOnline, input);
+    const p = parseInput(payOnline, input);
+    const d = { ...p, fullName: await orderCustomerName(p.fullName, p.phone, { field: "fullName", max: 120 }) };
     const r = await bookAndPayOnline({
       service: "meeting", phone: d.payPhone, clientKey: d.clientKey, ip: ipAddress,
       create: () => createWebsiteMeetingBooking({ ...d, email: d.email || null, companyName: d.companyName || null }, ipAddress, { holdMinutes: ONLINE_BOOKING_HOLD_MINUTES }),

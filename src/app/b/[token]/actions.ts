@@ -1,5 +1,6 @@
 "use server";
 
+import { orderCustomerName } from "@/server/services/online-orders";
 import { z } from "zod";
 import { getCurrentUser, requestMeta } from "@/server/auth";
 import { AppError, runAction, type ActionResult } from "@/server/errors";
@@ -33,7 +34,8 @@ const Time = z.union([z.literal(""), z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$
 const Book = Stay.extend({
   roomNumber: RoomNumber,
   guest: z.object({
-    fullName: z.string().trim().min(2, "Please enter your full name.").max(80),
+    /** Blank for a returning guest (found by their phone): the name we have is used. */
+    fullName: z.union([z.literal(""), z.string().trim().min(2, "Please enter your full name.").max(80)]),
     phone: z.string().trim().min(7, "Please enter your phone number.").max(30),
     email: z.union([z.literal(""), z.email("Enter a valid email.").max(160)]).nullish(),
   }),
@@ -98,7 +100,7 @@ export async function qrBookAction(token: string, input: z.input<typeof Book>): 
     const v = await visitOf(d.visitor);
     return qrBook(t, {
       checkIn: d.checkIn, checkOut: d.checkOut, adults: d.adults, children: d.children, roomNumber: d.roomNumber,
-      guest: { fullName: d.guest.fullName, phone: d.guest.phone, email: d.guest.email || null },
+      guest: { fullName: await orderCustomerName(d.guest.fullName, d.guest.phone, { field: "fullName" }), phone: d.guest.phone, email: d.guest.email || null },
       arrivalTime: d.arrivalTime || null, specialRequest: d.specialRequest || null,
       transportRequest: d.transportRequest ? { flightNumber: d.transportRequest.flightNumber || null, arrivalTime: d.transportRequest.arrivalTime || null, note: d.transportRequest.note || null } : null,
       pay: d.pay, payPhone: d.payPhone || null, clientKey: d.clientKey,

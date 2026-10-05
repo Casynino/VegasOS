@@ -95,3 +95,26 @@ export function useWhoForm(initial: Who | null, lookup: (phone: string) => Promi
     name, setName, step, knownName, notMe: () => setNotMe(true), result,
   };
 }
+
+/**
+ * A booking form's phone, looked up once it is a real number (owner, 2026-10-05: "my number should already be in — get
+ * the number first, like the restaurant"): someone we know is greeted by name (first name and initials only) and sends
+ * no name — the server uses the one it has; someone new types theirs. `notMe` turns a greeting back into a new guest.
+ */
+export function usePhoneLookup(phone: string, lookup: (phone: string) => Promise<string | null>) {
+  const ok = validPhone(phone);
+  const [found, setFound] = useState<{ phone: string; name: string | null } | null>(null);
+  const [notMeFor, setNotMeFor] = useState<string | null>(null);
+  useEffect(() => {
+    if (!ok || found?.phone === phone) return;
+    let live = true;
+    const t = setTimeout(() => {
+      lookup(phone).catch(() => null).then((n) => { if (live) setFound({ phone, name: n }); });
+    }, 350);
+    return () => { live = false; clearTimeout(t); };
+  }, [ok, phone, found?.phone, lookup]);
+  const checked = ok && found?.phone === phone;
+  const knownName = checked && notMeFor !== phone ? found.name : null;
+  const step: "phone" | "checking" | "known" | "new" = !ok ? "phone" : !checked ? "checking" : knownName ? "known" : "new";
+  return { step, knownName, notMe: () => setNotMeFor(phone) };
+}

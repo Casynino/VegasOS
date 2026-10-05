@@ -9,6 +9,7 @@ import { createWebsiteBooking, quoteSelection, type Selection } from "@/server/s
 import { bookAndPayOnline, ONLINE_BOOKING_HOLD_MINUTES } from "@/server/services/online-pay";
 import { DEFAULT_AIRPORT } from "@/server/services/transport";
 import { notifyBookingGuestSoon } from "@/server/services/guest-comms";
+import { orderCustomerName } from "@/server/services/online-orders";
 import { formatBusinessDate } from "@/lib/format";
 import { bookingSchema, type BookingInput } from "./schema";
 
@@ -40,10 +41,11 @@ function pickupOf(v: BookingInput) {
     : null;
 }
 
-function parse(formData: FormData): BookingInput {
+/** The form, checked — with the guest's name: typed, or (a returning guest who gave only their number) the one we have. */
+async function parse(formData: FormData): Promise<BookingInput & { fullName: string }> {
   const v = parseInput(bookingSchema, formData);
   if (v.company) throw new AppError("We couldn’t process this request. Please call us to book.", "VALIDATION");
-  return v;
+  return { ...v, fullName: await orderCustomerName(v.fullName, v.phone, { field: "fullName", max: 120 }) };
 }
 
 /** Step 3 → 4: validate guest details and re-price the stay from live data. */
@@ -51,7 +53,7 @@ export async function reviewBookingAction(_prev: ActionResult<BookingReview> | u
   return runAction(async () => {
     const { ipAddress } = await requestMeta();
     await rateLimit(`web-review:${ipAddress ?? "unknown"}`, 30, 600);
-    const v = parse(formData);
+    const v = await parse(formData);
     const q = await quoteSelection(toSelection(v));
     return {
       typeName: q.type.name,
@@ -92,7 +94,7 @@ export async function confirmBookingAction(_prev: ActionResult<null> | undefined
   const result = await runAction(async () => {
     const { ipAddress } = await requestMeta();
     await rateLimit(`web-book:${ipAddress ?? "unknown"}`, 5, 600);
-    const v = parse(formData);
+    const v = await parse(formData);
     // A booking that holds nothing still lands with reception: a number can make only a few a day (anti-spam).
     const digits = v.phone.replace(/\D/g, "").slice(-9) || "unknown";
     try { await rateLimit(`web-pay-later:${digits}`, 5, 86_400); } catch (e) {
@@ -122,7 +124,7 @@ export async function payAndBookAction(_prev: ActionResult<null> | undefined, fo
   const result = await runAction(async () => {
     const { ipAddress } = await requestMeta();
     await rateLimit(`web-book:${ipAddress ?? "unknown"}`, 5, 600);
-    const v = parse(formData);
+    const v = await parse(formData);
     const payPhone = String(formData.get("payPhone") ?? "").trim().slice(0, 30);
     const clientKey = String(formData.get("clientKey") ?? "");
     if (!/^[a-f0-9]{32}$/.test(clientKey)) throw new AppError("Please try again.", "VALIDATION");

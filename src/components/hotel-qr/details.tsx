@@ -16,9 +16,9 @@ export const NO_DETAILS: Details = { fullName: "", phone: "", email: "", arrival
 
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 /** The same checks the server makes (it checks again) — so the guest sees them at once, next to the field. */
-export function checkDetails(d: Details): Record<string, string> {
+export function checkDetails(d: Details, opts: { known?: boolean } = {}): Record<string, string> {
   const e: Record<string, string> = {};
-  if (d.fullName.trim().replace(/\s+/g, " ").length < 2) e.fullName = "Please enter your full name.";
+  if (!opts.known && d.fullName.trim().replace(/\s+/g, " ").length < 2) e.fullName = "Please enter your full name.";
   if (!validPhone(d.phone)) e.phone = "Please enter a phone number we can reach you on (e.g. 0712 345 678).";
   const email = d.email.trim();
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) e.email = "Please check your email address.";

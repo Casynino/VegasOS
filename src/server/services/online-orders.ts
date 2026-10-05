@@ -41,11 +41,14 @@ export async function identifyCustomer(phone: string) {
   return { name: name ? shortName(name) : null };
 }
 
-/** The name on the order: what the customer typed, or — for a returning customer who did not — the name we have for their phone. */
-export async function orderCustomerName(typed: string | null | undefined, phone: string) {
+/**
+ * The name on the order (or booking): what the customer typed, or — for a returning customer who did not — the name we
+ * have for their phone. `field`: the form field the "enter your name" error belongs to.
+ */
+export async function orderCustomerName(typed: string | null | undefined, phone: string, opts: { field?: string; max?: number } = {}) {
   const name = typed?.trim() || (await knownCustomerName(phone)) || "";
-  if (name.length < 2) throw new AppError("Please enter your name.", "VALIDATION", { name: "Required" });
-  return name.slice(0, 80);
+  if (name.length < 2) throw new AppError("Please enter your name.", "VALIDATION", { [opts.field ?? "name"]: "Required" });
+  return name.slice(0, opts.max ?? 80);
 }
 
 // ───────────────────────── Take out: paid first ─────────────────────────
