@@ -193,10 +193,11 @@ export function CinematicHero({
         <span className="pub-hero-scan" />
       </div>
 
-      {/* Phones and tablets: one live readout under the header — local time and the temperature at the hotel. */}
+      {/* Phones and tablets: one live readout under the header — local time and the temperature at the hotel, as plain
+          text (owner, 2026-10-05: no box around it). */}
       {hud && (
         <div className={cn(containers.wide, "relative pt-[calc(var(--pub-header-h)+0.75rem)] sm:pt-[calc(var(--pub-header-h)+2rem)] lg:hidden")}>
-          <p className="pub-glass inline-flex max-w-full items-center rounded-full px-3.5 py-2.5">
+          <p className="inline-flex max-w-full items-center [text-shadow:0_1px_8px_rgba(0,0,0,0.6)]">
             <HudLabel live className="text-white/80">
               <span className="sr-only">Local time in </span>
               {hud.place}
