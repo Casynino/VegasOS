@@ -18,6 +18,7 @@ import { checkDetails, EXTRA_FIELDS, NO_DETAILS, type Details } from "./details"
 import { BookedView, type PayWay } from "./pay";
 import { TypeSheet } from "./type-sheet";
 import { PhotoViewerProvider } from "./viewer";
+import type { QrHero } from "./hero";
 import {
   dayWeek, defaultStay, flowUrl, guestsText, historyDepth, newKey, nightsOf, nightsText, parseLastBooking, parseSavedGuest, payPhoneOk, readFlow,
   readLastBooking, readSavedGuest, saveGuest, saveLastBooking, stayFor, stayKey, subscribeLastBooking, subscribeSavedGuest, tzs, visitorId,
@@ -41,15 +42,15 @@ const DETAIL_FIELDS = ["fullName", "phone", "email", "arrivalTime", "transportTi
  * place; a room's sheet and the photo viewer close with Back too. Everything is asked of the server (rooms free,
  * prices, the booking, the payment) through the QR's actions — nothing the page holds is trusted.
  */
-export function HotelQrApp({ token, landing, explore }: { token: string; landing: QrLanding; explore: QrExplore }) {
+export function HotelQrApp({ token, landing, explore, hero }: { token: string; landing: QrLanding; explore: QrExplore; hero: QrHero }) {
   return (
     <PhotoViewerProvider>
-      <QrFlow token={token} landing={landing} explore={explore} />
+      <QrFlow token={token} landing={landing} explore={explore} hero={hero} />
     </PhotoViewerProvider>
   );
 }
 
-function QrFlow({ token, landing, explore }: { token: string; landing: QrLanding; explore: QrExplore }) {
+function QrFlow({ token, landing, explore, hero }: { token: string; landing: QrLanding; explore: QrExplore; hero: QrHero }) {
   const base = `/b/${token}`;
   const router = useRouter();
   const sp = useSearchParams();
@@ -316,7 +317,7 @@ function QrFlow({ token, landing, explore }: { token: string; landing: QrLanding
   } else if (step === "booked" && !running) {
     content = <div className="min-h-svh" aria-busy="true" />;
   } else {
-    content = <Landing landing={landing} explore={explore} imagesOf={imagesOf} last={last} stay={barStay}
+    content = <Landing landing={landing} explore={explore} hero={hero} imagesOf={imagesOf} last={last} stay={barStay}
       onDates={openSheet} onSee={() => go({ view: "results", stay: barStay, roomType: null, room: null })}
       onBookType={(t) => bookType(t)} onTypeDetails={(t) => openType(t.slug, "home")} />;
   }

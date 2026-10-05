@@ -64,11 +64,9 @@ export function SiteHeader({ settings }: { settings: HotelSettings }) {
 
         <div className="flex items-center justify-end gap-1.5 min-[360px]:gap-2 sm:gap-3">
           <ThemeToggle compact className="hidden xl:inline-grid" />
-          {/* Clean, no shapes around them (owner, 2026-10-05): plain words and a plain lock. */}
-          <StaffLink withIcon labels={{ signedIn: "Dashboard", signedOut: "Staff login" }}
-            className="hidden h-10 whitespace-nowrap rounded-sm px-1 text-[13px] font-medium text-white/85 transition-colors duration-200 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold lg:inline-flex motion-reduce:transition-none" />
+          {/* Staff login is just the plain lock, on every screen (owner, 2026-10-05: "just icon, no words", no shape). */}
           <StaffLink iconOnly labels={{ signedIn: "Staff dashboard", signedOut: "Staff login" }}
-            className="h-10 w-9 justify-center rounded-sm text-white/90 transition-colors duration-200 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold lg:hidden motion-reduce:transition-none [&_svg]:size-[19px]" />
+            className="h-10 w-9 justify-center rounded-sm text-white/90 transition-colors duration-200 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none [&_svg]:size-[19px]" />
           <Link href="/book" aria-label="Book your stay"
             className="inline-flex h-10 items-center gap-1 whitespace-nowrap rounded-sm px-1 text-[14px] font-semibold text-gold transition-colors duration-200 hover:text-[#f0d6a0] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none">
             <span className="sm:hidden">Book</span>

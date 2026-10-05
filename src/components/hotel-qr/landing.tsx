@@ -10,7 +10,10 @@ import { NetworkMarks } from "@/components/payments/networks";
 import type { QrLanding, QrRoomType } from "@/server/services/hotel-qr";
 import type { ExplorePhoto, QrExplore } from "@/server/services/hotel-qr-explore";
 import { BrandMark, card, darkButton, lightButton, Photo, Rail, Reveal, SectionHead } from "./ui";
-import { BookingBar, Opening } from "./hero";
+import { Opening, type QrHero } from "./hero";
+import { Accent, Actions, buttonClass, containers, Display, Eyebrow, HudLabel, TextLink, typeScale } from "@/components/public/kit";
+import { LocalTime } from "@/components/public/cinema/local-time";
+import heroCss from "@/components/public/home/home.module.css";
 import { usePhotoViewer, type ViewPhoto } from "./viewer";
 import { datesText, dayShort, holdsText, telHref, tzs, waHref, type LastBooking, type StayQuery } from "./lib";
 
@@ -22,8 +25,8 @@ const asView = (p: ExplorePhoto): ViewPhoto => ({ src: p.src, alt: p.alt, label:
  * photos and tonight's price, the hotel, food & drinks from the restaurant's own menu, the meeting room, what is good
  * to know and how to find us. Few words, many photos; every photo opens big.
  */
-export function Landing({ landing, explore, imagesOf, last, stay, onDates, onSee, onBookType, onTypeDetails }: {
-  landing: QrLanding; explore: QrExplore; imagesOf: (t: { images: string[] }) => string[]; last: LastBooking | null;
+export function Landing({ landing, explore, hero, imagesOf, last, stay, onDates, onSee, onBookType, onTypeDetails }: {
+  landing: QrLanding; explore: QrExplore; hero: QrHero; imagesOf: (t: { images: string[] }) => string[]; last: LastBooking | null;
   /** The stay the booking bar shows (tonight → tomorrow until the guest changes it). */
   stay: StayQuery;
   onDates: () => void; onSee: () => void; onBookType: (t: QrRoomType) => void; onTypeDetails: (t: QrRoomType) => void;
@@ -31,9 +34,9 @@ export function Landing({ landing, explore, imagesOf, last, stay, onDates, onSee
   const { hotel, roomTypes, booking } = landing;
   const from = roomTypes.length ? Math.min(...roomTypes.map((t) => t.fromPerNight)) : null;
   const closed = booking.open ? null : booking.message ?? "Booking here is not available right now — please ask reception or call us.";
-  const slides = explore.opening.length ? explore.opening : [{ label: hotel.name, tall: { ...hotel.hero, label: hotel.name, width: 1600, height: 1067 }, wide: { ...hotel.hero, label: hotel.name, width: 1600, height: 1067 } }];
   const has = (word: RegExp) => hotel.highlights.some((h) => word.test(h));
 
+  const freeTonight = roomTypes.some((t) => t.freeTonight > 0);
   // Phones: once the booking bar scrolls away, "See rooms" waits at the bottom.
   const bar = useRef<HTMLDivElement>(null);
   const [floating, setFloating] = useState(false);
@@ -45,16 +48,42 @@ export function Landing({ landing, explore, imagesOf, last, stay, onDates, onSee
     return () => io.disconnect();
   }, []);
 
-  const line = [from !== null ? `Rooms from ${tzs(from)} a night` : null, has(/breakfast/i) ? "breakfast included" : null].filter(Boolean).join(" · ");
   return (
     <div className="pb-[calc(6rem+env(safe-area-inset-bottom))] lg:pb-0">
-      <Opening slides={slides} hotel={hotel}>
-        <h1 className="mt-3 font-display text-[40px] font-semibold leading-[0.98] tracking-tight sm:text-[48px] lg:mt-5 lg:max-w-2xl lg:text-[76px]">
-          Your stay <span className="text-(--vr-gold)">starts here.</span>
-        </h1>
-        {line && <p className="mt-2.5 text-[13.5px] text-white/70 lg:mt-4 lg:text-[16px]">{line}</p>}
-        <div ref={bar} className="mt-5 lg:mt-8 lg:max-w-4xl">
-          <BookingBar stay={stay} onDates={onDates} onSee={onSee} closed={closed} phone={hotel.phone} />
+      <Opening hero={hero} hotel={hotel} onBook={closed ? null : onDates}>
+        <div className={cn(containers.wide, "flex flex-1 flex-col justify-end pb-[calc(2.75rem+env(safe-area-inset-bottom))] pt-8 sm:pb-16 lg:pb-14 lg:pt-[calc(var(--pub-header-h)+3rem)]")}>
+          <div className="lg:flex lg:items-end lg:justify-between lg:gap-12">
+            <div className="max-w-3xl">
+              <Eyebrow rule className="whitespace-nowrap max-[359px]:text-[10px] max-[359px]:tracking-[0.16em] max-[359px]:before:hidden">{hero.eyebrow}</Eyebrow>
+              <Display id="qr-hero-title" className={cn("mt-5 sm:mt-6", heroCss.sheen)}>{hotel.name}</Display>
+              <p className={cn(typeScale.subheading, "mt-4 text-pub-fg")}>{hero.title} <Accent>{hero.accent}</Accent></p>
+              {closed ? (
+                <p className="mt-6 max-w-md text-[14px] leading-relaxed text-pub-muted">
+                  {closed}{hotel.phone && <> <a href={telHref(hotel.phone)} className="font-semibold text-pub-fg underline underline-offset-4">Call {hotel.phone}</a></>}
+                </p>
+              ) : (
+                <div ref={bar}>
+                  <Actions className="mt-8">
+                    <button type="button" onClick={onDates} className={buttonClass({ size: "md" })}>Check availability</button>
+                    <TextLink href="#rooms" icon="arrow">Explore rooms</TextLink>
+                  </Actions>
+                </div>
+              )}
+              {!closed && from !== null && freeTonight && (
+                <HudLabel as="p" live className="mt-6 text-pub-muted lg:mt-5">
+                  Tonight from <span className="ml-1 text-pub-fg">{tzs(from)}</span>
+                </HudLabel>
+              )}
+            </div>
+
+            {/* Computers: the hotel's local time and weather, as on the website. */}
+            <div className="hidden shrink-0 flex-col items-end gap-3 pb-1 text-right lg:flex">
+              <HudLabel live className="text-white/75">Local time · {hero.place}</HudLabel>
+              <LocalTime initial={hero.initialTime} className="block font-display text-[3.25rem] leading-none text-pub-fg tabular-nums" />
+              <HudLabel tick={false} className="text-white/75">{hero.weather ?? `Check-in from ${hotel.checkInTime}`}</HudLabel>
+              <span aria-hidden="true" className="mt-1 h-px w-36 bg-linear-to-l from-gold/80 to-transparent" />
+            </div>
+          </div>
         </div>
       </Opening>
 
