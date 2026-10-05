@@ -34,20 +34,21 @@ export function FreeRoomTop({ room }: { room: FreeRoom }) {
   return (
     <>
       <RoomCard photos={room.photos} title={room.title} onPhotos={setViewing}>
-        <h1 className="font-display text-[34px] font-semibold leading-[1.02] tracking-tight lining-nums sm:text-[40px] lg:text-[50px]">
+        <p className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-medium text-white/90"><span className="size-1.5 rounded-full bg-emerald-400" />Welcome</p>
+        <h1 className="mt-2.5 font-display text-[23px] leading-[1.08] lining-nums sm:text-[30px]">
           {room.title}<br /><span className="text-(--vr-gold)">{room.type}</span>
         </h1>
         {room.from !== null && (
-          <p className="mt-3 text-[15px] text-white/80 lg:mt-4 lg:text-[16px]">
+          <p className="mt-1.5 text-[12.5px] text-white/80 sm:text-[13.5px]">
             from {room.base !== null && room.base > room.from && <s className="mr-1 text-white/45 tabular-nums">{tzs(room.base)}</s>}
             <strong className="font-semibold tabular-nums text-(--vr-gold)">{tzs(room.from)}</strong> / night
           </p>
         )}
-        {(room.promo || room.facts) && <p className="mt-1 text-[12.5px] leading-relaxed text-white/55 lg:text-[13px]">{[room.from !== null && room.promo, room.facts].filter(Boolean).join(" · ")}</p>}
-        <div className="mt-5 max-w-sm">
-          {room.book && <a href={room.book.href} className={goldButton}>{room.book.label}<span className={goldDot}><ArrowRight className="size-4" /></span></a>}
-          <button type="button" onClick={toMenu} className="mt-2 inline-flex min-h-11 items-center gap-1.5 px-1 text-[13.5px] font-medium text-white/80 transition hover:text-white">
-            See the menu<span className="text-white/50">· eat here or take out</span><ChevronRight className="size-4 text-(--vr-gold)" />
+        {(room.promo || room.facts) && <p className="mt-0.5 text-[11px] leading-snug text-white/55 sm:text-[12px]">{[room.from !== null && room.promo, room.facts].filter(Boolean).join(" · ")}</p>}
+        <div className="mt-3">
+          {room.book && <a href={room.book.href} className={goldButton}><span className={goldDot}><ArrowRight className="size-3.5" /></span><span className="truncate">{room.book.label}</span></a>}
+          <button type="button" onClick={toMenu} className="mt-1 flex min-h-10 items-center gap-1 text-[12px] font-medium text-white/75 transition hover:text-white">
+            See the menu<ChevronRight className="size-3.5 text-(--vr-gold)" />
           </button>
         </div>
       </RoomCard>

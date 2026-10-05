@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { AnimatePresence, motion, useDragControls, useReducedMotion } from "motion/react";
-import { ChevronLeft, ChevronRight, Expand, MapPin, MessageCircle, Phone, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, MapPin, MessageCircle, Phone, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { lightButton, Photo, useSheetBehaviour } from "@/components/hotel-qr/ui";
 
@@ -16,81 +16,59 @@ import { lightButton, Photo, useSheetBehaviour } from "@/components/hotel-qr/ui"
 export const card = "rounded-3xl bg-(--vr-card) ring-1 ring-(--vr-line)";
 export const caps = "text-[10.5px] font-semibold uppercase tracking-[0.2em] text-(--vr-muted)";
 export const sectionTitle = "font-display text-[24px] font-semibold leading-none lg:text-[28px]";
-/** The one gold button of a card (the Hotel QR's "Check availability"). */
+/** The one gold button of the card — the restaurant banner's pill: a dark dot with the arrow, then the words. */
 export const goldButton =
-  "flex h-[52px] w-full items-center justify-between rounded-full bg-(--vr-gold) pl-6 pr-2 text-[15px] font-semibold text-(--vr-ink) shadow-[0_14px_30px_-14px_rgba(212,163,69,0.75)] transition hover:brightness-105 active:scale-[0.99] motion-reduce:active:scale-100";
-export const goldDot = "grid size-9 shrink-0 place-items-center rounded-full bg-(--vr-dark) text-(--vr-gold)";
+  "inline-flex max-w-full items-center gap-2 rounded-full bg-(--vr-gold) py-1 pl-1 pr-3.5 text-[13px] font-semibold text-(--vr-ink) shadow-[0_10px_24px_-14px_rgba(212,163,69,0.8)] transition hover:brightness-105 active:scale-[0.99] motion-reduce:active:scale-100";
+export const goldDot = "grid size-7 shrink-0 place-items-center rounded-full bg-(--vr-dark) text-(--vr-gold)";
 
-/** The dark card every state of the page opens with: photos on top (beside the words on computers), the words below. */
+/**
+ * The banner every state of the page opens with — the restaurant banner's look (owner, 2026-10-05: "the same look as
+ * the restaurant one, but better"): a compact dark card, the words on the left, the room on a round photo on the
+ * right (three on computers), never words over a photo. Tap a photo to see them all.
+ */
 export function RoomCard({ photos, title, onPhotos, children }: { photos: string[]; title: string; onPhotos: (i: number) => void; children: React.ReactNode }) {
+  const three = photos.slice(0, 3);
   return (
-    <section aria-label={title} className="relative mt-3 overflow-hidden rounded-3xl bg-(--vr-dark) text-white shadow-[0_24px_50px_-34px_rgba(29,23,18,0.9)] sm:mt-4 lg:grid lg:min-h-[420px] lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
-      <div aria-hidden className="pointer-events-none absolute -bottom-24 -left-16 size-72 rounded-full bg-(--vr-gold)/10 blur-3xl" />
-      <Slideshow photos={photos} alt={title} onOpen={onPhotos} className="lg:order-last" />
-      <div className="relative min-w-0 px-5 pb-5 pt-4 sm:px-7 sm:pb-7 lg:self-center lg:px-10 lg:py-10 motion-safe:animate-[vlh-fade_0.7s_ease-out_both]">{children}</div>
+    <section aria-label={title} className="relative mt-3 overflow-hidden rounded-3xl bg-(--vr-dark) text-white shadow-[0_24px_50px_-34px_rgba(29,23,18,0.9)] sm:mt-4">
+      <div aria-hidden className="pointer-events-none absolute -left-10 -top-16 size-52 rounded-full bg-(--vr-gold)/10 blur-3xl" />
+      <div aria-hidden className="pointer-events-none absolute -bottom-24 right-1/4 hidden size-72 rounded-full bg-(--vr-gold)/[0.07] blur-3xl lg:block" />
+      {photos[0] && (
+        <button type="button" onClick={() => onPhotos(0)} aria-label={`${title} — see the photos`}
+          className={cn("absolute -right-8 top-1/2 size-[150px] -translate-y-1/2 overflow-hidden rounded-full shadow-[0_18px_40px_-12px_rgba(0,0,0,0.8)] ring-4 ring-white/10 transition hover:ring-(--vr-gold)/50 sm:right-8 sm:size-[190px]", three.length >= 3 && "lg:hidden")}>
+          <Photo src={photos[0]} alt={title} eager sizes="190px" />
+        </button>
+      )}
+      {/* Computers: three of the room's photos side by side, the middle one larger */}
+      {three.length >= 3 && (
+        <div className="absolute right-10 top-1/2 hidden -translate-y-1/2 items-center lg:flex xl:right-14">
+          {three.map((src, i) => (
+            <button key={src} type="button" onClick={() => onPhotos(i)} aria-label={`${title} — photo ${i + 1}`}
+              className={cn("relative shrink-0 overflow-hidden rounded-full shadow-[0_18px_40px_-12px_rgba(0,0,0,0.85)] ring-4 ring-(--vr-dark) transition hover:ring-(--vr-gold)/50",
+                i === 1 ? "z-10 -mx-7 size-[200px] xl:size-[220px]" : "size-[150px] opacity-90 xl:size-[165px]")}>
+              <Photo src={src} alt="" eager={i === 1} sizes="220px" />
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="relative max-w-[64%] p-4 sm:max-w-[60%] sm:p-6 lg:max-w-[46%] lg:px-8 lg:py-7 motion-safe:animate-[vlh-fade_0.7s_ease-out_both]">{children}</div>
     </section>
   );
 }
 
-/**
- * The room's real photos one after another — a slow crossfade and a gentle zoom (still for people who prefer less
- * motion); tap to see them all. The words never sit on a photo.
- */
-function Slideshow({ photos, alt, onOpen, className }: { photos: string[]; alt: string; onOpen: (i: number) => void; className?: string }) {
-  const reduce = useReducedMotion();
-  const [at, setAt] = useState(0);
-  const [paused, setPaused] = useState(false);
-  useEffect(() => {
-    if (reduce || paused || photos.length < 2) return;
-    const t = setInterval(() => setAt((x) => (x + 1) % photos.length), 6000);
-    return () => clearInterval(t);
-  }, [reduce, paused, photos.length]);
-  const src = photos[at] ?? photos[0];
-  const next = photos[(at + 1) % photos.length];
-  return (
-    <figure className={cn("relative min-w-0", className)} onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
-      <button type="button" onClick={() => onOpen(at)} aria-label={`${alt} — see the photos`}
-        className="group relative block aspect-[4/3] w-full overflow-hidden bg-white/5 sm:aspect-[16/9] lg:aspect-auto lg:h-full lg:min-h-[420px]">
-        <AnimatePresence initial={false}>
-          <motion.span key={src} className="absolute inset-0" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: reduce ? 0 : 1.2, ease: "easeInOut" }}>
-            <Photo src={src} alt={at === 0 ? alt : `${alt} — photo ${at + 1}`} eager={at === 0} sizes="(min-width:1024px) 760px, 100vw"
-              imgClassName="motion-safe:animate-[vlh-kb-a_14s_cubic-bezier(0.25,0.1,0.25,1)_both]" />
-          </motion.span>
-        </AnimatePresence>
-        {next && next !== src && <span aria-hidden className="invisible absolute inset-0"><Photo src={next} alt="" sizes="(min-width:1024px) 760px, 100vw" /></span>}
-        {/* Melts the photo into the card (phones: into the words below it) */}
-        <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-linear-to-t from-(--vr-dark) to-transparent lg:hidden" />
-        <span aria-hidden className="absolute right-3 top-3 grid size-9 place-items-center rounded-full bg-black/35 text-white/90 opacity-0 backdrop-blur-sm transition group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100">
-          <Expand className="size-4" />
-        </span>
-      </button>
-      {photos.length > 1 && (
-        <figcaption className="absolute bottom-2 right-3 flex items-center" aria-label={`Photo ${at + 1} of ${photos.length}`}>
-          {photos.slice(0, 8).map((p, k) => (
-            <button key={`${p}-${k}`} type="button" onClick={() => setAt(k)} aria-label={`Show photo ${k + 1}`} className="grid h-7 w-5 place-items-center">
-              <span className={cn("block h-1.5 rounded-full shadow-[0_1px_3px_rgba(0,0,0,0.4)] transition-all", k === at ? "w-4 bg-(--vr-gold)" : "w-1.5 bg-white/55")} />
-            </button>
-          ))}
-        </figcaption>
-      )}
-    </figure>
-  );
-}
-
-/** One quiet action under the gold button: an icon and a word, never a pill. */
+/** One quiet action in the row under the banner: an icon and a word, never a pill. */
 export function QuickLink({ icon: Icon, label, onClick, href, external }: {
   icon: typeof Phone; label: string; onClick?: () => void; href?: string; external?: boolean;
 }) {
-  const cls = "flex min-h-[52px] min-w-0 flex-col items-center justify-center gap-1 px-1 text-center text-[12.5px] font-medium text-white/80 transition hover:text-white lg:min-h-11 lg:flex-row lg:justify-start lg:gap-2 lg:px-0 lg:text-[13.5px]";
-  const inner = <><Icon className="size-[18px] shrink-0 text-(--vr-gold)" /><span className="truncate">{label}</span></>;
+  const cls = "flex min-h-12 min-w-0 items-center justify-center gap-2 px-2 text-[13px] font-medium text-(--vr-ink)/80 transition hover:text-(--vr-ink)";
+  const inner = <><Icon className="size-[17px] shrink-0 text-(--vr-gold-ink)" /><span className="truncate">{label}</span></>;
   if (href) return <a href={href} className={cls} {...(external ? { target: "_blank", rel: "noopener" } : {})}>{inner}</a>;
   return <button type="button" onClick={onClick} className={cls}>{inner}</button>;
 }
 
-/** The row of quiet actions at the bottom of the dark card. */
+/** The row of quiet actions right under the banner: one light strip, hairlines between. */
 export function QuickRow({ children }: { children: React.ReactNode }) {
   return (
-    <nav aria-label="Quick links" className="mt-4 grid grid-flow-col auto-cols-fr divide-x divide-white/10 border-t border-white/10 pt-1.5 lg:mt-6 lg:flex lg:gap-7 lg:divide-x-0 lg:pt-3">
+    <nav aria-label="Quick links" className="mt-2.5 grid grid-flow-col auto-cols-fr divide-x divide-(--vr-line) rounded-2xl bg-(--vr-card) ring-1 ring-(--vr-line) lg:max-w-xl">
       {children}
     </nav>
   );

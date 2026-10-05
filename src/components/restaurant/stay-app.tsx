@@ -113,20 +113,21 @@ export function StayTop({ stay, info }: { stay: GuestStay; info: StayInfo }) {
   return (
     <>
       <RoomCard photos={info.photos} title={info.room ? place : info.types || info.hotel} onPhotos={setViewing}>
-        {state && (
-          <p className="mb-3 inline-flex items-center gap-2 text-[12px] font-medium text-white/70"><span className={cn("size-1.5 rounded-full", state.dot)} />{state.label}</p>
-        )}
-        <h1 className="font-display text-[34px] font-semibold leading-[1.02] tracking-tight lining-nums sm:text-[40px] lg:text-[50px]">
+        <p className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-medium text-white/90">
+          <span className={cn("size-1.5 rounded-full", state ? state.dot : inHouse ? "bg-emerald-400" : "bg-white/40")} />{state ? state.label : inHouse ? "Staying now" : out ? "Checked out" : "Your stay"}
+        </p>
+        <h1 className="mt-2.5 font-display text-[23px] leading-[1.08] lining-nums sm:text-[30px]">
           {hello}<br /><span className="text-(--vr-gold)">{name}</span>
         </h1>
-        {where && <p className="mt-3 text-[15px] font-medium text-white/90 lg:mt-4 lg:text-[16px]">{where}</p>}
-        <p className="mt-1 text-[12.5px] leading-relaxed text-white/55 lg:text-[13px]">{when}</p>
+        {where && <p className="mt-1.5 text-[12.5px] font-medium text-white/90 sm:text-[13.5px]">{where}</p>}
+        <p className="mt-0.5 text-[11px] leading-snug text-white/55 sm:text-[12px]">{when}</p>
 
-        <div className="mt-5 max-w-sm">
+        <div className="mt-3">
           {"href" in primary
-            ? <Link href={primary.href!} className={goldButton}>{primary.label}<span className={goldDot}><ArrowRight className="size-4" /></span></Link>
-            : <button type="button" onClick={primary.onClick} className={goldButton}>{primary.label}<span className={goldDot}><ArrowRight className="size-4" /></span></button>}
+            ? <Link href={primary.href!} className={goldButton}><span className={goldDot}><ArrowRight className="size-3.5" /></span><span className="truncate">{primary.label}</span></Link>
+            : <button type="button" onClick={primary.onClick} className={goldButton}><span className={goldDot}><ArrowRight className="size-3.5" /></span><span className="truncate">{primary.label}</span></button>}
         </div>
+      </RoomCard>
 
         <QuickRow>
           {info.ask
@@ -137,7 +138,6 @@ export function StayTop({ stay, info }: { stay: GuestStay; info: StayInfo }) {
             : info.contact.mapHref && !inHouse ? <QuickLink icon={MapPin} label="Directions" href={info.contact.mapHref} external /> : null}
           <QuickLink icon={ConciergeBell} label="Reception" onClick={() => setSheet("reception")} />
         </QuickRow>
-      </RoomCard>
       <PhotoViewer photos={info.photos} start={viewing} title={info.room ? place : info.types || info.hotel} onClose={() => setViewing(null)} />
 
       {/* ── The bill and the orders; what they can ask for the room (staying) or their booking (before / after) ── */}

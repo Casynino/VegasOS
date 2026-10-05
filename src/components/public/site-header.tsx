@@ -3,7 +3,6 @@ import Link from "next/link";
 import type { HotelSettings } from "@/generated/prisma/client";
 import { cn } from "@/lib/utils";
 import { HeaderShell } from "./header-shell";
-import { LinkButton } from "./kit/button";
 import { containers } from "./kit/tokens";
 import { MobileNav } from "./mobile-nav";
 import { NavLink } from "./nav-link";
@@ -65,14 +64,16 @@ export function SiteHeader({ settings }: { settings: HotelSettings }) {
 
         <div className="flex items-center justify-end gap-1.5 min-[360px]:gap-2 sm:gap-3">
           <ThemeToggle compact className="hidden xl:inline-grid" />
+          {/* Clean, no shapes around them (owner, 2026-10-05): plain words and a plain lock. */}
           <StaffLink withIcon labels={{ signedIn: "Dashboard", signedOut: "Staff login" }}
-            className="hidden h-10 whitespace-nowrap rounded-full border border-white/25 bg-white/[0.06] px-4 text-[13px] font-medium text-white transition-colors duration-200 hover:border-white/50 hover:bg-white/[0.12] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold lg:inline-flex motion-reduce:transition-none" />
+            className="hidden h-10 whitespace-nowrap rounded-sm px-1 text-[13px] font-medium text-white/85 transition-colors duration-200 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold lg:inline-flex motion-reduce:transition-none" />
           <StaffLink iconOnly labels={{ signedIn: "Staff dashboard", signedOut: "Staff login" }}
-            className="h-10 w-10 justify-center rounded-full border border-white/25 bg-white/[0.06] text-white transition-colors duration-200 hover:border-white/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold lg:hidden motion-reduce:transition-none" />
-          <LinkButton href="/book" size="sm" aria-label="Book your stay" className="px-4 sm:px-[1.125rem]">
+            className="h-10 w-9 justify-center rounded-sm text-white/90 transition-colors duration-200 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold lg:hidden motion-reduce:transition-none [&_svg]:size-[19px]" />
+          <Link href="/book" aria-label="Book your stay"
+            className="inline-flex h-10 items-center gap-1 whitespace-nowrap rounded-sm px-1 text-[14px] font-semibold text-gold transition-colors duration-200 hover:text-[#f0d6a0] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none">
             <span className="sm:hidden">Book</span>
             <span className="hidden sm:inline">Book your stay</span>
-          </LinkButton>
+          </Link>
           <MobileNav hotelName={settings.hotelName} phone={settings.phone} whatsapp={settings.whatsapp} className="lg:hidden" />
         </div>
       </div>
