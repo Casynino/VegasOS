@@ -247,8 +247,9 @@ export default async function RoomPage({ params }: PageProps<"/rooms/[slug]">) {
                       minDate={stay.today}
                       maxDate={stay.maxArrival}
                       maxNights={stay.maxNights}
-                      submitLabel="Check availability"
+                      submitLabel="Book now"
                       stacked
+                      direct
                     />
                   </div>
                 </>

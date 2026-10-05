@@ -25,7 +25,8 @@ export const guestSchema = z.object({
   email: z.union([z.literal(""), z.email("Enter a valid email address.").max(160)]).optional(),
   nationality: z.string().trim().max(60, "Too long.").optional(),
   specialRequests: z.string().trim().max(1000, "Please keep requests under 1,000 characters.").optional(),
-  expectedArrivalTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Choose your expected arrival time."),
+  /** Optional (owner, 2026-10-05: booking as easy as ordering food). */
+  expectedArrivalTime: z.union([z.literal(""), z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Enter the time like 14:30.")]).optional(),
   /** Honeypot: real people never see or fill this field. */
   company: z.string().max(0).optional(),
 });

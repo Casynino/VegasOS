@@ -3,18 +3,19 @@ import { cn } from "@/lib/utils";
 import { typeScale } from "../kit/tokens";
 import fx from "../room-fx.module.css";
 
-export const BOOKING_STEPS = ["Dates & guests", "Choose room", "Details & arrival", "Review", "Request sent"] as const;
+/** Few steps (owner, 2026-10-05: "booking as easy as getting food from us"): dates, a room, then book & pay on one screen. */
+export const BOOKING_STEPS = ["Dates & guests", "Choose room", "Book & pay", "Booked"] as const;
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
 
 /**
- * 5-step booking progress as a HUD line: numbered nodes joined by hairlines that fill in gold up
+ * The booking progress as a HUD line: numbered nodes joined by hairlines that fill in gold up
  * to the current step (its connector draws in once); the current node is ringed, with a softly
  * pinging dot. Phones read "Step 02 / 05 · Choose room" above the nodes; desktop names every step
  * under its node. `current` is 1-based. `last` renames the final step (a booking that is made,
  * not just requested, ends on "Booked"). Follows the surrounding tone.
  */
-export function BookingProgress({ current, last, className }: { current: 1 | 2 | 3 | 4 | 5; last?: string; className?: string }) {
+export function BookingProgress({ current, last, className }: { current: 1 | 2 | 3 | 4; last?: string; className?: string }) {
   const steps: readonly string[] = last ? [...BOOKING_STEPS.slice(0, -1), last] : BOOKING_STEPS;
   return (
     <nav aria-label="Booking progress" className={className}>
@@ -25,7 +26,7 @@ export function BookingProgress({ current, last, className }: { current: 1 | 2 |
         <span aria-hidden="true" className="h-px w-4 bg-pub-line" />
         <span className="text-pub-fg">{steps[current - 1]}</span>
       </p>
-      <ol className="mt-4 grid grid-cols-[repeat(4,minmax(0,1fr))_auto] lg:mt-0">
+      <ol className="mt-4 grid grid-cols-[repeat(3,minmax(0,1fr))_auto] lg:mt-0">
         {steps.map((label, i) => {
           const n = i + 1;
           const done = n < current;

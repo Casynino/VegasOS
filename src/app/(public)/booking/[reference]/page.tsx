@@ -67,11 +67,13 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
     ? { label: booking.balanceAmount > 0 ? "Confirmed — part paid" : "Confirmed — paid", tone: "ok" as const }
     : booking.status === "RESERVED" && held ? { label: `Reserved — held until ${held}`, tone: "ok" as const }
     : booking.status === "RESERVED" && online.offered ? { label: "Reserved — pay to confirm", tone: "ok" as const }
+    // Booked with "Pay later": made and seen by reception, but no room is held until it is paid.
+    : booking.status === "INQUIRY" && booking.payLater ? { label: "Booked — not reserved until paid", tone: "warn" as const }
     : { ...plain, label: (meeting && MEETING_STATUS[booking.status]) || plain.label };
   const first = booking.rooms[0];
   const nights = first?.nights ?? 0;
   const address = addressLines(settings);
-  const isNew = booking.status === "RESERVED" || booking.status === "CONFIRMED";
+  const isNew = booking.status === "RESERVED" || booking.status === "CONFIRMED" || (booking.status === "INQUIRY" && booking.payLater);
   const showPay = (online.offered || online.live) && booking.balanceAmount > 0;
   const firstName = booking.guestName.split(" ")[0];
 
@@ -180,6 +182,7 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
         <p className="mt-4 text-[12.5px] leading-relaxed text-pub-muted">
           {booking.balanceAmount <= 0 && booking.paidAmount > 0 ? "Paid in full — thank you."
             : booking.paidAmount > 0 ? (online.offered ? "Received with thanks — pay the rest by mobile money here." : "Received with thanks — the rest is paid at the hotel.")
+            : booking.payLater ? (online.offered ? "Not reserved until paid — pay now by mobile money to secure it." : "Not reserved until paid — the room may go to someone who pays first.")
             : online.offered ? "Pay now by mobile money — a payment request comes to your phone."
             : "Payment is made at the hotel. Nothing has been charged online."}
         </p>
@@ -191,7 +194,7 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
     <div className="flex flex-1 flex-col">
       <ConfirmationBand
         progress={isNew}
-        progressLast={booking.paidAmount > 0 || booking.status === "CONFIRMED" ? "Booked" : "Reserved"}
+        progressLast={booking.paidAmount > 0 || booking.status === "CONFIRMED" ? "Booked" : booking.payLater ? "Booked — pay to reserve" : "Reserved"}
         eyebrow={
           <>
             {isNew && <CheckCircle2 className="size-4" strokeWidth={1.6} aria-hidden="true" />}

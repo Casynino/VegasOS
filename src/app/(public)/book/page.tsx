@@ -21,7 +21,7 @@ import {
 } from "@/components/public/kit";
 import fx from "@/components/public/room-fx.module.css";
 import { StaySearchForm } from "@/components/public/stay-search-form";
-import { confirmBookingAction, payAndBookAction, reviewBookingAction } from "./actions";
+import { confirmBookingAction, payAndBookAction } from "./actions";
 import { onlinePayAvailable } from "@/server/services/online-pay";
 
 export const metadata: Metadata = {
@@ -42,8 +42,9 @@ function stayHref(p: StayParams, extra: Record<string, string> = {}) {
 
 /**
  * The booking funnel on one URL, driven by its search params (checkIn, checkOut, adults,
- * children, type, rooms, edit): dates & guests → room types free for the stay → details and
- * review (Pay now by mobile money, or Pay later). Each step opens on a
+ * children, type, rooms, edit): dates & guests → room types free for the stay → BOOK & PAY on
+ * one screen (owner, 2026-10-05: "as easy as getting food from us"). With a room type already
+ * chosen (a room's page, or a type picked with the dates) the dates go straight to Book & pay. Each step opens on a
  * night band (where am I, what did I search) and works on paper below it.
  */
 export default async function BookPage({ searchParams }: PageProps<"/book">) {
@@ -101,6 +102,7 @@ export default async function BookPage({ searchParams }: PageProps<"/book">) {
       maxNights={stayWindow.maxNights}
       errors={errors}
       roomTypes={roomTypes.map((t) => ({ slug: t.slug, name: t.name }))}
+      direct
     />
   );
   const windowFacts = (
@@ -187,14 +189,14 @@ export default async function BookPage({ searchParams }: PageProps<"/book">) {
     }
     const backToRooms = stayHref(stay, { type: preferred });
     return (
-      <Shell title="Complete your booking" top={summary} step={3}>
+      <Shell title="Book your room" top={summary} step={3}>
         {problem || !quote ? (
           <div role="alert" className="mx-auto max-w-xl py-6 text-center sm:py-10">
             <AlertCircle className="mx-auto size-9 text-pub-eyebrow" strokeWidth={1.2} aria-hidden="true" />
-            <Heading as="h2" size="subheading" className="mt-5">Availability has changed</Heading>
-            <p className={cn(typeScale.body, "mx-auto mt-3 max-w-md text-pub-muted")}>{problem ?? "Please choose your room again."}</p>
+            <Heading as="h2" size="subheading" className="mt-5">Not free for these dates</Heading>
+            <p className={cn(typeScale.body, "mx-auto mt-3 max-w-md text-pub-muted")}>{problem ?? "Please choose another room or other dates."}</p>
             <Actions align="center" className="mt-8">
-              <LinkButton href={backToRooms} icon="arrow">See available rooms</LinkButton>
+              <LinkButton href={backToRooms} icon="arrow">See rooms that are free</LinkButton>
             </Actions>
           </div>
         ) : (
@@ -203,7 +205,6 @@ export default async function BookPage({ searchParams }: PageProps<"/book">) {
               <GuestStep
                 selection={{ checkIn: stay.checkIn, checkOut: stay.checkOut, adults: stay.adults, children: stay.children, type: preferred, rooms: roomsParam }}
                 backToRoomsHref={backToRooms}
-                reviewAction={reviewBookingAction}
                 confirmAction={confirmBookingAction}
                 payAction={payAndBookAction}
                 online={online}
@@ -211,6 +212,7 @@ export default async function BookPage({ searchParams }: PageProps<"/book">) {
                   defaultAirport: c.facts.airportName,
                   note: `Our own drivers can collect you from the airport, about ${c.facts.airportKm} km away. We’ll confirm by phone or WhatsApp.`,
                 }}
+                price={{ total: quote.netAmount, gross: quote.grossAmount, discount: quote.discountAmount, ratePerNight: quote.ratePerNight, nights: quote.nights, rooms: quote.selection.rooms, checkInTime: quote.checkInTime }}
                 summary={<SelectionLine quote={quote} />}
               />
             </div>
@@ -248,7 +250,7 @@ function Shell({ title, lede, top, step, children }: { title: string; lede?: str
         lede={lede}
         space="sm"
         id="book-title"
-        meta={step > 0 ? <>Booking console · step {String(step).padStart(2, "0")} / 05</> : undefined}
+        meta={step > 0 ? <>Booking console · step {String(step).padStart(2, "0")} / 03</> : undefined}
       >
         {top}
       </PageIntro>

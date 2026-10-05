@@ -103,7 +103,7 @@ export async function confirmBookingAction(_prev: ActionResult<null> | undefined
     }
     const b = await createWebsiteBooking(toSelection(v), {
       fullName: v.fullName, phone: v.phone, email: v.email || null, nationality: v.nationality || null,
-      specialRequests: v.specialRequests || null, expectedArrivalTime: v.expectedArrivalTime,
+      specialRequests: v.specialRequests || null, expectedArrivalTime: v.expectedArrivalTime || null,
     }, ipAddress, pickupOf(v), { payLater: true });
     // The booking details (and its link, to pay any time) by message, as from the Hotel QR — a number gets only a few a
     // day, whoever types it. Nothing is sent when no provider is connected.
@@ -132,7 +132,7 @@ export async function payAndBookAction(_prev: ActionResult<null> | undefined, fo
       service: "booking", phone: payPhone, clientKey, ip: ipAddress,
       create: () => createWebsiteBooking(toSelection(v), {
         fullName: v.fullName, phone: v.phone, email: v.email || null, nationality: v.nationality || null,
-        specialRequests: v.specialRequests || null, expectedArrivalTime: v.expectedArrivalTime,
+        specialRequests: v.specialRequests || null, expectedArrivalTime: v.expectedArrivalTime || null,
       }, ipAddress, pickupOf(v), { holdMinutes: ONLINE_BOOKING_HOLD_MINUTES }),
     });
     target = r.pay ? `/pay/${r.pay}` : r.booking;

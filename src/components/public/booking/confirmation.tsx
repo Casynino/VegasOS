@@ -73,7 +73,7 @@ export function ConfirmationBand({
 }) {
   return (
     <Section tone="night" first space="sm" width="wide" glow="top" stars labelledBy="confirmation-title" className={cn("pb-10 sm:pb-14 lg:pb-16 print:pt-6", printInk)}>
-      {progress && <BookingProgress current={5} last={progressLast} className="mb-10 max-w-3xl sm:mb-12 print:hidden" />}
+      {progress && <BookingProgress current={4} last={progressLast} className="mb-10 max-w-3xl sm:mb-12 print:hidden" />}
       <p className={cn(typeScale.eyebrow, "flex items-center gap-2.5 text-pub-eyebrow")}>{eyebrow}</p>
       <h1 id="confirmation-title" className={cn(typeScale.title, "mt-4 max-w-3xl")}>
         {title}

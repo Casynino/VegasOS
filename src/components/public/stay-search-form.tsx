@@ -30,6 +30,7 @@ export function StaySearchForm({
   stacked = false,
   submitLabel = "Check availability",
   bare = false,
+  direct = false,
 }: {
   defaults: StaySearchDefaults;
   minDate: string;
@@ -45,6 +46,8 @@ export function StaySearchForm({
   stacked?: boolean;
   /** Kept for older callers: the form never draws its own box now (the page frames it). */
   bare?: boolean;
+  /** With a room type chosen, go straight to Book & pay (one room) instead of the list of free rooms. */
+  direct?: boolean;
 }) {
   const [checkIn, setCheckIn] = useState(defaults.checkIn ?? "");
   const [checkOut, setCheckOut] = useState(defaults.checkOut ?? "");
@@ -75,6 +78,7 @@ export function StaySearchForm({
       className={cn("grid grid-cols-2 gap-x-3 gap-y-4 sm:gap-x-4", wide && "sm:grid-cols-4 sm:items-end")}
     >
       {defaults.type && !roomTypes && <input type="hidden" name="type" value={defaults.type} />}
+      {direct && <input type="hidden" name="rooms" value="1" />}
       <div className="min-w-0">
         <label htmlFor={`${variant}-checkIn`} className={field.label}>Check-in</label>
         <input
