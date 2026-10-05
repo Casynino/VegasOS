@@ -66,8 +66,8 @@ export default function NinoPage() {
             </div>
             <div className={cn(s.rise, s.rise3, "lg:pb-3")}>
               <p className="max-w-xl text-pretty text-lg leading-snug text-[var(--ink)] sm:text-xl">
-                I design and build the software businesses run on — websites, mobile apps, booking and payment systems, and the
-                dashboards behind them. <span className="text-[var(--muted)]">From the first idea to the live product.</span>
+                Before I design a screen, I map how the business really works — who does what, where the money goes.
+                <span className="text-[var(--muted)]"> Then I design the system and build it around that.</span>
               </p>
               <div className="mt-6 flex flex-wrap items-center gap-2.5">
                 <a href="#work" className={cn("inline-flex h-11 items-center gap-2 rounded-full bg-[var(--ink)] px-5 text-sm font-semibold text-[#0a0a0b] transition hover:bg-white", focus)}>
@@ -146,13 +146,6 @@ export default function NinoPage() {
               <p className="mt-6 text-sm leading-relaxed text-[var(--faint)]">
                 Mobile money, maps, messaging and AI wired into real operations — not demos.
               </p>
-              <div className="mt-8 rounded-3xl border border-[var(--rule)] p-6 sm:p-7">
-                <p className={eyebrow}>Business first, then code</p>
-                <p className="mt-3 text-pretty text-[17px] leading-relaxed text-[var(--muted)]">
-                  Before I design a screen I map how the business really works — who does what, where the money goes. Then I build
-                  the system around it.
-                </p>
-              </div>
             </div>
           </div>
         </section>
