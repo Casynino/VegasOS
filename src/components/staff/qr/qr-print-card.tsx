@@ -91,7 +91,9 @@ export function QrPrintCard({ card, hotel }: { card: Printable; hotel: string; p
         <p className="mt-[2.4cqw] text-[2.1cqw] font-semibold uppercase tracking-[0.5em] text-[#e3bd6a]/85">{hotel}</p>
 
         {c.eyebrow && <p className="mt-[5cqw] text-[2.1cqw] font-semibold uppercase tracking-[0.4em] text-white/55">{c.eyebrow}</p>}
-        <p className={cn("font-display text-[10cqw] font-semibold leading-[0.95] tracking-tight [font-feature-settings:'lnum'_1] lining-nums", c.eyebrow ? "mt-[1.4cqw]" : "mt-[5.5cqw]")}>{c.title}</p>
+        {/* In capitals (owner, 2026-10-05), sized by length so every title sits well inside the frame */}
+        <p className={cn("max-w-[84cqw] text-balance font-display font-semibold uppercase leading-[1.02] tracking-[0.07em] [font-feature-settings:'lnum'_1] lining-nums", c.eyebrow ? "mt-[1.4cqw]" : "mt-[5.5cqw]")}
+          style={{ fontSize: `${titleSize(c.title)}cqw` }}>{c.title}</p>
         <p className="mt-[1.8cqw] font-display text-[4.4cqw] italic leading-none" style={{ color: GOLD }}>{c.call}</p>
 
         {/* The QR, clean: a white tile, the logo in the middle (the QR tolerates it) */}
@@ -123,6 +125,12 @@ export function QrPrintCard({ card, hotel }: { card: Printable; hotel: string; p
       </div>
     </article>
   );
+}
+
+/** Title size (cqw) for capitals: big for "ROOM 101", smaller as the words get longer — never touching the frame. */
+function titleSize(title: string) {
+  const n = title.length;
+  return n <= 8 ? 10.2 : n <= 11 ? 8.2 : n <= 14 ? 6.9 : n <= 17 ? 6 : 5;
 }
 
 /** Few words: the place in big type, one short line — and, for tables and the counter, where it is. */
