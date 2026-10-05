@@ -130,7 +130,11 @@ export async function buildPersonPeriod(userId: string, kind: PeriodKind, from: 
     department === "RECEPTION"
       ? db.auditLog.groupBy({ by: ["businessDate", "action"], where: { userId, createdAt: { gte: start, lt: end }, action: { in: ["reservation.checked_in", "reservation.walk_in", "meeting.started", "reservation.checked_out", "meeting.completed"] } }, _count: true })
       : Promise.resolve([]),
-    db.payment.findMany({ where: { recordedById: userId, status: "POSTED", kind: "PAYMENT", createdAt: { gte: start, lt: end } }, select: { amount: true, createdAt: true } }),
+    // Their own — and guests' online payments counted for them at check-in (at that time).
+    db.payment.findMany({
+      where: { status: "POSTED", kind: "PAYMENT", OR: [{ recordedById: userId, creditedToId: null, createdAt: { gte: start, lt: end } }, { creditedToId: userId, creditedAt: { gte: start, lt: end } }] },
+      select: { amount: true, createdAt: true, creditedAt: true },
+    }).then((ps) => ps.map((p) => ({ amount: p.amount, createdAt: p.creditedAt ?? p.createdAt }))),
     db.restaurantOrderPayment.findMany({ where: { collectedById: userId, status: "POSTED", collectedAt: { gte: start, lt: end } }, select: { amount: true, collectedAt: true } }),
     db.revenueTransaction.findMany({ where: { recordedById: userId, orderPaymentId: null, isVoided: false, createdAt: { gte: start, lt: end } }, select: { amount: true, createdAt: true } }),
     department === "RESTAURANT" ? db.restaurantOrder.findMany({ where: { deliveredById: userId, deliveredAt: { gte: start, lt: end } }, select: { deliveredAt: true } }) : Promise.resolve([]),

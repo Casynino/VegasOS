@@ -83,6 +83,7 @@ model User {
   reservationRoomsIn        ReservationRoom[]        @relation("CheckedInBy")
   reservationRoomsOut       ReservationRoom[]        @relation("CheckedOutBy")
   paymentsRecorded          Payment[]                @relation("PaymentRecordedBy")
+  paymentsCredited          Payment[]                @relation("PaymentCreditedTo")
   paymentsReversed          Payment[]                @relation("PaymentReversedBy")
   expensesCreated           Expense[]                @relation("ExpenseCreatedBy")
   ledgerEntriesCreated      LedgerEntry[]            @relation("LedgerEntryCreatedBy")
@@ -950,6 +951,11 @@ model Payment {
   reversalBusinessDate DateTime?           @db.Date
   corrections          PaymentCorrection[]
   createdAt            DateTime            @default(now())
+  /// A guest's online (nTZS) payment made before arrival counts in the collections of the receptionist who checks
+  /// them in, at check-in (owner, 2026-10-05). The record still says who recorded it (the online system).
+  creditedToId         String?
+  creditedTo           User?               @relation("PaymentCreditedTo", fields: [creditedToId], references: [id])
+  creditedAt           DateTime?
 
   @@index([businessDate])
   @@index([reversalBusinessDate])
@@ -959,6 +965,7 @@ model Payment {
   @@index([accountId, businessDate])
   /// Each receptionist's collections (their shift, any period).
   @@index([recordedById, createdAt])
+  @@index([creditedToId, creditedAt])
   @@map("payments")
 }
 

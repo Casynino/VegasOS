@@ -1,6 +1,7 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
 import { db, type Tx } from "../db";
+import { ONLINE_RECORDER_ID } from "./online-recorder";
 import { audit } from "../audit";
 import { AppError, isUniqueViolation } from "../errors";
 import { rateLimit } from "../rate-limit";
@@ -240,8 +241,7 @@ const marksPayingHold = (data: unknown) => !!data && typeof data === "object" &&
 /** "255712345678" → "0712 ••• 678" (what staff screens and the audit show). */
 export const maskPhone = (p: string) => `0${p.slice(3, 6)} ••• ${p.slice(-3)}`;
 
-/** The system account that stands for payments customers make online themselves (it cannot sign in). */
-export const ONLINE_RECORDER_ID = "usr_online_ntzs";
+export { ONLINE_RECORDER_ID };
 
 /**
  * Who the payment is recorded by: the staff member who sent the prompt (as if they had recorded it) — or, for a

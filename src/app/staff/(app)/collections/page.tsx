@@ -10,7 +10,7 @@ import { db } from "@/server/db";
 import { businessToday, getSettings } from "@/server/settings";
 import { ShiftPicker } from "@/components/staff/shift-picker";
 import {
-  ALL_SOURCES, collectionCounts, collectionRows, collectionTotals, collectors, NO_WAITER, onlineTotals, SOURCE_LABEL, stillToCollect,
+  ALL_SOURCES, collectionCounts, collectionRows, collectionTotals, collectors, NO_WAITER, onlineTotals, paidOnlineAwaitingCheckIn, SOURCE_LABEL, stillToCollect,
   type CollectionFilter, type CollectionRow, type MoneySource, type StillToCollect,
 } from "@/server/services/collections";
 import { waitersToAssign } from "@/server/services/restaurant";
@@ -120,6 +120,9 @@ export default async function CollectionsPage({ searchParams }: PageProps<"/staf
     restaurant ? onlineTotals({ ...base, q: null, sources: ["RESTAURANT"] }) : Promise.resolve(null),
     canSplit && src ? collectionTotals(p.from, p.to, { window, collectorIds: collectorId ? [collectorId] : null, accountId, methodId, sources: ALL_SOURCES, servedById }) : Promise.resolve(null),
   ]);
+  // Hotel money guests paid online before arriving: shown to reception until the guest is checked in (then it is the
+  // collection of whoever checks them in). Not for the Counter, nor for one past shift.
+  const awaiting = !device && (takesRoomMoney || supervisor) && sources.includes("ROOMS") && !(ownShift?.endedAt) ? await paidOnlineAwaitingCheckIn() : null;
   const t = collectorId ? totals.of(collectorId) : totals.all;
   const split = canSplit ? (everySource ? (collectorId ? everySource.of(collectorId) : everySource.all) : t) : null;
   const bySrc = (k: MoneySource) => split?.bySource.find((x) => x.source === k)?.amount ?? 0;
@@ -302,6 +305,29 @@ export default async function CollectionsPage({ searchParams }: PageProps<"/staf
             sub={t.reversedCount ? `${plural(t.reversedCount, "payment")} · not counted` : "None"} />
         </div>
       </section>
+
+      {/* Paid online before arriving — waiting for check-in */}
+      {awaiting && awaiting.count > 0 && (
+        <section aria-labelledby="awaiting-title" className="rounded-3xl border border-sky-500/30 bg-sky-500/[0.06] p-4 sm:p-5">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <h2 id="awaiting-title" className="flex items-center gap-2 font-semibold"><Smartphone className="size-4 text-sky-400" />Paid online · not checked in yet</h2>
+            <p className="text-sm tabular-nums"><span className="font-semibold">{formatTZS(awaiting.amount)}</span> <span className="text-muted-foreground">· {plural(awaiting.count, "payment")}</span></p>
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">Guests paid by mobile money before arriving. It goes into your collections when you check them in.</p>
+          <ul className="mt-3 divide-y divide-border/60 overflow-hidden rounded-2xl border border-border/60 bg-card">
+            {awaiting.rows.map((a) => (
+              <li key={a.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3">
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold">{a.guest} <span className="font-normal text-muted-foreground">· {a.reference}</span></span>
+                  <span className="block truncate text-xs text-muted-foreground">{a.room}{a.arrival ? ` · arrives ${formatBusinessDate(a.arrival)}` : ""} · paid {formatDateTime(a.paidAt)}{a.balance > 0 ? ` · ${formatTZS(a.balance)} still owed` : " · fully paid"}</span>
+                </span>
+                <span className="text-sm font-semibold tabular-nums text-sky-300">{formatTZS(a.amount)}</span>
+                {takesRoomMoney && <Link href={`/staff/check-in?id=${a.reservationId}#workspace`} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border px-3 text-sm font-medium hover:bg-muted">Check in<ArrowRight className="size-3.5" /></Link>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* The views and the filters, in one panel */}
       <section className="rounded-3xl border border-border/70 bg-card p-2">

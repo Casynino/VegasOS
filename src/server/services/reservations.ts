@@ -1,4 +1,5 @@
 import "server-only";
+import { ONLINE_RECORDER_ID } from "./online-recorder";
 import { discountLimit, discountTooBigMessage } from "@/lib/discounts";
 import { shortTimeRate } from "@/lib/short-time";
 import { randomBytes } from "node:crypto";
@@ -556,9 +557,15 @@ async function checkInTx(
       await setRoomStatusTx(tx, rr.roomId, "OCCUPIED", actor, `Checked in: ${r.reference}`);
     }
     await recalculateReservation(tx, r.id);
+    // Paid online before arriving: that money now counts in the collections of whoever checks the guest in, at
+    // check-in (owner, 2026-10-05) — the payment still says it was paid online.
+    const credited = actor.userId ? (await tx.payment.updateMany({
+      where: { reservationId: r.id, recordedById: ONLINE_RECORDER_ID, creditedToId: null, status: "POSTED", kind: "PAYMENT" },
+      data: { creditedToId: actor.userId, creditedAt: now },
+    })).count : 0;
     await audit(tx, actor, {
       action: targets.every((t) => t.roomType.category === "MEETING_ROOM") ? "meeting.started" : "reservation.checked_in", entityType: "Reservation", entityId: r.id,
-      before: { status: r.status }, after: { rooms: targets.map((t) => t.room.number), at: now.toISOString() },
+      before: { status: r.status }, after: { rooms: targets.map((t) => t.room.number), at: now.toISOString(), ...(credited ? { onlinePaymentsCredited: credited } : {}) },
     });
     return { warnings };
   }

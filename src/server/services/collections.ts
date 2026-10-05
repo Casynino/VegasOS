@@ -1,4 +1,5 @@
 import "server-only";
+import { ONLINE_RECORDER_ID } from "./online-recorder";
 import { isHotelOrder } from "@/server/desk";
 import { db } from "../db";
 import type { Prisma } from "@/generated/prisma/client";
@@ -102,7 +103,7 @@ export async function collectionTotals(from: BusinessDate, to: BusinessDate, opt
   const sources = new Set(served ? ["RESTAURANT"] : opts.sources ?? ["RESTAURANT"]);
   const who = opts.collectorIds?.length ? { in: opts.collectorIds } : undefined;
   const narrow = { ...(opts.accountId && { accountId: opts.accountId }) };
-  const [restaurant, toConfirm, rooms, sales, accounts, charges] = await Promise.all([
+  const [restaurant, toConfirm, rooms, credited, sales, accounts, charges] = await Promise.all([
     sources.has("RESTAURANT") ? db.restaurantOrderPayment.groupBy({
       by: ["collectedById", "accountId", "status"], _sum: { amount: true }, _count: true,
       where: { collectedAt: { gte: start, lt: end }, ...(who && { collectedById: who }), ...narrow, ...(opts.methodId && { paymentMethodId: opts.methodId }), ...(served && { order: served }) },
@@ -113,7 +114,12 @@ export async function collectionTotals(from: BusinessDate, to: BusinessDate, opt
     }) : [],
     sources.has("ROOMS") ? db.payment.groupBy({
       by: ["recordedById", "accountId", "kind", "status"], _sum: { amount: true }, _count: true,
-      where: { createdAt: { gte: start, lt: end }, ...(who && { recordedById: who }), ...narrow, ...(opts.methodId && { methodId: opts.methodId }) },
+      where: { creditedToId: null, createdAt: { gte: start, lt: end }, ...(who && { recordedById: who }), ...narrow, ...(opts.methodId && { methodId: opts.methodId }) },
+    }) : [],
+    // Paid online before arriving: counted for the receptionist who checked the guest in, when they did (see checkInTx).
+    sources.has("ROOMS") ? db.payment.groupBy({
+      by: ["creditedToId", "accountId", "kind", "status"], _sum: { amount: true }, _count: true,
+      where: { creditedToId: who ?? { not: null }, creditedAt: { gte: start, lt: end }, ...narrow, ...(opts.methodId && { methodId: opts.methodId }) },
     }) : [],
     sources.has("SALES") ? db.revenueTransaction.groupBy({
       by: ["recordedById", "accountId", "isVoided"], _sum: { amount: true }, _count: true,
@@ -155,10 +161,10 @@ export async function collectionTotals(from: BusinessDate, to: BusinessDate, opt
     else collect(g.collectedById, g.accountId, g._sum.amount ?? 0, g._count, "RESTAURANT");
   }
   for (const g of toConfirm) for (const r of rows(g.collectedById)) { r.toConfirm += g._sum.amount ?? 0; r.toConfirmCount += g._count; }
-  for (const g of rooms) {
-    if (g.status === "REVERSED") reverse(g.recordedById, g._sum.amount ?? 0, g._count);
-    else if (g.kind === "REFUND") for (const r of rows(g.recordedById)) { r.refunds += g._sum.amount ?? 0; r.refundCount += g._count; }
-    else collect(g.recordedById, g.accountId, g._sum.amount ?? 0, g._count, "ROOMS");
+  for (const g of [...rooms.map((x) => ({ ...x, by: x.recordedById })), ...credited.map((x) => ({ ...x, by: x.creditedToId }))]) {
+    if (g.status === "REVERSED") reverse(g.by, g._sum.amount ?? 0, g._count);
+    else if (g.kind === "REFUND") for (const r of rows(g.by)) { r.refunds += g._sum.amount ?? 0; r.refundCount += g._count; }
+    else collect(g.by, g.accountId, g._sum.amount ?? 0, g._count, "ROOMS");
   }
   for (const g of sales) {
     if (g.isVoided) reverse(g.recordedById, g._sum.amount ?? 0, g._count);
@@ -211,6 +217,11 @@ export type CollectionRow = {
     items: { name: string; qty: number; total: number }[]; payments: { id: string; amount: number; reversed: boolean; by: string; at: string }[];
   };
   stay: null | { id: string; reference: string; rooms: string; guest: string; company: string | null; net: number; balance: number };
+  /**
+   * Hotel money the guest paid online themselves (nTZS). Before they arrive it waits ("not checked in yet"); at check-in
+   * it counts for the receptionist who checked them in (`creditedTo`, at `creditedAt` — which is then this row's time).
+   */
+  paidOnline: null | { paidAt: string; creditedTo: string | null; creditedToId: string | null; creditedAt: string | null; waiting: boolean };
 };
 
 function restaurantWhere(f: CollectionFilter, start: Date, end: Date): Prisma.RestaurantOrderPaymentWhereInput {
@@ -247,9 +258,13 @@ function roomsWhere(f: CollectionFilter, start: Date, end: Date): Prisma.Payment
   if (f.servedById) return null; // no waiter on a room payment
   const q = f.q?.trim();
   const digits = q?.replace(/\D/g, "") ?? "";
+  const when = { gte: start, lt: end };
   return {
-    createdAt: { gte: start, lt: end },
-    ...(f.collectorId && { recordedById: f.collectorId }),
+    // Who and when: what a person recorded in the window — and a guest's online payment counted for whoever checked
+    // them in, at check-in (it is no longer the online system's then).
+    AND: [f.collectorId
+      ? { OR: [{ recordedById: f.collectorId, creditedToId: null, createdAt: when }, { creditedToId: f.collectorId, creditedAt: when }] }
+      : { OR: [{ creditedToId: null, createdAt: when }, { creditedToId: { not: null }, creditedAt: when }] }],
     ...(f.accountId && { accountId: f.accountId }),
     ...(f.methodId && { methodId: f.methodId }),
     ...(f.status === "REVERSED" ? { status: "REVERSED" } : f.status === "COLLECTED" ? { status: "POSTED" } : {}),
@@ -317,11 +332,12 @@ export async function collectionRows(f: CollectionFilter): Promise<{ count: numb
       where: pw, orderBy: { createdAt: "desc" }, take,
       select: {
         id: true, kind: true, status: true, amount: true, reference: true, createdAt: true, reversedAt: true, reversalReason: true,
+        creditedAt: true, creditedTo: { select: { id: true, fullName: true, role: { select: { name: true } } } },
         account: { select: { name: true, kind: true } }, method: { select: { name: true } },
         recordedBy: { select: { id: true, fullName: true, role: { select: { name: true } } } }, reversedBy: { select: { fullName: true } },
         reservation: {
           select: {
-            id: true, reference: true, companyName: true, netAmount: true, balanceAmount: true, guest: { select: { fullName: true } },
+            id: true, reference: true, status: true, companyName: true, netAmount: true, balanceAmount: true, guest: { select: { fullName: true } },
             rooms: { where: { status: { not: "CANCELLED" } }, select: { room: { select: { number: true } } } },
           },
         },
@@ -364,18 +380,25 @@ export async function collectionRows(f: CollectionFilter): Promise<{ count: numb
           items: p.order.items.map((i) => ({ name: i.name, qty: i.quantity, total: i.lineTotal })),
           payments: p.order.payments.map((x) => ({ id: x.id, amount: x.amount, reversed: x.status === "REVERSED", by: x.atCounter ? COUNTER : clean(x.collectedBy?.fullName) ?? "—", at: x.collectedAt.toISOString() })),
         },
-        stay: null,
+        stay: null, paidOnline: null,
       };
     }),
     ...rooms.map((p): CollectionRow => {
       const r = p.reservation;
       const roomNos = r?.rooms.map((x) => x.room.number).join(", ") ?? "";
+      const online = p.recordedBy.id === ONLINE_RECORDER_ID;
+      const at = p.creditedAt ?? p.createdAt;
+      const by = p.creditedTo ?? p.recordedBy;
       return {
-        id: p.id, source: "ROOMS", at: p.createdAt.toISOString(), day: day(p.createdAt),
+        id: p.id, source: "ROOMS", at: at.toISOString(), day: day(at),
         amount: p.kind === "REFUND" ? -p.amount : p.amount, fee: 0, refund: p.kind === "REFUND", reference: p.reference, account: p.account.name, how: KIND_GROUP[p.account.kind], method: p.method.name,
         status: p.status === "REVERSED" ? "REVERSED" : "COLLECTED", confirmed: p.status !== "REVERSED",
-        collector: clean(p.recordedBy.fullName) ?? "—", recordedBy: clean(p.recordedBy.fullName) ?? "—", collectorId: p.recordedBy.id, role: p.recordedBy.role.name, atCounter: false, broughtBy: null, online: false, notReceived: false,
+        collector: clean(by.fullName) ?? "—", recordedBy: clean(by.fullName) ?? "—", collectorId: by.id, role: by.role.name, atCounter: false, broughtBy: null, online: false, notReceived: false,
         confirmedBy: null, confirmedAt: null, reversedBy: clean(p.reversedBy?.fullName), reversedAt: p.reversedAt?.toISOString() ?? null, reverseReason: p.reversalReason,
+        paidOnline: online ? {
+          paidAt: p.createdAt.toISOString(), creditedTo: clean(p.creditedTo?.fullName), creditedToId: p.creditedTo?.id ?? null, creditedAt: p.creditedAt?.toISOString() ?? null,
+          waiting: !p.creditedAt && !!r && ["INQUIRY", "RESERVED", "CONFIRMED"].includes(r.status),
+        } : null,
         customer: r ? (r.companyName ?? r.guest.fullName) : p.corporateCustomer?.companyName ?? null,
         place: roomNos ? `Room ${roomNos}` : p.invoice ? `Invoice ${p.invoice.number}` : "Front desk", placeKind: null,
         what: r ? `Booking ${r.reference}` : p.invoice ? `Invoice ${p.invoice.number}` : "Payment",
@@ -392,7 +415,7 @@ export async function collectionRows(f: CollectionFilter): Promise<{ count: numb
       collector: clean(s.recordedBy.fullName) ?? "—", recordedBy: clean(s.recordedBy.fullName) ?? "—", collectorId: s.recordedBy.id, role: s.recordedBy.role.name, atCounter: false, broughtBy: null, online: false, notReceived: false,
       confirmedBy: null, confirmedAt: null, reversedBy: null, reversedAt: s.voidedAt?.toISOString() ?? null, reverseReason: s.voidReason,
       customer: null, place: s.kind === "TRANSPORT" ? "Transport" : "Sale", placeKind: null, what: s.description ?? "Sale", href: null,
-      orderId: null, orderNo: null, servedBy: null, servedByFull: null, order: null, stay: null,
+      orderId: null, orderNo: null, servedBy: null, servedByFull: null, order: null, stay: null, paidOnline: null,
     })),
   ].sort((a, b) => b.at.localeCompare(a.at)).slice((page - 1) * PAGE, page * PAGE);
   const count = rCount + pCount + sCount;
@@ -546,3 +569,38 @@ export async function collectors(from: BusinessDate, to: BusinessDate, sources: 
   }
   return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
+
+/**
+ * Hotel money guests paid online before arriving (nTZS): shown to reception as "Paid online · not checked in yet" —
+ * nobody's collection until the guest is checked in; then it counts for the receptionist who checks them in.
+ */
+export async function paidOnlineAwaitingCheckIn() {
+  const where = { recordedById: ONLINE_RECORDER_ID, creditedToId: null, status: "POSTED" as const, kind: "PAYMENT" as const, reservation: { status: { in: ["INQUIRY" as const, "RESERVED" as const, "CONFIRMED" as const] } } };
+  const [ps, sum] = await Promise.all([
+    db.payment.findMany({
+      where, orderBy: { createdAt: "desc" }, take: 30,
+      select: {
+        id: true, amount: true, createdAt: true,
+        reservation: {
+          select: {
+            id: true, reference: true, balanceAmount: true, guest: { select: { fullName: true } },
+            rooms: { where: { status: { not: "CANCELLED" } }, orderBy: { arrivalDate: "asc" }, select: { arrivalDate: true, room: { select: { number: true } }, roomType: { select: { name: true } } } },
+          },
+        },
+      },
+    }),
+    db.payment.aggregate({ where, _sum: { amount: true }, _count: true }),
+  ]);
+  return {
+    amount: sum._sum.amount ?? 0, count: sum._count,
+    rows: ps.filter((p) => p.reservation).map((p) => {
+      const r = p.reservation!;
+      return {
+        id: p.id, amount: p.amount, paidAt: p.createdAt.toISOString(), reservationId: r.id, reference: r.reference, guest: r.guest.fullName,
+        room: r.rooms.map((x) => `${x.roomType.name} · ${x.room.number}`).join(", "),
+        arrival: r.rooms[0] ? r.rooms[0].arrivalDate.toISOString().slice(0, 10) : null, balance: Math.max(0, r.balanceAmount),
+      };
+    }),
+  };
+}
+

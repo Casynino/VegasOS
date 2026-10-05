@@ -21,7 +21,8 @@ import {
   assertCanPayOnline, payTableBillOnline, tableBillPayOnline, bookAndPayOnline, invoicePayOnline, payInvoiceOnline, payStayBillOnline, payTripOnline, stayBillPayOnline, tripForCustomer, bookingPayOnline, cancelCustomerPayment, ONLINE_BOOKING_HOLD_MINUTES, payBookingOnline, customerPaymentByToken, livePaymentForOrder, onlinePayAvailable, payForNewOrder, payOrderOnline, retryCustomerPayment,
 } from "@/server/services/online-pay";
 import { addDays, businessDateOf, zonedInstant } from "@/lib/time/business-date";
-import { chefActor, managerActor, resetBusinessData, roomType } from "../support/helpers";
+import { chefActor, managerActor, receptionistActor, resetBusinessData, roomType } from "../support/helpers";
+import { collectionRows, collectionTotals, paidOnlineAwaitingCheckIn } from "@/server/services/collections";
 
 /**
  * PAY ONLINE (owner, 2026-10-04): the customer's own online payment, nTZS underneath — the order waits for it, the
@@ -380,6 +381,34 @@ describe("room booking and the meeting room: Pay online", () => {
     expect(r.payments[0].account!.code).toBe("NTZS");
     // Nothing left to pay: the booking page offers no payment.
     expect((await bookingPayOnline(r.reference, r.manageToken)).offered).toBe(false);
+  });
+
+  it("paid online before arriving: waits as 'not checked in yet', then counts for the receptionist who checks the guest in", async () => {
+    const b = await bookOnline(0);
+    deposits[await depositOf(b.pay!)].status = "completed";
+    await db.mobilePayment.updateMany({ where: { publicToken: b.pay! }, data: { lastCheckedAt: null } });
+    expect(await customerPaymentByToken(b.pay!, { check: true })).toMatchObject({ status: "PAID" });
+    const r = await db.reservation.findUniqueOrThrow({ where: { id: b.reservationId! }, include: { payments: true } });
+    const paid = r.payments[0];
+    const rec = await receptionistActor();
+    const day = today();
+
+    // Before check-in: on reception's list, nobody's collection.
+    const waiting = await paidOnlineAwaitingCheckIn();
+    expect(waiting.rows.map((x) => x.id)).toContain(paid.id);
+    expect((await collectionTotals(day, day, { collectorIds: [rec.userId!], sources: ["ROOMS"] })).of(rec.userId!).collected).toBe(0);
+
+    // Checked in by the receptionist: now theirs, at check-in — and off the waiting list.
+    await checkIn(r.id, rec, null, new Date());
+    const after = await db.payment.findUniqueOrThrow({ where: { id: paid.id } });
+    expect(after).toMatchObject({ recordedById: ONLINE_RECORDER_ID, creditedToId: rec.userId });
+    expect(after.creditedAt).toBeTruthy();
+    expect((await paidOnlineAwaitingCheckIn()).rows.map((x) => x.id)).not.toContain(paid.id);
+    expect((await collectionTotals(day, day, { collectorIds: [rec.userId!], sources: ["ROOMS"] })).of(rec.userId!).collected).toBe(paid.amount);
+    const rows = await collectionRows({ from: day, to: day, collectorId: rec.userId!, sources: ["ROOMS"] });
+    expect(rows.rows.find((x) => x.id === paid.id)).toMatchObject({ collectorId: rec.userId, paidOnline: { creditedToId: rec.userId, waiting: false } });
+    // Counted once overall (not for the online system as well).
+    expect((await collectionTotals(day, day, { sources: ["ROOMS"] })).all.collected).toBe(paid.amount);
   });
 
   it("not paid: the room is kept while a payment is on its way, then released — Try again says so", async () => {
