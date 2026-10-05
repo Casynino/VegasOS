@@ -28,7 +28,7 @@ export const guestSchema = z.object({
   /** Optional (owner, 2026-10-05: booking as easy as ordering food). */
   expectedArrivalTime: z.union([z.literal(""), z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Enter the time like 14:30.")]).optional(),
   /** Honeypot: real people never see or fill this field. */
-  company: z.string().max(0).optional(),
+  hp_field: z.string().max(0).optional(),
 });
 
 export const pickupSchema = z.object({

@@ -17,7 +17,7 @@ const contactSchema = z
     phone: z.union([z.literal(""), z.string().trim().max(30).regex(/^\+?[\d\s().-]{7,}$/, "Enter a valid phone number.")]).optional(),
     subject: z.enum(subjects, "Choose a subject."),
     message: z.string().trim().min(10, "Please write a little more (at least 10 characters).").max(3000, "Please keep your message under 3,000 characters."),
-    company: z.string().max(0).optional(), // honeypot
+    hp_field: z.string().optional(), // honeypot (checked below: a filled one is dropped quietly)
   })
   .refine((v) => Boolean(v.email || v.phone), { message: "Give us an email or phone number so we can reply.", path: ["email"] });
 
@@ -25,7 +25,7 @@ export async function sendContactMessage(_prev: ActionResult<null> | undefined, 
   return runAction(async () => {
     const { ipAddress } = await requestMeta();
     // Bots that fill the hidden field get a normal-looking response and nothing is stored.
-    if (String(formData.get("company") ?? "")) return null;
+    if (String(formData.get("hp_field") ?? "")) return null;
     await rateLimit(`web-contact:${ipAddress ?? "unknown"}`, 5, 600);
     const v = parseInput(contactSchema, formData);
     if (!v) throw new AppError("Please check the form.");

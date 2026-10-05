@@ -12,6 +12,7 @@ import { formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { AvailabilityResults } from "@/components/public/booking/availability-results";
 import { GuestStep } from "@/components/public/booking/guest-step";
+import { StayEditor } from "@/components/public/booking/stay-editor";
 import { Notice, formatDay, guestsLabel } from "@/components/public/booking/parts";
 import { BookingProgress } from "@/components/public/booking/progress";
 import { ResultsSkeleton } from "@/components/public/booking/results-skeleton";
@@ -190,6 +191,11 @@ export default async function BookPage({ searchParams }: PageProps<"/book">) {
       else throw e;
     }
     const backToRooms = stayHref(stay, { type: preferred });
+    const type = roomTypes.find((t) => t.slug === preferred);
+    const editor = (
+      <StayEditor stay={stay} type={preferred} rooms={roomsParam} minDate={stayWindow.today} maxDate={stayWindow.maxArrival} maxNights={stayWindow.maxNights}
+        maxAdults={type?.maxAdults ?? 2} maxChildren={type?.maxChildren ?? 0} />
+    );
     return (
       <Shell title="Book your room" top={summary} step={3}>
         {problem || !quote ? (
@@ -197,6 +203,7 @@ export default async function BookPage({ searchParams }: PageProps<"/book">) {
             <AlertCircle className="mx-auto size-9 text-pub-eyebrow" strokeWidth={1.2} aria-hidden="true" />
             <Heading as="h2" size="subheading" className="mt-5">Not free for these dates</Heading>
             <p className={cn(typeScale.body, "mx-auto mt-3 max-w-md text-pub-muted")}>{problem ?? "Please choose another room or other dates."}</p>
+            <div className="mt-8 text-left">{editor}</div>
             <Actions align="center" className="mt-8">
               <LinkButton href={backToRooms} icon="arrow">See rooms that are free</LinkButton>
             </Actions>
@@ -216,6 +223,7 @@ export default async function BookPage({ searchParams }: PageProps<"/book">) {
                 }}
                 price={{ total: quote.netAmount, gross: quote.grossAmount, discount: quote.discountAmount, ratePerNight: quote.ratePerNight, nights: quote.nights, rooms: quote.selection.rooms, checkInTime: quote.checkInTime }}
                 summary={<SelectionLine quote={quote} />}
+                stayEditor={editor}
               />
             </div>
             <SelectionAside quote={quote} />

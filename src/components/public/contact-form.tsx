@@ -89,10 +89,8 @@ export function ContactForm({ action, defaultSubject }: { action: Action; defaul
         />
         {errors?.message && <p className={field.error}>{errors.message}</p>}
       </div>
-      <div className="absolute -left-[9999px] h-px w-px overflow-hidden" aria-hidden="true">
-        <label htmlFor="c-company">Company</label>
-        <input id="c-company" name="company" tabIndex={-1} autoComplete="off" />
-      </div>
+      {/* Hidden anti-spam field: never shown (display:none) and never named like a real field, so browser autofill cannot fill it (2026-10-05: Chrome filled the old "Company" one and real bookings were refused). */}
+      <input name="hp_field" tabIndex={-1} autoComplete="off" aria-hidden="true" hidden defaultValue="" />
       <div className="flex flex-col gap-4 sm:col-span-2 sm:flex-row sm:items-center sm:justify-between sm:gap-8">
         <Button type="submit" disabled={pending} icon={pending ? "none" : "arrow"} full className="sm:w-auto sm:min-w-48">
           <span className="inline-flex items-center gap-2">

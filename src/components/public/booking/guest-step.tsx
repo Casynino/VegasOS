@@ -53,6 +53,7 @@ export function GuestStep({
   arrival,
   price,
   summary,
+  stayEditor,
 }: {
   selection: { checkIn: string; checkOut: string; adults: number; children: number; type: string; rooms: number };
   backToRoomsHref: string;
@@ -67,6 +68,8 @@ export function GuestStep({
   price: StayPrice;
   /** Phones: the chosen room in one line, shown under the progress (desktop shows it beside the form). */
   summary?: React.ReactNode;
+  /** The dates and guests, changeable right here (StayEditor). */
+  stayEditor?: React.ReactNode;
 }) {
   // ── Who: the number first (this device's last number is filled in) ──
   const [device, setDevice] = useWho();
@@ -137,6 +140,8 @@ export function GuestStep({
       <section aria-labelledby="details-title" className="mt-8 lg:mt-10">
         <h2 id="details-title" className={typeScale.subheading}>Book &amp; pay</h2>
         <p className={cn(typeScale.small, "mt-2 max-w-[34rem] text-pub-muted")}>Your number first — if you have stayed or ordered with us before, we already know you.</p>
+
+        {stayEditor && <div className="mt-6">{stayEditor}</div>}
 
         {failed && (
           <Notice className="mt-6" title={unavailable ? "This room was just taken." : payState && !payState.ok && payingNow ? "We couldn’t start your payment." : "We couldn’t make your booking."}>
@@ -274,11 +279,8 @@ export function GuestStep({
               </div>
             )}
 
-            {/* Honeypot — hidden from people and assistive tech. */}
-            <div className="absolute -left-[9999px] h-px w-px overflow-hidden" aria-hidden="true">
-              <label htmlFor="company">Company</label>
-              <input id="company" name="company" tabIndex={-1} autoComplete="off" defaultValue="" />
-            </div>
+            {/* Hidden anti-spam field: never shown (display:none) and never named like a real field, so browser autofill cannot fill it (2026-10-05: Chrome filled the old "Company" one and real bookings were refused). */}
+            <input name="hp_field" tabIndex={-1} autoComplete="off" aria-hidden="true" hidden defaultValue="" />
           </div>
 
           {/* The amount and how to pay: one dark panel, the screen's single focal point, with the one button. */}

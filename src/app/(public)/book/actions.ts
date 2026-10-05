@@ -44,7 +44,7 @@ function pickupOf(v: BookingInput) {
 /** The form, checked — with the guest's name: typed, or (a returning guest who gave only their number) the one we have. */
 async function parse(formData: FormData): Promise<BookingInput & { fullName: string }> {
   const v = parseInput(bookingSchema, formData);
-  if (v.company) throw new AppError("We couldn’t process this request. Please call us to book.", "VALIDATION");
+  if (v.hp_field) throw new AppError("We couldn’t process this request. Please call us to book.", "VALIDATION");
   return { ...v, fullName: await orderCustomerName(v.fullName, v.phone, { field: "fullName", max: 120 }) };
 }
 
