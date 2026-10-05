@@ -22,6 +22,12 @@ import { AutoSelect } from "@/components/staff/finance/auto-select";
 import { cn } from "@/lib/utils";
 import { OnlineLine, PaymentColumns, PaymentRow, ToCollectLine } from "./collection-lines";
 
+/** How far back reception and the Restaurant Counter see mobile-money requests: the last two days, up to now. */
+const RECENT_MOBILE_MS = 48 * 3600_000;
+function recentMobileWindow() {
+  const end = new Date();
+  return { start: new Date(end.getTime() - RECENT_MOBILE_MS), end };
+}
 export const metadata: Metadata = { title: "Collections" };
 export const dynamic = "force-dynamic";
 
@@ -129,7 +135,13 @@ export default async function CollectionsPage({ searchParams }: PageProps<"/staf
   // Hotel money guests paid online before arriving: shown to reception until the guest is checked in (then it is the
   // collection of whoever checks them in). Not for the Counter, nor for one past shift.
   const awaiting = !device && (takesRoomMoney || supervisor) && sources.includes("ROOMS") && !(ownShift?.endedAt) ? await paidOnlineAwaitingCheckIn() : null;
-  const phonePays = await onlinePayments({ from: p.from, to: p.to, status: "all", purpose: null, q, window, purposes });
+  // Reception and the Counter see only what is going on now — the last two days (owner, 2026-10-05); the whole list,
+  // any period, stays with managers and the admin (here with a period, and Finance → Online payments).
+  const recentOnly = !supervisor;
+  const phonePays = await onlinePayments({
+    from: p.from, to: p.to, status: "all", purpose: null, q, purposes,
+    window: recentOnly ? recentMobileWindow() : window,
+  });
   const t = collectorId ? totals.of(collectorId) : totals.all;
   const split = canSplit ? (everySource ? (collectorId ? everySource.of(collectorId) : everySource.all) : t) : null;
   const bySrc = (k: MoneySource) => split?.bySource.find((x) => x.source === k)?.amount ?? 0;
@@ -372,7 +384,7 @@ export default async function CollectionsPage({ searchParams }: PageProps<"/staf
 
       {mobileView ? (
         <MobileMoneyList rows={phonePays} filter={mobileFilter} href={(f) => link({ view: "mobile", ms: f === "all" ? "" : f, page: "" })} timezone={settings.timezone}
-          scope={`${ownShift ? "this shift" : p.key === "all" ? "all time" : periodLabel(p).toLowerCase()} · ${sources.length === ALL_SOURCES.length ? "hotel & restaurant" : sources.map((x) => SOURCE_LABEL[x]).join(", ").toLowerCase()}`} />
+          scope={`${recentOnly ? "the last 2 days" : ownShift ? "this shift" : p.key === "all" ? "all time" : periodLabel(p).toLowerCase()} · ${sources.length === ALL_SOURCES.length ? "hotel & restaurant" : sources.map((x) => SOURCE_LABEL[x]).join(", ").toLowerCase()}`} />
       ) : collecting && open ? (
         <ToCollect open={open} rows={toCollectRows} today={today} servedById={servedById} link={link} confirmHref={tab({ status: "TO_CONFIRM" })} />
       ) : list && (
