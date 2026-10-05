@@ -23,6 +23,7 @@ export { Section, Container, toneAttr, type SectionGlow, type SectionMarker } fr
 export { Atmosphere, type AtmosphereLevel, type AtmospherePattern, type AtmosphereOptions } from "./atmosphere";
 export { HudLabel, SectionIndex, HudFrame, GlassPanel, Spotlight, HOTEL_COORDS } from "./hud";
 export { Marquee } from "./marquee";
+export { QuietList } from "./quiet-list";
 export { ParallaxLayer } from "./parallax";
 export { Eyebrow, Heading, Display, Accent, Lede, SectionIntro } from "./typography";
 export { LinkButton, Button, TextLink, Actions, buttonClass, type ButtonVariant, type ButtonSize } from "./button";

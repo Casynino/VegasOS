@@ -13,7 +13,7 @@ import {
   InfoList,
   Lede,
   LinkButton,
-  Marquee,
+  QuietList,
   Reveal,
   Section,
   SectionIntro,
@@ -123,7 +123,7 @@ export default async function RestaurantPage() {
 
       {/* Morning to night: the cuisines drifting by, the meals as a timeline, layered photographs, the hours, dietary options. */}
       <Section tone="night" width="bleed" labelledBy="day-title" className="overflow-hidden">
-        {drift.length > 2 && <Marquee items={drift} size="lg" duration={75} label={`On the menu: ${drift.join(", ")}`} className="mb-12 sm:mb-16 lg:mb-24" />}
+        {drift.length > 2 && <QuietList items={drift} icons={false} label="On the menu" className="mx-auto mb-12 max-w-3xl px-4 sm:mb-16 lg:mb-20" />}
         <div className={containers.default}>
           <div className="grid gap-14 lg:grid-cols-12 lg:items-center lg:gap-10">
             <Reveal className="min-w-0 lg:col-span-5">

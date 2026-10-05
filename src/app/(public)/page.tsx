@@ -25,7 +25,7 @@ import {
   InfoList,
   Lede,
   LinkButton,
-  Marquee,
+  QuietList,
   MediaFrame,
   Reveal,
   Section,
@@ -272,9 +272,9 @@ export default async function HomePage() {
         </div>
       </CinematicHero>
 
-      {/* ═════════════ 2. The hotel — its offer in a slow band, then the building drawn and revealed ═════════════ */}
+      {/* ═════════════ 2. The hotel — its offer in one quiet line, then the building drawn and revealed ═════════════ */}
       <Section tone="paper" id="hotel" labelledBy="intro-title" width="bleed" space="none" className="pb-12 sm:pb-20 lg:pb-28">
-        <Marquee items={offer} size="md" duration={70} label={offer.join(", ")} className="border-b border-pub-line py-4 sm:py-6" />
+        <div className={cn(containers.default, "border-b border-pub-line py-6 sm:py-7")}><QuietList items={offer} label="What the hotel offers" /></div>
         <div className={cn(containers.default, "pt-10 sm:pt-16 lg:pt-24")}>
           <SectionIndex index={1} label="The hotel" aside={<HudLabel>{HOTEL_COORDS.label}</HudLabel>} className="mb-8 sm:mb-10 lg:mb-14" />
           <div className="grid gap-10 sm:gap-12 lg:grid-cols-12 lg:items-center lg:gap-x-10">

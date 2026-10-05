@@ -14,7 +14,7 @@ import {
   HudFrame,
   HudLabel,
   LinkButton,
-  Marquee,
+  QuietList,
   MediaFrame,
   Reveal,
   Section,
@@ -134,7 +134,7 @@ export default async function BarPage() {
       {shelves.length > 0 && (
         <Section tone="night" width="bleed" labelledBy="drinks-title" className="overflow-hidden">
           {shelves.length > 2 && (
-            <Marquee items={shelves.map((x) => x.name)} size="lg" duration={70} direction="right" className="mb-12 sm:mb-16 lg:mb-20" />
+            <QuietList items={shelves.map((x) => x.name)} icons={false} label="On the shelves" className="mx-auto mb-12 max-w-3xl px-4 sm:mb-16 lg:mb-20" />
           )}
           <div className={containers.default}>
             <SectionIntro

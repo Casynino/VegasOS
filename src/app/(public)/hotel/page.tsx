@@ -19,7 +19,8 @@ import {
   HudFrame,
   HudLabel,
   LinkButton,
-  Marquee,
+  QuietList,
+  containers,
   MediaFrame,
   Rail,
   Reveal,
@@ -260,7 +261,7 @@ export default async function HotelPage() {
 
       {/* The hotel's offer as a slow outline band, between the night of Experiences and the drafting sheet of Services. */}
       <Section tone="night" width="bleed" space="none" atmosphere="calm" pattern="none" as="div" className="pb-10 sm:pb-14">
-        <Marquee items={offer} size="lg" duration={70} className="border-y border-pub-line" />
+        <div className={cn(containers.default, "border-y border-pub-line py-6 sm:py-7")}><QuietList items={offer} label="What the hotel offers" /></div>
       </Section>
 
       {/* 03 · Services: the full list from Staff → Website → Services, as a drafting-sheet index. */}
