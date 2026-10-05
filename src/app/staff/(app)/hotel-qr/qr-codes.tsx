@@ -286,7 +286,7 @@ export function GuestView({ code, hotel, onClose }: { code: Pick<QrCodeView, "qr
 
   return createPortal(
     <div ref={ref} role="dialog" aria-modal="true" aria-label="Scan to book your stay"
-      className="fixed inset-0 z-[100] flex flex-col items-center justify-center-safe overflow-y-auto bg-[#0b1026] px-4 py-8 text-center text-white">
+      className="fixed inset-0 z-[100] flex flex-col items-center justify-center-safe overflow-y-auto bg-[#0c0806] px-4 py-8 text-center text-white">
       <div aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_45%,rgba(227,189,106,0.2),transparent_50%),radial-gradient(circle_at_10%_95%,rgba(56,97,210,0.3),transparent_45%)]" />
       <button type="button" onClick={close} className="absolute right-4 top-4 inline-flex h-10 items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-4 text-sm font-medium text-white backdrop-blur hover:bg-white/15">
         <X className="size-4" />Close
