@@ -3,11 +3,10 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { toJpeg, toPng } from "html-to-image";
-import {
-  BedDouble, BellRing, CalendarCheck, CalendarDays, Coffee, ConciergeBell, Download, ExternalLink, Loader2, Plus, Printer, Receipt, ShoppingBag, Store, Tag, UtensilsCrossed, Wine,
-} from "lucide-react";
+import { Download, ExternalLink, Loader2, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { NETWORK_MARKS } from "@/components/payments/networks";
 
 /**
  * A room / the meeting room / the public menu card — or a restaurant place: a table, the counter, the main restaurant QR —
@@ -18,11 +17,11 @@ const GOLD = "#e3bd6a";
 
 /** A card as a sharp JPEG, whatever size it is shown at (≈1050 px wide, A6 proportions). */
 export function snapQrCard(node: HTMLElement) {
-  return toJpeg(node, { pixelRatio: 1050 / Math.max(1, node.offsetWidth), quality: 0.93, cacheBust: true, backgroundColor: "#0b1026" });
+  return toJpeg(node, { pixelRatio: 1050 / Math.max(1, node.offsetWidth), quality: 0.93, cacheBust: true, backgroundColor: "#ffffff" });
 }
 /** The same card as a PNG (sharp edges for print shops and social media). */
 export function snapQrCardPng(node: HTMLElement) {
-  return toPng(node, { pixelRatio: 1050 / Math.max(1, node.offsetWidth), cacheBust: true, backgroundColor: "#0b1026" });
+  return toPng(node, { pixelRatio: 1050 / Math.max(1, node.offsetWidth), cacheBust: true, backgroundColor: "#ffffff" });
 }
 export function saveFile(href: string, name: string) {
   const a = document.createElement("a");
@@ -66,95 +65,86 @@ export function QrPreview({ card, hotel, phone, printHref, fileName, className }
 }
 
 /**
- * The printed card — a hotel amenity card, not a QR page: "Scan to order", the QR as the
- * hero (gold frame, logo in the middle), what you can order and how, and the room small.
- * Every size follows the card's width (cqw), so screen, print and download look the same.
+ * The printed card (owner, 2026-10-05: "the best look — and the payment logos on it"). A6, two calm zones:
+ * espresso above — the hotel, one big serif title for the place, the QR as the hero on a white tile with the logo —
+ * and a cream band below that says how to pay: the mobile-money networks (nTZS) in their own colours. No icon rows,
+ * no numbered steps, no pills. Every size follows the card's width (cqw), so screen, print and download match.
  */
 export function QrPrintCard({ card, hotel, phone }: { card: Printable; hotel: string; phone: string | null }) {
-  const place = card.kind === "table" || card.kind === "counter" || card.kind === "restaurant";
-  const copy = card.kind === "booking"
-    // The Hotel QR: only what is always true (no payment way — the Admin can switch those on and off).
-    ? { head: "Scan to book", sub: "your stay with us", items: [[BedDouble, "Our rooms"], [CalendarDays, "Your dates"], [Tag, "Live prices"], [CalendarCheck, "Book now"]] as const, tag: "Book your stay", foot: "Book direct with the hotel" }
-    : place
-    ? {
-      head: card.title, sub: card.area ?? "order food & drinks",
-      items: card.kind === "restaurant"
-        ? [[UtensilsCrossed, "Dine in"], [ShoppingBag, "Takeaway"], [Wine, "Drinks"], [Receipt, "Your bill"]] as const
-        : [[UtensilsCrossed, "Food"], [Wine, "Drinks"], [Plus, "Order more"], [Receipt, "Your bill"]] as const,
-      tag: card.kind === "restaurant" ? "Restaurant & bar" : `${card.title}${card.area ? ` · ${card.area}` : ""}`,
-      foot: "Scan to view our menu and place your order",
-    }
-    : card.kind === "meeting"
-    ? { head: "Scan to order", sub: "refreshments & more", items: [[Coffee, "Coffee & tea"], [UtensilsCrossed, "Lunch"], [Wine, "Drinks"], [ConciergeBell, "Services"]] as const, tag: `Meeting Room ${card.title}`, foot: "Added to your meeting bill" }
-    : card.kind === "public"
-      ? { head: "Scan for our menu", sub: "order food & drinks", items: [[UtensilsCrossed, "Dine in"], [ShoppingBag, "Takeaway"], [Store, "Pickup"], [Wine, "Bar"]] as const, tag: card.table ?? "Restaurant & bar", foot: "Order and pay at the counter" }
-      : { head: "Scan to order", sub: "food, drinks & more", items: [[UtensilsCrossed, "Food"], [Wine, "Drinks"], [BellRing, "Room service"], [ConciergeBell, "Hotel services"]] as const, tag: `Room ${card.title}`, foot: "Delivered to your room · added to your bill" };
-  const steps = card.kind === "booking" ? ["Scan", "Choose", "Book"] : card.kind === "public" ? ["Scan", "Choose", "Enjoy"] : place ? ["Scan", "Order", "We serve you"] : ["Scan", "Choose", "We bring it"];
+  const c = cardCopy(card);
   return (
-    <article id={`qr-${card.id}`} className="@container relative aspect-[105/148] w-full overflow-hidden rounded-[22px] bg-[#0b1026] text-center text-white shadow-[0_24px_50px_-28px_rgba(5,8,25,0.9)] [print-color-adjust:exact] print:rounded-none print:shadow-none">
-      {/* Night-navy with a warm glow, fine gold lines and an inner gold border */}
-      <div aria-hidden className="absolute inset-0 bg-[radial-gradient(circle_at_50%_52%,rgba(227,189,106,0.22),transparent_46%),radial-gradient(circle_at_10%_95%,rgba(56,97,210,0.3),transparent_45%),radial-gradient(circle_at_92%_4%,rgba(56,97,210,0.22),transparent_40%)]" />
-      <div aria-hidden className="absolute inset-0 opacity-[0.06] [background-image:repeating-linear-gradient(135deg,#e3bd6a_0_1px,transparent_1px_13px)]" />
-      <div aria-hidden className="absolute inset-[2.4cqw] rounded-[4cqw] border border-[#e3bd6a]/40 print:rounded-none" />
-      <div aria-hidden className="absolute inset-[3.4cqw] rounded-[3.2cqw] border border-[#e3bd6a]/15 print:rounded-none" />
+    <article id={`qr-${card.id}`} className="@container relative flex aspect-[105/148] w-full flex-col overflow-hidden rounded-[22px] bg-[#17110c] text-center text-white shadow-[0_24px_50px_-28px_rgba(10,7,4,0.9)] [print-color-adjust:exact] print:rounded-none print:shadow-none">
+      {/* ── Espresso: the hotel and the place ── */}
+      <div className="relative flex flex-1 flex-col items-center px-[8cqw] pt-[7cqw]">
+        <div aria-hidden className="absolute inset-0 bg-[radial-gradient(ellipse_70%_45%_at_50%_58%,rgba(227,189,106,0.20),transparent_70%),radial-gradient(ellipse_60%_35%_at_50%_0%,rgba(227,189,106,0.10),transparent_70%)]" />
+        <div aria-hidden className="absolute inset-x-[3cqw] top-[3cqw] bottom-0 rounded-t-[3.4cqw] border border-b-0 border-[#e3bd6a]/30 print:rounded-none" />
 
-      <div className="relative flex h-full flex-col items-center px-[8%] pb-[6%] pt-[7%]">
-        {/* Brand */}
-        <div className="flex items-center gap-[2cqw]">
-          <span className="grid size-[8cqw] place-items-center rounded-full bg-[#0b1026] ring-1 ring-[#e3bd6a]/70">
+        <div className="relative flex items-center gap-[2.2cqw]">
+          <span className="grid size-[8.5cqw] place-items-center rounded-full bg-[#17110c] ring-1 ring-[#e3bd6a]/70">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/brand/logo-192.png" alt="" className="size-[85%] rounded-full" />
+            <img src="/brand/logo-192.png" alt="" className="size-[86%] rounded-full" />
           </span>
-          <span className="text-[2.3cqw] font-semibold uppercase tracking-[0.34em] text-white/85">{hotel}</span>
+          <span className="text-left leading-none">
+            <span className="block text-[2.5cqw] font-semibold uppercase tracking-[0.32em] text-white/90">{hotel}</span>
+            <span className="mt-[0.9cqw] block text-[1.9cqw] uppercase tracking-[0.3em] text-[#e3bd6a]/80">Dar es Salaam</span>
+          </span>
         </div>
 
-        {/* The message */}
-        <p className="mt-[5cqw] font-display text-[9.4cqw] font-semibold leading-[0.95]">{copy.head}</p>
-        <p className="mt-[1cqw] font-display text-[6.4cqw] italic leading-none" style={{ color: GOLD }}>{copy.sub}</p>
+        <p className="relative mt-[6cqw] text-[2.3cqw] font-semibold uppercase tracking-[0.34em]" style={{ color: GOLD }}>{c.eyebrow}</p>
+        <p className="relative mt-[1.6cqw] font-display text-[11cqw] font-semibold leading-[0.92] tracking-tight">{c.title}</p>
+        {c.sub && <p className="relative mt-[1.6cqw] text-[2.6cqw] tracking-wide text-white/60">{c.sub}</p>}
 
-        {/* The QR — the hero */}
-        <div className="relative mt-[5.5cqw]">
-          {/* gold scanner corners */}
-          {["-left-[3cqw] -top-[3cqw] border-l-2 border-t-2 rounded-tl-[3cqw]", "-right-[3cqw] -top-[3cqw] border-r-2 border-t-2 rounded-tr-[3cqw]", "-bottom-[3cqw] -left-[3cqw] border-b-2 border-l-2 rounded-bl-[3cqw]", "-bottom-[3cqw] -right-[3cqw] border-b-2 border-r-2 rounded-br-[3cqw]"].map((pos) => (
-            <span key={pos} aria-hidden className={cn("absolute size-[9cqw] border-[#e3bd6a]", pos)} />
-          ))}
-          <div className="relative rounded-[4cqw] bg-white p-[3.2cqw] shadow-[0_0_0_1px_rgba(227,189,106,0.5),0_18px_40px_-14px_rgba(227,189,106,0.55)]">
-            <span className="block size-[47cqw] [&_svg]:size-full" dangerouslySetInnerHTML={{ __html: card.qr }} />
-            {/* the logo in the middle (the QR is made to tolerate it) */}
-            <span className="absolute left-1/2 top-1/2 grid size-[11cqw] -translate-x-1/2 -translate-y-1/2 place-items-center rounded-[2.4cqw] bg-white p-[0.8cqw] shadow-[0_0_0_1px_rgba(11,16,38,0.08)]">
+        {/* The QR — the hero: a white tile, the logo in the middle (the QR tolerates it), one thin gold frame */}
+        <div className="relative mt-[5cqw] rounded-[5cqw] p-[1.4cqw] ring-1 ring-[#e3bd6a]/55 shadow-[0_22px_44px_-18px_rgba(227,189,106,0.45)]">
+          <div className="relative rounded-[3.8cqw] bg-white p-[3.4cqw]">
+            <span className="block size-[44cqw] [&_path[stroke]]:stroke-[#17110c] [&_svg]:size-full" dangerouslySetInnerHTML={{ __html: card.qr }} />
+            <span className="absolute left-1/2 top-1/2 grid size-[11.5cqw] -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-white p-[0.9cqw] shadow-[0_0_0_1px_rgba(23,17,12,0.10)]">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/brand/logo-192.png" alt="" className="size-full rounded-[1.8cqw]" />
+              <img src="/brand/logo-192.png" alt="" className="size-full rounded-full" />
             </span>
           </div>
         </div>
 
-        {/* What you can order */}
-        <div className="mt-[6.5cqw] grid w-full grid-cols-4 gap-[1.5cqw]">
-          {copy.items.map(([Icon, label]) => (
-            <span key={label} className="flex flex-col items-center gap-[1.2cqw]">
-              <span className="grid size-[8.5cqw] place-items-center rounded-full bg-[#e3bd6a]/12 ring-1 ring-[#e3bd6a]/45"><Icon className="size-[4.2cqw]" style={{ color: GOLD }} /></span>
-              <span className="text-[2.3cqw] font-medium leading-tight text-white/85">{label}</span>
-            </span>
-          ))}
-        </div>
+        <p className="relative mt-[4.2cqw] font-display text-[4.6cqw] italic leading-none" style={{ color: GOLD }}>{c.call}</p>
+        <p className="relative mt-[1.8cqw] pb-[5cqw] text-[2.35cqw] tracking-wide text-white/65">{c.does.join("   ·   ")}</p>
+      </div>
 
-        {/* How */}
-        <div className="mt-[4.5cqw] flex items-center gap-[1.6cqw] text-[2.4cqw] text-white/70">
-          {steps.map((step, i) => (
-            <span key={step} className="flex items-center gap-[1.6cqw]">
-              <span className="grid size-[4.2cqw] place-items-center rounded-full text-[2.2cqw] font-bold text-[#1a1206]" style={{ background: GOLD }}>{i + 1}</span>
-              <span className="font-medium">{step}</span>
-              {i < steps.length - 1 && <span aria-hidden className="h-px w-[4cqw] bg-[#e3bd6a]/50" />}
-            </span>
+      {/* ── Cream: how to pay — the networks in their own colours ── */}
+      <div className="relative bg-[#f6f0e6] px-[6cqw] pb-[4.4cqw] pt-[3.8cqw] text-[#1d1712]">
+        <p className="text-[2.1cqw] font-bold uppercase tracking-[0.3em] text-[#1d1712]/70">{c.pay}</p>
+        <ul className="mt-[2.4cqw] flex items-center justify-center gap-[1.6cqw]" aria-label="Mobile-money networks">
+          {NETWORK_MARKS.map((m) => (
+            <li key={m.key} title={m.label}
+              className={cn("inline-flex h-[6.6cqw] shrink-0 items-center gap-[0.3em] whitespace-nowrap rounded-[1.6cqw] px-[2.2cqw] text-[3.4cqw] font-extrabold lowercase leading-none tracking-tight shadow-[0_1px_2px_rgba(0,0,0,0.12)]", m.className)}>
+              {m.body}
+            </li>
           ))}
-        </div>
-
-        {/* The room — small */}
-        <div className="mt-auto flex flex-col items-center gap-[1.2cqw]">
-          <span className="rounded-full border border-[#e3bd6a]/50 bg-[#e3bd6a]/10 px-[3cqw] py-[0.8cqw] text-[2.3cqw] font-semibold uppercase tracking-[0.25em]" style={{ color: GOLD }}>{copy.tag}</span>
-          <span className="text-[2.1cqw] text-white/50">{copy.foot}{phone ? ` · Reception ${phone}` : ""}</span>
-        </div>
+        </ul>
+        <p className="mt-[2.4cqw] flex items-center justify-center gap-[1.2cqw] text-[2.1cqw] text-[#1d1712]/60">
+          <span>Secure payment by <b className="font-bold tracking-wide text-[#1d1712]/85">NTZS</b></span>
+          {phone && <><span aria-hidden className="size-[0.8cqw] rounded-full bg-[#b8913e]" /><span>Reception {phone}</span></>}
+        </p>
       </div>
     </article>
   );
+}
+
+/** What each card says: the place in big type, the call to scan, what you can do, and how paying works there. */
+function cardCopy(card: Printable): { eyebrow: string; title: string; sub: string | null; call: string; does: string[]; pay: string } {
+  switch (card.kind) {
+    case "booking":
+      return { eyebrow: "Book direct", title: "Your stay", sub: null, call: "Scan to book your stay", does: ["Choose a room", "Book", "Pay now"], pay: "Pay by mobile money" };
+    case "room":
+      return { eyebrow: "Welcome to", title: `Room ${card.title}`, sub: null, call: "Scan to order", does: ["Food & drinks", "Your bill", "Ask reception"], pay: "Pay your bill by mobile money" };
+    case "meeting":
+      return { eyebrow: "Meeting room", title: card.title.toLowerCase().includes("meeting") ? card.title : "Meeting Room", sub: null, call: "Scan to order", does: ["Coffee & tea", "Lunch", "Drinks"], pay: "Pay by mobile money" };
+    case "table":
+      return { eyebrow: card.area ?? "Restaurant", title: card.title, sub: null, call: "Scan to order", does: ["Menu", "Order", "Pay"], pay: "Pay by mobile money" };
+    case "counter":
+      return { eyebrow: card.area ?? "Restaurant & bar", title: card.title, sub: null, call: "Scan to order", does: ["Menu", "Order", "Pay"], pay: "Pay by mobile money" };
+    case "restaurant":
+      return { eyebrow: "Restaurant & bar", title: "Our menu", sub: null, call: "Scan to order", does: ["Dine in", "Takeaway", "Drinks"], pay: "Pay by mobile money" };
+    default:
+      return { eyebrow: card.table ?? "Restaurant & bar", title: "Our menu", sub: null, call: "Scan to order", does: ["Dine in", "Takeaway", "Pickup"], pay: "Pay by mobile money" };
+  }
 }

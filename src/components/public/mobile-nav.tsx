@@ -17,8 +17,9 @@ const focus = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visi
 
 /**
  * The phone/tablet menu (below 1024px): a full-screen night drawer that drops like a curtain.
- * Large serif links in the order of the story, related pages as small links beside their parent,
- * then Book your stay, call / WhatsApp, the theme switch and a discreet staff door.
+ * Compact serif links in the order of the story (owner, 2026-10-05: the big links pushed everything off the screen
+ * and the staff login could not be found) — related pages as small links beside their parent — then Book your stay,
+ * call / WhatsApp, and a clear row with the theme switch and Staff login, all on one phone screen.
  * Base UI Dialog gives the focus trap, Escape to close, scroll lock and focus return.
  */
 export function MobileNav({
@@ -77,7 +78,7 @@ export function MobileNav({
           <div className="mx-auto flex h-16 w-full max-w-[90rem] shrink-0 items-center justify-between gap-4 px-4 sm:px-8">
             <Link href="/" onClick={close} className={cn("flex items-center gap-2.5 rounded-sm", focus)}>
               <Image src="/brand/logo-192.png" alt="" width={40} height={40} className="size-9" />
-              <span className="font-display text-xl font-semibold text-gold">{hotelName}</span>
+              <span className="font-display text-lg font-semibold text-gold">{hotelName}</span>
             </Link>
             <Dialog.Close
               render={
@@ -96,7 +97,7 @@ export function MobileNav({
           </div>
 
           <div className="mx-auto grid w-full max-w-[90rem] flex-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]">
-            <div className="flex min-w-0 flex-col px-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-3 sm:px-8 sm:pt-8">
+            <div className="flex min-w-0 flex-col px-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-2 sm:px-8 sm:pt-8">
               <nav aria-label="Menu">
                 <ul className="border-t border-white/10">
                   {MENU_NAV.map((item, i) => {
@@ -112,7 +113,7 @@ export function MobileNav({
                           onClick={close}
                           aria-current={active ? "page" : undefined}
                           className={cn(
-                            "flex min-h-[3.25rem] min-w-0 flex-1 items-center py-2 font-display text-[1.75rem] leading-none text-white/90 transition-colors duration-200 hover:text-gold aria-[current=page]:text-gold sm:min-h-16 sm:text-[2.25rem] motion-reduce:transition-none",
+                            "flex min-h-11 min-w-0 flex-1 items-center py-1.5 font-display text-[1.375rem] leading-none text-white/90 transition-colors duration-200 hover:text-gold aria-[current=page]:text-gold sm:min-h-14 sm:text-[1.875rem] motion-reduce:transition-none",
                             focus,
                           )}
                         >
@@ -143,7 +144,7 @@ export function MobileNav({
               </nav>
 
               <div
-                className="mt-auto pt-8 motion-safe:animate-in motion-safe:fade-in motion-safe:fill-mode-both motion-safe:duration-500"
+                className="mt-auto pt-6 motion-safe:animate-in motion-safe:fade-in motion-safe:fill-mode-both motion-safe:duration-500"
                 style={{ animationDelay: `${140 + MENU_NAV.length * 40}ms` }}
               >
                 <LinkButton href="/book" onClick={close} full icon="arrow">
@@ -155,7 +156,7 @@ export function MobileNav({
                       <a
                         href={telHref(phone)}
                         className={cn(
-                          "inline-flex h-12 items-center justify-center gap-2 rounded-full border border-white/15 text-[13px] text-white/85 transition-colors duration-200 hover:border-white/45 hover:text-white motion-reduce:transition-none",
+                          "inline-flex h-11 items-center justify-center gap-2 rounded-full border border-white/15 text-[13px] text-white/85 transition-colors duration-200 hover:border-white/45 hover:text-white motion-reduce:transition-none",
                           focus,
                         )}
                       >
@@ -168,7 +169,7 @@ export function MobileNav({
                         target="_blank"
                         rel="noopener noreferrer"
                         className={cn(
-                          "inline-flex h-12 items-center justify-center gap-2 rounded-full border border-white/15 text-[13px] text-white/85 transition-colors duration-200 hover:border-white/45 hover:text-white motion-reduce:transition-none",
+                          "inline-flex h-11 items-center justify-center gap-2 rounded-full border border-white/15 text-[13px] text-white/85 transition-colors duration-200 hover:border-white/45 hover:text-white motion-reduce:transition-none",
                           focus,
                         )}
                       >
@@ -178,13 +179,13 @@ export function MobileNav({
                     )}
                   </div>
                 )}
-                <div className="mt-6 flex items-center justify-between gap-4 border-t border-white/10 pt-5">
+                <div className="mt-4 flex items-center justify-between gap-4 border-t border-white/10 pt-4">
                   <ThemeToggle withLabel />
                   <StaffLink
                     withIcon
                     onClick={close}
                     labels={{ signedIn: "Staff dashboard", signedOut: "Staff login" }}
-                    className={cn("min-h-11 rounded-sm text-[13px] text-white/45 transition-colors hover:text-white", focus)}
+                    className={cn("inline-flex h-11 items-center gap-2 rounded-full border border-gold/45 bg-gold/10 px-4 text-[13px] font-medium text-gold transition-colors hover:bg-gold/20", focus)}
                   />
                 </div>
               </div>
