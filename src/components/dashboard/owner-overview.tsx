@@ -121,16 +121,22 @@ export async function OwnerOverview({ searchParams, basePath }: {
   // Today, always (the cards at the top) — the period chosen further down drives the rest.
   const todayOnly = { from: today, to: today }, yesterday = { from: addDays(today, -1), to: addDays(today, -1) };
   const liveOrders = { status: { not: "CANCELLED" as const } };
-  const [tables, plToday, plYesterday, cashToday, occToday, foodToday, foodYesterday] = await Promise.all([
+  const [tables, plToday, cashToday, cashYesterday, occToday, foodToday, foodYesterday] = await Promise.all([
     tablesOnHome(today, todayOnly, now),
     periodKey === "today" ? pl : profitLoss(todayOnly),
-    periodKey === "today" ? plPrev : profitLoss(yesterday),
     dailyMoney(todayOnly),
+    dailyMoney(yesterday),
     periodKey === "today" ? occ : occupancy(todayOnly),
     db.restaurantOrder.aggregate({ where: { businessDate: toDbDate(today), ...liveOrders }, _sum: { foodSubtotal: true, drinksSubtotal: true, serviceFee: true, total: true }, _count: true }),
     db.restaurantOrder.aggregate({ where: { businessDate: toDbDate(addDays(today, -1)), ...liveOrders }, _sum: { total: true } }),
   ]);
   const revToday = plToday.revenue;
+  // Money really received today (every account) — the headline (owner, 2026-10-05: "the boss will think we have
+  // 160,000 but we don't have the money"). What was earned (rooms sold, food served) is shown beside it, with what
+  // guests still owe — earned is not money in hand.
+  const receivedToday = cashToday[0]?.received ?? 0;
+  const receivedYesterday = cashYesterday[0]?.received ?? 0;
+  const owedNow = inHouse.summary.totalOutstanding;
   const profitToday = plToday.estimatedProfit;
   const rateToday = occToday.roomsSold ? Math.round(revToday.rooms.net / occToday.roomsSold) : 0;
   const foodTotal = foodToday._sum.total ?? 0;
@@ -177,7 +183,7 @@ export async function OwnerOverview({ searchParams, basePath }: {
       <HeroBanner
         eyebrow={`Management · ${user.roleName}`}
         title={`${greeting}, ${user.fullName.split(" ")[0]}`}
-        subtitle={<><strong className="font-semibold text-white">{rooms.occupied} of {rooms.total}</strong> rooms occupied tonight · <strong className="font-semibold text-[#f2d28c]">{formatTZS(pl.netRevenue)}</strong> earned {periodKey === "today" ? "today" : "this period"}</>}
+        subtitle={<><strong className="font-semibold text-white">{rooms.occupied} of {rooms.total}</strong> rooms occupied tonight · <strong className="font-semibold text-emerald-300">{formatTZS(receivedToday)}</strong> received today{owedNow > 0 && <> · <strong className="font-semibold text-amber-300">{formatTZS(owedNow)}</strong> not paid yet by guests</>}</>}
       />
 
       <div>
@@ -199,18 +205,16 @@ export async function OwnerOverview({ searchParams, basePath }: {
             ]} footer={<div className="space-y-1"><p>{snap.arrivals.length} arriving · {snap.departures.length} leaving · <span className={overdueNow.length ? "font-semibold text-rose-300" : ""}>{overdueNow.length} overdue</span> · {extensionsToday} extended (24h)</p><p>{shift.openAll.length ? <>On the front desk: <strong className="text-white">{shift.openAll.map((o) => o.user.fullName).join(" & ")}</strong></> : "No reception shift started yet"}</p></div>} />
           </div>
           <MoneyCard title="Money today" href="/staff/reports" linkLabel="Today's report"
-            headline={{ value: formatTZS(plToday.netRevenue), label: "Earned today (net) — every department", delta: change(plToday.netRevenue, plYesterday.netRevenue) }}
+            headline={{ value: formatTZS(receivedToday), label: "Received today — money really in the hotel's accounts", delta: change(receivedToday, receivedYesterday) }}
             split={[
-              { label: "Rooms", value: revToday.rooms.net, color: "#8b5cf6" },
-              { label: "Restaurant & bar", value: revToday.restaurant + revToday.bar + revToday.roomService, color: "#f59e0b" },
-              { label: "Meeting room", value: revToday.meeting, color: "#10b981" },
-              { label: "Other", value: revToday.transport + revToday.other, color: "#c9a24a" },
+              { label: "Received today", value: receivedToday, color: "#10b981" },
+              { label: "Not paid yet (guests owe)", value: owedNow, color: "#f59e0b" },
             ]}
             cells={[
-              { label: "Money in", icon: <Banknote />, tint: "bg-emerald-500/15 text-emerald-500", value: formatTZS(cashToday[0]?.received ?? 0), sub: "all accounts", tone: "good", href: `/staff/payments?from=${today}&to=${today}` },
+              { label: "Earned today", icon: <Banknote />, tint: "bg-violet-500/15 text-violet-400", value: formatTZS(plToday.netRevenue), sub: "rooms sold + food served — paid or not", href: `/staff/payments?from=${today}&to=${today}` },
               { label: "Spent", icon: <Receipt />, tint: "bg-rose-500/15 text-rose-400", value: formatTZS(plToday.expenses), sub: `${plToday.expenseSummary.count} expense${plToday.expenseSummary.count === 1 ? "" : "s"}`, href: "/staff/expenses" },
-              { label: profitToday >= 0 ? "Profit (estimate)" : "Loss (estimate)", icon: <TrendingUp />, tint: "bg-[oklch(0.72_0.12_80/0.18)] text-[oklch(0.8_0.11_82)]", value: formatTZS(Math.abs(profitToday)), sub: "earned − spent", tone: profitToday >= 0 ? "good" : "bad" },
-              { label: "Guests owe", icon: <Wallet />, tint: "bg-amber-500/15 text-amber-400", value: formatTZS(inHouse.summary.totalOutstanding), sub: departuresOwing.length ? `${departuresOwing.length} leaving today` : `${inHouse.summary.owingCount} staying`, tone: inHouse.summary.totalOutstanding ? "warn" : undefined, href: "/staff/finance/receivables" },
+              { label: profitToday >= 0 ? "Profit (estimate)" : "Loss (estimate)", icon: <TrendingUp />, tint: "bg-[oklch(0.72_0.12_80/0.18)] text-[oklch(0.8_0.11_82)]", value: formatTZS(Math.abs(profitToday)), sub: "earned − spent · on paper", tone: profitToday >= 0 ? "good" : "bad" },
+              { label: "Not paid yet", icon: <Wallet />, tint: "bg-amber-500/15 text-amber-400", value: formatTZS(owedNow), sub: owedNow ? `guests owe · ${departuresOwing.length ? `${departuresOwing.length} leaving today` : `${inHouse.summary.owingCount} staying`}` : "guests have paid", tone: owedNow ? "warn" : undefined, href: "/staff/finance/receivables" },
               { label: "Income per room", icon: <BedDouble />, tint: "bg-violet-500/15 text-violet-400", value: formatTZS(rooms.total ? Math.round(revToday.rooms.net / rooms.total) : 0), sub: `across ${rooms.total} rooms` },
               { label: "Average room rate", icon: <Tag />, tint: "bg-sky-500/15 text-sky-400", value: rateToday ? formatTZS(rateToday) : "None yet", sub: `${occToday.roomsSold} room${occToday.roomsSold === 1 ? "" : "s"} sold today` },
             ]} />
