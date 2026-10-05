@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Mail, MapPin, MessageCircle, Phone } from "lucide-react";
+import { CodeXml, Mail, MapPin, MessageCircle, Phone } from "lucide-react";
 import type { HotelSettings } from "@/generated/prisma/client";
 import { DEFAULT_CONTENT } from "./content";
 import { cn } from "@/lib/utils";
@@ -177,10 +177,17 @@ export function SiteFooter({ settings, blurb = DEFAULT_CONTENT.pages.footer.blur
             "flex flex-wrap items-center justify-between gap-x-6 gap-y-1 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 sm:pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:pt-5",
           )}
         >
-          <p className="py-2 text-xs leading-relaxed text-white/45">
-            © {year} {settings.hotelName}
-            {place && <span> · {place}</span>}
-          </p>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <p className="py-2 text-xs leading-relaxed text-white/45">
+              © {year} {settings.hotelName}
+              {place && <span> · {place}</span>}
+            </p>
+            {/* Who made the site — a small way to Nino's page and work. */}
+            <Link href="/nino" className={cn(focus, "group inline-flex h-8 items-center gap-1.5 rounded-full border border-white/12 px-3 text-[11px] text-white/55 transition-colors hover:border-white/30 hover:text-white")}>
+              <CodeXml className="size-3.5 text-white/40 transition-colors group-hover:text-[#c6f432]" strokeWidth={1.8} aria-hidden="true" />
+              Developed by Nino
+            </Link>
+          </div>
           <div className="-mr-2 flex items-center gap-3">
             <ThemeToggle compact />
             <StaffLink
