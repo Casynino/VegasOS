@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { shareCard } from "@/lib/share-card";
 import { Suspense } from "react";
 import { qrLanding } from "@/server/services/hotel-qr";
 import { qrExplore } from "@/server/services/hotel-qr-explore";
@@ -11,7 +12,7 @@ import { fill } from "@/components/public/content";
 import { HotelQrApp } from "@/components/hotel-qr/app";
 import { QrMessage } from "@/components/hotel-qr/inactive";
 
-export const metadata: Metadata = { title: "Book your stay", robots: { index: false, follow: false }, referrer: "no-referrer" };
+export const metadata: Metadata = { title: "Book your stay", robots: { index: false, follow: false }, referrer: "no-referrer", ...shareCard("book", "Book your stay — Vegas Luxury Hotel", "Pick your dates and pay by mobile money — your room at Mlimani City, Dar es Salaam in a minute.") };
 export const viewport: Viewport = { themeColor: "#1d1712" };
 export const dynamic = "force-dynamic";
 

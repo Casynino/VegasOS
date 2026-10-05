@@ -20,6 +20,9 @@ export const metadata: Metadata = {
   },
   description:
     "Vegas Luxury Hotel at Mlimani City, Dar es Salaam. Comfortable rooms with free Wi-Fi and breakfast, restaurant, bar and meeting room. Book direct for the best rate.",
+  // Any page without its own: the hotel's designed link card (WhatsApp & co use the page's own title and description).
+  openGraph: { type: "website", siteName: "Vegas Luxury Hotel", locale: "en_TZ", images: [{ url: "/og/hotel", width: 1200, height: 630, alt: "Vegas Luxury Hotel — Your stay, elevated.", type: "image/jpeg" }] },
+  twitter: { card: "summary_large_image", images: ["/og/hotel"] },
   // iPhone Safari turns numbers into phone/date links before the page wakes up — which breaks it; we link numbers ourselves.
   formatDetection: { telephone: false, date: false, email: false, address: false },
 };

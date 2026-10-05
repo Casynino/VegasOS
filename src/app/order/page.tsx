@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { shareCard } from "@/lib/share-card";
 import { getSettings } from "@/server/settings";
 import { restaurantMenu } from "@/server/services/online-orders";
 import { onlinePayAvailable } from "@/server/services/online-pay";
@@ -9,6 +10,7 @@ import { restaurantShell } from "@/components/restaurant/shell";
 export const metadata: Metadata = {
   title: "Order food & drinks",
   description: "Order from the Vegas Luxury Hotel restaurant and bar — dine in, takeaway or pickup.",
+  ...shareCard("menu", "Our menu — Vegas Luxury Hotel", "Eat here or take out — order from our restaurant & bar online and pay by mobile money."),
 };
 export const dynamic = "force-dynamic";
 

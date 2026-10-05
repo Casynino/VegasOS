@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { shareCard } from "@/lib/share-card";
 import { getSettings } from "@/server/settings";
 import { publicMenu } from "@/server/services/restaurant";
 import { onlinePayAvailable } from "@/server/services/online-pay";
@@ -19,6 +20,7 @@ export const metadata: Metadata = {
   title: "Menu — Restaurant & Bar",
   description: "The Vegas Luxury Hotel menu: breakfast, local favourites, grills and mains, fresh juices, beers, wines, whiskies and spirits — with prices in TZS.",
   alternates: { canonical: "/menu" },
+  ...shareCard("menu", "Our menu — Vegas Luxury Hotel", "Eat here or take out — order from our restaurant & bar online and pay by mobile money."),
 };
 
 /**

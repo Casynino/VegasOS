@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { shareCard } from "@/lib/share-card";
 import { Suspense } from "react";
 import { AlertCircle, MessageCircle, Phone } from "lucide-react";
 import { getSettings } from "@/server/settings";
@@ -29,6 +30,7 @@ export const metadata: Metadata = {
   description: "Check live availability and book a room at Vegas Luxury Hotel, Dar es Salaam. Instant booking reference, pay by mobile money.",
   alternates: { canonical: "/book" },
   robots: { index: true, follow: false },
+  ...shareCard("book", "Book your stay — Vegas Luxury Hotel", "Pick your dates and pay by mobile money — your room at Mlimani City, Dar es Salaam in a minute."),
 };
 
 function one(v: string | string[] | undefined) {

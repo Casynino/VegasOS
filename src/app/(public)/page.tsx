@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { shareCard } from "@/lib/share-card";
 import { getSettings } from "@/server/settings";
 import { bookingWindow, listPublicRoomTypes, parseImages, publicStats, tonightAvailability, websitePricer } from "@/server/services/public-booking";
 import { publicMeetingRoom } from "@/server/services/booking-requests";
@@ -52,17 +53,12 @@ import css from "@/components/public/home/home.module.css";
 
 export async function generateMetadata(): Promise<Metadata> {
   const c = await getSiteContent();
-  const og = c.seo.ogImage;
   return {
     title: { absolute: c.seo.homeTitle },
     description: c.seo.homeDescription,
     alternates: { canonical: "/" },
-    openGraph: {
-      type: "website",
-      title: c.seo.homeTitle,
-      description: c.seo.homeDescription,
-      images: [{ url: og.src, width: og.width, height: og.height, alt: og.alt }],
-    },
+    // Shared on WhatsApp & co: the designed card (owner, 2026-10-05), not a bare photo.
+    ...shareCard("hotel", "Vegas Luxury Hotel — Book your stay", "Rooms with breakfast, a restaurant & bar and a meeting room at Mlimani City, Dar es Salaam. Book and pay by mobile money in a minute."),
   };
 }
 
