@@ -1,9 +1,9 @@
 import Image from "next/image";
 import Link from "next/link";
-import { CodeXml, Mail, MapPin, MessageCircle, Phone } from "lucide-react";
+import { ArrowUpRight, Mail, MapPin, MessageCircle, Phone } from "lucide-react";
 import type { HotelSettings } from "@/generated/prisma/client";
 import { DEFAULT_CONTENT } from "./content";
-import { FacebookIcon, InstagramIcon, TikTokIcon, socialHandle } from "./social-icons";
+import { FacebookIcon, InstagramIcon, TikTokIcon } from "./social-icons";
 import { cn } from "@/lib/utils";
 import { LocalTime } from "./cinema/local-time";
 import { addressLines, telHref, whatsappHref } from "./contact";
@@ -153,21 +153,20 @@ export function SiteFooter({ settings, blurb = DEFAULT_CONTENT.pages.footer.blur
               )}
             </ul>
             {socials.length > 0 && (
-              // Follow us: each network as a pill with its own mark and the hotel's handle (owner, 2026-10-06).
-              <ul className="mt-5 flex flex-wrap gap-2.5" aria-label="Follow us">
-                {socials.map((s) => (
-                  <li key={s.label} className="min-w-0">
-                    <a href={s.href} target="_blank" rel="noopener noreferrer" title={s.label}
-                      className={cn(focus, "group inline-flex h-11 max-w-full items-center gap-2.5 rounded-full border border-white/12 bg-white/[0.04] py-1 pl-1.5 pr-4 text-[14px] text-white/80 transition-colors duration-200 hover:border-gold/45 hover:bg-white/[0.07] hover:text-white motion-reduce:transition-none")}>
-                      <span className="grid size-8 shrink-0 place-items-center rounded-full bg-gold/12 text-gold ring-1 ring-inset ring-gold/25 transition-colors group-hover:bg-gold/20">
-                        <s.Icon className="size-4" />
-                      </span>
-                      <span className="truncate">{socialHandle(s.href)}</span>
-                      <span className="sr-only"> — {s.label} (opens in a new tab)</span>
-                    </a>
-                  </li>
-                ))}
-              </ul>
+              // Follow us: just the networks' own marks — no boxes, few words (owner, 2026-10-06).
+              <div className="mt-7">
+                <p className={cn(typeScale.eyebrow, "text-gold")}>Follow us</p>
+                <ul className="-ml-2.5 mt-1.5 flex items-center gap-1">
+                  {socials.map((s) => (
+                    <li key={s.label}>
+                      <a href={s.href} target="_blank" rel="noopener noreferrer" title={s.label} aria-label={`${s.label} (opens in a new tab)`}
+                        className={cn(focus, "grid size-11 place-items-center text-white/75 transition-[color,transform] duration-200 hover:-translate-y-0.5 hover:text-gold motion-reduce:transition-none")}>
+                        <s.Icon className="size-[22px]" />
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
           </address>
         </div>
@@ -189,10 +188,10 @@ export function SiteFooter({ settings, blurb = DEFAULT_CONTENT.pages.footer.blur
               © {year} {settings.hotelName}
               {place && <span> · {place}</span>}
             </p>
-            {/* Who made the site — a small way to Nino's page and work. */}
-            <Link href="/nino" className={cn(focus, "group inline-flex h-8 items-center gap-1.5 rounded-full border border-white/12 px-3 text-[11px] text-white/55 transition-colors hover:border-white/30 hover:text-white")}>
-              <CodeXml className="size-3.5 text-white/40 transition-colors group-hover:text-[#c6f432]" strokeWidth={1.8} aria-hidden="true" />
-              Developed by Nino
+            {/* Who made the site — one quiet line to Nino's page and work. */}
+            <Link href="/nino" className={cn(focus, "group inline-flex min-h-11 items-center gap-1 text-xs text-white/45 transition-colors hover:text-white")}>
+              Developed by <span className="font-semibold text-white/75 transition-colors group-hover:text-[#c6f432]">Nino</span>
+              <ArrowUpRight className="size-3.5 transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden="true" />
             </Link>
           </div>
           <div className="-mr-2 flex items-center gap-3">
