@@ -8,6 +8,8 @@ import { ReportActions } from "@/app/staff/(app)/reports/report-actions";
 import { InvoiceDocument } from "@/components/staff/invoices/invoice-document";
 import { groupStatementDoc } from "@/components/staff/invoices/group-statement";
 import { SendDocument } from "@/components/staff/invoices/send-document";
+import { groupStatementMessage } from "@/lib/wa-messages";
+import { prettyPhone } from "@/lib/guest-messages";
 
 export const metadata: Metadata = { title: "Group statement" };
 
@@ -30,12 +32,10 @@ export default async function GroupStatementPage({ params }: PageProps<"/staff/g
             entity={{ type: "BookingGroup", id: g.id }} what={`statement ${doc.number}`}
             to={{ name: payer, phone: g.contactGuest.phone, email: g.billingEmail ?? g.corporateCustomer?.email ?? g.contactGuest.email }}
             subject={`${s.hotelName} — statement for ${g.name}`}
-            text={[
-              `Dear ${g.contactGuest.fullName},`,
-              `Here is the statement of ${g.name}'s charges so far at ${s.hotelName}: ${doc.group?.rooms} room${doc.group?.rooms === 1 ? "" : "s"}, total TZS ${doc.net.toLocaleString("en-US")}${doc.paid ? `, paid TZS ${doc.paid.toLocaleString("en-US")}` : ""}.`,
-              "This is not the final invoice — it follows when every room has checked out.",
-              `${s.hotelName}${s.phone ? ` · ${s.phone}` : ""}`,
-            ].join("\n")}
+            text={groupStatementMessage({
+              hotel: { name: s.hotelName, phone: prettyPhone(s.whatsapp || s.phone) || null }, greet: g.contactGuest.fullName, group: g.name,
+              number: doc.number, rooms: doc.group?.rooms ?? 0, money: { total: doc.net, paid: doc.paid, balance: doc.balance },
+            })}
           />
           <ReportActions target="invoice-doc" fileName={`${s.hotelName}-group-statement-${doc.number}`.replace(/[^\w]+/g, "-").toLowerCase()} />
         </div>

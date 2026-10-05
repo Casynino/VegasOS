@@ -5,6 +5,9 @@ import { can, type CurrentUser } from "@/server/auth";
 import { db } from "@/server/db";
 import { getRequestDetail, meetingRequestFree, requestAvailability } from "@/server/services/booking-requests";
 import { billMenu } from "@/server/services/restaurant";
+import { getSettings } from "@/server/settings";
+import { bookingRequestMessage } from "@/lib/wa-messages";
+import { prettyPhone } from "@/lib/guest-messages";
 import { timeRange } from "@/lib/meeting";
 import { diffDays } from "@/lib/time/business-date";
 import { formatBusinessDate, formatDateTime, formatTZS } from "@/lib/format";
@@ -35,11 +38,12 @@ export async function BookingRequestView({ id, user, inline = false }: { id: str
   // A meeting room request (website "Book now" on the Meeting Room page): booked by time.
   const meeting = r.meetingStartAt && r.meetingEndAt ? { start: r.meetingStartAt, end: r.meetingEndAt, time: timeRange(r.meetingStartAt, r.meetingEndAt) } : null;
   const canConvert = isOpen && manage && can(user, "reservations.create");
-  const [availability, staff, meetingFree, menu] = await Promise.all([
+  const [availability, staff, meetingFree, menu, settings] = await Promise.all([
     isOpen && !meeting ? requestAvailability(r.checkIn, r.checkOut) : Promise.resolve(null),
     db.user.findMany({ where: { isActive: true, role: { code: { not: "DRIVER" } } }, select: { id: true, fullName: true }, orderBy: { fullName: "asc" } }),
     isOpen && meeting ? meetingRequestFree({ meetingStartAt: meeting.start, meetingEndAt: meeting.end, roomTypeId: r.roomTypeId }) : Promise.resolve(null),
     canConvert ? billMenu() : Promise.resolve(null),
+    getSettings(),
   ]);
   const meta = BOOKING_REQUEST_STATUS[r.status];
   const nights = diffDays(r.checkIn, r.checkOut);
@@ -47,6 +51,15 @@ export async function BookingRequestView({ id, user, inline = false }: { id: str
   const freeRequested = requested?.rooms.length ?? 0;
   const pickup = r.transportRequested ? (r.transportDetails as { flightNumber?: string; arrivalDate?: string; arrivalTime?: string; airport?: string; passengers?: number; notes?: string } | null) : null;
   const waDigits = r.phone.replace(/\D/g, "");
+  // The WhatsApp reply, in the one Vegas format: what they asked for and where it stands.
+  const waText = bookingRequestMessage({
+    hotel: { name: settings.hotelName, phone: prettyPhone(settings.whatsapp || settings.phone) || null }, name: r.fullName, ref: r.reference,
+    roomType: r.roomType?.name ?? "Room", rooms: r.roomCount,
+    checkIn: formatBusinessDate(r.checkIn), checkOut: meeting ? null : formatBusinessDate(r.checkOut), nights: meeting ? null : nights,
+    time: meeting?.time ?? null,
+    guests: `${r.adults} adult${r.adults === 1 ? "" : "s"}${r.children ? `, ${r.children} child${r.children === 1 ? "" : "ren"}` : ""}`,
+    estimate: r.estimatedNet || null, status: meta.label.toUpperCase(),
+  });
   const people = `${r.adults} adult${r.adults === 1 ? "" : "s"}${r.children ? ` · ${r.children} child${r.children === 1 ? "" : "ren"}` : ""}`;
   const free = !isOpen ? null
     : meeting ? (meetingFree == null ? { ok: false, text: "time has passed" } : { ok: meetingFree, text: meetingFree ? "free at that time" : "already booked" })
@@ -105,7 +118,7 @@ export async function BookingRequestView({ id, user, inline = false }: { id: str
               </div>
               <div className="flex flex-wrap gap-2">
                 <a href={`tel:${r.phone}`} className={buttonVariants({ size: "sm", variant: "outline" })}><Phone />{r.phone}</a>
-                <a href={`https://wa.me/${waDigits}?text=${encodeURIComponent(`Hello ${r.fullName.split(" ")[0]}, this is Vegas Luxury Hotel about your booking request ${r.reference}.`)}`} target="_blank" rel="noopener noreferrer" className={buttonVariants({ size: "sm", variant: "outline" })}><MessageCircle className="text-emerald-500" />WhatsApp</a>
+                <a href={`https://wa.me/${waDigits}?text=${encodeURIComponent(waText)}`} target="_blank" rel="noopener noreferrer" className={buttonVariants({ size: "sm", variant: "outline" })}><MessageCircle className="text-emerald-500" />WhatsApp</a>
                 {r.email && <a href={`mailto:${r.email}?subject=${encodeURIComponent(`Your booking request ${r.reference}`)}`} className={buttonVariants({ size: "sm", variant: "outline" })}><Mail />Email</a>}
               </div>
             </div>

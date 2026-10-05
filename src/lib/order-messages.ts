@@ -54,11 +54,11 @@ export function orderMessageText(event: OrderEvent, v: {
   const place = v.place ?? (v.type === "ROOM_SERVICE" && v.room ? `Room ${v.room}` : orderTypeWord(v.type, v.delivery));
   if (event === "RECEIVED" && v.details) return orderReceivedMessage({ hotel, name: v.name, order: v.details, trackUrl: v.track });
   if (event === "PAID" && v.details && v.paid) return orderPaidMessage({ hotel, name: v.name, order: v.details, amount: v.paid.amount, reference: v.paid.reference, trackUrl: v.track });
-  const step = (status: string, line: string, again = false) => orderStatusMessage({ hotel, name: v.name, number: no, place, status, line, trackUrl: event === "CANCELLED" ? null : v.track, again: again ? v.menu : null });
+  const step = (status: string, line: string, again = false) => orderStatusMessage({ hotel, name: v.name, number: no, place, status, line, trackUrl: event === "CANCELLED" ? null : v.track, again: again ? v.menu : null, order: v.details ?? null });
   switch (event) {
     case "RECEIVED": return step("RECEIVED", `Your order ${no} has been received by ${v.hotel}.`);
     case "PAID": return step("PAID", `Your payment for order ${no} has been received. Thank you!`);
-    case "PREPARING": return step("PREPARING", `Your order ${no} is now being prepared.${v.prepMinutes ? ` It should be ready in about ${v.prepMinutes} minutes.` : ""}`);
+    case "PREPARING": return step("BEING PREPARED", `Your order ${no} is now being prepared.${v.prepMinutes ? ` It should be ready in about ${v.prepMinutes} minutes.` : ""}`);
     case "READY":
       return step("READY", v.type === "ROOM_SERVICE" && v.room ? `Your order ${no} is ready and on its way to Room ${v.room}.`
         : v.type === "DINE_IN" ? `Your order ${no} is ready and will be served to you shortly.`
@@ -66,7 +66,7 @@ export function orderMessageText(event: OrderEvent, v: {
         : `Your order ${no} is ready for collection at ${v.hotel}.`);
     case "DELIVERED": return step(v.type === "DINE_IN" ? "SERVED" : "DELIVERED", `Your order ${no} has been ${v.type === "DINE_IN" ? "served" : "delivered"}. Enjoy!`, true);
     case "COLLECTED": return step("COLLECTED", `Thank you for collecting your order ${no}. Enjoy!`, true);
-    case "CANCELLED": return `${step("CANCELLED", `We are sorry — your order ${no} has been cancelled.`)}${v.phone ? `\n\nQuestions? Call or WhatsApp ${v.phone}.` : ""}`;
+    case "CANCELLED": return step("CANCELLED", `We are sorry — your order ${no} has been cancelled.`);
   }
 }
 

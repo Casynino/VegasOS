@@ -2,8 +2,7 @@ import "server-only";
 import { timeRange } from "@/lib/meeting";
 import { expireUnpaidHolds, refreshBookingStates } from "./booking-holds";
 import { db } from "../db";
-import { arrivalReminderText } from "@/lib/arrival-reminder";
-import { arrivalReminderMessage } from "@/lib/wa-messages";
+import { arrivalReminderMessage, meetingReminderMessage } from "@/lib/wa-messages";
 import { prettyPhone } from "@/lib/guest-messages";
 import { siteOrigin } from "../site-origin";
 import type { Prisma } from "@/generated/prisma/client";
@@ -248,7 +247,6 @@ export async function getArrivalsSummary(today: BusinessDate) {
   const hotel = { name: settings.hotelName, phone: prettyPhone(settings.whatsapp || settings.phone) || null };
   const weekday = (d: Date) => new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(d);
   const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-  const checkin = `${String(Math.floor(settings.standardCheckInMinutes / 60)).padStart(2, "0")}:${String(settings.standardCheckInMinutes % 60).padStart(2, "0")}`;
   const people = expected.map((r) => ({
     id: r.id, reference: r.reference, name: r.kind === "MEETING" ? r.companyName ?? r.guest.fullName : r.guest.fullName, phone: r.guest.phone, eta: r.eta, rooms: r.rooms.map((x) => x.room.number),
     /** A meeting room booking: its time (Start meeting instead of check-in). */
@@ -261,10 +259,14 @@ export async function getArrivalsSummary(today: BusinessDate) {
     arrival: fromDbDate(r.arrivalDate), departure: fromDbDate(r.departureDate), nights: r.rooms.reduce((m, x) => Math.max(m, x.nights), 0),
     source: r.source.name, company: r.group ? `Group: ${r.group.name}` : r.corporateCustomer?.companyName ?? null, bookedBy: r.createdBy?.fullName ?? null,
     billTo: r.billTo, holdUntil: r.holdUntil, paidAmount: r.paidAmount, balance: r.balanceAmount, net: r.netAmount,
+    // The arrival-day reminder, always in the one Vegas format (owner, 2026-10-06: no old short texts anywhere).
     reminder: r.kind === "MEETING" && r.rooms[0]
-      ? `Hello ${r.guest.fullName}, this is ${settings.hotelName}: a reminder of your meeting room booking on ${dateLabel}, ${timeRange(r.rooms[0].startAt, r.rooms[0].endAt)}. Reference ${r.reference}. See you soon!`
-      : settings.arrivalReminderTemplate?.trim()
-        ? arrivalReminderText(settings.arrivalReminderTemplate, { name: r.guest.fullName, hotel: settings.hotelName, date: dateLabel, checkin, ref: r.reference })
+      ? meetingReminderMessage({
+        hotel, name: r.guest.fullName, room: r.rooms[0].roomType.name, ref: r.reference, date: dateLabel,
+        time: timeRange(r.rooms[0].startAt, r.rooms[0].endAt), attendees: r.adults || null,
+        money: { total: r.netAmount, paid: r.paidAmount, balance: r.balanceAmount, company: r.billTo !== "GUEST" ? r.corporateCustomer?.companyName ?? r.companyName ?? "the company" : null },
+        bookingUrl: origin ? `${origin}/booking/${encodeURIComponent(r.reference)}?token=${encodeURIComponent(r.manageToken)}` : null,
+      })
         : arrivalReminderMessage({
           hotel, name: r.guest.fullName,
           stay: {

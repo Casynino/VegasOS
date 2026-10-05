@@ -7,6 +7,7 @@ import { db } from "@/server/db";
 import { getSettings } from "@/server/settings";
 import { siteOrigin } from "@/server/site-origin";
 import { thankYouNotes } from "@/server/services/thank-you";
+import { reservationMessage } from "@/server/services/guest-message-data";
 import { formatDateTime } from "@/lib/format";
 import type { StaySnapshot } from "@/lib/thank-you";
 import { cn } from "@/lib/utils";
@@ -32,7 +33,8 @@ export default async function ThankYouPage({ params, searchParams }: PageProps<"
   const note = notes.find((x) => x.version === wanted) ?? notes[0] ?? null;
   const canRemake = can(user, "reservations.checkout_override") || can(user, "invoices.manage");
   const link = note ? `${await siteOrigin()}/thanks/${note.token}` : null;
-  const first = r.guest.fullName.trim().split(/\s+/)[0];
+  // The same message as at check-out: the final bill and the thank-you link, in the one Vegas format.
+  const sendText = note ? (await reservationMessage(r.id, "CHECKOUT", await siteOrigin(), { thanksUrl: link }))?.text ?? "" : "";
 
   return (
     <div className="w-full space-y-5 print:space-y-0">
@@ -46,13 +48,7 @@ export default async function ThankYouPage({ params, searchParams }: PageProps<"
               entity={{ type: "Reservation", id: r.id }} what={`thank-you note (v${note.version})`} label="Send to guest"
               to={{ name: r.guest.fullName, phone: r.guest.phone, email: r.guest.email }}
               subject={`Thank you for staying at ${s.hotelName}`}
-              text={[
-                `Dear ${first},`,
-                `Thank you for staying at ${s.hotelName}. It was a pleasure to have you with us.`,
-                link ? `Your stay summary: ${link}` : null,
-                "We look forward to welcoming you back.",
-                `${s.hotelName}${s.phone ? ` · ${s.phone}` : ""}${s.website ? ` · ${s.website}` : ""}`,
-              ].filter(Boolean).join("\n")}
+              text={sendText}
             />
             {canRemake && <MakeNote reservationId={r.id} again />}
           </div>

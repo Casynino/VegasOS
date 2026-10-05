@@ -101,7 +101,7 @@ export function toPortalOrders(orders: BoardOrder[], ctx: { seesMoney: boolean; 
         text: orderMessageText(event, {
           name: o.customerName, hotel: settings.hotelName, number: o.number, type: o.type, room: o.roomNumber, delivery: !!o.deliveryAddress,
           track: o.trackToken ? `${origin}/order/${o.trackToken}` : null, menu: `${origin}/order`, prepMinutes: settings.orderPrepMinutes, phone: hotelPhone,
-          place: deliveryPlace(o), details: event === "RECEIVED" ? orderFacts(o, deliveryPlace(o), settings.timezone) : null,
+          place: deliveryPlace(o), details: orderFacts(o, deliveryPlace(o), settings.timezone),
         }),
       } : null,
       told: !!event && !!ctx.sent?.has(`${o.id}:${ORDER_EVENT_TYPE[event]}`),

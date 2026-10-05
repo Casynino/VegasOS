@@ -219,7 +219,7 @@ export async function orderUpdate(orderId: string, origin?: string | null, forEv
       name: o.customerName, hotel: s.hotelName, number: o.number, type: o.type, room: o.roomNumber, delivery: !!o.deliveryAddress,
       track: base && o.trackToken ? `${base}/order/${o.trackToken}` : null, menu: base ? `${base}/order` : null,
       prepMinutes: s.orderPrepMinutes, phone: prettyPhone(s.whatsapp || s.phone), place,
-      details: event === "RECEIVED" || event === "PAID" ? orderFacts(o, place, s.timezone) : null,
+      details: orderFacts(o, place, s.timezone),
       paid: event === "PAID" && paid ? { amount: paid.amount, reference: paid.reference?.replace(/^nTZS\s+/, "") ?? null } : null,
     }),
   };

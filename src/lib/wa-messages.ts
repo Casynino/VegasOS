@@ -259,6 +259,20 @@ export function arrivalReminderMessage(v: { hotel: Hotel; name: string; stay: St
   ]);
 }
 
+/** The meeting room, on the day. */
+export function meetingReminderMessage(v: {
+  hotel: Hotel; name: string; room: string; ref: string; date: string; time: string; attendees?: number | null; money: Money; bookingUrl: string | null;
+}) {
+  return compose([
+    hello(v.name),
+    `A reminder of your meeting room booking at ${v.hotel.name} today.`,
+    section("YOUR BOOKING", [`Booking Ref: ${v.ref}`, `Room: ${v.room}`, `Date: ${v.date}`, `Time: ${v.time}`, v.attendees ? `Attendees: ${v.attendees}` : null]),
+    v.money.balance > 0 && !v.money.company ? `*PAYMENT*\nTo pay: ${tzs(v.money.balance)}` : null,
+    link("Your booking:", v.bookingUrl),
+    contact(v.hotel, "Need anything set up? Call or WhatsApp Reception:"),
+  ]);
+}
+
 /** The meeting room. */
 export function meetingMessage(v: {
   hotel: Hotel; name: string; kind: BookingKind; room: string; ref: string; date: string; time: string;
@@ -304,14 +318,61 @@ export function orderReceivedMessage(v: { hotel: Hotel; name: string | null; ord
   ]);
 }
 
-/** A step of the order — short: what, where, the status and the link. */
-export function orderStatusMessage(v: { hotel: Hotel; name: string | null; number: string; place: string; status: string; line: string; trackUrl: string | null; again?: string | null }) {
+/**
+ * A step of the order (being prepared, ready, served, delivered, cancelled) — the same full layout as "received"
+ * (owner, 2026-10-06: every message in the one structure): what happened, the order, its lines, total, payment,
+ * the tracking link and how to reach the hotel.
+ */
+export function orderStatusMessage(v: {
+  hotel: Hotel; name: string | null; number: string; place: string; status: string; line: string; trackUrl: string | null; again?: string | null;
+  order?: OrderFacts | null;
+}) {
+  const o = v.order;
   return compose([
     hello(v.name),
     v.line,
-    section("ORDER", [`Order No: ${v.number}`, `Place: ${v.place}`, `Status: ${v.status}`]),
+    section("ORDER DETAILS", o
+      ? [`Order No: ${o.number}`, `Place: ${o.place}`, `Order Type: ${o.type}`, `Status: ${v.status}`, `Date: ${o.date}`]
+      : [`Order No: ${v.number}`, `Place: ${v.place}`, `Status: ${v.status}`]),
+    o ? section("YOUR ORDER", [...o.items.map((i) => `${i.name} × ${i.qty} — ${tzs(i.total)}`), o.fee ? `Room Service Fee — ${tzs(o.fee)}` : null]) : null,
+    o ? `*TOTAL*\n${tzs(o.total)}` : null,
+    o ? `*PAYMENT*\nStatus: ${o.payment}` : null,
     link("Track your order:", v.trackUrl),
     link("Order again any time:", v.again),
+    contact(v.hotel, "Need assistance? Call or WhatsApp us:"),
+  ]);
+}
+
+/** A group's charges so far (not the final invoice yet). */
+export function groupStatementMessage(v: { hotel: Hotel; greet: string; group: string; number: string; rooms: number; money: Money }) {
+  return compose([
+    `Dear ${v.greet},`,
+    `Here is the statement of ${v.group}'s charges so far at ${v.hotel.name}.`,
+    section("STATEMENT", [`Statement No: ${v.number}`, `Group: ${v.group}`, `Rooms: ${v.rooms}`]),
+    section("AMOUNT", [`Total so far: ${tzs(v.money.total)}`, `Paid: ${tzs(v.money.paid)}`, `Balance: ${tzs(Math.max(0, v.money.balance))}`, `Status: ${payStatus(v.money)}`]),
+    "This is not the final invoice — it follows when every room has checked out.",
+    contact(v.hotel, "Questions? Call or WhatsApp us:"),
+  ]);
+}
+
+/** A booking request from the website, before it is a booking: what the guest asked for and where it stands. */
+export function bookingRequestMessage(v: {
+  hotel: Hotel; name: string; ref: string; roomType: string; rooms?: number;
+  checkIn: string; checkOut?: string | null; nights?: number | null; time?: string | null; guests: string;
+  estimate?: number | null; status: string;
+}) {
+  return compose([
+    hello(v.name),
+    `Thank you for your booking request at ${v.hotel.name}. Reception here, about your request.`,
+    section("YOUR REQUEST", [
+      `Request Ref: ${v.ref}`, `Room Type: ${v.roomType}`, v.rooms && v.rooms > 1 ? `Rooms: ${v.rooms}` : null,
+      v.time ? `Date: ${v.checkIn}` : `Check-in: ${v.checkIn}`, v.time ? `Time: ${v.time}` : v.checkOut ? `Check-out: ${v.checkOut}` : null,
+      !v.time && v.nights ? `Nights: ${v.nights}` : null, `Guests: ${v.guests}`,
+    ]),
+    v.estimate ? section("PRICE", [`Estimated total: ${tzs(v.estimate)}`, "The final price is confirmed with your booking."]) : null,
+    `*STATUS*\n${v.status}`,
+    contact(v.hotel, "Reply here, or call or WhatsApp Reception:"),
+    `We look forward to welcoming you to ${v.hotel.name}.`,
   ]);
 }
 

@@ -126,14 +126,14 @@ export function SettingsForm({ defaults: d }: { defaults: Defaults }) {
               <div className="space-y-1.5 sm:col-span-2">
                 <p className="text-sm font-medium">What guests receive</p>
                 <ul className="grid gap-x-6 gap-y-1 text-sm text-muted-foreground sm:grid-cols-2">
-                  <li>Booking confirmation · booking received · pay-at-hotel</li>
+                  <li>Booking confirmation · booking request reply · pay-at-hotel</li>
                   <li>Payment received · waiting for the PIN · did not go through</li>
                   <li>Booking changed · room changed · cancelled</li>
                   <li>Welcome at check-in (room, Wi-Fi, stay link)</li>
                   <li>Check-out bill and thank-you · balance due</li>
                   <li>Restaurant &amp; room-service orders, receipts</li>
                   <li>Transport trip details · meeting room booking</li>
-                  <li>Invoices · arrival reminder</li>
+                  <li>Invoices · group statements · arrival-day reminder</li>
                 </ul>
               </div>
               <div className="space-y-2 sm:col-span-2">
@@ -203,13 +203,6 @@ export function SettingsForm({ defaults: d }: { defaults: Defaults }) {
                 hint="Guests who have not arrived (and did not say they are coming late) become NO SHOW at this time. Before the day starts (e.g. 01:00) = the night after arrival." />
               <NativeCheckbox name="noShowAutoRelease" defaultChecked={Boolean(d.noShowAutoRelease)} className="sm:col-span-2"
                 label="At the cut-off, also release the room automatically (otherwise a manager presses “Release room”). Unpaid no-shows are always released." />
-              <div className="space-y-1.5 sm:col-span-3">
-                <Label htmlFor="arrivalReminderTemplate">Arrival-day reminder to the guest</Label>
-                <textarea id="arrivalReminderTemplate" name="arrivalReminderTemplate" rows={2} defaultValue={String(d.arrivalReminderTemplate ?? "")}
-                  placeholder="Hello {name}, this is a reminder that your reservation at {hotel} is today, {date}. Check-in is from {checkin}. We look forward to welcoming you. Ref {ref}."
-                  className="w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm" />
-                <p className="text-xs text-muted-foreground">Words in braces are filled in for each guest. Reception sends it with the “Remind” button (WhatsApp); an SMS/WhatsApp provider can send it automatically once connected.</p>
-              </div>
               <NativeCheckbox name="dateChangePayNow" defaultChecked={Boolean(d.dateChangePayNow)} className="sm:col-span-3"
                 label="Date change to dearer nights on a paid booking: the extra must be paid at the change" />
               <div className="space-y-1.5 sm:col-span-3">

@@ -96,7 +96,6 @@ export default async function SettingsPage() {
               noShowAutoRelease: s.noShowAutoRelease,
               dateChangePayNow: s.dateChangePayNow,
               dateChangeExcessPolicy: s.dateChangeExcessPolicy,
-              arrivalReminderTemplate: s.arrivalReminderTemplate ?? "",
               notifyBookingCreated: guestEventOn(s.guestNotifications, "bookingCreated"),
               notifyCheckIn: guestEventOn(s.guestNotifications, "checkIn"),
               notifyCheckOut: guestEventOn(s.guestNotifications, "checkOut"),
