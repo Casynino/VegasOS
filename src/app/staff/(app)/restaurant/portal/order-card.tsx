@@ -82,14 +82,14 @@ export function payBadge(o: PortalOrder) {
     return { text: back ? `Payment not received · ${tzs(back)} to give back` : "Payment not received", tone: "bg-rose-500/10 text-rose-700 ring-rose-500/20 dark:text-rose-300" };
   }
   if (o.payment === "REFUNDED") return { text: "Refunded", tone: "bg-slate-500/10 text-slate-600 ring-slate-500/20 dark:text-slate-300" };
+  // Paid by mobile money from a phone: just "Paid" (owner, 2026-10-05 — no "online payment", no provider name).
+  if (o.payment === "PAID" && o.payments.some((p) => p.byPhone && p.status === "POSTED")) return { text: "Paid · mobile money", tone: "bg-emerald-500/10 text-emerald-700 ring-emerald-500/20 dark:text-emerald-300" };
   // Paid online first: recorded automatically from the customer's proof — never collected again.
   if (o.payments.some((p) => p.online && p.status === "POSTED") && o.payment === "PAID") return { text: `Paid online${o.paidTo ? ` · ${o.paidTo}` : ""}`, tone: "bg-emerald-500/10 text-emerald-700 ring-emerald-500/20 dark:text-emerald-300" };
   if (o.awaitsPayment && o.status !== "CANCELLED") return { text: "Paid online · to confirm", tone: "bg-sky-500/10 text-sky-700 ring-sky-500/20 dark:text-sky-300" };
-  if (o.online === "PAYING") return { text: "Paying online…", tone: "bg-sky-500/10 text-sky-700 ring-sky-500/20 dark:text-sky-300" };
-  if (o.online === "NOT_PAID") return { text: `Not paid online${o.due ? ` · ${tzs(o.due)}` : ""}`, tone: "bg-rose-500/10 text-rose-700 ring-rose-500/20 dark:text-rose-300" };
+  if (o.online === "PAYING") return { text: "Paying by phone…", tone: "bg-sky-500/10 text-sky-700 ring-sky-500/20 dark:text-sky-300" };
+  if (o.online === "NOT_PAID") return { text: `Not paid${o.due ? ` · ${tzs(o.due)}` : ""}`, tone: "bg-rose-500/10 text-rose-700 ring-rose-500/20 dark:text-rose-300" };
   if (o.settlement === "ROOM") return { text: `Charged to room${o.room ? ` · Room ${o.room}` : ""}`, tone: "bg-violet-500/10 text-violet-700 ring-violet-500/20 dark:text-violet-300" };
-  // Paid by mobile money from a phone: just "Paid" (owner, 2026-10-05 — no "online payment", no provider name).
-  if (o.payment === "PAID" && o.payments.some((p) => p.byPhone && p.status === "POSTED")) return { text: "Paid · mobile money", tone: "bg-emerald-500/10 text-emerald-700 ring-emerald-500/20 dark:text-emerald-300" };
   if (o.payment === "PAID") return { text: `Paid${o.paidTo ? ` · ${o.paidTo}` : ""}`, tone: "bg-emerald-500/10 text-emerald-700 ring-emerald-500/20 dark:text-emerald-300" };
   if (o.payment === "PENDING_CONFIRMATION") return { text: "Payment pending", tone: "bg-amber-500/10 text-amber-700 ring-amber-500/25 dark:text-amber-300" };
   if (o.payment === "PARTIALLY_PAID") return { text: `Part-paid · ${tzs(o.due ?? 0)} due`, tone: "bg-rose-500/10 text-rose-700 ring-rose-500/20 dark:text-rose-300" };
