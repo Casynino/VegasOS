@@ -17,7 +17,7 @@
  * as "—". English now; every sentence lives here, so a Swahili set can follow the same shapes.
  */
 
-export type Hotel = { name: string; phone: string | null; /** The hotel's Instagram page. */ instagram?: string | null };
+export type Hotel = { name: string; phone: string | null; /** The hotel's Instagram and TikTok pages. */ instagram?: string | null; tiktok?: string | null };
 
 /** One line of a bill: "Restaurant — TZS 35,000". */
 export type BillLine = { label: string; amount: number };
@@ -217,6 +217,7 @@ export function checkoutMessage(v: { hotel: Hotel; name: string; stay: StayFacts
     link("Your stay summary and bill:", v.stayUrl),
     link("A thank-you note from us:", v.thanksUrl),
     link("Follow us on Instagram:", v.hotel.instagram),
+    link("Follow us on TikTok:", v.hotel.tiktok),
     `We look forward to welcoming you again at ${v.hotel.name}.`,
   ]);
 }

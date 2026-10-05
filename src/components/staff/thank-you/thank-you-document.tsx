@@ -163,6 +163,7 @@ export async function ThankYouDocument({ note, s, preparedAt }: { note: StaySnap
           {s.website && <span className="inline-flex items-center gap-1.5"><Globe className="size-3.5 text-[#9a7a35]" />{s.website}</span>}
           {s.instagramUrl && <span>Instagram · {s.instagramUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, "@").replace(/\/$/, "")}</span>}
           {s.facebookUrl && <span>Facebook · {s.facebookUrl.replace(/^https?:\/\/(www\.)?facebook\.com\//, "").replace(/\/$/, "")}</span>}
+          {s.tiktokUrl && <span>TikTok · {s.tiktokUrl.replace(/^https?:\/\/(www\.)?tiktok\.com\//, "").replace(/[/?].*$/, "")}</span>}
         </div>
         <p className="mt-2 text-[10px] text-[#8a8177]">Prepared {at(preparedAt.toISOString())} · reservation {note.reference}. Thank you for staying with us.</p>
       </footer>

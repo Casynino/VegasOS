@@ -72,7 +72,7 @@ export default async function SettingsPage() {
               mobileMoneyAccountName: s.mobileMoneyAccountName ?? "",
               invoiceTerms: s.invoiceTerms ?? "",
               thankYouMessage: s.thankYouMessage ?? "", thankYouSignoff: s.thankYouSignoff ?? "", thankYouPromoTitle: s.thankYouPromoTitle ?? "",
-              thankYouPromoText: s.thankYouPromoText ?? "", thankYouRebookText: s.thankYouRebookText ?? "", instagramUrl: s.instagramUrl ?? "", facebookUrl: s.facebookUrl ?? "",
+              thankYouPromoText: s.thankYouPromoText ?? "", thankYouRebookText: s.thankYouRebookText ?? "", instagramUrl: s.instagramUrl ?? "", facebookUrl: s.facebookUrl ?? "", tiktokUrl: s.tiktokUrl ?? "",
               invoiceDefaultDueDays: s.invoiceDefaultDueDays,
               taxName: s.taxName ?? "",
               taxRatePercent: s.taxRatePercent?.toString() ?? "",

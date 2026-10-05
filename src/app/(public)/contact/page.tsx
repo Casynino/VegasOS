@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Camera, Mail, MessageCircle, Phone } from "lucide-react";
+import { Camera, Clapperboard, Mail, MessageCircle, Phone } from "lucide-react";
 import { getSettings } from "@/server/settings";
 import { bookingWindow } from "@/server/services/public-booking";
 import { cn } from "@/lib/utils";
@@ -70,6 +70,7 @@ export default async function ContactPage({ searchParams }: PageProps<"/contact"
     settings.whatsapp && { key: "whatsapp", icon: MessageCircle, label: "WhatsApp", value: "Chat with the front desk", href: whatsappHref(settings.whatsapp), external: true },
     settings.email && { key: "email", icon: Mail, label: "Email", value: settings.email, href: `mailto:${settings.email}` },
     settings.instagramUrl && { key: "instagram", icon: Camera, label: "Instagram", value: settings.instagramUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, "@").replace(/[/?].*$/, ""), href: settings.instagramUrl, external: true },
+    settings.tiktokUrl && { key: "tiktok", icon: Clapperboard, label: "TikTok", value: settings.tiktokUrl.replace(/^https?:\/\/(www\.)?tiktok\.com\//, "").replace(/[/?].*$/, ""), href: settings.tiktokUrl, external: true },
   ].filter((x): x is Channel => Boolean(x));
 
   return (

@@ -31,6 +31,7 @@ export function SiteFooter({ settings, blurb = DEFAULT_CONTENT.pages.footer.blur
   const socials = [
     settings.instagramUrl ? { label: "Instagram", href: settings.instagramUrl } : null,
     settings.facebookUrl ? { label: "Facebook", href: settings.facebookUrl } : null,
+    settings.tiktokUrl ? { label: "TikTok", href: settings.tiktokUrl } : null,
   ].filter((s): s is { label: string; href: string } => s !== null);
   const link = cn(
     "inline-flex min-h-11 items-center text-[15px] text-white/70 transition-colors duration-200 hover:text-white sm:min-h-10 lg:min-h-9 lg:text-sm motion-reduce:transition-none",

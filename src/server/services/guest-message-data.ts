@@ -20,7 +20,7 @@ import { isPayLater } from "./booking-holds";
 
 export async function messageHotel(): Promise<Hotel> {
   const s = await getSettings();
-  return { name: s.hotelName, phone: prettyPhone(s.whatsapp || s.phone) || null, instagram: s.instagramUrl || null };
+  return { name: s.hotelName, phone: prettyPhone(s.whatsapp || s.phone) || null, instagram: s.instagramUrl || null, tiktok: s.tiktokUrl || null };
 }
 
 /** "2026-10-05" → "Mon, 5 Oct 2026". */
@@ -48,7 +48,7 @@ async function reservationFacts(reservationId: string, origin: string) {
   ]);
   if (!bill || !r) return null;
   const token = await ensureGuestToken(db, reservationId);
-  const hotel: Hotel = { name: s.hotelName, phone: prettyPhone(s.whatsapp || s.phone) || null, instagram: s.instagramUrl || null };
+  const hotel: Hotel = { name: s.hotelName, phone: prettyPhone(s.whatsapp || s.phone) || null, instagram: s.instagramUrl || null, tiktok: s.tiktokUrl || null };
   const tz = s.timezone;
   const time = (d: Date) => new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: tz }).format(d);
 
@@ -184,7 +184,7 @@ export async function tripMessage(tripId: string, origin: string) {
     getSettings(),
   ]);
   if (!t) return null;
-  const hotel: Hotel = { name: s.hotelName, phone: prettyPhone(s.whatsapp || s.phone) || null, instagram: s.instagramUrl || null };
+  const hotel: Hotel = { name: s.hotelName, phone: prettyPhone(s.whatsapp || s.phone) || null, instagram: s.instagramUrl || null, tiktok: s.tiktokUrl || null };
   const when = `${weekdayDate(fromDbDate(t.businessDate))} · ${new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: s.timezone }).format(t.pickupAt)}`;
   const payment = t.paidAt ? "PAID" : t.chargeId ? "ON YOUR ROOM BILL" : t.charge != null ? "NOT PAID YET" : "PRICE TO CONFIRM";
   const page = t.payToken ? `${origin}/transport/trip/${t.payToken}` : null;

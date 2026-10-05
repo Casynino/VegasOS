@@ -309,6 +309,7 @@ model HotelSettings {
   orderPaymentConfirm        Boolean  @default(true)
   instagramUrl               String?
   facebookUrl                String?
+  tiktokUrl                  String?
   updatedAt                  DateTime @updatedAt
   updatedById                String?
   updatedBy                  User?    @relation(fields: [updatedById], references: [id])

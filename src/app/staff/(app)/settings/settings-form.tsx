@@ -182,6 +182,7 @@ export function SettingsForm({ defaults: d }: { defaults: Defaults }) {
               <Field name="thankYouPromoText" label="Welcome-back text" d={d} errors={e} placeholder={THANK_YOU_DEFAULTS.promoText} />
               <Field name="instagramUrl" label="Instagram link (optional)" d={d} errors={e} placeholder="https://instagram.com/vegasluxuryhotel" />
               <Field name="facebookUrl" label="Facebook link (optional)" d={d} errors={e} placeholder="https://facebook.com/vegasluxuryhotel" />
+              <Field name="tiktokUrl" label="TikTok link (optional)" d={d} errors={e} placeholder="https://www.tiktok.com/@vegasluxuryhotel" />
             </CardContent>
           </Card>
 
