@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, ArrowUpRight, BedDouble, Banknote, Clock, CreditCard, Landmark, RotateCcw, Search, ShieldCheck, Smartphone, Store, Undo2, UtensilsCrossed, Wallet } from "lucide-react";
 import { can, getMyOpenShift, requirePagePermission } from "@/server/auth";
-import { onlineAttentionRows } from "@/server/services/online-payments-admin";
+import { onlineAttentionRows, onlinePayments } from "@/server/services/online-payments-admin";
+import { MobileMoneyList } from "./mobile-money";
 import { MobileMoneyAttention, type AttentionRow } from "../mobile-pay/attention";
 import { inHouseGuestIds, isDeskUser } from "@/server/desk";
 import { isRestaurantDevice, needsOwnShift } from "@/lib/permissions";
@@ -92,6 +93,11 @@ export default async function CollectionsPage({ searchParams }: PageProps<"/staf
   const status = (["COLLECTED", "TO_CONFIRM", "REVERSED"] as const).find((s) => s === sp.status) ?? null;
   // Still to collect: open orders now (any day) — not for one past shift, and only with the restaurant shown.
   const collecting = restaurant && !ownShift && !staffView && sp.view === "collect";
+  // Mobile money: every payment request in the same time and places — paid, waiting or not paid (and why).
+  const mobileView = sp.view === "mobile";
+  const mobileFilter = (["paid", "waiting", "unpaid"] as const).find((x) => x === sp.ms) ?? "all";
+  const PURPOSES: Record<MoneySource, string[]> = { ROOMS: ["RESERVATION", "INVOICE"], RESTAURANT: ["RESTAURANT"], SALES: ["TRANSPORT"] };
+  const purposes = sources.flatMap((x) => PURPOSES[x]);
   const q = str(sp.q).trim();
   const page = Math.max(1, Number(sp.page) || 1);
 
@@ -106,7 +112,7 @@ export default async function CollectionsPage({ searchParams }: PageProps<"/staf
   // Hotel (rooms & bookings) and restaurant money side by side — whichever one the list shows.
   const canSplit = !device && !servedById && (supervisor || takesRoomMoney);
   const [list, counts, queueCounts, totals, open, people, waiters, accounts, methods, onlineT, everySource] = await Promise.all([
-    collecting ? Promise.resolve(null) : collectionRows({ ...listFilter, page }),
+    collecting || mobileView ? Promise.resolve(null) : collectionRows({ ...listFilter, page }),
     collectionCounts(base),
     queue === base ? Promise.resolve(null) : collectionCounts(queue),
     collectionTotals(p.from, p.to, { window, collectorIds: collectorId ? [collectorId] : null, accountId, methodId, sources, servedById }),
@@ -123,6 +129,7 @@ export default async function CollectionsPage({ searchParams }: PageProps<"/staf
   // Hotel money guests paid online before arriving: shown to reception until the guest is checked in (then it is the
   // collection of whoever checks them in). Not for the Counter, nor for one past shift.
   const awaiting = !device && (takesRoomMoney || supervisor) && sources.includes("ROOMS") && !(ownShift?.endedAt) ? await paidOnlineAwaitingCheckIn() : null;
+  const phonePays = await onlinePayments({ from: p.from, to: p.to, status: "all", purpose: null, q, window, purposes });
   const t = collectorId ? totals.of(collectorId) : totals.all;
   const split = canSplit ? (everySource ? (collectorId ? everySource.of(collectorId) : everySource.all) : t) : null;
   const bySrc = (k: MoneySource) => split?.bySource.find((x) => x.source === k)?.amount ?? 0;
@@ -139,7 +146,7 @@ export default async function CollectionsPage({ searchParams }: PageProps<"/staf
   const keep: Record<string, string> = Object.fromEntries(Object.entries({
     period: p.key === "custom" ? "" : p.key, from: p.key === "custom" ? p.from : "", to: p.key === "custom" ? p.to : "", shift: ownShift?.id ?? "",
     w: supervisor ? picked : "", src: device ? "" : str(sp.src), account: accountId ?? "", method: methodId ?? "", served: servedById ?? "",
-    status: status ?? "", view: collecting ? "collect" : "", q,
+    status: status ?? "", view: collecting ? "collect" : mobileView ? "mobile" : "", ms: mobileView && mobileFilter !== "all" ? mobileFilter : "", q,
   }).filter(([, v]) => v));
   const link = (extra: Record<string, string>) => `?${new URLSearchParams(Object.entries({ ...keep, ...extra }).filter(([, v]) => v))}`;
   const tab = (extra: { status?: string; view?: string }) => link({ status: extra.status ?? "", view: extra.view ?? "", page: "" });
@@ -158,13 +165,16 @@ export default async function CollectionsPage({ searchParams }: PageProps<"/staf
     : p.key === "all" ? "Every payment — all time" : periodLabel(p);
   const queueNote = status === "TO_CONFIRM" && confirms && !ownShift && (list?.count ?? 0) > 0;
 
+  const listing = !collecting && !mobileView;
   const TABS = [
-    { key: "all", label: "All payments", count: counts.all, href: tab({}), on: !collecting && !status, tone: "" },
-    { key: "paid", label: "Paid", count: counts.paid, href: tab({ status: "COLLECTED" }), on: !collecting && status === "COLLECTED", tone: "bg-emerald-500" },
+    { key: "all", label: "All payments", count: counts.all, href: tab({}), on: listing && !status, tone: "" },
+    { key: "paid", label: "Paid", count: counts.paid, href: tab({ status: "COLLECTED" }), on: listing && status === "COLLECTED", tone: "bg-emerald-500" },
     // Nobody confirms payments by hand any more: the tab is only there when something old still waits.
-    ...((restaurant || queue !== base) && (toConfirmCount > 0 || status === "TO_CONFIRM") ? [{ key: "confirm", label: "To confirm", count: toConfirmCount, href: tab({ status: "TO_CONFIRM" }), on: !collecting && status === "TO_CONFIRM", tone: "bg-amber-500" }] : []),
+    ...((restaurant || queue !== base) && (toConfirmCount > 0 || status === "TO_CONFIRM") ? [{ key: "confirm", label: "To confirm", count: toConfirmCount, href: tab({ status: "TO_CONFIRM" }), on: listing && status === "TO_CONFIRM", tone: "bg-amber-500" }] : []),
     ...(open ? [{ key: "collect", label: "Still to collect", count: toCollectRows.length, href: tab({ view: "collect" }), on: collecting, tone: "bg-[oklch(0.76_0.12_80)]" }] : []),
-    { key: "reversed", label: "Reversed", count: counts.reversed, href: tab({ status: "REVERSED" }), on: !collecting && status === "REVERSED", tone: "bg-rose-500" },
+    { key: "reversed", label: "Reversed", count: counts.reversed, href: tab({ status: "REVERSED" }), on: listing && status === "REVERSED", tone: "bg-rose-500" },
+    // Every mobile-money request here — paid or not (not called "online payments": staff send them too).
+    ...(phonePays.length || mobileView ? [{ key: "mobile", label: "Mobile money", count: phonePays.length, href: tab({ view: "mobile" }), on: mobileView, tone: "bg-sky-500" }] : []),
   ];
 
   const title = device ? "Restaurant collections" : mine ? "Collections" : who ? `Collections · ${who}` : "Collections · everyone";
@@ -360,7 +370,10 @@ export default async function CollectionsPage({ searchParams }: PageProps<"/staf
         </form>
       </section>
 
-      {collecting && open ? (
+      {mobileView ? (
+        <MobileMoneyList rows={phonePays} filter={mobileFilter} href={(f) => link({ view: "mobile", ms: f === "all" ? "" : f, page: "" })} timezone={settings.timezone}
+          scope={`${ownShift ? "this shift" : p.key === "all" ? "all time" : periodLabel(p).toLowerCase()} · ${sources.length === ALL_SOURCES.length ? "hotel & restaurant" : sources.map((x) => SOURCE_LABEL[x]).join(", ").toLowerCase()}`} />
+      ) : collecting && open ? (
         <ToCollect open={open} rows={toCollectRows} today={today} servedById={servedById} link={link} confirmHref={tab({ status: "TO_CONFIRM" })} />
       ) : list && (
         <>

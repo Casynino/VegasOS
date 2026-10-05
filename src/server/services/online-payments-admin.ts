@@ -40,16 +40,22 @@ const FLAG_OF: Record<OnlineService, keyof HotelSettings> = {
 export const onlinePayFlag = (k: OnlineService) => FLAG_OF[k];
 
 /** Every attempt in the period (newest first), with what it was for and what it became on the hotel's books. */
-export async function onlinePayments(input: { from: BusinessDate; to: BusinessDate; status: OnlineStatusFilter; purpose: string | null; q: string }) {
+export async function onlinePayments(input: {
+  from: BusinessDate; to: BusinessDate; status: OnlineStatusFilter; purpose: string | null; q: string;
+  /** One shift's time instead of whole hotel days (Collections, a receptionist's shift). */
+  window?: { start: Date; end: Date } | null;
+  /** Several services at once (Collections: the hotel's, or the restaurant's). */
+  purposes?: string[] | null;
+}) {
   const s = await getSettings();
-  const { start, end } = businessRangeBounds(input.from, input.to, stayConfig(s));
+  const { start, end } = input.window ?? businessRangeBounds(input.from, input.to, stayConfig(s));
   const q = input.q.trim();
   const digits = q.replace(/\D/g, "");
   const rows = await db.mobilePayment.findMany({
     where: {
       createdAt: { gte: start, lt: end },
       ...(input.status === "attention" ? { attentionAt: { not: null }, resolvedAt: null } : input.status !== "all" ? { status: { in: STATUS_WHERE[input.status] } } : {}),
-      ...(input.purpose ? { purpose: input.purpose } : {}),
+      ...(input.purposes ? { purpose: { in: input.purposes } } : input.purpose ? { purpose: input.purpose } : {}),
       ...(q ? { OR: [
         { pspReference: { contains: q, mode: "insensitive" as const } }, { depositId: { contains: q, mode: "insensitive" as const } }, { id: q },
         ...(digits.length >= 4 ? [{ phone: { contains: digits.replace(/^0/, "") } }] : []),
