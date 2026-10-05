@@ -3,29 +3,42 @@ import { ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
- * Buttons. One gold primary per view; a quiet secondary; "glass" only over photography;
- * "text" for the editorial link with an arrow. All are ≥ 44px tall and show a gold focus ring.
+ * Buttons — slim and quiet (owner, 2026-10-05: "nice buttons, small and well designed", no big yellow blocks).
+ * 40px tall (a 3px invisible hit-slop above and below keeps the tap area ≥ 44px), 13–14px medium,
+ * sentence case, normal letter spacing.
+ *
+ * - primary: at most ONE per section. Tone-aware (globals.css .pub-btn-primary): on light paper bands a
+ *   small espresso button with white text and a gold hairline edge; on night bands, the header and in the
+ *   dark theme a dark, almost clear button with a gold hairline, champagne text and a soft glow on hover.
+ * - secondary: a ghost button with a faint border (follows the band's ink).
+ * - glass: the ghost over photography (white hairline on a light smoke).
+ * - text: everything else — a quiet text link with a small arrow, underline on hover.
  */
 export type ButtonVariant = "primary" | "secondary" | "glass" | "text";
 export type ButtonSize = "sm" | "md" | "lg";
 
 const BASE =
-  "group/btn relative inline-flex select-none items-center justify-center gap-2.5 whitespace-nowrap text-[12px] font-semibold uppercase tracking-[0.16em] " +
-  "transition-[background-color,border-color,color,box-shadow,scale] duration-300 ease-pub active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100 " +
+  "group/btn relative inline-flex select-none items-center justify-center gap-2 whitespace-nowrap font-medium leading-none tracking-[0.01em] " +
+  "transition-[background-color,border-color,color,box-shadow,scale] duration-300 ease-pub active:scale-[0.985] motion-reduce:transition-none motion-reduce:active:scale-100 " +
   "focus-visible:outline-2 focus-visible:outline-offset-[3px] focus-visible:outline-gold disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50";
 
+/** Invisible hit-slop: the 40px button still answers to a 46px finger target. */
+const SLOP = "after:absolute after:inset-x-0 after:-inset-y-[3px] after:content-['']";
+
 const VARIANT: Record<ButtonVariant, string> = {
-  primary:
-    "rounded-full bg-gold text-[#16110a] shadow-[0_10px_30px_-14px_oklch(0.72_0.12_80/0.9)] hover:bg-[oklch(0.78_0.115_82)] hover:shadow-[0_14px_36px_-12px_oklch(0.72_0.12_80/0.95)]",
-  secondary: "rounded-full border border-pub-fg/25 text-pub-fg hover:border-pub-fg/60 hover:bg-pub-fg/[0.05]",
-  glass: "rounded-full border border-white/30 bg-white/[0.08] text-white backdrop-blur-md hover:border-white/60 hover:bg-white/[0.14]",
-  text: "min-h-11 rounded-sm px-0 text-pub-fg hover:text-pub-eyebrow",
+  primary: cn("pub-btn-primary rounded-full", SLOP),
+  secondary: cn("rounded-full border border-pub-fg/20 text-pub-fg hover:border-pub-fg/45 hover:bg-pub-fg/[0.04]", SLOP),
+  glass: cn(
+    "rounded-full border border-white/30 bg-black/20 text-white shadow-[inset_0_1px_0_rgb(255_255_255/0.12)] backdrop-blur-sm hover:border-white/60 hover:bg-black/30",
+    SLOP,
+  ),
+  text: "min-h-11 rounded-sm px-0 text-[13px] text-pub-fg hover:text-pub-eyebrow sm:text-sm",
 };
 
 const SIZE: Record<ButtonSize, string> = {
-  sm: "h-11 px-5",
-  md: "h-12 px-7",
-  lg: "h-14 px-8 text-[13px]",
+  sm: "h-10 px-4 text-[13px]",
+  md: "h-10 px-[1.125rem] text-[13px] sm:px-5 sm:text-sm",
+  lg: "h-11 px-6 text-sm",
 };
 
 /** Class string for a button look (use the components below when you can). */
@@ -46,7 +59,13 @@ function Inner({ variant, icon, children }: { variant: ButtonVariant; icon: Icon
   return (
     <>
       {variant === "text" ? (
-        <span className="relative py-1 after:absolute after:inset-x-0 after:bottom-0 after:h-px after:origin-left after:scale-x-[0.35] after:bg-gold after:transition-transform after:duration-300 after:ease-pub group-hover/btn:after:scale-x-100 group-focus-visible/btn:after:scale-x-100 motion-reduce:after:transition-none">
+        <span
+          className={cn(
+            "underline decoration-1 underline-offset-[5px] transition-[text-decoration-color] duration-300 ease-pub group-hover/btn:decoration-current group-focus-visible/btn:decoration-current motion-reduce:transition-none",
+            // With an arrow the arrow is the cue; without one a faint underline shows it is a link.
+            showArrow ? "decoration-transparent" : "decoration-current/30",
+          )}
+        >
           {children}
         </span>
       ) : (
@@ -57,7 +76,10 @@ function Inner({ variant, icon, children }: { variant: ButtonVariant; icon: Icon
         <ArrowRight
           aria-hidden="true"
           strokeWidth={1.6}
-          className="size-4 shrink-0 transition-transform duration-300 ease-pub group-hover/btn:translate-x-0.5 motion-reduce:transition-none"
+          className={cn(
+            "size-3.5 shrink-0 transition-transform duration-300 ease-pub group-hover/btn:translate-x-0.5 motion-reduce:transition-none",
+            variant === "text" && "text-pub-eyebrow",
+          )}
         />
       )}
     </>
@@ -104,7 +126,7 @@ export function LinkButton({
   );
 }
 
-/** The editorial text link: small caps, gold underline that grows on hover, arrow. */
+/** The quiet text link: small, sentence case, a small gold arrow, underline on hover. */
 export function TextLink(props: Omit<React.ComponentProps<typeof LinkButton>, "variant" | "size" | "full">) {
   return <LinkButton {...props} variant="text" />;
 }
@@ -137,7 +159,7 @@ export function Button({
 /** A row of calls to action: wraps on small phones, a primary button sits next to a text link. */
 export function Actions({ align = "start", className, children }: { align?: "start" | "center"; className?: string; children: React.ReactNode }) {
   return (
-    <div className={cn("flex flex-wrap items-center gap-x-7 gap-y-3", align === "center" && "justify-center", className)}>
+    <div className={cn("flex flex-wrap items-center gap-x-6 gap-y-3", align === "center" && "justify-center", className)}>
       {children}
     </div>
   );

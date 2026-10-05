@@ -6,14 +6,18 @@ import { useRouter } from "next/navigation";
 import { motion, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
 import {
-  BedDouble, CalendarPlus, Check, CircleCheck, Copy, Download, Hourglass, Loader2, Lock, MessageCircle, Phone, Plus, RotateCcw, Smartphone, X,
+  BedDouble, CalendarPlus, Check, ChevronRight, CircleCheck, Copy, Download, Hourglass, Loader2, Lock, MessageCircle, Phone, Plus, RotateCcw, Smartphone,
+  UtensilsCrossed, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NetworkMarks } from "@/components/payments/networks";
 import type { QrConfirmation } from "@/server/services/hotel-qr";
 import { qrBookingStatusAction, qrPayNowAction } from "@/app/b/[token]/actions";
 import { useWho } from "@/components/restaurant/who";
-import { BrandMark, caps, card, darkButton, input, lightButton } from "./ui";
+import { BrandMark, card, darkButton, goldButton, input, lightButton } from "./ui";
+
+/** A plain row (an icon, the words, a chevron) — the quiet way to list what can be done next. */
+const rowLink = "flex w-full items-center gap-3 py-3.5 text-left text-[14px] font-medium transition hover:text-(--vr-gold-ink)";
 import { dayLong, flowUrl, guestsText, hotelClock, hotelInstant, newKey, nightsText, payPhoneOk, telHref, tzs, waHref } from "./lib";
 
 type Tone = "ok" | "wait" | "warn" | "off";
@@ -155,9 +159,12 @@ export function QrConfirmationView({ token, link, initial }: { token: string; li
             <header className="flex items-center justify-between gap-3">
               <span className="flex min-w-0 items-center gap-2.5">
                 <BrandMark />
-                <span className="truncate text-[10.5px] font-semibold uppercase tracking-[0.22em] text-white/80">{b.hotel.name}</span>
+                <span className="min-w-0 leading-none">
+                  <span className="block truncate font-display text-[17px] font-semibold tracking-wide">{b.hotel.name}</span>
+                  <span className="mt-1 block truncate text-[10px] uppercase tracking-[0.22em] text-white/55">Your booking</span>
+                </span>
               </span>
-              <Link href={`/b/${token}`} className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-white/[0.07] px-3.5 text-[13px] font-medium text-white/85 ring-1 ring-white/15 transition hover:bg-white/10">
+              <Link href={`/b/${token}`} className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium text-white/80 ring-1 ring-white/15 transition hover:bg-white/10">
                 <Plus className="size-4 text-(--vr-gold)" />Book another
               </Link>
             </header>
@@ -227,22 +234,16 @@ export function QrConfirmationView({ token, link, initial }: { token: string; li
 
           {/* ── What to do next ── */}
           <aside className={cn("space-y-3 lg:col-start-2", toDo ? "lg:row-start-2" : "lg:row-span-2 lg:row-start-1")}>
-            <div className={cn(card, "space-y-2 p-3")}>
+            <div className={cn(card, "p-3")}>
               <Link href={b.bookingLink} className={cn(darkButton, "h-12 w-full text-[14.5px]")}><BedDouble className="size-4 text-(--vr-gold)" />View booking</Link>
-              <button type="button" onClick={() => window.print()} className={cn(lightButton, "h-11 w-full text-[13.5px]")}><Download className="size-4 text-(--vr-gold-ink)" />Download confirmation</button>
-              <button type="button" onClick={addToCalendar} className={cn(lightButton, "h-11 w-full text-[13.5px]")}><CalendarPlus className="size-4 text-(--vr-gold-ink)" />Add to calendar</button>
-              {b.stayLink && <Link href={b.stayLink} className={cn(lightButton, "h-11 w-full text-[13px]")}>Your stay page — menu, requests, bill</Link>}
-            </div>
-
-            {(b.hotel.phone || b.hotel.whatsapp) && (
-              <div className={cn(card, "p-4")}>
-                <p className={caps}>Questions?</p>
-                <div className="mt-2.5 grid grid-cols-2 gap-2">
-                  {b.hotel.phone && <a href={telHref(b.hotel.phone)} className={cn(lightButton, "h-11 text-[13px]")}><Phone className="size-4 text-(--vr-gold-ink)" />Call</a>}
-                  {b.hotel.whatsapp && <a href={waHref(b.hotel.whatsapp, `Hello, this is about my booking ${b.reference}.`)} target="_blank" rel="noopener" className={cn(lightButton, "h-11 text-[13px]")}><MessageCircle className="size-4 text-(--vr-gold-ink)" />WhatsApp</a>}
-                </div>
+              <div className="mt-1.5 divide-y divide-(--vr-line) px-1">
+                <button type="button" onClick={() => window.print()} className={rowLink}><Download className="size-[18px] shrink-0 text-(--vr-gold-ink)" /><span className="flex-1">Download confirmation</span><ChevronRight className="size-4 text-(--vr-muted)" /></button>
+                <button type="button" onClick={addToCalendar} className={rowLink}><CalendarPlus className="size-[18px] shrink-0 text-(--vr-gold-ink)" /><span className="flex-1">Add to calendar</span><ChevronRight className="size-4 text-(--vr-muted)" /></button>
+                {b.stayLink && <Link href={b.stayLink} className={rowLink}><UtensilsCrossed className="size-[18px] shrink-0 text-(--vr-gold-ink)" /><span className="flex-1">Your stay page — menu, requests, bill</span><ChevronRight className="size-4 text-(--vr-muted)" /></Link>}
+                {b.hotel.phone && <a href={telHref(b.hotel.phone)} className={rowLink}><Phone className="size-[18px] shrink-0 text-(--vr-gold-ink)" /><span className="flex-1">Call us <span className="tabular-nums text-(--vr-muted)">{b.hotel.phone}</span></span><ChevronRight className="size-4 text-(--vr-muted)" /></a>}
+                {b.hotel.whatsapp && <a href={waHref(b.hotel.whatsapp, `Hello, this is about my booking ${b.reference}.`)} target="_blank" rel="noopener" className={rowLink}><MessageCircle className="size-[18px] shrink-0 text-(--vr-gold-ink)" /><span className="flex-1">WhatsApp us</span><ChevronRight className="size-4 text-(--vr-muted)" /></a>}
               </div>
-            )}
+            </div>
           </aside>
         </div>
       </div>
@@ -319,8 +320,8 @@ function PayNow({ token, link, amount, guestPhone, again, onChanged }: {
         {error && <span role="alert" className="mt-1 block text-[12px] font-medium text-rose-700">{error}</span>}
       </label>
       {taken && <Link href={again} className={cn(lightButton, "h-11 w-full text-[13.5px]")}><RotateCcw className="size-4 text-(--vr-gold-ink)" />Choose another room</Link>}
-      <button type="button" onClick={pay} disabled={pending} className={cn(darkButton, "h-12 w-full text-[14.5px]")}>
-        {pending ? <Loader2 className="size-4 animate-spin" /> : <Lock className="size-4 text-(--vr-gold)" />}Pay {tzs(amount)} now
+      <button type="button" onClick={pay} disabled={pending} className={cn(goldButton, "h-[52px] w-full text-[15px]")}>
+        {pending ? <Loader2 className="size-4 animate-spin" /> : <Lock className="size-4" />}Pay {tzs(amount)} now
       </button>
       <p className="flex items-center justify-center gap-1.5 text-[11px] font-medium text-(--vr-muted)">
         <Lock className="size-3 text-(--vr-gold-ink)" />Secure payment by <span className="font-semibold tracking-wide text-(--vr-ink)/80">NTZS</span>

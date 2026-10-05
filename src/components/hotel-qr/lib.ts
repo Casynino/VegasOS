@@ -85,6 +85,11 @@ export const waHref = (phone: string, text?: string) => `https://wa.me/${phone.r
 
 // ───────────────────────── Where the guest is in the flow (the address) ─────────────────────────
 
+/**
+ * The steps: home (explore, with the booking bar) → results (2. choose your room) → details (3. your details & pay) →
+ * booked. Older links keep working: "rooms" opens home, "type" home with that room type open, "room" and "pay" the
+ * details & pay step.
+ */
 export type View = "home" | "rooms" | "type" | "results" | "room" | "details" | "pay" | "booked";
 const VIEWS: View[] = ["home", "rooms", "type", "results", "room", "details", "pay", "booked"];
 export type StayQuery = { checkIn: string; checkOut: string; adults: number; children: number };
@@ -142,6 +147,64 @@ export function flowUrl(base: string, f: Flow) {
 
 export const stayKey = (s: StayQuery, extra = "") => `${s.checkIn}|${s.checkOut}|${s.adults}|${s.children}|${extra}`;
 export const nightsOf = (s: StayQuery) => diffDays(s.checkIn, s.checkOut);
+
+/**
+ * The stay the booking bar starts with — tonight to tomorrow, two guests (or what one room takes) — and the same stay
+ * fitted to a room type ("Book" on a room: the guests it takes, never more).
+ */
+export function defaultStay(w: { today: string; maxAdults: number }): StayQuery {
+  return { checkIn: w.today, checkOut: addDays(w.today, 1), adults: Math.max(1, Math.min(2, w.maxAdults)), children: 0 };
+}
+export function stayFor(stay: StayQuery, t: { maxAdults: number; maxChildren: number }): StayQuery {
+  return { ...stay, adults: Math.max(1, Math.min(stay.adults, t.maxAdults)), children: Math.min(stay.children, t.maxChildren) };
+}
+
+/** "5 → 6 Oct" — for the narrowest phones. */
+export function datesShort(s: { checkIn: string; checkOut: string }) {
+  const a = parts(s.checkIn), b = parts(s.checkOut);
+  return a.m === b.m ? `${a.d} → ${b.d} ${MONTHS[b.m]}` : `${a.d} ${MONTHS[a.m]} → ${b.d} ${MONTHS[b.m]}`;
+}
+/** "Mon 5 → Tue 6 Oct" — both dates, the month once when it is the same. */
+export function datesText(s: { checkIn: string; checkOut: string }) {
+  const a = parts(s.checkIn), b = parts(s.checkOut);
+  return a.m === b.m && a.y === b.y ? `${DAYS[a.w]} ${a.d} → ${DAYS[b.w]} ${b.d} ${MONTHS[b.m]}` : `${dayWeek(s.checkIn)} → ${dayWeek(s.checkOut)}`;
+}
+
+// ───────────────────────── The phone's place in its own history ─────────────────────────
+
+/** How many steps this app has put on the phone's history above where it opened (kept in the history entry itself). */
+export const historyDepth = () => {
+  try { return Number((window.history.state as { vqr?: number } | null)?.vqr) || 0; } catch { return 0; }
+};
+
+// ───────────────────────── The guest, remembered on their own phone ─────────────────────────
+
+/**
+ * The name and phone a guest booked with, remembered on this phone (only after a booking was made here, never sent
+ * anywhere) so the next booking is two taps. "Not you?" forgets it.
+ */
+export type SavedGuest = { name: string; phone: string };
+const GUEST = "vegas-qr-guest";
+const GUEST_EVENT = "vegas-qr-guest";
+export function readSavedGuest(): string | null {
+  try { return localStorage.getItem(GUEST); } catch { return null; }
+}
+export function subscribeSavedGuest(cb: () => void) {
+  window.addEventListener("storage", cb);
+  window.addEventListener(GUEST_EVENT, cb);
+  return () => { window.removeEventListener("storage", cb); window.removeEventListener(GUEST_EVENT, cb); };
+}
+export function parseSavedGuest(raw: string | null): SavedGuest | null {
+  try {
+    const g = JSON.parse(raw ?? "null") as Partial<SavedGuest> | null;
+    return g && typeof g.name === "string" && g.name.trim().length >= 2 && typeof g.phone === "string" && g.phone.trim().length >= 7
+      ? { name: g.name.trim().slice(0, 80), phone: g.phone.trim().slice(0, 30) } : null;
+  } catch { return null; }
+}
+export function saveGuest(g: SavedGuest | null) {
+  try { if (g) localStorage.setItem(GUEST, JSON.stringify(g)); else localStorage.removeItem(GUEST); } catch { /* private mode */ }
+  window.dispatchEvent(new Event(GUEST_EVENT));
+}
 
 /** Quick picks for the dates sheet, inside the booking window. */
 export function quickDates(today: string, maxCheckIn: string) {

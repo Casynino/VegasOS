@@ -8,8 +8,9 @@ import { TRIP_TYPE_LABEL } from "@/lib/transport-meta";
 import { cn } from "@/lib/utils";
 import { telHref, whatsappHref } from "@/components/public/contact";
 import { StatusPill } from "@/components/public/booking/confirmation";
-import { Actions, Eyebrow, Heading, InfoList, PriceTag, Section, TextLink, typeScale } from "@/components/public/kit";
+import { Actions, Eyebrow, GlassPanel, HOTEL_COORDS, Heading, HudLabel, InfoList, PriceTag, Section, TextLink, typeScale } from "@/components/public/kit";
 import { PayOnlineCard } from "@/components/public/pay-online-card";
+import { MiniRoute } from "@/components/public/services/route-line";
 import { payTripOnlineAction } from "../../actions";
 
 export const metadata: Metadata = { title: "Your trip", robots: { index: false, follow: false }, referrer: "no-referrer" };
@@ -21,8 +22,9 @@ const STATUS: Record<string, string> = {
 };
 
 /**
- * A website trip's private page: where it stands (the reference and the status first), Pay now for its price —
- * first on phones, beside the details on desktop — then what was asked for and who to call.
+ * A website trip's private page: where it stands (the reference and the status first, beside the route as a
+ * small HUD line on glass), Pay now for its price — first on phones, beside the details on desktop — then what
+ * was asked for and who to call.
  */
 export default async function TripPage({ params }: PageProps<"/transport/trip/[token]">) {
   const { token } = await params;
@@ -37,26 +39,38 @@ export default async function TripPage({ params }: PageProps<"/transport/trip/[t
 
   return (
     <>
-      <Section tone="night" first space="sm" glow="top" width="wide" labelledBy="trip-title" className="pb-10 sm:pb-14 lg:pb-14">
-        <Eyebrow className="flex items-center gap-2">
-          <CircleCheck className="size-4 shrink-0" strokeWidth={1.6} aria-hidden="true" />
-          {TRIP_TYPE_LABEL[t.type]}
-        </Eyebrow>
-        <Heading as="h1" size="title" id="trip-title" className="mt-4">
-          Thank you, {t.name.split(/\s+/)[0]}
-        </Heading>
-        <div className="mt-7 flex flex-wrap items-end gap-x-10 gap-y-5">
-          <div className="min-w-0">
-            <p className={cn(typeScale.meta, "text-pub-muted")}>Your trip reference</p>
-            <p className="mt-2 font-display text-[clamp(1.875rem,1.4rem+2vw,2.75rem)] leading-none tracking-[0.02em] text-gold lining-nums [overflow-wrap:anywhere]">
-              {t.reference}
-            </p>
+      <Section tone="night" first space="sm" glow="top" stars width="wide" labelledBy="trip-title" className="pb-10 sm:pb-14 lg:pb-16">
+        <div className="grid gap-10 lg:grid-cols-12 lg:items-end lg:gap-x-10">
+          <div className="min-w-0 lg:col-span-7">
+            <Eyebrow className="flex items-center gap-2">
+              <CircleCheck className="size-4 shrink-0" strokeWidth={1.6} aria-hidden="true" />
+              {TRIP_TYPE_LABEL[t.type]}
+            </Eyebrow>
+            <Heading as="h1" size="title" id="trip-title" className="mt-4">
+              Thank you, {t.name.split(/\s+/)[0]}
+            </Heading>
+            <div className="mt-7 flex flex-wrap items-end gap-x-10 gap-y-5">
+              <div className="min-w-0">
+                <p className={cn(typeScale.meta, "text-pub-muted")}>Your trip reference</p>
+                <p className="mt-2 font-display text-[clamp(1.875rem,1.4rem+2vw,2.75rem)] leading-none tracking-[0.02em] text-gold lining-nums [overflow-wrap:anywhere]">
+                  {t.reference}
+                </p>
+              </div>
+              <StatusPill label={status} tone={stopped ? "warn" : "ok"} />
+            </div>
           </div>
-          <StatusPill label={status} tone={stopped ? "warn" : "ok"} />
+          {/* The route, as a small HUD line on glass. */}
+          <GlassPanel as="aside" aria-label="Route" variant="smoke" padding="md" rounded="lg" hud className="min-w-0 lg:col-span-5">
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+              <HudLabel>Route</HudLabel>
+              <HudLabel tick={false} className="tabular-nums">{formatDateTime(t.pickupAt, tz)}</HudLabel>
+            </div>
+            <MiniRoute from={t.pickupLocation} to={t.destination} />
+          </GlassPanel>
         </div>
       </Section>
 
-      <Section space="md" width="wide">
+      <Section space="md" width="wide" atmosphere="calm" marker={{ index: 1, label: "Your trip", aside: <HudLabel tick={false}>{HOTEL_COORDS.label}</HudLabel> }}>
         <div className="grid gap-12 lg:grid-cols-12 lg:gap-x-10">
           {/* What is owed and Pay now: first on phones, the right-hand column on desktop. */}
           <section aria-labelledby="price-title" className="min-w-0 lg:col-span-5 lg:col-start-8 lg:row-start-1">
@@ -81,7 +95,6 @@ export default async function TripPage({ params }: PageProps<"/transport/trip/[t
               items={[
                 { label: "When", value: formatDateTime(t.pickupAt, tz) },
                 { label: "Guests", value: t.passengers },
-                { label: "Route", value: <span className="[overflow-wrap:anywhere]">{t.pickupLocation} → {t.destination}</span> },
                 ...(t.flightNumber ? [{ label: "Flight", value: t.flightNumber }] : []),
               ]}
             />

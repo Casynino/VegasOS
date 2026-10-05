@@ -2,11 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useDragControls, useReducedMotion } from "motion/react";
-import { CalendarDays, Moon, Phone, Search, X } from "lucide-react";
+import { ArrowRight, CalendarDays, Moon, Phone, X } from "lucide-react";
 import { addDays, diffDays, isBusinessDate } from "@/lib/time/business-date";
 import { cn } from "@/lib/utils";
 import type { QrLanding } from "@/server/services/hotel-qr";
-import { caps, darkButton, lightButton, Stepper, useSheetBehaviour } from "./ui";
+import { caps, goldButton, lightButton, Stepper, useSheetBehaviour } from "./ui";
 import { dayWeek, holdsText, nightsText, quickDates, telHref, type StayQuery } from "./lib";
 
 type Window = QrLanding["window"];
@@ -14,10 +14,10 @@ type Window = QrLanding["window"];
 type TypeChoice = { slug: string; name: string; maxAdults: number; maxChildren: number };
 
 /**
- * "When are you staying?" — a sheet that slides up from the bottom of the phone (a small window on computers): the two
- * dates (the phone's own calendar), quick picks, adults and children, and a room type if they have one in mind (picking
- * one sets a number of guests it takes — a Standard Single, 1 adult). Only dates the hotel takes bookings for can be
- * chosen; the server checks everything again.
+ * 1. DATES & GUESTS — "When are you staying?": a sheet that slides up from the bottom of the phone (a small window on
+ * computers): quick picks (Tonight / Tomorrow / Weekend), the two dates (the phone's own calendar), adults and
+ * children, and the gold "See rooms". Opened for a room type, it keeps that type (and a party it takes). Only dates the
+ * hotel takes bookings for can be chosen; the server checks everything again.
  */
 export function DatesSheet({ open, onClose, onSubmit, initial, window: w, types, closed, phone }: {
   open: boolean; onClose: () => void;
@@ -67,15 +67,8 @@ function DatesForm({ initial, w, types, closed, phone, onSubmit }: {
   const [checkOut, setCheckOut] = useState(fresh?.checkOut ?? addDays(w.today, 1));
   const [adults, setAdults] = useState(Math.max(1, Math.min(fresh?.adults ?? 2, w.maxAdults, opened?.maxAdults ?? w.maxAdults)));
   const [children, setChildren] = useState(Math.min(fresh?.children ?? 0, w.maxChildren, opened?.maxChildren ?? w.maxChildren));
-  const [roomType, setRoomType] = useState<string | null>(initial.roomType);
+  const roomType = initial.roomType;
   const chosen = typeOf(roomType);
-  const pickType = (slug: string | null) => {
-    setRoomType(slug);
-    const t = typeOf(slug);
-    if (!t) return;
-    setAdults((a) => Math.max(1, Math.min(a, t.maxAdults)));
-    setChildren((c) => Math.min(c, t.maxChildren));
-  };
   const [tried, setTried] = useState(false);
   // The sheet takes the focus (keyboard and screen readers start inside it) — not a date field, which would open a calendar.
   const title = useRef<HTMLHeadingElement>(null);
@@ -104,15 +97,15 @@ function DatesForm({ initial, w, types, closed, phone, onSubmit }: {
   return (
     <form className="px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-2 sm:px-7 sm:pb-7 sm:pt-7" onSubmit={(e) => { e.preventDefault(); submit(); }}>
       <h2 ref={title} tabIndex={-1} id="dates-title" className="pr-10 font-display text-[26px] font-semibold leading-tight outline-none">When are you staying?</h2>
-      <p className="mt-0.5 text-[13px] text-(--vr-muted)">We show only rooms that are really free.</p>
+      <p className="mt-0.5 text-[13px] text-(--vr-muted)">We show only the rooms that are really free.</p>
 
       {quick.length > 0 && (
-        <div className="mt-4 flex flex-wrap gap-1.5">
+        <div className="mt-4 grid rounded-full bg-(--vr-bg) p-1 ring-1 ring-(--vr-line)" style={{ gridTemplateColumns: `repeat(${quick.length}, minmax(0, 1fr))` }}>
           {quick.map((q) => {
             const on = q.checkIn === checkIn && q.checkOut === checkOut;
             return (
               <button key={q.label} type="button" onClick={() => { setCheckIn(q.checkIn); setCheckOut(q.checkOut); }} aria-pressed={on}
-                className={cn("h-8 rounded-full px-3.5 text-[12.5px] font-medium ring-1 transition", on ? "bg-(--vr-dark) text-white ring-(--vr-dark)" : "bg-(--vr-bg) text-(--vr-ink)/80 ring-(--vr-line) hover:ring-(--vr-gold)")}>
+                className={cn("h-9 rounded-full text-[13px] font-medium transition", on ? "bg-(--vr-card) text-(--vr-ink) shadow-[0_2px_8px_-2px_rgba(29,23,18,0.25)]" : "text-(--vr-ink)/65 hover:text-(--vr-ink)")}>
                 {q.label}
               </button>
             );
@@ -133,24 +126,12 @@ function DatesForm({ initial, w, types, closed, phone, onSubmit }: {
         {w.maxChildren > 0 && <Stepper label="Children" value={children} min={0} max={w.maxChildren} onChange={setChildren} />}
       </div>
 
-      {types.length > 1 && (
-        <div className="mt-4">
-          <p className={caps}>Room type <span className="font-normal normal-case tracking-normal">· optional</span></p>
-          <div className="mt-2 flex flex-wrap gap-1.5" role="radiogroup" aria-label="Room type">
-            {[{ slug: null as string | null, name: "Any room" }, ...types.map((t) => ({ slug: t.slug as string | null, name: t.name }))].map((t) => {
-              const on = roomType === t.slug;
-              return (
-                <button key={t.slug ?? "any"} type="button" role="radio" aria-checked={on} onClick={() => pickType(t.slug)}
-                  className={cn("h-8 rounded-full px-3.5 text-[12.5px] font-medium ring-1 transition", on ? "bg-(--vr-gold-soft) text-(--vr-ink) ring-(--vr-gold)/50" : "bg-(--vr-card) text-(--vr-ink)/75 ring-(--vr-line) hover:ring-(--vr-gold)")}>
-                  {t.name}
-                </button>
-              );
-            })}
-          </div>
-          {chosen && (adults > chosen.maxAdults || children > chosen.maxChildren) && (
-            <p className="mt-2 text-[12px] leading-snug text-(--vr-muted)">A {chosen.name} takes {holdsText(chosen).toLowerCase()} — we&apos;ll show you the rooms that fit everyone.</p>
-          )}
-        </div>
+      {chosen && (
+        <p className="mt-3 text-[12px] leading-snug text-(--vr-muted)">
+          {adults > chosen.maxAdults || children > chosen.maxChildren
+            ? <>A {chosen.name} takes {holdsText(chosen).toLowerCase()} — we&apos;ll show you the rooms that fit everyone.</>
+            : <>For the {chosen.name} · {holdsText(chosen).toLowerCase()}</>}
+        </p>
       )}
 
       {closed ? (
@@ -159,8 +140,8 @@ function DatesForm({ initial, w, types, closed, phone, onSubmit }: {
           {phone && <a href={telHref(phone)} className={cn(lightButton, "mt-3 h-11 w-full text-[14px]")}><Phone className="size-4 text-(--vr-gold-ink)" />Call {phone}</a>}
         </div>
       ) : (
-        <button type="submit" className={cn(darkButton, "mt-5 h-12 w-full text-[14.5px]")}>
-          <Search className="size-4 text-(--vr-gold)" />Check availability
+        <button type="submit" className={cn(goldButton, "mt-5 h-[52px] w-full text-[15px]")}>
+          See rooms<ArrowRight className="size-[18px]" />
         </button>
       )}
     </form>

@@ -9,6 +9,7 @@ import { formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Button } from "../kit/button";
 import { field, typeScale } from "../kit/tokens";
+import fx from "../room-fx.module.css";
 import { BookingProgress } from "./progress";
 import { Notice, guestsLabel } from "./parts";
 import { NetworkMarks } from "@/components/payments/networks";
@@ -61,6 +62,8 @@ const TEXT_FIELDS = ["fullName", "phone", "email", "nationality", "specialReques
 const scheme = "[color-scheme:light] pub-dark:[color-scheme:dark]";
 const optional = <span className="normal-case tracking-normal text-pub-muted">(optional)</span>;
 const ease = [0.22, 1, 0.36, 1] as const;
+/** A form group's HUD label: "01 ── Guest". */
+const groupCls = "flex items-center gap-3 font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-pub-eyebrow sm:col-span-2 sm:text-[11px]";
 
 /**
  * Steps 3 (guest details) and 4 (review). Both steps call the server: the
@@ -196,10 +199,10 @@ export function GuestStep({
             )}
 
             {/* action= makes the form post to the server action even before hydration (never a GET with personal data). */}
-            <form action={runReview} onSubmit={onDetailsSubmit} noValidate className="mt-8 grid gap-x-4 gap-y-5 sm:grid-cols-2">
+            <form action={runReview} onSubmit={onDetailsSubmit} noValidate className={cn(fx.card, "relative mt-8 grid gap-x-4 gap-y-5 p-5 sm:grid-cols-2 sm:p-7")}>
               {Object.entries(selection).map(([k, v]) => <input key={k} type="hidden" name={k} value={String(v)} />)}
 
-              <p className={cn(typeScale.eyebrow, "flex items-center gap-3 text-pub-eyebrow before:h-px before:w-8 before:bg-current before:opacity-70 sm:col-span-2")}>Guest</p>
+              <p className={groupCls}>01<span aria-hidden="true" className="h-px w-6 bg-current opacity-60" />Guest<span aria-hidden="true" className="h-px flex-1 bg-pub-line" /></p>
               <div className="sm:col-span-2">
                 <label htmlFor="fullName" className={field.label}>Full name <span aria-hidden="true">*</span></label>
                 <input id="fullName" name="fullName" required autoComplete="name" defaultValue={values.fullName} {...invalid("fullName")} className={field.input} />
@@ -221,7 +224,7 @@ export function GuestStep({
                 {errorOf("nationality")}
               </div>
 
-              <p className={cn(typeScale.eyebrow, "mt-4 flex items-center gap-3 text-pub-eyebrow before:h-px before:w-8 before:bg-current before:opacity-70 sm:col-span-2")}>Arrival</p>
+              <p className={cn(groupCls, "mt-4")}>02<span aria-hidden="true" className="h-px w-6 bg-current opacity-60" />Arrival<span aria-hidden="true" className="h-px flex-1 bg-pub-line" /></p>
               <div>
                 <label htmlFor="expectedArrivalTime" className={field.label}>Expected arrival time <span aria-hidden="true">*</span></label>
                 <input id="expectedArrivalTime" name="expectedArrivalTime" type="time" required defaultValue={values.expectedArrivalTime}
@@ -241,7 +244,9 @@ export function GuestStep({
                 <legend className="sr-only">Airport pickup</legend>
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
                   <div className="flex gap-3.5">
-                    <Plane className="mt-1 size-5 shrink-0 text-pub-eyebrow" strokeWidth={1.4} aria-hidden="true" />
+                    <span className="grid size-10 shrink-0 place-items-center rounded-full border border-pub-eyebrow/35 text-pub-eyebrow">
+                      <Plane className="size-[18px]" strokeWidth={1.4} aria-hidden="true" />
+                    </span>
                     <div>
                       <p className="font-display text-[1.25rem] leading-tight" id="pickup-q">Airport pickup? <span className="font-sans text-[13px] text-pub-muted">(optional)</span></p>
                       <p className="mt-1 text-[13px] leading-relaxed text-pub-muted">{arrival.note}</p>
@@ -338,8 +343,8 @@ export function GuestStep({
             )}
 
             {review && (
-              <div className="mt-8 space-y-8">
-                <dl className="border-t border-pub-line text-[15px]">
+              <div className="mt-8 space-y-6 sm:space-y-8">
+                <dl className={cn(fx.card, "relative px-5 py-1 text-[15px] sm:px-7 sm:py-2")}>
                   <ReviewRow term="Room">
                     <span className="font-display text-[1.375rem] leading-tight">{review.rooms > 1 ? `${review.rooms} × ` : ""}{review.typeName}</span>
                   </ReviewRow>
@@ -384,7 +389,15 @@ export function GuestStep({
                 </dl>
 
                 {/* The amount and how to pay: one dark panel, the page's single focal point. */}
-                <div data-tone="night" className="rounded-[1rem] bg-night p-5 text-pub-fg ring-1 ring-white/[0.06] sm:p-7">
+                <div data-tone="night" className={cn(fx.night, "relative p-5 text-pub-fg sm:p-7")}>
+                  <span aria-hidden="true" className="pub-hud-corners" style={{ "--hud-o": "-0.625rem", "--hud-l": "0.875rem" } as React.CSSProperties} />
+                  <div className="mb-5 flex items-center justify-between gap-4">
+                    <span className="inline-flex items-center gap-2.5 font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-pub-muted sm:text-[11px]">
+                      <span aria-hidden="true" className="h-px w-3.5 bg-gold" />
+                      {payingNow ? "Total to pay" : "Your estimate"}
+                    </span>
+                    <span aria-hidden="true" className="font-mono text-[10px] uppercase tracking-[0.2em] text-pub-faint sm:text-[11px]">TZS</span>
+                  </div>
                   <dl className="space-y-3 text-[14px]">
                     <div className="flex justify-between gap-4">
                       <dt className="text-pub-muted">{formatTZS(review.ratePerNight)} × {review.nights} night{review.nights === 1 ? "" : "s"}{review.rooms > 1 ? ` × ${review.rooms} rooms` : ""}</dt>
@@ -454,9 +467,8 @@ export function GuestStep({
                       <Button
                         onClick={onPay}
                         disabled={busy || Boolean(unavailable) || !payPhoneOk(number)}
-                        size="lg"
                         full
-                        className="h-auto min-h-14 whitespace-normal py-3 text-center"
+                        className="h-auto min-h-10 whitespace-normal py-2.5 text-center"
                         icon={paying ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : <Lock className="size-4" strokeWidth={1.8} aria-hidden="true" />}
                       >
                         {paying ? "Booking your room…" : `Pay ${formatTZS(review.netAmount)}`}
@@ -465,9 +477,8 @@ export function GuestStep({
                       <Button
                         onClick={onConfirm}
                         disabled={busy || Boolean(unavailable)}
-                        size="lg"
                         full
-                        className="h-auto min-h-14 whitespace-normal py-3 text-center"
+                        className="h-auto min-h-10 whitespace-normal py-2.5 text-center"
                         icon={confirming ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : <Send className="size-4" strokeWidth={1.6} aria-hidden="true" />}
                       >
                         {confirming ? "Booking…" : "Book — pay later"}
@@ -499,7 +510,7 @@ export function GuestStep({
 /** One line of the review: the term on the left (desktop), the value, an optional action. */
 function ReviewRow({ term, action, children }: { term: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="grid gap-1 border-b border-pub-line py-4 sm:grid-cols-[8.5rem_minmax(0,1fr)] sm:gap-6">
+    <div className="grid gap-1 border-b border-pub-line py-4 last:border-b-0 sm:grid-cols-[8.5rem_minmax(0,1fr)] sm:gap-6">
       <dt className={cn(typeScale.meta, "flex items-center justify-between gap-3 text-pub-muted sm:block sm:pt-1")}>
         {term}
         {action && <span className="sm:hidden">{action}</span>}
@@ -517,7 +528,7 @@ function EditButton({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="-my-2 inline-flex min-h-11 items-center gap-1.5 rounded-sm px-1 text-[12px] font-semibold uppercase tracking-[0.16em] text-pub-eyebrow transition-colors duration-200 hover:text-pub-fg focus-visible:outline-2 focus-visible:outline-gold motion-reduce:transition-none"
+      className="-my-2 inline-flex min-h-11 items-center gap-1.5 rounded-sm px-1 text-[13px] font-medium text-pub-eyebrow transition-colors duration-200 hover:text-pub-fg focus-visible:outline-2 focus-visible:outline-gold motion-reduce:transition-none"
     >
       <Pencil className="size-3.5" strokeWidth={1.8} aria-hidden="true" />Edit<span className="sr-only"> your details</span>
     </button>

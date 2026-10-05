@@ -10,13 +10,15 @@ import { formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { RoomBookDock } from "@/components/public/booking/room-book-dock";
 import { telHref, whatsappHref } from "@/components/public/contact";
-import { NamedIcon } from "@/components/public/icon";
 import {
-  Actions, Eyebrow, Heading, InfoList, LinkButton, MediaFrame, PriceTag, Rail, Reveal, Section, SectionIntro, TextLink,
-  containers, measure, rhythm, surface, typeScale,
+  Actions, Atmosphere, Eyebrow, GlassPanel, HOTEL_COORDS, Heading, HudLabel, InfoList, LinkButton, MediaFrame, PriceTag, Rail, Reveal, Section,
+  SectionIntro, TextLink, containers, measure, rhythm, typeScale,
 } from "@/components/public/kit";
 import { RoomCard, roomFacts } from "@/components/public/room-card";
+import { guestsLine, pad2 } from "@/components/public/room-chapter";
+import { RoomDetails } from "@/components/public/room-details";
 import { RoomGallery } from "@/components/public/room-gallery";
+import { RoomSpecSheet } from "@/components/public/room-spec";
 import { photo } from "@/components/public/site-config";
 import { StaySearchForm } from "@/components/public/stay-search-form";
 
@@ -38,10 +40,12 @@ export async function generateMetadata({ params }: PageProps<"/rooms/[slug]">): 
 }
 
 /**
- * One room type: the photograph (it morphs from the room's card), a filmstrip of its photos,
- * the story, the booking panel (sticky beside the details on desktop, right after the story on
- * phones), amenities as a quiet list, the times, and the other room types. Phones get a slim
- * floating Book dock that steps aside at the panel.
+ * One room type: the photograph full-screen (it morphs from the room's card) under a calm HUD —
+ * viewfinder, blueprint grid rising under the title, a floating glass price panel on desktop —
+ * then the photos as an immersive mosaic (filmstrip on phones), the story with the booking
+ * console (glass, sticky beside the details on desktop, right after the story on phones), the
+ * room's technical spec sheet, and the other room types. Phones get a slim floating Book dock
+ * that steps aside at the booking panel.
  */
 export default async function RoomPage({ params }: PageProps<"/rooms/[slug]">) {
   const { slug } = await params;
@@ -61,11 +65,26 @@ export default async function RoomPage({ params }: PageProps<"/rooms/[slug]">) {
   });
   const facts = roomFacts(room);
   const bookHref = stay.enabled ? "#book" : "/contact?subject=booking";
+  const position = all.findIndex((t) => t.slug === room.slug) + 1;
+  const includedNote = included.length > 0 ? `${included.join(" and ")} included` : undefined;
+  const spec = [
+    { term: "Adults", value: `Up to ${room.maxAdults}` },
+    room.maxChildren > 0 ? { term: "Children", value: `Up to ${room.maxChildren}` } : null,
+    room.bedType ? { term: "Bed", value: room.bedType } : null,
+    room.sizeSqm ? { term: "Size", value: `${room.sizeSqm} m²` } : null,
+    { term: "Check-in", value: `From ${stay.checkInTime}` },
+    { term: "Check-out", value: `By ${stay.checkoutTime}` },
+    settings.receptionHours ? { term: "Reception", value: settings.receptionHours } : null,
+  ].filter((f): f is { term: string; value: string } => f !== null);
 
   return (
     <>
-      {/* Hero: the room's first photograph, its name and facts. */}
-      <section data-tone="night" aria-labelledby="room-title" className="relative isolate flex min-h-[74svh] overflow-hidden bg-night text-pub-fg sm:min-h-[64svh] lg:min-h-[78vh]">
+      {/* Hero: the room's first photograph under a calm HUD, its name, facts and price. */}
+      <section
+        data-tone="night"
+        aria-labelledby="room-title"
+        className="relative isolate flex min-h-[80svh] overflow-hidden bg-night text-pub-fg sm:min-h-[66svh] lg:min-h-[88vh]"
+      >
         {hero ? (
           <ViewTransition name={`room-${room.slug}`} share="vlh-morph" default="none">
             <MediaFrame src={hero.src} alt={hero.alt} ratio="fill" sizes="100vw" preload overlay="hero" imgClassName="pub-settle" className="-z-10" />
@@ -73,44 +92,115 @@ export default async function RoomPage({ params }: PageProps<"/rooms/[slug]">) {
         ) : (
           <div aria-hidden="true" className="pub-sky absolute inset-0 -z-10" />
         )}
-        <div className={cn(containers.wide, "flex w-full flex-col justify-end pb-10 pt-[calc(var(--pub-header-h)+3rem)] sm:pb-14 lg:pb-20")}>
-          <Link
-            href="/rooms"
-            className={cn(typeScale.eyebrow, "-ml-1 inline-flex min-h-11 w-fit items-center gap-1.5 rounded-sm px-1 text-gold transition-colors duration-200 hover:text-white focus-visible:outline-2 focus-visible:outline-gold motion-reduce:transition-none")}
-          >
-            <ChevronLeft className="size-3.5" strokeWidth={1.8} aria-hidden="true" /> All rooms
-          </Link>
-          <h1
-            id="room-title"
-            className={cn(
-              "mt-2 max-w-4xl",
-              typeScale.title,
-              "motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 motion-safe:fill-mode-both motion-safe:duration-700 motion-safe:ease-pub",
+        <Atmosphere tone="night" atmosphere="calm" pattern="grid" edges="top" className="pub-atmo--hero" />
+        <span
+          aria-hidden="true"
+          className="pub-hud-corners hidden sm:block"
+          style={{ inset: "calc(var(--pub-header-h) + 0.75rem) 1.25rem 1.25rem", "--hud-l": "1.25rem", "--hud-c": "rgb(240 214 160 / 0.55)" } as React.CSSProperties}
+        />
+        <span aria-hidden="true" className="pub-hero-scan" />
+        <HudLabel tick={false} className="absolute right-10 top-[calc(var(--pub-header-h)+2rem)] hidden text-white/70 lg:inline-flex">
+          {HOTEL_COORDS.label}
+        </HudLabel>
+
+        <div
+          className={cn(
+            containers.wide,
+            "relative flex w-full flex-col justify-end pb-10 pt-[calc(var(--pub-header-h)+3rem)] sm:pb-14 lg:flex-row lg:items-end lg:justify-between lg:gap-12 lg:pb-20",
+          )}
+        >
+          <div className="min-w-0 max-w-4xl">
+            <Link
+              href="/rooms"
+              className={cn(
+                typeScale.eyebrow,
+                "-ml-1 inline-flex min-h-11 w-fit items-center gap-1.5 rounded-sm px-1 text-gold transition-colors duration-200 hover:text-white focus-visible:outline-2 focus-visible:outline-gold motion-reduce:transition-none",
+              )}
+            >
+              <ChevronLeft className="size-3.5" strokeWidth={1.8} aria-hidden="true" /> All rooms
+            </Link>
+            {position > 0 && (
+              <HudLabel className="mt-3 flex text-white/70 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-700">
+                Room type {pad2(position)} / {pad2(all.length)}
+              </HudLabel>
             )}
-          >
-            {room.name}
-          </h1>
-          {room.shortDescription && <p className={cn("mt-4 text-white/80 sm:mt-5", typeScale.lede, measure.lede)}>{room.shortDescription}</p>}
-          <InfoList items={facts} className="mt-5" />
-          <Actions className="mt-7 sm:mt-8">
-            <LinkButton href={bookHref} icon="arrow">{stay.enabled ? "Book this room" : "Ask to book"}</LinkButton>
-            {images.length > 1 && <TextLink href="#photos">View photos</TextLink>}
-          </Actions>
+            <h1
+              id="room-title"
+              className={cn(
+                "mt-3 max-w-4xl",
+                typeScale.display,
+                "motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 motion-safe:fill-mode-both motion-safe:duration-700 motion-safe:ease-pub",
+              )}
+            >
+              {room.name}
+            </h1>
+            {room.shortDescription && <p className={cn("mt-4 text-white/80 sm:mt-5", typeScale.lede, measure.lede)}>{room.shortDescription}</p>}
+            <InfoList items={facts} className="mt-5 text-white/75" />
+            <PriceTag amount={price.net} from was={price.discount > 0 ? price.baseRate : null} className="mt-5 lg:hidden" />
+            <Actions className="mt-7 sm:mt-8">
+              <LinkButton href={bookHref} icon="arrow" className="lg:hidden">
+                {stay.enabled ? "Book this room" : "Ask to book"}
+              </LinkButton>
+              {images.length > 1 && <TextLink href="#photos">View photos</TextLink>}
+            </Actions>
+          </div>
+
+          {/* Desktop: the price floats on glass over the photograph. */}
+          <GlassPanel padding="md" rounded="lg" hud spotlight className="hidden w-[22rem] shrink-0 lg:block xl:w-[24rem]">
+            <div className="flex items-center justify-between gap-4">
+              <HudLabel>Website rate</HudLabel>
+              <span aria-hidden="true" className="font-mono text-[11px] tracking-[0.2em] text-pub-muted">TONIGHT</span>
+            </div>
+            <PriceTag amount={price.net} from size="lg" was={price.discount > 0 ? price.baseRate : null} note={includedNote} className="mt-5" />
+            {price.discount > 0 && (
+              <p className="mt-2 text-[13px] leading-snug text-pub-eyebrow">
+                {price.promotion ?? "Website rate"} · save {formatTZS(price.discount)} per night
+              </p>
+            )}
+            <dl className="mt-5 space-y-2 border-t border-pub-line pt-4 text-[13.5px]">
+              {[{ term: "Guests", value: guestsLine(room) }, ...(room.bedType ? [{ term: "Bed", value: room.bedType }] : []), ...(room.sizeSqm ? [{ term: "Size", value: `${room.sizeSqm} m²` }] : [])].map((s) => (
+                <div key={s.term} className="flex items-baseline gap-3">
+                  <dt className="shrink-0 text-[10.5px] font-medium uppercase tracking-[0.16em] text-pub-muted">{s.term}</dt>
+                  <span aria-hidden="true" className="min-w-3 flex-1 translate-y-[-3px] border-b border-dotted border-pub-line" />
+                  <dd className="text-right">{s.value}</dd>
+                </div>
+              ))}
+            </dl>
+            <LinkButton href={bookHref} icon="arrow" full className="mt-6">
+              {stay.enabled ? "Book this room" : "Ask to book"}
+            </LinkButton>
+          </GlassPanel>
         </div>
       </section>
 
-      {/* The other photographs (the hero already shows the first). */}
-      {images.length > 1 && (
-        <Section id="photos" labelledBy="photos-title" space="sm" width="wide" className="pb-6 sm:pb-8 lg:pb-10">
-          <Eyebrow rule className="mb-6">
-            <span id="photos-title">Inside the {room.name}</span>
-          </Eyebrow>
-          <RoomGallery images={images} roomName={room.name} from={1} />
-        </Section>
-      )}
+      {/* The other photographs (the hero already shows the first), then details from across the hotel's rooms. */}
+      <Section
+        tone="night"
+        id="photos"
+        labelledBy={images.length > 1 ? "photos-title" : "room-details-title"}
+        space="sm"
+        width="wide"
+        aurora={false}
+        className="pt-10 sm:pt-14 lg:pt-16"
+      >
+        {images.length > 1 && (
+          <>
+            <Eyebrow as="h2" rule className="mb-6 lg:mb-8">
+              <span id="photos-title">Inside the {room.name}</span>
+            </Eyebrow>
+            <RoomGallery images={images} roomName={room.name} from={1} />
+          </>
+        )}
+        <RoomDetails
+          id="room-details-title"
+          title={images.length > 1 ? "More from our rooms" : "From our rooms"}
+          exclude={room.images}
+          className={images.length > 1 ? "mt-14 sm:mt-16 lg:mt-20" : undefined}
+        />
+      </Section>
 
-      {/* Story, booking panel, amenities and times. Phones: story → panel → details. */}
-      <Section space="md" width="wide" labelledBy="about-title" className={images.length > 1 ? "pt-10 sm:pt-12 lg:pt-16" : undefined}>
+      {/* Story, booking console and spec sheet. Phones: story → console → spec. */}
+      <Section space="md" width="wide" pattern="grid" labelledBy="about-title">
         <div className="grid gap-12 lg:grid-cols-12 lg:grid-rows-[auto_1fr] lg:gap-x-10 lg:gap-y-16">
           <Reveal className="min-w-0 lg:col-span-7">
             <Eyebrow as="h2" rule>
@@ -121,18 +211,29 @@ export default async function RoomPage({ params }: PageProps<"/rooms/[slug]">) {
             </p>
           </Reveal>
 
-          <aside id="book" aria-label={`Book the ${room.name}`} className="min-w-0 scroll-mt-[calc(var(--pub-header-h)+1rem)] lg:col-span-4 lg:col-start-9 lg:row-span-2 lg:row-start-1">
-            <div className={cn(surface.panel, "lg:sticky lg:top-24")}>
+          <aside
+            id="book"
+            aria-label={`Book the ${room.name}`}
+            className="min-w-0 scroll-mt-[calc(var(--pub-header-h)+1rem)] lg:col-span-4 lg:col-start-9 lg:row-span-2 lg:row-start-1"
+          >
+            <GlassPanel variant="paper" padding="md" rounded="lg" hud className="lg:sticky lg:top-24">
+              <div className="flex items-center justify-between gap-4">
+                <HudLabel live={stay.enabled}>{stay.enabled ? "Live availability" : "Reservations"}</HudLabel>
+                <span aria-hidden="true" className="font-mono text-[10px] tracking-[0.2em] text-pub-muted sm:text-[11px]">
+                  {pad2(position)}/{pad2(all.length)}
+                </span>
+              </div>
               <PriceTag
                 amount={price.net}
                 from
                 size="lg"
                 was={price.discount > 0 ? price.baseRate : null}
-                note={included.length > 0 ? `${included.join(" and ")} included` : undefined}
+                note={includedNote}
+                className="mt-5"
               />
               {price.discount > 0 && (
                 <p className="mt-3 text-[13px] leading-snug text-pub-eyebrow">
-                  {price.promotion ?? "Website rate"}{price.promoLabel ? ` · ${price.promoLabel}` : ""} · save {formatTZS(price.discount)} per night
+                  {price.promotion ?? "Website rate"} · save {formatTZS(price.discount)} per night
                 </p>
               )}
               <div className="my-6 h-px bg-pub-line" />
@@ -176,50 +277,24 @@ export default async function RoomPage({ params }: PageProps<"/rooms/[slug]">) {
                   </div>
                 </div>
               )}
-            </div>
+            </GlassPanel>
           </aside>
 
-          <div className="min-w-0 space-y-12 lg:col-span-7 lg:row-start-2 lg:space-y-16">
-            {amenities.length > 0 && (
-              <Reveal>
-                <Heading as="h2" size="subheading" id="amenities-title">In the room</Heading>
-                <ul aria-labelledby="amenities-title" className="mt-5 grid border-t border-pub-line sm:grid-cols-2 sm:gap-x-10">
-                  {amenities.map((a) => (
-                    <li key={a.code} className="flex min-w-0 items-center gap-3.5 border-b border-pub-line py-4">
-                      <NamedIcon name={a.icon} className="size-5 shrink-0 text-pub-eyebrow" />
-                      <span className="min-w-0 flex-1 text-[15px] leading-snug text-pub-fg">{a.name}</span>
-                      {HIGHLIGHT.has(a.code) && <span className={cn(typeScale.meta, "shrink-0 text-pub-eyebrow")}>Included</span>}
-                    </li>
-                  ))}
-                </ul>
-              </Reveal>
-            )}
-
-            <Reveal>
-              <Heading as="h2" size="subheading" id="times-title">Good to know</Heading>
-              <InfoList
-                variant="rows"
-                className="mt-5"
-                items={[
-                  { label: "Check-in", value: `From ${stay.checkInTime}` },
-                  { label: "Check-out", value: `By ${stay.checkoutTime}` },
-                  ...(settings.receptionHours ? [{ label: "Reception", value: settings.receptionHours }] : []),
-                ]}
-              />
-            </Reveal>
-          </div>
+          <Reveal className="min-w-0 lg:col-span-7 lg:row-start-2">
+            <RoomSpecSheet name={room.name} index={position} total={all.length} facts={spec} amenities={amenities} included={HIGHLIGHT} />
+          </Reveal>
         </div>
       </Section>
 
       {others.length > 0 && (
-        <Section tone="night" glow="top" space="md" labelledBy="other-rooms">
-          <SectionIntro
-            align="split"
-            eyebrow="Stay your way"
-            title="Other rooms"
-            id="other-rooms"
-            actions={<TextLink href="/rooms">All rooms</TextLink>}
-          />
+        <Section
+          tone="night"
+          space="md"
+          width="wide"
+          labelledBy="other-rooms"
+          marker={{ label: "Room types", aside: <HudLabel tick={false}>{pad2(all.length)} to choose from</HudLabel> }}
+        >
+          <SectionIntro align="split" eyebrow="Stay your way" title="Other rooms" id="other-rooms" actions={<TextLink href="/rooms">All rooms</TextLink>} />
           <Rail label="Other room types" desktop="grid" cols={3} className={rhythm.afterIntro}>
             {others.map((r) => (
               <RoomCard key={r.slug} room={r} />

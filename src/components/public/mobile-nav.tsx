@@ -14,12 +14,17 @@ import { StaffLink } from "./staff-link";
 import { ThemeToggle } from "./theme-toggle";
 
 const focus = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold";
+/** Small quiet links under Book your stay (call, WhatsApp, staff door): text with a small icon, no pills. */
+const quiet = cn(
+  "inline-flex h-11 items-center gap-2 rounded-sm text-[13px] text-white/80 transition-colors duration-200 hover:text-white motion-reduce:transition-none",
+  focus,
+);
 
 /**
  * The phone/tablet menu (below 1024px): a full-screen night drawer that drops like a curtain.
  * Compact serif links in the order of the story (owner, 2026-10-05: the big links pushed everything off the screen
- * and the staff login could not be found) — related pages as small links beside their parent — then Book your stay,
- * call / WhatsApp, and a clear row with the theme switch and Staff login, all on one phone screen.
+ * and the staff login could not be found) — related pages as small links beside their parent — then a slim
+ * Book your stay button, small Call / WhatsApp / Staff login links and the theme switch, all on one phone screen.
  * Base UI Dialog gives the focus trap, Escape to close, scroll lock and focus return.
  */
 export function MobileNav({
@@ -51,7 +56,7 @@ export function MobileNav({
           <button
             type="button"
             className={cn(
-              "group inline-flex size-11 items-center justify-center rounded-full border border-white/20 text-white transition-colors duration-200 hover:border-white/50 motion-reduce:transition-none",
+              "group relative -mr-2 inline-flex size-10 items-center justify-center rounded-full text-white transition-colors duration-200 after:absolute after:-inset-0.5 after:content-[''] hover:bg-white/[0.08] motion-reduce:transition-none",
               focus,
               className,
             )}
@@ -85,7 +90,7 @@ export function MobileNav({
                 <button
                   type="button"
                   className={cn(
-                    "inline-flex size-11 items-center justify-center rounded-full border border-white/20 text-white transition-colors duration-200 hover:border-white/50 motion-reduce:transition-none",
+                    "relative -mr-2 inline-flex size-10 items-center justify-center rounded-full text-white transition-colors duration-200 after:absolute after:-inset-0.5 after:content-[''] hover:bg-white/[0.08] motion-reduce:transition-none",
                     focus,
                   )}
                 />
@@ -150,50 +155,38 @@ export function MobileNav({
                 <LinkButton href="/book" onClick={close} full icon="arrow">
                   Book your stay
                 </LinkButton>
-                {contacts > 0 && (
-                  <div className={cn("mt-3 grid gap-3", contacts > 1 && "grid-cols-2")}>
-                    {phone && (
-                      <a
-                        href={telHref(phone)}
-                        className={cn(
-                          "inline-flex h-11 items-center justify-center gap-2 rounded-full border border-white/15 text-[13px] text-white/85 transition-colors duration-200 hover:border-white/45 hover:text-white motion-reduce:transition-none",
-                          focus,
-                        )}
-                      >
-                        <Phone className="size-4" strokeWidth={1.6} aria-hidden="true" /> Call
-                      </a>
-                    )}
-                    {whatsapp && (
-                      <a
-                        href={whatsappHref(whatsapp)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={cn(
-                          "inline-flex h-11 items-center justify-center gap-2 rounded-full border border-white/15 text-[13px] text-white/85 transition-colors duration-200 hover:border-white/45 hover:text-white motion-reduce:transition-none",
-                          focus,
-                        )}
-                      >
-                        <MessageCircle className="size-4" strokeWidth={1.6} aria-hidden="true" /> WhatsApp
-                        <span className="sr-only"> (opens in a new tab)</span>
-                      </a>
-                    )}
-                  </div>
-                )}
-                <div className="mt-4 flex items-center justify-between gap-4 border-t border-white/10 pt-4">
-                  <ThemeToggle withLabel />
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-x-5">
+                  {contacts > 0 && (
+                    <div className="flex items-center gap-5">
+                      {phone && (
+                        <a href={telHref(phone)} className={quiet}>
+                          <Phone className="size-3.5 text-gold" strokeWidth={1.6} aria-hidden="true" /> Call
+                        </a>
+                      )}
+                      {whatsapp && (
+                        <a href={whatsappHref(whatsapp)} target="_blank" rel="noopener noreferrer" className={quiet}>
+                          <MessageCircle className="size-3.5 text-gold" strokeWidth={1.6} aria-hidden="true" /> WhatsApp
+                          <span className="sr-only"> (opens in a new tab)</span>
+                        </a>
+                      )}
+                    </div>
+                  )}
                   <StaffLink
                     withIcon
                     onClick={close}
                     labels={{ signedIn: "Staff dashboard", signedOut: "Staff login" }}
-                    className={cn("inline-flex h-11 items-center gap-2 rounded-full border border-gold/45 bg-gold/10 px-4 text-[13px] font-medium text-gold transition-colors hover:bg-gold/20", focus)}
+                    className={cn(quiet, "ml-auto")}
                   />
+                </div>
+                <div className="mt-2 border-t border-white/10 pt-3">
+                  <ThemeToggle withLabel />
                 </div>
               </div>
             </div>
 
             {/* Tablets: a hotel photo beside the links (loads only when the menu opens). */}
             <div className="relative hidden min-h-[28rem] overflow-hidden sm:block">
-              <Image src="/images/lobby/lobby-02.webp" alt="" fill sizes="45vw" className="object-cover object-[50%_40%]" />
+              <Image src="/images/lobby/lobby-02.webp" alt="" fill sizes="45vw" className="pub-grade object-cover object-[50%_40%]" />
               <div aria-hidden="true" className="absolute inset-0 bg-linear-to-r from-night via-night/30 to-night/10" />
             </div>
           </div>

@@ -13,7 +13,7 @@ import { useBackToClose } from "../use-back-to-close";
  * flow), so it works before hydration and gives a shareable URL. Field names are the /book
  * contract: checkIn, checkOut, adults, children, type.
  * - Desktop (lg+): HeroBookingBar, one slim glass bar at the foot of the hero.
- * - Phones and tablets: BookingSheet, a gold button that opens the same search in a bottom
+ * - Phones and tablets: BookingSheet, a slim button that opens the same search in a bottom
  *   sheet (without JS it is a link to /book, which has its own search).
  */
 export interface StaySearchProps {
@@ -85,7 +85,7 @@ function Stepper({
 }
 
 /**
- * Desktop: one slim glass bar — dates, guests, room type and the gold "Check availability".
+ * Desktop: one slim glass bar — dates, guests, room type and a slim "Check availability" button.
  * The guests panel opens upward (the bar sits at the foot of the hero).
  */
 export function HeroBookingBar({ className, submitLabel = "Check availability", ...search }: StaySearchProps & { className?: string; submitLabel?: string }) {
@@ -120,7 +120,8 @@ export function HeroBookingBar({ className, submitLabel = "Check availability", 
       role="search"
       aria-label="Check availability"
       className={cn(
-        "grid grid-cols-[1fr_1fr_1fr_1.1fr_auto] items-stretch gap-1 rounded-full border border-white/15 bg-[rgb(15_12_9/0.55)] p-1.5 pl-2 text-white shadow-[0_30px_60px_-30px_rgb(0_0_0/0.8)] backdrop-blur-xl",
+        // Smoked glass with a light edge and a gold hairline on top (kit .pub-glass).
+        "pub-glass grid grid-cols-[1fr_1fr_1fr_1.1fr_auto] items-stretch gap-1 rounded-full p-1.5 pl-2 text-white",
         className,
       )}
     >
@@ -183,16 +184,16 @@ export function HeroBookingBar({ className, submitLabel = "Check availability", 
         </select>
       </div>
 
-      <button type="submit" className={buttonClass({ size: "lg", className: "h-auto min-h-14 self-stretch px-8" })}>
+      <button type="submit" className={buttonClass({ className: "mx-1 self-center px-5" })}>
         {submitLabel}
-        <ArrowRight className="size-4 transition-transform duration-300 ease-pub group-hover/btn:translate-x-0.5 motion-reduce:transition-none" strokeWidth={1.6} aria-hidden="true" />
+        <ArrowRight className="size-3.5 transition-transform duration-300 ease-pub group-hover/btn:translate-x-0.5 motion-reduce:transition-none" strokeWidth={1.6} aria-hidden="true" />
       </button>
     </form>
   );
 }
 
 /**
- * Phones and tablets: the gold "Check availability" button opens the search in a bottom sheet
+ * Phones and tablets: the slim "Check availability" button opens the search in a bottom sheet
  * (native <dialog>: focus stays inside, Escape, a tap outside and the phone's Back close it).
  * A visit to /#availability opens it too. Without JS the button is a plain link to /book.
  */
@@ -340,7 +341,7 @@ export function BookingSheet({ label, className, ...search }: StaySearchProps & 
               </select>
             </div>
 
-            <button type="submit" className={buttonClass({ size: "lg", full: true, className: "mt-1" })}>
+            <button type="submit" className={buttonClass({ full: true, className: "mt-1" })}>
               <span>See available rooms</span>
               <ArrowRight className="size-4" strokeWidth={1.6} aria-hidden="true" />
             </button>

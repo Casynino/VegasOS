@@ -36,7 +36,7 @@ export function DiningList({ items, note, className }: { items: DiningLink[]; no
                 <span className={cn(typeScale.item, "block text-pub-fg transition-colors duration-200 group-hover:text-pub-eyebrow motion-reduce:transition-none")}>
                   {it.title}
                 </span>
-                <span className="mt-1 block text-[14px] leading-snug text-pub-muted">{it.body}</span>
+                <span className="mt-1 line-clamp-2 text-[14px] leading-snug text-pub-muted">{it.body}</span>
                 {it.hours && <span className={cn(typeScale.meta, "mt-1.5 block text-pub-muted")}>{it.hours}</span>}
               </span>
               <ArrowRight

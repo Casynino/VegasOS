@@ -4,15 +4,15 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { buttonClass } from "../kit/button";
 
 const FIELD = "input, textarea, select, [contenteditable='true']";
 
 /**
- * Phones: the room page's slim floating "Book" dock — the room, its price and one gold
- * button to the booking panel. It comes up once the hero (with its own Book button) is
+ * Phones: the room page's slim floating "Book" dock — the room, its price and one slim
+ * hairline button to the booking panel. It comes up once the hero (with its own Book button) is
  * scrolled away, and steps aside while the booking panel is on screen and while the guest
- * types, so it never covers the form. Marked data-pub-bottom-bar: the site's own book bar
- * stays away and the footer keeps room for it.
+ * types, so it never covers the form. Marked data-pub-bottom-bar: the footer keeps room for it.
  */
 export function RoomBookDock({ name, price, href, label = "Book" }: { name: string; price: string | null; href: string; label?: string }) {
   const [past, setPast] = useState(false);
@@ -51,14 +51,11 @@ export function RoomBookDock({ name, price, href, label = "Book" }: { name: stri
     };
   }, [href]);
 
-  const cls = cn(
-    "flex h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-gold px-5 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#16110a] transition-[background-color,scale] duration-200 active:scale-[0.98] motion-reduce:transition-none",
-    "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold",
-  );
+  const cls = buttonClass({ size: "sm", className: "shrink-0 gap-1.5 px-[1.125rem]" });
   const inner = (
     <>
       <span className="truncate">{label}</span>
-      <ArrowRight className="size-4 shrink-0" strokeWidth={1.6} aria-hidden="true" />
+      <ArrowRight className="size-3.5 shrink-0" strokeWidth={1.6} aria-hidden="true" />
     </>
   );
 
@@ -72,11 +69,14 @@ export function RoomBookDock({ name, price, href, label = "Book" }: { name: stri
         hidden ? "pointer-events-none translate-y-[calc(100%+1rem)] opacity-0" : "translate-y-0 opacity-100",
       )}
     >
-      <div className="mx-auto flex max-w-md items-center gap-3 rounded-full border border-white/10 bg-[#120f0b]/90 py-1.5 pl-5 pr-1.5 text-white shadow-[0_18px_44px_-14px_rgb(0_0_0/0.7)] backdrop-blur-lg">
+      <div data-glass="dock" className="pub-glass mx-auto flex max-w-md items-center gap-3 rounded-full py-1.5 pl-5 pr-1.5 text-white">
         <p className="min-w-0 flex-1 leading-tight">
-          <span className="block truncate text-[13px] text-white/75">{name}</span>
+          <span className="flex items-center gap-2 truncate font-mono text-[10px] uppercase tracking-[0.18em] text-white/70">
+            <span aria-hidden="true" className="h-px w-3 shrink-0 bg-gold/80" />
+            <span className="truncate">{name}</span>
+          </span>
           {price && (
-            <span className="block truncate font-display text-[1.125rem] lining-nums tabular-nums text-gold">
+            <span className="mt-0.5 block truncate font-display text-[1.125rem] lining-nums tabular-nums text-gold">
               {price}
               <span className="font-sans text-[11px] text-white/55"> / night</span>
             </span>

@@ -7,7 +7,7 @@ import { ArrowRight, LoaderCircle, Lock, Smartphone } from "lucide-react";
 import type { ActionResult } from "@/server/errors";
 import { formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { Button, field, toneAttr } from "./kit";
+import { Button, HudLabel, field, toneAttr } from "./kit";
 import { NetworkMarks } from "@/components/payments/networks";
 
 const newKey = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (x) => x.toString(16).padStart(2, "0")).join("");
@@ -38,7 +38,12 @@ export function PayOnlineCard({ due, phone, live, held, action, tone = "night", 
   const key = useRef("");
   const night = tone === "night";
   const toneProps = night ? toneAttr("night") : {};
-  const shell = cn("rounded-[0.875rem] border border-pub-line text-pub-fg", night ? "bg-night-raised" : "bg-pub-fg/[0.03]", className);
+  // A quiet panel with a gold hairline along its top edge (the site's HUD signature).
+  const shell = cn(
+    "relative rounded-[0.875rem] border border-pub-line text-pub-fg before:pointer-events-none before:absolute before:inset-x-[12%] before:-top-px before:h-px before:bg-linear-to-r before:from-transparent before:via-gold/70 before:to-transparent",
+    night ? "bg-night-raised bg-[linear-gradient(160deg,rgb(255_255_255/0.05),transparent_45%)]" : "bg-pub-fg/[0.03]",
+    className,
+  );
 
   if (live) {
     return (
@@ -55,7 +60,7 @@ export function PayOnlineCard({ due, phone, live, held, action, tone = "night", 
           <span className="block text-[15px] font-medium">Your payment is on its way</span>
           <span className="mt-0.5 block text-[13px] text-pub-muted">Approve it on your phone — tap to follow it</span>
         </span>
-        <span className="inline-flex shrink-0 items-center gap-1 text-[12px] font-semibold uppercase tracking-[0.16em] text-pub-eyebrow">
+        <span className="inline-flex shrink-0 items-center gap-1 text-[13px] font-medium text-pub-eyebrow">
           Open
           <ArrowRight className="size-3.5 transition-transform duration-300 ease-pub group-hover:translate-x-0.5 motion-reduce:transition-none" strokeWidth={1.8} aria-hidden="true" />
         </span>
@@ -75,9 +80,12 @@ export function PayOnlineCard({ due, phone, live, held, action, tone = "night", 
   return (
     <div {...toneProps} className={cn(flush ? cn("text-pub-fg", className) : cn(shell, "p-4 sm:p-5"), "space-y-4")}>
       <div>
-        <p className="flex items-center gap-2 text-[15px] font-medium">
-          <Smartphone className="size-4 text-pub-eyebrow" strokeWidth={1.6} aria-hidden="true" />Pay now
-        </p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="flex items-center gap-2 text-[15px] font-medium">
+            <Smartphone className="size-4 text-pub-eyebrow" strokeWidth={1.6} aria-hidden="true" />Pay now
+          </p>
+          <HudLabel tick={false}>Mobile money</HudLabel>
+        </div>
         {held && <p className="mt-1.5 text-[13px] leading-relaxed text-pub-muted">We hold your room until {held} — pay now to confirm it.</p>}
       </div>
       <label className="block">

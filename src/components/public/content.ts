@@ -51,6 +51,9 @@ export interface GalleryImage {
 
 const RAW: [string, number, number][] = [
   ["/images/amenity/amenity-01.webp", 1279, 1920],
+  ["/images/amenity/amenity-02.webp", 2000, 1333],
+  ["/images/amenity/amenity-03.webp", 2000, 1333],
+  ["/images/amenity/amenity-04.webp", 2000, 1333],
   ["/images/bath/bath-01.webp", 1920, 1280],
   ["/images/bath/bath-02.webp", 1279, 1920],
   ["/images/bath/bath-03.webp", 1920, 1280],
@@ -67,11 +70,17 @@ const RAW: [string, number, number][] = [
   ["/images/bath/bath-14.webp", 2048, 1536],
   ["/images/bath/bath-15.webp", 2048, 1536],
   ["/images/bath/bath-16.webp", 2048, 1536],
+  ["/images/bath/bath-17.webp", 2000, 1333],
+  ["/images/bath/bath-18.webp", 2000, 1333],
+  ["/images/bath/bath-19.webp", 2000, 1333],
   ["/images/exterior/exterior-01.webp", 2048, 1366],
   ["/images/exterior/exterior-02.webp", 2048, 1365],
+  ["/images/exterior/exterior-03.webp", 960, 1280],
+  ["/images/exterior/exterior-04.webp", 853, 1280],
   ["/images/lobby/lobby-01.webp", 2048, 1366],
   ["/images/lobby/lobby-02.webp", 2048, 1366],
   ["/images/lobby/lobby-03.webp", 2048, 1366],
+  ["/images/meeting/meeting-01.webp", 1280, 853],
   ["/images/room-blue/room-blue-01.webp", 2048, 1366],
   ["/images/room-blue/room-blue-02.webp", 2048, 1366],
   ["/images/room-blue/room-blue-03.webp", 2048, 1536],
@@ -99,6 +108,9 @@ const RAW: [string, number, number][] = [
   ["/images/room-red/room-red-05.webp", 2048, 1366],
   ["/images/room-red/room-red-06.webp", 1920, 1280],
   ["/images/room-red/room-red-07.webp", 2048, 1366],
+  ["/images/room-red/room-red-08.webp", 1125, 2000],
+  ["/images/room-red/room-red-09.webp", 2000, 1333],
+  ["/images/room-red/room-red-10.webp", 1333, 2000],
 ];
 
 const JACUZZI = new Set(["bath-01", "bath-02", "bath-07", "bath-08", "bath-10", "bath-11", "bath-12", "bath-13", "bath-15"]);
@@ -113,6 +125,19 @@ const SPECIFIC: Record<string, string> = {
   "room-blue-02": "Work desk, TV and air conditioning in a guest room",
   "room-red-06": "Tea and coffee tray by the window in a suite",
   "room-red-07": "Lounge sofa in an Executive Suite",
+  // The owner's newer photographs (no room type is implied).
+  "exterior-03": "The yellow façade and entrance gate of Vegas Luxury Hotel",
+  "exterior-04": "Balconies of Vegas Luxury Hotel against a blue sky",
+  "room-red-08": "Guest room with a king bed, red runner, sofa and a floor-to-ceiling window",
+  "room-red-09": "Bed dressed with Vegas Luxury Hotel cushions and a red runner",
+  "room-red-10": "The bed reflected in the room's oval mirror",
+  "amenity-02": "Sofa, oval mirror and a hotel bathrobe",
+  "amenity-03": "Desk, kettle, mini fridge and room phone",
+  "amenity-04": "Lounge sofa beside a tall oval mirror",
+  "bath-17": "Washbasin with a round black mirror",
+  "bath-18": "Wave-tiled bathroom with fresh towels",
+  "bath-19": "Bathroom with a bathtub and shower",
+  "meeting-01": "Vegas Luxury Hotel meeting room with a U-shaped boardroom table",
 };
 
 function describe(src: string): { category: GalleryCategory; alt: string } {
@@ -120,7 +145,7 @@ function describe(src: string): { category: GalleryCategory; alt: string } {
   const category: GalleryCategory = src.includes("/exterior/") ? "exterior"
     : src.includes("/lobby/") ? "lobby"
     : src.includes("/bath/") ? "bath"
-    : src.includes("/amenity/") ? "amenity"
+    : src.includes("/amenity/") || src.includes("/meeting/") ? "amenity"
     : "rooms";
   if (SPECIFIC[key]) return { category, alt: SPECIFIC[key] };
   if (category === "bath") {
@@ -138,6 +163,35 @@ const BY_SRC = new Map(GALLERY.map((g) => [g.src, g]));
 export function photo(src: string): GalleryImage {
   return BY_SRC.get(src) ?? { src, width: 1024, height: 768, alt: "Vegas Luxury Hotel", category: "rooms" };
 }
+
+/**
+ * Portrait companions for landscape hero photos: on phones a page hero shows the portrait
+ * photograph instead of a narrow crop of the landscape one (art direction, one download per device).
+ * Keyed by the landscape photo, so a manager's own hero photo simply has no companion.
+ */
+const PORTRAIT: Record<string, string> = {
+  "/images/room-red/room-red-05.webp": "/images/room-red/room-red-08.webp",
+  "/images/exterior/exterior-01.webp": "/images/exterior/exterior-03.webp",
+};
+export function portraitFor(src: string): string | undefined {
+  return PORTRAIT[src];
+}
+
+/**
+ * Details from across the hotel's rooms (the owner's own photographs) for the "in the room"
+ * rails on the rooms pages. They belong to no single room type, and the rails say so.
+ */
+export const ROOM_DETAILS = [
+  "/images/room-red/room-red-10.webp",
+  "/images/amenity/amenity-02.webp",
+  "/images/amenity/amenity-03.webp",
+  "/images/room-red/room-red-09.webp",
+  "/images/bath/bath-18.webp",
+  "/images/amenity/amenity-04.webp",
+  "/images/bath/bath-17.webp",
+  "/images/room-red/room-red-08.webp",
+  "/images/bath/bath-19.webp",
+];
 
 // ───────────────────────────── Illustrative photography ─────────────────────────────
 /**
@@ -214,10 +268,11 @@ export const DEFAULT_CONTENT = {
       secondaryCta: { label: "Explore rooms", href: "/rooms" },
       /** Cinematic hero sequence — real hotel photography only. */
       slides: [
-        { src: "/images/room-red/room-red-04.webp", mobileSrc: "/images/room-red/room-red-01.webp", alt: "Executive Suite with red and gold linens at Vegas Luxury Hotel", caption: "Executive Suite" },
-        { src: "/images/room-red/room-red-06.webp", mobileSrc: "/images/bath/bath-02.webp", alt: "Tea and coffee by the window in a suite", caption: "Morning light" },
+        { src: "/images/room-red/room-red-04.webp", mobileSrc: "/images/room-red/room-red-08.webp", alt: "Guest room with red and gold Vegas Luxury Hotel linens and tall windows", caption: "Rooms & suites" },
+        { src: "/images/room-red/room-red-09.webp", mobileSrc: "/images/room-red/room-red-10.webp", alt: "Bed dressed with Vegas Luxury Hotel cushions and a red runner", caption: "Hotel linens" },
+        { src: "/images/exterior/exterior-01.webp", mobileSrc: "/images/exterior/exterior-03.webp", alt: "The Vegas Luxury Hotel building at Mlimani City", caption: "The hotel" },
+        { src: "/images/amenity/amenity-02.webp", alt: "Sofa, oval mirror and a hotel bathrobe in a guest room", caption: "In the room" },
         { src: "/images/bath/bath-01.webp", mobileSrc: "/images/amenity/amenity-01.webp", alt: "Jacuzzi bathtub fittings in a suite bathroom", caption: "Suite bathroom" },
-        { src: "/images/room-red/room-red-05.webp", mobileSrc: "/images/room-red/room-red-03.webp", alt: "Suite bedroom at Vegas Luxury Hotel", caption: "The suites" },
       ],
       highlights: ["Complimentary breakfast", "Free Wi-Fi", "Restaurant & bar", "Meeting room"],
       chips: [
@@ -235,7 +290,7 @@ export const DEFAULT_CONTENT = {
         "Our suites add more space to spread out, and many of our bathrooms have jacuzzi bathtubs for the end of a long day.",
       ],
       mainImage: { src: "/images/room-red/room-red-01.webp", alt: "Executive Suite bedroom with red and gold Vegas linens" },
-      insetImage: { src: "/images/exterior/exterior-01.webp", alt: "Exterior of the Vegas Luxury Hotel building" },
+      insetImage: { src: "/images/exterior/exterior-03.webp", alt: "The yellow façade and entrance gate of Vegas Luxury Hotel" },
     },
     stay: {
       kicker: "The Vegas experience",
@@ -360,16 +415,17 @@ export const DEFAULT_CONTENT = {
         "You’ll also find our restaurant and bar, a private meeting room and a 24-hour reception. We offer room service, housekeeping, free on-site parking and airport transfers with our own drivers — Julius Nyerere International Airport is about {airportKm} km away.",
       ],
       images: [
+        { src: "/images/exterior/exterior-04.webp", alt: "Balconies of Vegas Luxury Hotel against a blue sky" },
         { src: "/images/lobby/lobby-03.webp", alt: "Reception desk and world clocks in the lobby" },
-        { src: "/images/bath/bath-08.webp", alt: "En-suite bathroom with a jetted jacuzzi bathtub" },
-        { src: "/images/amenity/amenity-01.webp", alt: "Bathrobe provided for guests in the room" },
+        { src: "/images/amenity/amenity-02.webp", alt: "Sofa, oval mirror and a hotel bathrobe in a guest room" },
+        { src: "/images/amenity/amenity-03.webp", alt: "Desk, kettle, mini fridge and room phone" },
       ],
       servicesTitle: "At your service",
     },
     gallery: {
       kicker: "Gallery",
       title: "Inside Vegas Luxury Hotel",
-      intro: "Rooms, suites with jacuzzi bathtubs, our reception and the building itself — every photo here is of our hotel.",
+      intro: "Rooms, suites with jacuzzi bathtubs, our reception, the meeting room and the building itself — every photo here is of our hotel.",
       image: { src: "/images/room-red/room-red-06.webp", alt: "Tea and coffee tray by the window in a suite" },
     },
     restaurant: {

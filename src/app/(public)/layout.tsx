@@ -1,8 +1,8 @@
 import type { Viewport } from "next";
 import { getSettings } from "@/server/settings";
 import { getSiteContent } from "@/server/services/site-content";
-import { MobileBookBar } from "@/components/public/mobile-book-bar";
 import { MotionProvider } from "@/components/public/motion";
+import { PubRuntime } from "@/components/public/kit/runtime";
 import { Starfield } from "@/components/public/starfield";
 import { SiteFooter } from "@/components/public/site-footer";
 import { SiteHeader } from "@/components/public/site-header";
@@ -17,6 +17,8 @@ export const viewport: Viewport = { themeColor: "#0f0c09" };
 /**
  * Public site shell. `.pub-site` scopes the design system (globals.css); the header is fixed
  * and overlays the page (first blocks clear var(--pub-header-h)); the night-sky backdrop is static.
+ * PubRuntime (one tiny client island) lets the atmosphere/marquees animate only while on screen and
+ * drives the desktop cursor spotlight.
  */
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {
   const [settings, content] = await Promise.all([getSettings(), getSiteContent()]);
@@ -26,7 +28,7 @@ export default async function PublicLayout({ children }: { children: React.React
         <Starfield />
         <a
           href="#main"
-          className="sr-only z-50 rounded-full bg-gold px-5 py-3 text-sm font-medium text-[#15120e] focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
+          className="sr-only z-50 rounded-full border border-gold/60 bg-night px-5 py-2.5 text-sm font-medium text-gold focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
         >
           Skip to content
         </a>
@@ -35,7 +37,7 @@ export default async function PublicLayout({ children }: { children: React.React
           {children}
         </main>
         <SiteFooter settings={settings} blurb={content.pages.footer.blurb} />
-        <MobileBookBar phone={settings.phone} />
+        <PubRuntime />
       </div>
     </MotionProvider>
   );

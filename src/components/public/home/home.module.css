@@ -1,0 +1,229 @@
+/*
+ * Home page set pieces (hero, blueprint reveal, room spec panel, dining depth, location dive,
+ * gallery HUD). Scoped (CSS module); everything that moves is transform/opacity only, runs once or
+ * only while on screen ([data-live], set by PubRuntime on [data-live-watch]) and stands still with
+ * prefers-reduced-motion — where every block still looks complete.
+ */
+
+/* ───────────────────────── Hero ───────────────────────── */
+
+/* Slow "Ken Burns" settle of each hero photograph as it becomes active (once per slide). */
+@keyframes kenburns {
+  from { transform: scale(1.13) translate3d(1.2%, 0.8%, 0); }
+  to { transform: scale(1.015) translate3d(0, 0, 0); }
+}
+.kenburns { transform: scale(1.015); transform-origin: 60% 45%; }
+@media (prefers-reduced-motion: no-preference) {
+  .kenburns { animation: kenburns 14s cubic-bezier(0.22, 1, 0.36, 1) both; }
+}
+
+/* Cinematic grade over real photography: warm the highlights, deepen the corners. */
+.grade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(70% 60% at 72% 30%, rgb(255 214 150 / 0.22), transparent 70%),
+    linear-gradient(180deg, rgb(40 26 8 / 0.25), rgb(10 8 6 / 0.1) 40%, rgb(30 18 6 / 0.35));
+  mix-blend-mode: soft-light;
+}
+.vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(130% 95% at 55% 42%, transparent 52%, rgb(8 6 4 / 0.55) 100%);
+}
+
+/* The hotel name catches a band of light once, on load (fill stays the ink colour). */
+.sheen {
+  background-image: linear-gradient(
+    100deg,
+    currentColor 0%,
+    currentColor 43%,
+    rgb(255 226 168) 48.5%,
+    rgb(255 248 230) 50%,
+    rgb(255 226 168) 51.5%,
+    currentColor 57%,
+    currentColor 100%
+  );
+  background-size: 320% 100%;
+  background-position: 100% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+@keyframes sheen {
+  from { background-position: 100% 0; }
+  to { background-position: 0% 0; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .sheen { animation: sheen 2.8s cubic-bezier(0.45, 0, 0.2, 1) 0.7s both; }
+}
+@media (forced-colors: active) {
+  .sheen { background: none; -webkit-text-fill-color: currentColor; }
+}
+
+/* Hero viewfinder HUD: corner brackets + fine tick ruler along the foot (≥640px). */
+.heroRuler {
+  position: absolute;
+  height: 9px;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(90deg, rgb(240 214 160 / 0.42) 0 1px, transparent 1px 12px) left bottom / 100% 5px no-repeat,
+    repeating-linear-gradient(90deg, rgb(240 214 160 / 0.6) 0 1px, transparent 1px 96px) left bottom / 100% 9px no-repeat;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
+}
+
+/* ───────────────────────── Blueprint → photograph ───────────────────────── */
+
+.drawingGrid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgb(240 214 160 / 0.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(240 214 160 / 0.1) 1px, transparent 1px),
+    linear-gradient(rgb(240 214 160 / 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(240 214 160 / 0.04) 1px, transparent 1px);
+  background-size: 96px 96px, 96px 96px, 24px 24px, 24px 24px;
+  background-position: -1px -1px;
+}
+/* Paper tint behind the drawing: deep blueprint ink, warm at the centre. */
+.drawingGround {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(80% 70% at 50% 45%, rgb(46 34 18), transparent 75%),
+    linear-gradient(160deg, #15110c, #0c0a07);
+}
+/* The scan line's soft halo and its little readout chips. */
+.scan {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  translate: -50% 0;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent, rgb(255 230 180) 12%, rgb(255 236 196) 50%, rgb(255 230 180) 88%, transparent);
+  box-shadow: 0 0 22px 4px rgb(227 189 106 / 0.45), 0 0 2px 0 rgb(255 240 210);
+}
+.scan::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 7rem;
+  background: linear-gradient(to left, rgb(240 200 120 / 0.14), transparent);
+}
+
+/* ───────────────────────── Room spec panel ───────────────────────── */
+
+/* Fine scan lines inside the photo's lower band (a "display" feel), static. */
+.specShade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgb(12 10 7 / 0) 30%, rgb(12 10 7 / 0.5) 72%, rgb(12 10 7 / 0.72)),
+    linear-gradient(to top, rgb(12 10 7 / 0.55), transparent 45%);
+}
+@media (max-width: 1023.98px) {
+  .specShade { background: linear-gradient(to top, rgb(12 10 7 / 0.9), rgb(12 10 7 / 0.62) 42%, rgb(12 10 7 / 0.12) 70%, transparent 82%); }
+}
+
+/* ───────────────────────── Dining depth ───────────────────────── */
+
+.diningGlow {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, oklch(0.76 0.13 76 / 0.55), oklch(0.7 0.13 60 / 0.22) 55%, transparent);
+}
+@keyframes breathe {
+  0%, 100% { opacity: 0.75; transform: scale(0.94); }
+  50% { opacity: 1; transform: scale(1.06); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .diningGlow[data-live] { animation: breathe 9s ease-in-out infinite; }
+}
+
+/* ───────────────────────── Location dive ───────────────────────── */
+
+.diveTrack { height: 135svh; }
+@media (min-width: 640px) { .diveTrack { height: 150svh; } }
+@media (min-width: 1024px) { .diveTrack { height: 150vh; } }
+@media (prefers-reduced-motion: reduce) { .diveTrack { height: auto; } }
+
+/* Satellite look: a cool desaturated grade that warms as we descend (opacity driven by scroll). */
+.satGrade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(160deg, rgb(10 14 16 / 0.55), rgb(14 12 9 / 0.35));
+  mix-blend-mode: multiply;
+}
+.satGrid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgb(240 214 160 / 0.16) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(240 214 160 / 0.16) 1px, transparent 1px);
+  background-size: 80px 80px;
+  background-position: center;
+  -webkit-mask-image: radial-gradient(closest-side, #000 30%, transparent);
+  mask-image: radial-gradient(closest-side, #000 30%, transparent);
+}
+
+/* ───────────────────────── Closing aurora ───────────────────────── */
+
+/* Curtains of gold, teal and amber light over the dimmed photograph; they drift only while on screen. */
+.aurora {
+  position: absolute;
+  inset: -18%;
+  pointer-events: none;
+  background:
+    radial-gradient(38% 26% at 30% 34%, oklch(0.78 0.13 80 / 0.34), transparent 70%),
+    radial-gradient(34% 22% at 70% 56%, oklch(0.55 0.085 200 / 0.34), transparent 70%),
+    radial-gradient(30% 20% at 50% 80%, oklch(0.68 0.14 55 / 0.26), transparent 70%);
+}
+.aurora::after {
+  content: "";
+  position: absolute;
+  inset: 12%;
+  border-radius: 50%;
+  background: conic-gradient(from 210deg, transparent, oklch(0.82 0.11 85 / 0.12) 12%, transparent 26%, oklch(0.58 0.08 200 / 0.12) 44%, transparent 60%, oklch(0.75 0.12 70 / 0.1) 78%, transparent);
+}
+@keyframes aurora {
+  0% { transform: translate3d(-4%, 2%, 0) rotate(-3deg) scale(1); }
+  50% { transform: translate3d(3%, -3%, 0) rotate(2deg) scale(1.08); }
+  100% { transform: translate3d(5%, 3%, 0) rotate(-1deg) scale(0.96); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .aurora[data-live] { animation: aurora 26s ease-in-out infinite alternate; }
+}
+
+/* ───────────────────────── Gallery HUD ───────────────────────── */
+
+.shot { --c: rgb(240 214 160 / 0.5); }
+.shot .brackets {
+  position: absolute;
+  inset: 0.625rem;
+  z-index: 2;
+  pointer-events: none;
+  --l: 0.875rem;
+  background:
+    linear-gradient(var(--c), var(--c)) top left / var(--l) 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) top left / 1px var(--l) no-repeat,
+    linear-gradient(var(--c), var(--c)) top right / var(--l) 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) top right / 1px var(--l) no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom left / var(--l) 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom left / 1px var(--l) no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom right / var(--l) 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom right / 1px var(--l) no-repeat;
+  transition: inset 450ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.shot:hover, .shot:focus-visible { --c: rgb(255 232 186 / 0.95); }
+.shot:hover .brackets, .shot:focus-visible .brackets { inset: 1rem; }
+@media (prefers-reduced-motion: reduce) { .shot .brackets { transition: none; } }

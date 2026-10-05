@@ -4,24 +4,30 @@ import { Mail, MapPin, MessageCircle, Phone } from "lucide-react";
 import type { HotelSettings } from "@/generated/prisma/client";
 import { DEFAULT_CONTENT } from "./content";
 import { cn } from "@/lib/utils";
+import { LocalTime } from "./cinema/local-time";
 import { addressLines, telHref, whatsappHref } from "./contact";
-import { LinkButton } from "./kit/button";
+import { Atmosphere } from "./kit/atmosphere";
+import { HOTEL_COORDS, HudLabel } from "./kit/hud";
 import { containers, typeScale } from "./kit/tokens";
 import { FOOTER_NAV, MAP_LINK_URL } from "./site-config";
 import { StaffLink } from "./staff-link";
 import { ThemeToggle } from "./theme-toggle";
 
 const focus = "rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold";
+const TIME = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Africa/Dar_es_Salaam" });
 
 /**
- * Quiet, organised footer: the hotel and one line about it with Book your stay, grouped
+ * Quiet, organised footer: the hotel and one line about it (Book lives in the header), grouped
  * navigation, contact from settings (social links only when set), then © · theme · staff door.
- * id="site-footer" lets the phone book bar step aside when the footer comes into view.
+ * Night atmosphere with star dust, a HUD line (the hotel's real coordinates and local time) and
+ * the name as a huge faint outline wordmark at the foot.
+ * Calls, WhatsApp, theme and the staff door are small quiet links/icons, never pills.
  */
 export function SiteFooter({ settings, blurb = DEFAULT_CONTENT.pages.footer.blurb }: { settings: HotelSettings; blurb?: string }) {
   const address = addressLines(settings);
   const year = new Date().getFullYear();
   const place = [settings.city, settings.country].filter(Boolean).join(", ");
+  const wordmark = settings.hotelName.split(" ")[0] || settings.hotelName;
   const socials = [
     settings.instagramUrl ? { label: "Instagram", href: settings.instagramUrl } : null,
     settings.facebookUrl ? { label: "Facebook", href: settings.facebookUrl } : null,
@@ -35,7 +41,7 @@ export function SiteFooter({ settings, blurb = DEFAULT_CONTENT.pages.footer.blur
     focus,
   );
   const icon = "mt-0.5 size-4 shrink-0 text-gold";
-  // Phones: one flowing list — Book your stay and Contact are already in the header, the book bar and the contact rows.
+  // Phones: one flowing list — Book your stay and Contact are already in the header and the contact rows.
   const phoneLinks = FOOTER_NAV.flatMap((g) => g.links).filter((l) => l.href !== "/book" && l.href !== "/contact");
 
   return (
@@ -43,14 +49,21 @@ export function SiteFooter({ settings, blurb = DEFAULT_CONTENT.pages.footer.blur
       id="site-footer"
       data-tone="night"
       aria-labelledby="footer-heading"
-      className="pub-footer pub-glow-top relative isolate overflow-hidden bg-night text-pub-fg"
+      className="pub-footer relative isolate overflow-hidden bg-night text-pub-fg"
     >
+      {/* A night map (contours) and star dust; the gold horizon at its top comes from the atmosphere. */}
+      <Atmosphere tone="night" pattern="contour" stars edges="top" />
       <h2 id="footer-heading" className="sr-only">
         Hotel information
       </h2>
-      <div aria-hidden="true" className="absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-gold/35 to-transparent" />
 
-      <div className={cn(containers.wide, "pt-12 sm:pt-16 lg:pt-20")}>
+      <div className={cn(containers.wide, "pt-10 sm:pt-14 lg:pt-16")}>
+        <div className="mb-10 flex flex-wrap items-center justify-between gap-x-8 gap-y-3 border-b border-white/[0.08] pb-5 sm:mb-14 lg:mb-16">
+          <HudLabel>{HOTEL_COORDS.label}</HudLabel>
+          <HudLabel live>
+            {settings.city || "Dar es Salaam"} · <LocalTime initial={TIME.format(new Date())} /> local time
+          </HudLabel>
+        </div>
         <div className="grid gap-8 sm:gap-12 lg:grid-cols-12 lg:gap-10">
           <div className="lg:col-span-4">
             <Link href="/" className={cn("inline-flex items-center gap-3", focus)}>
@@ -59,16 +72,13 @@ export function SiteFooter({ settings, blurb = DEFAULT_CONTENT.pages.footer.blur
             </Link>
             {settings.tagline && <p className={cn(typeScale.eyebrow, "mt-6 text-white/50")}>{settings.tagline}</p>}
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-white/65">{blurb}</p>
-            <LinkButton href="/book" size="sm" icon="arrow" className="mt-7">
-              Book your stay
-            </LinkButton>
           </div>
 
           {/* Phones: one list that flows over a few lines; from 640px, three tidy columns. */}
           <nav aria-label="Footer" className="min-w-0 lg:col-span-5">
             <div className="sm:hidden">
               <p className={cn(typeScale.eyebrow, "text-gold")}>Explore</p>
-              <ul className="mt-1.5 flex flex-wrap gap-x-5">
+              <ul className="mt-1.5 grid grid-cols-2 gap-x-5">
                 {phoneLinks.map((l) => (
                   <li key={l.href}>
                     <Link href={l.href} className={link}>
@@ -156,7 +166,11 @@ export function SiteFooter({ settings, blurb = DEFAULT_CONTENT.pages.footer.blur
         </div>
       </div>
 
-      <div className="mt-8 border-t border-white/10 sm:mt-16">
+      <p aria-hidden="true" className={cn(containers.wide, "pub-wordmark pointer-events-none mt-10 select-none overflow-hidden text-center text-[clamp(5.5rem,24vw,21rem)] uppercase sm:mt-14")}>
+        {wordmark}
+      </p>
+
+      <div className="relative border-t border-white/10">
         <div
           className={cn(
             containers.wide,
@@ -170,8 +184,9 @@ export function SiteFooter({ settings, blurb = DEFAULT_CONTENT.pages.footer.blur
           <div className="-mr-2 flex items-center gap-3">
             <ThemeToggle compact />
             <StaffLink
+              withIcon
               labels={{ signedIn: "Staff dashboard", signedOut: "Staff login" }}
-              className={cn("min-h-11 text-xs text-white/45 transition-colors hover:text-white", focus)}
+              className={cn("min-h-11 px-1 text-xs text-white/60 transition-colors hover:text-white", focus)}
             />
           </div>
         </div>

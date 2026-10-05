@@ -94,7 +94,7 @@ export function ContactForm({ action, defaultSubject }: { action: Action; defaul
         <input id="c-company" name="company" tabIndex={-1} autoComplete="off" />
       </div>
       <div className="flex flex-col gap-4 sm:col-span-2 sm:flex-row sm:items-center sm:justify-between sm:gap-8">
-        <Button type="submit" disabled={pending} size="lg" icon={pending ? "none" : "arrow"} full className="sm:w-auto sm:min-w-56">
+        <Button type="submit" disabled={pending} icon={pending ? "none" : "arrow"} full className="sm:w-auto sm:min-w-48">
           <span className="inline-flex items-center gap-2">
             {pending && <LoaderCircle className="size-4 motion-safe:animate-spin" aria-hidden="true" />}
             {pending ? "Sending…" : "Send message"}

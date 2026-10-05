@@ -14,6 +14,7 @@ import { payBookingOnlineAction } from "./actions";
 import { bookingPayOnline } from "@/server/services/online-pay";
 import { addressLines } from "@/components/public/contact";
 import { Heading, Section, typeScale } from "@/components/public/kit";
+import fx from "@/components/public/room-fx.module.css";
 
 export const metadata: Metadata = {
   title: "Your booking",
@@ -131,8 +132,12 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
 
   const price = (
     <section aria-labelledby="price-title" className="min-w-0 lg:col-span-4 lg:col-start-9 lg:row-span-2 lg:row-start-1">
-      <div data-tone="night" className={cn("rounded-[1rem] bg-night p-5 text-pub-fg ring-1 ring-white/[0.06] sm:p-7 lg:sticky lg:top-24", printInk, "print:border print:border-pub-line")}>
-        <h2 id="price-title" className={cn(typeScale.eyebrow, "text-pub-eyebrow")}>Price</h2>
+      <div data-tone="night" className={cn(fx.night, "relative p-5 text-pub-fg sm:p-7 lg:sticky lg:top-24", printInk, "print:border print:border-pub-line")}>
+        <span aria-hidden="true" className="pub-hud-corners print:hidden" style={{ "--hud-o": "-0.625rem", "--hud-l": "0.875rem" } as React.CSSProperties} />
+        <h2 id="price-title" className="flex items-center gap-2.5 font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-pub-eyebrow sm:text-[11px]">
+          <span aria-hidden="true" className="h-px w-3.5 bg-current" />
+          Price
+        </h2>
         <dl className="mt-5 space-y-3 text-[14px]">
           <div className="flex justify-between gap-4">
             <dt className="text-pub-muted">{meeting ? "Meeting room" : "Room charges"}</dt>
@@ -199,7 +204,7 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
         status={status}
       />
 
-      <Section as="div" space="sm" width="wide" className="flex-1 pb-20 sm:pb-24 lg:pb-24">
+      <Section as="div" space="sm" width="wide" atmosphere="calm" pattern="grid" className="flex-1 pb-20 sm:pb-24 lg:pb-28">
         <div className="grid gap-12 lg:grid-cols-12 lg:gap-x-10 lg:gap-y-16">
           {/* Phones: while something is owed and can be paid now, the price and Pay now come first. */}
           {showPay && price}

@@ -395,12 +395,13 @@
   --pub-paper-deep: #ece5d8;
   --pub-panel: #ffffff;
   --pub-tone: #15120e;
-  --pub-accent-ink: #7a5f24;
+  --pub-accent-ink: #6a521e;
 }
 :root[data-pub-theme="dark"] {
-  --pub-paper: #13110e;
-  --pub-paper-deep: #1a1612;
-  --pub-panel: #1d1914;
+  /* Paper/deep are a warmer, lighter espresso than night (#0f0c09), so the bands keep their rhythm. */
+  --pub-paper: #201a14;
+  --pub-paper-deep: #261f18;
+  --pub-panel: #2c251d;
   --pub-tone: #f2ebdf;
   --pub-accent-ink: #dcbd72;
   color-scheme: dark;
@@ -534,27 +535,24 @@ html:has(.pub-site) { background-color: var(--pub-night); }
    (or always, when a page starts on a light block and marks it data-pub-header="solid"). */
 .pub-header {
   background-image: linear-gradient(to bottom, rgb(11 9 6 / 0.6), rgb(11 9 6 / 0));
+  /* border-box: the scrim must not repeat into the 1px transparent border (it drew a dark line). */
+  background-origin: border-box;
+  background-repeat: no-repeat;
   border-bottom: 1px solid transparent;
   transition: background-color 400ms var(--ease-pub), border-color 400ms var(--ease-pub), box-shadow 400ms var(--ease-pub);
 }
 .pub-header[data-scrolled="true"],
 .pub-site:has([data-pub-header="solid"]) .pub-header {
-  background-color: rgb(15 12 9 / 0.86);
-  background-image: none;
-  border-bottom-color: rgb(255 255 255 / 0.08);
-  box-shadow: 0 18px 40px -30px rgb(0 0 0 / 0.9);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-  backdrop-filter: blur(18px) saturate(140%);
+  /* Lacquered espresso: opaque enough that a cream band underneath never turns it taupe. */
+  background-color: rgb(18 14 10 / 0.88);
+  /* Glass: a faint top sheen and a warm lift towards the hairline. */
+  background-image: linear-gradient(to bottom, rgb(255 255 255 / 0.045), transparent 55%, rgb(227 189 106 / 0.035));
+  border-bottom-color: transparent;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 18px 40px -30px rgb(0 0 0 / 0.9);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  backdrop-filter: blur(16px) saturate(140%);
 }
-/* Phones: while the floating book bar is up, the header's small Book button steps aside (one Book at a time). */
-.pub-hdr-book { transition: opacity 250ms var(--ease-pub), translate 250ms var(--ease-pub), visibility 0s; }
 @media (max-width: 639.98px) {
-  html[data-pub-bar="on"] .pub-hdr-book {
-    opacity: 0;
-    translate: 0 -0.25rem;
-    visibility: hidden;
-    transition: opacity 250ms var(--ease-pub), translate 250ms var(--ease-pub), visibility 0s linear 250ms;
-  }
   /* A page with its own fixed bottom bar (room CTA, menu basket) marks it data-pub-bottom-bar:
      keep the footer's last line clear of it. Only the attribute counts (a closed sheet or dialog
      that happens to be fixed at bottom-0 is not a bar). */
@@ -562,7 +560,51 @@ html:has(.pub-site) { background-color: var(--pub-night); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pub-header, .pub-hdr-book { transition: none; }
+  .pub-header { transition: none; }
+}
+
+/* ── Buttons (kit/button.tsx): slim, quiet, tone-aware. Owner 2026-10-05: no big yellow blocks.
+   Light paper bands: a small espresso button with white text and a gold hairline edge.
+   Night bands, the header and the dark theme: a dark, almost clear button with a gold hairline,
+   champagne text, a soft inner highlight and a faint gold glow on hover. ── */
+.pub-site,
+:where([data-tone="paper"], [data-tone="deep"]) {
+  --btn-bg: #1e1710;
+  --btn-bg-hover: #2a2017;
+  --btn-fg: #fbf6ec;
+  --btn-fg-hover: #ffffff;
+  --btn-edge: rgb(201 160 82 / 0.7);
+  --btn-edge-hover: rgb(214 176 98 / 0.95);
+  --btn-hi: inset 0 1px 0 rgb(255 255 255 / 0.09);
+  --btn-glow: 0 10px 24px -14px rgb(40 26 8 / 0.7);
+}
+:where([data-tone="night"]),
+.pub-header,
+[data-glass="dock"],
+[data-pub-theme="dark"] .pub-site,
+:where([data-pub-theme="dark"] [data-tone="paper"], [data-pub-theme="dark"] [data-tone="deep"]) {
+  --btn-bg: rgb(255 255 255 / 0.03);
+  --btn-bg-hover: rgb(227 189 106 / 0.09);
+  --btn-fg: #efd8a4;
+  --btn-fg-hover: #fff4dc;
+  --btn-edge: rgb(227 189 106 / 0.6);
+  --btn-edge-hover: rgb(240 212 150 / 0.95);
+  --btn-hi: inset 0 1px 0 rgb(255 255 255 / 0.07);
+  --btn-glow: 0 0 0 3px rgb(227 189 106 / 0.07), 0 8px 26px -12px rgb(227 189 106 / 0.5);
+}
+@layer components {
+  .pub-btn-primary {
+    background-color: var(--btn-bg);
+    color: var(--btn-fg);
+    border: 1px solid var(--btn-edge);
+    box-shadow: var(--btn-hi);
+  }
+  .pub-btn-primary:hover {
+    background-color: var(--btn-bg-hover);
+    color: var(--btn-fg-hover);
+    border-color: var(--btn-edge-hover);
+    box-shadow: var(--btn-hi), var(--btn-glow);
+  }
 }
 
 /* Reveal on scroll, once (Reveal / StaggerItem). Only blocks that start below the fold are hidden,
@@ -605,6 +647,628 @@ html:has(.pub-site) { background-color: var(--pub-night); }
     linear-gradient(var(--c), var(--c)) bottom left / 1px var(--l) no-repeat,
     linear-gradient(var(--c), var(--c)) bottom right / var(--l) 1px no-repeat,
     linear-gradient(var(--c), var(--c)) bottom right / 1px var(--l) no-repeat;
+}
+
+/* ─────────────── Public website: atmosphere system (kit/atmosphere.tsx · kit/hud.tsx · kit/motion) ───────────────
+   Every kit Section (and PageIntro, page heroes, the footer) paints a quiet, living background instead of a flat
+   colour: soft light (aurora on night, window light on paper), fine technical line work (blueprint grid on night,
+   topographic contours on paper), film grain, a diagonal light beam and a soft dissolve from the band above.
+   Everything is static paint (gradients + tiny SVG data URIs); the lights drift slowly ONLY while the band is on
+   screen ([data-live], set by PubRuntime) and only with motion allowed. Public-only names: .pub-atmo*, .pub-hud*,
+   .pub-glass, .pub-marquee*, .pub-shine, [data-spotlight], [data-rv-mask]. */
+.pub-site {
+  /* Seamless 1200×900 contour tile (a static file, so only the public site fetches it). */
+  --pub-contours: url("/atmo/contours.svg");
+  --pub-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.95' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 3.4 -1.55'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --pub-marks: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cpath d='M80.5 73v15M73 80.5h15' stroke='%23000'/%3E%3Ccircle cx='80.5' cy='80.5' r='2.5' fill='none' stroke='%23000'/%3E%3C/svg%3E");
+  --pub-reticle: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 400' fill='none' stroke='%23000'%3E%3Ccircle cx='200' cy='200' r='199' stroke-width='.8'/%3E%3Ccircle cx='200' cy='200' r='150' stroke-dasharray='1 5'/%3E%3Ccircle cx='200' cy='200' r='96' stroke-width='.8'/%3E%3Ccircle cx='200' cy='200' r='3'/%3E%3Cpath d='M399 200L384 200M398.2 217.3L394.3 217M396 234.6L392 233.9M392.2 251.5L383.5 249.2M387 268.1L383.2 266.7M380.4 284.1L376.7 282.4M372.3 299.5L364.5 295M363 314.1L359.7 311.8M352.4 327.9L349.4 325.3M340.7 340.7L330.1 330.1M327.9 352.4L325.3 349.4M314.1 363L311.8 359.7M299.5 372.3L295 364.5M284.1 380.4L282.4 376.7M268.1 387L266.7 383.2M251.5 392.2L249.2 383.5M234.6 396L233.9 392M217.3 398.2L217 394.3M200 399L200 384M182.7 398.2L183 394.3M165.4 396L166.1 392M148.5 392.2L150.8 383.5M131.9 387L133.3 383.2M115.9 380.4L117.6 376.7M100.5 372.3L105 364.5M85.9 363L88.2 359.7M72.1 352.4L74.7 349.4M59.3 340.7L69.9 330.1M47.6 327.9L50.6 325.3M37 314.1L40.3 311.8M27.7 299.5L35.5 295M19.6 284.1L23.3 282.4M13 268.1L16.8 266.7M7.8 251.5L16.5 249.2M4 234.6L8 233.9M1.8 217.3L5.7 217M1 200L16 200M1.8 182.7L5.7 183M4 165.4L8 166.1M7.8 148.5L16.5 150.8M13 131.9L16.8 133.3M19.6 115.9L23.3 117.6M27.7 100.5L35.5 105M37 85.9L40.3 88.2M47.6 72.1L50.6 74.7M59.3 59.3L69.9 69.9M72.1 47.6L74.7 50.6M85.9 37L88.2 40.3M100.5 27.7L105 35.5M115.9 19.6L117.6 23.3M131.9 13L133.3 16.8M148.5 7.8L150.8 16.5M165.4 4L166.1 8M182.7 1.8L183 5.7M200 1L200 16M217.3 1.8L217 5.7M234.6 4L233.9 8M251.5 7.8L249.2 16.5M268.1 13L266.7 16.8M284.1 19.6L282.4 23.3M299.5 27.7L295 35.5M314.1 37L311.8 40.3M327.9 47.6L325.3 50.6M340.7 59.3L330.1 69.9M352.4 72.1L349.4 74.7M363 85.9L359.7 88.2M372.3 100.5L364.5 105M380.4 115.9L376.7 117.6M387 131.9L383.2 133.3M392.2 148.5L383.5 150.8M396 165.4L392 166.1M398.2 182.7L394.3 183' stroke-width='.8'/%3E%3Cpath d='M200 0v40M200 360v40M0 200h40M360 200h40M200 150v-14M200 250v14M150 200h-14M250 200h14' stroke-width='.8'/%3E%3C/svg%3E");
+  --atmo-seam-h: clamp(6rem, 12vw, 11rem);
+}
+/* Atmosphere colours per tone (light theme paper/deep, dark theme paper/deep, night). */
+:where([data-tone="paper"], [data-tone="deep"]) {
+  --atmo-a: rgb(255 252 243 / 0.95);
+  --atmo-b: oklch(0.84 0.09 82 / 0.34);
+  --atmo-c: oklch(0.86 0.05 52 / 0.4);
+  --atmo-line: rgb(146 108 40 / 0.24);
+  --atmo-line-soft: rgb(146 108 40 / 0.075);
+  --atmo-mark: rgb(146 108 40 / 0.42);
+  --atmo-grain-c: rgb(70 48 14 / 0.042);
+  --atmo-beam: rgb(255 253 246 / 0.62);
+  --atmo-shade: rgb(122 90 40 / 0.07);
+}
+:where([data-tone="deep"]) {
+  --atmo-a: rgb(255 250 240 / 0.8);
+  --atmo-shade: rgb(110 80 34 / 0.09);
+}
+:where([data-pub-theme="dark"] [data-tone="paper"], [data-pub-theme="dark"] [data-tone="deep"]) {
+  --atmo-a: oklch(0.74 0.12 80 / 0.16);
+  --atmo-b: oklch(0.52 0.065 205 / 0.14);
+  --atmo-c: oklch(0.66 0.13 60 / 0.1);
+  --atmo-line: rgb(227 189 106 / 0.16);
+  --atmo-line-soft: rgb(227 189 106 / 0.05);
+  --atmo-mark: rgb(227 189 106 / 0.3);
+  --atmo-grain-c: rgb(255 240 210 / 0.03);
+  --atmo-beam: rgb(255 228 180 / 0.04);
+  --atmo-shade: rgb(0 0 0 / 0.18);
+}
+:where([data-tone="night"]) {
+  --atmo-a: oklch(0.75 0.13 78 / 0.22);
+  --atmo-b: oklch(0.5 0.075 205 / 0.22);
+  --atmo-c: oklch(0.66 0.14 56 / 0.15);
+  --atmo-line: rgb(227 189 106 / 0.09);
+  --atmo-line-soft: rgb(227 189 106 / 0.035);
+  --atmo-mark: rgb(227 189 106 / 0.22);
+  --atmo-grain-c: rgb(255 240 210 / 0.035);
+  --atmo-beam: rgb(255 226 170 / 0.055);
+  --atmo-shade: rgb(0 0 0 / 0.28);
+}
+
+.pub-atmo {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  contain: strict;
+  /* Layered paper: the band deepens a touch towards its foot. */
+  background-image: linear-gradient(to bottom, transparent 35%, var(--atmo-shade));
+}
+.pub-atmo > * { position: absolute; }
+/* Film grain (static): a noise tile used as a mask, so its colour follows the tone. */
+.pub-atmo::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-color: var(--atmo-grain-c);
+  -webkit-mask-image: var(--pub-grain);
+  mask-image: var(--pub-grain);
+  -webkit-mask-size: 220px 220px;
+  mask-size: 220px 220px;
+}
+
+/* Light: up to three large soft lights (gold / deep teal / amber on night; window light, gold haze, warm blush on paper). */
+.pub-atmo__light {
+  left: var(--x);
+  top: var(--y);
+  width: var(--s);
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, var(--c), color-mix(in oklab, var(--c) 55%, transparent) 40%, color-mix(in oklab, var(--c) 18%, transparent) 70%, transparent);
+}
+/* Sizes are capped: an animated light is a GPU layer, so two moving lights per band, the third still. */
+.pub-atmo__light[data-l="1"] { --c: var(--atmo-a); --s: clamp(24rem, 62vw, 54rem); --x: var(--l1x, 84%); --y: var(--l1y, 6%); }
+.pub-atmo__light[data-l="2"] { --c: var(--atmo-b); --s: clamp(20rem, 48vw, 44rem); --x: var(--l2x, 4%); --y: var(--l2y, 80%); }
+.pub-atmo__light[data-l="3"] { --c: var(--atmo-c); --s: clamp(16rem, 40vw, 38rem); --x: var(--l3x, 46%); --y: var(--l3y, 110%); }
+
+/* Line work, faded towards the edges (focal point varies per band). */
+.pub-atmo__lines {
+  inset: 0;
+  /* Sized in lengths (not %), so tall bands get patches of line work, not wallpaper.
+     (Chrome rejects min()/clamp() that mix % and lengths in a gradient size.) */
+  --m1: radial-gradient(ellipse clamp(22rem, 72vw, 72rem) clamp(22rem, 52vw, 46rem) at var(--fx, 76%) var(--fy, 22%), #000 0%, rgb(0 0 0 / 0.62) 42%, transparent 80%);
+  --m2: radial-gradient(ellipse clamp(14rem, 36vw, 36rem) clamp(12rem, 26vw, 26rem) at calc(100% - var(--fx, 76%)) calc(100% - var(--fy, 22%)), rgb(0 0 0 / 0.75) 0%, transparent 78%);
+  -webkit-mask-image: var(--m1), var(--m2);
+  mask-image: var(--m1), var(--m2);
+  /* Tall bands (long lists): the two patches recur down the band (tiles of up to 90rem / 66rem,
+     out of step with each other); short bands get one tile = the band. */
+  -webkit-mask-size: 100% min(100%, 90rem), 100% min(100%, 66rem);
+  mask-size: 100% min(100%, 90rem), 100% min(100%, 66rem);
+  -webkit-mask-repeat: repeat-y;
+  mask-repeat: repeat-y;
+}
+.pub-atmo[data-level="calm"] .pub-atmo__lines { opacity: 0.7; }
+/* Blueprint: 1px major grid every 160px, a finer 32px grid, and a cross-hair at the major crossings —
+   only around the band's focal point (a survey mark, not wallpaper). */
+.pub-atmo__lines[data-p="grid"] {
+  background-image:
+    linear-gradient(var(--atmo-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--atmo-line) 1px, transparent 1px),
+    linear-gradient(var(--atmo-line-soft) 1px, transparent 1px),
+    linear-gradient(90deg, var(--atmo-line-soft) 1px, transparent 1px);
+  background-size: 160px 160px, 160px 160px, 32px 32px, 32px 32px;
+  background-position: center;
+}
+.pub-atmo__lines[data-p="grid"]::after,
+.pub-atmo__lines[data-p="contour"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+.pub-atmo__lines[data-p="grid"]::after {
+  background-color: var(--atmo-mark);
+  -webkit-mask-image: var(--pub-marks), radial-gradient(36rem 24rem at var(--fx, 76%) var(--fy, 22%), #000, transparent 75%);
+  mask-image: var(--pub-marks), radial-gradient(36rem 24rem at var(--fx, 76%) var(--fy, 22%), #000, transparent 75%);
+  -webkit-mask-size: 160px 160px, 100% 100%;
+  mask-size: 160px 160px, 100% 100%;
+  -webkit-mask-repeat: repeat, no-repeat;
+  mask-repeat: repeat, no-repeat;
+  -webkit-mask-position: calc(50% + 80px) calc(50% + 80px), 0 0;
+  mask-position: calc(50% + 80px) calc(50% + 80px), 0 0;
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+}
+/* Topographic contours: a seamless 1200×900 tile of iso-lines. */
+.pub-atmo__lines[data-p="contour"]::after {
+  background-color: var(--atmo-line);
+  -webkit-mask-image: var(--pub-contours);
+  mask-image: var(--pub-contours);
+  -webkit-mask-size: 1200px auto;
+  mask-size: 1200px auto;
+  -webkit-mask-position: var(--cpos, 0 0);
+  mask-position: var(--cpos, 0 0);
+}
+/* Night bands vary their line work by position (when the page left the pattern on "auto"):
+   blueprint grid → survey rings around the focal point → a night map of contours. Neighbouring
+   dark bands never repeat the same lattice. */
+[data-tone="night"]:nth-of-type(3n + 2) > .pub-atmo .pub-atmo__lines[data-p="grid"][data-auto] {
+  background-image:
+    repeating-radial-gradient(circle at var(--fx, 20%) var(--fy, 28%), transparent 0 95px, var(--atmo-line) 95px 96px),
+    linear-gradient(var(--atmo-line-soft), var(--atmo-line-soft)),
+    linear-gradient(var(--atmo-line-soft), var(--atmo-line-soft));
+  background-size: 100% 100%, 100% 1px, 1px 100%;
+  background-position: 0 0, 0 var(--fy, 28%), var(--fx, 20%) 0;
+  background-repeat: no-repeat;
+}
+[data-tone="night"]:nth-of-type(3n + 2) > .pub-atmo .pub-atmo__lines[data-p="grid"][data-auto]::after { display: none; }
+[data-tone="night"]:nth-of-type(3n) > .pub-atmo .pub-atmo__lines[data-p="grid"][data-auto] { background-image: none; }
+[data-tone="night"]:nth-of-type(3n) > .pub-atmo .pub-atmo__lines[data-p="grid"][data-auto]::after {
+  background-color: rgb(227 189 106 / 0.13);
+  -webkit-mask-image: var(--pub-contours);
+  mask-image: var(--pub-contours);
+  -webkit-mask-size: 1200px auto;
+  mask-size: 1200px auto;
+  -webkit-mask-repeat: repeat;
+  mask-repeat: repeat;
+  -webkit-mask-position: var(--cpos, 0 0);
+  mask-position: var(--cpos, 0 0);
+  -webkit-mask-composite: source-over;
+  mask-composite: add;
+}
+@media (max-width: 639.98px) {
+  .pub-atmo__lines[data-p="contour"]::after,
+  [data-tone="night"]:nth-of-type(3n) > .pub-atmo .pub-atmo__lines[data-p="grid"][data-auto]::after { -webkit-mask-size: 860px auto; mask-size: 860px auto; }
+  /* Phones: the line work fills the screen (one big patch), not a corner. */
+  .pub-atmo__lines {
+    --m1: radial-gradient(ellipse 36rem 32rem at var(--fx, 76%) var(--fy, 22%), #000, rgb(0 0 0 / 0.6) 45%, transparent 82%);
+  }
+  :where([data-tone="paper"]) { --atmo-line: rgb(146 108 40 / 0.3); }
+}
+
+/* A soft diagonal light beam (two parallel bands, like light through a tall window). */
+.pub-atmo__beam {
+  top: -12rem;
+  height: min(190%, 150rem);
+  left: var(--bx, 64%);
+  width: clamp(9rem, 24vw, 24rem);
+  rotate: 26deg;
+  background: linear-gradient(90deg, transparent, var(--atmo-beam) 30%, color-mix(in oklab, var(--atmo-beam) 45%, transparent) 55%, transparent 60%, transparent 76%, color-mix(in oklab, var(--atmo-beam) 70%, transparent) 82%, transparent 90%);
+}
+/* Survey reticle (rich bands): fine rings and degree ticks opposite the line work — the "satellite"
+   mark. It turns very slowly on desktop while the band is on screen. */
+.pub-atmo__reticle {
+  left: calc(100% - var(--fx, 76%));
+  top: calc(100% - var(--fy, 22%));
+  width: clamp(16rem, 34vw, 30rem);
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  background-color: var(--atmo-mark);
+  opacity: 0.55;
+  -webkit-mask: var(--pub-reticle) center / contain no-repeat;
+  mask: var(--pub-reticle) center / contain no-repeat;
+}
+/* Star dust (night bands that ask for it). */
+.pub-atmo__stars {
+  inset: 0;
+  background-image: var(--pub-stars);
+  background-size: 380px 380px, 610px 610px;
+  opacity: 0.7;
+  -webkit-mask-image: radial-gradient(ellipse 95% 70% at var(--fx, 76%) 0%, #000, transparent 78%);
+  mask-image: radial-gradient(ellipse 95% 70% at var(--fx, 76%) 0%, #000, transparent 78%);
+}
+/* HUD ruler in the left margin (rich night bands, desktop). */
+.pub-atmo__ruler { display: none; }
+@media (min-width: 1024px) {
+  .pub-atmo__ruler {
+    display: block;
+    top: 14%;
+    bottom: 14%;
+    left: 0.375rem;
+    width: 11px;
+    background:
+      repeating-linear-gradient(to bottom, var(--atmo-mark) 0 1px, transparent 1px 12px) right top / 5px 100% no-repeat,
+      repeating-linear-gradient(to bottom, var(--atmo-mark) 0 1px, transparent 1px 72px) right top / 11px 100% no-repeat,
+      linear-gradient(var(--atmo-line), var(--atmo-line)) right top / 1px 100% no-repeat;
+    -webkit-mask-image: linear-gradient(transparent, #000 22%, #000 78%, transparent);
+    mask-image: linear-gradient(transparent, #000 22%, #000 78%, transparent);
+  }
+}
+/* Band joins. Night ↔ paper/deep: a crisp edge marked by a gold "horizon" hairline with a warm light
+   spilling into the night band (never a cream mist: paper mixed into espresso reads as grey fog).
+   Paper ↔ deep: the lower band starts in the upper band's colour and fades into its own. Night ↔ night:
+   the shared edge fades to the plain night base on both sides (no step where the lights are cut).
+   Works when the bands are siblings. */
+.pub-atmo__seam {
+  --e: var(--atmo-prev, transparent);
+  inset-inline: 0;
+  top: 0;
+  height: var(--atmo-seam-h);
+  background:
+    radial-gradient(60% 100% at 50% 0%, rgb(227 189 106 / calc(0.12 * var(--atmo-horizon, 0))), rgb(227 189 106 / calc(0.035 * var(--atmo-horizon, 0))) 45%, transparent 78%),
+    linear-gradient(to bottom, var(--e), color-mix(in oklab, var(--e) 55%, transparent) 35%, transparent);
+}
+.pub-atmo__seam[data-edge="bottom"] {
+  top: auto;
+  bottom: 0;
+  background: radial-gradient(60% 100% at 50% 100%, rgb(227 189 106 / calc(0.12 * var(--atmo-horizon-b, 0))), rgb(227 189 106 / calc(0.035 * var(--atmo-horizon-b, 0))) 45%, transparent 78%);
+}
+.pub-atmo__seam::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: min(80rem, 94%);
+  height: 2.75rem;
+  translate: -50% 0;
+  opacity: var(--atmo-horizon, 0);
+  background:
+    linear-gradient(90deg, transparent, rgb(200 160 80 / 0.5) 22%, rgb(236 202 132 / 0.95) 50%, rgb(200 160 80 / 0.5) 78%, transparent) top / 100% 1px no-repeat,
+    radial-gradient(42% 100% at 50% 0%, rgb(240 210 150 / 0.2), transparent) top / 100% 100% no-repeat;
+}
+.pub-atmo__seam[data-edge="bottom"]::after {
+  top: auto;
+  bottom: 0;
+  opacity: var(--atmo-horizon-b, 0);
+  background:
+    linear-gradient(90deg, transparent, rgb(200 160 80 / 0.5) 22%, rgb(236 202 132 / 0.95) 50%, rgb(200 160 80 / 0.5) 78%, transparent) bottom / 100% 1px no-repeat,
+    radial-gradient(42% 100% at 50% 100%, rgb(240 210 150 / 0.2), transparent) bottom / 100% 100% no-repeat;
+}
+[data-tone="paper"] + [data-tone="deep"] > .pub-atmo { --atmo-prev: var(--pub-paper); }
+[data-tone="deep"] + [data-tone="paper"] > .pub-atmo { --atmo-prev: var(--pub-paper-deep); }
+:is([data-tone="paper"], [data-tone="deep"]) + [data-tone="night"] > .pub-atmo { --atmo-horizon: 1; }
+[data-tone="night"]:has(+ :is([data-tone="paper"], [data-tone="deep"])) > .pub-atmo { --atmo-horizon-b: 1; }
+/* No darker foot where the next band continues in a light tone (paper ↔ deep), or in night. */
+:is([data-tone="paper"], [data-tone="deep"]):has(+ :is([data-tone="paper"], [data-tone="deep"])) > .pub-atmo,
+[data-tone="night"]:has(+ [data-tone="night"]) > .pub-atmo { background-image: none; }
+[data-tone="night"]:has(+ [data-tone="night"]) > .pub-atmo {
+  -webkit-mask-image: linear-gradient(#000 calc(100% - 9rem), transparent);
+  mask-image: linear-gradient(#000 calc(100% - 9rem), transparent);
+}
+[data-tone="night"] + [data-tone="night"] > .pub-atmo {
+  -webkit-mask-image: linear-gradient(transparent, #000 9rem);
+  mask-image: linear-gradient(transparent, #000 9rem);
+}
+[data-tone="night"] + [data-tone="night"]:has(+ [data-tone="night"]) > .pub-atmo {
+  -webkit-mask-image: linear-gradient(transparent, #000 9rem, #000 calc(100% - 9rem), transparent);
+  mask-image: linear-gradient(transparent, #000 9rem, #000 calc(100% - 9rem), transparent);
+}
+/* The page's last band meets the footer (also night): no darker foot, its light fades out; the
+   footer opens with the gold horizon. */
+#main > [data-tone]:last-child > .pub-atmo,
+#main > :last-child:not([data-tone]) > [data-tone]:last-child > .pub-atmo { background-image: none; }
+#main > [data-tone="night"]:last-child > .pub-atmo,
+#main > :last-child:not([data-tone]) > [data-tone="night"]:last-child > .pub-atmo {
+  -webkit-mask-image: linear-gradient(#000 calc(100% - 9rem), transparent);
+  mask-image: linear-gradient(#000 calc(100% - 9rem), transparent);
+}
+.pub-footer > .pub-atmo { --atmo-horizon: 1; }
+/* Over photography (heroes) the foot stays clean: titles sit there. */
+.pub-atmo[data-edges="top"] .pub-atmo__seam[data-edge="bottom"] { display: none; }
+
+/* Each band composes its light differently (by position among its siblings), so no two neighbours look alike. */
+[data-tone]:nth-of-type(3n + 2) > .pub-atmo {
+  --l1x: 10%; --l1y: 4%; --l2x: 94%; --l2y: 64%; --l3x: 38%; --l3y: -8%;
+  --bx: 14%; --fx: 20%; --fy: 28%; --cpos: 340px -120px;
+}
+[data-tone]:nth-of-type(3n) > .pub-atmo {
+  --l1x: 66%; --l1y: 98%; --l2x: 16%; --l2y: 8%; --l3x: 98%; --l3y: 28%;
+  --bx: 76%; --fx: 72%; --fy: 78%; --cpos: -260px 210px;
+}
+
+/* Living light: a very slow drift, only while the band is on screen. */
+@keyframes pub-light-a {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(-9%, 6%, 0) scale(1.14); }
+  100% { transform: translate3d(7%, -5%, 0) scale(0.92); }
+}
+@keyframes pub-light-b {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(10%, -7%, 0) scale(0.9); }
+  100% { transform: translate3d(-7%, 8%, 0) scale(1.1); }
+}
+@keyframes pub-turn { to { transform: rotate(360deg); } }
+@keyframes pub-beam {
+  from { transform: translate3d(-6%, 0, 0); opacity: 0.7; }
+  to { transform: translate3d(8%, 0, 0); opacity: 1; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .pub-atmo[data-live][data-motion] .pub-atmo__light[data-l="1"] { animation: pub-light-a 24s ease-in-out infinite alternate; }
+  .pub-atmo[data-live][data-motion] .pub-atmo__light[data-l="2"] { animation: pub-light-b 30s ease-in-out infinite alternate; }
+}
+/* A band carrying a glass panel keeps its lights still: drifting light under a backdrop blur makes the
+   GPU re-blur the panel every frame. The band keeps its (static) light and line work. */
+@media (prefers-reduced-motion: no-preference) {
+  [data-tone]:has(.pub-glass:not([data-glass="dock"])) > .pub-atmo .pub-atmo__light[data-l] { animation: none; }
+}
+@media (prefers-reduced-motion: no-preference) and (min-width: 1024px) {
+  .pub-atmo[data-live][data-motion] .pub-atmo__beam { animation: pub-beam 22s ease-in-out infinite alternate; }
+  .pub-atmo[data-live][data-motion] .pub-atmo__reticle { animation: pub-turn 240s linear infinite; }
+}
+
+/* ── HUD details ── */
+/* Thin gold corner brackets around media or panels (HudFrame, GlassPanel hud, heroes).
+   --hud-o: offset outside the box (negative = inside); --hud-l: arm length; --hud-c: colour. */
+/* Position defaults live in the components layer so utilities (absolute, fixed…) still win. */
+@layer components {
+  .pub-hud-frame, .pub-glass, [data-spotlight] { position: relative; }
+}
+.pub-hud-corners {
+  position: absolute;
+  inset: calc(var(--hud-o, 0.75rem) * -1);
+  z-index: 2;
+  pointer-events: none;
+  --c: var(--hud-c, rgb(227 189 106 / 0.8));
+  --l: var(--hud-l, 1rem);
+  background:
+    linear-gradient(var(--c), var(--c)) top left / var(--l) 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) top left / 1px var(--l) no-repeat,
+    linear-gradient(var(--c), var(--c)) top right / var(--l) 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) top right / 1px var(--l) no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom left / var(--l) 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom left / 1px var(--l) no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom right / var(--l) 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom right / 1px var(--l) no-repeat;
+}
+:is([data-tone="paper"], [data-tone="deep"]) > .pub-hud-corners,
+:is([data-tone="paper"], [data-tone="deep"]) :not([data-tone="night"]) > .pub-hud-corners { --c: var(--hud-c, color-mix(in oklab, var(--pub-eyebrow) 75%, transparent)); }
+/* Photo heroes: a viewfinder inset in the frame, the blueprint grid rising under the title, and one
+   fine light that scans down the photo when the page opens. */
+.pub-atmo.pub-atmo--hero { --fx: 18%; --fy: 92%; }
+.pub-atmo--hero .pub-atmo__lines {
+  --m1: radial-gradient(ellipse clamp(20rem, 60vw, 56rem) clamp(12rem, 22vw, 24rem) at 16% 100%, #000, rgb(0 0 0 / 0.5) 45%, transparent 80%);
+  --m2: linear-gradient(transparent, transparent);
+}
+.pub-hero-scan { position: absolute; inset: 0; z-index: 1; pointer-events: none; opacity: 0; }
+@keyframes pub-hero-scan {
+  0% { transform: translateY(-100%); opacity: 0; }
+  10% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { transform: translateY(0); opacity: 0; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .pub-hero-scan {
+    background: linear-gradient(to bottom, transparent 70%, rgb(227 189 106 / 0.06) 94%, rgb(244 216 150 / 0.55) 99.6%, transparent);
+    animation: pub-hero-scan 2.2s var(--ease-pub) 0.25s both;
+  }
+}
+/* LIVE dot: a tiny ring that breathes (opacity/scale only — negligible cost). */
+@keyframes pub-ping {
+  0% { transform: scale(1); opacity: 0.7; }
+  80%, 100% { transform: scale(2.6); opacity: 0; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .pub-live-dot::after { animation: pub-ping 2.4s var(--ease-pub) infinite; }
+}
+/* Section index hairline: draws in as it enters (scroll-driven where supported, static otherwise). */
+@keyframes pub-draw-x { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .pub-draw-x {
+      transform-origin: left;
+      animation: pub-draw-x linear both;
+      animation-timeline: view();
+      animation-range: entry 10% cover 35%;
+    }
+  }
+}
+
+/* ── Glass (GlassPanel): frosted panel floating over photography, 1px light edge, inner highlight. ── */
+.pub-glass {
+  isolation: isolate;
+  background: linear-gradient(155deg, rgb(255 255 255 / 0.13), rgb(255 255 255 / 0.03) 46%, rgb(255 255 255 / 0.06)), rgb(14 11 8 / 0.46);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid rgb(255 255 255 / 0.15);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.18), 0 30px 70px -32px rgb(0 0 0 / 0.75);
+}
+.pub-glass[data-glass="dock"] {
+  background: linear-gradient(155deg, rgb(255 255 255 / 0.1), rgb(255 255 255 / 0.02) 50%, rgb(255 255 255 / 0.05)), rgb(16 13 10 / 0.8);
+  border-color: rgb(255 255 255 / 0.12);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.14), 0 18px 44px -14px rgb(0 0 0 / 0.7);
+}
+.pub-glass[data-glass="dense"] {
+  background: linear-gradient(155deg, rgb(255 255 255 / 0.07), rgb(255 255 255 / 0.015) 46%, rgb(255 255 255 / 0.03)), rgb(14 11 8 / 0.8);
+}
+.pub-glass[data-glass="clear"] { background: linear-gradient(155deg, rgb(255 255 255 / 0.16), rgb(255 255 255 / 0.04) 50%, rgb(255 255 255 / 0.08)), rgb(14 11 8 / 0.2); }
+.pub-glass[data-glass="paper"] {
+  background: linear-gradient(155deg, rgb(255 255 255 / 0.8), rgb(255 255 255 / 0.5) 55%, rgb(255 255 255 / 0.62));
+  border-color: rgb(255 255 255 / 0.85);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.9), 0 28px 60px -34px rgb(60 40 10 / 0.45);
+}
+:root[data-pub-theme="dark"] .pub-glass[data-glass="paper"] {
+  background: linear-gradient(155deg, rgb(255 255 255 / 0.08), rgb(255 255 255 / 0.02) 50%, rgb(255 255 255 / 0.04)), rgb(20 17 13 / 0.62);
+  border-color: rgb(255 255 255 / 0.1);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08), 0 30px 70px -32px rgb(0 0 0 / 0.8);
+}
+/* Gold hairline along the top edge (::after — ::before belongs to the spotlight). */
+.pub-glass::after {
+  content: "";
+  position: absolute;
+  inset-inline: 12%;
+  top: -1px;
+  height: 1px;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgb(240 214 160 / 0.75), transparent);
+}
+
+/* ── Cursor spotlight (data-spotlight; pointer tracked by PubRuntime, fine pointers only). ── */
+[data-spotlight]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 450ms var(--ease-pub);
+  background: radial-gradient(var(--spot-r, 22rem) circle at var(--mx, 50%) var(--my, 50%), var(--spot-c, rgb(240 210 150 / 0.14)), transparent 62%);
+}
+[data-spotlight="border"]::before {
+  padding: 1px;
+  background: radial-gradient(var(--spot-r, 16rem) circle at var(--mx, 50%) var(--my, 50%), var(--spot-c, rgb(240 210 150 / 0.85)), transparent 65%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+[data-spotlight][data-spot-on]::before { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { [data-spotlight]::before { transition: none; } }
+
+/* ── Primary button shine: a highlight sweeps across once on hover. ── */
+.pub-shine { isolation: isolate; overflow: hidden; }
+.pub-shine::before {
+  content: "";
+  position: absolute;
+  inset: -1px auto -1px 0;
+  width: 45%;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(100deg, transparent, rgb(255 255 255 / 0.6) 50%, transparent);
+  transform: translateX(-120%) skewX(-18deg);
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .pub-shine:hover::before,
+  .pub-shine:focus-visible::before { transform: translateX(330%) skewX(-18deg); transition: transform 900ms var(--ease-pub); }
+}
+
+/* ── Mask reveal (MaskReveal / MediaFrame reveal): a clip-path wipe as it enters, a scan line, a settle. ── */
+@keyframes pub-scan {
+  0% { transform: translateY(-2rem); opacity: 0; }
+  12% { opacity: 1; }
+  100% { transform: translateY(var(--scan-h, 100vh)); opacity: 0; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  /* The wipe clips the CHILD: the observed element keeps its full box (IntersectionObserver measures a
+     target's own clip-path, so clipping the element itself would never "enter"), and no sliver shows. */
+  .pub-site [data-rv-mask][data-rv="wait"] { opacity: 1; translate: none; }
+  .pub-site [data-rv-mask][data-rv="wait"] > * { clip-path: inset(0 0 100% 0); }
+  .pub-site [data-rv-mask="left"][data-rv="wait"] > * { clip-path: inset(0 100% 0 0); }
+  .pub-site [data-rv-mask="right"][data-rv="wait"] > * { clip-path: inset(0 0 0 100%); }
+  .pub-site [data-rv-mask="center"][data-rv="wait"] > * { clip-path: inset(18% 18% 18% 18%); opacity: 0; }
+  .pub-site [data-rv-mask][data-rv="in"] { transition: none; }
+  .pub-site [data-rv-mask][data-rv="in"] > * {
+    clip-path: inset(0);
+    transition: clip-path 1.15s var(--ease-pub), opacity 700ms var(--ease-pub);
+    transition-delay: calc(min(var(--reveal-i, 0), 6) * 70ms);
+  }
+  .pub-site [data-rv-mask][data-rv="wait"] :where(img) { scale: 1.12; }
+  .pub-site [data-rv-mask][data-rv="in"] :where(img) { transition: scale 1.8s var(--ease-pub); }
+  .pub-site [data-rv-sweep][data-rv="in"]::after {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    height: 2rem;
+    z-index: 4;
+    pointer-events: none;
+    background: linear-gradient(to bottom, transparent, rgb(240 214 160 / 0.22) 85%, rgb(255 236 196 / 0.9) 96%, transparent);
+    animation: pub-scan 1.25s var(--ease-pub) both;
+    animation-delay: calc(min(var(--reveal-i, 0), 6) * 70ms);
+  }
+}
+
+/* ── Marquee: a slow outline-serif band; runs only while on screen. ── */
+@keyframes pub-marquee { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(-50%, 0, 0); } }
+.pub-marquee { overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent); mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent); }
+.pub-marquee__track { display: flex; width: max-content; }
+.pub-outline {
+  color: transparent;
+  -webkit-text-stroke: 1px var(--outline-c, color-mix(in oklab, var(--pub-eyebrow) 70%, transparent));
+}
+@media (prefers-reduced-motion: no-preference) {
+  .pub-marquee[data-live] .pub-marquee__track { animation: pub-marquee var(--marquee-d, 60s) linear infinite; }
+  .pub-marquee[data-dir="right"][data-live] .pub-marquee__track { animation-direction: reverse; }
+}
+
+/* ── Header: gold hairline once scrolled + a reading-progress line (scroll-driven, no JS). ── */
+.pub-header::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  bottom: -1px;
+  height: 1px;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(90deg, transparent, rgb(227 189 106 / 0.5) 22%, rgb(227 189 106 / 0.5) 78%, transparent);
+  transition: opacity 400ms var(--ease-pub);
+}
+.pub-header[data-scrolled="true"]::after,
+.pub-site:has([data-pub-header="solid"]) .pub-header::after { opacity: 1; }
+.pub-header__progress { display: none; }
+@keyframes pub-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@supports (animation-timeline: scroll()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .pub-header__progress {
+      display: block;
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: -1px;
+      height: 1px;
+      z-index: 1;
+      pointer-events: none;
+      transform-origin: left;
+      background: linear-gradient(90deg, rgb(227 189 106 / 0.2), rgb(244 216 150));
+      opacity: 0;
+      transition: opacity 400ms var(--ease-pub);
+      animation: pub-progress linear both;
+      animation-timeline: scroll(root);
+    }
+    .pub-header[data-scrolled="true"] .pub-header__progress { opacity: 1; }
+  }
+}
+
+/* ── Footer wordmark: the hotel's name as a huge, faint outline. ── */
+.pub-wordmark {
+  font-family: var(--font-display);
+  font-weight: 500;
+  line-height: 0.78;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  color: transparent;
+  -webkit-text-stroke: 1px rgb(227 189 106 / 0.24);
+  -webkit-mask-image: linear-gradient(to bottom, #000 30%, transparent 92%);
+  mask-image: linear-gradient(to bottom, #000 30%, transparent 92%);
+}
+
+/* The footer's reticle would cross the outline wordmark. */
+.pub-footer .pub-atmo__reticle { display: none; }
+
+/* ── Photo grade (MediaFrame by default, hero slides, gallery): tames saturated listing-photo colours
+   (electric blue throws, teal curtains, yellow walls) into the gold/espresso palette. Static: a CSS
+   filter on the image plus one soft-light veil. The lightbox stays ungraded (guests see the true photo). ── */
+/* In the components layer, so a filter utility on a particular image (saturate-*, grayscale…) still wins. */
+@layer components {
+  .pub-grade { filter: saturate(0.55) contrast(1.08) brightness(0.93) sepia(0.14); }
+  /* Dusk: for a bright daylight street photo inside a night band. */
+  .pub-grade.pub-grade--dusk { filter: saturate(0.55) contrast(1.06) brightness(0.8) sepia(0.24); }
+  .pub-grade-veil {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(120% 110% at 50% 42%, transparent 55%, rgb(10 7 3 / 0.3)),
+      linear-gradient(180deg, rgb(255 220 160 / 0.08), rgb(24 14 4 / 0.24));
+    mix-blend-mode: soft-light;
+  }
+  /* An amber tint in "color" mode: whites turn cream, electric blues and teals fall towards bronze. */
+  .pub-grade-tint {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: rgb(176 128 62 / 0.3);
+    mix-blend-mode: color;
+  }
 }
 
 /* Ordering pages: the dish showcase's story bars and the sliding strip of dishes. */

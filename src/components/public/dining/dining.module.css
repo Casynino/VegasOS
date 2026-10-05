@@ -1,0 +1,119 @@
+/* Dining & gallery effects (public site only; scoped by CSS modules).
+   Motion runs only while the element is on screen ([data-live], set by PubRuntime on [data-live-watch])
+   and never with reduced motion; static, everything still reads. */
+
+/* The day as a HUD timeline: a fine rail with gold nodes, and one soft light that travels down it. */
+.rail {
+  position: absolute;
+  top: 0.9rem;
+  bottom: 0.9rem;
+  left: 0.3125rem;
+  width: 1px;
+  overflow: hidden;
+  background: linear-gradient(to bottom, transparent, var(--pub-line) 12%, var(--pub-line) 88%, transparent);
+}
+.rail::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 32%;
+  background: linear-gradient(to bottom, transparent, rgb(240 214 160 / 0.95) 70%, transparent);
+  transform: translateY(-110%);
+}
+@keyframes travel {
+  0% { transform: translateY(-110%); }
+  70%, 100% { transform: translateY(330%); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .rail[data-live]::after { animation: travel 7s cubic-bezier(0.45, 0, 0.25, 1) infinite; }
+}
+.node {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 11px;
+  height: 11px;
+  translate: 0 -50%;
+  rotate: 45deg;
+  border: 1px solid color-mix(in oklab, var(--pub-eyebrow) 70%, transparent);
+  background: var(--pub-surface);
+}
+.node::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  background: var(--pub-eyebrow);
+  opacity: 0.85;
+}
+
+/* A HUD scan line that crosses a photo once on hover (dish tiles, gallery frames). */
+.scan {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  overflow: hidden;
+}
+.scan::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 3rem;
+  background: linear-gradient(to bottom, transparent, rgb(240 214 160 / 0.16) 80%, rgb(255 236 196 / 0.75) 97%, transparent);
+  opacity: 0;
+  transform: translateY(-3rem);
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  :global(.group):hover .scan::after {
+    opacity: 1;
+    transform: translateY(var(--scan-to, 32rem));
+    transition: transform 1.1s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s linear;
+  }
+}
+
+/* Gallery / dish corners: viewfinder brackets that close in on hover or keyboard focus. */
+.corners {
+  position: absolute;
+  inset: 0.625rem;
+  z-index: 3;
+  pointer-events: none;
+  --c: rgb(240 214 160 / 0.9);
+  --l: 0.875rem;
+  background:
+    linear-gradient(var(--c), var(--c)) top left / var(--l) 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) top left / 1px var(--l) no-repeat,
+    linear-gradient(var(--c), var(--c)) top right / var(--l) 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) top right / 1px var(--l) no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom left / var(--l) 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom left / 1px var(--l) no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom right / var(--l) 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom right / 1px var(--l) no-repeat;
+  opacity: 0;
+  scale: 1.06;
+  transition: opacity 0.35s cubic-bezier(0.22, 1, 0.36, 1), scale 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+:global(.group):hover .corners,
+:global(.group):focus-visible .corners {
+  opacity: 1;
+  scale: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .corners { transition: none; scale: 1; }
+}
+
+/* The menu's glass section bar: the active chip carries a soft gold glow under its rule. */
+.chipGlow::after {
+  box-shadow: 0 0 12px rgb(227 189 106 / 0.75);
+}
+
+/* Hero photo: a very slow breath (scale + drift) while on screen. */
+@keyframes breathe {
+  from { transform: scale(1) translate3d(0, 0, 0); }
+  to { transform: scale(1.07) translate3d(-1.2%, -0.8%, 0); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  /* One slow settle on arrival, then the hero goes idle (the glass card over it never re-blurs). */
+  .drift[data-live] { animation: breathe 22s cubic-bezier(0.22, 1, 0.36, 1) 1 both; }
+}

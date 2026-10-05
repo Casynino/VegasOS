@@ -7,8 +7,9 @@ import { businessToday } from "@/server/settings";
 import { fromDbDate } from "@/lib/time/business-date";
 import { formatBusinessDate, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { InfoList, PageIntro, PriceTag, Section, surface, typeScale } from "@/components/public/kit";
+import { GlassPanel, HudLabel, InfoList, PageIntro, PriceTag, Section, typeScale } from "@/components/public/kit";
 import { PayOnlineCard } from "@/components/public/pay-online-card";
+import { Seal } from "@/components/public/services/seal";
 import { invoicePayOnline } from "@/server/services/online-pay";
 import { payInvoiceOnlineAction } from "./actions";
 
@@ -21,7 +22,8 @@ export const metadata: Metadata = {
 /**
  * Scan-to-verify: anyone holding the invoice can check it is genuine and what
  * is still owed. Only the headline figures are shown — no guest or line details.
- * A short night band (the verdict), then the invoice as a quiet receipt with Pay now when something is owed.
+ * A short night band (the verdict, with a seal), then the invoice as a quiet receipt on glass, framed like a
+ * document under inspection, with Pay now when something is owed.
  */
 export default async function VerifyInvoicePage({ params }: PageProps<"/verify/[token]">) {
   const { token } = await params;
@@ -58,14 +60,21 @@ export default async function VerifyInvoicePage({ params }: PageProps<"/verify/[
           </span>
         }
         title={dead ? "This invoice is not valid for payment" : `Genuine ${s.hotelName} invoice`}
-      />
+        meta={<>Checked · {formatBusinessDate(today)}</>}
+      >
+        <div className="mt-8 flex justify-center sm:mt-10">
+          <Seal ok={!dead}>
+            {dead ? <Ban className="size-7" strokeWidth={1.3} aria-hidden="true" /> : <BadgeCheck className="size-7" strokeWidth={1.3} aria-hidden="true" />}
+          </Seal>
+        </div>
+      </PageIntro>
 
-      <Section space="sm" width="narrow" labelledBy="invoice-number" className="flex-1">
-        <article className={cn(surface.panel, "mx-auto max-w-lg")}>
+      <Section space="sm" width="narrow" atmosphere="calm" labelledBy="invoice-number" className="flex-1">
+        <GlassPanel as="article" variant="paper" padding="md" rounded="lg" hud className="mx-auto max-w-lg">
           <header className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className={cn(typeScale.eyebrow, "text-pub-eyebrow")}>Invoice</p>
-              <h2 id="invoice-number" className="mt-2 font-mono text-xl font-semibold text-pub-fg [overflow-wrap:anywhere]">{inv.number}</h2>
+              <HudLabel>Invoice</HudLabel>
+              <h2 id="invoice-number" className="mt-2.5 font-mono text-xl font-semibold text-pub-fg [overflow-wrap:anywhere]">{inv.number}</h2>
             </div>
             <span className={cn("shrink-0 rounded-full border px-3 py-1.5 text-[12px] font-semibold", state.cls)}>{state.label}</span>
           </header>
@@ -89,7 +98,7 @@ export default async function VerifyInvoicePage({ params }: PageProps<"/verify/[
               <PayOnlineCard tone="inherit" flush due={online.due} phone="" live={online.live} action={payInvoiceOnlineAction.bind(null, token)} />
             </div>
           )}
-        </article>
+        </GlassPanel>
         <p className="mx-auto mt-6 max-w-lg text-center text-[13px] leading-relaxed text-pub-muted">
           Questions about this invoice? Call {s.phone ?? "the hotel"}{s.email ? ` or email ${s.email}` : ""}. Always quote {inv.number} with your payment.
         </p>

@@ -1,7 +1,9 @@
 import { getImageProps } from "next/image";
 import { cn } from "@/lib/utils";
+import { Atmosphere } from "../kit/atmosphere";
 import { IllustrativeTag, MediaFrame } from "../kit/media-frame";
 import { containers, measure, typeScale } from "../kit/tokens";
+import fx from "./dining.module.css";
 
 type Photo = { src: string; alt: string };
 
@@ -29,10 +31,13 @@ function ArtDirectedPhoto({ wide, tall, alt, focal, focalWide }: { wide: Photo; 
 }
 
 /**
- * Photo opening for the dining pages (restaurant, bar, menu): night tone, the photograph does
- * the talking — eyebrow, H1 and one line at the bottom over a soft scrim; CTAs in `children`.
- * Clears the fixed header. `size="compact"` is a shorter band for a page whose job starts
- * right below (the menu). Stock photos carry the Illustrative tag.
+ * Photo opening for the dining pages (restaurant, bar, menu): night tone, the photograph does the
+ * talking — a live HUD line, eyebrow, H1 and one line at the bottom over a soft scrim; CTAs in
+ * `children`. Over the photo: the blueprint grid rising under the title, a viewfinder in the frame
+ * and one scan of light on open (as PageHero). `panel` floats a glass HUD card on the right from
+ * 1024px; `nav` sits on the foot of the photo as a glass strip (Restaurant · Room service · Drinks).
+ * Clears the fixed header. `size="compact"` is a shorter band for a page whose job starts right
+ * below (the menu). Stock photos carry the Illustrative tag.
  */
 export function DiningHero({
   kicker,
@@ -45,6 +50,9 @@ export function DiningHero({
   focalWide = "50% 50%",
   illustrative,
   size = "md",
+  meta,
+  panel,
+  nav,
   id,
   children,
 }: {
@@ -61,62 +69,94 @@ export function DiningHero({
   focalWide?: string;
   illustrative?: boolean;
   size?: "md" | "compact";
+  /** A HUD line above the eyebrow (e.g. the live local time). */
+  meta?: React.ReactNode;
+  /** Glass HUD card on the right (desktop only). */
+  panel?: React.ReactNode;
+  /** A strip of links on the foot of the photo. */
+  nav?: React.ReactNode;
   /** H1 id (aria-labelledby). */
   id?: string;
   children?: React.ReactNode;
 }) {
   const stock = illustrative ?? [image.src, imageTall?.src].some((s) => s?.includes("/illustrative/"));
-  const tagCls = "absolute right-4 top-[calc(var(--pub-header-h)+0.75rem)] z-10 sm:right-8";
   return (
     <section
       data-tone="night"
       aria-labelledby={id}
       className={cn(
-        "relative isolate flex overflow-hidden bg-night text-pub-fg",
-        size === "md" ? "min-h-[74svh] sm:min-h-[62svh] lg:min-h-[80vh]" : "min-h-[46svh] lg:min-h-[52vh]",
+        "relative isolate flex flex-col overflow-hidden bg-night text-pub-fg",
+        size === "md" ? "min-h-[82svh] sm:min-h-[68svh] lg:min-h-[88vh]" : "min-h-[52svh] lg:min-h-[60vh]",
       )}
     >
       <div className="absolute inset-0 -z-10 overflow-hidden bg-[#1c1712]">
+        {/* The photo breathes very slowly while it is on screen (CSS, transform only; still with reduced motion). */}
+        <div data-live-watch="" suppressHydrationWarning className={cn("absolute inset-0", fx.drift)}>
         {imageTall ? (
           <ArtDirectedPhoto wide={image} tall={imageTall} alt={alt ?? image.alt} focal={focal} focalWide={focalWide} />
         ) : (
           <MediaFrame src={image.src} alt={alt ?? image.alt} ratio="fill" sizes="100vw" preload focal={focal} focalSm={focalWide} illustrative={false} imgClassName="pub-settle" />
         )}
+        </div>
         <div
           aria-hidden="true"
           className={cn(
             "pointer-events-none absolute inset-0",
             size === "md"
-              ? "bg-[linear-gradient(to_top,rgb(12_10_7/0.94)_0%,rgb(12_10_7/0.7)_34%,rgb(12_10_7/0.28)_66%,rgb(12_10_7/0.5)_100%)]"
-              : "bg-[linear-gradient(to_top,rgb(12_10_7/0.95)_0%,rgb(12_10_7/0.78)_45%,rgb(12_10_7/0.55)_100%)]",
+              ? "bg-[linear-gradient(to_top,rgb(12_10_7/0.95)_0%,rgb(12_10_7/0.74)_32%,rgb(12_10_7/0.3)_64%,rgb(12_10_7/0.55)_100%)]"
+              : "bg-[linear-gradient(to_top,rgb(12_10_7/0.96)_0%,rgb(12_10_7/0.8)_45%,rgb(12_10_7/0.55)_100%)]",
           )}
         />
-        {/* A low warm light along the bottom edge, so the photo meets the page below softly. */}
-        <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-1/3 bg-[radial-gradient(60%_90%_at_20%_100%,oklch(0.72_0.12_80/0.14),transparent_70%)]" />
+        {/* Desktop: the left side darkens a little more, so the title reads and the glass card floats on light. */}
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 hidden bg-[linear-gradient(to_right,rgb(12_10_7/0.55),rgb(12_10_7/0)_55%)] lg:block" />
       </div>
-      {stock && <IllustrativeTag className={tagCls} />}
+      <Atmosphere tone="night" atmosphere="calm" pattern="grid" edges="top" className="pub-atmo--hero" />
 
-      <div
-        className={cn(
-          containers.wide,
-          "flex w-full flex-col justify-end pt-[calc(var(--pub-header-h)+3rem)]",
-          size === "md" ? "pb-10 sm:pb-14 lg:pb-20" : "pb-8 sm:pb-10 lg:pb-14",
-        )}
-      >
-        <p className={cn(typeScale.eyebrow, "flex items-center gap-3 text-gold before:h-px before:w-8 before:bg-current before:opacity-70")}>{kicker}</p>
-        <h1
-          id={id}
+      <div className="relative flex flex-1 flex-col">
+        {/* Viewfinder inset in the frame (≥640px) and one scan of light down the photo on open. */}
+        <span
+          aria-hidden="true"
+          className="pub-hud-corners hidden sm:block"
+          style={{ inset: "calc(var(--pub-header-h) + 0.75rem) 1.25rem 1.25rem", "--hud-l": "1.25rem", "--hud-c": "rgb(240 214 160 / 0.55)" } as React.CSSProperties}
+        />
+        <span aria-hidden="true" className="pub-hero-scan" />
+        {stock && <IllustrativeTag className="absolute right-4 top-[calc(var(--pub-header-h)+0.75rem)] z-10 sm:right-10 sm:top-[calc(var(--pub-header-h)+1.75rem)]" />}
+
+        <div
           className={cn(
-            "mt-4 max-w-4xl",
-            typeScale.title,
-            "motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 motion-safe:fill-mode-both motion-safe:duration-700 motion-safe:ease-pub",
+            containers.wide,
+            "relative grid flex-1 items-end gap-10 pt-[calc(var(--pub-header-h)+3.5rem)] lg:grid-cols-12",
+            size === "md" ? "pb-10 sm:pb-14 lg:pb-16" : "pb-8 sm:pb-10 lg:pb-12",
           )}
         >
-          {title}
-        </h1>
-        {intro && <div className={cn("mt-4 text-white/80 sm:mt-5", typeScale.lede, measure.lede)}>{intro}</div>}
-        {children}
+          <div className="min-w-0 lg:col-span-7">
+            {/* The HUD line; on desktop the glass card carries it instead. */}
+            {meta && <div className={cn("mb-5 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-1000", panel && "lg:hidden")}>{meta}</div>}
+            <p className={cn(typeScale.eyebrow, "flex items-center gap-3 text-gold")}>
+              <span aria-hidden="true" className="h-px w-8 bg-gold/70" />
+              {kicker}
+            </p>
+            <h1
+              id={id}
+              className={cn(
+                "mt-4 max-w-4xl",
+                typeScale.title,
+                "motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 motion-safe:fill-mode-both motion-safe:duration-700 motion-safe:ease-pub",
+              )}
+            >
+              {title}
+            </h1>
+            {intro && <div className={cn("mt-4 text-white/80 sm:mt-5", typeScale.lede, measure.lede)}>{intro}</div>}
+            {children}
+          </div>
+          {panel && (
+            <div className="hidden justify-end lg:col-span-4 lg:col-start-9 lg:flex motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-4 motion-safe:fill-mode-both motion-safe:delay-300 motion-safe:duration-1000 motion-safe:ease-pub">
+              {panel}
+            </div>
+          )}
+        </div>
       </div>
+      {nav}
     </section>
   );
 }

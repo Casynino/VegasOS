@@ -1,10 +1,15 @@
 import type { Metadata } from "next";
 import dynamic from "next/dynamic";
+import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { getSiteContent } from "@/server/services/site-content";
-import type { GalleryCategory, GalleryImage } from "@/components/public/content";
+import { publicMeetingRoom } from "@/server/services/booking-requests";
+import { parseImages } from "@/server/services/public-booking";
+import { photo as registered, type GalleryCategory, type GalleryImage } from "@/components/public/content";
 import type { ChapterLayout } from "@/components/public/gallery-grid";
-import { Accent, Actions, Heading, LinkButton, Reveal, Section, TextLink, containers, rhythm, typeScale } from "@/components/public/kit";
+import { blurFor } from "@/components/public/blur-data";
+import fx from "@/components/public/dining/dining.module.css";
+import { Accent, Actions, Atmosphere, HOTEL_COORDS, Heading, HudLabel, LinkButton, Reveal, TextLink, containers, rhythm, typeScale } from "@/components/public/kit";
 import { PageHero } from "@/components/public/page-hero";
 
 // The chapters (rails, mosaic, viewer) are client code: split out of the page's server payload.
@@ -19,97 +24,138 @@ export const metadata: Metadata = {
 const CHAPTERS: { key: string; label: string; line: string; categories: GalleryCategory[]; layout: ChapterLayout }[] = [
   { key: "rooms", label: "Rooms & suites", line: "Bright rooms with tall windows, crisp linen and a sofa to unwind on.", categories: ["rooms"], layout: "rail-wide" },
   { key: "bath", label: "Bathrooms", line: "Bright, tiled bathrooms — some with a jetted jacuzzi bathtub.", categories: ["bath"], layout: "rail-tall" },
-  { key: "arrival", label: "Reception & building", line: "Where your stay begins: our reception, the building and the small touches.", categories: ["lobby", "exterior", "amenity"], layout: "mosaic" },
+  { key: "arrival", label: "Reception & building", line: "Where your stay begins: the building, our reception, the meeting room and the small touches.", categories: ["lobby", "exterior", "amenity"], layout: "mosaic" },
 ];
-const TONES = ["paper", "deep"] as const;
 
 /** Lead each chapter with the strongest, most varied frames (near-duplicates fall later). */
 const FEATURED = [
-  "/images/room-red/room-red-04.webp", "/images/room-blue/room-blue-08.webp", "/images/room-red/room-red-05.webp", "/images/room-blue/room-blue-04.webp",
-  "/images/room-red/room-red-07.webp", "/images/room-blue/room-blue-06.webp", "/images/room-red/room-red-06.webp", "/images/room-blue/room-blue-17.webp",
-  "/images/room-red/room-red-01.webp", "/images/room-blue/room-blue-01.webp", "/images/room-blue/room-blue-13.webp", "/images/room-blue/room-blue-15.webp",
-  "/images/bath/bath-01.webp", "/images/bath/bath-07.webp", "/images/bath/bath-02.webp", "/images/bath/bath-08.webp", "/images/bath/bath-05.webp",
-  "/images/bath/bath-03.webp", "/images/bath/bath-14.webp", "/images/bath/bath-16.webp", "/images/bath/bath-09.webp", "/images/bath/bath-04.webp",
-  "/images/lobby/lobby-02.webp", "/images/exterior/exterior-01.webp", "/images/lobby/lobby-01.webp", "/images/amenity/amenity-01.webp",
-  "/images/exterior/exterior-02.webp", "/images/lobby/lobby-03.webp",
+  // Rooms & suites: the owner's newest photographs lead, woven with the strongest earlier frames.
+  "/images/room-red/room-red-09.webp", "/images/room-red/room-red-08.webp", "/images/room-red/room-red-04.webp", "/images/amenity/amenity-02.webp",
+  "/images/room-blue/room-blue-08.webp", "/images/room-red/room-red-10.webp", "/images/room-red/room-red-05.webp", "/images/amenity/amenity-03.webp",
+  "/images/room-blue/room-blue-04.webp", "/images/room-red/room-red-07.webp", "/images/amenity/amenity-04.webp", "/images/room-blue/room-blue-06.webp",
+  "/images/room-red/room-red-06.webp", "/images/room-blue/room-blue-17.webp", "/images/room-red/room-red-01.webp", "/images/room-blue/room-blue-01.webp",
+  "/images/room-blue/room-blue-13.webp", "/images/room-blue/room-blue-15.webp",
+  // Bathrooms
+  "/images/bath/bath-01.webp", "/images/bath/bath-18.webp", "/images/bath/bath-07.webp", "/images/bath/bath-17.webp", "/images/bath/bath-02.webp",
+  "/images/bath/bath-08.webp", "/images/bath/bath-19.webp", "/images/bath/bath-05.webp", "/images/bath/bath-03.webp", "/images/bath/bath-14.webp",
+  "/images/bath/bath-16.webp", "/images/bath/bath-09.webp", "/images/bath/bath-04.webp",
+  // Reception & building: the façade leads, then the meeting room, reception and balconies.
+  "/images/exterior/exterior-03.webp", "/images/meeting/meeting-01.webp", "/images/lobby/lobby-02.webp", "/images/exterior/exterior-04.webp",
+  "/images/lobby/lobby-01.webp", "/images/exterior/exterior-01.webp", "/images/amenity/amenity-01.webp", "/images/exterior/exterior-02.webp",
+  "/images/lobby/lobby-03.webp",
 ];
 const rank = (src: string) => {
   const i = FEATURED.indexOf(src);
   return i === -1 ? 999 : i;
 };
 const photo = ({ src, alt, width, height }: GalleryImage) => ({ src, alt, width, height });
+const pad = (n: number) => String(n).padStart(2, "0");
 
 /**
- * The hotel in pictures — real photographs only (the media library never sends stock here):
- * the photo opening · a chapter index · Rooms & suites (landscape rail) · Bathrooms (portrait
- * rail) · Reception & building (mosaic) · Book your stay. Phones swipe; every photo opens the
- * full-screen viewer.
+ * The hotel in pictures — real photographs only (the media library never sends stock here), as one
+ * immersive dark space: the photo opening · a contact-sheet index of the chapters · Rooms & suites
+ * (a large opening frame, then a landscape rail) · Bathrooms (portrait rail) · Reception & building
+ * (mosaic) · Book your stay. Below the hero everything sits in ONE night band with its atmosphere
+ * (light, blueprint line work recurring down the page), so the chapters flow without seams.
+ * Phones swipe; every photo opens the full-screen viewer.
  */
 export default async function GalleryPage() {
-  const c = await getSiteContent();
+  const [c, meeting] = await Promise.all([getSiteContent(), publicMeetingRoom()]);
   const p = c.pages.gallery;
-  const gallery: GalleryImage[] = c.gallery;
+  // The Meeting Room's own photographs join "Reception & building" — only the hotel's files in
+  // /images/meeting/ (a library upload could be stock; the gallery shows the hotel alone).
+  const meetingPhotos: GalleryImage[] = (meeting ? parseImages(meeting.images) : [])
+    .filter((src) => src.startsWith("/images/meeting/") && !c.gallery.some((g) => g.src === src))
+    .map((src) => {
+      const g = registered(src);
+      return { ...g, alt: g.alt === "Vegas Luxury Hotel" ? `${meeting?.name ?? "Meeting Room"} at Vegas Luxury Hotel` : g.alt, category: "amenity" };
+    });
+  const gallery: GalleryImage[] = [...c.gallery, ...meetingPhotos];
   const chapters = CHAPTERS.map((ch) => ({
     ...ch,
     all: gallery.filter((i) => ch.categories.includes(i.category)).sort((a, b) => rank(a.src) - rank(b.src)),
   })).filter((ch) => ch.all.length > 0);
+  const count = chapters.reduce((t, ch) => t + ch.all.length, 0);
 
   return (
     <>
-      <PageHero kicker={p.kicker} title={p.title} image={p.image.src} imageAlt={p.image.alt} intro={<p>{p.intro}</p>} focal="50% 45%" id="gallery-title" />
+      <PageHero
+        kicker={p.kicker}
+        title={p.title}
+        image={p.image.src}
+        imageAlt={p.image.alt}
+        intro={<p>{p.intro}</p>}
+        focal="50% 45%"
+        id="gallery-title"
+        meta={count > 0 ? <>{count} photographs · {HOTEL_COORDS.label}</> : undefined}
+      />
 
-      {/* Chapter index: where each set of photographs is, and how many. */}
-      {chapters.length > 1 && (
-        <nav aria-label="Gallery chapters" data-tone="night" className="bg-night text-pub-fg">
-          <ul className={cn(containers.wide, "grid")} style={{ gridTemplateColumns: `repeat(${chapters.length}, minmax(0, 1fr))` }}>
-            {chapters.map((ch, i) => (
-              <li key={ch.key} className={cn("min-w-0 border-t border-pub-line", i > 0 && "border-l")}>
-                <a
-                  href={`#chapter-${ch.key}`}
-                  className={cn(
-                    "group relative flex min-h-16 flex-col justify-center gap-1.5 px-2 py-4 text-center transition-colors duration-200 sm:min-h-20 sm:px-6 sm:text-left motion-reduce:transition-none",
-                    "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-gold",
-                    "before:absolute before:inset-x-0 before:-top-px before:h-0.5 before:origin-left before:scale-x-0 before:bg-gold before:transition-transform before:duration-300 before:ease-pub hover:before:scale-x-100 motion-reduce:before:transition-none",
-                  )}
-                >
-                  <span className="font-display text-[1.0625rem] leading-tight text-pub-fg group-hover:text-gold sm:text-[1.5rem]">{ch.label}</span>
-                  <span className={cn(typeScale.meta, "text-pub-muted")}>
-                    {ch.all.length} {ch.all.length === 1 ? "photo" : "photos"}
-                  </span>
-                </a>
-              </li>
-            ))}
-          </ul>
-        </nav>
-      )}
+      <div data-tone="night" className="relative isolate overflow-x-clip bg-night text-pub-fg">
+        <Atmosphere tone="night" stars />
 
-      {chapters.map((ch, i) => (
-        <GalleryChapter
-          key={ch.key}
-          id={ch.key}
-          index={i}
-          total={chapters.length}
-          title={ch.label}
-          line={ch.line}
-          images={ch.all.map(photo)}
-          layout={ch.layout}
-          tone={TONES[i % 2]}
-        />
-      ))}
+        {/* Chapter index: a contact sheet — where each set of photographs is, and how many. */}
+        {chapters.length > 1 && (
+          <nav aria-label="Gallery chapters" className={cn(containers.wide, "pt-10 sm:pt-14 lg:pt-16")}>
+            <ul className="grid gap-px border-y border-pub-line" style={{ gridTemplateColumns: `repeat(${chapters.length}, minmax(0, 1fr))` }}>
+              {chapters.map((ch, i) => (
+                <li key={ch.key} className={cn("min-w-0", i > 0 && "border-l border-pub-line")}>
+                  <a
+                    href={`#chapter-${ch.key}`}
+                    className={cn(
+                      "group relative flex h-full flex-col gap-3 px-2 py-4 transition-colors duration-200 sm:flex-row sm:items-center sm:gap-5 sm:px-5 sm:py-5 motion-reduce:transition-none",
+                      "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-gold",
+                      "before:absolute before:inset-x-0 before:-top-px before:h-0.5 before:origin-left before:scale-x-0 before:bg-gold before:shadow-[0_0_14px_rgb(227_189_106/0.7)] before:transition-transform before:duration-300 before:ease-pub hover:before:scale-x-100 motion-reduce:before:transition-none",
+                    )}
+                  >
+                    <span className="relative block aspect-[3/2] w-full shrink-0 overflow-hidden bg-[#1c1712] sm:w-28 lg:w-36">
+                      <Image
+                        src={ch.all[0].src}
+                        alt=""
+                        fill
+                        sizes="(min-width: 1024px) 144px, (min-width: 640px) 112px, 33vw"
+                        {...blurFor(ch.all[0].src)}
+                        className="object-cover opacity-80 grayscale-[35%] transition duration-500 ease-pub group-hover:scale-105 group-hover:opacity-100 group-hover:grayscale-0 motion-reduce:transition-none"
+                      />
+                      <span aria-hidden="true" className={fx.corners} />
+                    </span>
+                    <span className="min-w-0 text-center sm:text-left">
+                      <span aria-hidden="true" className="block font-mono text-[10px] tracking-[0.18em] text-pub-eyebrow">{pad(i + 1)}</span>
+                      <span className="mt-1.5 block font-display text-[1.0625rem] leading-tight text-pub-fg transition-colors duration-200 group-hover:text-gold sm:text-[1.375rem] lg:text-[1.625rem] motion-reduce:transition-none">
+                        {ch.label}
+                      </span>
+                      <span className={cn(typeScale.meta, "mt-1 block text-pub-muted")}>
+                        {ch.all.length} {ch.all.length === 1 ? "photo" : "photos"}
+                      </span>
+                    </span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        )}
 
-      <Section tone="night" glow="sky" space="lg" labelledBy="gallery-close-title">
-        <Reveal className="flex flex-col items-center text-center">
-          <Heading id="gallery-close-title" className="max-w-3xl">
-            Seen enough? <Accent>Your room is waiting.</Accent>
-          </Heading>
-          <Actions align="center" className={rhythm.beforeActions}>
-            <LinkButton href="/book" icon="arrow">
-              Book your stay
-            </LinkButton>
-            <TextLink href="/rooms">Explore the rooms</TextLink>
-          </Actions>
-        </Reveal>
-      </Section>
+        {chapters.map((ch, i) => (
+          <GalleryChapter key={ch.key} id={ch.key} index={i} total={chapters.length} title={ch.label} line={ch.line} images={ch.all.map(photo)} layout={ch.layout} />
+        ))}
+
+        <section aria-labelledby="gallery-close-title" className="relative pb-20 pt-8 sm:pb-28 lg:pb-36">
+          {/* A warm horizon of light under the closing line (static). */}
+          <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 h-[80%] bg-[radial-gradient(60%_70%_at_50%_100%,oklch(0.75_0.13_78/0.16),transparent_72%)]" />
+          <Reveal className={cn(containers.default, "flex flex-col items-center text-center")}>
+            <span aria-hidden="true" className="mb-10 h-px w-full max-w-3xl bg-linear-to-r from-transparent via-gold/50 to-transparent sm:mb-14" />
+            {count > 0 && <HudLabel>{count} photographs · all of our hotel</HudLabel>}
+            <Heading id="gallery-close-title" className={cn("max-w-3xl", count > 0 && "mt-6")}>
+              Seen enough? <Accent>Your room is waiting.</Accent>
+            </Heading>
+            <Actions align="center" className={rhythm.beforeActions}>
+              <LinkButton href="/book" icon="arrow">
+                Book your stay
+              </LinkButton>
+              <TextLink href="/rooms">Explore the rooms</TextLink>
+            </Actions>
+          </Reveal>
+        </section>
+      </div>
     </>
   );
 }

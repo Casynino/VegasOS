@@ -9,7 +9,7 @@ import { formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { blurFor } from "./blur-data";
 import { NamedIcon } from "./icon";
-import { PillLink } from "./pill-link";
+import { LinkButton, TextLink } from "./kit/button";
 import { RoomCard, type RoomCardData } from "./room-card";
 
 /**
@@ -116,8 +116,8 @@ export function RoomShowcase({ rooms }: { rooms: (RoomCardData & { description: 
                 </div>
               </div>
               <div className="mt-6 flex flex-wrap gap-3">
-                <PillLink href={`/book?type=${room.slug}`}>Book this room</PillLink>
-                <PillLink href={`/rooms/${room.slug}`} variant="glass">View details</PillLink>
+                <LinkButton href={`/book?type=${room.slug}`} icon="arrow">Book this room</LinkButton>
+                <TextLink href={`/rooms/${room.slug}`}>View details</TextLink>
               </div>
             </motion.div>
           </AnimatePresence>

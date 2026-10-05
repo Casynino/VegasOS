@@ -1,0 +1,484 @@
+/*
+ * Services & info pages (About, Meeting Room, Transport, Contact, trip, verify, 404/error):
+ * the page-specific futuristic devices. Public-only and scoped (CSS Modules). Every animation is
+ * transform / opacity / clip-path / stroke-dashoffset, runs only while on screen (PubRuntime's
+ * data-live, or a scroll timeline) and stands still with reduced motion — static, everything
+ * still reads complete.
+ */
+
+/* ───────────── Blueprint → render (About): the street entrance drawn in gold, then built ───────────── */
+.bp {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  aspect-ratio: 4 / 3;
+  background-color: #100c08;
+  view-timeline: --vlh-bp block;
+  --bp-cut: 54%;
+  --bp-stroke: 2.4;
+}
+@media (min-width: 640px) {
+  .bp { aspect-ratio: 3 / 2; --bp-stroke: 1.7; }
+}
+@media (min-width: 1024px) {
+  .bp { --bp-stroke: 1.45; }
+}
+/* Drafting sheet: a fine gold grid with a stronger major grid and a warm vignette. */
+.bpSheet {
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(ellipse 80% 70% at 50% 45%, transparent 40%, rgb(0 0 0 / 0.55)),
+    linear-gradient(rgb(227 189 106 / 0.14) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(227 189 106 / 0.14) 1px, transparent 1px),
+    linear-gradient(rgb(227 189 106 / 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(227 189 106 / 0.05) 1px, transparent 1px),
+    radial-gradient(ellipse 70% 60% at 30% 20%, rgb(227 189 106 / 0.1), transparent 70%);
+  background-size: 100% 100%, 96px 96px, 96px 96px, 24px 24px, 24px 24px, 100% 100%;
+  background-position: center, -1px -1px, -1px -1px, -1px -1px, -1px -1px, center;
+}
+.bpSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.bpDraw path {
+  fill: none;
+  stroke: rgb(240 210 146 / 0.92);
+  stroke-width: var(--bp-stroke);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.bpDraw .bpMinor { stroke: rgb(240 210 146 / 0.5); stroke-width: calc(var(--bp-stroke) * 0.7); }
+.bpPhoto {
+  position: absolute;
+  inset: 0;
+  clip-path: inset(0 0 0 var(--bp-cut));
+}
+/* The scan line rides the edge of the photograph (an inset:0 layer translated across, compositor-only). */
+.bpScan {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  translate: var(--bp-cut) 0;
+}
+.bpScan::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 5rem;
+  translate: -100% 0;
+  background: linear-gradient(90deg, transparent, rgb(240 214 160 / 0.14));
+}
+.bpScan::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 1px;
+  translate: -50% 0;
+  background: linear-gradient(to bottom, transparent, rgb(255 232 186) 12%, rgb(255 232 186) 88%, transparent);
+  box-shadow: 0 0 14px 2px rgb(227 189 106 / 0.55);
+}
+/* Annotations (dimension lines, levels, centre lines) float over drawing and photo alike. */
+.bpNotes path,
+.bpNotes circle,
+.bpNotes line {
+  fill: none;
+  stroke: rgb(244 220 168 / 0.75);
+  stroke-width: calc(var(--bp-stroke) * 0.75);
+}
+.bpNotes .bpCenter { stroke-dasharray: 14 5 2 5; stroke: rgb(244 220 168 / 0.55); }
+.bpNotes .bpSolid { fill: rgb(244 220 168 / 0.85); stroke: none; }
+.bpNotes .bpUnder :is(path, circle) { stroke: rgb(12 9 6 / 0.45); stroke-width: calc(var(--bp-stroke) * 2.6); stroke-dasharray: none; }
+.bpNotes .bpUnder .bpSolid { fill: rgb(12 9 6 / 0.45); }
+@keyframes bpDraw {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+@keyframes bpWipe {
+  from { clip-path: inset(0 0 0 100%); }
+  to { clip-path: inset(0 0 0 0); }
+}
+@keyframes bpScan {
+  0% { translate: 100% 0; opacity: 0; }
+  6% { opacity: 1; }
+  94% { opacity: 1; }
+  100% { translate: 0 0; opacity: 0; }
+}
+@keyframes bpFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+/* Where scroll timelines exist (and motion is welcome): the pen draws the entrance as the frame
+   rises into view, then the photograph is wiped in behind a scan line. Elsewhere: a still split. */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .bpDraw path {
+      stroke-dasharray: 1 1;
+      animation: bpDraw linear both;
+      animation-timeline: --vlh-bp;
+      animation-range: entry 0% cover 45%;
+    }
+    .bpNotes {
+      animation: bpFade linear both;
+      animation-timeline: --vlh-bp;
+      animation-range: entry 40% cover 40%;
+    }
+    .bpPhoto {
+      animation: bpWipe linear both;
+      animation-timeline: --vlh-bp;
+      animation-range: cover 42% cover 72%;
+    }
+    .bpScan {
+      animation: bpScan linear both;
+      animation-timeline: --vlh-bp;
+      animation-range: cover 42% cover 72%;
+    }
+  }
+}
+
+/* ───────────── Service matrix (About #services): a drafting-sheet index of services ───────────── */
+.matrix {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  border-top: 1px solid var(--pub-line);
+}
+.matrix > * { border-bottom: 1px solid var(--pub-line); }
+@media (min-width: 640px) {
+  .matrix { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .matrix > :nth-child(2n) { border-left: 1px solid var(--pub-line); }
+}
+@media (min-width: 640px) and (max-width: 1023.98px) {
+  /* The last cell completes its row (no empty, half-ruled cell). */
+  .matrix > :last-child:nth-child(2n + 1) { grid-column: span 2; }
+}
+@media (min-width: 1024px) {
+  .matrix { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .matrix > :nth-child(2n) { border-left: 0; }
+  .matrix > :not(:nth-child(3n + 1)) { border-left: 1px solid var(--pub-line); }
+  .matrix > :last-child:nth-child(3n + 1) { grid-column: span 3; }
+  .matrix > :last-child:nth-child(3n + 2) { grid-column: span 2; }
+}
+/* The icon sits in a fine ring with a dashed outer orbit that turns a little on hover. */
+.orbit {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in oklab, var(--pub-eyebrow) 45%, transparent);
+  color: var(--pub-eyebrow);
+}
+.orbit::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border-radius: inherit;
+  border: 1px dashed color-mix(in oklab, var(--pub-eyebrow) 35%, transparent);
+  transition: rotate 1.2s var(--ease-pub), border-color 300ms var(--ease-pub);
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .cell:hover .orbit::after { rotate: 90deg; border-color: color-mix(in oklab, var(--pub-eyebrow) 80%, transparent); }
+}
+
+/* ───────────── Route (Transport): JNIA → the hotel, a lit comet travelling the road ───────────── */
+.route { position: relative; }
+.routeSvg { display: block; width: 100%; height: auto; overflow: visible; }
+.routeTrack { fill: none; stroke: rgb(227 189 106 / 0.14); stroke-width: 10; stroke-linecap: round; }
+.routeLine { fill: none; stroke: rgb(240 210 146 / 0.9); stroke-width: 1.6; stroke-linecap: round; stroke-dasharray: 2 9; }
+.routeComet {
+  fill: none;
+  stroke: rgb(255 236 196);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 0.08 1.2;
+  stroke-dashoffset: 0.08;
+  opacity: 0;
+}
+.routeGlow {
+  fill: none;
+  stroke: rgb(240 200 120 / 0.35);
+  stroke-width: 12;
+  stroke-linecap: round;
+  stroke-dasharray: 0.1 1.2;
+  stroke-dashoffset: 0.1;
+  opacity: 0;
+}
+.routeTick { stroke: rgb(240 210 146 / 0.5); stroke-width: 1; }
+.routeRing { fill: none; stroke: rgb(240 210 146 / 0.55); stroke-width: 1; }
+.routeDot { fill: rgb(244 216 150); }
+.routePulse { fill: none; stroke: rgb(244 216 150 / 0.8); stroke-width: 1.2; transform-box: fill-box; transform-origin: center; opacity: 0; }
+@keyframes routeRun {
+  0% { stroke-dashoffset: 0.1; opacity: 0; }
+  6% { opacity: 1; }
+  70% { opacity: 1; }
+  78% { stroke-dashoffset: -1; opacity: 0; }
+  100% { stroke-dashoffset: -1; opacity: 0; }
+}
+@keyframes routePulse {
+  0% { scale: 0.6; opacity: 0.9; }
+  100% { scale: 2.4; opacity: 0; }
+}
+@keyframes routeDraw {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .route[data-live] .routeComet,
+  .route[data-live] .routeGlow { animation: routeRun 6.5s var(--ease-pub) infinite; }
+  .route[data-live] .routeGlow { animation-delay: 40ms; }
+  .route[data-live] .routePulse { animation: routePulse 2.6s var(--ease-pub) infinite; }
+  .route[data-live] .routePulse + .routePulse { animation-delay: 1.3s; }
+}
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .routeTrack {
+      stroke-dasharray: 1 1;
+      animation: routeDraw linear both;
+      animation-timeline: view();
+      animation-range: entry 20% cover 50%;
+    }
+  }
+}
+
+/* ───────────── Map console (Contact): the live map, toned to night and gold, under a HUD ───────────── */
+.map {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background-color: #120e0a;
+}
+/* While the map loads (or if it is blocked): a topographic sheet with the hotel at its centre. */
+.mapSheet {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 50% 50%, rgb(227 189 106 / 0.16), transparent 45%),
+    linear-gradient(rgb(227 189 106 / 0.07) 1px, transparent 1px) 0 0 / 48px 48px,
+    linear-gradient(90deg, rgb(227 189 106 / 0.07) 1px, transparent 1px) 0 0 / 48px 48px;
+}
+.mapSheet::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-color: rgb(227 189 106 / 0.3);
+  -webkit-mask: var(--pub-contours) center / 900px 675px repeat;
+  mask: var(--pub-contours) center / 900px 675px repeat;
+}
+.mapFrame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  filter: grayscale(1) invert(0.9) sepia(0.45) saturate(1.6) hue-rotate(-8deg) brightness(0.92) contrast(0.95);
+}
+/* Edge shading so the map dissolves into the frame. */
+.mapShade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse 80% 75% at 50% 50%, transparent 60%, rgb(10 8 6 / 0.4));
+}
+.reticle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: clamp(7rem, 22vw, 11rem);
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  pointer-events: none;
+  color: rgb(244 216 150);
+}
+.reticle svg { width: 100%; height: 100%; overflow: visible; }
+.reticleSpin { transform-box: fill-box; transform-origin: center; }
+@keyframes spin { to { rotate: 360deg; } }
+@media (prefers-reduced-motion: no-preference) {
+  .map[data-live] .reticleSpin { animation: spin 60s linear infinite; }
+}
+
+/* ───────────── Console (booking & request forms on night bands): calm smoked glass ───────────── */
+.console {
+  position: relative;
+  isolation: isolate;
+  border-radius: 1.25rem;
+  border: 1px solid rgb(255 255 255 / 0.11);
+  background:
+    linear-gradient(165deg, rgb(255 255 255 / 0.075), rgb(255 255 255 / 0.015) 38%, rgb(255 255 255 / 0.035)),
+    rgb(17 13 10 / 0.86);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.09), 0 40px 90px -46px rgb(0 0 0 / 0.9);
+}
+/* Phones/tablets: a tall console over a mostly flat band — no backdrop surface to re-render on scroll. */
+@media (min-width: 1024px) {
+  .console {
+    background:
+      linear-gradient(165deg, rgb(255 255 255 / 0.075), rgb(255 255 255 / 0.015) 38%, rgb(255 255 255 / 0.035)),
+      rgb(17 13 10 / 0.74);
+    -webkit-backdrop-filter: blur(10px) saturate(125%);
+    backdrop-filter: blur(10px) saturate(125%);
+  }
+}
+.console::after {
+  content: "";
+  position: absolute;
+  inset-inline: 10%;
+  top: -1px;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgb(240 214 160 / 0.7), transparent);
+}
+/* A ticket: perforation between the head and the body. */
+.perf {
+  position: relative;
+  height: 1px;
+  background-image: linear-gradient(90deg, var(--pub-line) 50%, transparent 50%);
+  background-size: 8px 1px;
+}
+.perf::before,
+.perf::after {
+  content: "";
+  position: absolute;
+  top: -0.5rem;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 9999px;
+  background: var(--pub-night);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.11);
+  clip-path: inset(0 0 0 50%);
+}
+.perf::after { clip-path: inset(0 50% 0 0); }
+.perf::before { left: calc(var(--perf-pad, 1.75rem) * -1 - 0.5rem); }
+.perf::after { right: calc(var(--perf-pad, 1.75rem) * -1 - 0.5rem); }
+
+/* ───────────── Glass that only floats where the photo is big enough (≥1280px); plain text below ───────────── */
+@media (min-width: 1280px) {
+  .floatGlass {
+    position: relative;
+    isolation: isolate;
+    border-radius: 1.25rem;
+    padding: 2.25rem;
+    border: 1px solid rgb(255 255 255 / 0.15);
+    background: linear-gradient(155deg, rgb(255 255 255 / 0.12), rgb(255 255 255 / 0.03) 46%, rgb(255 255 255 / 0.06)), rgb(14 11 8 / 0.5);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.16), 0 30px 70px -32px rgb(0 0 0 / 0.75);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    backdrop-filter: blur(16px) saturate(140%);
+  }
+  .floatGlass::after {
+    content: "";
+    position: absolute;
+    inset-inline: 12%;
+    top: -1px;
+    height: 1px;
+    pointer-events: none;
+    background: linear-gradient(90deg, transparent, rgb(240 214 160 / 0.75), transparent);
+  }
+}
+
+/* ───────────── Experience tiles: HUD brackets close in on hover ───────────── */
+.tileHud {
+  position: absolute;
+  inset: 0.75rem;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0;
+  scale: 1.06;
+  transition: opacity 400ms var(--ease-pub), scale 600ms var(--ease-pub);
+  --c: rgb(244 220 168 / 0.9);
+  --l: 1rem;
+  background:
+    linear-gradient(var(--c), var(--c)) top left / var(--l) 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) top left / 1px var(--l) no-repeat,
+    linear-gradient(var(--c), var(--c)) top right / var(--l) 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) top right / 1px var(--l) no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom left / var(--l) 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom left / 1px var(--l) no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom right / var(--l) 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom right / 1px var(--l) no-repeat;
+}
+:global(.group):hover .tileHud,
+:global(.group):focus-within .tileHud { opacity: 1; scale: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .tileHud { transition: none; scale: 1; }
+}
+
+/* ───────────── 404 / error: a compass that has lost its bearing, and outline numerals ───────────── */
+.compass {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(44rem, 135vw);
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  z-index: -1;
+  pointer-events: none;
+  color: rgb(227 189 106);
+  -webkit-mask-image: radial-gradient(closest-side, #000 60%, transparent);
+  mask-image: radial-gradient(closest-side, #000 60%, transparent);
+}
+.compass svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.compassDial,
+.compassNeedle { transform-origin: 50% 50%; }
+@keyframes drift {
+  0% { rotate: -14deg; }
+  50% { rotate: 22deg; }
+  100% { rotate: -14deg; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .lost[data-live] .compassDial { animation: drift 26s var(--ease-pub) infinite; }
+  .lost[data-live] .compassNeedle { animation: drift 9s var(--ease-pub) infinite reverse; }
+}
+.outline {
+  color: transparent;
+  -webkit-text-stroke: 1px rgb(227 189 106 / 0.5);
+  background: linear-gradient(to bottom, rgb(227 189 106 / 0.16), rgb(227 189 106 / 0) 80%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  font-feature-settings: "lnum" 1;
+}
+
+/* ───────────── Verify seal: rings and ticks around the verdict ───────────── */
+.seal {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 5.5rem;
+  height: 5.5rem;
+}
+.seal svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.sealSpin { transform-box: fill-box; transform-origin: center; }
+@media (prefers-reduced-motion: no-preference) {
+  .seal[data-live] .sealSpin { animation: spin 48s linear infinite; }
+}
+
+/* ───────────── Mini route (trip page): a dashed road with a light travelling down it ───────────── */
+.miniRoad {
+  position: relative;
+  background-image: linear-gradient(to bottom, rgb(227 189 106 / 0.75) 50%, transparent 50%);
+  background-size: 1px 6px;
+}
+.miniRoad::after {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: 0;
+  width: 3px;
+  height: 40%;
+  translate: 0 -100%;
+  opacity: 0;
+  background: linear-gradient(to bottom, transparent, rgb(255 236 196), transparent);
+}
+/* The light's own height is 40% of the road, so -100% → 150% runs it from above the road to its foot. */
+@keyframes miniRun {
+  0% { translate: 0 -100%; opacity: 0; }
+  12% { opacity: 1; }
+  70% { opacity: 1; }
+  100% { translate: 0 150%; opacity: 0; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .route[data-live] .miniRoad::after { animation: miniRun 3.2s var(--ease-pub) infinite; }
+}

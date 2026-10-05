@@ -93,10 +93,27 @@ export function useLightbox(images: LightboxImage[]) {
     >
       {current && (
         <div className="flex h-full w-full flex-col pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)]" onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
-          <div className="flex items-center justify-between gap-4 px-4 py-3 sm:px-6">
-            <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-white/70 tabular-nums" aria-live="polite">
-              {index! + 1} <span className="text-white/40">/ {images.length}</span>
+          <div className="flex items-center justify-between gap-4 px-4 py-3 sm:gap-8 sm:px-6">
+            <p className="flex shrink-0 items-center gap-2.5 font-mono text-[11px] font-medium uppercase tracking-[0.2em] text-white/80 tabular-nums" aria-live="polite">
+              <span aria-hidden="true" className="h-px w-4 bg-gold" />
+              <span>
+                {String(index! + 1).padStart(2, "0")} <span className="text-white/45">/ {String(images.length).padStart(2, "0")}</span>
+              </span>
             </p>
+            {/* Where you are in the set: one hairline segment per photo (a single line for long sets). */}
+            {images.length > 1 && (
+              <span aria-hidden="true" className="hidden h-px min-w-0 max-w-xl flex-1 gap-1 sm:flex">
+                {images.length <= 24 ? (
+                  images.map((img, i) => (
+                    <span key={img.src} className={`h-px flex-1 transition-colors duration-300 motion-reduce:transition-none ${i === index ? "bg-gold" : i < index! ? "bg-white/40" : "bg-white/15"}`} />
+                  ))
+                ) : (
+                  <span className="relative h-px flex-1 bg-white/15">
+                    <span className="absolute inset-y-0 left-0 bg-gold" style={{ width: `${((index! + 1) / images.length) * 100}%` }} />
+                  </span>
+                )}
+              </span>
+            )}
             <button type="button" onClick={close} autoFocus className={control}>
               <X className="size-5" strokeWidth={1.6} aria-hidden="true" />
               <span className="sr-only">Close photo viewer</span>
@@ -109,6 +126,11 @@ export function useLightbox(images: LightboxImage[]) {
             onTouchEnd={onTouchEnd}
           >
             <div className="relative h-full w-full">
+              <span
+                aria-hidden="true"
+                className="pub-hud-corners hidden sm:block"
+                style={{ "--hud-o": "0.5rem", "--hud-l": "1.25rem", "--hud-c": "rgb(240 214 160 / 0.5)" } as React.CSSProperties}
+              />
               <Image
                 key={current.src}
                 src={current.src}

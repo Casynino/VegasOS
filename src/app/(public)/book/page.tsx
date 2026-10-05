@@ -17,8 +17,9 @@ import { ResultsSkeleton } from "@/components/public/booking/results-skeleton";
 import { telHref, whatsappHref } from "@/components/public/contact";
 import { getSiteContent } from "@/server/services/site-content";
 import {
-  Actions, Eyebrow, Heading, InfoList, LinkButton, MediaFrame, PageIntro, Section, TextLink, surface, typeScale,
+  Actions, Eyebrow, GlassPanel, Heading, HudLabel, InfoList, LinkButton, MediaFrame, PageIntro, Section, TextLink, typeScale,
 } from "@/components/public/kit";
+import fx from "@/components/public/room-fx.module.css";
 import { StaySearchForm } from "@/components/public/stay-search-form";
 import { confirmBookingAction, payAndBookAction, reviewBookingAction } from "./actions";
 import { onlinePayAvailable } from "@/server/services/online-pay";
@@ -55,7 +56,7 @@ export default async function BookPage({ searchParams }: PageProps<"/book">) {
   // ── Online booking switched off: contact-to-book ──
   if (!stayWindow.enabled) {
     return (
-      <Shell title="Book your stay" lede={c.pages.book.pausedIntro}>
+      <Shell title="Book your stay" lede={c.pages.book.pausedIntro} step={0}>
         <div className="mx-auto max-w-xl py-6 text-center sm:py-10">
           <Heading as="h2" size="subheading">Contact us to book</Heading>
           <p className={cn(typeScale.body, "mx-auto mt-3 max-w-md text-pub-muted")}>Tell us your dates and we’ll reserve the room for you.</p>
@@ -121,15 +122,15 @@ export default async function BookPage({ searchParams }: PageProps<"/book">) {
       ? "Choose your dates and guests to see live availability and prices — pay now by mobile money, or at the hotel."
       : c.pages.book.intro;
     return (
-      <Shell title="Book your stay" lede={intro}>
+      <Shell title="Book your stay" lede={intro} step={1}>
         <BookingProgress current={1} />
-        <div className="mt-8 grid gap-12 lg:mt-10 lg:grid-cols-12 lg:gap-x-10">
+        <div className="mt-8 grid gap-12 lg:mt-12 lg:grid-cols-12 lg:gap-x-10">
           <div className="min-w-0 lg:col-span-8">
             {parsed.kind === "invalid" && <Notice className="mb-6">Please check the highlighted fields.</Notice>}
             {preferredType && (
-              <div className="mb-6 flex items-center gap-4 border-y border-pub-line py-4">
+              <div className={cn(fx.card, "relative mb-5 flex items-center gap-4 p-3 pr-5")}>
                 {preferredType.images[0] && (
-                  <MediaFrame src={preferredType.images[0]} alt="" ratio="1/1" sizes="72px" className="w-[4.5rem] shrink-0" />
+                  <MediaFrame src={preferredType.images[0]} alt="" ratio="1/1" sizes="72px" rounded="soft" className="w-[4.5rem] shrink-0" />
                 )}
                 <p className="min-w-0 leading-snug">
                   <span className={cn(typeScale.meta, "block text-pub-eyebrow")}>You’re booking</span>
@@ -138,9 +139,9 @@ export default async function BookPage({ searchParams }: PageProps<"/book">) {
                 </p>
               </div>
             )}
-            <div className={surface.panel}>
+            <SearchConsole>
               {searchForm(parsed.kind === "invalid" ? parsed.partial : {}, parsed.kind === "invalid" ? parsed.errors : undefined)}
-            </div>
+            </SearchConsole>
             {windowFacts}
           </div>
           <TalkToUs phone={settings.phone} whatsapp={settings.whatsapp} />
@@ -161,11 +162,11 @@ export default async function BookPage({ searchParams }: PageProps<"/book">) {
   // ── Editing the search (from the summary "Change" link) ──
   if (one(raw.edit) === "1") {
     return (
-      <Shell title="Change your search">
+      <Shell title="Change your search" step={1}>
         <BookingProgress current={1} />
-        <div className="mt-8 grid gap-12 lg:mt-10 lg:grid-cols-12 lg:gap-x-10">
+        <div className="mt-8 grid gap-12 lg:mt-12 lg:grid-cols-12 lg:gap-x-10">
           <div className="min-w-0 lg:col-span-8">
-            <div className={surface.panel}>{searchForm(stay)}</div>
+            <SearchConsole>{searchForm(stay)}</SearchConsole>
             {windowFacts}
           </div>
           <TalkToUs phone={settings.phone} whatsapp={settings.whatsapp} />
@@ -186,7 +187,7 @@ export default async function BookPage({ searchParams }: PageProps<"/book">) {
     }
     const backToRooms = stayHref(stay, { type: preferred });
     return (
-      <Shell title="Complete your booking" top={summary}>
+      <Shell title="Complete your booking" top={summary} step={3}>
         {problem || !quote ? (
           <div role="alert" className="mx-auto max-w-xl py-6 text-center sm:py-10">
             <AlertCircle className="mx-auto size-9 text-pub-eyebrow" strokeWidth={1.2} aria-hidden="true" />
@@ -222,9 +223,9 @@ export default async function BookPage({ searchParams }: PageProps<"/book">) {
 
   // ── Step 2: available rooms ──
   return (
-    <Shell title="Choose your room" top={summary}>
+    <Shell title="Choose your room" top={summary} step={2}>
       <BookingProgress current={2} />
-      <div className="mt-8 lg:mt-10">
+      <div className="mt-8 lg:mt-12">
         <Suspense key={`${stay.checkIn}-${stay.checkOut}-${stay.adults}-${stay.children}`} fallback={<ResultsSkeleton />}>
           <AvailabilityResults params={stay} preferred={preferred} today={stayWindow.today} maxArrival={stayWindow.maxArrival} online={online} />
         </Suspense>
@@ -233,50 +234,83 @@ export default async function BookPage({ searchParams }: PageProps<"/book">) {
   );
 }
 
-/** Night band (eyebrow, page title, one line, the search) over a paper work area. */
-function Shell({ title, lede, top, children }: { title: string; lede?: string; top?: React.ReactNode; children: React.ReactNode }) {
+/**
+ * Night band (eyebrow, page title, one line, the search readout) over a calm paper work area
+ * drawn on a faint drafting grid — the booking console. `step` sets the HUD line opposite the
+ * title on desktop (0 = none).
+ */
+function Shell({ title, lede, top, step, children }: { title: string; lede?: string; top?: React.ReactNode; step: number; children: React.ReactNode }) {
   return (
     <div className="flex flex-1 flex-col">
-      <PageIntro eyebrow="Reservations" title={title} lede={lede} space="sm" id="book-title">
+      <PageIntro
+        eyebrow="Reservations"
+        title={title}
+        lede={lede}
+        space="sm"
+        id="book-title"
+        meta={step > 0 ? <>Booking console · step {String(step).padStart(2, "0")} / 05</> : undefined}
+      >
         {top}
       </PageIntro>
-      <Section as="div" space="sm" width="wide" className="flex-1 pb-20 sm:pb-24 lg:pb-24">
+      <Section as="div" space="sm" width="wide" atmosphere="calm" pattern="grid" className="flex-1 pb-20 sm:pb-24 lg:pb-28">
         {children}
       </Section>
     </div>
   );
 }
 
-/** The search on the night band: dates, nights, guests and a way to change them. */
+/** Step 1: the search in a console card, with its live label. */
+function SearchConsole({ children }: { children: React.ReactNode }) {
+  return (
+    <div className={cn(fx.card, "relative p-5 sm:p-7")}>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-pub-line pb-4">
+        <HudLabel live>Live availability</HudLabel>
+        <span aria-hidden="true" className="font-mono text-[10px] uppercase tracking-[0.2em] text-pub-muted sm:text-[11px]">Dates · guests · room type</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/** The search on the night band, as a glass readout: check-in → check-out, nights, guests, change. */
 function StaySummary({ stay, changeHref }: { stay: StayParams; changeHref: string }) {
   const nights = Math.round((Date.parse(stay.checkOut) - Date.parse(stay.checkIn)) / 86_400_000);
-  const dt = cn(typeScale.meta, "text-pub-muted");
-  const dd = "mt-1 font-display text-[1.375rem] leading-tight text-pub-fg lining-nums";
+  const dt = "font-mono text-[10px] uppercase tracking-[0.2em] text-pub-muted sm:text-[11px]";
+  const dd = "mt-1.5 font-display text-[1.25rem] font-medium leading-tight text-pub-fg lining-nums sm:text-[1.5rem]";
+  const cell = "min-w-0 px-4 py-3.5 sm:px-5 sm:py-4";
   return (
-    <div className="mt-7 flex flex-col gap-4 border-t border-pub-line pt-5 sm:mt-8 sm:flex-row sm:items-end sm:justify-between sm:gap-8">
-      <dl className="grid grid-cols-2 gap-x-8 gap-y-4 sm:flex sm:flex-wrap sm:gap-x-12">
-        <div className="col-span-2">
-          <dt className={dt}>Dates</dt>
-          <dd className={dd}>{formatDay(stay.checkIn)} → {formatDay(stay.checkOut)}</dd>
+    <GlassPanel variant="clear" padding="none" rounded="md" className="mt-7 sm:mt-9">
+      <div className="flex flex-col sm:flex-row sm:items-stretch">
+        <dl className="grid min-w-0 flex-1 grid-cols-2 sm:grid-cols-[minmax(0,1.25fr)_minmax(0,1.25fr)_minmax(0,0.7fr)_minmax(0,1.1fr)]">
+          <div className={cn(cell, "border-b border-r border-pub-line sm:border-b-0")}>
+            <dt className={dt}>Check-in</dt>
+            <dd className={dd}>{formatDay(stay.checkIn)}</dd>
+          </div>
+          <div className={cn(cell, "border-b border-pub-line sm:border-b-0 sm:border-r")}>
+            <dt className={dt}>Check-out</dt>
+            <dd className={dd}>{formatDay(stay.checkOut)}</dd>
+          </div>
+          <div className={cn(cell, "border-r border-pub-line")}>
+            <dt className={dt}>Nights</dt>
+            <dd className={dd}>{String(nights).padStart(2, "0")}</dd>
+          </div>
+          <div className={cn(cell, "sm:border-r sm:border-pub-line")}>
+            <dt className={dt}>Guests</dt>
+            <dd className={dd}>{guestsLabel(stay.adults, stay.children)}</dd>
+          </div>
+        </dl>
+        <div className="flex items-center border-t border-pub-line px-4 py-1 sm:border-t-0 sm:px-6 sm:py-0">
+          <TextLink href={changeHref}>Change search</TextLink>
         </div>
-        <div>
-          <dt className={dt}>Nights</dt>
-          <dd className={dd}>{nights}</dd>
-        </div>
-        <div>
-          <dt className={dt}>Guests</dt>
-          <dd className={dd}>{guestsLabel(stay.adults, stay.children)}</dd>
-        </div>
-      </dl>
-      <TextLink href={changeHref} className="self-start sm:self-auto">Change search</TextLink>
-    </div>
+      </div>
+    </GlassPanel>
   );
 }
 
 /** Steps 1 and edit: another way to book, for guests who would rather talk. */
 function TalkToUs({ phone, whatsapp }: { phone: string | null; whatsapp: string | null }) {
   return (
-    <aside aria-labelledby="talk-title" className="min-w-0 lg:col-span-3 lg:col-start-10">
+    <aside aria-labelledby="talk-title" className="min-w-0 lg:col-span-3 lg:col-start-10 lg:pt-2">
       <Eyebrow as="h2" rule>
         <span id="talk-title">Prefer to talk?</span>
       </Eyebrow>
@@ -284,8 +318,10 @@ function TalkToUs({ phone, whatsapp }: { phone: string | null; whatsapp: string 
       <ul className="mt-4 border-t border-pub-line">
         {phone && (
           <li className="border-b border-pub-line">
-            <a href={telHref(phone)} className="flex min-h-12 items-center gap-3 text-[15px] text-pub-fg transition-colors duration-200 hover:text-pub-eyebrow focus-visible:outline-2 focus-visible:outline-gold motion-reduce:transition-none">
-              <Phone className="size-4 shrink-0 text-pub-eyebrow" strokeWidth={1.6} aria-hidden="true" />
+            <a href={telHref(phone)} className="group flex min-h-12 items-center gap-3 text-[15px] text-pub-fg transition-colors duration-200 hover:text-pub-eyebrow focus-visible:outline-2 focus-visible:outline-gold motion-reduce:transition-none">
+              <span className="grid size-8 shrink-0 place-items-center rounded-full border border-pub-eyebrow/35 text-pub-eyebrow">
+                <Phone className="size-3.5" strokeWidth={1.6} aria-hidden="true" />
+              </span>
               {phone}
             </a>
           </li>
@@ -296,9 +332,11 @@ function TalkToUs({ phone, whatsapp }: { phone: string | null; whatsapp: string 
               href={whatsappHref(whatsapp, "Hello, I would like to book a room.")}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex min-h-12 items-center gap-3 text-[15px] text-pub-fg transition-colors duration-200 hover:text-pub-eyebrow focus-visible:outline-2 focus-visible:outline-gold motion-reduce:transition-none"
+              className="group flex min-h-12 items-center gap-3 text-[15px] text-pub-fg transition-colors duration-200 hover:text-pub-eyebrow focus-visible:outline-2 focus-visible:outline-gold motion-reduce:transition-none"
             >
-              <MessageCircle className="size-4 shrink-0 text-pub-eyebrow" strokeWidth={1.6} aria-hidden="true" />
+              <span className="grid size-8 shrink-0 place-items-center rounded-full border border-pub-eyebrow/35 text-pub-eyebrow">
+                <MessageCircle className="size-3.5" strokeWidth={1.6} aria-hidden="true" />
+              </span>
               WhatsApp<span className="sr-only"> (opens in a new tab)</span>
             </a>
           </li>
@@ -313,8 +351,8 @@ function TalkToUs({ phone, whatsapp }: { phone: string | null; whatsapp: string 
 function SelectionLine({ quote }: { quote: SelectionQuote }) {
   const img = quote.type.images[0];
   return (
-    <div className="flex items-center gap-4 border-y border-pub-line py-4">
-      {img && <MediaFrame src={img} alt="" ratio="1/1" sizes="64px" className="w-16 shrink-0" />}
+    <div className={cn(fx.card, "relative flex items-center gap-4 p-3 pr-4")}>
+      {img && <MediaFrame src={img} alt="" ratio="1/1" sizes="64px" rounded="soft" className="w-16 shrink-0" />}
       <p className="min-w-0 flex-1 leading-snug">
         <span className="block truncate font-display text-[1.25rem] leading-tight">
           {quote.selection.rooms > 1 ? `${quote.selection.rooms} × ` : ""}{quote.type.name}
@@ -331,10 +369,20 @@ function SelectionAside({ quote }: { quote: SelectionQuote }) {
   const img = quote.type.images[0];
   return (
     <aside aria-label="Your selection" className="hidden min-w-0 lg:col-span-4 lg:col-start-9 lg:block">
-      <div className="sticky top-24 overflow-hidden rounded-[1rem] border border-pub-line bg-pub-raised">
-        {img && <MediaFrame src={img} alt={`${quote.type.name} at Vegas Luxury Hotel`} ratio="3/2" sizes="(min-width: 1024px) 30vw, 100vw" />}
+      <div className={cn(fx.card, "sticky top-24 overflow-hidden")}>
+        {img && (
+          <div className="relative p-2.5 pb-0">
+            <MediaFrame src={img} alt={`${quote.type.name} at Vegas Luxury Hotel`} ratio="3/2" rounded="soft" sizes="(min-width: 1024px) 30vw, 100vw" />
+            <span aria-hidden="true" className="pub-hud-corners" style={{ "--hud-o": "-1.25rem", "--hud-l": "0.875rem", "--hud-c": "rgb(244 220 168 / 0.85)" } as React.CSSProperties} />
+          </div>
+        )}
         <div className="p-6 xl:p-7">
-          <Eyebrow>Your selection</Eyebrow>
+          <div className="flex items-center justify-between gap-4">
+            <HudLabel>Your selection</HudLabel>
+            <span aria-hidden="true" className="font-mono text-[10px] uppercase tracking-[0.2em] text-pub-muted sm:text-[11px]">
+              {String(quote.nights).padStart(2, "0")} night{quote.nights === 1 ? "" : "s"}
+            </span>
+          </div>
           <p className={cn(typeScale.subheading, "mt-3")}>{quote.selection.rooms > 1 ? `${quote.selection.rooms} × ` : ""}{quote.type.name}</p>
           <InfoList
             className="mt-3"

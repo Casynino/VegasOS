@@ -33,7 +33,7 @@ export const typeScale = {
   /** Facts line: "2 guests · King bed · Breakfast included". */
   meta: "text-[11px] font-medium uppercase leading-[1.5] tracking-[0.16em] sm:text-xs",
   /** Buttons and text links. */
-  cta: "text-[12px] font-semibold uppercase tracking-[0.16em]",
+  cta: "text-[13px] font-medium tracking-[0.01em] sm:text-sm",
   /** Amounts (pair with a size). */
   price: "font-display font-medium lining-nums tabular-nums",
 } as const;

@@ -12,16 +12,24 @@
  * scrolled. First block: <Section first> / <PageIntro> / pt-[calc(var(--pub-header-h)+…)].
  * Sticky bars under the header: top-16. Anchors: scroll-mt-header (Section with id does it).
  *
+ * Atmosphere: every Section/PageIntro/PageHero/footer paints a living background by itself (light,
+ * line work, grain, beam, dissolve). HUD + glass: HudLabel, SectionIndex, HudFrame, GlassPanel,
+ * Spotlight. Motion: MaskReveal, ParallaxMedia / MediaFrame parallax+reveal, Marquee.
+ *
  * Full guide (scale, rhythm, do/don't): see the design-system doc handed to page builders.
  */
 export * from "./tokens";
-export { Section, Container, toneAttr, type SectionGlow } from "./section";
+export { Section, Container, toneAttr, type SectionGlow, type SectionMarker } from "./section";
+export { Atmosphere, type AtmosphereLevel, type AtmospherePattern, type AtmosphereOptions } from "./atmosphere";
+export { HudLabel, SectionIndex, HudFrame, GlassPanel, Spotlight, HOTEL_COORDS } from "./hud";
+export { Marquee } from "./marquee";
+export { ParallaxLayer } from "./parallax";
 export { Eyebrow, Heading, Display, Accent, Lede, SectionIntro } from "./typography";
 export { LinkButton, Button, TextLink, Actions, buttonClass, type ButtonVariant, type ButtonSize } from "./button";
 export { PriceTag } from "./price-tag";
-export { MediaFrame, IllustrativeTag, type MediaOverlay } from "./media-frame";
+export { MediaFrame, ParallaxMedia, IllustrativeTag, type MediaOverlay } from "./media-frame";
 export { Rail } from "./rail";
 export { EditorialSplit } from "./editorial-split";
 export { InfoList, FeatureList, type InfoItem, type FeatureItem } from "./info-list";
 export { PageIntro } from "./page-intro";
-export { Reveal, Stagger, StaggerItem } from "../reveal";
+export { Reveal, Stagger, StaggerItem, MaskReveal } from "../reveal";

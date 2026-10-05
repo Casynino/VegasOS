@@ -5,33 +5,51 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
 import type { ActionResult } from "@/server/errors";
-import type { QrLanding, QrQuote, QrSearchResult } from "@/server/services/hotel-qr";
+import type { QrLanding, QrQuote, QrRoomOffer, QrRoomType, QrSearchResult } from "@/server/services/hotel-qr";
+import type { QrExplore } from "@/server/services/hotel-qr-explore";
 import { qrBookAction, qrQuoteAction, qrSearchAction, recordQrEventAction } from "@/app/b/[token]/actions";
 import { useWho } from "@/components/restaurant/who";
-import { StaySummary } from "./ui";
+import { StaySummary, useBackClose } from "./ui";
 import { DatesSheet } from "./dates-sheet";
 import { Landing } from "./landing";
-import { RoomsView, TypeView, type Shell } from "./rooms";
-import { ResultsView } from "./results";
-import { RoomView } from "./room";
-import { checkDetails, DetailsView, NO_DETAILS, type Details } from "./details";
-import { BookedView, PayView, type PayWay } from "./pay";
+import { bestOffer, ResultsView, type Shell, type TypeGroup } from "./results";
+import { BookView } from "./book";
+import { checkDetails, EXTRA_FIELDS, NO_DETAILS, type Details } from "./details";
+import { BookedView, type PayWay } from "./pay";
+import { TypeSheet } from "./type-sheet";
+import { PhotoViewerProvider } from "./viewer";
 import {
-  dayWeek, flowUrl, guestsText, newKey, nightsOf, nightsText, parseLastBooking, payPhoneOk, readFlow, readLastBooking, saveLastBooking, stayKey,
-  subscribeLastBooking, tzs, visitorId, type Flow, type StayQuery,
+  dayWeek, defaultStay, flowUrl, guestsText, historyDepth, newKey, nightsOf, nightsText, parseLastBooking, parseSavedGuest, payPhoneOk, readFlow,
+  readLastBooking, readSavedGuest, saveGuest, saveLastBooking, stayFor, stayKey, subscribeLastBooking, subscribeSavedGuest, tzs, visitorId,
+  type Flow, type StayQuery,
 } from "./lib";
 
+const noSubscribe = () => () => {};
 const OFFLINE: Extract<ActionResult, { ok: false }> = { ok: false, error: "No connection — please check your internet and try again." };
-/** Server field names that belong to the details step. */
+/** Server field names that belong to the details step, and where each one is on the screen. */
+const FIELD_ID: Record<string, string> = {
+  fullName: "qr-name", phone: "qr-phone", email: "qr-email", arrivalTime: "qr-arrival", transportTime: "qr-landing", flightNumber: "qr-flight", payPhone: "qr-pay-phone",
+};
 const DETAIL_FIELDS = ["fullName", "phone", "email", "arrivalTime", "transportTime", "flightNumber"];
 
 /**
- * THE HOTEL BOOKING QR APP (/b/<token>) — Scan → hotel → rooms → availability → room → details → pay → confirm.
- * Each step is its own screen with a back arrow and its button at the bottom; the step, dates, guests and room live in
- * the address, so the phone's Back goes back a step and a reload keeps the place. Everything is asked of the server
- * (rooms free, prices, the booking, the payment) through the QR's actions — nothing the page holds is trusted.
+ * THE HOTEL BOOKING QR APP (/b/<token>) — explore the hotel, then book in three steps:
+ *   1. dates & guests (the booking bar — tonight → tomorrow already chosen — or a room's Book; the dates sheet to change),
+ *   2. choose your room (the free rooms, priced; one tap on Book),
+ *   3. your details & pay on one screen (one gold button) → the payment page or the confirmation.
+ * The step, dates, guests and room live in the address, so the phone's Back goes back a step and a reload keeps the
+ * place; a room's sheet and the photo viewer close with Back too. Everything is asked of the server (rooms free,
+ * prices, the booking, the payment) through the QR's actions — nothing the page holds is trusted.
  */
-export function HotelQrApp({ token, landing }: { token: string; landing: QrLanding }) {
+export function HotelQrApp({ token, landing, explore }: { token: string; landing: QrLanding; explore: QrExplore }) {
+  return (
+    <PhotoViewerProvider>
+      <QrFlow token={token} landing={landing} explore={explore} />
+    </PhotoViewerProvider>
+  );
+}
+
+function QrFlow({ token, landing, explore }: { token: string; landing: QrLanding; explore: QrExplore }) {
   const base = `/b/${token}`;
   const router = useRouter();
   const sp = useSearchParams();
@@ -43,36 +61,36 @@ export function HotelQrApp({ token, landing }: { token: string; landing: QrLandi
   const roomPhotos = useMemo(() => hotel.photos.filter((p) => p.category === "rooms").map((p) => p.src).slice(0, 6), [hotel.photos]);
   const imagesOf = useCallback((t: { images: string[] }) => (t.images.length ? t.images : roomPhotos.length ? roomPhotos : [hotel.hero.src]), [roomPhotos, hotel.hero.src]);
 
-  // ── Moving between steps (the address is the state) ──
-  const pushed = useRef(0);
+  // ── Moving between steps (the address is the state; each entry knows how deep in the app it is) ──
   const sheetPushed = useRef(false);
   useEffect(() => {
-    const pop = () => { pushed.current = Math.max(0, pushed.current - 1); sheetPushed.current = false; };
+    const pop = () => { sheetPushed.current = false; };
     window.addEventListener("popstate", pop);
     return () => window.removeEventListener("popstate", pop);
   }, []);
   const go = useCallback((patch: Partial<Flow>, how: "push" | "replace" = "push") => {
     const url = flowUrl(base, { ...flow, sheet: false, ...patch });
-    if (how === "push") { pushed.current += 1; window.history.pushState(null, "", url); } else window.history.replaceState(null, "", url);
+    if (how === "push") window.history.pushState({ vqr: historyDepth() + 1 }, "", url);
+    else window.history.replaceState({ vqr: historyDepth() }, "", url);
   }, [base, flow]);
   /** Back: the step before (the phone's history); opened straight on a step, its parent step. */
-  const back = (parent: Partial<Flow>) => { if (pushed.current > 0) window.history.back(); else go(parent, "replace"); };
+  const back = (parent: Partial<Flow>) => { if (historyDepth() > 0) window.history.back(); else go(parent, "replace"); };
 
-  const openSheet = (roomType?: string | null) => {
-    sheetPushed.current = true;
-    go({ sheet: true, roomType: roomType === undefined ? flow.roomType : roomType });
-  };
+  const openSheet = () => { sheetPushed.current = true; go({ sheet: true }); };
   const closeSheet = () => {
     if (sheetPushed.current) { sheetPushed.current = false; window.history.back(); } else go({ sheet: false }, "replace");
   };
 
+  // ── Which screen (older links: "rooms"/"type" open the hotel, "room"/"pay" the details & pay step) ──
+  const step = flow.view === "rooms" || flow.view === "type" ? "home" : flow.view === "room" || flow.view === "pay" ? "details" : flow.view;
+
   // A new step starts at the top.
-  const shownView = useRef(flow.view);
+  const shownView = useRef(step);
   useEffect(() => {
-    if (shownView.current === flow.view) return;
-    shownView.current = flow.view;
+    if (shownView.current === step) return;
+    shownView.current = step;
     window.scrollTo({ top: 0, behavior: "instant" });
-  }, [flow.view]);
+  }, [step]);
 
   // ── The scan: counted once per visit (this tab), by the page itself — link previews and bots do not count ──
   useEffect(() => {
@@ -81,14 +99,21 @@ export function HotelQrApp({ token, landing }: { token: string; landing: QrLandi
     recordQrEventAction(token, { type: "SCAN", visitor: visitorId() }).catch(() => null);
   }, [token]);
 
-  // ── The booking made a moment ago in this tab ──
+  // ── The booking made a moment ago in this tab (read once the page is running here — until then "booked" waits) ──
+  const running = useSyncExternalStore(noSubscribe, () => true, () => false);
   const lastRaw = useSyncExternalStore(subscribeLastBooking, readLastBooking, () => null);
   const last = useMemo(() => parseLastBooking(lastRaw, token), [lastRaw, token]);
 
-  // ── Check availability: the rooms free for the stay in the address ──
+  // ── The stay the booking bar shows: the last one the guest chose (Back to the hotel keeps it), else tonight →
+  //    tomorrow. A stay fitted to one room type ("Book" on a Single: 1 guest) does not change the bar. ──
+  const [kept, setKept] = useState<StayQuery | null>(flow.roomType ? null : flow.stay);
+  if (flow.stay && !flow.roomType && (!kept || stayKey(flow.stay) !== stayKey(kept))) setKept(flow.stay);
+  const barStay = kept && kept.checkIn >= w.today ? kept : defaultStay(w);
+
+  // ── 2. The rooms free for the stay in the address ──
   const sKey = flow.stay ? stayKey(flow.stay, flow.roomType ?? "") : null;
   const [search, setSearch] = useState<{ key: string; res: ActionResult<QrSearchResult> } | null>(null);
-  const wantSearch = flow.view === "results" && sKey !== null && search?.key !== sKey;
+  const wantSearch = step === "results" && sKey !== null && search?.key !== sKey;
   useEffect(() => {
     if (!wantSearch || !flow.stay || !sKey) return;
     let live = true;
@@ -102,9 +127,9 @@ export function HotelQrApp({ token, landing }: { token: string; landing: QrLandi
   const searched = search?.key === sKey ? search.res : null;
   const result = searched?.ok ? searched.data : null;
 
-  // ── The room picked: checked again and priced for the stay ──
-  const needsRoom = flow.view === "room" || flow.view === "details" || flow.view === "pay";
-  // Back from the payment page to a step of the room just booked: that booking, not the form (the room is theirs now).
+  // ── 3. The room picked: checked again and priced for the stay ──
+  const needsRoom = step === "details";
+  // Back from the payment page to the step of the room just booked: that booking, not the form (the room is theirs now).
   const justBooked = !!last && !!flow.stay && last.room === flow.room && last.checkIn === flow.stay.checkIn && last.checkOut === flow.stay.checkOut;
   const qKey = flow.stay && flow.room ? stayKey(flow.stay, flow.room) : null;
   const [quote, setQuote] = useState<{ key: string; res: ActionResult<QrQuote> } | null>(null);
@@ -125,11 +150,17 @@ export function HotelQrApp({ token, landing }: { token: string; landing: QrLandi
   const offerType = result?.types.find((g) => g.rooms.some((o) => o.number === flow.room))?.type ?? null;
   const roomType = q?.type ?? offerType;
 
-  // ── The guest's details (remembered from the restaurant on this phone, when they ordered there) ──
+  // ── The guest's details: remembered on this phone from a booking here (or from the restaurant, when they ordered) ──
   const [who] = useWho();
+  const savedRaw = useSyncExternalStore(subscribeSavedGuest, readSavedGuest, () => null);
+  const saved = useMemo(() => parseSavedGuest(savedRaw), [savedRaw]);
   const [typed, setTyped] = useState<Partial<Details>>({});
-  const d: Details = { ...NO_DETAILS, fullName: who && !who.known ? who.name : "", phone: who?.phone ?? "", email: who?.email ?? "", ...typed };
+  const d: Details = {
+    ...NO_DETAILS, fullName: saved?.name ?? (who && !who.known ? who.name : ""), phone: saved?.phone ?? who?.phone ?? "", email: who?.email ?? "", ...typed,
+  };
+  const remembered = !!saved && typed.fullName === undefined && typed.phone === undefined;
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [extrasOpen, setExtrasOpen] = useState(false);
   const change = (patch: Partial<Details>) => {
     setTyped((t) => ({ ...t, ...patch }));
     setErrors((e) => {
@@ -137,6 +168,20 @@ export function HotelQrApp({ token, landing }: { token: string; landing: QrLandi
       for (const k of Object.keys(patch)) delete n[k];
       if ("landingTime" in patch) delete n.transportTime;
       return n;
+    });
+  };
+  const forget = () => { saveGuest(null); setTyped((t) => ({ ...t, fullName: "", phone: "" })); };
+  /** Show the guest what to fix: open the extras when it is there, and bring the first field into view. */
+  const showErrors = (e: Record<string, string>) => {
+    setErrors(e);
+    const first = Object.keys(e)[0];
+    if (!first) return;
+    if (Object.keys(e).some((k) => EXTRA_FIELDS.includes(k))) setExtrasOpen(true);
+    toast.error(e[first]);
+    requestAnimationFrame(() => {
+      const el = document.getElementById(FIELD_ID[first] ?? "");
+      el?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
+      el?.focus({ preventScroll: true });
     });
   };
 
@@ -152,19 +197,17 @@ export function HotelQrApp({ token, landing }: { token: string; landing: QrLandi
   const key = useRef<{ key: string; for: string } | null>(null);
   const [sending, startSending] = useTransition();
 
-  const toPay = () => {
-    const e = checkDetails(d);
-    setErrors(e);
-    if (Object.keys(e).length) { toast.error(Object.values(e)[0]); return; }
-    go({ view: "pay" });
-  };
-
   const book = () => startSending(async () => {
     const stay = flow.stay, room = flow.room;
     if (!stay || !room || !q) return;
     const e = checkDetails(d);
-    if (Object.keys(e).length) { setErrors(e); toast.error(Object.values(e)[0]); go({ view: "details" }); return; }
-    if (payWay === "ONLINE" && !payPhoneOk(payNumber)) { setPayError("Enter your mobile-money number, e.g. 0712 345 678."); return; }
+    if (Object.keys(e).length) { showErrors(e); return; }
+    if (payWay === "ONLINE" && !payPhoneOk(payNumber)) {
+      setPayError("Enter your mobile-money number, e.g. 0712 345 678.");
+      if (payPhone === null) setPayPhone(d.phone);
+      showErrors({ payPhone: "Enter your mobile-money number, e.g. 0712 345 678." });
+      return;
+    }
     setPayError(null);
     // One key per press; kept only when the answer was lost (the same press again finds the same booking) — and only
     // while the guest books the same thing: changed after a lost answer, it is a new booking with a new key.
@@ -184,8 +227,8 @@ export function HotelQrApp({ token, landing }: { token: string; landing: QrLandi
       if (!(res.code === "CONFLICT" && /being made/i.test(res.error))) key.current = null;
       const fe = res.fieldErrors ?? {};
       const mine = Object.keys(fe).filter((k) => DETAIL_FIELDS.includes(k));
-      if (fe.payPhone) { setPayError(res.error); return; }
-      if (mine.length) { setErrors(Object.fromEntries(mine.map((k) => [k, res.error]))); toast.error(res.error); go({ view: "details" }); return; }
+      if (fe.payPhone) { setPayError(res.error); if (payPhone === null) setPayPhone(d.phone); showErrors({ payPhone: res.error }); return; }
+      if (mine.length) { showErrors(Object.fromEntries(mine.map((k) => [k, res.error]))); return; }
       toast.error(res.error);
       if (res.code === "UNAVAILABLE" || (res.code === "VALIDATION" && Object.keys(fe).some((k) => ["checkIn", "checkOut", "adults", "children", "roomNumber"].includes(k)))) {
         setSearch(null); setQuote(null); go({ view: "results", room: null });
@@ -194,12 +237,14 @@ export function HotelQrApp({ token, landing }: { token: string; landing: QrLandi
     }
     key.current = null;
     const b = res.data;
+    // Remembered on this phone only, so the next booking here is two taps ("Not you?" forgets it).
+    saveGuest({ name: d.fullName.trim(), phone: d.phone.trim() });
     saveLastBooking({
       qr: token, reference: b.reference, confirmUrl: b.confirmUrl, payUrl: b.payUrl, payWay: b.payWay,
       room, typeName: q.type.name, checkIn: stay.checkIn, checkOut: stay.checkOut, total: q.total,
     });
     // Back from the payment page shows this booking, not the form again.
-    window.history.replaceState(null, "", flowUrl(base, { view: "booked", type: null, stay: null, roomType: null, room: null, sheet: false }));
+    window.history.replaceState({ vqr: historyDepth() }, "", flowUrl(base, { view: "booked", type: null, stay: null, roomType: null, room: null, sheet: false }));
     if (b.payUrl) router.push(b.payUrl);
     else {
       if (b.payWay === "ONLINE" && b.payError) toast.error(b.payError);
@@ -207,67 +252,79 @@ export function HotelQrApp({ token, landing }: { token: string; landing: QrLandi
     }
   });
 
+  // ── A room type up close (a sheet; the phone's Back closes it) ──
+  // (Closed, it keeps its room type a moment longer, so it slides away instead of vanishing.)
+  const [typeSheet, setTypeSheet] = useState<{ slug: string; where: "home" | "results"; open: boolean } | null>(null);
+  const hideType = useCallback(() => setTypeSheet((s) => s && { ...s, open: false }), []);
+  const sheetHistory = useBackClose(hideType);
+  const openType = (slug: string, where: "home" | "results") => { sheetHistory.opened(); setTypeSheet({ slug, where, open: true }); };
+  const closeType = () => { sheetHistory.closed(); hideType(); };
+  /** Leave the sheet for another step: its history entry becomes that step (Back returns to where it was opened). */
+  const fromSheet = (patch: Partial<Flow>) => { go(patch, "replace"); hideType(); sheetHistory.closed(); };
+
+  /** "Book" on a room type (the hotel page): its free rooms for the bar's dates, with guests it takes. */
+  const bookType = (t: QrRoomType, how: "push" | "sheet" = "push") => {
+    const patch: Partial<Flow> = { view: "results", stay: stayFor(barStay, t), roomType: t.slug, room: null };
+    if (how === "sheet") fromSheet(patch); else go(patch);
+  };
+  /** "Book" on a room (step 2): straight to the details & pay step. */
+  const bookRoom = (o: QrRoomOffer, how: "push" | "sheet" = "push") => {
+    const patch: Partial<Flow> = { view: "details", room: o.number };
+    if (how === "sheet") fromSheet(patch); else go(patch);
+  };
+
   // ── What shows ──
-  const openType = flow.view === "type" ? roomTypes.find((t) => t.slug === flow.type) ?? null : null;
-  const view = flow.view === "booked" && !last ? "home"
+  const view = step === "booked" && !last ? "home"
     : needsRoom && justBooked ? "booked"
-    : flow.view === "type" && !openType ? "rooms"
     : needsRoom && (!flow.stay || !flow.room) ? (flow.stay ? "results" : "home")
-    : flow.view;
+    : step;
   const closed = booking.open ? null : booking.message ?? "Booking here is not available right now — please ask reception or call us.";
   const photo = roomType ? imagesOf(roomType)[0] ?? null : hotel.hero.src;
   const stay = flow.stay;
   const shell: Shell = {
     hotel: hotel.name, phone: hotel.phone, times: { checkIn: hotel.checkInTime, checkOut: hotel.checkoutTime },
     aside: (
-      <StaySummary photo={needsRoom ? photo : openType ? imagesOf(openType)[0] ?? null : hotel.hero.src}
-        title={needsRoom && flow.room ? `Room ${flow.room}` : openType?.name ?? hotel.name}
-        sub={needsRoom ? roomType?.name ?? null : stay ? null : "Choose your dates to see the rooms that are free."}
+      <StaySummary photo={needsRoom ? photo : explore.opening[0]?.wide.src ?? hotel.hero.src}
+        title={needsRoom ? roomType?.name ?? "Your room" : hotel.name}
+        sub={needsRoom && flow.room ? `Room ${flow.room}` : null}
         rows={stay ? [
           { label: "Check-in", value: `${dayWeek(stay.checkIn)} · ${hotel.checkInTime}` },
           { label: "Check-out", value: `${dayWeek(stay.checkOut)} · ${hotel.checkoutTime}` },
           { label: "Stay", value: `${nightsText(nightsOf(stay))} · ${guestsText(stay.adults, stay.children)}` },
-        ] : [
-          { label: "Check-in", value: `from ${hotel.checkInTime}` },
-          { label: "Check-out", value: `by ${hotel.checkoutTime}` },
-        ]}
+        ] : []}
         total={needsRoom && q ? { label: "Total", value: tzs(q.total) } : null} />
     ),
   };
   const typeName = (s: string | null) => (s ? roomTypes.find((t) => t.slug === s)?.name ?? null : null);
 
   let content: React.ReactNode;
-  if (view === "rooms") {
-    content = <RoomsView shell={shell} types={roomTypes} imagesOf={imagesOf} stay={stay} onBack={() => back({ view: "home" })}
-      onView={(slug) => go({ view: "type", type: slug })}
-      onSelect={(slug) => (stay ? go({ view: "results", roomType: slug }) : openSheet(slug))}
-      onCheck={() => (stay ? go({ view: "results" }) : openSheet())} />;
-  } else if (view === "type" && openType) {
-    content = <TypeView shell={shell} t={openType} images={imagesOf(openType)} stay={stay} onBack={() => back({ view: "rooms" })}
-      onCheck={() => (stay ? go({ view: "results", roomType: openType.slug }) : openSheet(openType.slug))} />;
-  } else if (view === "results") {
+  if (view === "results") {
     content = <ResultsView shell={shell} stay={stay} typeFilter={flow.roomType ? { slug: flow.roomType, name: typeName(flow.roomType) ?? "This room type" } : null}
       state={{ loading: wantSearch, result, error: searched && !searched.ok ? searched.error : null }} imagesOf={imagesOf}
-      onBack={() => back({ view: "home" })} onEdit={() => openSheet()} onClearType={() => go({ roomType: null }, "replace")}
-      onSelect={(o) => go({ view: "room", room: o.number })} onRetry={() => setSearch(null)} />;
-  } else if (view === "room" && stay && flow.room) {
-    content = <RoomView shell={shell} stay={stay} number={flow.room} offer={offer} type={roomType}
-      state={{ loading: wantQuote, quote: q, error: quoted && !quoted.ok ? { message: quoted.error, taken: quoted.code === "UNAVAILABLE" } : null }}
-      images={roomType ? imagesOf(roomType) : roomPhotos.length ? roomPhotos : [hotel.hero.src]}
-      onBack={() => back({ view: "results", room: null })} onContinue={() => go({ view: "details" })}
-      onSeeRooms={() => { setSearch(null); setQuote(null); go({ view: "results", room: null }, "replace"); }} onRetry={() => setQuote(null)} />;
+      onBack={() => back({ view: "home", stay: null, roomType: null })} onEdit={openSheet} onClearType={() => go({ roomType: null }, "replace")}
+      onBook={(o) => bookRoom(o)} onDetails={(g: TypeGroup) => openType(g.type.slug, "results")} onRetry={() => setSearch(null)} />;
   } else if (view === "details" && stay && flow.room) {
-    content = <DetailsView shell={shell} stay={stay} number={flow.room} typeName={roomType?.name ?? null} photo={photo} quote={q}
-      d={d} errors={errors} onChange={change} onBack={() => back({ view: "room" })} onContinue={toPay} />;
-  } else if (view === "pay" && stay && flow.room) {
-    content = <PayView shell={shell} stay={stay} number={flow.room} typeName={roomType?.name ?? null} photo={photo} quote={q}
-      way={payWay} onWay={setWay} payPhone={payNumber} onPayPhone={(v) => { setPayPhone(v); setPayError(null); }} payError={payError}
-      trap={trap} onTrap={setTrap} pending={sending} onBook={book} onBack={() => back({ view: "details" })} />;
+    content = <BookView shell={shell} stay={stay} number={flow.room} offer={offer} type={roomType} photo={photo}
+      state={{ loading: wantQuote, quote: q, error: quoted && !quoted.ok ? { message: quoted.error, taken: quoted.code === "UNAVAILABLE" } : null }}
+      pay={offered} d={d} errors={errors} onChange={change} remembered={remembered} onForget={forget} extrasOpen={extrasOpen} onExtras={setExtrasOpen}
+      way={payWay} onWay={setWay} payPhone={payNumber} samePhone={payPhone === null}
+      onPayPhone={(v) => { setPayPhone(v); setPayError(null); setErrors((e) => { const n = { ...e }; delete n.payPhone; return n; }); }} payError={payError}
+      trap={trap} onTrap={setTrap} pending={sending} onBook={book} onBack={() => back({ view: "results", room: null })}
+      onSeeRooms={() => { setSearch(null); setQuote(null); go({ view: "results", room: null }, "replace"); }} onRetry={() => setQuote(null)} />;
   } else if (view === "booked" && last) {
     content = <BookedView last={last} busy={sending} />;
+  } else if (step === "booked" && !running) {
+    content = <div className="min-h-svh" aria-busy="true" />;
   } else {
-    content = <Landing landing={landing} imagesOf={imagesOf} last={last} onExplore={() => go({ view: "rooms" })} onCheck={() => openSheet()} onType={(slug) => go({ view: "type", type: slug })} />;
+    content = <Landing landing={landing} explore={explore} imagesOf={imagesOf} last={last} stay={barStay}
+      onDates={openSheet} onSee={() => go({ view: "results", stay: barStay, roomType: null, room: null })}
+      onBookType={(t) => bookType(t)} onTypeDetails={(t) => openType(t.slug, "home")} />;
   }
+
+  // The room type in the sheet: tonight's price on the hotel page; the stay's price (its best room) on step 2.
+  const sheetType = typeSheet?.where === "home" ? roomTypes.find((t) => t.slug === typeSheet.slug) ?? null : null;
+  const sheetGroup = typeSheet?.where === "results" ? result?.types.find((g) => g.type.slug === typeSheet.slug) ?? null : null;
+  const sheetBest = sheetGroup ? bestOffer(sheetGroup.rooms) : null;
 
   return (
     <main className="vr relative min-h-svh overflow-x-clip bg-(--vr-bg) text-[14.5px] text-(--vr-ink)">
@@ -278,12 +335,19 @@ export function HotelQrApp({ token, landing }: { token: string; landing: QrLandi
         </motion.div>
       </AnimatePresence>
       <DatesSheet open={flow.sheet} onClose={closeSheet} window={w} types={roomTypes.map((t) => ({ slug: t.slug, name: t.name, maxAdults: t.maxAdults, maxChildren: t.maxChildren }))}
-        initial={{ stay, roomType: flow.roomType }} closed={closed} phone={hotel.phone}
+        initial={{ stay: stay ?? barStay, roomType: flow.roomType }} closed={closed} phone={hotel.phone}
         onSubmit={(next: StayQuery, rt: string | null) => {
           sheetPushed.current = false;
           setSearch(null);
-          window.history.replaceState(null, "", flowUrl(base, { ...flow, view: "results", stay: next, roomType: rt, room: null, sheet: false }));
+          setKept(next);
+          window.history.replaceState({ vqr: historyDepth() }, "", flowUrl(base, { ...flow, view: "results", stay: next, roomType: rt, room: null, sheet: false }));
         }} />
+      <TypeSheet key={typeSheet ? `${typeSheet.where}-${typeSheet.slug}` : "none"} open={!!typeSheet?.open && !!(sheetType || sheetGroup)} onClose={closeType}
+        t={sheetType ?? sheetGroup?.type ?? null} images={sheetType ? imagesOf(sheetType) : sheetGroup ? imagesOf(sheetGroup.type) : []}
+        price={sheetType ? { perNight: sheetType.fromPerNight, base: sheetType.baseRate, offer: sheetType.fromPerNight < sheetType.baseRate ? sheetType.promoLabel ?? sheetType.promotion : null, from: true }
+          : sheetBest ? { perNight: sheetBest.perNight, base: sheetBest.ratePerNight, offer: sheetBest.discount > 0 ? sheetBest.promotion ?? "Offer" : null, total: sheetBest.total, nights: result?.stay.nights ?? null } : null}
+        free={sheetType ? (sheetType.freeTonight > 0 ? `${sheetType.freeTonight} free tonight` : "Full tonight — other nights may be free") : sheetGroup ? `${sheetGroup.available} free for your dates` : null}
+        cta={closed ? null : sheetType ? { label: "Book", onClick: () => bookType(sheetType, "sheet") } : sheetBest ? { label: "Book", onClick: () => bookRoom(sheetBest, "sheet") } : null} />
     </main>
   );
 }

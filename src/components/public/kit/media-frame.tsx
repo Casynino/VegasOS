@@ -1,6 +1,8 @@
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { blurFor } from "../blur-data";
+import { MaskReveal } from "../reveal";
+import { ParallaxLayer } from "./parallax";
 import { motionCls, typeScale } from "./tokens";
 
 /** The honest label every stock photo carries (never present stock as the hotel). */
@@ -39,6 +41,12 @@ export type MediaOverlay = keyof typeof OVERLAY;
  *
  * ratio: CSS aspect ratio such as "4/5", "3/2", "16/9" — or "fill" to cover a positioned parent.
  * Pass `preload` only for the page's LCP image (the hero); everything else lazy-loads.
+ *
+ * Every photo gets the site's warm grade (`grade={false}` to opt out, e.g. a document or a map).
+ *
+ * Motion (all off with reduced motion): `parallax` (true or a strength 4–10) drifts the photo with
+ * the scroll inside its frame; `reveal` wipes the frame open once as it enters, with a gold scan
+ * line ("up" | "left" | "right" | "center"; true = "up"). One or two parallax photos per screen.
  */
 export function MediaFrame({
   src,
@@ -57,6 +65,9 @@ export function MediaFrame({
   illustrative,
   tagClassName,
   caption,
+  parallax,
+  reveal,
+  grade = true,
   className,
   imgClassName,
   children,
@@ -81,6 +92,12 @@ export function MediaFrame({
   /** Position of the Illustrative tag (default top-left, inside the frame). */
   tagClassName?: string;
   caption?: React.ReactNode;
+  /** Scroll-linked drift of the photo inside the frame (true = 7%). Not with `zoom` on touch-only cards. */
+  parallax?: boolean | number;
+  /** Wipe the frame open as it enters, with a scan line (true = "up"). */
+  reveal?: boolean | "up" | "left" | "right" | "center";
+  /** The site's warm colour grade (default on): calmer saturation, a touch of sepia, a soft vignette. */
+  grade?: boolean;
   className?: string;
   imgClassName?: string;
   /** Overlay content (absolutely position it yourself; the frame is `relative`). */
@@ -96,6 +113,18 @@ export function MediaFrame({
     "--focal-sm": focalSm ?? focal,
   } as React.CSSProperties;
 
+  const revealDir = reveal === true ? "up" : reveal || null;
+  const image = (
+    <Image
+      src={src}
+      alt={alt}
+      fill
+      sizes={sizes}
+      preload={preload || undefined}
+      {...blurFor(src)}
+      className={cn("object-cover object-[var(--focal)] sm:object-[var(--focal-sm)]", grade && "pub-grade", zoom && motionCls.imageZoom, imgClassName)}
+    />
+  );
   const frame = (
     <div
       style={style}
@@ -104,29 +133,40 @@ export function MediaFrame({
         isFill ? "absolute inset-0" : "relative aspect-[var(--ar)] sm:aspect-[var(--ar-sm)] lg:aspect-[var(--ar-lg)]",
         ROUNDED[rounded],
         corners && "pub-corners",
-        !caption && className,
+        !caption && !revealDir && className,
       )}
     >
-      <Image
-        src={src}
-        alt={alt}
-        fill
-        sizes={sizes}
-        preload={preload || undefined}
-        {...blurFor(src)}
-        className={cn("object-cover object-[var(--focal)] sm:object-[var(--focal-sm)]", zoom && motionCls.imageZoom, imgClassName)}
-      />
+      {parallax ? <ParallaxLayer strength={typeof parallax === "number" ? parallax : 7}>{image}</ParallaxLayer> : image}
+      {grade && (
+        <>
+          <span aria-hidden="true" className="pub-grade-tint" />
+          <span aria-hidden="true" className="pub-grade-veil" />
+        </>
+      )}
       {overlay !== "none" && <div aria-hidden="true" className={cn("pointer-events-none absolute inset-0", OVERLAY[overlay])} />}
       {stock && <IllustrativeTag className={cn("absolute left-3 top-3 z-10", tagClassName)} />}
       {children}
     </div>
   );
 
-  if (!caption) return frame;
+  const shown = revealDir ? (
+    <MaskReveal direction={revealDir} sweep className={cn(isFill ? "absolute inset-0" : "relative", !caption && className)}>
+      {frame}
+    </MaskReveal>
+  ) : (
+    frame
+  );
+
+  if (!caption) return shown;
   return (
     <figure className={className}>
-      {frame}
+      {shown}
       <figcaption className={cn(typeScale.meta, "mt-3 text-pub-muted")}>{caption}</figcaption>
     </figure>
   );
+}
+
+/** A MediaFrame whose photo drifts with the scroll (same props; `strength` 4–10, default 7). */
+export function ParallaxMedia({ strength = 7, ...props }: Omit<React.ComponentProps<typeof MediaFrame>, "parallax"> & { strength?: number }) {
+  return <MediaFrame {...props} parallax={strength} />;
 }

@@ -4,9 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { BedDouble, ChevronLeft, ChevronRight, Search, ShoppingBag, UtensilsCrossed, Wine, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Atmosphere } from "./kit/atmosphere";
 import { buttonClass } from "./kit/button";
-import { typeScale } from "./kit/tokens";
-import { Eyebrow } from "./kit/typography";
+import { HudFrame, HudLabel, SectionIndex } from "./kit/hud";
+import { tones, typeScale } from "./kit/tokens";
+import fx from "./dining/dining.module.css";
+import roomFx from "./room-fx.module.css";
 import { AddControl, BasketPill, OrderDrawer, SHEET, useMenuOrder, WhoDialog, type MenuOrder } from "./menu-order";
 import type { PayOption } from "@/components/restaurant/pay-first";
 
@@ -25,6 +28,7 @@ export type MenuEntry = {
 export type MenuSection = { id: string; slug: string; name: string; description: string | null; kind: "FOOD" | "DRINK"; bar: boolean; entries: MenuEntry[] };
 
 const n = (v: number) => v.toLocaleString("en-US");
+const pad = (v: number) => String(v).padStart(2, "0");
 const minPrice = (e: MenuEntry) => Math.min(...e.sizes.map((s) => s.price));
 const available = (e: MenuEntry) => e.sizes.some((s) => s.available);
 const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
@@ -82,6 +86,8 @@ export function MenuBrowser({ sections, whatsapp, roomServiceFee, initialItem = 
     const io = new IntersectionObserver((list) => {
       const hit = list.filter((x) => x.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
       if (hit) setActive(hit.target.id);
+      // Back above the menu (e.g. a jump to the top of the page): the first section again.
+      else if (els[0] && els[0].getBoundingClientRect().top > window.innerHeight * 0.4) setActive(els[0].id);
     }, { rootMargin: "-40% 0px -55% 0px" });
     els.forEach((el) => io.observe(el));
     return () => io.disconnect();
@@ -108,17 +114,23 @@ export function MenuBrowser({ sections, whatsapp, roomServiceFee, initialItem = 
   return (
     <>
       {/* Sections + search: one slim bar under the header (search folds behind an icon on phones). */}
-      <nav aria-label="Menu sections" data-tone="paper" className="sticky top-16 z-30 border-b border-pub-line bg-paper/90 text-pub-fg backdrop-blur-xl">
+      {/* The bar sticks only while the menu is on screen (its parent ends with the last section). */}
+      <div className="relative">
+      {/* Smoked glass (night ink) in both themes: it reads the same over the light kitchen and the dark bar bands. */}
+      <nav aria-label="Menu sections" data-tone="night"
+        className="sticky top-16 z-30 border-b border-white/10 bg-[linear-gradient(to_bottom,rgb(20_16_12/0.8),rgb(12_10_7/0.86))] text-pub-fg shadow-[0_18px_40px_-26px_rgb(0_0_0/0.7)] backdrop-blur-xl backdrop-saturate-150">
+        <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 -bottom-px h-px bg-linear-to-r from-transparent via-gold/50 to-transparent" />
         <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center px-4 sm:px-8 md:flex-nowrap md:gap-6">
           <div ref={chipsRef}
             className="relative flex min-w-0 flex-1 overflow-x-auto [mask-image:linear-gradient(to_right,#000_calc(100%-2.5rem),transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {shown.map((s) => (
+            {shown.map((s, i) => (
               <a key={s.id} href={`#${s.slug}`} data-chip={s.slug} aria-current={active === s.slug ? "true" : undefined}
                 className={cn(
-                  "relative flex h-12 shrink-0 items-center px-3 text-[13px] font-medium tracking-[0.02em] transition-colors duration-200 first:pl-0 last:pr-10 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none",
+                  "relative flex h-12 shrink-0 items-center gap-2 px-3 text-[13px] font-medium tracking-[0.02em] transition-colors duration-200 first:pl-0 last:pr-10 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none",
                   "after:absolute after:bottom-0 after:left-3 after:right-3 after:h-0.5 after:origin-left after:bg-gold after:transition-transform after:duration-300 after:ease-pub first:after:left-0 last:after:right-10 motion-reduce:after:transition-none",
-                  active === s.slug ? "text-pub-fg after:scale-x-100" : "text-pub-muted after:scale-x-0 hover:text-pub-fg",
+                  active === s.slug ? cn("text-pub-fg after:scale-x-100", fx.chipGlow) : "text-pub-muted after:scale-x-0 hover:text-pub-fg",
                 )}>
+                <span aria-hidden="true" className={cn("font-mono text-[9.5px] tracking-[0.14em]", active === s.slug ? "text-gold" : "text-pub-faint")}>{pad(i + 1)}</span>
                 {s.name}
               </a>
             ))}
@@ -144,31 +156,69 @@ export function MenuBrowser({ sections, whatsapp, roomServiceFee, initialItem = 
         </div>
       </nav>
 
-      <div data-tone="paper" className="bg-[var(--pub-paper)] pb-20 text-pub-fg sm:pb-28">
+      {/* Every section is its own band: the kitchen on paper (paper and deep in turn), the bar at night — each
+          with its own calm atmosphere, and a soft dissolve with a gold horizon where the kitchen meets the bar. */}
+      <div>
         {shown.length === 0 && (
-          <p className={cn(typeScale.lede, "mx-auto max-w-xl px-4 pt-20 text-center text-pub-muted")}>Nothing on the menu matches “{q}”. Try “chicken”, “fish”, “beer” or “whisky”.</p>
+          <div data-tone="paper" className={cn("relative isolate", tones.paper)}>
+            <Atmosphere tone="paper" atmosphere="calm" />
+            <p className={cn(typeScale.lede, "mx-auto max-w-xl px-4 pb-24 pt-20 text-center text-pub-muted")}>Nothing on the menu matches “{q}”. Try “chicken”, “fish”, “beer” or “whisky”.</p>
+          </div>
         )}
-        {shown.map((s) => (
-          <section key={s.id} id={s.slug} aria-labelledby={`${s.slug}-title`} className={cn(SECTION_TOP, "pt-12 sm:pt-16 lg:pt-20")}>
-            <div className="mx-auto w-full max-w-7xl px-4 sm:px-8">
-              <header className="grid gap-3 pb-6 sm:pb-8 lg:grid-cols-12 lg:items-end lg:gap-x-10">
-                <div className="min-w-0 lg:col-span-7">
-                  <Eyebrow rule>{s.kind === "DRINK" ? (s.bar ? "From the bar" : "Drinks") : "From the kitchen"}</Eyebrow>
-                  <h2 id={`${s.slug}-title`} className="mt-4 font-display text-[clamp(1.875rem,1.5rem+1.4vw,2.75rem)] font-medium leading-[1.05] text-balance">{s.name}</h2>
+        {(() => {
+          // One band per kitchen section (paper and deep in turn); the bar is one long night band, so its
+          // light and line work run on without seams from section to section.
+          const band = (s: MenuSection, i: number, tone: "paper" | "deep" | "night", own: boolean) => {
+            const food = s.kind === "FOOD";
+            return (
+              <section key={s.id} id={s.slug} aria-labelledby={`${s.slug}-title`} data-tone={tone}
+                className={cn(SECTION_TOP, "relative", own && cn("isolate", tones[tone]), "py-12 sm:py-16 lg:py-20", i === shown.length - 1 && "pb-20 sm:pb-28")}>
+                {own && <Atmosphere tone={tone} atmosphere="calm" />}
+                <div className="mx-auto w-full max-w-7xl px-4 sm:px-8">
+                  <SectionIndex index={i + 1} label={food ? "From the kitchen" : s.bar ? "From the bar" : "Drinks"}
+                    aside={<HudLabel tick={false}>{s.entries.length} {food ? (s.entries.length === 1 ? "dish" : "dishes") : s.entries.length === 1 ? "drink" : "drinks"}</HudLabel>} />
+                  <header className="grid gap-3 pb-6 pt-5 sm:pb-8 sm:pt-6 lg:grid-cols-12 lg:items-end lg:gap-x-10">
+                    <div className={cn("min-w-0 lg:col-span-7", tone === "night" && "flex items-end justify-between gap-4 lg:justify-start lg:gap-8")}>
+                      <h2 id={`${s.slug}-title`} className="min-w-0 font-display text-[clamp(2rem,1.5rem+1.8vw,3.25rem)] font-medium leading-[1.05] text-balance">{s.name}</h2>
+                      {/* The bar's shelves share one night band: a large outline numeral, filling with gold as it scrolls in, marks each one. */}
+                      {tone === "night" && (
+                        <span aria-hidden="true" className={cn(roomFx.numeral, "shrink-0 font-display text-[3.75rem] font-medium leading-[0.8] sm:text-[5rem] lg:order-first lg:text-[6rem]")}>
+                          {String(i + 1).padStart(2, "0")}
+                        </span>
+                      )}
+                    </div>
+                    {s.description && <p className={cn(typeScale.body, "max-w-md text-pub-muted lg:col-span-4 lg:col-start-9 lg:pb-1")}>{s.description}</p>}
+                  </header>
+                  {food
+                    ? <FoodList section={s} onOpen={setOpen} order={order} />
+                    : <DrinkList section={s} onOpen={setOpen} order={order} />}
+                  {s.id === lastBar && (
+                    <p className={cn(typeScale.small, "mt-8 max-w-2xl border-l-2 border-gold/60 pl-4 text-pub-muted")}>
+                      Alcohol is served only to guests aged 18 and over — please drink responsibly. Drinks are served at the bar, at your table or through room service — you can also order them online.
+                    </p>
+                  )}
                 </div>
-                {s.description && <p className={cn(typeScale.body, "max-w-md text-pub-muted lg:col-span-4 lg:col-start-9 lg:pb-1")}>{s.description}</p>}
-              </header>
-              {s.kind === "FOOD"
-                ? <FoodList section={s} onOpen={setOpen} order={order} />
-                : <DrinkList section={s} onOpen={setOpen} order={order} />}
-              {s.id === lastBar && (
-                <p className={cn(typeScale.small, "mt-8 max-w-2xl border-l-2 border-gold/60 pl-4 text-pub-muted")}>
-                  Alcohol is served only to guests aged 18 and over — please drink responsibly. Drinks are served at the bar, at your table or through room service — you can also order them online.
-                </p>
+              </section>
+            );
+          };
+          const kitchen = shown.filter((s) => s.kind === "FOOD");
+          const bar = shown.filter((s) => s.kind !== "FOOD");
+          return (
+            <>
+              {kitchen.map((s, i) => band(s, i, i % 2 ? "deep" : "paper", true))}
+              {bar.length > 0 && (
+                <div data-tone="night" className={cn("relative isolate", tones.night)}>
+                  <Atmosphere tone="night" atmosphere="calm" aurora />
+                  {/* The page's next band (room service) is deep paper: the gold horizon at the foot with a warm light rising from it, as between kit bands. */}
+                  <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 -z-[1] h-[clamp(6rem,12vw,11rem)] bg-[radial-gradient(60%_100%_at_50%_100%,rgb(227_189_106/0.12),rgb(227_189_106/0.035)_45%,transparent_78%)]" />
+                  <span aria-hidden="true" className="pointer-events-none absolute bottom-0 left-1/2 h-px w-[min(80rem,94%)] -translate-x-1/2 bg-linear-to-r from-transparent via-[rgb(236_202_132/0.95)] to-transparent" />
+                  {bar.map((s, j) => band(s, kitchen.length + j, "night", false))}
+                </div>
               )}
-            </div>
-          </section>
-        ))}
+            </>
+          );
+        })()}
+      </div>
       </div>
 
       <DishCard entry={current?.e ?? null} section={current?.s ?? null} roomServiceFee={roomServiceFee} whatsappOrder={whatsappOrder} order={order}
@@ -232,12 +282,14 @@ function ChooseControl({ entry, inOrder, onOpen }: { entry: MenuEntry; inOrder: 
 /** Food: a classic menu list; on wide screens a large photo beside it follows the dish you point at. */
 function FoodList({ section, onOpen, order }: { section: MenuSection; onOpen: (key: string) => void; order: MenuOrder }) {
   const [focus, setFocus] = useState(section.entries[0]?.key);
-  const preview = section.entries.find((e) => e.key === focus) ?? section.entries[0];
+  const previewAt = Math.max(0, section.entries.findIndex((e) => e.key === focus));
+  const preview = section.entries[previewAt];
   const withPreview = section.entries.some((e) => e.image);
   return (
     <div className="grid items-start gap-10 lg:grid-cols-12 lg:gap-x-10">
       {withPreview && preview && (
-        <figure className="sticky top-[8.5rem] hidden lg:col-span-5 lg:block">
+        <figure className="sticky top-[9rem] hidden lg:col-span-5 lg:block">
+          <HudFrame offset="sm" label={`${pad(previewAt + 1)} / ${pad(section.entries.length)}`} labelEnd="Select a dish for details">
           <div className="relative aspect-[5/4] overflow-hidden rounded-[0.375rem] bg-[#1c1712]">
             <span key={preview.key} className="absolute inset-0 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500">
               <Photo entry={preview} sizes="(min-width: 1280px) 500px, 40vw" />
@@ -247,13 +299,14 @@ function FoodList({ section, onOpen, order }: { section: MenuSection; onOpen: (k
             <figcaption className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-4 p-6 text-white">
               <span className="min-w-0">
                 <span className="block font-display text-[1.75rem] font-medium leading-tight">{preview.name}</span>
-                <span className={cn(typeScale.meta, "mt-2 block text-white/65")}>Select for details</span>
+                {preview.description && <span className="mt-2 line-clamp-1 block text-[13px] text-white/70">{preview.description}</span>}
               </span>
               <span className="shrink-0 whitespace-nowrap font-display text-[1.375rem] font-medium tabular-nums lining-nums text-gold">
                 <span className="mr-1 font-sans text-[10px] font-medium tracking-[0.16em] text-gold/75">TZS</span>{n(minPrice(preview))}
               </span>
             </figcaption>
           </div>
+          </HudFrame>
         </figure>
       )}
       <ul className={cn("border-t border-pub-line", withPreview ? "lg:col-span-7" : "lg:col-span-12 lg:max-w-4xl")}>
@@ -263,9 +316,10 @@ function FoodList({ section, onOpen, order }: { section: MenuSection; onOpen: (k
           return (
             <li key={e.key}
               className={cn("relative border-b border-pub-line transition-colors duration-200 motion-reduce:transition-none",
-                focus === e.key && withPreview && "lg:bg-pub-fg/[0.025]",
+                focus === e.key && withPreview && "lg:bg-[linear-gradient(to_right,color-mix(in_oklab,var(--gold)_9%,transparent),transparent_70%)]",
                 inOrder > 0 && "before:absolute before:inset-y-4 before:-left-3 before:w-0.5 before:rounded-full before:bg-gold sm:before:-left-4")}>
-              <div className="flex flex-col py-4 sm:flex-row sm:items-center sm:gap-6 sm:py-5 lg:px-3">
+              {withPreview && <span aria-hidden="true" className={cn("pointer-events-none absolute inset-y-0 left-0 hidden w-px bg-linear-to-b from-transparent via-gold to-transparent transition-opacity duration-300 motion-reduce:transition-none lg:block", focus === e.key ? "opacity-100" : "opacity-0")} />}
+              <div className="flex flex-col py-4 sm:flex-row sm:items-center sm:gap-6 sm:py-5 lg:px-4">
                 <button type="button" onClick={() => onOpen(e.key)} onMouseEnter={() => setFocus(e.key)} onFocus={() => setFocus(e.key)} aria-haspopup="dialog"
                   className={cn("group flex min-w-0 flex-1 items-start gap-4 rounded-[0.375rem] text-left focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-gold sm:items-center sm:gap-5",
                     !available(e) && "opacity-60")}>

@@ -1,15 +1,22 @@
 import type { Metadata } from "next";
+import { ArrowDown, Clock, MessageCircle } from "lucide-react";
 import { getSettings } from "@/server/settings";
-import { listPublicRoomTypes, websitePricer } from "@/server/services/public-booking";
-import { formatTZS } from "@/lib/format";
+import { bookingWindow, listPublicRoomTypes, websitePricer } from "@/server/services/public-booking";
+import { addDays } from "@/lib/time/business-date";
+import { formatNumber, formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { contentVars } from "@/components/public/contact";
-import { fill } from "@/components/public/content";
+import { fill, portraitFor } from "@/components/public/content";
 import { getSiteContent } from "@/server/services/site-content";
 import { NamedIcon } from "@/components/public/icon";
-import { Actions, Eyebrow, LinkButton, Reveal, Section, SectionIntro, StaggerItem, TextLink, rhythm, typeScale } from "@/components/public/kit";
+import {
+  Actions, GlassPanel, HOTEL_COORDS, HudLabel, LinkButton, Reveal, Section, SectionIntro, StaggerItem, TextLink, rhythm, typeScale,
+} from "@/components/public/kit";
 import { PageHero } from "@/components/public/page-hero";
-import { RoomCard } from "@/components/public/room-card";
+import { RoomChapter, guestsLine, pad2 } from "@/components/public/room-chapter";
+import { RoomDetails } from "@/components/public/room-details";
+import { StaySearchForm } from "@/components/public/stay-search-form";
+import fx from "@/components/public/room-fx.module.css";
 
 export const metadata: Metadata = {
   title: "Rooms & suites",
@@ -18,14 +25,27 @@ export const metadata: Metadata = {
   alternates: { canonical: "/rooms" },
 };
 
+const SPAN_BASE = ["", "", "col-span-2"] as const;
+const SPAN_SM = ["", "sm:col-span-1", "sm:col-span-2", "sm:col-span-3"] as const;
+const SPAN_LG = ["", "lg:col-span-1", "lg:col-span-2", "lg:col-span-3", "lg:col-span-4"] as const;
+/** Column span for the last of `total` cells so it completes its row in a 2 / 3 / 4-column grid. */
+function fillSpan(total: number) {
+  const span = (cols: number) => (total % cols === 0 ? 1 : cols - (total % cols) + 1);
+  return cn(SPAN_BASE[span(2)], SPAN_SM[span(3)], SPAN_LG[span(4)]);
+}
+
+const WORDS = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten"];
+
 /**
- * Rooms: the photograph first, then one editorial row per room type (photo, name, one line,
- * facts, tonight's website price, Book / Explore), what every room includes, and a quiet
- * closing call to book. Room types only — never room numbers.
+ * Rooms: the photograph first; a room index (every type side by side, tonight's website rate,
+ * a jump to its chapter); then one chapter band per room type — parallax photo in a HUD frame,
+ * a glass spec panel, the outline index numeral — alternating night and paper; what every room
+ * includes as a spec plate; and a closing booking console. Room types only — never room numbers.
  */
 export default async function RoomsPage() {
   const [settings, types, c] = await Promise.all([getSettings(), listPublicRoomTypes(), getSiteContent()]);
   const price = await websitePricer(settings);
+  const stay = bookingWindow(settings);
   const p = c.pages.rooms;
   const f = (s: string) => fill(s, contentVars(settings, { airportKm: c.facts.airportKm }));
   const rooms = types.map((t) => {
@@ -36,6 +56,7 @@ export default async function RoomsPage() {
   // Amenities every public room type shares.
   const shared = rooms[0]?.amenities.filter((a) => rooms.every((r) => r.amenities.some((b) => b.code === a.code))) ?? [];
   const lowest = rooms.length ? Math.min(...rooms.map((r) => r.net)) : null;
+  const n = rooms.length;
 
   return (
     <>
@@ -44,8 +65,11 @@ export default async function RoomsPage() {
         title={p.title}
         image={p.image.src}
         imageAlt={p.image.alt}
+        mobileImage={portraitFor(p.image.src)}
         focal="50% 45%"
         id="rooms-title"
+        size="lg"
+        meta={n > 0 ? <>{pad2(n)} room types · {HOTEL_COORDS.label}</> : undefined}
         intro={
           <p>
             {f(p.intro)}
@@ -55,69 +79,174 @@ export default async function RoomsPage() {
       >
         <Actions className="mt-7 sm:mt-8">
           <LinkButton href="/book" icon="arrow">Check availability</LinkButton>
-          {rooms.length > 0 && <TextLink href="#room-types">See the rooms</TextLink>}
+          {n > 0 && <TextLink href="#room-types">See the rooms</TextLink>}
         </Actions>
       </PageHero>
 
-      <Section id="room-types" labelledBy="room-types-title" space="md" className={rooms.length > 0 ? "pb-4 sm:pb-6 lg:pb-8" : undefined}>
-        <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-2 border-b border-pub-line pb-5">
-          {/* A label, not a heading: each room type below is an h2 of its own. */}
-          <Eyebrow rule>
-            <span id="room-types-title">{rooms.length > 0 ? `${rooms.length} room type${rooms.length === 1 ? "" : "s"}` : "Room types"}</span>
-          </Eyebrow>
-          {lowest !== null && <p className={cn(typeScale.meta, "text-pub-muted")}>From {formatTZS(lowest)} per night · tonight’s website rates</p>}
-        </div>
-
-        {rooms.length === 0 ? (
-          <div className="mx-auto max-w-md py-16 text-center">
-            <p className={cn(typeScale.lede, "text-pub-muted")}>Room information is being updated — please contact us to book.</p>
+      {/* Room index: every type side by side — the comparison, and a jump to each chapter. */}
+      <Section
+        id="room-types"
+        labelledBy="room-types-title"
+        space="md"
+        width="wide"
+        marker={{
+          index: 1,
+          label: "Room index",
+          aside: lowest !== null ? <HudLabel tick={false}>From {formatTZS(lowest)} · tonight’s website rates</HudLabel> : undefined,
+        }}
+      >
+        {n === 0 ? (
+          <div className="mx-auto max-w-md py-10 text-center">
+            <h2 id="room-types-title" className={typeScale.subheading}>Room types</h2>
+            <p className={cn(typeScale.lede, "mt-3 text-pub-muted")}>Room information is being updated — please contact us to book.</p>
             <Actions align="center" className={rhythm.beforeActions}>
               <TextLink href="/contact?subject=booking">Contact the front desk</TextLink>
             </Actions>
           </div>
         ) : (
-          <ol className="divide-y divide-pub-line">
-            {rooms.map((r, i) => (
-              <StaggerItem as="li" key={r.slug} className="py-8 sm:py-14 lg:py-16">
-                <RoomCard room={r} headingLevel={2} variant="row" reverse={i % 2 === 1} />
-              </StaggerItem>
-            ))}
-          </ol>
+          <div className="grid gap-10 lg:grid-cols-12 lg:gap-x-10">
+            <Reveal className="min-w-0 lg:col-span-4">
+              <SectionIntro
+                eyebrow="Compare"
+                title={<>{WORDS[n] ?? n} ways to stay</>}
+                id="room-types-title"
+                lede="Every room type side by side, at tonight’s website rate. Choose one to see it up close."
+              />
+              <div className={cn(fx.ruler, "mt-9 hidden w-full max-w-xs lg:block")} aria-hidden="true" />
+            </Reveal>
+            <ol aria-label="Room types" className="min-w-0 border-t border-pub-line lg:col-span-8 lg:col-start-5">
+              {rooms.map((r, i) => (
+                <StaggerItem as="li" index={i} key={r.slug} className="border-b border-pub-line">
+                  <a
+                    href={`#type-${r.slug}`}
+                    className={cn(
+                      fx.indexRow,
+                      "group relative grid min-h-16 grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-x-3 py-3.5 sm:grid-cols-[3rem_minmax(0,1fr)_minmax(0,13rem)_auto_1.25rem] sm:gap-x-6 sm:py-5",
+                      "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold",
+                    )}
+                  >
+                    <span className="font-mono text-[11px] font-medium tracking-[0.18em] text-pub-eyebrow">{pad2(i + 1)}</span>
+                    <span className="min-w-0">
+                      <span className="block truncate font-display text-[1.375rem] font-medium leading-tight transition-colors duration-200 group-hover:text-pub-eyebrow motion-reduce:transition-none sm:text-[1.75rem]">
+                        {r.name}
+                      </span>
+                      <span className="mt-0.5 block text-[12px] text-pub-muted sm:hidden">{guestsLine(r)}</span>
+                    </span>
+                    <span className={cn(typeScale.meta, "hidden text-pub-muted sm:block")}>{guestsLine(r)}</span>
+                    <span className="text-right leading-none">
+                      <span className="font-display text-[1.25rem] font-medium lining-nums tabular-nums sm:text-[1.5rem]">{formatNumber(r.net)}</span>
+                      <span className="mt-1 block text-[10.5px] font-medium uppercase tracking-[0.16em] text-pub-muted">TZS / night</span>
+                    </span>
+                    <ArrowDown
+                      aria-hidden="true"
+                      strokeWidth={1.6}
+                      className="hidden size-4 text-pub-faint transition duration-300 ease-pub group-hover:translate-y-0.5 group-hover:text-pub-eyebrow motion-reduce:transition-none sm:block"
+                    />
+                  </a>
+                </StaggerItem>
+              ))}
+            </ol>
+          </div>
         )}
       </Section>
 
+      {/* One chapter per room type, alternating night and paper (siblings, so the bands dissolve). */}
+      {rooms.map((r, i) => (
+        <RoomChapter key={r.slug} room={r} index={i + 1} total={n} tone={i % 2 === 0 ? "night" : "paper"} reverse={i % 2 === 1} />
+      ))}
+
+      {/* What every room includes, as a spec plate on drafting paper. */}
       {shared.length > 0 && (
-        <Section tone="night" glow="top" space="md" labelledBy="included-title">
+        <Section tone="deep" space="md" width="wide" labelledBy="included-title" marker={{ index: 2, label: "In every room" }}>
           <Reveal>
-            <SectionIntro align="split" eyebrow="In every room" title={p.includedTitle} lede={f(p.includedNote)} id="included-title" />
+            <SectionIntro align="split" eyebrow="Included" title={p.includedTitle} lede={f(p.includedNote)} id="included-title" />
           </Reveal>
-          <ul className={cn(rhythm.afterIntro, "grid grid-cols-2 gap-x-6 border-t border-pub-line sm:gap-x-10 lg:grid-cols-4")}>
-            {shared.map((a) => (
-              <li key={a.code} className="flex min-w-0 items-center gap-3 border-b border-pub-line py-4 sm:py-5">
-                <NamedIcon name={a.icon} className="size-5 shrink-0 text-pub-eyebrow" />
+          <ul className={cn(rhythm.afterIntro, "grid grid-cols-2 border-l border-t border-pub-line sm:grid-cols-3 lg:grid-cols-4")}>
+            {shared.map((a, i) => (
+              <StaggerItem
+                as="li"
+                index={i}
+                key={a.code}
+                className="relative flex min-h-[6.5rem] min-w-0 flex-col justify-between gap-3 border-b border-r border-pub-line p-3.5 sm:min-h-32 sm:gap-5 sm:p-5 lg:p-6"
+              >
+                <span className="flex items-center justify-between gap-3">
+                  <span className="grid size-9 shrink-0 place-items-center rounded-full border border-pub-eyebrow/35 text-pub-eyebrow sm:size-10">
+                    <NamedIcon name={a.icon} className="size-[18px]" />
+                  </span>
+                  <span aria-hidden="true" className="font-mono text-[10px] tracking-[0.2em] text-pub-muted">{pad2(i + 1)}</span>
+                </span>
                 <span className="min-w-0 text-[15px] leading-snug text-pub-fg">{a.name}</span>
-              </li>
+              </StaggerItem>
             ))}
+            {/* The closing cell completes the last row at every width (no empty, half-bordered cells). */}
+            <StaggerItem
+              as="li"
+              index={shared.length}
+              className={cn(
+                "relative flex min-h-[6.5rem] min-w-0 flex-col justify-between gap-3 border-b border-r border-pub-line bg-pub-fg/[0.03] p-3.5 sm:min-h-32 sm:gap-5 sm:p-5 lg:p-6",
+                fillSpan(shared.length + 1),
+              )}
+            >
+              <span className="flex items-center justify-between gap-3">
+                <span className="grid size-9 shrink-0 place-items-center rounded-full border border-pub-eyebrow/35 text-pub-eyebrow sm:size-10">
+                  <Clock className="size-[18px]" strokeWidth={1.6} aria-hidden="true" />
+                </span>
+                <span aria-hidden="true" className="font-mono text-[10px] tracking-[0.2em] text-pub-muted">{pad2(shared.length + 1)}</span>
+              </span>
+              <span className="min-w-0 text-[15px] leading-snug text-pub-fg">
+                Check-in {stay.checkInTime} <span className="text-pub-faint">·</span> Check-out {stay.checkoutTime}
+              </span>
+            </StaggerItem>
           </ul>
+          {/* The owner's detail photographs: beds, sofa and mirror, desk and kettle, bathrooms. */}
+          <Reveal className="mt-14 sm:mt-16 lg:mt-20">
+            <RoomDetails id="room-details-title" />
+          </Reveal>
         </Section>
       )}
 
-      <Section tone="deep" space="md" labelledBy="rooms-cta" width="narrow">
-        <Reveal>
-          <SectionIntro
-            align="center"
-            eyebrow="Plan your stay"
-            title={p.helpTitle}
-            lede={p.helpBody}
-            id="rooms-cta"
-            actions={
-              <>
-                <LinkButton href="/book" icon="arrow">Check availability</LinkButton>
-                <TextLink href="/contact?subject=booking">Ask the front desk</TextLink>
-              </>
-            }
-          />
-        </Reveal>
+      {/* Closing booking console: dates and guests straight to live availability. */}
+      <Section tone="night" space="md" width="wide" stars labelledBy="rooms-cta">
+        <div className="grid items-center gap-10 lg:grid-cols-12 lg:gap-x-10">
+          <Reveal className="min-w-0 lg:col-span-5">
+            <SectionIntro
+              eyebrow="Plan your stay"
+              title={p.helpTitle}
+              lede={p.helpBody}
+              id="rooms-cta"
+              actions={
+                <TextLink href="/contact?subject=booking" icon={<MessageCircle className="size-4" strokeWidth={1.6} aria-hidden="true" />}>
+                  Ask the front desk
+                </TextLink>
+              }
+            />
+          </Reveal>
+          <div className="min-w-0 sm:mx-auto sm:max-w-xl sm:w-full lg:col-span-6 lg:col-start-7 lg:max-w-none">
+            {stay.enabled ? (
+              <GlassPanel variant="clear" padding="md" rounded="lg" hud>
+                <div className="mb-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                  <HudLabel live>Live availability</HudLabel>
+                  <HudLabel tick={false}>
+                    In {stay.checkInTime} · Out {stay.checkoutTime}
+                  </HudLabel>
+                </div>
+                <StaySearchForm
+                  variant="hero"
+                  defaults={{ checkIn: stay.today, checkOut: addDays(stay.today, 1), adults: 2, children: 0 }}
+                  minDate={stay.today}
+                  maxDate={stay.maxArrival}
+                  maxNights={stay.maxNights}
+                  submitLabel="Check availability"
+                  stacked
+                />
+              </GlassPanel>
+            ) : (
+              <Actions>
+                <LinkButton href="/contact?subject=booking" icon="arrow">Contact us to book</LinkButton>
+              </Actions>
+            )}
+          </div>
+        </div>
       </Section>
     </>
   );

@@ -1,8 +1,10 @@
 import { Mail, MapPin, MessageCircle, Phone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { telHref, whatsappHref } from "../contact";
+import { GlassPanel } from "../kit/hud";
 import { Section } from "../kit/section";
 import { typeScale } from "../kit/tokens";
+import fx from "../room-fx.module.css";
 import { BookingActions } from "./booking-actions";
 import { BookingProgress } from "./progress";
 
@@ -70,23 +72,30 @@ export function ConfirmationBand({
   children?: React.ReactNode;
 }) {
   return (
-    <Section tone="night" first space="sm" width="wide" glow="top" labelledBy="confirmation-title" className={cn("pb-10 sm:pb-14 lg:pb-14 print:pt-6", printInk)}>
+    <Section tone="night" first space="sm" width="wide" glow="top" stars labelledBy="confirmation-title" className={cn("pb-10 sm:pb-14 lg:pb-16 print:pt-6", printInk)}>
       {progress && <BookingProgress current={5} last={progressLast} className="mb-10 max-w-3xl sm:mb-12 print:hidden" />}
       <p className={cn(typeScale.eyebrow, "flex items-center gap-2.5 text-pub-eyebrow")}>{eyebrow}</p>
       <h1 id="confirmation-title" className={cn(typeScale.title, "mt-4 max-w-3xl")}>
         {title}
       </h1>
       {lede && <div className={cn(typeScale.lede, "mt-4 max-w-[38rem] text-pub-muted sm:mt-5")}>{lede}</div>}
-      <div className="mt-8 flex flex-col gap-5 border-t border-pub-line pt-6 sm:mt-10 sm:flex-row sm:items-end sm:justify-between sm:gap-8">
-        <div className="min-w-0">
-          <p className={cn(typeScale.meta, "text-pub-muted")}>{referenceLabel}</p>
-          <p className="mt-2 font-display text-[clamp(1.875rem,1.25rem+2.6vw,3rem)] font-medium leading-none tracking-[0.04em] text-pub-eyebrow lining-nums [overflow-wrap:anywhere]">
-            {reference}
-          </p>
-          {children}
+      {/* The reference as a glass readout — the one thing to keep. */}
+      <GlassPanel variant="clear" padding="none" rounded="lg" hud className={cn("mt-8 max-w-4xl sm:mt-10 print:mt-6 print:border print:border-pub-line print:backdrop-blur-none", printInk)}>
+        <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-end sm:justify-between sm:gap-8 sm:p-7">
+          <div className="min-w-0">
+            <p className="flex items-center gap-2.5 font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-pub-muted sm:text-[11px]">
+              <span aria-hidden="true" className="h-px w-3.5 bg-gold" />
+              {referenceLabel}
+            </p>
+            <p className="mt-3 font-display text-[clamp(1.875rem,1.25rem+2.6vw,3.25rem)] font-medium leading-none tracking-[0.06em] text-pub-eyebrow lining-nums [overflow-wrap:anywhere]">
+              {reference}
+            </p>
+            {children}
+          </div>
+          {status && <StatusPill label={status.label} tone={status.tone} className="shrink-0" />}
         </div>
-        {status && <StatusPill label={status.label} tone={status.tone} className="shrink-0" />}
-      </div>
+        <div aria-hidden="true" className={cn(fx.ruler, "mx-5 mb-3 opacity-70 sm:mx-7 print:hidden")} />
+      </GlassPanel>
     </Section>
   );
 }

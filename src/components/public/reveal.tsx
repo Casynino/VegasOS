@@ -1,6 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useRef } from "react";
+import { cn } from "@/lib/utils";
 
 /**
  * Reveal on scroll, once: a soft fade and rise as a block enters the viewport (CSS in the
@@ -8,27 +9,44 @@ import { useLayoutEffect, useRef } from "react";
  * and only after hydration — without JS, with reduced motion, or for anything already on
  * screen, content is simply there (no flash, no hidden hero).
  */
-type Tag = "div" | "li" | "ul" | "ol" | "section" | "article";
+type Tag = "div" | "li" | "ul" | "ol" | "section" | "article" | "figure" | "span";
 
-let observer: IntersectionObserver | null = null;
+const observers: { fade?: IntersectionObserver; mask?: IntersectionObserver } = {};
 
-function getObserver() {
-  if (!observer) {
-    observer = new IntersectionObserver(
+/** How long a mask reveal (wipe + scan) takes before its clip is dropped (focus rings stay visible). */
+const MASK_MS = 1500;
+
+/**
+ * One shared observer per kind. Mask reveals clip their CHILD while they wait (the observer
+ * measures a target's own clip-path, so the observed element itself stays unclipped); threshold 0.
+ */
+function getObserver(kind: "fade" | "mask") {
+  let io = observers[kind];
+  if (!io) {
+    io = new IntersectionObserver(
       (entries) => {
         for (const e of entries) {
           if (!e.isIntersecting) continue;
-          (e.target as HTMLElement).dataset.rv = "in";
-          observer?.unobserve(e.target);
+          const el = e.target as HTMLElement;
+          io?.unobserve(el);
+          if (kind === "mask") {
+            el.style.setProperty("--scan-h", `${el.offsetHeight + 32}px`);
+            const step = Math.min(Number(el.style.getPropertyValue("--reveal-i")) || 0, 6);
+            window.setTimeout(() => {
+              if (el.dataset.rv === "in") el.dataset.rv = "done";
+            }, MASK_MS + step * 70);
+          }
+          el.dataset.rv = "in";
         }
       },
-      { rootMargin: "0px 0px -8% 0px", threshold: 0.01 },
+      { rootMargin: "0px 0px -8% 0px", threshold: kind === "mask" ? 0 : 0.01 },
     );
+    observers[kind] = io;
   }
-  return observer;
+  return io;
 }
 
-function useReveal() {
+function useReveal(kind: "fade" | "mask" = "fade") {
   const ref = useRef<HTMLElement>(null);
   useLayoutEffect(() => {
     const el = ref.current;
@@ -36,13 +54,13 @@ function useReveal() {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     if (el.getBoundingClientRect().top < window.innerHeight * 0.94) return; // already on screen
     el.dataset.rv = "wait";
-    const io = getObserver();
+    const io = getObserver(kind);
     io.observe(el);
     return () => {
       io.unobserve(el);
       delete el.dataset.rv;
     };
-  }, []);
+  }, [kind]);
   return ref;
 }
 
@@ -79,6 +97,46 @@ export function StaggerItem({ children, className, as = "div", index = 0 }: { ch
   const T = as as React.ElementType;
   return (
     <T ref={ref} className={className} style={{ "--reveal-i": index % 6 } as React.CSSProperties}>
+      {children}
+    </T>
+  );
+}
+
+/**
+ * Mask reveal, once: the block is wiped open with a clip-path as it enters (opening downward by
+ * default; the wipe clips the direct child, so pass one element), photos inside settle from a slight zoom, and with `sweep` a fine gold scan line runs
+ * down with the wipe. Same rules as Reveal: only below the fold, only with JS and motion allowed —
+ * otherwise simply visible. Use it on photos and big headings, not on body text. The clip is
+ * removed when the reveal ends, so focus rings inside are never cut.
+ */
+export function MaskReveal({
+  children,
+  className,
+  direction = "up",
+  sweep = false,
+  index = 0,
+  as = "div",
+}: {
+  children: React.ReactNode;
+  className?: string;
+  /** "up" opens downward from the top edge, "left"/"right" wipe sideways, "center" opens from the middle. */
+  direction?: "up" | "left" | "right" | "center";
+  /** A gold scan line follows the wipe (photos). */
+  sweep?: boolean;
+  /** Stagger step (70 ms each, max 6). */
+  index?: number;
+  as?: Tag;
+}) {
+  const ref = useReveal("mask");
+  const T = as as React.ElementType;
+  return (
+    <T
+      ref={ref}
+      data-rv-mask={direction}
+      data-rv-sweep={sweep ? "" : undefined}
+      className={cn(sweep && "relative", className)}
+      style={index ? ({ "--reveal-i": index % 6 } as React.CSSProperties) : undefined}
+    >
       {children}
     </T>
   );

@@ -16,8 +16,8 @@ const WIDTH = {
 const GRID = { 2: "lg:grid-cols-2", 3: "lg:grid-cols-3", 4: "lg:grid-cols-4" } as const;
 
 /**
- * Horizontal swipe rail: scroll-snap, the next item peeking on phones, a hairline progress
- * bar, and previous/next buttons on desktop. Scrolls sideways only (no nested vertical
+ * Horizontal swipe rail: scroll-snap, the next item peeking on phones, a HUD counter ("02 / 05")
+ * with a glowing hairline progress bar, and previous/next buttons on desktop. Scrolls sideways only (no nested vertical
  * scroll). Place it directly inside a page container: by default it bleeds to the screen
  * edge (`bleed`) so items slide under the gutter; pass bleed={false} anywhere else.
  * desktop="grid" turns it into a plain grid from 1024px — use it whenever the items fit in
@@ -48,6 +48,7 @@ export function Rail({
   const barRef = useRef<HTMLSpanElement>(null);
   // Assume it scrolls until measured, so the controls row is in the first paint (no layout shift).
   const [edges, setEdges] = useState({ start: true, end: false, scrollable: true });
+  const [active, setActive] = useState(0);
   const items = Children.toArray(children);
 
   const measure = useCallback(() => {
@@ -63,6 +64,12 @@ export function Rail({
     }
     const next = { start: el.scrollLeft <= 4, end: el.scrollLeft >= max - 4, scrollable };
     setEdges((prev) => (prev.start === next.start && prev.end === next.end && prev.scrollable === next.scrollable ? prev : next));
+    // HUD counter: the item at the leading edge (the last one once the end is reached).
+    const first = el.querySelector<HTMLElement>(":scope > li");
+    const step = first ? first.offsetWidth + (parseFloat(getComputedStyle(el).columnGap) || 0) : 0;
+    const count = el.children.length;
+    const index = next.end ? count - 1 : step > 0 ? Math.min(count - 1, Math.round(el.scrollLeft / step)) : 0;
+    setActive(index);
   }, []);
 
   useEffect(() => {
@@ -117,11 +124,14 @@ export function Rail({
       </ul>
 
       {items.length > 1 && edges.scrollable && (
-        <div className={cn("mt-6 flex items-center gap-5", grid && "lg:hidden")}>
+        <div className={cn("mt-6 flex items-center gap-4 sm:gap-5", grid && "lg:hidden")}>
+          <span aria-hidden="true" className="shrink-0 font-mono text-[10px] font-medium tabular-nums tracking-[0.2em] text-pub-muted sm:text-[11px]">
+            <span className="text-pub-eyebrow">{String(active + 1).padStart(2, "0")}</span> / {String(items.length).padStart(2, "0")}
+          </span>
           <span aria-hidden="true" className="relative h-px flex-1 overflow-hidden bg-pub-line">
             <span
               ref={barRef}
-              className="absolute inset-y-0 bg-gold transition-[left,width] duration-200 ease-out motion-reduce:transition-none"
+              className="absolute inset-y-0 bg-gold shadow-[0_0_10px_1px_rgb(227_189_106/0.55)] transition-[left,width] duration-200 ease-out motion-reduce:transition-none"
               style={{ width: "12%", left: "0%" }}
             />
           </span>

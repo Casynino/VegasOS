@@ -13,7 +13,7 @@ const HOURS: Record<Place, { label: string; icon: string; of: (s: HotelSettings)
  * Opening hours exactly as the hotel set them in Settings — only the ones filled in, never
  * invented. Rows for InfoList ("Restaurant · 07:00 – 23:00").
  */
-export function diningHours(s: HotelSettings, places: Place[] = ["breakfast", "restaurant", "bar"]): InfoItem[] {
+export function diningHours(s: HotelSettings, places: Place[] = ["breakfast", "restaurant", "bar"]): (InfoItem & { label: string; value: string })[] {
   return places.flatMap((p) => {
     const value = HOURS[p].of(s)?.trim();
     return value ? [{ label: HOURS[p].label, value, icon: HOURS[p].icon }] : [];

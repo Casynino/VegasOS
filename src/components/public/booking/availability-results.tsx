@@ -5,8 +5,11 @@ import { listPublicRoomTypes, searchAvailability, type SearchOption, type StayPa
 import { addDays, diffDays } from "@/lib/time/business-date";
 import { formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { Button, Eyebrow, InfoList, MediaFrame, PriceTag, TextLink, field, typeScale } from "../kit";
+import { Button, Eyebrow, HudLabel, InfoList, MediaFrame, PriceTag, TextLink, field, typeScale } from "../kit";
+import fx from "../room-fx.module.css";
 import { formatDay } from "./parts";
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
 
 function stayQuery(p: StayParams, extra: Record<string, string | number> = {}) {
   const q = new URLSearchParams({ checkIn: p.checkIn, checkOut: p.checkOut, adults: String(p.adults), children: String(p.children) });
@@ -51,8 +54,10 @@ export async function AvailabilityResults({
       }
     }
     return (
-      <div className="mx-auto max-w-2xl py-6 text-center motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 motion-safe:duration-700 sm:py-10">
-        <CalendarSearch className="mx-auto size-9 text-pub-eyebrow" strokeWidth={1.2} aria-hidden="true" />
+      <div className={cn(fx.card, "relative mx-auto max-w-2xl px-5 py-10 text-center motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 motion-safe:duration-700 sm:px-10 sm:py-12")}>
+        <span className="mx-auto grid size-16 place-items-center rounded-full border border-pub-eyebrow/35 text-pub-eyebrow shadow-[0_0_0_8px_color-mix(in_oklab,var(--pub-eyebrow)_7%,transparent)]">
+          <CalendarSearch className="size-7" strokeWidth={1.2} aria-hidden="true" />
+        </span>
         <h2 className={cn("mt-5", typeScale.subheading)}>A full house on these dates</h2>
         <p className={cn("mx-auto mt-3 max-w-md text-pub-muted", typeScale.body)}>
           {result.tooSmall.length > 0
@@ -86,29 +91,33 @@ export async function AvailabilityResults({
 
   return (
     <div>
-      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-8">
-        <p className={cn(typeScale.meta, "text-pub-muted")} aria-live="polite">
-          {options.length} room type{options.length === 1 ? "" : "s"} free for {nights} night{nights === 1 ? "" : "s"}
-          {discounted && " · prices include the website discount"}
+      <div className="flex flex-col gap-2 border-b border-pub-line pb-4 sm:flex-row sm:items-center sm:justify-between sm:gap-8">
+        <p className="flex flex-wrap items-center gap-x-3 gap-y-1" aria-live="polite">
+          <HudLabel live as="span">
+            {options.length} room type{options.length === 1 ? "" : "s"} free · {nights} night{nights === 1 ? "" : "s"}
+          </HudLabel>
+          {discounted && <span className="text-[13px] text-pub-muted">Prices include the website discount.</span>}
         </p>
         {/* How paying works, said once for every room below. */}
         <p className="text-[13px] leading-snug text-pub-muted">{online ? "Pay now by mobile money, or later at the hotel — you choose next." : "No payment now — pay at the hotel."}</p>
       </div>
-      <ul className="mt-5 border-t border-pub-line">
+      <ul className="mt-6 space-y-5 sm:mt-8 sm:space-y-6 lg:mt-4 lg:space-y-0">
         {ordered.map((o, i) => (
           <li
             key={o.type.slug}
-            className="border-b border-pub-line motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-4 motion-safe:fill-mode-both motion-safe:duration-700"
+            className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-4 motion-safe:fill-mode-both motion-safe:duration-700"
             style={{ animationDelay: `${i * 90}ms` }}
           >
-            <AvailabilityRow option={o} params={params} nights={nights} preferred={o.type.slug === preferred} />
+            <AvailabilityRow option={o} params={params} nights={nights} preferred={o.type.slug === preferred} index={i + 1} total={ordered.length} />
           </li>
         ))}
       </ul>
 
       {unavailable.length > 0 && (
-        <section aria-labelledby="unavailable-title" className="mt-12">
-          <h2 id="unavailable-title" className={cn(typeScale.eyebrow, "text-pub-muted")}>Not free for these dates</h2>
+        <section aria-labelledby="unavailable-title" className="mt-12 sm:mt-14">
+          <h2 id="unavailable-title" className="leading-none">
+            <HudLabel as="span">Not free for these dates</HudLabel>
+          </h2>
           <ul className="mt-4 grid gap-x-10 border-t border-pub-line sm:grid-cols-2">
             {unavailable.map((t) => {
               const small = result.tooSmall.find((s) => s.name === t.name);
@@ -141,7 +150,21 @@ export async function AvailabilityResults({
   );
 }
 
-function AvailabilityRow({ option: o, params, nights, preferred }: { option: SearchOption; params: StayParams; nights: number; preferred: boolean }) {
+function AvailabilityRow({
+  option: o,
+  params,
+  nights,
+  preferred,
+  index,
+  total,
+}: {
+  option: SearchOption;
+  params: StayParams;
+  nights: number;
+  preferred: boolean;
+  index: number;
+  total: number;
+}) {
   const t = o.type;
   const codes = new Set(t.amenities.map((a) => a.code));
   const includes = [codes.has("BREAKFAST") && "Breakfast", codes.has("WIFI") && "Wi-Fi"].filter(Boolean) as string[];
@@ -154,8 +177,17 @@ function AvailabilityRow({ option: o, params, nights, preferred }: { option: Sea
   ].filter((f): f is { label: string } => f !== null);
 
   return (
-    <article id={`option-${t.slug}`} className="group grid scroll-mt-[calc(var(--pub-header-h)+1.5rem)] gap-5 py-7 sm:gap-6 sm:py-8 md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] md:gap-10 lg:py-10">
-      <Link href={`/rooms/${t.slug}`} tabIndex={-1} aria-hidden="true" className="block min-w-0">
+    <article
+      id={`option-${t.slug}`}
+      data-spotlight="border"
+      className={cn(
+        fx.card,
+        fx.optionRow,
+        "group relative grid scroll-mt-[calc(var(--pub-header-h)+1.5rem)] gap-5 p-3 sm:gap-6 sm:p-4 md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] md:gap-8 lg:gap-12",
+        preferred && "outline-1 -outline-offset-1 outline-pub-eyebrow/45",
+      )}
+    >
+      <Link href={`/rooms/${t.slug}`} tabIndex={-1} aria-hidden="true" className="relative block min-w-0">
         {t.images[0] ? (
           <MediaFrame
             src={t.images[0]}
@@ -163,21 +195,26 @@ function AvailabilityRow({ option: o, params, nights, preferred }: { option: Sea
             ratio="16/9"
             ratioSm="3/2"
             ratioLg="4/3"
+            rounded="soft"
             sizes="(min-width: 1024px) 34vw, (min-width: 768px) 40vw, 100vw"
+            corners
             zoom
-            corners={preferred}
           />
         ) : (
-          <div className="aspect-[16/9] bg-pub-fg/[0.06] sm:aspect-[3/2] lg:aspect-[4/3]" />
+          <div className="aspect-[16/9] rounded-[0.375rem] bg-pub-fg/[0.06] sm:aspect-[3/2] lg:aspect-[4/3]" />
         )}
+        {/* Option index on the photo, on a small smoked chip. */}
+        <span className="pointer-events-none absolute left-2.5 top-2.5 z-10 rounded-full bg-[rgb(12_10_7/0.55)] px-2.5 py-1 font-mono text-[10px] tracking-[0.2em] text-white/90 backdrop-blur-sm">
+          {pad2(index)}/{pad2(total)}
+        </span>
+        {preferred && <span aria-hidden="true" className="pub-hud-corners" style={{ "--hud-o": "-0.625rem", "--hud-l": "0.875rem", "--hud-c": "rgb(244 220 168 / 0.9)" } as React.CSSProperties} />}
       </Link>
 
-      <div className="flex min-w-0 flex-col">
+      <div className="flex min-w-0 flex-col px-1.5 pb-1.5 sm:px-1 md:py-2 md:pr-2">
         {(preferred || o.available <= 2) && (
-          <p className={cn(typeScale.meta, "mb-2 flex flex-wrap items-center gap-x-3 text-pub-eyebrow")}>
-            {preferred && <span>Your choice</span>}
-            {preferred && o.available <= 2 && <span aria-hidden="true" className="text-pub-faint">·</span>}
-            {o.available <= 2 && <span>Only {o.available} left</span>}
+          <p className="mb-2.5 flex flex-wrap items-center gap-x-4 gap-y-1">
+            {preferred && <HudLabel as="span">Your choice</HudLabel>}
+            {o.available <= 2 && <HudLabel as="span" live>Only {o.available} left</HudLabel>}
           </p>
         )}
         <h3 className={typeScale.subheading}>
@@ -194,7 +231,7 @@ function AvailabilityRow({ option: o, params, nights, preferred }: { option: Sea
           className="mt-4 sm:mt-5"
         />
 
-        <form action="/book" method="get" className="mt-5 flex flex-col gap-4 border-t border-pub-line pt-5 sm:mt-6 sm:flex-row sm:items-end sm:justify-between sm:gap-5">
+        <form action="/book" method="get" className="mt-5 flex flex-col gap-4 border-t border-dashed border-pub-line pt-5 sm:mt-auto sm:flex-row sm:items-end sm:justify-between sm:gap-5 md:mt-6">
           <input type="hidden" name="checkIn" value={params.checkIn} />
           <input type="hidden" name="checkOut" value={params.checkOut} />
           <input type="hidden" name="adults" value={params.adults} />
@@ -217,9 +254,11 @@ function AvailabilityRow({ option: o, params, nights, preferred }: { option: Sea
               <input type="hidden" name="rooms" value={o.minRooms} />
             )}
             <p className="min-w-0 pb-0.5 text-[13px] leading-snug text-pub-muted">
-              {nights} night{nights === 1 ? "" : "s"}
-              {choices.length === 1 && o.minRooms > 1 && <> · {o.minRooms} rooms</>}
-              <span className="block font-display text-[1.25rem] leading-tight text-pub-fg lining-nums tabular-nums">
+              <span className="font-mono text-[10px] uppercase tracking-[0.2em] sm:text-[11px]">
+                {nights} night{nights === 1 ? "" : "s"}
+                {choices.length === 1 && o.minRooms > 1 && <> · {o.minRooms} rooms</>}
+              </span>
+              <span className="mt-1 block font-display text-[1.375rem] leading-tight text-pub-fg lining-nums tabular-nums">
                 {formatTZS(o.perRoom.netAmount * o.minRooms)}
               </span>
               <span className="block">total{choices.length > 1 && ` for ${o.minRooms} room${o.minRooms === 1 ? "" : "s"}`}</span>

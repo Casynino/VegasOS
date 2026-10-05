@@ -38,8 +38,8 @@ export function Field({
 }
 
 /**
- * The heading of a form step, as the fieldset's legend: a gold step number and a serif line
- * ("1  When is your meeting?"). Without `step` it is a smaller sub-step ("Choose a package").
+ * The heading of a form step, as the fieldset's legend: the step number in a fine gold ring and a
+ * serif line ("01  When is your meeting?"). Without `step` it is a smaller sub-step ("Choose a package").
  */
 export function StepLegend({
   step,
@@ -61,7 +61,14 @@ export function StepLegend({
         className,
       )}
     >
-      {step && <span className="mr-3 text-pub-eyebrow lining-nums">{step}</span>}
+      {step && (
+        <span
+          aria-hidden="true"
+          className="mr-3 inline-grid size-8 -translate-y-0.5 place-items-center rounded-full border border-pub-eyebrow/45 align-middle font-mono text-[11px] font-medium tracking-[0.04em] text-pub-eyebrow shadow-[0_0_18px_-6px_rgb(227_189_106/0.6)]"
+        >
+          {String(step).padStart(2, "0")}
+        </span>
+      )}
       {children}
       {hint && <span className="ml-2 font-sans text-[13px] text-pub-muted">· {hint}</span>}
     </legend>

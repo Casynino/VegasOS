@@ -7,6 +7,7 @@ import { LinkButton } from "../kit/button";
 import { Heading } from "../kit/typography";
 import { Section } from "../kit/section";
 import { typeScale } from "../kit/tokens";
+import fx from "../room-fx.module.css";
 import { ConfirmationBand, ContactRows, DatePair, FactRow, KeepLink, printInk } from "./confirmation";
 import { guestsLabel } from "./parts";
 
@@ -84,12 +85,13 @@ export function RequestReceived({ request, settings }: { request: CustomerReques
         )}
       </ConfirmationBand>
 
-      <Section as="div" space="sm" width="wide" className="flex-1 pb-20 sm:pb-24 lg:pb-24">
+      <Section as="div" space="sm" width="wide" atmosphere="calm" pattern="grid" className="flex-1 pb-20 sm:pb-24 lg:pb-28">
         <div className="grid gap-12 lg:grid-cols-12 lg:gap-x-10 lg:gap-y-16">
           {/* What happens next — the guest's next step, first on phones. A closed request offers a new search instead. */}
           <section aria-labelledby="next-title" className="min-w-0 lg:col-span-4 lg:col-start-9 lg:row-span-2 lg:row-start-1">
             {status.tone === "warn" ? (
-              <div data-tone="night" className={cn("rounded-[1rem] bg-night p-5 text-pub-fg ring-1 ring-white/[0.06] sm:p-7 lg:sticky lg:top-24", printInk)}>
+              <div data-tone="night" className={cn(fx.night, "relative p-5 text-pub-fg sm:p-7 lg:sticky lg:top-24", printInk)}>
+                <span aria-hidden="true" className="pub-hud-corners print:hidden" style={{ "--hud-o": "-0.625rem", "--hud-l": "0.875rem" } as React.CSSProperties} />
                 <h2 id="next-title" className={cn(typeScale.eyebrow, "text-pub-eyebrow")}>Another date?</h2>
                 <p className="mt-4 text-[14px] leading-relaxed text-pub-muted">
                   {request.meeting ? "See when the Meeting Room is free and book it online." : "See which rooms are free on other dates and book online."}
@@ -99,7 +101,8 @@ export function RequestReceived({ request, settings }: { request: CustomerReques
                 </LinkButton>
               </div>
             ) : (
-              <div data-tone="night" className={cn("rounded-[1rem] bg-night p-5 text-pub-fg ring-1 ring-white/[0.06] sm:p-7 lg:sticky lg:top-24", printInk, "print:border print:border-pub-line")}>
+              <div data-tone="night" className={cn(fx.night, "relative p-5 text-pub-fg sm:p-7 lg:sticky lg:top-24", printInk, "print:border print:border-pub-line")}>
+                <span aria-hidden="true" className="pub-hud-corners print:hidden" style={{ "--hud-o": "-0.625rem", "--hud-l": "0.875rem" } as React.CSSProperties} />
                 <h2 id="next-title" className={cn(typeScale.eyebrow, "text-pub-eyebrow")}>What happens next</h2>
                 <ol className="mt-6 space-y-5">
                   {steps.map(([t, b], i) => (

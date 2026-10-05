@@ -77,14 +77,14 @@ export type MenuOrder = ReturnType<typeof useMenuOrder>;
 
 /** "+ Add" — then "− 2 +" once it is in the order. A quiet outline (gold on hover), never a column of gold pills. */
 export function AddControl({ qty, name, onChange, size = "md", disabled }: { qty: number; name: string; onChange: (qty: number) => void; size?: "sm" | "md"; disabled?: boolean }) {
-  const h = size === "sm" ? "h-11" : "h-12";
+  const h = size === "sm" ? "h-10" : "h-11";
   if (disabled) return <span className={cn(typeScale.meta, "shrink-0 px-1 text-pub-muted")}>Not today</span>;
   return (
     <AnimatePresence mode="popLayout" initial={false}>
       {qty === 0 ? (
         <motion.button key="add" type="button" initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.85 }} whileTap={{ scale: 0.94 }}
           onClick={(e) => { e.stopPropagation(); onChange(1); }} aria-label={`Add ${name}`}
-          className={cn(h, typeScale.cta, size === "sm" ? "px-4" : "px-6",
+          className={cn(h, typeScale.cta, size === "sm" ? "px-4" : "px-5",
             "inline-flex shrink-0 items-center gap-1.5 rounded-full border border-pub-fg/25 text-pub-fg transition-colors duration-200 hover:border-gold hover:bg-gold/10 hover:text-pub-eyebrow focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none")}>
           <Plus className="size-3.5" strokeWidth={2.25} aria-hidden="true" />Add
         </motion.button>
@@ -100,7 +100,7 @@ export function AddControl({ qty, name, onChange, size = "md", disabled }: { qty
   );
 }
 
-/** The bar at the bottom once something is in the order — the page's own bottom bar (the floating Book bar stays away). */
+/** The bar at the bottom once something is in the order — the page's own bottom bar (the footer keeps room for it). */
 export function BasketPill({ order, onOpen }: { order: MenuOrder; onOpen: () => void }) {
   return (
     <AnimatePresence>
@@ -108,16 +108,16 @@ export function BasketPill({ order, onOpen }: { order: MenuOrder; onOpen: () => 
         <motion.div initial={{ y: 90, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 90, opacity: 0 }} transition={{ type: "spring", stiffness: 320, damping: 30 }}
           data-pub-bottom-bar="" className="fixed inset-x-0 bottom-0 z-40 px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
           <button type="button" onClick={onOpen}
-            className="mx-auto flex h-16 w-full max-w-md items-center gap-3.5 rounded-full border border-gold/35 bg-[#0f0c09]/95 py-2 pl-2 pr-6 text-[#f3ece0] shadow-[0_24px_60px_-18px_rgb(0_0_0/0.85)] backdrop-blur-md transition-[border-color,box-shadow] duration-300 hover:border-gold/70 hover:shadow-[0_24px_60px_-18px_rgb(0_0_0/0.85),0_0_32px_-8px_oklch(0.72_0.12_80/0.45)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none">
-            <span className="relative grid size-12 shrink-0 place-items-center rounded-full bg-gold text-[#16110a]">
+            className="mx-auto flex h-14 w-full max-w-md items-center gap-3 rounded-full border border-gold/35 bg-[#0f0c09]/95 py-1.5 pl-1.5 pr-5 text-[#f3ece0] shadow-[0_24px_60px_-18px_rgb(0_0_0/0.85)] backdrop-blur-md transition-[border-color,box-shadow] duration-300 hover:border-gold/70 hover:shadow-[0_24px_60px_-18px_rgb(0_0_0/0.85),0_0_32px_-8px_oklch(0.72_0.12_80/0.45)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none">
+            <span className="relative grid size-11 shrink-0 place-items-center rounded-full border border-gold/50 text-gold">
               <ShoppingBag className="size-[1.125rem]" strokeWidth={1.8} aria-hidden="true" />
-              <span key={order.count} className="absolute -right-0.5 -top-0.5 grid size-5 place-items-center rounded-full bg-[#f3ece0] text-[10px] font-bold text-[#16110a] ring-2 ring-[#0f0c09] motion-safe:animate-[vlh-pop_0.3s_ease-out]">{order.count}</span>
+              <span key={order.count} className="absolute -right-1 -top-1 grid size-5 place-items-center rounded-full bg-[#f3ece0] text-[10px] font-bold text-[#16110a] ring-2 ring-[#0f0c09] motion-safe:animate-[vlh-pop_0.3s_ease-out]">{order.count}</span>
             </span>
             <span className="min-w-0 flex-1 text-left leading-tight">
               <span className={cn(typeScale.cta, "block")}>View your order</span>
               <span className="mt-1 block truncate text-xs text-white/60">{order.count} item{order.count === 1 ? "" : "s"}<span className="hidden sm:inline"> · send it to the kitchen</span></span>
             </span>
-            <span className="whitespace-nowrap font-display text-[1.25rem] font-medium tabular-nums lining-nums text-gold"><span className="mr-1 font-sans text-[11px] font-medium tracking-[0.16em] text-gold/80">TZS</span>{n(order.subtotal)}</span>
+            <span className="whitespace-nowrap font-display text-[1.125rem] font-medium tabular-nums lining-nums text-gold"><span className="mr-1 font-sans text-[11px] font-medium tracking-[0.16em] text-gold/80">TZS</span>{n(order.subtotal)}</span>
           </button>
         </motion.div>
       )}
@@ -283,7 +283,7 @@ export function OrderDrawer({ open, order, onClose, payTo }: { open: boolean; or
 
         <footer className="border-t border-pub-line px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 sm:px-7">
           <button type="button" disabled={pending || order.count === 0 || !who || (takeOut && !addressOk) || (payNow && !payFirstReady(pay))} onClick={submit}
-            className={buttonClass({ variant: "primary", size: "lg", full: true, className: "h-auto min-h-14 whitespace-normal px-5 py-3 text-center leading-snug tabular-nums" })}>
+            className={buttonClass({ variant: "primary", full: true, className: "h-auto min-h-10 whitespace-normal px-5 py-2.5 text-center leading-snug tabular-nums" })}>
             {pending ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Check className="size-4" strokeWidth={2.25} aria-hidden="true" />}Send my order · TZS {n(order.subtotal)}
           </button>
           <p className="mt-2.5 text-center text-xs text-pub-muted">It goes straight to our kitchen and bar — you can follow it on the next page.</p>
@@ -364,7 +364,7 @@ function WhoForm({ order, onClose }: { order: MenuOrder; onClose: () => void }) 
           <span>Then <strong className="font-medium text-pub-fg">{item.name}</strong> goes in your order.</span>
         </p>
       )}
-      <button type="submit" disabled={!f.result} className={buttonClass({ variant: "primary", size: "lg", full: true, className: "mt-6" })}>
+      <button type="submit" disabled={!f.result} className={buttonClass({ variant: "primary", full: true, className: "mt-6" })}>
         {f.step === "checking" ? <><Loader2 className="size-4 animate-spin" aria-hidden="true" />Checking…</> : <>Continue<ArrowRight className="size-4" strokeWidth={1.8} aria-hidden="true" /></>}
       </button>
       <p className="mt-3 text-center text-xs text-pub-muted">Asked once on this device · used only for your orders and bill</p>

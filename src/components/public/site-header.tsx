@@ -13,7 +13,8 @@ import { ThemeToggle } from "./theme-toggle";
 /**
  * Desktop (≥1024px): logo · Rooms Dining Experiences Services About Contact · Book your stay
  * (+ the theme switch from 1280px; it is also in the footer). Phones and tablets: compact logo ·
- * small Book · menu. Phone, WhatsApp, theme and the staff door live in the menu and the footer.
+ * small Book · menu. Book is a slim hairline button (no gold block) and the only Book on phones.
+ * Phone, WhatsApp, theme and the staff door live in the menu and the footer.
  */
 export function SiteHeader({ settings }: { settings: HotelSettings }) {
   const [first, ...rest] = settings.hotelName.split(" ");
@@ -61,7 +62,7 @@ export function SiteHeader({ settings }: { settings: HotelSettings }) {
 
         <div className="flex items-center justify-end gap-2 sm:gap-3">
           <ThemeToggle compact className="hidden xl:inline-grid" />
-          <LinkButton href="/book" size="sm" aria-label="Book your stay" className="pub-hdr-book px-4 sm:px-5">
+          <LinkButton href="/book" size="sm" aria-label="Book your stay" className="px-4 sm:px-[1.125rem]">
             <span className="sm:hidden">Book</span>
             <span className="hidden sm:inline">Book your stay</span>
           </LinkButton>

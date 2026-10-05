@@ -35,8 +35,10 @@ export function ChoiceRow({
   return (
     <div
       className={cn(
-        "rounded-[0.75rem] border transition-[border-color,background-color] duration-200 motion-reduce:transition-none",
-        on ? "border-gold/70 bg-gold/[0.07]" : "border-pub-line hover:border-pub-fg/30",
+        "rounded-[0.75rem] border transition-[border-color,background-color,box-shadow] duration-300 motion-reduce:transition-none",
+        on
+          ? "border-gold/70 bg-gold/[0.08] shadow-[inset_0_1px_0_rgb(255_240_210/0.1),0_0_30px_-12px_rgb(227_189_106/0.75)]"
+          : "border-pub-line bg-pub-fg/[0.02] hover:border-pub-fg/30",
         className,
       )}
     >
@@ -51,7 +53,7 @@ export function ChoiceRow({
             aria-hidden="true"
             className={cn(
               "grid size-10 shrink-0 place-items-center rounded-full transition-colors duration-200 motion-reduce:transition-none",
-              on ? "bg-gold text-[#16110a]" : "bg-pub-fg/[0.06] text-pub-eyebrow",
+              on ? "bg-gold text-[#16110a] shadow-[0_0_18px_-4px_rgb(227_189_106/0.8)]" : "bg-pub-fg/[0.06] text-pub-eyebrow ring-1 ring-pub-eyebrow/25",
             )}
           >
             {icon}
