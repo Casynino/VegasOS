@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { discountLimit } from "@/lib/discounts";
 import Link from "next/link";
-import { Building2, DoorOpen, LogIn, Plane, Search } from "lucide-react";
+import { ArrowRight, Building2, CircleCheck, DoorOpen, LogIn, MessageCircle, Plane, Search, UtensilsCrossed } from "lucide-react";
 import { can, requirePagePermission } from "@/server/auth";
 import { accountOptions } from "@/server/services/payment-accounts";
 import { db } from "@/server/db";
@@ -18,6 +18,8 @@ import { EmptyState, PageHeader } from "@/components/staff/page-header";
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PaymentPanel } from "../reservations/[id]/panels";
+import { OrderComposer } from "../restaurant/order-composer";
+import { billMenu, inHouseGuests, reservationOrders, STATUS_LABEL } from "@/server/services/restaurant";
 
 export const metadata: Metadata = { title: "Check in" };
 
@@ -59,7 +61,26 @@ export default async function CheckInPage({ searchParams }: PageProps<"/staff/ch
   const late = due.filter((r) => firstArrival(r) < today);
   const todays = due.filter((r) => firstArrival(r) >= today);
 
-  const wanted = typeof sp.id === "string" ? sp.id : (due[0] ?? upcoming[0])?.id;
+  // Just checked in (the card sends staff here): this guest stays on screen — order food & drinks for them, send the
+  // welcome, or go to the next guest (owner, 2026-10-05: "when I check in, add the restaurant from here").
+  const doneId = typeof sp.done === "string" ? sp.done : null;
+  const done = doneId ? await db.reservation.findUnique({
+    where: { id: doneId },
+    select: {
+      id: true, status: true, guest: { select: { fullName: true } },
+      rooms: { where: { status: "CHECKED_IN" }, select: { departureDate: true, room: { select: { number: true } }, roomType: { select: { name: true } } } },
+    },
+  }) : null;
+  const justIn = done?.status === "CHECKED_IN" ? done : null;
+  const watching = can(user, "dashboard.manager") || can(user, "dashboard.owner") || can(user, "dashboard.admin");
+  const canOrder = !!justIn && can(user, "restaurant.orders") && !watching;
+  const [orderBill, orderGuests, justOrders] = justIn ? await Promise.all([
+    canOrder ? billMenu() : null,
+    canOrder ? inHouseGuests() : [],
+    reservationOrders(justIn.id),
+  ]) : [null, [], []];
+
+  const wanted = justIn ? null : typeof sp.id === "string" ? sp.id : (due[0] ?? upcoming[0])?.id;
   const [booking, methods, settings] = await Promise.all([
     wanted ? (list.due.find((r) => r.id === wanted) ?? getCheckInBooking(wanted, today)) : null,
     accountOptions("payments"),
@@ -157,7 +178,13 @@ export default async function CheckInPage({ searchParams }: PageProps<"/staff/ch
         </aside>
 
         {/* Workspace */}
-        {booking ? (
+        {justIn ? (
+          <JustCheckedIn r={justIn} orders={justOrders.filter((o) => o.status !== "CANCELLED")}
+            composer={canOrder && orderBill && orderBill.categories.length > 0 ? (
+              <OrderComposer menu={orderBill.categories} guests={orderGuests} accounts={can(user, "payments.record") ? methods : []} fee={orderBill.fee}
+                canPay={can(user, "revenue.record")} startGuest={justIn.id} label="Order food & drinks" triggerClassName="h-11 rounded-xl px-5" />
+            ) : null} />
+        ) : booking ? (
           <ArrivalCard key={`${booking.id}-${booking.netAmount}-${booking.paidAmount}`} a={toCard(booking)} today={today}
             canAssign={can(user, "reservations.edit")} canOverride={can(user, "reservations.checkin_override")} canEditDates={can(user, "reservations.edit")} canDiscount={discountLimit(user.permissions, await getSettings()) > 0} discountMax={discountLimit(user.permissions, await getSettings())} checkoutTime={formatMinutesLabel(settings.checkoutMinutes)}
             methods={can(user, "payments.record") ? methods : []}
@@ -169,5 +196,67 @@ export default async function CheckInPage({ searchParams }: PageProps<"/staff/ch
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Right after CHECK IN: the guest stays on screen, done — their room and checkout, then food & drinks (ordered here,
+ * straight to the kitchen, on the room bill or paid now — the usual order screen, opened for this guest), the welcome
+ * message, their stay, and the next guest.
+ */
+function JustCheckedIn({ r, composer, orders }: {
+  r: { id: string; guest: { fullName: string }; rooms: { departureDate: Date; room: { number: string }; roomType: { name: string } }[] };
+  composer: React.ReactNode;
+  orders: Awaited<ReturnType<typeof reservationOrders>>;
+}) {
+  const rooms = r.rooms.map((x) => x.room.number).join(", ");
+  const types = [...new Set(r.rooms.map((x) => x.roomType.name))].join(", ");
+  const out = r.rooms.reduce<Date | null>((m, x) => (!m || x.departureDate > m ? x.departureDate : m), null);
+  const first = r.guest.fullName.split(" ")[0];
+  return (
+    <section id="workspace" aria-labelledby="done-title" className="scroll-mt-24 overflow-hidden rounded-3xl border border-border/70 bg-card max-lg:order-first">
+      <div className="flex items-center gap-4 border-b border-border/70 p-5 sm:p-6">
+        <span className="grid size-12 shrink-0 place-items-center rounded-full bg-emerald-500/12 text-emerald-600 dark:text-emerald-400"><CircleCheck className="size-6" /></span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-400">Checked in</p>
+          <h2 id="done-title" className="truncate text-xl font-semibold">{r.guest.fullName}</h2>
+          <p className="truncate text-sm text-muted-foreground">Room {rooms}{types && ` · ${types}`}{out && ` · until ${formatBusinessDate(out.toISOString().slice(0, 10))}`}</p>
+        </div>
+      </div>
+
+      <div className="space-y-5 p-5 sm:p-6">
+        <div className="rounded-2xl border border-border/70 p-4 sm:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="flex items-center gap-2 font-semibold"><UtensilsCrossed className="size-4 text-muted-foreground" />Food &amp; drinks</p>
+              <p className="mt-1 text-sm text-muted-foreground">Anything for {first} after the trip? It goes straight to the kitchen — on Room {rooms}&apos;s bill, or paid now.</p>
+            </div>
+            {composer}
+          </div>
+          {orders.length > 0 && (
+            <ul className="mt-4 divide-y divide-border/70 border-t border-border/70">
+              {orders.map((o) => (
+                <li key={o.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                  <span className="min-w-0">
+                    <span className="font-mono text-xs font-semibold">{o.number}</span>
+                    <span className="block truncate text-muted-foreground">{o.items.map((i) => `${i.quantity}× ${i.name}`).join(", ")}</span>
+                  </span>
+                  <span className="shrink-0 text-right">
+                    <span className="block font-semibold tabular-nums">{formatTZS(o.total)}</span>
+                    <span className="block text-xs text-muted-foreground">{STATUS_LABEL[o.status]} · {o.settlement === "ROOM" ? "room bill" : o.settlement === "PAY_NOW" ? "paid" : "to pay"}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href={`/staff/reservations/${r.id}?sent=welcome#message`} className={buttonVariants({ variant: "outline", className: "h-11 rounded-xl" })}><MessageCircle />Send welcome</Link>
+          <Link href={`/staff/reservations/${r.id}`} className={buttonVariants({ variant: "outline", className: "h-11 rounded-xl" })}>Open stay</Link>
+          <Link href="/staff/check-in" className={buttonVariants({ variant: "ghost", className: "ml-auto h-11 rounded-xl" })}>Next guest<ArrowRight /></Link>
+        </div>
+      </div>
+    </section>
   );
 }

@@ -260,7 +260,8 @@ export function ArrivalCard({ a, today, canAssign, canOverride, canEditDates = f
           action: { label: "Send welcome", onClick: () => router.push(`/staff/reservations/${a.id}?sent=welcome#message`) },
         });
         for (const w of res.data.warnings ?? []) toast.warning(w, { duration: 9000 });
-        router.refresh();
+        // Stay with this guest: "Checked in" — order food & drinks for them right here, send the welcome, or next guest.
+        router.push(`/staff/check-in?done=${encodeURIComponent(a.id)}#workspace`, { scroll: false });
       } else toast.error(res.error, { duration: 9000 });
     });
   }

@@ -26,10 +26,12 @@ const TYPES: { v: OrderType; label: string; icon: typeof UtensilsCrossed }[] = [
  * room) and how it is settled: paid now into a hotel account, or charged to the room.
  * The totals here are only a preview: the server prices every item from the menu.
  */
-export function OrderComposer({ menu, guests, accounts, fee, canPay, startGuest }: {
+export function OrderComposer({ menu, guests, accounts, fee, canPay, startGuest, label = "New order", triggerClassName }: {
   menu: OrderingMenu; guests: InHouseGuest[]; accounts: PayAccount[]; fee: number; canPay: boolean;
   /** Open for this guest (e.g. from the guest's booking). */
   startGuest?: string;
+  /** The button's words and look (e.g. "Order food & drinks" right after a check-in). */
+  label?: string; triggerClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<OrderType>(startGuest ? "ROOM_SERVICE" : "DINE_IN");
@@ -84,7 +86,7 @@ export function OrderComposer({ menu, guests, accounts, fee, canPay, startGuest 
 
   return (
     <>
-      <Button onClick={() => setOpen(true)} className="gap-1.5"><Plus />New order</Button>
+      <Button onClick={() => setOpen(true)} className={cn("gap-1.5", triggerClassName)}><Plus />{label}</Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="flex max-h-[94svh] flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl">
           {/* The band runs across both columns; the columns share the height left under it. */}
