@@ -3,13 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { ArrowRight, ArrowUpRight, BedDouble, CalendarCheck, ChevronRight, Clock, Coffee, ConciergeBell, DoorOpen, Globe, Lock, MapPin, MessageCircle, Phone, Search } from "lucide-react";
+import { ArrowRight, CalendarCheck, ChevronRight, Clock, Coffee, ConciergeBell, DoorOpen, Lock, MapPin, MessageCircle, Phone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NetworkMarks } from "@/components/payments/networks";
 import type { QrLanding, QrRoomType } from "@/server/services/hotel-qr";
-import { BrandMark, caps, card, darkButton, lightButton, Photo } from "./ui";
+import { BrandMark, card, darkButton, lightButton, Photo } from "./ui";
 import { dayShort, telHref, tzs, waHref, type LastBooking } from "./lib";
 
+/** Wide screens: one row of room types when they fit (5 types → 5 columns, never a lone tile on a second row). */
+const XL_COLS: Record<number, string> = { 3: "xl:grid-cols-3", 5: "xl:grid-cols-5", 6: "xl:grid-cols-3" };
 const PLACE: Record<string, string> = { exterior: "The hotel", lobby: "Lobby", rooms: "Rooms", bath: "Bathrooms", amenity: "Details" };
 
 /**
@@ -36,60 +38,51 @@ export function Landing({ landing, imagesOf, last, onExplore, onCheck, onType }:
     return () => io.disconnect();
   }, []);
 
+  const facts = [`Check-in from ${hotel.checkInTime}`, ...hotel.highlights.slice(0, 2)];
   return (
     <div className="pb-[calc(6rem+env(safe-area-inset-bottom))] lg:pb-14">
-      {/* ── The hotel: dark band, photos beside / under the words ── */}
-      <section className="relative overflow-hidden bg-(--vr-dark) text-white">
-        <div aria-hidden className="pointer-events-none absolute -left-24 -top-28 size-80 rounded-full bg-(--vr-gold)/10 blur-3xl" />
-        <div aria-hidden className="pointer-events-none absolute -bottom-32 right-0 hidden size-96 rounded-full bg-(--vr-gold)/[0.06] blur-3xl md:block" />
-        <div className="relative mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-          <header className="flex items-center justify-between gap-3 pt-[max(0.9rem,env(safe-area-inset-top))]">
-            <span className="flex min-w-0 items-center gap-2.5">
-              <BrandMark className="size-10" />
-              <span className="truncate text-[10.5px] font-semibold uppercase tracking-[0.22em] text-white/80">{hotel.name}</span>
-            </span>
-            <span className="flex shrink-0 items-center gap-2">
-              {hotel.phone && (
-                <a href={telHref(hotel.phone)} aria-label={`Call ${hotel.name}`} className="grid size-10 place-items-center rounded-full bg-white/[0.07] ring-1 ring-white/15 transition hover:bg-white/10">
-                  <Phone className="size-4 text-(--vr-gold)" />
-                </a>
-              )}
-              <a href="/" target="_blank" rel="noopener" className="inline-flex h-10 items-center gap-1.5 rounded-full bg-white/[0.07] px-3 text-[13px] font-medium text-white/85 ring-1 ring-white/15 transition hover:bg-white/10">
-                <Globe className="size-4 text-(--vr-gold)" /><span className="hidden sm:inline">Our website</span><ArrowUpRight className="hidden size-3.5 sm:block" />
-                <span className="sr-only sm:hidden">Our website (opens in a new tab)</span>
-              </a>
-            </span>
-          </header>
+      {/* ── The hotel, the restaurant app's way (owner, 2026-10-05: "too many shapes"): a quiet header on cream, then ONE
+          dark card — the photos, a few words, one button. No pills, no chips. ── */}
+      <header className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 pt-[max(0.9rem,env(safe-area-inset-top))] sm:px-6 sm:pt-5 lg:px-8">
+        <span className="flex min-w-0 items-center gap-2.5">
+          <BrandMark className="size-9" />
+          <span className="min-w-0 leading-none">
+            <span className="block truncate font-display text-[17px] font-semibold tracking-wide">{hotel.name}</span>
+            <span className="mt-0.5 block truncate text-[10px] uppercase tracking-[0.2em] text-(--vr-muted)">{hotel.tagline ?? "Rooms & suites"}</span>
+          </span>
+        </span>
+        {hotel.phone && (
+          <a href={telHref(hotel.phone)} aria-label={`Call ${hotel.name}`}
+            className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-(--vr-card) px-3 text-[13px] font-medium ring-1 ring-(--vr-line) transition hover:ring-(--vr-gold) sm:px-3.5">
+            <Phone className="size-4 text-(--vr-gold-ink)" /><span className="hidden sm:inline">Call us</span>
+          </a>
+        )}
+      </header>
 
-          <div className="grid gap-5 pb-8 pt-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-center md:gap-8 md:pb-12 md:pt-8 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] lg:gap-14 lg:pb-16 lg:pt-12">
-            <Slideshow slides={hotel.slides.length ? hotel.slides : [{ src: hotel.hero.src, mobileSrc: null, alt: hotel.hero.alt, caption: null }]} className="md:order-last" />
-            <div className="min-w-0 motion-safe:animate-[vlh-fade_0.7s_ease-out_both]">
-              <span className="inline-flex items-center gap-2 rounded-full border border-(--vr-gold)/40 bg-(--vr-gold)/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-(--vr-gold)">
-                <span className="relative flex size-1.5"><span className="absolute inline-flex size-full animate-ping rounded-full bg-(--vr-gold) opacity-60 motion-reduce:hidden" /><span className="relative inline-flex size-1.5 rounded-full bg-(--vr-gold)" /></span>
-                Book your stay
-              </span>
-              <h1 className="mt-3 font-display text-[32px] font-semibold leading-[1.02] tracking-tight sm:text-[38px] lg:text-[46px]">{hotel.name}</h1>
-              <p className="mt-1.5 font-display text-[20px] italic leading-tight text-(--vr-gold) sm:text-[24px] lg:text-[28px]">Your stay starts here.</p>
-              {hotel.tagline && <p className="mt-3.5 max-w-md text-[14.5px] leading-relaxed text-white/70">{hotel.tagline}</p>}
+      <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+        <section className="relative mt-3 overflow-hidden rounded-3xl bg-(--vr-dark) text-white shadow-[0_24px_50px_-34px_rgba(29,23,18,0.9)] sm:mt-4 lg:grid lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+          <div aria-hidden className="pointer-events-none absolute -bottom-24 -left-16 size-72 rounded-full bg-(--vr-gold)/10 blur-3xl" />
+          <Slideshow slides={hotel.slides.length ? hotel.slides : [{ src: hotel.hero.src, mobileSrc: null, alt: hotel.hero.alt, caption: null }]} className="lg:order-last" />
+          <div className="relative min-w-0 px-5 pb-6 pt-5 sm:px-7 sm:pb-7 lg:self-center lg:px-10 lg:py-12 motion-safe:animate-[vlh-fade_0.7s_ease-out_both]">
+            <h1 className="font-display text-[34px] font-semibold leading-[1.02] tracking-tight sm:text-[40px] lg:text-[50px]">
+              Your stay<br /><span className="text-(--vr-gold)">starts here.</span>
+            </h1>
+            <p className="mt-2.5 text-[12px] leading-relaxed text-white/55">{facts.join("  ·  ")}</p>
 
-              <div ref={buttons} className="mt-5 grid max-w-md grid-cols-2 gap-2.5">
-                <button type="button" onClick={onExplore} className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-white/[0.08] text-[14px] font-semibold text-white ring-1 ring-white/20 transition hover:bg-white/[0.14]">
-                  <BedDouble className="size-4 text-(--vr-gold) max-[379px]:hidden" />Explore rooms
-                </button>
-                <button type="button" onClick={onCheck} className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-(--vr-gold) text-[14px] font-semibold text-(--vr-ink) shadow-[0_14px_30px_-14px_rgba(212,163,69,0.8)] transition hover:brightness-105">
-                  <Search className="size-4 max-[379px]:hidden" />Check availability
-                </button>
-              </div>
-              {booking.message && <p className="mt-3 max-w-md rounded-2xl bg-white/[0.07] px-3.5 py-2.5 text-[12.5px] leading-snug text-white/80 ring-1 ring-white/10">{booking.message}</p>}
-
-              <ul className="mt-5 flex flex-wrap gap-1.5 text-[12px]">
-                <li className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-3 py-1.5 text-white/80 ring-1 ring-white/12"><Clock className="size-3.5 text-(--vr-gold)" />Check-in from {hotel.checkInTime}</li>
-                {hotel.highlights.slice(0, 3).map((h) => <li key={h} className="inline-flex items-center rounded-full bg-white/[0.06] px-3 py-1.5 text-white/80 ring-1 ring-white/12">{h}</li>)}
-              </ul>
+            <div ref={buttons} className="mt-5 max-w-sm">
+              <button type="button" onClick={onCheck}
+                className="flex h-[52px] w-full items-center justify-between rounded-full bg-(--vr-gold) pl-6 pr-2 text-[15px] font-semibold text-(--vr-ink) shadow-[0_14px_30px_-14px_rgba(212,163,69,0.75)] transition hover:brightness-105">
+                Check availability
+                <span className="grid size-9 place-items-center rounded-full bg-(--vr-dark) text-(--vr-gold)"><ArrowRight className="size-4" /></span>
+              </button>
+              <button type="button" onClick={onExplore} className="mt-3 inline-flex items-center gap-1.5 px-1 text-[13.5px] font-medium text-white/80 transition hover:text-white">
+                Explore our rooms{from !== null && <span className="text-white/50">· from <span className="tabular-nums text-(--vr-gold)">{tzs(from)}</span></span>}<ChevronRight className="size-4 text-(--vr-gold)" />
+              </button>
             </div>
+            {booking.message && <p className="mt-4 max-w-sm text-[12.5px] leading-snug text-white/70">{booking.message}</p>}
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
 
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
         {/* ── A booking made a moment ago in this tab ── */}
@@ -111,7 +104,7 @@ export function Landing({ landing, imagesOf, last, onExplore, onCheck, onType }:
               <h2 id="rooms-title" className="font-display text-[24px] font-semibold leading-none lg:text-[28px]">Our rooms</h2>
               <button type="button" onClick={onExplore} className="inline-flex items-center gap-1 text-[13px] font-medium text-(--vr-gold-ink) hover:underline">See all<ChevronRight className="size-4" /></button>
             </div>
-            <div className="-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:-mx-6 sm:scroll-px-6 sm:px-6 md:mx-0 md:grid md:grid-cols-2 md:gap-4 md:overflow-visible md:px-0 lg:grid-cols-3 lg:gap-5 xl:grid-cols-4">
+            <div className={cn("-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:-mx-6 sm:scroll-px-6 sm:px-6 md:mx-0 md:grid md:grid-cols-2 md:gap-4 md:overflow-visible md:px-0 lg:grid-cols-3 lg:gap-5", XL_COLS[roomTypes.length] ?? "xl:grid-cols-4")}>
               {roomTypes.map((t) => <RoomTile key={t.slug} t={t} image={imagesOf(t)[0] ?? null} onOpen={() => onType(t.slug)} />)}
             </div>
           </section>
@@ -137,7 +130,7 @@ export function Landing({ landing, imagesOf, last, onExplore, onCheck, onType }:
         <div className="mt-8 grid gap-3 lg:mt-12 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] lg:gap-5">
           <section aria-labelledby="know-title" className={cn(card, "p-4 sm:p-5")}>
             <h2 id="know-title" className="font-display text-[22px] font-semibold leading-none">Good to know</h2>
-            <dl className="mt-3.5 grid grid-cols-2 gap-2">
+            <dl className="mt-2 divide-y divide-(--vr-line)">
               <Fact icon={Clock} label="Check-in" value={`from ${hotel.checkInTime}`} />
               <Fact icon={DoorOpen} label="Check-out" value={`by ${hotel.checkoutTime}`} />
               {hotel.breakfastHours && <Fact icon={Coffee} label="Breakfast" value={hotel.breakfastHours} />}
@@ -209,7 +202,7 @@ function RoomTile({ t, image, onOpen }: { t: QrRoomType; image: string | null; o
 /** "3 free tonight" — or that the type is full tonight (other nights may be free). */
 export function FreeTonight({ n, className }: { n: number; className?: string }) {
   return (
-    <span className={cn("inline-flex h-6 shrink-0 items-center gap-1 rounded-full px-2 text-[11px] font-medium", n > 0 ? "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200" : "bg-(--vr-bg) text-(--vr-muted) ring-1 ring-(--vr-line)", className)}>
+    <span className={cn("inline-flex shrink-0 items-center gap-1.5 text-[11.5px] font-medium", n > 0 ? "text-emerald-700" : "text-(--vr-muted)", className)}>
       <span className={cn("size-1.5 rounded-full", n > 0 ? "bg-emerald-500" : "bg-(--vr-muted)/50")} />
       {n > 0 ? `${n} free tonight` : "Full tonight"}
     </span>
@@ -218,9 +211,9 @@ export function FreeTonight({ n, className }: { n: number; className?: string })
 
 function Fact({ icon: Icon, label, value }: { icon: typeof Clock; label: string; value: string }) {
   return (
-    <div className="rounded-2xl bg-(--vr-bg) px-3 py-2.5 ring-1 ring-(--vr-line)">
-      <dt className={cn(caps, "flex items-center gap-1.5")}><Icon className="size-3.5 text-(--vr-gold-ink)" />{label}</dt>
-      <dd className="mt-1 text-[13.5px] font-semibold">{value}</dd>
+    <div className="flex items-center justify-between gap-3 py-2.5">
+      <dt className="flex items-center gap-2 text-[13px] text-(--vr-muted)"><Icon className="size-4 text-(--vr-gold-ink)" />{label}</dt>
+      <dd className="text-[13.5px] font-semibold">{value}</dd>
     </div>
   );
 }
@@ -240,26 +233,25 @@ function Slideshow({ slides, className }: { slides: { src: string; alt: string; 
   const slide = slides[at] ?? slides[0];
   const next = slides[(at + 1) % slides.length];
   return (
-    <figure className={cn("min-w-0", className)}>
-      <div className="relative aspect-[16/11] overflow-hidden rounded-[28px] bg-white/5 shadow-[0_30px_60px_-30px_rgba(0,0,0,0.9)] ring-1 ring-white/10 md:aspect-[4/5] lg:aspect-[5/4]">
+    <figure className={cn("relative min-w-0", className)}>
+      <div className="relative aspect-[4/3] overflow-hidden bg-white/5 sm:aspect-[16/9] lg:aspect-auto lg:h-full lg:min-h-[440px]">
         <AnimatePresence initial={false}>
           <motion.div key={slide.src} className="absolute inset-0" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: reduce ? 0 : 1.2, ease: "easeInOut" }}>
-            <Photo src={slide.src} alt={slide.alt} eager={at === 0} sizes="(min-width:1024px) 600px, (min-width:768px) 50vw, 100vw"
+            <Photo src={slide.src} alt={slide.alt} eager={at === 0} sizes="(min-width:1024px) 640px, 100vw"
               imgClassName="motion-safe:animate-[vlh-kb-a_14s_cubic-bezier(0.25,0.1,0.25,1)_both]" />
           </motion.div>
         </AnimatePresence>
         {/* The next photo, loading quietly so the change is smooth */}
-        {next && next.src !== slide.src && <span aria-hidden className="invisible absolute inset-0"><Photo src={next.src} alt="" sizes="(min-width:1024px) 600px, (min-width:768px) 50vw, 100vw" /></span>}
+        {next && next.src !== slide.src && <span aria-hidden className="invisible absolute inset-0"><Photo src={next.src} alt="" sizes="(min-width:1024px) 640px, 100vw" /></span>}
+        {/* Melts the photo into the card (phones: into the words below it) */}
+        <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-linear-to-t from-(--vr-dark) to-transparent lg:hidden" />
       </div>
       {slides.length > 1 && (
-        <figcaption className="mt-2.5 flex items-center justify-between gap-3 px-1 text-[12px] text-white/60">
-          <span className="truncate">{slide.caption ?? slide.alt}</span>
-          <span className="flex shrink-0 items-center gap-1.5" aria-label={`Photo ${at + 1} of ${slides.length}`}>
-            {slides.map((s, k) => (
-              <button key={s.src} type="button" onClick={() => setAt(k)} aria-label={`Show photo ${k + 1}`}
-                className={cn("h-1.5 rounded-full transition-all", k === at ? "w-5 bg-(--vr-gold)" : "w-1.5 bg-white/35 hover:bg-white/60")} />
-            ))}
-          </span>
+        <figcaption className="absolute bottom-3 right-4 flex items-center gap-1.5" aria-label={`Photo ${at + 1} of ${slides.length}: ${slide.caption ?? slide.alt}`}>
+          {slides.map((s, k) => (
+            <button key={s.src} type="button" onClick={() => setAt(k)} aria-label={`Show photo ${k + 1}`}
+              className={cn("h-1.5 rounded-full shadow-[0_1px_3px_rgba(0,0,0,0.4)] transition-all", k === at ? "w-5 bg-(--vr-gold)" : "w-1.5 bg-white/55 hover:bg-white/80")} />
+          ))}
         </figcaption>
       )}
     </figure>
