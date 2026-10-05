@@ -11,6 +11,7 @@ import { findAvailableRooms, lockRoomTypes } from "./availability";
 import { recalculateReservation, syncRoomNights, ACTIVE_STATUSES } from "./reservation-financials";
 import { normalizePhone, resolveGuest, typedDifferences, type GuestInput } from "./guests";
 import { thankYouAfterCheckout } from "./thank-you";
+import { notifyReservationGuestSoon } from "./guest-comms";
 import { setRoomStatusTx } from "./rooms";
 import { postRoomChargesTx, recordPaymentTx, type ChargeLine } from "./payments";
 import { createRestaurantOrderTx } from "./restaurant";
@@ -492,7 +493,10 @@ export async function confirmReservation(reservationId: string, actor: Actor) {
 
 export async function checkIn(reservationId: string, actor: Actor, reservationRoomIds?: string[] | null, now = new Date()) {
   await expireHoldsBeforeTaking({ reservationId }, now);
-  return run((tx) => checkInTx(tx, reservationId, actor, reservationRoomIds, now));
+  const res = await run((tx) => checkInTx(tx, reservationId, actor, reservationRoomIds, now));
+  // The guest's welcome on WhatsApp — room, Wi-Fi, check-out, their stay link (only with a provider; never blocks).
+  notifyReservationGuestSoon(reservationId, "WELCOME");
+  return res;
 }
 
 /** Housekeeping states a room may be checked into with an authorised override (never maintenance / out of service). */
@@ -588,6 +592,9 @@ export async function checkOut(reservationId: string, actor: Actor, opts: CheckO
   const res = await run((tx) => checkOutTx(tx, reservationId, actor, opts, now));
   // The guest's thank-you note, from the finished stay (made after the check-out is saved; never blocks it).
   await thankYouAfterCheckout(reservationId, actor);
+  // The final bill and the thank-you, on WhatsApp — once the whole stay is out (only with a provider; never blocks).
+  const out = await db.reservation.findUnique({ where: { id: reservationId }, select: { status: true } });
+  if (out?.status === "CHECKED_OUT") notifyReservationGuestSoon(reservationId, "CHECKOUT");
   return res;
 }
 
@@ -842,7 +849,7 @@ async function checkOutTx(tx: Tx, reservationId: string, actor: Actor, opts: Che
 
 export async function cancelReservation(reservationId: string, actor: Actor, reason: string, opts: { keepPayment?: boolean | null } = {}) {
   if (!reason.trim()) throw new AppError("A cancellation reason is required.", "VALIDATION", { reason: "Required" });
-  return run(async (tx) => {
+  const res = await run(async (tx) => {
     const r = await loadForUpdate(tx, reservationId);
     const cancellable = r.rooms.filter((x) => ["INQUIRY", "RESERVED", "CONFIRMED"].includes(x.status));
     if (cancellable.length === 0) throw new AppError("This booking cannot be cancelled (guest already checked in, or it is closed).");
@@ -861,6 +868,8 @@ export async function cancelReservation(reservationId: string, actor: Actor, rea
       after: { status: "CANCELLED", reason, rooms: cancellable.map((c) => c.room.number), policy: keep ? "Payment kept" : "Refund due", ...money },
     });
   });
+  notifyReservationGuestSoon(reservationId, "CANCELLED");
+  return res;
 }
 
 /**
@@ -1080,7 +1089,7 @@ export async function assignAndCheckIn(
   now = new Date(),
 ) {
   await expireHoldsBeforeTaking({ reservationId }, now);
-  return run(async (tx) => {
+  const res = await run(async (tx) => {
     const r = await loadForUpdate(tx, reservationId);
     if (!["RESERVED", "CONFIRMED", "INQUIRY"].includes(r.status)) throw new AppError(`This booking is ${r.status.toLowerCase().replace("_", " ")} — nothing to check in.`);
     for (const a of input.assignments ?? []) {
@@ -1109,6 +1118,8 @@ export async function assignAndCheckIn(
     }
     return checkInTx(tx, reservationId, actor, null, now, { notReadyOverride: input.notReadyOverride });
   });
+  notifyReservationGuestSoon(reservationId, "WELCOME");
+  return res;
 }
 
 export interface MeetingChange {

@@ -7,6 +7,8 @@ import { audit } from "@/server/audit";
 import { authorize, requestMeta, type CurrentUser } from "@/server/auth";
 import { AppError, isUniqueViolation, runAction, type ActionResult } from "@/server/errors";
 import { parseInput } from "@/server/validation";
+import { siteOrigin } from "@/server/site-origin";
+import { tripMessage } from "@/server/services/guest-message-data";
 import {
   adjustTripPrice, chargeTripToRoom, confirmTrip, createTransportRequest, payTripDirect, recordDriver, saveTransportService, setTripStatus, transportServices,
 } from "@/server/services/transport";
@@ -120,6 +122,15 @@ export async function tripHistoryAction(input: { tripId: string }) {
     await authorize("transport.view", "transport.manage");
     const rows = await db.auditLog.findMany({ where: { entityType: "TransportTrip", entityId: input.tripId }, orderBy: { createdAt: "asc" }, select: { id: true, action: true, actorLabel: true, createdAt: true, after: true } });
     return rows.map((r) => ({ id: r.id, action: r.action, by: r.actorLabel, at: r.createdAt.toISOString(), reason: (r.after as { reason?: string } | null)?.reason ?? null }));
+  });
+}
+
+/** The trip's details as a ready WhatsApp message for the guest (route, time, flight, price and payment, the trip page). */
+export async function tripMessageAction(input: { tripId: string }) {
+  return runAction(async () => {
+    await authorize("transport.view", "transport.manage", "transport.request");
+    const m = await tripMessage(input.tripId, await siteOrigin());
+    return m ? { text: m.text, to: m.to } : null;
   });
 }
 

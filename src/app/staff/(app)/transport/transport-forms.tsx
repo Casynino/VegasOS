@@ -19,7 +19,7 @@ import { formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
   adjustTripPriceAction, chargeTripToRoomAction, confirmTripAction, createTransportRequestAction, payTripDirectAction, recordDriverAction,
-  saveTransportServiceAction, saveVehicleAction, tripHistoryAction, tripStatusAction,
+  saveTransportServiceAction, saveVehicleAction, tripHistoryAction, tripMessageAction, tripStatusAction,
 } from "./actions";
 
 export type PackageOpt = { id: string; name: string; description: string | null; price: number; isActive?: boolean };
@@ -250,7 +250,10 @@ function TripCard({ trip: t, onClose, drivers, vehicles, accounts, staying, perm
   const hasDriver = !!t.driverName;
   const billed = t.money === "ROOM" || t.money === "PAID";
 
+  const [details, setDetails] = useState<{ text: string; to: string | null } | null>(null);
   useEffect(() => { void tripHistoryAction({ tripId: t.id }).then((r) => { if (r.ok) setHistory(r.data); }); }, [t.id]);
+  // The trip's full details, ready to send on WhatsApp in one tap (route, time, flight, price, the trip page).
+  useEffect(() => { void tripMessageAction({ tripId: t.id }).then((r) => { if (r.ok) setDetails(r.data); }); }, [t.id]);
 
   function run(fn: () => Promise<{ ok: boolean; error?: string }>, done?: string) {
     start(async () => {
@@ -332,7 +335,8 @@ function TripCard({ trip: t, onClose, drivers, vehicles, accounts, staying, perm
             {t.passengerPhone && (
               <div className="flex shrink-0 gap-1.5">
                 <a href={`tel:${t.passengerPhone}`} title={`Call ${t.passengerPhone}`} aria-label={`Call ${t.passengerPhone}`} className="grid size-9 place-items-center rounded-full border border-border hover:bg-muted"><Phone className="size-4" /></a>
-                <a href={wa(t.passengerPhone)} target="_blank" rel="noreferrer" title="WhatsApp" aria-label="WhatsApp" className="grid size-9 place-items-center rounded-full bg-[#25D366] text-[#073b1f] hover:brightness-105"><MessageCircle className="size-4" /></a>
+                <a href={details?.text ? `${wa(details.to ?? t.passengerPhone)}?text=${encodeURIComponent(details.text)}` : wa(t.passengerPhone)} target="_blank" rel="noreferrer"
+                  title="Send the trip details on WhatsApp" aria-label="Send the trip details on WhatsApp" className="grid size-9 place-items-center rounded-full bg-[#25D366] text-[#073b1f] hover:brightness-105"><MessageCircle className="size-4" /></a>
               </div>
             )}
           </div>

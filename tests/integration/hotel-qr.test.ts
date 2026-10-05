@@ -570,7 +570,8 @@ describe("reception and the guest", () => {
     await qrConfirmation(q.token, online.reference, online.manageToken);
     expect(texts).toHaveLength(2);
     expect(texts[1]).toMatchObject({ event: "BOOKING_CONFIRMED" });
-    expect(texts[1].text).toMatch(/Confirmed/);
+    expect(texts[1].text).toMatch(/Your booking is now confirmed/);
+    expect(texts[1].text).toMatch(/Payment Status: PAID/);
     expect(await db.guestMessage.count({ where: { reservationId: online.r.id, type: "BOOKING_CONFIRMED" } })).toBe(1);
 
     // Switched off by the hotel: nothing is sent.

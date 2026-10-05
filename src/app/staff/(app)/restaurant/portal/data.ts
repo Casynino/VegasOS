@@ -9,7 +9,7 @@ import { awaitsOnlinePayment, deliveryPlace, ORDER_SOURCE, type BoardOrder, type
 import { prettyPhone } from "@/lib/guest-messages";
 import { inHouseGuestIds, isHotelOrder } from "@/server/desk";
 import { isRestaurantDevice } from "@/lib/permissions";
-import { ORDER_EVENT_TYPE, orderEventFor, orderMessageText } from "@/lib/order-messages";
+import { ORDER_EVENT_TYPE, orderEventFor, orderMessageText, orderFacts } from "@/lib/order-messages";
 import type { PortalOrder, PortalPerms, PortalRole, PortalStay } from "./types";
 
 /**
@@ -98,7 +98,11 @@ export function toPortalOrders(orders: BoardOrder[], ctx: { seesMoney: boolean; 
       complaints: { total: o.complaints.length, open: o.complaints.filter((c) => c.status !== "COMPLETED" && c.status !== "CANCELLED").length },
       update: ctx.waiter && phone && event ? {
         to: phone, type: ORDER_EVENT_TYPE[event],
-        text: orderMessageText(event, { name: o.customerName, hotel: settings.hotelName, number: o.number, type: o.type, room: o.roomNumber, delivery: !!o.deliveryAddress, track: o.trackToken ? `${origin}/order/${o.trackToken}` : null, menu: `${origin}/order`, prepMinutes: settings.orderPrepMinutes, phone: hotelPhone }),
+        text: orderMessageText(event, {
+          name: o.customerName, hotel: settings.hotelName, number: o.number, type: o.type, room: o.roomNumber, delivery: !!o.deliveryAddress,
+          track: o.trackToken ? `${origin}/order/${o.trackToken}` : null, menu: `${origin}/order`, prepMinutes: settings.orderPrepMinutes, phone: hotelPhone,
+          place: deliveryPlace(o), details: event === "RECEIVED" ? orderFacts(o, deliveryPlace(o), settings.timezone) : null,
+        }),
       } : null,
       told: !!event && !!ctx.sent?.has(`${o.id}:${ORDER_EVENT_TYPE[event]}`),
       stays: seesMoney ? ctx.stays?.get(o.id) ?? [] : [],

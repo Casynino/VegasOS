@@ -9,7 +9,9 @@ import { recordPaymentTx } from "./payments";
 import { ordersDueForPrompt, payOrdersFromMobileTx } from "./restaurant";
 import { payTripFromMobileTx } from "./transport";
 import { recordInvoicePaymentTx } from "./invoices";
-import { notifyBookingGuestSoon } from "./guest-comms";
+import { after } from "next/server";
+import { notifyBookingGuestSoon, notifyReservationGuestSoon } from "./guest-comms";
+import { notifyOrderCustomer } from "./online-orders";
 import { holdForPayment, isPayLater, releasePayingHold, type PayingHold } from "./booking-holds";
 import { createNtzsDeposit, depositCompleted, depositFailed, getNtzsDeposit, ntzsEnabled, ntzsLive, ntzsPhone, NTZS_MIN_TZS } from "./ntzs";
 import type { Actor } from "./reservations";
@@ -264,6 +266,7 @@ export async function settleMobilePayment(id: string, info: { received?: number 
     const out = await recordMobilePayment(id, info, now);
     // Recorded just now (exactly once, whichever way nTZS's answer came): a booking the guest paid is confirmed — tell them.
     if (out.recorded) await bookingPaidNotice(out.mp);
+    if (out.recorded) orderPaidNotice(out.mp);
     return out;
   } catch (e) {
     // The money came in but could not go on the bill (a rule of the bill refused it): keep it as received, needing
@@ -293,6 +296,13 @@ async function bookingPaidNotice(mp: MobilePayment) {
   } catch (e) {
     console.error("[ntzs] booking confirmation message", mp.reservationId, e);
   }
+}
+
+/** Food & drinks paid by phone: the customer gets the receipt on WhatsApp (only with a provider; never blocks). */
+function orderPaidNotice(mp: MobilePayment) {
+  if (mp.purpose !== "RESTAURANT" || !mp.orderPaymentIds.length) return;
+  const send = () => Promise.all(mp.orderIds.map((id) => notifyOrderCustomer(id, "PAID")));
+  try { after(send); } catch { void send(); }
 }
 
 async function recordMobilePayment(id: string, info: { received?: number | null; pspReference?: string | null; source: "webhook" | "check" | "sweep" }, now: Date) {
@@ -375,8 +385,12 @@ export async function checkMobilePaymentWithAnswer(id: string, source: "check" |
     console.info(`[ntzs] deposit ${mp.depositId} reads "${res.data.status || "(no status)"}" — still waiting`);
   }
   if (mp.status === "PENDING" && depositFailed(res.data.status)) {
-    await db.mobilePayment.updateMany({ where: { id, status: "PENDING", completedAt: null }, data: { status: "FAILED", lastError: `The customer did not pay (${res.data.status}).` } });
+    const failed = await db.mobilePayment.updateMany({ where: { id, status: "PENDING", completedAt: null }, data: { status: "FAILED", lastError: `The customer did not pay (${res.data.status}).` } });
     await paymentEnded(mp, now);
+    // A guest paying for their own booking hears that it did not go through, and how to try again.
+    if (failed.count && mp.purpose === "RESERVATION" && mp.reservationId && mp.initiator === "CUSTOMER" && BOOKING_PAY_SOURCES.includes(mp.source ?? "")) {
+      notifyReservationGuestSoon(mp.reservationId, "PAYMENT_FAILED");
+    }
     return { mp: await db.mobilePayment.findUniqueOrThrow({ where: { id } }), answered: true, ntzsStatus: status, error: null };
   }
   return { mp, answered: true, ntzsStatus: status, error: null };

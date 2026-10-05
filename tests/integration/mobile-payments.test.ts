@@ -81,7 +81,7 @@ describe("phone numbers and webhook signatures", () => {
     const sec = String(Math.floor(now / 1000)), ms = String(now);
     expect(verifyNtzsWebhook(body, sign(sec), sec, now)).toBe(true);
     expect(verifyNtzsWebhook(body, sign(ms), ms, now)).toBe(true);
-    expect(verifyNtzsWebhook(body, sign(sec).replace(/.$/, "0"), sec, now)).toBe(false);
+    expect(verifyNtzsWebhook(body, sign(sec).replace(/.$/, (c) => (c === "0" ? "1" : "0")), sec, now)).toBe(false);
     expect(verifyNtzsWebhook(`${body} `, sign(sec), sec, now)).toBe(false);
     const old = String(Math.floor((now - 20 * 60_000) / 1000));
     expect(verifyNtzsWebhook(body, sign(old), old, now)).toBe(false);

@@ -13,6 +13,7 @@ import { recalculateReservation, syncRoomNights } from "./reservation-financials
 import { recordPaymentTx } from "./payments";
 import { setRoomStatusTx } from "./rooms";
 import type { Actor } from "./reservations";
+import { notifyReservationGuestSoon } from "./guest-comms";
 
 /**
  * Room changes — the same reservation, the same guest, the same payments; only
@@ -143,7 +144,10 @@ export interface RoomChangeInput {
 
 export async function changeRoom(input: RoomChangeInput, actor: Actor, now = new Date()) {
   try {
-    return await db.$transaction((tx) => changeRoomTx(tx, input, actor, now), { timeout: 20_000, maxWait: 10_000 });
+    const res = await db.$transaction((tx) => changeRoomTx(tx, input, actor, now), { timeout: 20_000, maxWait: 10_000 });
+    // The guest hears about the new room on WhatsApp (only with a provider; never blocks the move).
+    notifyReservationGuestSoon(res.reservationId, "ROOM_CHANGED", { from: res.from, to: res.to });
+    return res;
   } catch (e) {
     if (isExclusionViolation(e)) throw new AppError("This room is no longer available. Choose another room.", "UNAVAILABLE");
     throw e;
@@ -271,5 +275,5 @@ export async function changeRoomTx(tx: Tx, input: RoomChangeInput, actor: Actor,
       ...(keepPrice && { downgrade: "Cheaper room — price stays the same" }),
     },
   });
-  return { id: move.id, from: rr.room.number, to: toRoom.number, charged, compensation, difference: q.difference };
+  return { id: move.id, reservationId: rr.reservationId, from: rr.room.number, to: toRoom.number, charged, compensation, difference: q.difference };
 }

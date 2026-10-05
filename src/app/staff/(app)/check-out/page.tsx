@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ArrowRight, BedDouble, CheckCircle2, Download, Eye, Printer, Search } from "lucide-react";
 import { siteOrigin } from "@/server/site-origin";
 import { SendDocument } from "@/components/staff/invoices/send-document";
-import { thankYouMessageText } from "@/lib/guest-messages";
+import { reservationMessage } from "@/server/services/guest-message-data";
 import { can, requirePagePermission } from "@/server/auth";
 import { db } from "@/server/db";
 import { accountOptions } from "@/server/services/payment-accounts";
@@ -70,6 +70,8 @@ export default async function CheckOutPage({ searchParams }: PageProps<"/staff/c
   const note = done?.thankYouNotes[0] ?? null;
   const settings = await getSettings();
   const noteLink = note ? `${await siteOrigin()}/thanks/${note.token}` : null;
+  // The departure summary sent to the guest: the stay, the final bill from the folio, the payment and the note's link.
+  const checkoutMsg = done && note ? await reservationMessage(done.id, "CHECKOUT", await siteOrigin(), { thanksUrl: noteLink }) : null;
   const wanted = doneId ? undefined : typeof sp.id === "string" ? sp.id : (overdue[0] ?? dueToday[0] ?? all[0])?.id;
   const [stay, methods, recent, menu] = await Promise.all([
     wanted ? getStay(wanted, today, now) : null,
@@ -172,7 +174,7 @@ export default async function CheckOutPage({ searchParams }: PageProps<"/staff/c
                       entity={{ type: "Reservation", id: done.id }} what={`thank-you note (v${note.version})`} label="Send to guest"
                       to={{ name: done.guest.fullName, phone: done.guest.phone, email: done.guest.email }}
                       subject={`Thank you for staying at ${settings.hotelName}`}
-                      text={thankYouMessageText({ name: done.guest.fullName, hotel: settings.hotelName, link: noteLink, phone: settings.phone, website: settings.website })}
+                      text={checkoutMsg?.text ?? ""}
                     />
                   </div>
                 </>

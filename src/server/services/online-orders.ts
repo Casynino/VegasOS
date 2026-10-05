@@ -5,9 +5,9 @@ import { AppError, isUniqueViolation } from "../errors";
 import { getSettings } from "../settings";
 import { siteOrigin } from "../site-origin";
 import { guestEventOn, prettyPhone, shortName, validPhone } from "@/lib/guest-messages";
-import { ORDER_EVENT_TYPE, orderEventFor, orderMessageText, type OrderEvent } from "@/lib/order-messages";
+import { ORDER_EVENT_TYPE, orderEventFor, orderFacts, orderMessageText, type OrderEvent } from "@/lib/order-messages";
 import { normalizePhone, resolveGuest } from "./guests";
-import { createRestaurantOrderTx, publicMenu } from "./restaurant";
+import { createRestaurantOrderTx, deliveryPlace, publicMenu } from "./restaurant";
 import { mediaUrl } from "./media";
 import { guestNotifyConnected, sendGuestText } from "./guest-notify";
 
@@ -195,19 +195,32 @@ export type TrackedOrder = NonNullable<Awaited<ReturnType<typeof orderByTrackTok
 /** The ready-to-send update for an order (its current status, or a given step) — reception sends it in one tap when no provider is connected. */
 export async function orderUpdate(orderId: string, origin?: string | null, forEvent?: OrderEvent) {
   const [o, s] = await Promise.all([
-    db.restaurantOrder.findUnique({ where: { id: orderId }, select: { number: true, type: true, status: true, roomNumber: true, customerName: true, customerPhone: true, trackToken: true, guestId: true, deliveryAddress: true } }),
+    db.restaurantOrder.findUnique({
+      where: { id: orderId },
+      select: {
+        number: true, type: true, status: true, roomNumber: true, tableLabel: true, customerName: true, customerPhone: true, trackToken: true, guestId: true, deliveryAddress: true,
+        serviceFee: true, total: true, settlement: true, paymentStatus: true, payOnlineAt: true, createdAt: true,
+        location: { select: { name: true, kind: true } },
+        items: { orderBy: { id: "asc" }, select: { name: true, quantity: true, lineTotal: true } },
+        payments: { where: { status: "POSTED", account: { code: "NTZS" } }, orderBy: { collectedAt: "desc" }, take: 1, select: { amount: true, reference: true } },
+      },
+    }),
     getSettings(),
   ]);
   if (!o) return null;
   const event = forEvent ?? orderEventFor(o.status, o.type, !!o.deliveryAddress);
   if (!event) return null;
   const base = origin ?? null;
+  const place = deliveryPlace(o);
+  const paid = o.payments[0];
   return {
     event, to: o.customerPhone, guestId: o.guestId,
     text: orderMessageText(event, {
       name: o.customerName, hotel: s.hotelName, number: o.number, type: o.type, room: o.roomNumber, delivery: !!o.deliveryAddress,
       track: base && o.trackToken ? `${base}/order/${o.trackToken}` : null, menu: base ? `${base}/order` : null,
-      prepMinutes: s.orderPrepMinutes, phone: prettyPhone(s.whatsapp || s.phone),
+      prepMinutes: s.orderPrepMinutes, phone: prettyPhone(s.whatsapp || s.phone), place,
+      details: event === "RECEIVED" || event === "PAID" ? orderFacts(o, place, s.timezone) : null,
+      paid: event === "PAID" && paid ? { amount: paid.amount, reference: paid.reference?.replace(/^nTZS\s+/, "") ?? null } : null,
     }),
   };
 }

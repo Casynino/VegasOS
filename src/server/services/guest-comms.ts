@@ -5,12 +5,10 @@ import { db, type Tx } from "../db";
 import { AppError } from "../errors";
 import { getSettings } from "../settings";
 import { siteOrigin } from "../site-origin";
-import { fromDbDate, formatMinutes } from "@/lib/time/business-date";
+import { fromDbDate } from "@/lib/time/business-date";
 import { formatTZS } from "@/lib/format";
-import {
-  DEFAULT_BOOKING_MESSAGE, DEFAULT_WELCOME_MESSAGE, guestEventOn, guestMessageText, internationalPhone, maskEmail, maskPhone, prettyPhone, shortName,
-  type GuestMessageType,
-} from "@/lib/guest-messages";
+import { guestEventOn, maskEmail, maskPhone, shortName, type GuestMessageType } from "@/lib/guest-messages";
+import { reservationMessage, roomChangeMessage } from "./guest-message-data";
 import { createRestaurantOrderTx } from "./restaurant";
 import { paidFirstTx, type PaidFirst } from "./online-orders";
 import { createGuestRequest } from "./requests";
@@ -41,53 +39,15 @@ export async function ensureGuestToken(tx: Tx | typeof db, reservationId: string
 
 const validToken = (t: string) => /^[A-Za-z0-9_-]{16,64}$/.test(t);
 
-const STATUS_WORD: Record<string, string> = {
-  INQUIRY: "Booked — not reserved until paid", RESERVED: "Reserved", CONFIRMED: "Confirmed", CHECKED_IN: "Checked In", CHECKED_OUT: "Checked Out", CANCELLED: "Cancelled", NO_SHOW: "No-show",
-};
-/** "2026-09-27" → "27 Sept 2026". */
-/** "2026-09-28" → "Mon, 28 Sept 2026". */
-const weekdayDate = (d: string) => new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${d}T00:00:00Z`));
-const dayMonthYear = (d: string) => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${d}T00:00:00Z`));
-
-/** The ready-to-send booking / welcome message for a reservation. */
+/**
+ * The ready-to-send booking details / welcome message for a reservation — the full, structured message (the stay, the
+ * bill, the payment, the guest's link, reception) from src/server/services/guest-message-data.ts.
+ */
 export async function guestMessage(reservationId: string, type: "BOOKING_CREATED" | "WELCOME", origin: string) {
-  const settings = await getSettings();
-  const token = await ensureGuestToken(db, reservationId);
-  const r = await db.reservation.findUniqueOrThrow({
-    where: { id: reservationId },
-    include: {
-      guest: { select: { id: true, fullName: true, phone: true, email: true, preferredChannel: true } },
-      rooms: { where: { status: { not: "CANCELLED" } }, include: { room: { select: { number: true } }, roomType: { select: { name: true } } }, orderBy: { arrivalDate: "asc" } },
-    },
-  });
-  const inHouse = r.rooms.filter((x) => x.status === "CHECKED_IN");
-  const rooms = type === "WELCOME" && inHouse.length ? inHouse : r.rooms;
-  // Booking details: "305 — Double Deluxe"; welcome: "305" (they are standing in it).
-  const room = rooms.map((x) => (type === "WELCOME" ? x.room.number : `${x.room.number} — ${x.roomType.name}`)).join(", ") || "—";
-  const nights = r.rooms.reduce((m, x) => Math.max(m, x.isDayUse ? 0 : x.nights), 0);
-  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-  const balance = r.balanceAmount > 0 && r.billTo === "GUEST" ? `Amount Due: ${formatTZS(r.balanceAmount)}` : r.paidAmount > 0 && r.balanceAmount <= 0 ? "Paid in full — thank you" : "";
-  const text = guestMessageText(
-    type === "WELCOME" ? settings.welcomeMessageTemplate : settings.bookingMessageTemplate,
-    type === "WELCOME" ? DEFAULT_WELCOME_MESSAGE : DEFAULT_BOOKING_MESSAGE,
-    {
-      name: r.guest.fullName, hotel: settings.hotelName, ref: r.reference, room,
-      checkin: `${dayMonthYear(fromDbDate(r.arrivalDate))} · ${formatMinutes(settings.standardCheckInMinutes)}`,
-      checkout: type === "WELCOME"
-        ? `${weekdayDate(fromDbDate(r.departureDate))} · by ${formatMinutes(settings.checkoutMinutes)}`
-        : `${dayMonthYear(fromDbDate(r.departureDate))} · ${formatMinutes(settings.checkoutMinutes)}`,
-      nights, length: nights ? plural(nights, "Night", "Nights") : "Day use",
-      guests: `${plural(r.adults, "Adult", "Adults")}${r.children ? `, ${plural(r.children, "Child", "Children")}` : ""}`,
-      status: STATUS_WORD[r.status] ?? r.status, balance,
-      link: `${origin}/stay/${token}`, menu: `${origin}/stay/${token}#menu`,
-      phone: prettyPhone(settings.whatsapp || settings.phone), wifi: settings.wifiNetwork ? `Wi-Fi: ${settings.wifiNetwork}${settings.wifiPassword ? ` · Password: ${settings.wifiPassword}` : ""}` : "",
-    },
-  );
-  return {
-    text, link: `${origin}/stay/${token}`,
-    guest: { id: r.guest.id, name: r.guest.fullName, phone: internationalPhone(r.guest.phone), email: r.guest.email, preferredChannel: r.guest.preferredChannel },
-    subject: type === "WELCOME" ? `Welcome to ${settings.hotelName}` : `Your booking ${r.reference} — ${settings.hotelName}`,
-  };
+  const m = await reservationMessage(reservationId, type === "WELCOME" ? "WELCOME" : "BOOKING", origin);
+  if (!m) throw new AppError("Reservation not found.", "NOT_FOUND");
+  const g = await db.guest.findUniqueOrThrow({ where: { id: m.guest.id }, select: { email: true, preferredChannel: true } });
+  return { text: m.text, link: m.link, subject: m.subject, guest: { ...m.guest, email: g.email, preferredChannel: g.preferredChannel } };
 }
 
 /** Log a message sent to a guest (from the staff screen or a provider). */
@@ -117,9 +77,15 @@ export async function notifyBookingGuest(reservationId: string, event: "BOOKING_
     if (await db.guestMessage.count({ where: { reservationId, type: event, status: "SENT" } })) return false;
     let origin = "";
     try { origin = await siteOrigin(); } catch { origin = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? ""; }
-    // One text for both: its status and balance lines read "Confirmed" and "Paid in full" once paid.
-    const m = await guestMessage(reservationId, "BOOKING_CREATED", origin);
-    if (!m.guest.phone) return false;
+    // Booking saved: the full booking details. Paid by mobile money: "Payment received" — the amount and the payment
+    // service's reference (sent only once the payment service confirmed it).
+    const paid = event === "BOOKING_CONFIRMED"
+      ? await db.mobilePayment.findFirst({ where: { reservationId, status: "COMPLETED" }, orderBy: { completedAt: "desc" }, select: { amount: true, pspReference: true } })
+      : null;
+    const m = event === "BOOKING_CONFIRMED" && paid
+      ? await reservationMessage(reservationId, "PAID", origin, { amount: paid.amount, reference: paid.pspReference })
+      : await reservationMessage(reservationId, "BOOKING", origin);
+    if (!m?.guest.phone) return false;
     const sent = await sendGuestText({ to: m.guest.phone, text: m.text, event });
     await logGuestMessage(db, {
       guestId: m.guest.id, reservationId, type: event, channel: sent.channel, to: m.guest.phone, body: m.text, status: sent.ok ? "SENT" : "FAILED", error: sent.error ?? null,
@@ -128,6 +94,56 @@ export async function notifyBookingGuest(reservationId: string, event: "BOOKING_
   } catch (e) {
     console.error("booking notification", reservationId, e);
     return false;
+  }
+}
+
+/**
+ * A stay's message sent by itself — the welcome at check-in, the departure summary at check-out, a cancellation, a room
+ * change, a payment that did not go through — only when a messaging provider is connected and the hotel has that kind
+ * of message on (Settings → messages to guests). One-off events go once (checked against the log); every send is
+ * logged on the guest's profile, sent or failed. Never throws: the check-in, check-out or payment stands either way —
+ * without a provider, reception sends the same message in one tap from the booking.
+ */
+export async function notifyReservationGuest(reservationId: string, kind: "WELCOME" | "CHECKOUT" | "CANCELLED" | "PAYMENT_FAILED" | "ROOM_CHANGED", extra: { from?: string | null; to?: string } = {}) {
+  try {
+    if (!guestNotifyConnected()) return false;
+    const s = await getSettings();
+    const event = kind === "WELCOME" ? "checkIn" : kind === "CHECKOUT" ? "checkOut" : "bookingCreated";
+    if (!guestEventOn(s.guestNotifications, event)) return false;
+    const type: GuestMessageType = kind === "WELCOME" ? "WELCOME" : kind === "CHECKOUT" ? "THANK_YOU" : kind === "CANCELLED" ? "BOOKING_CANCELLED" : kind === "ROOM_CHANGED" ? "ROOM_CHANGED" : "PAYMENT";
+    if (kind !== "ROOM_CHANGED" && kind !== "PAYMENT_FAILED" && (await db.guestMessage.count({ where: { reservationId, type, status: "SENT" } }))) return false;
+    // A payment that did not go through: one message, not one per try (the guest is usually still on the page).
+    if (kind === "PAYMENT_FAILED" && (await db.guestMessage.count({ where: { reservationId, type, status: "SENT", createdAt: { gt: new Date(Date.now() - 30 * 60_000) } } }))) return false;
+    let origin = "";
+    try { origin = await siteOrigin(); } catch { origin = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? ""; }
+    let m: { text: string; guest: { id: string; phone: string | null } } | null;
+    if (kind === "ROOM_CHANGED") {
+      m = extra.to ? await roomChangeMessage(reservationId, extra.from ?? null, extra.to, new Date().toISOString().slice(0, 10), origin) : null;
+    } else if (kind === "CHECKOUT") {
+      const note = await db.thankYouNote.findFirst({ where: { reservationId }, orderBy: { version: "desc" }, select: { token: true } });
+      m = await reservationMessage(reservationId, "CHECKOUT", origin, { thanksUrl: note ? `${origin}/thanks/${note.token}` : null });
+    } else {
+      m = await reservationMessage(reservationId, kind, origin);
+    }
+    if (!m?.guest.phone) return false;
+    const sent = await sendGuestText({ to: m.guest.phone, text: m.text, event: type });
+    await logGuestMessage(db, {
+      guestId: m.guest.id, reservationId, type, channel: sent.channel, to: m.guest.phone, body: m.text, status: sent.ok ? "SENT" : "FAILED", error: sent.error ?? null,
+    }, { label: "Automatic" });
+    return sent.ok;
+  } catch (e) {
+    console.error("guest notification", kind, reservationId, e);
+    return false;
+  }
+}
+
+/** The same once the answer has gone out (never delays the desk); straight away where there is no request (a job, a test). */
+export function notifyReservationGuestSoon(reservationId: string, kind: Parameters<typeof notifyReservationGuest>[1], extra: Parameters<typeof notifyReservationGuest>[2] = {}) {
+  if (!guestNotifyConnected()) return;
+  try {
+    after(() => notifyReservationGuest(reservationId, kind, extra));
+  } catch {
+    void notifyReservationGuest(reservationId, kind, extra);
   }
 }
 

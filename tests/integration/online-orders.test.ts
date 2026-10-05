@@ -356,10 +356,17 @@ describe("tracking & updates", () => {
 
   it("updates are short and say where the order is", () => {
     const v = { name: "John Smith", hotel: "Vegas Luxury Hotel", number: "ORD-2026-000012", room: "301", track: "https://h/order/x", menu: "https://h/order", prepMinutes: 20, phone: "+255 710 223 344" };
-    expect(orderMessageText("PREPARING", { ...v, type: "ROOM_SERVICE" })).toBe("Hi John, your Vegas Luxury Hotel order #ORD-2026-000012 is now being prepared. We expect it to be ready in about 20 minutes.\nTrack your order: https://h/order/x");
-    expect(orderMessageText("READY", { ...v, type: "ROOM_SERVICE" })).toBe("Hi John, your order #ORD-2026-000012 is ready and on its way to Room 301.");
-    expect(orderMessageText("READY", { ...v, type: "TAKEAWAY" })).toBe("Hi John, your order #ORD-2026-000012 is ready for collection at Vegas Luxury Hotel.");
-    expect(orderMessageText("READY", { ...v, type: "TAKEAWAY", delivery: true })).toBe("Hi John, your order #ORD-2026-000012 is ready and will be on its way to you shortly.");
+    const preparing = orderMessageText("PREPARING", { ...v, type: "ROOM_SERVICE" });
+    expect(preparing).toContain("Hello John");
+    expect(preparing).toContain("Your order #12 is now being prepared. It should be ready in about 20 minutes.");
+    expect(preparing).toContain("https://h/order/x");
+    expect(orderMessageText("READY", { ...v, type: "ROOM_SERVICE" })).toContain("Your order #12 is ready and on its way to Room 301.");
+    expect(orderMessageText("READY", { ...v, type: "TAKEAWAY" })).toContain("Your order #12 is ready for collection at Vegas Luxury Hotel.");
+    expect(orderMessageText("READY", { ...v, type: "TAKEAWAY", delivery: true })).toContain("Your order #12 is ready and will be on its way to you shortly.");
+    // A cancelled order has no tracking link, but says how to reach the hotel.
+    const cancelled = orderMessageText("CANCELLED", { ...v, type: "DINE_IN" });
+    expect(cancelled).not.toContain("https://h/order/x");
+    expect(cancelled).toContain("+255 710 223 344");
     expect(orderEventFor("DELIVERED", "TAKEAWAY", true)).toBe("DELIVERED");
     expect(orderEventFor("DELIVERED", "TAKEAWAY")).toBe("COLLECTED");
     expect(orderMessageText("PREPARING", { ...v, type: "DINE_IN", prepMinutes: null })).not.toContain("minutes");

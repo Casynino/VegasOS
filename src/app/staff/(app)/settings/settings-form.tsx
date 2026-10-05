@@ -9,7 +9,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { NativeCheckbox } from "@/components/ui/native-select";
 import { updateSettingsAction } from "./actions";
-import { DEFAULT_BOOKING_MESSAGE, DEFAULT_WELCOME_MESSAGE } from "@/lib/guest-messages";
 import { THANK_YOU_DEFAULTS } from "@/lib/thank-you";
 
 type Defaults = Record<string, string | number | boolean>;
@@ -119,18 +118,23 @@ export function SettingsForm({ defaults: d }: { defaults: Defaults }) {
             <CardHeader>
               <CardTitle>Guest messages (WhatsApp / SMS)</CardTitle>
               <CardDescription>
-                What the guest receives: the booking details when a booking is saved and the welcome (Wi-Fi, menu link) at check-in. Leave a box empty to use the standard text shown in grey.
-                Words in braces are filled in: {"{name} {hotel} {ref} {room} {checkin} {checkout} {nights} {length} {guests} {status} {balance} {link} {menu} {phone} {wifi}"}.
+                Every message is written by the system from the real booking, bill, payment or order — the hotel&apos;s name, the guest&apos;s name, dates, rooms,
+                what was paid and what is left, and the guest&apos;s own secure link — in one Vegas style. Nothing to fill in here.
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="bookingMessageTemplate">Booking details</Label>
-                <Textarea id="bookingMessageTemplate" name="bookingMessageTemplate" rows={12} defaultValue={String(d.bookingMessageTemplate ?? "")} placeholder={DEFAULT_BOOKING_MESSAGE} className="text-sm" />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="welcomeMessageTemplate">Welcome at check-in</Label>
-                <Textarea id="welcomeMessageTemplate" name="welcomeMessageTemplate" rows={12} defaultValue={String(d.welcomeMessageTemplate ?? "")} placeholder={DEFAULT_WELCOME_MESSAGE} className="text-sm" />
+              <div className="space-y-1.5 sm:col-span-2">
+                <p className="text-sm font-medium">What guests receive</p>
+                <ul className="grid gap-x-6 gap-y-1 text-sm text-muted-foreground sm:grid-cols-2">
+                  <li>Booking confirmation · booking received · pay-at-hotel</li>
+                  <li>Payment received · waiting for the PIN · did not go through</li>
+                  <li>Booking changed · room changed · cancelled</li>
+                  <li>Welcome at check-in (room, Wi-Fi, stay link)</li>
+                  <li>Check-out bill and thank-you · balance due</li>
+                  <li>Restaurant &amp; room-service orders, receipts</li>
+                  <li>Transport trip details · meeting room booking</li>
+                  <li>Invoices · arrival reminder</li>
+                </ul>
               </div>
               <div className="space-y-2 sm:col-span-2">
                 <p className="text-sm font-medium">Offer to send automatically</p>
@@ -138,7 +142,7 @@ export function SettingsForm({ defaults: d }: { defaults: Defaults }) {
                 <NativeCheckbox name="notifyCheckIn" defaultChecked={Boolean(d.notifyCheckIn)} label="Guest checked in — open the welcome message ready to send" />
                 <NativeCheckbox name="notifyCheckOut" defaultChecked={Boolean(d.notifyCheckOut)} label="Guest checked out — make the thank-you note" />
                 <NativeCheckbox name="notifyOrders" defaultChecked={Boolean(d.notifyOrders)} label="Restaurant orders — tell the customer when it is being prepared, ready, served or cancelled" />
-                <p className="text-xs text-muted-foreground">Messages go out from reception&apos;s WhatsApp in one tap, and each one is kept on the guest&apos;s profile. A WhatsApp Business or SMS provider can send them by itself once connected.</p>
+                <p className="text-xs text-muted-foreground">Messages go out from reception&apos;s WhatsApp in one tap, and each one is kept on the guest&apos;s profile. Once a WhatsApp Business provider is connected they are sent by themselves — welcome, check-out, room change, cancellation and payments included — each only once, and a failed send never stops the check-in, check-out or payment.</p>
               </div>
             </CardContent>
           </Card>

@@ -75,24 +75,26 @@ describe("messages to the guest", () => {
     const { mgr, r } = await booking();
     const b = await guestMessage(r.id, "BOOKING_CREATED", "https://hotel.test");
     expect(b.text).toContain("Hello Neema");
-    expect(b.text).toContain(r.reference);
-    expect(b.text).toContain(`https://hotel.test/stay/${r.guestToken}`);
+    expect(b.text).toContain(`Booking Ref: ${r.reference}`);
     expect(b.guest.phone).toBe("+255715000222");
-    expect(b.text).toContain("BOOKING DETAILS");
-    expect(b.text).toContain("Check-in: 10 Nov 2026 · 14:00");
-    expect(b.text).toContain("Guests: 1 Adult · 2 Nights");
-    expect(b.text).toContain(`Open Menu & Services: https://hotel.test/stay/${r.guestToken}#menu`);
+    expect(b.text).toContain("*YOUR BOOKING*");
+    expect(b.text).toContain("Check-in: Tue, 10 Nov 2026 · from 14:00");
+    expect(b.text).toContain("Nights: 2");
+    expect(b.text).toContain("Guests: 1 adult");
+    expect(b.text).toContain("Balance: TZS 120,000");
+    expect(b.text).toContain("Status: NOT PAID YET");
+    // One secure link to the booking (to see it and pay), not two copies of it.
+    const manage = (await db.reservation.findUniqueOrThrow({ where: { id: r.id }, select: { manageToken: true } })).manageToken;
+    expect(b.text).toContain(`View your booking & pay by mobile money:\nhttps://hotel.test/booking/${r.reference}?token=${manage}`);
+    expect(b.text.split("https://hotel.test/booking/").length).toBe(2);
 
     await checkIn(r.id, mgr, null, eat("2026-11-10T15:00:00"));
-    await db.hotelSettings.updateMany({ data: { welcomeMessageTemplate: "Karibu {name}! Room {room}. Menu: {menu}\n{wifi}\nRef {ref}", wifiNetwork: null } });
-    const w = await guestMessage(r.id, "WELCOME", "https://hotel.test");
     const rr = await db.reservationRoom.findFirstOrThrow({ where: { reservationId: r.id }, include: { room: true, roomType: true } });
-    expect(w.text).toBe(`Karibu Neema! Room ${rr.room.number}. Menu: https://hotel.test/stay/${r.guestToken}#menu\nRef ${r.reference}`);
-    await db.hotelSettings.updateMany({ data: { welcomeMessageTemplate: null } });
-    const std = await guestMessage(r.id, "WELCOME", "https://hotel.test");
-    expect(std.text).toContain(`You’re all checked in to Room ${rr.room.number}.`);
-    expect(std.text).toContain("Check-out: Thu, 12 Nov 2026 · by 11:00");
-    expect(std.text).toContain(`View Menu & More: https://hotel.test/stay/${r.guestToken}#menu`);
+    const w = await guestMessage(r.id, "WELCOME", "https://hotel.test");
+    expect(w.text).toContain("You’re checked in.");
+    expect(w.text).toContain(`Room: ${rr.room.number}`);
+    expect(w.text).toContain("Check-out: Thu, 12 Nov 2026 · by 11:00");
+    expect(w.text).toContain(`https://hotel.test/stay/${r.guestToken}`);
   });
 
   it("every message sent is kept on the guest's history and timeline", async () => {

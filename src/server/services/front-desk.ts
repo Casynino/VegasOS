@@ -3,12 +3,15 @@ import { timeRange } from "@/lib/meeting";
 import { expireUnpaidHolds, refreshBookingStates } from "./booking-holds";
 import { db } from "../db";
 import { arrivalReminderText } from "@/lib/arrival-reminder";
+import { arrivalReminderMessage } from "@/lib/wa-messages";
+import { prettyPhone } from "@/lib/guest-messages";
+import { siteOrigin } from "../site-origin";
 import type { Prisma } from "@/generated/prisma/client";
 import { getSettings, stayConfig } from "../settings";
 import { findAvailableRooms } from "./availability";
 import { CHECK_IN_READY } from "@/lib/room-status";
 import { overnightStay } from "@/lib/time/stay";
-import { addDays, fromDbDate, toDbDate, type BusinessDate } from "@/lib/time/business-date";
+import { addDays, formatMinutes, fromDbDate, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 
 /**
  * Everything an incoming receptionist needs at the start of a shift, and the
@@ -226,6 +229,7 @@ export async function getArrivalsSummary(today: BusinessDate) {
       select: {
         id: true, reference: true, eta: true, lateArrivalNotedAt: true, lateArrivalNote: true, status: true, paidAmount: true, arrivalDate: true, departureDate: true,
         balanceAmount: true, netAmount: true, billTo: true, holdUntil: true, kind: true, companyName: true, group: { select: { name: true } },
+        manageToken: true, adults: true, children: true,
         guest: { select: { fullName: true, phone: true } }, source: { select: { name: true } }, corporateCustomer: { select: { companyName: true } }, createdBy: { select: { fullName: true } },
         rooms: { where: { status: { notIn: ["CANCELLED"] } }, select: { nights: true, startAt: true, endAt: true, room: { select: { number: true } }, roomType: { select: { name: true, category: true } } } },
       },
@@ -238,6 +242,12 @@ export async function getArrivalsSummary(today: BusinessDate) {
     }),
   ]);
   const dateLabel = new Date(`${today}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "long", timeZone: "UTC" });
+  // The arrival-day message: the full booking (src/lib/wa-messages.ts) — unless the hotel wrote its own text in Settings.
+  let origin = "";
+  try { origin = await siteOrigin(); } catch { origin = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? ""; }
+  const hotel = { name: settings.hotelName, phone: prettyPhone(settings.whatsapp || settings.phone) || null };
+  const weekday = (d: Date) => new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(d);
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
   const checkin = `${String(Math.floor(settings.standardCheckInMinutes / 60)).padStart(2, "0")}:${String(settings.standardCheckInMinutes % 60).padStart(2, "0")}`;
   const people = expected.map((r) => ({
     id: r.id, reference: r.reference, name: r.kind === "MEETING" ? r.companyName ?? r.guest.fullName : r.guest.fullName, phone: r.guest.phone, eta: r.eta, rooms: r.rooms.map((x) => x.room.number),
@@ -253,7 +263,21 @@ export async function getArrivalsSummary(today: BusinessDate) {
     billTo: r.billTo, holdUntil: r.holdUntil, paidAmount: r.paidAmount, balance: r.balanceAmount, net: r.netAmount,
     reminder: r.kind === "MEETING" && r.rooms[0]
       ? `Hello ${r.guest.fullName}, this is ${settings.hotelName}: a reminder of your meeting room booking on ${dateLabel}, ${timeRange(r.rooms[0].startAt, r.rooms[0].endAt)}. Reference ${r.reference}. See you soon!`
-      : arrivalReminderText(settings.arrivalReminderTemplate, { name: r.guest.fullName, hotel: settings.hotelName, date: dateLabel, checkin, ref: r.reference }),
+      : settings.arrivalReminderTemplate?.trim()
+        ? arrivalReminderText(settings.arrivalReminderTemplate, { name: r.guest.fullName, hotel: settings.hotelName, date: dateLabel, checkin, ref: r.reference })
+        : arrivalReminderMessage({
+          hotel, name: r.guest.fullName,
+          stay: {
+            ref: r.reference, roomType: [...new Set(r.rooms.map((x) => x.roomType.name))].join(", ") || "—",
+            checkIn: `${weekday(r.arrivalDate)} · from ${formatMinutes(settings.standardCheckInMinutes)}`,
+            checkOut: `${weekday(r.departureDate)} · by ${formatMinutes(settings.checkoutMinutes)}`,
+            nights: r.rooms.reduce((m, x) => Math.max(m, x.nights), 0) || null,
+            guests: `${plural(r.adults, "adult", "adults")}${r.children ? `, ${plural(r.children, "child", "children")}` : ""}`,
+          },
+          money: { total: r.netAmount, paid: r.paidAmount, balance: r.balanceAmount, company: r.billTo !== "GUEST" ? r.corporateCustomer?.companyName ?? r.companyName ?? "the company" : null },
+          bookingUrl: origin ? `${origin}/booking/${encodeURIComponent(r.reference)}?token=${encodeURIComponent(r.manageToken)}` : null,
+          payUrl: origin ? `${origin}/booking/${encodeURIComponent(r.reference)}?token=${encodeURIComponent(r.manageToken)}` : null,
+        }),
   }));
   return {
     expected: people.filter((p) => !p.late),

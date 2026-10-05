@@ -10,7 +10,10 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { cn } from "@/lib/utils";
 import { logGuestMessageAction } from "@/app/staff/(app)/guests/actions";
 
-export type GuestMessageOption = { type: "BOOKING_CREATED" | "WELCOME" | "THANK_YOU"; label: string; text: string; subject: string };
+export type GuestMessageOption = {
+  type: "BOOKING_CREATED" | "BOOKING_UPDATED" | "BOOKING_CANCELLED" | "WELCOME" | "THANK_YOU" | "PAYMENT" | "PAYMENT_RECEIVED";
+  label: string; text: string; subject: string;
+};
 type Sent = { type: string; channel: string; at: string; by: string | null };
 
 const waDigits = (phone: string) => {

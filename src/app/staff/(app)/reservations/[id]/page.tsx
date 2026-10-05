@@ -40,7 +40,8 @@ import { BillingPanel } from "./billing-panel";
 import { GuestMessenger, type GuestMessageOption } from "@/components/staff/reception/guest-messenger";
 import { ensureGuestToken, guestMessage } from "@/server/services/guest-comms";
 import { siteOrigin } from "@/server/site-origin";
-import { guestEventOn, thankYouMessageText } from "@/lib/guest-messages";
+import { guestEventOn } from "@/lib/guest-messages";
+import { reservationMessage } from "@/server/services/guest-message-data";
 import { bookingTimeline } from "@/server/services/finance-history";
 import { unbilledCompanyAmount } from "@/server/services/company-billing";
 import type { BillTo } from "@/lib/billing";
@@ -183,17 +184,31 @@ export default async function ReservationPage({ params, searchParams }: PageProp
   const origin = await siteOrigin();
   const settingsNow = await getSettings();
   const stayLink = `${origin}/stay/${await ensureGuestToken(db, r.id)}`;
+  // Every message is the full one (the stay, the bill, the payment, the guest's link — src/lib/wa-messages.ts).
+  const notArrived = ["INQUIRY", "RESERVED", "CONFIRMED"].includes(r.status);
+  const lastPhonePay = r.payments.filter((p) => p.status === "POSTED" && p.kind === "PAYMENT" && p.method.code === "NTZS").at(-1) ?? null;
   const [bookingMsg, welcomeMsg, lastNote, sentMsgs] = await Promise.all([
-    !meeting && !["CANCELLED", "NO_SHOW"].includes(r.status) ? guestMessage(r.id, "BOOKING_CREATED", origin) : null,
+    !["CANCELLED", "NO_SHOW"].includes(r.status) ? guestMessage(r.id, "BOOKING_CREATED", origin) : null,
     r.status === "CHECKED_IN" ? guestMessage(r.id, "WELCOME", origin) : null,
     r.status === "CHECKED_OUT" && !meeting ? db.thankYouNote.findFirst({ where: { reservationId: r.id }, orderBy: { version: "desc" }, select: { token: true } }) : null,
     db.guestMessage.findMany({ where: { reservationId: r.id }, orderBy: { createdAt: "desc" }, take: 20, include: { sentBy: { select: { fullName: true } } } }),
   ]);
+  const [updatedMsg, billMsg, paidMsg, checkoutMsg, cancelledMsg] = await Promise.all([
+    notArrived ? reservationMessage(r.id, "UPDATED", origin) : null,
+    (r.status === "CHECKED_IN" || r.status === "CHECKED_OUT") && r.balanceAmount > 0 && r.billTo === "GUEST" ? reservationMessage(r.id, "BALANCE", origin) : null,
+    lastPhonePay ? reservationMessage(r.id, "PAID", origin, { amount: lastPhonePay.amount, reference: lastPhonePay.reference?.replace(/^nTZS\s+/, "") ?? null }) : null,
+    r.status === "CHECKED_OUT" ? reservationMessage(r.id, "CHECKOUT", origin, { thanksUrl: lastNote ? `${origin}/thanks/${lastNote.token}` : null }) : null,
+    r.status === "CANCELLED" ? reservationMessage(r.id, "CANCELLED", origin) : null,
+  ]);
+  const opt = (type: GuestMessageOption["type"], label: string, m: { text: string; subject: string } | null) => (m ? [{ type, label, text: m.text, subject: m.subject }] : []);
   const messageOptions: GuestMessageOption[] = [
-    ...(bookingMsg ? [{ type: "BOOKING_CREATED" as const, label: "Booking details", text: bookingMsg.text, subject: bookingMsg.subject }] : []),
-    ...(welcomeMsg ? [{ type: "WELCOME" as const, label: "Welcome & menu", text: welcomeMsg.text, subject: welcomeMsg.subject }] : []),
-    ...(lastNote ? [{ type: "THANK_YOU" as const, label: "Thank-you note", subject: `Thank you for staying at ${settingsNow.hotelName}`,
-      text: thankYouMessageText({ name: r.guest.fullName, hotel: settingsNow.hotelName, link: `${origin}/thanks/${lastNote.token}`, phone: settingsNow.phone, website: settingsNow.website }) }] : []),
+    ...opt("BOOKING_CREATED", meeting ? "Meeting room booking" : "Booking details", bookingMsg),
+    ...opt("WELCOME", "Welcome & menu", welcomeMsg),
+    ...opt("BOOKING_UPDATED", "Booking updated", updatedMsg),
+    ...opt("PAYMENT_RECEIVED", "Payment received", paidMsg),
+    ...opt("PAYMENT", "Bill & how to pay", billMsg),
+    ...opt("THANK_YOU", "Check-out & thank you", checkoutMsg),
+    ...opt("BOOKING_CANCELLED", "Booking cancelled", cancelledMsg),
   ];
   const autoMessage = !r.guest.phone ? null
     : sentParam === "welcome" && welcomeMsg && guestEventOn(settingsNow.guestNotifications, "checkIn") ? "WELCOME"

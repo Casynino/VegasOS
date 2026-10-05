@@ -7,6 +7,10 @@
 export const GUEST_MESSAGE_TYPES = {
   BOOKING_CREATED: "Booking details",
   BOOKING_CONFIRMED: "Booking confirmed",
+  BOOKING_UPDATED: "Booking updated",
+  BOOKING_CANCELLED: "Booking cancelled",
+  ROOM_CHANGED: "Room changed",
+  PAYMENT_RECEIVED: "Payment received",
   BOOKING_REMINDER: "Arrival reminder",
   WELCOME: "Welcome / check-in",
   CHECKOUT_REMINDER: "Check-out reminder",
@@ -17,6 +21,8 @@ export const GUEST_MESSAGE_TYPES = {
   ORDER_READY: "Order ready",
   ORDER_DELIVERED: "Order delivered",
   ORDER_CANCELLED: "Order cancelled",
+  ORDER_PAID: "Order paid",
+  TRANSPORT: "Transport",
   CUSTOM: "Message",
 } as const;
 export type GuestMessageType = keyof typeof GUEST_MESSAGE_TYPES;
