@@ -209,9 +209,10 @@ export function RestaurantApp({ brand, status, menu, place, checkout, canOrder, 
           </span>
         </Link>
         <div className="flex shrink-0 items-center gap-2">
-          {/* The hotel's main website — in a new tab, so an order in progress is not lost */}
+          {/* The hotel's main website — in a new tab, so an order in progress is not lost. On a guest's own page (a room,
+              a stay: `top`) phones keep one quiet button, the order bag — reception and the hotel are on the page. */}
           <a href="/" target="_blank" rel="noopener" aria-label={`${brand.hotel} website (opens in a new tab)`}
-            className="inline-flex h-10 items-center gap-1.5 rounded-full bg-(--vr-card) px-3 text-[13px] font-medium ring-1 ring-(--vr-line) transition hover:ring-(--vr-gold) sm:px-3.5">
+            className={cn("h-10 items-center gap-1.5 rounded-full bg-(--vr-card) px-3 text-[13px] font-medium ring-1 ring-(--vr-line) transition hover:ring-(--vr-gold) sm:px-3.5", top ? "hidden lg:inline-flex" : "inline-flex")}>
             <Globe className="size-4 text-(--vr-gold-ink)" />
             <span className="hidden sm:inline">Hotel website</span>
             <ArrowUpRight className="hidden size-3.5 text-(--vr-muted) sm:block" />

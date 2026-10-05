@@ -2,23 +2,27 @@ import type { HotelSettings } from "@/generated/prisma/client";
 import type { GuestStay } from "@/server/services/guest-comms";
 import { restaurantMenu } from "@/server/services/online-orders";
 import { customerPayAccounts } from "@/server/services/payment-accounts";
-import { onlinePayAvailable } from "@/server/services/online-pay";
+import { onlinePayAvailable, stayBillPayOnline } from "@/server/services/online-pay";
+import { guestRequestNotes } from "@/server/services/room-qr-page";
+import { payRoomBillOnlineAction } from "@/app/r/[token]/actions";
+import { payStayBillOnlineAction } from "@/app/stay/[token]/actions";
 import { formatTime } from "@/lib/format";
-import { formatMinutes } from "@/lib/time/business-date";
-import { prettyPhone } from "@/lib/guest-messages";
-import { telHref, whatsappHref } from "@/components/public/contact";
+import { formatMinutes, localCalendarDate } from "@/lib/time/business-date";
+import { requestLabel } from "@/components/room-qr/asks";
+import { hotelInfo } from "@/components/room-qr/contact";
+import { MEETING_PHOTO, realPhotos, ROOM_PHOTO, SUITE_PHOTO } from "@/components/room-qr/photos";
 import { RestaurantApp } from "./restaurant-app";
 import { restaurantShell } from "./shell";
 import { StayBottom, StayTop, type StayInfo } from "./stay-app";
 
-/** A room photo for the welcome: the meeting room, a suite, or a guest room. */
-const photoFor = (meeting: boolean, types: string) =>
-  meeting ? "/images/illustrative/meeting-room.webp" : /suite|executive/i.test(types) ? "/images/room-red/room-red-07.webp" : "/images/room-red/room-red-05.webp";
+/** A room photo when the room type has none of its own: the meeting room, a suite, or a guest room. */
+const photoFor = (meeting: boolean, types: string) => (meeting ? MEETING_PHOTO : /suite|executive/i.test(types) ? SUITE_PHOTO : ROOM_PHOTO);
 
 /**
- * A guest's page — from the link in their booking / welcome message, or the QR card in their
- * room. The restaurant app's look: their stay on top (room, dates, bill, Wi-Fi, reception),
- * the menu right below (ordering to the room bill while they are staying), then the hotel.
+ * The guest's page — from the link in their booking / welcome message, or the QR card in their room — "Your room" in
+ * the Hotel QR app's calm look: their room on top (photos, welcome, dates, one gold button), the bill and their orders,
+ * what they can ask for the room, then the menu (ordering to the room bill while they are staying), then the hotel.
+ * The room QR shows the stay checked in to that room now, by first name only.
  */
 export async function StayPage({ stay, s, target, via }: {
   stay: GuestStay; s: HotelSettings; target: { kind: "stay" | "room"; token: string }; via?: "room";
@@ -28,43 +32,52 @@ export async function StayPage({ stay, s, target, via }: {
   const rooms = stay.rooms.filter((r) => !inHouse || r.inHouse);
   const room = rooms.map((r) => r.number).join(", ");
   const types = [...new Set(rooms.map((r) => r.type))].join(" · ");
-  const first = stay.guestName.split(/\s+/)[0] ?? "";
-  const phone = s.whatsapp || s.phone;
+  // First name only, written normally ("HONEST" → "Honest").
+  const raw = stay.guestName.split(/\s+/)[0] ?? "";
+  const first = /^[A-Z]{2,}$/.test(raw) ? raw[0] + raw.slice(1).toLowerCase() : raw;
+  const ask = inHouse && !meeting ? target : null;
+  // The room card: anyone in the room can scan it, so the page gets only what the card shows — the first name, no
+  // booking reference, phone, email or company (they would otherwise travel in the page's data).
+  const shown: GuestStay = via === "room" ? { ...stay, guestName: first, reference: "", phone: null, email: null, company: null } : stay;
+
+  const [menu, payTo, online, bill, notes] = await Promise.all([
+    restaurantMenu(), customerPayAccounts(), onlinePayAvailable("roomService", s),
+    stayBillPayOnline(target.kind === "room" ? { roomQrToken: target.token } : { guestToken: target.token }),
+    ask ? guestRequestNotes(stay.requests.map((q) => q.id)) : Promise.resolve({} as Record<string, string>),
+  ]);
+
   const info: StayInfo = {
     hotel: s.hotelName,
     billHref: target.kind === "room" ? `/r/${target.token}/bill` : `/stay/${target.token}/bill`,
     via: via ?? null,
-    room, types, meeting, photo: stay.roomInfo?.photos[0] ?? photoFor(meeting, types), fee: s.roomServiceFee,
-    photos: stay.roomInfo?.photos.length ? stay.roomInfo.photos : [photoFor(meeting, types)],
-    about: stay.roomInfo?.description ?? null, bed: stay.roomInfo?.bed ?? null, size: stay.roomInfo?.size ?? null, amenities: stay.roomInfo?.amenities ?? [],
+    room, types, meeting, fee: s.roomServiceFee,
+    photos: realPhotos(stay.roomInfo?.photos ?? [], photoFor(meeting, types)),
+    today: localCalendarDate(new Date(), s.timezone),
     nights: stay.rooms.reduce((m, r) => Math.max(m, r.nights), 0),
-    when: meeting && stay.meeting
-      ? { inLabel: "Starts", inTime: formatTime(stay.meeting.start, s.timezone), outLabel: "Ends", outTime: formatTime(stay.meeting.end, s.timezone), outDate: stay.arrival }
-      : { inLabel: "Check-in", inTime: `from ${formatMinutes(s.standardCheckInMinutes)}`, outLabel: "Check-out", outTime: `by ${formatMinutes(s.checkoutMinutes)}`, outDate: stay.departure },
-    callHref: s.phone ? telHref(s.phone) : null,
-    waHref: s.whatsapp ? whatsappHref(s.whatsapp, `Hello, this is ${first} (booking ${stay.reference}).`) : null,
-    phoneLabel: phone ? prettyPhone(phone) : null,
+    checkInTime: formatMinutes(s.standardCheckInMinutes), checkoutTime: formatMinutes(s.checkoutMinutes), checkoutMinutes: s.checkoutMinutes,
+    meetingTimes: meeting && stay.meeting ? { start: formatTime(stay.meeting.start, s.timezone), end: formatTime(stay.meeting.end, s.timezone) } : null,
+    lateFee: s.lateCheckoutFee,
     wifi: inHouse && !meeting ? { network: s.wifiNetwork || null, password: s.wifiPassword || null } : null,
-    hours: [
-      s.breakfastHours && { label: "Breakfast", value: s.breakfastHours },
-      s.restaurantHours && { label: "Restaurant", value: s.restaurantHours },
-      s.barHours && { label: "Bar", value: s.barHours },
-      { label: "Reception", value: s.receptionHours || "24 hours" },
-    ].filter((h): h is { label: string; value: string } => !!h),
-    address: [s.addressLine, s.city].filter(Boolean).join(", ") || null,
-    mapHref: s.mapUrl || null,
-    ask: inHouse && !meeting ? target : null,
+    ask,
+    requests: stay.requests.map((q) => ({ id: q.id, label: requestLabel(q.type, notes[q.id]), status: q.status, at: q.at })),
+    // The bill page's own payment: offered for what is owed now (or the one on its way), bound to this link / card.
+    pay: bill.offered || bill.live
+      ? { due: bill.due, live: bill.live, action: target.kind === "room" ? payRoomBillOnlineAction.bind(null, target.token) : payStayBillOnlineAction.bind(null, target.token) }
+      : null,
+    // The room card: no booking reference in the message (anyone in the room can scan it) — the room says who.
+    contact: hotelInfo(s, via === "room" ? `Hello, this is ${first} in ${meeting ? "the meeting room" : `Room ${room}`}.` : `Hello, this is ${first} (booking ${stay.reference}).`),
+    bookHref: "/book",
   };
   const { status } = restaurantShell(s);
   return (
-    <RestaurantApp brand={{ name: s.hotelName, hotel: s.hotelName, tagline: meeting ? "Your meeting" : inHouse ? "Your stay" : "Your booking" }}
-      status={status} menu={await restaurantMenu()} canOrder={stay.canOrder}
+    <RestaurantApp brand={{ name: s.hotelName, hotel: s.hotelName, tagline: meeting ? "Your meeting" : inHouse ? "Your room" : "Your booking" }}
+      status={status} menu={menu} canOrder={stay.canOrder}
       place={{
         kind: "room", room: room || "—", guest: first, meeting, fee: s.roomServiceFee, stayHref: info.billHref,
         orders: stay.orders.map((o) => ({ number: o.number, status: o.status, total: o.total, track: o.track })),
       }}
-      checkout={{ kind: "room", target, where: meeting ? "the meeting room" : `Room ${room}`, guest: first, payTo: await customerPayAccounts(), online: await onlinePayAvailable("roomService", s) }}
-      top={<StayTop key="stay-top" stay={stay} info={info} />}
-      bottom={<StayBottom key="stay-bottom" stay={stay} info={info} />} />
+      checkout={{ kind: "room", target, where: meeting ? "the meeting room" : `Room ${room}`, guest: first, payTo, online }}
+      top={<StayTop key="stay-top" stay={shown} info={info} />}
+      bottom={<StayBottom key="stay-bottom" stay={shown} info={info} />} />
   );
 }

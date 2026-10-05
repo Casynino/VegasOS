@@ -16,11 +16,13 @@ const phoneOk = (p: string) => /^(?:\+?255|0)?[67]\d{8}$/.test(p.replace(/[\s-]/
  * PAY ONLINE above the guest's bill (stay link, room QR card): what they owe, from their phone (nTZS) — the amount is
  * worked out on the server. A payment already on its way is opened again rather than asked twice.
  */
-export function BillPayOnline({ due, live, action }: {
+export function BillPayOnline({ due, live, action, bare = false }: {
   due: number;
   /** The payment page of a payment on its way now. */
   live: string | null;
   action: (input: { phone: string; clientKey: string }) => Promise<ActionResult<{ pay: string }>>;
+  /** Inside a sheet that has its own title and card: the form only, without its card and "Pay your bill now" row. */
+  bare?: boolean;
 }) {
   const router = useRouter();
   const [number, setNumber] = useState("");
@@ -48,11 +50,13 @@ export function BillPayOnline({ due, live, action }: {
   });
 
   return (
-    <section className="space-y-3 rounded-2xl bg-white p-4 font-sans shadow-sm ring-1 ring-black/5 print:hidden">
-      <div className="flex items-center justify-between gap-3">
-        <p className="flex items-center gap-2 text-[15px] font-semibold"><Smartphone className="size-4 text-[#9a7428]" />Pay your bill now</p>
-        <p className="text-[15px] font-semibold tabular-nums">{tzs(due)}</p>
-      </div>
+    <section className={cn("space-y-3 font-sans print:hidden", !bare && "rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5")}>
+      {!bare && (
+        <div className="flex items-center justify-between gap-3">
+          <p className="flex items-center gap-2 text-[15px] font-semibold"><Smartphone className="size-4 text-[#9a7428]" />Pay your bill now</p>
+          <p className="text-[15px] font-semibold tabular-nums">{tzs(due)}</p>
+        </div>
+      )}
       <label className="block text-[12.5px] font-medium text-black/70">Mobile-money number
         <input value={number} onChange={(e) => setNumber(e.target.value)} type="tel" inputMode="tel" autoComplete="tel" placeholder="e.g. 0712 345 678"
           className={cn("mt-1 block h-11 w-full rounded-xl border border-black/15 bg-white px-3.5 text-[16px] outline-none transition placeholder:text-black/35 focus:border-[#b8913e] focus:ring-4 focus:ring-[#b8913e]/15 sm:text-[14px]", number && !phoneOk(number) && "border-amber-400")} />

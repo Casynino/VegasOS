@@ -6,18 +6,27 @@ import { roomForQr, scanRoomQr } from "@/server/services/room-qr";
 import { restaurantMenu } from "@/server/services/online-orders";
 import { customerPayAccounts } from "@/server/services/payment-accounts";
 import { onlinePayAvailable } from "@/server/services/online-pay";
+import { roomTypeOffer, roomTypePhotos } from "@/server/services/room-qr-page";
 import { StayPage } from "@/components/restaurant/stay-page";
 import { RestaurantApp } from "@/components/restaurant/restaurant-app";
 import { restaurantShell } from "@/components/restaurant/shell";
+import { telHref } from "@/components/hotel-qr/lib";
+import { FreeRoomTop, type FreeRoom } from "@/components/room-qr/free-room";
+import { HotelFooter } from "@/components/room-qr/parts";
+import { hotelInfo } from "@/components/room-qr/contact";
+import { MEETING_PHOTO, realPhotos, ROOM_PHOTO } from "@/components/room-qr/photos";
 
 export const metadata: Metadata = { title: "Welcome", robots: { index: false, follow: false }, referrer: "no-referrer" };
 export const dynamic = "force-dynamic";
 
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
 /**
- * The QR card in a room opens here. The QR belongs to the room: the stay checked in to the
- * room right now is found on the server (today one guest, tomorrow the next). A guest staying
- * gets their stay page — room, bill, Wi-Fi, and the menu ordering to their room bill; when
- * nobody is checked in, the same restaurant app as a table, its banner naming the room (owner, 2026-10-04: one look).
+ * The QR card in a room opens here. The QR belongs to the room: the stay checked in to the room right now is found on
+ * the server (today one guest, tomorrow the next). A guest staying gets "Your room" — welcome, bill, what they can ask
+ * for the room, and the menu ordering to their room bill. When nobody is checked in, the room itself (its photos, type,
+ * tonight's price, Book a room like this) and the menu to eat at the restaurant or take out — nothing goes on a room bill
+ * without a stay. An unknown or switched-off card: the restaurant app as it was.
  */
 export default async function RoomQrPage({ params, searchParams }: PageProps<"/r/[token]">) {
   const { token } = await params;
@@ -32,17 +41,40 @@ export default async function RoomQrPage({ params, searchParams }: PageProps<"/r
   // Someone is staying in the room: their page — the stay on top, the menu to order to the room bill.
   if (scan?.stay) return <StayPage stay={scan.stay} s={s} target={{ kind: "room", token }} via="room" />;
 
-  // Nobody checked in: exactly the restaurant app of a table (one clean look everywhere, owner 2026-10-04) — its banner
-  // names the room; the menu to eat at the restaurant or take out (nothing goes on a room bill without a stay).
   const room = scan?.room?.active ? scan.room : null;
+  const label = room ? (room.meeting ? `Meeting room ${room.number}` : `Room ${room.number}`) : null;
   const { brand, status } = restaurantShell(s);
+  const [menu, payTo, online] = await Promise.all([restaurantMenu(), customerPayAccounts(), onlinePayAvailable("restaurant", s)]);
+  const app = {
+    status, menu, canOrder: s.publicOrderingEnabled,
+    place: { kind: "public" as const, table: null, room: !!room, label, note: room ? "Eat at the restaurant or take out · room service once you are checked in" : null },
+    checkout: { kind: "public" as const, table: null, fromQr: true, payTo, online },
+  };
+  if (!room || !scan?.info) return <RestaurantApp brand={brand} {...app} />;
+
+  // Nobody checked in: the room itself, the website's way — its photos and tonight's website price.
+  const t = scan.info;
+  const [offer, photos] = await Promise.all([room.meeting ? null : roomTypeOffer(t.slug, s), roomTypePhotos(t.slug)]);
+  const free: FreeRoom = {
+    title: label!,
+    type: room.meeting ? "For meetings & events" : t.type,
+    // Real photos only (no stock passed off as this room).
+    photos: realPhotos(offer?.images.length ? offer.images : photos.length ? photos : t.photo ? [t.photo] : [], room.meeting ? MEETING_PHOTO : ROOM_PHOTO),
+    from: offer?.from ?? null, base: offer?.base ?? null, promo: offer?.promo ?? null,
+    facts: [
+      room.meeting ? `Up to ${plural(t.adults, "person", "people")}` : `Up to ${plural(t.adults, "adult")}${t.children ? ` and ${plural(t.children, "child", "children")}` : ""}`,
+      t.size ? `${t.size} m²` : null,
+      !room.meeting && t.bed ? t.bed : null,
+    ].filter(Boolean).join(" · ") || null,
+    book: room.meeting ? { label: "Book the meeting room", href: "/meeting-room" }
+      // A room of this type (not this very room number) — booked on the website's page of the room type.
+      : offer ? { label: "Book a room like this", href: offer.bookHref }
+      : s.phone ? { label: "Call to book", href: telHref(s.phone) } : null,
+    menuNote: "Eat at the restaurant or take out · room service once you are checked in.",
+  };
   return (
-    <RestaurantApp brand={brand} status={status} menu={await restaurantMenu()} canOrder={s.publicOrderingEnabled}
-      place={{
-        kind: "public", table: null, room: !!room,
-        label: room ? (room.meeting ? `Meeting room ${room.number}` : `Room ${room.number}`) : null,
-        note: room ? "Eat at the restaurant or take out · room service once you are checked in" : null,
-      }}
-      checkout={{ kind: "public", table: null, fromQr: true, payTo: await customerPayAccounts(), online: await onlinePayAvailable("restaurant", s) }} />
+    <RestaurantApp brand={{ name: s.hotelName, hotel: s.hotelName, tagline: "Welcome" }} {...app}
+      top={<FreeRoomTop key="room-top" room={free} />}
+      bottom={<HotelFooter key="room-bottom" info={hotelInfo(s, `Hello ${s.hotelName}, I have a question about ${label}.`)} note={`The card of ${label}. Once you have checked in, it opens your own room page.`} />} />
   );
 }

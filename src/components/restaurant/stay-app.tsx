@@ -1,282 +1,293 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
-import Image from "next/image";
+import { useState } from "react";
 import Link from "next/link";
-import { AnimatePresence, motion } from "motion/react";
-import {
-  ArrowUpRight, Bath, Building2, CalendarCheck, Check, ChevronLeft, ChevronRight, Clock, ConciergeBell, Copy, Images, Loader2, Mail, MapPin, MessageCircle, Phone, Receipt,
-  SprayCan, UserRound, UtensilsCrossed, Wifi, Wrench, X,
-} from "lucide-react";
-import { GUEST_ASKS, GUEST_REQUEST_WORD, REQUEST_TYPE_LABEL, type GuestAskType } from "@/lib/request-meta";
-import { askFromStayAction } from "@/app/stay/[token]/actions";
-import { askFromRoomQrAction } from "@/app/r/[token]/actions";
-import { cn } from "@/lib/utils";
+import { useReducedMotion } from "motion/react";
+import { ArrowRight, BedDouble, Check, ChevronRight, Copy, ConciergeBell, Loader2, MapPin, Receipt, Wifi } from "lucide-react";
+import type { ActionResult } from "@/server/errors";
 import type { GuestStay } from "@/server/services/guest-comms";
-import { Sheet } from "./restaurant-app";
+import { cn } from "@/lib/utils";
+import { darkButton } from "@/components/hotel-qr/ui";
+import { dayShort, dayWeek, nightsText, plural, tzs } from "@/components/hotel-qr/lib";
+import { BillPayOnline } from "@/components/ordering/bill-pay-online";
+import {
+  BottomSheet, card, ContactButtons, goldButton, goldDot, HotelFooter, HoursList, PhotoViewer, QuickLink, QuickRow, RoomCard, SheetHead, sectionTitle,
+  type HotelInfo,
+} from "@/components/room-qr/parts";
+import { RoomOptions, type RoomRequests } from "@/components/room-qr/room-options";
 
-/** What the stay page shows besides the booking itself — prepared on the server from the hotel settings. */
+/** What the guest's page shows besides the booking itself — prepared on the server from the hotel settings. */
 export type StayInfo = {
   hotel: string;
   billHref: string;
-  /** "room": opened from the room's QR card. */
+  /** "room": opened from the room's QR card (first name only, the stay checked in to the room now). */
   via: "room" | null;
-  room: string; types: string; nights: number; meeting: boolean; photo: string; fee: number;
-  /** Their room type's photos (the first is `photo`), a line about it, bed, size and what it has. */
-  photos: string[]; about: string | null; bed: string | null; size: number | null; amenities: string[];
-  when: { inLabel: string; inTime: string; outLabel: string; outTime: string; outDate: string };
-  callHref: string | null; waHref: string | null; phoneLabel: string | null;
+  room: string; types: string; nights: number; meeting: boolean; fee: number;
+  /** Their room type's real photos. */
+  photos: string[];
+  /** The hotel's date today (YYYY-MM-DD): a guest still in past their booked check-out counts from today. */
+  today: string;
+  /** "14:00", "11:00" — and a meeting's start and end. */
+  checkInTime: string; checkoutTime: string; checkoutMinutes: number; meetingTimes: { start: string; end: string } | null;
+  lateFee: number;
   /** Only while the guest is staying. */
   wifi: { network: string | null; password: string | null } | null;
-  hours: { label: string; value: string }[];
-  address: string | null; mapHref: string | null;
   /** Where the guest's requests go (towels, cleaning…) — only while they are staying in a room. */
   ask: { kind: "stay" | "room"; token: string } | null;
+  /** Their recent requests, named ("Room change", "Fresh towels"…). */
+  requests: RoomRequests;
+  /** Pay online (nTZS) for what is owed — the same payment as the bill page, when offered. */
+  pay: { due: number; live: string | null; action: (input: { phone: string; clientKey: string }) => Promise<ActionResult<{ pay: string }>> } | null;
+  contact: HotelInfo;
+  /** Where "Book your next stay" goes. */
+  bookHref: string;
 };
 
-const tzs = (v: number) => `TZS ${v.toLocaleString("en-US")}`;
-/** "2026-09-28" → "28 Sept". */
-const short = (d: string) => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${d}T00:00:00Z`));
 /** "HONEST" → "Honest" (names typed in capitals read better greeted normally). */
 const nice = (n: string) => n.split(/\s+/).map((w) => (/^[A-Z]{2,}$/.test(w) ? w[0] + w.slice(1).toLowerCase() : w)).join(" ");
 
 const STATE: Record<string, { label: string; dot: string }> = {
-  CHECKED_IN: { label: "Checked in", dot: "bg-emerald-400" },
   CONFIRMED: { label: "Confirmed", dot: "bg-emerald-400" },
   RESERVED: { label: "Reserved", dot: "bg-amber-400" },
-  INQUIRY: { label: "Enquiry", dot: "bg-white/50" },
-  CHECKED_OUT: { label: "Checked out", dot: "bg-white/50" },
+  INQUIRY: { label: "Not paid — not reserved yet", dot: "bg-white/50" },
   CANCELLED: { label: "Cancelled", dot: "bg-rose-400" },
   NO_SHOW: { label: "Not arrived", dot: "bg-rose-400" },
 };
 const ORDER_WORD: Record<string, { label: string; tone: string }> = {
-  PENDING: { label: "Received", tone: "bg-sky-100 text-sky-800" },
-  ACCEPTED: { label: "Preparing", tone: "bg-amber-100 text-amber-800" },
-  PREPARING: { label: "Preparing", tone: "bg-amber-100 text-amber-800" },
-  READY: { label: "Ready", tone: "bg-emerald-100 text-emerald-800" },
-  OUT_FOR_DELIVERY: { label: "On its way", tone: "bg-violet-100 text-violet-800" },
-  DELIVERED: { label: "Delivered", tone: "bg-emerald-100 text-emerald-800" },
-  COMPLETED: { label: "Delivered", tone: "bg-emerald-100 text-emerald-800" },
-  COLLECTED: { label: "Collected", tone: "bg-emerald-100 text-emerald-800" },
-  CANCELLED: { label: "Cancelled", tone: "bg-rose-100 text-rose-800" },
+  PENDING: { label: "Received", tone: "text-(--vr-muted)" },
+  ACCEPTED: { label: "Preparing", tone: "text-(--vr-gold-ink)" },
+  PREPARING: { label: "Preparing", tone: "text-(--vr-gold-ink)" },
+  READY: { label: "Ready", tone: "text-emerald-700" },
+  OUT_FOR_DELIVERY: { label: "On its way", tone: "text-(--vr-gold-ink)" },
+  DELIVERED: { label: "Delivered", tone: "text-emerald-700" },
+  COMPLETED: { label: "Delivered", tone: "text-emerald-700" },
+  COLLECTED: { label: "Collected", tone: "text-emerald-700" },
+  CANCELLED: { label: "Cancelled", tone: "text-rose-700" },
 };
 
-const card = "rounded-3xl bg-(--vr-card) p-4 ring-1 ring-(--vr-line) sm:p-5";
-const caps = "text-[10.5px] font-semibold uppercase tracking-[0.2em] text-(--vr-muted)";
-
 /**
- * The guest's stay, at the top of their page (their link or the room's QR): who and where, the
- * dates, one-tap shortcuts, the bill and their orders — then the menu to order from, right below.
+ * YOUR ROOM — the top of the guest's page (the room's QR card or their stay link), in the Hotel QR app's calm look: one
+ * dark card with their room's photos, "Welcome, Honest", the room and the dates, one gold button (order food) and a
+ * quiet row of links; then the bill, their orders, what they can ask for the room — and the menu right below.
  */
 export function StayTop({ stay, info }: { stay: GuestStay; info: StayInfo }) {
-  const [sheet, setSheet] = useState<"wifi" | "help" | null>(null);
+  const reduce = useReducedMotion();
+  const [sheet, setSheet] = useState<"wifi" | "reception" | "pay" | null>(null);
   const [viewing, setViewing] = useState<number | null>(null);
-  const photos = info.photos.length ? info.photos : [info.photo];
   const first = nice(stay.guestName.split(/\s+/)[0] ?? "");
   const inHouse = stay.status === "CHECKED_IN";
   const out = stay.status === "CHECKED_OUT";
-  const st = STATE[stay.status] ?? STATE.RESERVED;
-  const guests = info.meeting ? `${stay.adults} attendee${stay.adults === 1 ? "" : "s"}` : `${stay.adults} adult${stay.adults === 1 ? "" : "s"}${stay.children ? ` · ${stay.children} child${stay.children === 1 ? "" : "ren"}` : ""}`;
-  const note = [
-    !info.meeting && (info.nights ? `${info.nights} night${info.nights === 1 ? "" : "s"}` : "Day use"),
-    guests,
-    !info.meeting && (inHouse ? `out ${info.when.outTime}` : out ? null : `in ${info.when.inTime}`),
-  ].filter(Boolean).join(" · ");
-  const toMenu = () => document.getElementById("order")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  const balance = stay.money?.balance ?? 0;
+  const gone = stay.status === "CANCELLED" || stay.status === "NO_SHOW";
+  const place = info.meeting ? `Meeting room ${info.room}` : `Room ${info.room}`;
+  const due = stay.money?.balance ?? 0;
+  const go = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
 
-  const greeting = out ? "Thank you for staying" : inHouse ? `Welcome, ${first}` : info.meeting ? "Your meeting" : "Your booking";
-  const title = inHouse && info.room ? (info.meeting ? `Meeting room ${info.room}` : `Room ${info.room}`) : out ? `Asante, ${first}` : `Hello, ${first}`;
-  const accent = inHouse ? info.types : out ? "Karibu tena — come back soon" : [info.types, info.room && `Room ${info.room}`].filter(Boolean).join(" · ");
+  const hello = inHouse ? "Welcome," : out ? "Thank you," : "Hello,";
+  const name = first || (inHouse ? "to your room" : "and welcome");
+  const where = (inHouse || out
+    ? [info.room && place, !info.meeting && info.types]
+    : [info.meeting ? "Your meeting" : "Your booking", !info.meeting && info.types, info.room && place]
+  ).filter(Boolean).join(" · ");
+  // Still in after the booked check-out day (the extra nights are charged at check-out): no "check-out by" a past date.
+  const staysOn = inHouse && !info.meeting && stay.departure < info.today;
+  const when = info.meeting && info.meetingTimes
+    ? `${dayWeek(stay.arrival)} · ${info.meetingTimes.start}–${info.meetingTimes.end}`
+    : staysOn
+      ? `Since ${dayShort(stay.arrival)} · booked until ${dayShort(stay.departure)}`
+      : [
+        `${dayShort(stay.arrival)} → ${dayShort(stay.departure)}`,
+        inHouse ? `check-out by ${info.checkoutTime}` : out || gone ? (info.nights ? nightsText(info.nights) : "Day use") : `${info.nights ? nightsText(info.nights) : "Day use"} · check-in from ${info.checkInTime}`,
+      ].join(" · ");
+  const state = !inHouse && !out ? STATE[stay.status] : undefined;
+  // The orders sit under the bill unless they have the second column to themselves (a meeting in use).
+  const sideOrders = !!info.ask || !inHouse;
+
+  // The one gold button: order food while staying; pay what is owed before arriving; come back once they have left.
+  const payable = !inHouse && !out && !gone && !!info.pay && due > 0;
+  const primary = inHouse
+    ? { label: stay.canOrder ? "Order food & drinks" : "See our menu", onClick: () => go("order") }
+    : payable
+      ? info.pay!.live ? { label: "Your payment is on its way", href: `/pay/${info.pay!.live}` } : { label: `Pay ${tzs(due)} now`, onClick: () => setSheet("pay") }
+      : out || gone ? { label: "Book your next stay", href: info.bookHref } : { label: "See our menu", onClick: () => go("order") };
 
   return (
     <>
-      {/* ── Who and where: a clean, compact welcome (big screens add a few small photos of the room) ── */}
-      <section className="relative mt-3 overflow-hidden rounded-3xl bg-(--vr-dark) text-white sm:mt-4 lg:flex lg:items-center lg:gap-6 lg:p-5 lg:pl-8">
-        <div aria-hidden className="absolute -left-10 -top-16 size-52 rounded-full bg-(--vr-gold)/10 blur-3xl" />
-        <div className="relative min-w-0 flex-1 p-4 sm:p-6 lg:p-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-medium text-white/90"><span className={cn("size-1.5 rounded-full", st.dot)} />{st.label}</span>
-            <span className="text-[12.5px] font-medium text-(--vr-gold)">{greeting}</span>
-          </div>
-          <h1 className="mt-2 font-display text-[30px] font-semibold leading-[1.05] sm:text-[36px] lg:text-[40px]">
-            {title}{accent && <span className="ml-2.5 align-middle font-display text-[17px] font-normal italic text-(--vr-gold) sm:text-[20px]">{accent}</span>}
-          </h1>
-          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-            <p className="inline-flex max-w-full items-center gap-2 rounded-full bg-(--vr-gold) py-1 pl-1 pr-3 text-(--vr-ink)">
-              <span className="grid size-6 shrink-0 place-items-center rounded-full bg-(--vr-dark) text-(--vr-gold)"><CalendarCheck className="size-3.5" /></span>
-              <span className="truncate text-[12.5px] font-semibold">{info.meeting ? `${short(stay.arrival)} · ${info.when.inTime}–${info.when.outTime}` : `${short(stay.arrival)} → ${short(info.when.outDate)}`}</span>
-            </p>
-            <p className="text-[11.5px] leading-snug text-white/60">{note}</p>
-          </div>
-          {/* What the room has — one quiet line on big screens */}
-          {info.amenities.length > 0 && (
-            <p className="mt-3 hidden items-center gap-1.5 text-[12px] text-white/55 lg:flex">
-              <Check className="size-3.5 shrink-0 text-(--vr-gold)" strokeWidth={3} />
-              <span className="truncate">{info.amenities.slice(0, 4).join(" · ")}{info.amenities.length > 4 ? ` · +${info.amenities.length - 4} more` : ""}</span>
-            </p>
-          )}
+      <RoomCard photos={info.photos} title={info.room ? place : info.types || info.hotel} onPhotos={setViewing}>
+        {state && (
+          <p className="mb-3 inline-flex items-center gap-2 text-[12px] font-medium text-white/70"><span className={cn("size-1.5 rounded-full", state.dot)} />{state.label}</p>
+        )}
+        <h1 className="font-display text-[34px] font-semibold leading-[1.02] tracking-tight lining-nums sm:text-[40px] lg:text-[50px]">
+          {hello}<br /><span className="text-(--vr-gold)">{name}</span>
+        </h1>
+        {where && <p className="mt-3 text-[15px] font-medium text-white/90 lg:mt-4 lg:text-[16px]">{where}</p>}
+        <p className="mt-1 text-[12.5px] leading-relaxed text-white/55 lg:text-[13px]">{when}</p>
+
+        <div className="mt-5 max-w-sm">
+          {"href" in primary
+            ? <Link href={primary.href!} className={goldButton}>{primary.label}<span className={goldDot}><ArrowRight className="size-4" /></span></Link>
+            : <button type="button" onClick={primary.onClick} className={goldButton}>{primary.label}<span className={goldDot}><ArrowRight className="size-4" /></span></button>}
         </div>
 
-        {/* Big screens: a small cluster — one photo, two beside it, all of them one tap away */}
-        <div className="relative hidden shrink-0 gap-2 lg:flex">
-          <button type="button" onClick={() => setViewing(0)} aria-label="Photos of your room" className="group relative h-[148px] w-[210px] overflow-hidden rounded-2xl ring-1 ring-white/10">
-            <Image src={photos[0]} alt="" fill sizes="210px" className="object-cover transition duration-700 group-hover:scale-[1.05]" preload />
-            <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-black/55 px-2 py-0.5 text-[10.5px] font-medium backdrop-blur-md"><Images className="size-3" />{photos.length > 1 ? `${photos.length} photos` : "View"}</span>
-          </button>
-          {photos.length > 1 && (
-            <div className="flex w-[104px] flex-col gap-2">
-              {photos.slice(1, 3).map((src, k) => (
-                <button key={src} type="button" onClick={() => setViewing(k + 1)} aria-label={`Photo ${k + 2} of your room`} className="group relative h-[70px] overflow-hidden rounded-xl ring-1 ring-white/10">
-                  <Image src={src} alt="" fill sizes="104px" className="object-cover transition duration-700 group-hover:scale-[1.06]" />
-                  {k === 1 && photos.length > 3 && <span className="absolute inset-0 grid place-items-center bg-black/50 text-[15px] font-semibold">+{photos.length - 3}</span>}
-                </button>
-              ))}
-            </div>
-          )}
+        <QuickRow>
+          {info.ask
+            ? <QuickLink icon={BedDouble} label="Your room" onClick={() => go("room")} />
+            : <QuickLink icon={Receipt} label="My bill" onClick={() => go("bill")} />}
+          {info.wifi
+            ? <QuickLink icon={Wifi} label="Wi-Fi" onClick={() => setSheet("wifi")} />
+            : info.contact.mapHref && !inHouse ? <QuickLink icon={MapPin} label="Directions" href={info.contact.mapHref} external /> : null}
+          <QuickLink icon={ConciergeBell} label="Reception" onClick={() => setSheet("reception")} />
+        </QuickRow>
+      </RoomCard>
+      <PhotoViewer photos={info.photos} start={viewing} title={info.room ? place : info.types || info.hotel} onClose={() => setViewing(null)} />
+
+      {/* ── The bill and the orders; what they can ask for the room (staying) or their booking (before / after) ── */}
+      <div className="mt-8 grid gap-8 lg:mt-10 lg:grid-cols-2 lg:gap-6 xl:gap-8">
+        <div className="min-w-0">
+          <BillCard stay={stay} info={info} payInCard={payable} onPay={() => setSheet("pay")} />
+          {sideOrders && stay.orders.length > 0 && <OrdersCard orders={stay.orders} className="mt-8 lg:mt-6" />}
         </div>
-      </section>
-      <PhotoViewer photos={photos} start={viewing} title={title} onClose={() => setViewing(null)} />
-
-      {/* ── One tap ── */}
-      <nav aria-label="Shortcuts" className="mt-3 grid grid-cols-4 gap-2 sm:gap-3">
-        <Shortcut primary icon={UtensilsCrossed} label={stay.canOrder ? "Order food" : "Menu"} sub={stay.canOrder ? (info.meeting ? "To your meeting room" : "To your room") : "See what we serve"} onClick={toMenu} />
-        <Shortcut icon={Receipt} label="My bill" sub={stay.money ? (balance > 0 ? `${tzs(balance)} to pay` : "Paid in full") : "Print or download"} href={info.billHref} />
-        {info.wifi
-          ? <Shortcut icon={Wifi} label="Wi-Fi" sub={info.wifi.network ?? "Ask reception"} onClick={() => setSheet("wifi")} />
-          : info.mapHref
-            ? <Shortcut icon={MapPin} label="Directions" sub="Find the hotel" href={info.mapHref} external />
-            : <Shortcut icon={Clock} label="Hours" sub="Restaurant & bar" onClick={() => setSheet("help")} />}
-        <Shortcut icon={ConciergeBell} label={info.ask ? "Ask us" : "Reception"} sub={info.ask ? "Towels, cleaning, help" : info.phoneLabel ?? "Here to help"} onClick={() => setSheet("help")} />
-      </nav>
-
-      {/* ── The bill and the orders ── */}
-      <div className={cn("mt-3 grid gap-3", stay.orders.length > 0 && "lg:grid-cols-2")}>
-        <BillCard stay={stay} info={info} />
-        {stay.orders.length > 0 && <OrdersCard orders={stay.orders} />}
+        {info.ask
+          ? <RoomOptions ask={info.ask} requests={info.requests} departure={stay.departure} today={info.today} checkoutMinutes={info.checkoutMinutes} lateFee={info.lateFee} className="min-w-0" />
+          : !inHouse ? <BookingCard stay={stay} info={info} className="min-w-0" />
+          : stay.orders.length > 0 && <OrdersCard orders={stay.orders} className="min-w-0" />}
       </div>
 
       {/* ── The menu starts here ── */}
-      <div id="order" className="mt-8 scroll-mt-3 lg:mt-10">
-        <p className="text-[10.5px] font-semibold uppercase tracking-[0.24em] text-(--vr-gold-ink)">Restaurant & bar</p>
-        <h2 className="mt-1 font-display text-[28px] font-semibold leading-none sm:text-[32px]">{stay.canOrder ? "Order food & drinks" : "Our menu"}</h2>
+      <div id="order" className="mt-10 scroll-mt-3 lg:mt-14">
+        <h2 className={sectionTitle}>{stay.canOrder ? "Food & drinks" : "Our menu"}</h2>
         <p className="mt-1.5 text-[13px] text-(--vr-muted)">
           {stay.canOrder
-            ? info.meeting ? "Served in your meeting room and added to its bill." : `Delivered to Room ${info.room} and added to your room bill · delivery ${tzs(info.fee)}.`
-            : out ? "We hope to serve you again soon." : "You can order to your room as soon as you have checked in."}
+            ? info.meeting ? "Served in your meeting room and added to its bill." : `Brought to ${place} and added to your room bill${info.fee ? ` · delivery ${tzs(info.fee)}` : ""}.`
+            : out || gone ? "We hope to serve you again soon." : "You can order to your room as soon as you have checked in."}
         </p>
       </div>
 
-      {/* ── Wi-Fi, reception ── */}
-      <Sheet open={sheet !== null} onClose={() => setSheet(null)} label={sheet === "wifi" ? "Wi-Fi" : "Reception"}>
-        <div className="flex px-4 pt-[max(0.9rem,env(safe-area-inset-top))] sm:justify-end sm:pt-4">
-          <button type="button" onClick={() => setSheet(null)} aria-label="Back" className="grid size-10 place-items-center rounded-full bg-(--vr-bg) hover:bg-(--vr-line) sm:size-8">
-            <ChevronLeft className="size-5 sm:hidden" /><X className="hidden size-4 sm:block" />
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-2 sm:px-7 sm:pb-7">
-          {sheet === "wifi" ? <WifiPanel info={info} /> : <HelpPanel info={info} requests={stay.requests} />}
-        </div>
-      </Sheet>
+      {/* ── Wi-Fi, reception, paying ── */}
+      <BottomSheet open={sheet !== null} onClose={() => setSheet(null)} label={sheet === "wifi" ? "Wi-Fi" : sheet === "pay" ? "Pay your bill" : "Reception"}>
+        {sheet === "wifi" ? <WifiPanel info={info} />
+          : sheet === "pay" && info.pay ? <PayPanel pay={info.pay} />
+          : <ReceptionPanel contact={info.contact} />}
+      </BottomSheet>
     </>
   );
 }
 
-function Shortcut({ icon: Icon, label, sub, primary, onClick, href, external }: {
-  icon: typeof Wifi; label: string; sub: string; primary?: boolean; onClick?: () => void; href?: string; external?: boolean;
-}) {
-  const cls = cn("group flex min-w-0 flex-col items-center justify-center gap-1.5 rounded-2xl px-1 py-2.5 text-center transition active:scale-[0.97] sm:flex-row sm:justify-start sm:gap-3 sm:px-4 sm:py-3.5 sm:text-left",
-    primary ? "bg-(--vr-gold) text-(--vr-ink) shadow-[0_14px_28px_-18px_rgba(160,120,40,0.9)] hover:brightness-105" : "bg-(--vr-card) ring-1 ring-(--vr-line) hover:ring-(--vr-gold)");
-  const inner = (
-    <>
-      <span className={cn("grid size-9 shrink-0 place-items-center rounded-full sm:size-10", primary ? "bg-(--vr-dark) text-(--vr-gold)" : "bg-(--vr-gold-soft) text-(--vr-gold-ink)")}><Icon className="size-[17px]" /></span>
-      <span className="min-w-0 leading-tight">
-        <span className="block truncate text-[12px] font-semibold sm:text-[14px]">{label}</span>
-        <span className={cn("hidden truncate text-[11.5px] sm:block", primary ? "text-(--vr-ink)/70" : "text-(--vr-muted)")}>{sub}</span>
-      </span>
-    </>
-  );
-  if (href) return external ? <a href={href} target="_blank" rel="noopener" className={cls}>{inner}</a> : <Link href={href} className={cls}>{inner}</Link>;
-  return <button type="button" onClick={onClick} className={cls}>{inner}</button>;
-}
-
-function BillCard({ stay, info }: { stay: GuestStay; info: StayInfo }) {
-  const [open, setOpen] = useState(false);
+function BillCard({ stay, info, payInCard, onPay }: { stay: GuestStay; info: StayInfo; payInCard: boolean; onPay: () => void }) {
   const m = stay.money;
-  const share = m && m.total > 0 ? Math.min(100, Math.round((m.paid / m.total) * 100)) : 0;
+  const owed = (m?.balance ?? 0) > 0;
   return (
-    <section aria-label="Your bill" className={card}>
-      <div className="flex items-baseline justify-between gap-3">
-        <h2 className="font-display text-[21px] font-semibold leading-none">Your bill</h2>
-        {m && m.total > 0 && <span className="text-[11.5px] text-(--vr-muted)">{share}% paid</span>}
+    <section id="bill" aria-labelledby="bill-title" className="scroll-mt-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 id="bill-title" className={sectionTitle}>Your bill</h2>
+          <p className="mt-1.5 text-[13px] text-(--vr-muted)">{stay.status === "CHECKED_IN" ? "Extras are added as you go." : "Your stay and what is paid."}</p>
+        </div>
+        <Link href={info.billHref} className="-mt-2.5 inline-flex min-h-11 shrink-0 items-center gap-0.5 text-[13px] font-medium text-(--vr-gold-ink) hover:underline">Full bill<ChevronRight className="size-4" /></Link>
       </div>
-      {m && m.total > 0 ? (
-        <>
-          <div className="mt-3.5 flex items-end justify-between gap-3">
-            <div>
-              <p className={caps}>{m.balance > 0 ? "To pay" : "Balance"}</p>
-              <p className={cn("mt-0.5 text-[24px] font-semibold leading-none tabular-nums", m.balance > 0 ? "text-(--vr-ink)" : "text-emerald-700")}>{m.balance > 0 ? tzs(m.balance) : "Paid in full"}</p>
+      <div className={cn(card, "mt-3 p-4 sm:p-5")}>
+        {m && m.total > 0 ? (
+          <>
+            <div className="flex items-end justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[12.5px] text-(--vr-muted)">{owed ? "To pay" : "Balance"}</p>
+                <p className={cn("mt-1 whitespace-nowrap text-[24px] font-semibold leading-none tabular-nums min-[360px]:text-[26px]", !owed && "text-emerald-700")}>{owed ? tzs(m.balance) : "Paid in full"}</p>
+              </div>
+              <p className="shrink-0 text-right text-[12px] leading-snug text-(--vr-muted)">Paid <span className="tabular-nums">{tzs(m.paid)}</span><br />of <span className="tabular-nums">{tzs(m.total)}</span></p>
             </div>
-            <div className="text-right">
-              <p className={caps}>Total</p>
-              <p className="mt-0.5 text-[15px] font-semibold tabular-nums">{tzs(m.total)}</p>
-            </div>
-          </div>
-          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-(--vr-line)"><div className="h-full rounded-full bg-(--vr-gold)" style={{ width: `${share}%` }} /></div>
-          <p className="mt-1.5 text-[11.5px] text-(--vr-muted)">Paid so far {tzs(m.paid)} · settled at check-out</p>
-          {open && (
-            <ul className="mt-3 space-y-1.5 border-t border-(--vr-line) pt-3 text-[13px]">
+            <dl className="mt-4 divide-y divide-(--vr-line) border-t border-(--vr-line)">
               {m.lines.map((l) => (
-                <li key={l.label} className="flex justify-between gap-3"><span className="text-(--vr-muted)">{l.label}</span><span className="tabular-nums">{l.amount < 0 ? "− " : ""}{tzs(Math.abs(l.amount))}</span></li>
+                <div key={l.label} className="flex items-baseline justify-between gap-3 py-2.5 text-[13.5px]">
+                  <dt className="text-(--vr-muted)">{l.label}</dt>
+                  <dd className="tabular-nums">{l.amount < 0 ? "− " : ""}{tzs(Math.abs(l.amount))}</dd>
+                </div>
               ))}
-            </ul>
-          )}
-          <div className="mt-3.5 flex gap-2">
-            <button type="button" onClick={() => setOpen((v) => !v)} className="h-10 shrink-0 rounded-full px-4 text-[12.5px] font-semibold ring-1 ring-(--vr-line) transition hover:ring-(--vr-gold)">{open ? "Hide details" : "Details"}</button>
-            <Link href={info.billHref} className="flex h-10 min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-(--vr-dark) px-4 text-[12.5px] font-semibold text-white transition hover:bg-black">
-              <Receipt className="size-4 shrink-0 text-(--vr-gold)" /><span className="truncate">Full bill — print or download</span>
-            </Link>
-          </div>
-        </>
-      ) : stay.payer ? (
-        <p className="mt-3 text-[13.5px] leading-relaxed">Paid by <strong className="font-semibold">{stay.payer}</strong>. Food, drinks and extras you order are added to it.</p>
-      ) : (
-        <p className="mt-3 text-[13.5px] text-(--vr-muted)">Nothing on your bill yet.</p>
-      )}
+            </dl>
+            {owed && payInCard ? (
+              // Before arriving the card's gold button pays (or follows the payment on its way) — one button, not two.
+              <p className="mt-2 text-[12px] text-(--vr-muted)">{info.pay?.live ? "Your payment is on its way — follow it from the button above." : "Pay from the button above, or at reception."}</p>
+            ) : owed && info.pay?.live ? (
+              <Link href={`/pay/${info.pay.live}`} className={cn(darkButton, "mt-3 h-12 w-full justify-between px-5 text-[14px]")}>
+                <span className="inline-flex items-center gap-2"><Loader2 className="size-4 animate-spin text-(--vr-gold) motion-reduce:animate-none" />Your payment is on its way</span>
+                <span className="text-[12.5px] text-(--vr-gold)">Open</span>
+              </Link>
+            ) : owed && info.pay ? (
+              <button type="button" onClick={onPay} className={cn(darkButton, "mt-3 h-12 w-full text-[14.5px]")}>Pay {tzs(m.balance)} now<ArrowRight className="size-4 text-(--vr-gold)" /></button>
+            ) : (
+              <p className="mt-2 text-[12px] text-(--vr-muted)">{owed ? "Pay at reception, any time before you leave." : "Thank you."}</p>
+            )}
+          </>
+        ) : stay.payer ? (
+          <p className="text-[14px] leading-relaxed">Paid by <strong className="font-semibold">{stay.payer}</strong>. Food, drinks and extras you order are added to it.</p>
+        ) : (
+          <p className="text-[14px] text-(--vr-muted)">Nothing on your bill yet.</p>
+        )}
+      </div>
     </section>
   );
 }
 
-function OrdersCard({ orders }: { orders: GuestStay["orders"] }) {
+/**
+ * Before they arrive (or after they leave) — only ever on their own private link (the room card shows a stay that is
+ * checked in): the booking itself, in plain rows.
+ */
+function BookingCard({ stay, info, className }: { stay: GuestStay; info: StayInfo; className?: string }) {
+  const people = info.meeting
+    ? plural(stay.adults, "attendee")
+    : `${plural(stay.adults, "adult")}${stay.children ? ` · ${plural(stay.children, "child", "children")}` : ""}`;
+  const rows: [string, string][] = [
+    ["Booking", stay.reference],
+    ["Guest", nice(stay.guestName)],
+    ...(stay.company ? [["Company", stay.company] as [string, string]] : []),
+    [info.meeting ? "Meeting room" : stay.rooms.length > 1 ? "Rooms" : "Room", [info.room, !info.meeting && info.types].filter(Boolean).join(" · ") || "—"],
+    [info.meeting ? "Attendees" : "Guests", people],
+    ...(info.meeting && info.meetingTimes
+      ? [["When", `${dayWeek(stay.arrival)} · ${info.meetingTimes.start}–${info.meetingTimes.end}`] as [string, string]]
+      : [["Check-in", `${dayWeek(stay.arrival)} · from ${info.checkInTime}`], ["Check-out", `${dayWeek(stay.departure)} · by ${info.checkoutTime}`]] as [string, string][]),
+  ];
   return (
-    <section aria-label="Your orders" className={card}>
-      <div className="flex items-baseline justify-between gap-3">
-        <h2 className="font-display text-[21px] font-semibold leading-none">Your orders</h2>
-        <span className="text-[11.5px] text-(--vr-muted)">Tap one to follow it</span>
-      </div>
-      <ul className="mt-2 divide-y divide-(--vr-line)">
+    <section aria-labelledby="booking-title" className={className}>
+      <h2 id="booking-title" className={sectionTitle}>{info.meeting ? "Your meeting" : "Your booking"}</h2>
+      <p className="mt-1.5 text-[13px] text-(--vr-muted)">{stay.phone ? `We will reach you on ${stay.phone}.` : "Questions? Reception is here day and night."}</p>
+      <dl className={cn(card, "mt-3 divide-y divide-(--vr-line) px-4 sm:px-5")}>
+        {rows.map(([label, value]) => (
+          <div key={label} className="flex items-baseline justify-between gap-4 py-3">
+            <dt className="shrink-0 text-[13px] text-(--vr-muted)">{label}</dt>
+            <dd className={cn("min-w-0 truncate text-right text-[14px] font-medium", label === "Booking" && "font-mono tracking-wide")}>{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+function OrdersCard({ orders, className }: { orders: GuestStay["orders"]; className?: string }) {
+  return (
+    <section aria-labelledby="orders-title" className={className}>
+      <h2 id="orders-title" className={sectionTitle}>Your orders</h2>
+      <p className="mt-1.5 text-[13px] text-(--vr-muted)">{orders.some((o) => o.track) ? "Tap one to follow it." : "From the kitchen and the bar."}</p>
+      <ul className={cn(card, "mt-3 divide-y divide-(--vr-line) px-4 sm:px-5")}>
         {orders.slice(0, 4).map((o) => {
-          const w = ORDER_WORD[o.status] ?? { label: o.status, tone: "bg-(--vr-bg) text-(--vr-muted)" };
+          const w = ORDER_WORD[o.status] ?? { label: o.status, tone: "text-(--vr-muted)" };
           const inner = (
             <>
-              <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-(--vr-bg) text-[12px] font-bold tabular-nums">#{o.number.replace(/^ORD-\d{4}-0*/, "")}</span>
+              <span className="w-9 shrink-0 text-[13px] font-semibold tabular-nums text-(--vr-muted)">#{o.number.replace(/^ORD-\d{4}-0*/, "")}</span>
               <span className="min-w-0 flex-1 leading-tight">
-                <span className="block truncate text-[13.5px] font-medium">{o.items.join(", ")}</span>
-                <span className="text-[12px] tabular-nums text-(--vr-muted)">{tzs(o.total)}</span>
+                <span className="block truncate text-[14px] font-medium">{o.items.join(", ")}</span>
+                <span className="mt-0.5 block text-[12.5px] tabular-nums text-(--vr-muted)">{tzs(o.total)}</span>
               </span>
-              <span className={cn("shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold", w.tone)}>{w.label}</span>
+              <span className={cn("shrink-0 text-[12.5px] font-semibold", w.tone)}>{w.label}</span>
             </>
           );
           return (
             <li key={o.number}>
               {o.track
-                ? <Link href={`/order/${o.track}`} className="-mx-2 flex items-center gap-3 rounded-xl px-2 py-2.5 transition hover:bg-(--vr-bg)">{inner}</Link>
-                : <div className="flex items-center gap-3 py-2.5">{inner}</div>}
+                ? <Link href={`/order/${o.track}`} className="group flex min-h-[60px] items-center gap-3 py-2.5">{inner}<ChevronRight className="-mr-1 size-4 shrink-0 text-(--vr-muted) transition group-hover:text-(--vr-gold-ink)" /></Link>
+                : <div className="flex min-h-[60px] items-center gap-3 py-2.5">{inner}</div>}
             </li>
           );
         })}
       </ul>
+      {orders.length > 4 && <p className="mt-2 px-1 text-[12px] text-(--vr-muted)">and {orders.length - 4} earlier — all on your bill.</p>}
     </section>
   );
 }
@@ -285,7 +296,7 @@ function CopyButton({ text }: { text: string }) {
   const [done, setDone] = useState(false);
   return (
     <button type="button" onClick={() => { navigator.clipboard?.writeText(text).then(() => { setDone(true); setTimeout(() => setDone(false), 1800); }).catch(() => {}); }}
-      className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-(--vr-dark) px-4 text-[12.5px] font-semibold text-white">
+      className={cn(darkButton, "h-11 shrink-0 px-4 text-[13px]")}>
       {done ? <Check className="size-4 text-(--vr-gold)" /> : <Copy className="size-4 text-(--vr-gold)" />}{done ? "Copied" : "Copy"}
     </button>
   );
@@ -294,278 +305,62 @@ function CopyButton({ text }: { text: string }) {
 function WifiPanel({ info }: { info: StayInfo }) {
   return (
     <>
-      <span className="grid size-14 place-items-center rounded-full bg-(--vr-gold-soft) text-(--vr-gold-ink)"><Wifi className="size-7" /></span>
-      <h2 className="mt-4 font-display text-[28px] font-semibold leading-none">Wi-Fi</h2>
-      <p className="mt-1.5 text-[13.5px] text-(--vr-muted)">Free for guests, in your room and around the hotel.</p>
+      <SheetHead title="Wi-Fi" text="Free for guests, in your room and around the hotel." />
       {info.wifi?.network ? (
-        <div className="mt-5 space-y-2.5">
-          <div className="rounded-2xl bg-(--vr-bg) p-4 ring-1 ring-(--vr-line)">
-            <p className={caps}>Network</p>
-            <p className="mt-1 text-[17px] font-semibold">{info.wifi.network}</p>
+        <dl className="mt-4 divide-y divide-(--vr-line) border-y border-(--vr-line)">
+          <div className="flex min-h-14 items-center justify-between gap-3 py-2.5">
+            <dt className="text-[13px] text-(--vr-muted)">Network</dt>
+            <dd className="min-w-0 truncate text-right text-[16px] font-semibold">{info.wifi.network}</dd>
           </div>
-          <div className="flex items-center gap-3 rounded-2xl bg-(--vr-bg) p-4 ring-1 ring-(--vr-line)">
-            <div className="min-w-0 flex-1">
-              <p className={caps}>Password</p>
-              <p className="mt-1 truncate font-mono text-[18px] font-semibold tracking-wide">{info.wifi.password || "No password"}</p>
+          <div className="flex min-h-14 items-center justify-between gap-3 py-2.5">
+            <div className="min-w-0">
+              <dt className="text-[13px] text-(--vr-muted)">Password</dt>
+              <dd className="mt-0.5 truncate font-mono text-[17px] font-semibold tracking-wide">{info.wifi.password || "No password"}</dd>
             </div>
             {info.wifi.password && <CopyButton text={info.wifi.password} />}
           </div>
-        </div>
+        </dl>
       ) : (
-        <p className="mt-5 rounded-2xl bg-(--vr-bg) p-4 text-[14px] ring-1 ring-(--vr-line)">Ask reception for the Wi-Fi password — they will be happy to help.</p>
+        <p className="mt-4 border-y border-(--vr-line) py-3.5 text-[14px]">Ask reception for the Wi-Fi password — they will be happy to help.</p>
       )}
-      {info.hours.length > 0 && <Hours hours={info.hours} />}
     </>
   );
 }
 
-function HelpPanel({ info, requests }: { info: StayInfo; requests: GuestStay["requests"] }) {
+function ReceptionPanel({ contact }: { contact: HotelInfo }) {
   return (
     <>
-      <span className="grid size-14 place-items-center rounded-full bg-(--vr-gold-soft) text-(--vr-gold-ink)"><ConciergeBell className="size-7" /></span>
-      <h2 className="mt-4 font-display text-[28px] font-semibold leading-none">Need anything?</h2>
-      <p className="mt-1.5 text-[13.5px] text-(--vr-muted)">{info.ask ? "Ask here and reception takes care of it — or call us, day and night." : "Reception is here for you, day and night."} {info.phoneLabel && <span className="whitespace-nowrap font-medium text-(--vr-ink)">{info.phoneLabel}</span>}</p>
-      {info.ask && <AskPanel ask={info.ask} requests={requests} />}
-      <div className="mt-5 grid grid-cols-2 gap-2.5">
-        {info.callHref && <a href={info.callHref} className="flex h-12 items-center justify-center gap-2 rounded-full bg-(--vr-dark) text-[14px] font-semibold text-white"><Phone className="size-4 text-(--vr-gold)" />Call</a>}
-        {info.waHref && <a href={info.waHref} target="_blank" rel="noopener" className="flex h-12 items-center justify-center gap-2 rounded-full bg-[#25D366] text-[14px] font-semibold text-[#073b1f]"><MessageCircle className="size-4" />WhatsApp</a>}
-      </div>
-      {info.address && (
-        <a href={info.mapHref ?? undefined} target={info.mapHref ? "_blank" : undefined} rel="noopener" className="mt-2.5 flex items-start gap-3 rounded-2xl bg-(--vr-bg) p-4 ring-1 ring-(--vr-line)">
+      <SheetHead title="Reception" text={<>Here for you, day and night.{contact.phoneLabel && <> <span className="whitespace-nowrap font-medium text-(--vr-ink)">{contact.phoneLabel}</span></>}</>} />
+      <ContactButtons info={contact} className="mt-4" />
+      <HoursList hours={contact.hours} className="mt-3 border-t border-(--vr-line)" />
+      {contact.address && (
+        <p className="mt-1 flex items-start gap-2 border-t border-(--vr-line) pt-3 text-[13px] text-(--vr-muted)">
           <MapPin className="mt-0.5 size-4 shrink-0 text-(--vr-gold-ink)" />
-          <span className="text-[13.5px]">{info.address}{info.mapHref && <span className="mt-0.5 block text-[12px] font-semibold text-(--vr-gold-ink)">Get directions →</span>}</span>
-        </a>
+          <span>{contact.address}{contact.mapHref && <> · <a href={contact.mapHref} target="_blank" rel="noopener" className="font-semibold text-(--vr-gold-ink) hover:underline">Directions</a></>}</span>
+        </p>
       )}
-      {info.hours.length > 0 && <Hours hours={info.hours} />}
     </>
   );
 }
 
-const ASK_ICON: Record<GuestAskType, typeof Bath> = { TOWELS: Bath, CLEANING: SprayCan, MAINTENANCE: Wrench, GENERAL: MessageCircle };
-const REQ_TONE: Record<string, string> = { NEW: "bg-sky-100 text-sky-800", ASSIGNED: "bg-sky-100 text-sky-800", IN_PROGRESS: "bg-amber-100 text-amber-800", COMPLETED: "bg-emerald-100 text-emerald-800", CANCELLED: "bg-rose-100 text-rose-800" };
-const newKey = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
-
-/** Ask reception from the phone: tap what you need, add a word, send — then see it go from Received to On it to Done. */
-function AskPanel({ ask, requests }: { ask: NonNullable<StayInfo["ask"]>; requests: GuestStay["requests"] }) {
-  const router = useRouter();
-  const [type, setType] = useState<GuestAskType | null>(null);
-  const [note, setNote] = useState("");
-  const [key, setKey] = useState("");
-  const [sent, setSent] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [pending, start] = useTransition();
-  const pick = (t: GuestAskType) => { setType(t); setKey(newKey()); setSent(null); setError(null); };
-  const send = () => type && start(async () => {
-    const input = { token: ask.token, type, description: note.trim() || undefined, clientKey: key };
-    const r = ask.kind === "room" ? await askFromRoomQrAction(input) : await askFromStayAction(input);
-    if (!r.ok) { setError(r.error); return; }
-    setSent(GUEST_ASKS.find((a) => a.type === type)?.label ?? "Your request");
-    setType(null); setNote("");
-    router.refresh();
-  });
-  const chosen = GUEST_ASKS.find((a) => a.type === type);
+/** Pay online for what is owed — the bill page's own payment (amount worked out on the server), in a sheet. */
+function PayPanel({ pay }: { pay: NonNullable<StayInfo["pay"]> }) {
   return (
-    <div className="mt-5">
-      <p className={caps}>Ask reception</p>
-      <div className="mt-2 grid grid-cols-2 gap-2">
-        {GUEST_ASKS.map((a) => {
-          const Icon = ASK_ICON[a.type];
-          const on = type === a.type;
-          return (
-            <button key={a.type} type="button" onClick={() => pick(a.type)} aria-pressed={on}
-              className={cn("flex items-start gap-2.5 rounded-2xl p-3 text-left ring-1 transition", on ? "bg-(--vr-dark) text-white ring-(--vr-dark)" : "bg-(--vr-bg) ring-(--vr-line) hover:ring-(--vr-gold)")}>
-              <span className={cn("grid size-8 shrink-0 place-items-center rounded-full", on ? "bg-(--vr-gold) text-(--vr-ink)" : "bg-(--vr-gold-soft) text-(--vr-gold-ink)")}><Icon className="size-4" /></span>
-              <span className="min-w-0 leading-tight">
-                <span className="block text-[13.5px] font-semibold">{a.label}</span>
-                <span className={cn("mt-0.5 block text-[11.5px]", on ? "text-white/60" : "text-(--vr-muted)")}>{a.hint}</span>
-              </span>
-            </button>
-          );
-        })}
+    <>
+      <SheetHead title="Pay your bill" text={<><strong className="font-semibold tabular-nums text-(--vr-ink)">{tzs(pay.due)}</strong> — what you owe right now, from your phone with mobile money.</>} />
+      {/* The bill page's own form, without its card and title (the sheet is the card) */}
+      <div className="mt-4">
+        <BillPayOnline due={pay.due} live={pay.live} action={pay.action} bare />
       </div>
-      {chosen && (
-        <div className="mt-2.5 rounded-2xl bg-(--vr-bg) p-3 ring-1 ring-(--vr-line)">
-          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={300} autoFocus
-            placeholder={chosen.type === "GENERAL" ? "What do you need?" : "Anything to add? (optional)"}
-            className="w-full resize-none bg-transparent text-[14px] outline-none placeholder:text-(--vr-muted)" />
-          {error && <p className="mb-2 text-[12.5px] font-medium text-rose-700">{error}</p>}
-          <button type="button" onClick={send} disabled={pending || (chosen.type === "GENERAL" && note.trim().length < 2)}
-            className="flex h-11 w-full items-center justify-center gap-2 rounded-full bg-(--vr-dark) text-[14px] font-semibold text-white disabled:opacity-50">
-            {pending ? <Loader2 className="size-4 animate-spin" /> : <ConciergeBell className="size-4 text-(--vr-gold)" />}Send to reception
-          </button>
-        </div>
-      )}
-      {sent && !chosen && (
-        <p className="mt-2.5 flex items-center gap-2 rounded-2xl bg-emerald-50 px-3.5 py-3 text-[13px] text-emerald-900 ring-1 ring-emerald-200">
-          <Check className="size-4 shrink-0" strokeWidth={3} />{sent} — sent. Reception has it and will be with you soon.
-        </p>
-      )}
-      {requests.length > 0 && (
-        <ul className="mt-3 space-y-1.5">
-          {requests.map((q) => (
-            <li key={q.id} className="flex items-center justify-between gap-3 rounded-xl px-1 text-[13px]">
-              <span className="min-w-0 truncate"><span className="font-medium">{REQUEST_TYPE_LABEL[q.type] ?? "Request"}</span> <span className="text-(--vr-muted)">· {new Date(q.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</span></span>
-              <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold", REQ_TONE[q.status] ?? REQ_TONE.NEW)}>{GUEST_REQUEST_WORD[q.status] ?? "Received"}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+    </>
   );
 }
 
-function Hours({ hours }: { hours: StayInfo["hours"] }) {
-  return (
-    <div className="mt-5">
-      <p className={caps}>Opening hours</p>
-      <ul className="mt-2 grid grid-cols-2 gap-2">
-        {hours.map((h) => (
-          <li key={h.label} className="rounded-2xl bg-(--vr-bg) px-3.5 py-2.5 ring-1 ring-(--vr-line)">
-            <span className="block text-[11px] text-(--vr-muted)">{h.label}</span>
-            <span className="block truncate text-[13.5px] font-semibold">{h.value}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-const EXPLORE = [
-  { href: "/rooms", title: "Rooms & suites", text: "See every room", image: "/images/room-red/room-red-05.webp" },
-  { href: "/gallery", title: "Gallery", text: "Around the hotel", image: "/images/lobby/lobby-02.webp" },
-  { href: "/restaurant", title: "Restaurant", text: "Breakfast to dinner", image: "/images/illustrative/restaurant-warm.webp" },
-  { href: "/bar", title: "Bar & lounge", text: "Evening drinks", image: "/images/illustrative/bar-counter.webp" },
-  { href: "/meeting-room", title: "Meeting room", text: "For your team", image: "/images/illustrative/meeting-room.webp" },
-  { href: "/transport", title: "Airport transfer", text: "To and from the airport", image: "/images/illustrative/dar-city-aerial.webp" },
-] as const;
-
-/** After the menu: their details, help, and the rest of the hotel. */
+/** After the menu: the hotel, compact — hours, reception, the address. */
 export function StayBottom({ stay, info }: { stay: GuestStay; info: StayInfo }) {
-  const details: [typeof UserRound, string, string][] = [
-    [UserRound, "Guest", nice(stay.guestName)],
-    ...(stay.company ? [[Building2, "Company", stay.company] as [typeof UserRound, string, string]] : []),
-    ...(stay.phone ? [[Phone, "Phone", stay.phone] as [typeof UserRound, string, string]] : []),
-    ...(stay.email ? [[Mail, "Email", stay.email] as [typeof UserRound, string, string]] : []),
-    [CalendarCheck, "Booking", stay.reference],
-  ];
+  const place = info.meeting ? "this meeting room" : `Room ${info.room}`;
   return (
-    <div className="mt-12 lg:mt-16">
-      <div className="grid gap-3 md:grid-cols-2">
-        <section aria-label="Your details" className={card}>
-          <h2 className="font-display text-[21px] font-semibold leading-none">Your details</h2>
-          <ul className="mt-3 space-y-2.5">
-            {details.map(([Icon, label, value]) => (
-              <li key={label} className="flex items-center gap-3 text-[13.5px]">
-                <span className="grid size-8 shrink-0 place-items-center rounded-full bg-(--vr-bg) text-(--vr-gold-ink)"><Icon className="size-4" /></span>
-                <span className="w-16 shrink-0 text-[12px] text-(--vr-muted)">{label}</span>
-                <span className={cn("min-w-0 truncate font-medium", label === "Booking" && "font-mono tracking-wide")}>{value}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-        <section aria-label="Need anything?" className={card}>
-          <h2 className="font-display text-[21px] font-semibold leading-none">Need anything?</h2>
-          <p className="mt-1.5 text-[13px] text-(--vr-muted)">Reception is here for you, day and night. {info.phoneLabel && <span className="whitespace-nowrap font-medium text-(--vr-ink)">{info.phoneLabel}</span>}</p>
-          <div className="mt-3.5 grid grid-cols-2 gap-2">
-            {info.callHref && <a href={info.callHref} className="flex h-11 items-center justify-center gap-2 rounded-full bg-(--vr-dark) text-[13.5px] font-semibold text-white"><Phone className="size-4 text-(--vr-gold)" />Call</a>}
-            {info.waHref && <a href={info.waHref} target="_blank" rel="noopener" className="flex h-11 items-center justify-center gap-2 rounded-full bg-[#25D366] text-[13.5px] font-semibold text-[#073b1f]"><MessageCircle className="size-4" />WhatsApp</a>}
-          </div>
-          {info.address && (
-            <a href={info.mapHref ?? undefined} target={info.mapHref ? "_blank" : undefined} rel="noopener" className="mt-2.5 flex items-start gap-2.5 rounded-2xl bg-(--vr-bg) p-3 text-[13px] ring-1 ring-(--vr-line)">
-              <MapPin className="mt-0.5 size-4 shrink-0 text-(--vr-gold-ink)" />
-              <span>{info.address}{info.mapHref && <span className="mt-0.5 block text-[12px] font-semibold text-(--vr-gold-ink)">Get directions →</span>}</span>
-            </a>
-          )}
-        </section>
-      </div>
-
-      <section aria-label="Explore the hotel" className="mt-10">
-        <div className="flex items-end justify-between gap-3">
-          <div>
-            <p className="text-[10.5px] font-semibold uppercase tracking-[0.24em] text-(--vr-gold-ink)">Discover more</p>
-            <h2 className="mt-1 font-display text-[26px] font-semibold leading-none sm:text-[30px]">Explore {info.hotel}</h2>
-          </div>
-          <Link href="/" className="hidden shrink-0 items-center gap-1 text-[13px] font-medium text-(--vr-gold-ink) hover:underline sm:inline-flex">Our website<ArrowUpRight className="size-4" /></Link>
-        </div>
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-          {EXPLORE.map((e) => (
-            <Link key={e.href} href={e.href} className="group overflow-hidden rounded-2xl bg-(--vr-card) ring-1 ring-(--vr-line) transition hover:ring-(--vr-gold)">
-              <span className="relative block aspect-[4/3] overflow-hidden bg-(--vr-line)">
-                <Image src={e.image} alt="" fill sizes="(min-width:1280px) 240px, (min-width:640px) 30vw, 50vw" className="object-cover transition duration-700 group-hover:scale-105" />
-              </span>
-              <span className="block p-3">
-                <span className="flex items-center gap-1 text-[13.5px] font-semibold">{e.title}<ArrowUpRight className="size-3.5 text-(--vr-muted) transition group-hover:text-(--vr-gold-ink)" /></span>
-                <span className="block truncate text-[11.5px] text-(--vr-muted)">{e.text}</span>
-              </span>
-            </Link>
-          ))}
-        </div>
-        <Link href="/book" className="mt-3 flex items-center justify-between gap-3 rounded-3xl bg-(--vr-dark) p-4 text-white transition hover:bg-black sm:p-5">
-          <span className="flex items-center gap-3.5">
-            <span className="grid size-11 shrink-0 place-items-center rounded-full bg-(--vr-gold) text-(--vr-ink)"><CalendarCheck className="size-5" /></span>
-            <span className="leading-tight"><span className="block text-[15px] font-semibold">Book your next stay</span><span className="text-[12.5px] text-white/60">Best rates when you book with us directly</span></span>
-          </span>
-          <ArrowUpRight className="size-5 shrink-0 text-(--vr-gold)" />
-        </Link>
-      </section>
-
-      <p className="mt-8 text-center text-[11.5px] text-(--vr-muted)">
-        {info.via === "room" ? `This page shows the stay checked in to ${info.meeting ? "this meeting room" : `Room ${info.room}`} right now.` : "This page is private to your booking — please don't share the link."}
-      </p>
-    </div>
-  );
-}
-
-/** The room's photos, full screen: swipe or use the arrows, Escape closes. */
-function PhotoViewer({ photos, start, title, onClose }: { photos: string[]; start: number | null; title: string; onClose: () => void }) {
-  return (
-    <AnimatePresence>
-      {start !== null && <Viewer key={start} photos={photos} start={start} title={title} onClose={onClose} />}
-    </AnimatePresence>
-  );
-}
-function Viewer({ photos, start, title, onClose }: { photos: string[]; start: number; title: string; onClose: () => void }) {
-  const [i, setI] = useState(start);
-  const touch = useRef<number | null>(null);
-  const go = (d: number) => setI((x) => (x + d + photos.length) % photos.length);
-  useEffect(() => {
-    const k = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); if (e.key === "ArrowRight") setI((x) => (x + 1) % photos.length); if (e.key === "ArrowLeft") setI((x) => (x - 1 + photos.length) % photos.length); };
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", k);
-    return () => { window.removeEventListener("keydown", k); document.body.style.overflow = prev; };
-  }, [onClose, photos.length]);
-  return (
-    <motion.div role="dialog" aria-modal="true" aria-label={`${title} — photos`} className="fixed inset-0 z-[70] flex flex-col bg-[#0c0a08] text-white"
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-      <div className="flex items-center justify-between px-4 pb-2 pt-[max(0.9rem,env(safe-area-inset-top))] sm:px-6">
-        <p className="font-display text-[20px]">{title} <span className="ml-2 font-sans text-[12px] text-white/55">{i + 1} / {photos.length}</span></p>
-        <button type="button" onClick={onClose} aria-label="Close" className="grid size-10 place-items-center rounded-full bg-white/10 hover:bg-white/20"><X className="size-5" /></button>
-      </div>
-      <div className="relative min-h-0 flex-1" onTouchStart={(e) => { touch.current = e.touches[0].clientX; }}
-        onTouchEnd={(e) => { if (touch.current === null) return; const dx = e.changedTouches[0].clientX - touch.current; if (Math.abs(dx) > 40) go(dx < 0 ? 1 : -1); touch.current = null; }}>
-        <AnimatePresence initial={false} mode="popLayout">
-          <motion.div key={photos[i]} className="absolute inset-0 mx-auto max-w-6xl px-2 sm:px-16" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }}>
-            <div className="relative size-full"><Image src={photos[i]} alt={`${title} — photo ${i + 1}`} fill sizes="100vw" className="object-contain" priority /></div>
-          </motion.div>
-        </AnimatePresence>
-        {photos.length > 1 && (
-          <>
-            <button type="button" onClick={() => go(-1)} aria-label="Previous photo" className="absolute left-3 top-1/2 hidden size-11 -translate-y-1/2 place-items-center rounded-full bg-white/10 hover:bg-white/20 sm:grid"><ChevronLeft className="size-5" /></button>
-            <button type="button" onClick={() => go(1)} aria-label="Next photo" className="absolute right-3 top-1/2 hidden size-11 -translate-y-1/2 place-items-center rounded-full bg-white/10 hover:bg-white/20 sm:grid"><ChevronRight className="size-5" /></button>
-          </>
-        )}
-      </div>
-      {photos.length > 1 && (
-        <div className="flex justify-center gap-2 overflow-x-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 [scrollbar-width:none]">
-          {photos.map((src, k) => (
-            <button key={src} type="button" onClick={() => setI(k)} aria-label={`Photo ${k + 1}`} aria-current={k === i || undefined}
-              className={cn("relative h-14 w-20 shrink-0 overflow-hidden rounded-lg ring-2 transition", k === i ? "ring-(--vr-gold)" : "opacity-55 ring-transparent hover:opacity-90")}>
-              <Image src={src} alt="" fill sizes="80px" className="object-cover" />
-            </button>
-          ))}
-        </div>
-      )}
-    </motion.div>
+    <HotelFooter info={info.contact}
+      note={info.via === "room" ? `This page shows the stay checked in to ${place} right now.` : `Booking ${stay.reference} · this page is private to your booking — please don't share the link.`} />
   );
 }
