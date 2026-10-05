@@ -52,7 +52,7 @@ export function MainScreenStrip({ data, money }: { data: MainScreenData; money: 
     },
     {
       // Paid online (LIPA): counted automatically — nothing to confirm; "Not received" on the order or in Collections if the money is missing.
-      label: "Paid online today", icon: <Smartphone />, tone: "bg-sky-500/15 text-sky-300", value: tzs(po.amount), href: "/staff/collections?period=today",
+      label: "Paid by phone today", icon: <Smartphone />, tone: "bg-sky-500/15 text-sky-300", value: tzs(po.amount), href: "/staff/collections?period=today",
       sub: po.count || po.notReceived
         ? <>{plural(po.count, "order")} · counted automatically{po.notReceived ? <span className="font-medium text-rose-300"> · {po.notReceived} not received</span> : ""}</>
         : "None yet today",

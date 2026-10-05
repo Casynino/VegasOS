@@ -39,8 +39,9 @@ export async function mainScreenData(today: BusinessDate, { orders, avgPrep, tea
   const onShift = new Map<string, string>();
   for (const s of shifts) if (!onShift.has(s.userId)) onShift.set(s.userId, firstName(s.user.fullName));
 
-  // Paid online (LIPA) today — recorded automatically; the ones the money never reached ("Payment not received").
-  const onlinePays = day.flatMap((o) => o.payments.filter((p) => p.online));
+  // Paid by the customer today — by phone (mobile money) or online with a proof — recorded automatically; the ones the
+  // money never reached ("Payment not received").
+  const onlinePays = day.flatMap((o) => o.payments.filter((p) => p.online || p.account.code === "NTZS"));
   const paidOnline = {
     count: onlinePays.filter((p) => p.status === "POSTED").length,
     amount: onlinePays.filter((p) => p.status === "POSTED").reduce((t, p) => t + p.amount, 0),

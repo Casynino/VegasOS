@@ -312,7 +312,7 @@ export function OrderCard({ o, perms, now, fresh, accounts, rooms, drag, roomy, 
     <div className="flex shrink-0 items-center gap-1.5">
       <TextCustomer o={o} icon />
       {unpaid && o.status !== "CANCELLED" && perms.pay
-        ? <IconAction tip={online ? `Confirm online payment · ${tzs(due)}` : `Record payment · ${tzs(due)}`} onClick={() => { setPayFocus(true); setSheet(true); }}
+        ? <IconAction tip={online ? `Confirm online payment · ${tzs(due)}` : `Take payment · ${tzs(due)}`} onClick={() => { setPayFocus(true); setSheet(true); }}
             className="bg-linear-to-b from-[oklch(0.87_0.085_86)] to-[oklch(0.7_0.12_76)] text-[oklch(0.2_0.03_60)] shadow-[0_8px_18px_-10px_oklch(0.7_0.12_80)] ring-1 ring-inset ring-white/30 hover:brightness-105">{online ? <ShieldCheck /> : <Wallet />}</IconAction>
         : toConfirm.length > 0 && perms.confirm
           ? <IconAction tip="Confirm the waiter's payment" onClick={() => { setPayFocus(true); setSheet(true); }}
@@ -439,7 +439,7 @@ export function OrderCard({ o, perms, now, fresh, accounts, rooms, drag, roomy, 
   const secondary = (
     <OrderCardActions id={o.id} number={o.number} total={o.total != null ? tzs(unpaid ? due : o.total) : ""} next={null} nextLabel={null}
       unpaid={unpaid} canCancel={(o.status === "PENDING" || o.status === "ACCEPTED" || perms.cancelLate) && o.online !== "PAYING"}
-      pay={perms.pay && !desk && !online ? { accounts, waiterId: o.assignedTo?.id ?? null } : null} room={unpaid && !o.paid && !online ? roomBill : null} update={desk ? null : o.update} labelled={roomy}
+      pay={perms.pay && !desk && !online ? { accounts, waiterId: o.assignedTo?.id ?? null, due, phone: o.phone, customer: o.customer } : null} room={unpaid && !o.paid && !online ? roomBill : null} update={desk ? null : o.update} labelled={roomy}
       cancelNote={o.settlement === "ROOM" ? "Its items come off the guest's room bill (kept on record as cancelled)." : o.paid === 0 ? "Nothing was paid yet — it is kept on record as cancelled." : "Its payment is reversed and its sale voided (kept on record as cancelled). Give any refund separately."} />
   );
 
@@ -456,7 +456,7 @@ export function OrderCard({ o, perms, now, fresh, accounts, rooms, drag, roomy, 
       <div className="mt-3.5 flex items-center gap-3">
         <motion.button type="button" whileTap={{ scale: 0.98 }} disabled={pending || !account} onClick={() => record(payingNow)}
           className="flex h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-xl px-3 bg-linear-to-b from-[oklch(0.87_0.085_86)] to-[oklch(0.7_0.12_76)] text-sm font-semibold text-[oklch(0.2_0.03_60)] shadow-[0_10px_24px_-14px_oklch(0.7_0.12_80)] ring-1 ring-inset ring-white/30 hover:brightness-105 disabled:opacity-60">
-          {pending ? <Loader2 className="size-4 shrink-0 animate-spin" /> : <Wallet className="size-4 shrink-0" />}<span className="truncate">Record {tzs(payingNow ? o.total ?? 0 : due)}{picked ? ` · ${picked.name}` : ""}</span>
+          {pending ? <Loader2 className="size-4 shrink-0 animate-spin" /> : <Wallet className="size-4 shrink-0" />}<span className="truncate">Mark as paid · {tzs(payingNow ? o.total ?? 0 : due)}{picked ? ` · ${picked.name}` : ""}</span>
         </motion.button>
         {payingNow && <button type="button" onClick={() => setPayingNow(false)} className="shrink-0 px-2 text-sm font-medium text-muted-foreground hover:text-foreground">Leave it</button>}
       </div>
@@ -464,8 +464,8 @@ export function OrderCard({ o, perms, now, fresh, accounts, rooms, drag, roomy, 
   );
   const payForm = prompt ? (
     <>
-      <SendToPhone target={{ kind: "orders", orderIds: [o.id], handedOverById: broughtBy || null }} amount={due} phone={o.phone} who={o.customer} className="mt-3.5" primary />
-      <OtherWays className="mt-2">{byHand}</OtherWays>
+      <SendToPhone target={{ kind: "orders", orderIds: [o.id], handedOverById: broughtBy || null }} amount={due} phone={o.phone} who={o.customer} primary />
+      <OtherWays className="mt-1">{byHand}</OtherWays>
     </>
   ) : byHand;
   // Someone who does not record payments (a waiter, a manager watching): what is due, and who records it.
@@ -805,16 +805,14 @@ export function OrderCard({ o, perms, now, fresh, accounts, rooms, drag, roomy, 
                 </div>
               )}
               {perms.pay && !online && (unpaid || (payingNow && o.settlement === "ROOM")) && (
-                <div className="rounded-2xl border border-[oklch(0.75_0.12_80/0.35)] bg-[oklch(0.72_0.12_80/0.06)] p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold">{payingNow ? "Guest pays now" : "Record the payment"}</p>
-                      <p className="text-xs text-muted-foreground">{payingNow ? `It comes off ${o.room ? `Room ${o.room}'s` : "the room"} bill.` : done || o.status === "DELIVERED" ? "Served — waiting for this payment." : "Any time — before or after it is served."}</p>
-                    </div>
-                    <p className="shrink-0 text-right text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{o.paid ? "Still due" : "To collect"}<span className="block text-xl font-bold normal-case tracking-tight text-[oklch(0.87_0.09_84)] tabular-nums">{tzs(payingNow ? o.total : due)}</span></p>
+                <div className="space-y-2.5 rounded-2xl border border-[oklch(0.75_0.12_80/0.3)] bg-[oklch(0.72_0.12_80/0.05)] p-3">
+                  {/* One quiet line: "Payment · TZS 1,000 to pay" (owner, 2026-10-05: nicer, not too big, not "Record the payment"). */}
+                  <div className="flex items-baseline justify-between gap-3 px-0.5">
+                    <p className="text-sm font-semibold">{payingNow ? "Guest pays now" : "Payment"}<span className="ml-2 text-xs font-normal text-muted-foreground">{payingNow ? `off ${o.room ? `Room ${o.room}'s` : "the room"} bill` : done || o.status === "DELIVERED" ? "served — not paid yet" : "before or after it is served"}</span></p>
+                    <p className="shrink-0 text-sm font-semibold tabular-nums text-[oklch(0.87_0.09_84)]">{tzs(payingNow ? o.total : due)}<span className="ml-1 text-xs font-normal text-muted-foreground">{o.paid ? "still due" : "to pay"}</span></p>
                   </div>
                   {billRoom && !payingNow
-                    ? <div className="mt-3.5"><BillTo id={o.id} total={tzs(due)} stays={roomBill.stays} rooms={roomBill.rooms} onDone={() => router.refresh()}>{payForm}</BillTo></div>
+                    ? <BillTo id={o.id} total={tzs(due)} stays={roomBill.stays} rooms={roomBill.rooms} onDone={() => router.refresh()}>{payForm}</BillTo>
                     : payForm}
                 </div>
               )}

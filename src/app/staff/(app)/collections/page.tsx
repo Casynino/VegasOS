@@ -22,8 +22,9 @@ import { AutoSelect } from "@/components/staff/finance/auto-select";
 import { cn } from "@/lib/utils";
 import { OnlineLine, PaymentColumns, PaymentRow, ToCollectLine } from "./collection-lines";
 
-/** How far back reception and the Restaurant Counter see mobile-money requests: the last two days, up to now. */
-const RECENT_MOBILE_MS = 48 * 3600_000;
+/** How far back reception and the Restaurant Counter see mobile-money requests: the last five days (owner), up to now. */
+const RECENT_DAYS = 5;
+const RECENT_MOBILE_MS = RECENT_DAYS * 24 * 3600_000;
 function recentMobileWindow() {
   const end = new Date();
   return { start: new Date(end.getTime() - RECENT_MOBILE_MS), end };
@@ -135,13 +136,14 @@ export default async function CollectionsPage({ searchParams }: PageProps<"/staf
   // Hotel money guests paid online before arriving: shown to reception until the guest is checked in (then it is the
   // collection of whoever checks them in). Not for the Counter, nor for one past shift.
   const awaiting = !device && (takesRoomMoney || supervisor) && sources.includes("ROOMS") && !(ownShift?.endedAt) ? await paidOnlineAwaitingCheckIn() : null;
-  // Reception and the Counter see only what is going on now — the last two days (owner, 2026-10-05); the whole list,
+  // Reception and the Counter see only what is going on now — the last five days (owner, 2026-10-05); the whole list,
   // any period, stays with managers and the admin (here with a period, and Finance → Online payments).
   const recentOnly = !supervisor;
   const phonePays = await onlinePayments({
     from: p.from, to: p.to, status: "all", purpose: null, q, purposes,
     window: recentOnly ? recentMobileWindow() : window,
   });
+  const phonePaid = phonePays.filter((r) => r.status === "COMPLETED");
   const t = collectorId ? totals.of(collectorId) : totals.all;
   const split = canSplit ? (everySource ? (collectorId ? everySource.of(collectorId) : everySource.all) : t) : null;
   const bySrc = (k: MoneySource) => split?.bySource.find((x) => x.source === k)?.amount ?? 0;
@@ -310,7 +312,7 @@ export default async function CollectionsPage({ searchParams }: PageProps<"/staf
 
         <div className="grid grid-cols-2 gap-3">
           {restaurant && onlineT && (!collectorId || onlineT.count > 0 || onlineT.notReceived > 0) ? (
-            <Stat icon={Smartphone} tone="bg-sky-500/15 text-sky-300" label="Paid online" value={formatTZS(onlineT.amount)}
+            <Stat icon={Smartphone} tone="bg-sky-500/15 text-sky-300" label="Paid by phone" value={formatTZS(onlineT.amount)}
               sub={onlineT.count || onlineT.notReceived
                 ? <>{plural(onlineT.count, "order")} · automatic{onlineT.notReceived ? <span className="text-rose-300"> · {onlineT.notReceived} not received</span> : null}</>
                 : "None in this period"} />
@@ -353,6 +355,30 @@ export default async function CollectionsPage({ searchParams }: PageProps<"/staf
         </section>
       )}
 
+      {/* Paid by phone lately — the money customers sent from their phones, whatever the hotel day (owner, 2026-10-05:
+          "if the customer pays we must see those transactions"). The 5 newest; the rest one tap away. */}
+      {recentOnly && !mobileView && phonePaid.length > 0 && (
+        <section aria-labelledby="phone-paid-title" className="rounded-3xl border border-emerald-500/25 bg-emerald-500/[0.05] p-4 sm:p-5">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <h2 id="phone-paid-title" className="flex items-center gap-2 font-semibold"><Smartphone className="size-4 text-emerald-400" />Paid by phone · last {RECENT_DAYS} days</h2>
+            <p className="text-sm tabular-nums"><span className="font-semibold text-emerald-300">{formatTZS(phonePaid.reduce((t, r) => t + r.amount, 0))}</span> <span className="text-muted-foreground">· {plural(phonePaid.length, "payment")}</span></p>
+          </div>
+          <ul className="mt-3 divide-y divide-border/60 overflow-hidden rounded-2xl border border-border/60 bg-card">
+            {phonePaid.slice(0, 5).map((r) => <PhonePaidLine key={r.id} r={r} timezone={settings.timezone} />)}
+          </ul>
+          {phonePaid.length > 5 && (
+            <details className="group mt-2">
+              <summary className="inline-flex h-9 cursor-pointer list-none items-center rounded-xl px-3 text-sm font-medium text-emerald-300 hover:bg-emerald-500/10 [&::-webkit-details-marker]:hidden">
+                <span className="group-open:hidden">View {phonePaid.length - 5} more</span><span className="hidden group-open:inline">Show fewer</span>
+              </summary>
+              <ul className="mt-2 divide-y divide-border/60 overflow-hidden rounded-2xl border border-border/60 bg-card">
+                {phonePaid.slice(5).map((r) => <PhonePaidLine key={r.id} r={r} timezone={settings.timezone} />)}
+              </ul>
+            </details>
+          )}
+        </section>
+      )}
+
       {/* The views and the filters, in one panel */}
       <section className="rounded-3xl border border-border/70 bg-card p-2">
         <nav aria-label="Views" className="overflow-x-auto [scrollbar-width:none]">
@@ -386,7 +412,7 @@ export default async function CollectionsPage({ searchParams }: PageProps<"/staf
 
       {mobileView ? (
         <MobileMoneyList rows={phonePays} filter={mobileFilter} href={(f) => link({ view: "mobile", ms: f === "all" ? "" : f, page: "" })} timezone={settings.timezone}
-          scope={`${recentOnly ? "the last 2 days" : ownShift ? "this shift" : p.key === "all" ? "all time" : periodLabel(p).toLowerCase()} · ${sources.length === ALL_SOURCES.length ? "hotel & restaurant" : sources.map((x) => SOURCE_LABEL[x]).join(", ").toLowerCase()}`} />
+          scope={`${recentOnly ? `the last ${RECENT_DAYS} days` : ownShift ? "this shift" : p.key === "all" ? "all time" : periodLabel(p).toLowerCase()} · ${sources.length === ALL_SOURCES.length ? "hotel & restaurant" : sources.map((x) => SOURCE_LABEL[x]).join(", ").toLowerCase()}`} />
       ) : collecting && open ? (
         <ToCollect open={open} rows={toCollectRows} today={today} servedById={servedById} link={link} confirmHref={tab({ status: "TO_CONFIRM" })} />
       ) : list && (
@@ -540,6 +566,20 @@ function AwaitingLine({ a, checkIn }: { a: Awaited<ReturnType<typeof paidOnlineA
       </span>
       <span className="text-sm font-semibold tabular-nums text-sky-300">{formatTZS(a.amount)}</span>
       {checkIn && <Link href={`/staff/check-in?id=${a.reservationId}#workspace`} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border px-3 text-sm font-medium hover:bg-muted">Check in<ArrowRight className="size-3.5" /></Link>}
+    </li>
+  );
+}
+
+/** One payment a customer sent from their phone: what it was for, who, when — and the amount, paid. */
+function PhonePaidLine({ r, timezone }: { r: Awaited<ReturnType<typeof onlinePayments>>[number]; timezone: string }) {
+  return (
+    <li className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5">
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-semibold">{r.href ? <Link href={r.href} className="underline-offset-2 hover:underline">{r.what}</Link> : r.what}<span className="font-normal text-muted-foreground"> · {r.customer ?? "Customer"}</span></span>
+        <span className="block truncate text-xs text-muted-foreground">paid {formatDateTime(r.paidAt ?? r.at, timezone)} · {r.by === "Customer, online" ? "from the customer's phone" : `sent by ${r.by}`}</span>
+      </span>
+      <span className="text-sm font-semibold tabular-nums text-emerald-300">{formatTZS(r.amount)}</span>
+      <span className="rounded-full bg-emerald-500/12 px-2 py-0.5 text-[11px] font-semibold text-emerald-300">Paid</span>
     </li>
   );
 }

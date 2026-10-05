@@ -445,12 +445,15 @@ export async function collectionCounts(f: CollectionFilter) {
   return { all: paid + toConfirm + reversed, paid, toConfirm, reversed };
 }
 
-/** Paid online (LIPA) in the period — recorded automatically — and how many never reached the account. */
+/**
+ * Paid by the customer themselves in the period — by phone (mobile money, the NTZS account) or online with a proof —
+ * recorded automatically; and how many never reached the account.
+ */
 export async function onlineTotals(f: CollectionFilter) {
   const { start, end } = await range(f.from, f.to, f.window);
   const where = restaurantWhere({ ...f, status: null }, start, end);
   const [paid, notReceived] = await Promise.all([
-    db.restaurantOrderPayment.aggregate({ where: { AND: [where, { online: true, status: "POSTED" }] }, _sum: { amount: true }, _count: true }),
+    db.restaurantOrderPayment.aggregate({ where: { AND: [where, { status: "POSTED", OR: [{ online: true }, { account: { code: "NTZS" } }] }] }, _sum: { amount: true }, _count: true }),
     db.restaurantOrderPayment.aggregate({ where: { AND: [where, { notReceived: true }] }, _sum: { amount: true }, _count: true }),
   ]);
   return { count: paid._count, amount: paid._sum.amount ?? 0, notReceived: notReceived._count, notReceivedAmount: notReceived._sum.amount ?? 0 };

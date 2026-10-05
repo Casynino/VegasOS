@@ -16,6 +16,7 @@ import { logGuestMessageAction } from "@/app/staff/(app)/guests/actions";
 import { cn } from "@/lib/utils";
 import { cancelOrderAction, chargeOrderToRoomAction, recordOrderPaymentAction, setOrderStatusAction } from "./actions";
 import { IconAction, WhatsAppGlyph } from "./portal/icon-action";
+import { OtherWays, SendToPhone } from "@/components/staff/mobile-pay";
 import type { PortalStay, RoomChoice } from "./portal/types";
 
 const waDigits = (phone: string) => { const d = phone.replace(/\D/g, ""); return d.startsWith("0") ? `255${d.slice(1)}` : d; };
@@ -33,7 +34,7 @@ export function OrderCardActions({ id, number, total, next, nextLabel, unpaid, c
   /** Pay-later order still to be paid (it cannot be closed before). */
   unpaid: boolean; canCancel: boolean; cancelNote: string;
   /** Record the payment (the Restaurant Counter, reception) — waiterId: the order's waiter, prefilled as "Brought by" on the Counter. */
-  pay: { accounts: PayAccount[]; waiterId?: string | null } | null;
+  pay: { accounts: PayAccount[]; waiterId?: string | null; /** What is due, and the customer — for the mobile-money request first. */ due?: number; phone?: string | null; customer?: string | null } | null;
   /** The rooms a pay-later order can go on (null: not now). A waiter gets only the customer's own. */
   room: RoomBill | null;
   /** The customer's update for this step (WhatsApp from this device). */
@@ -86,14 +87,14 @@ export function OrderCardActions({ id, number, total, next, nextLabel, unpaid, c
             className="bg-violet-500/12 text-violet-300 ring-1 ring-inset ring-violet-400/35 hover:bg-violet-500/20"><BedDouble /></IconAction>}
           {canCancel && <IconAction tip={`Cancel ${number}`} onClick={() => setDialog("cancel")}
             className="bg-muted text-muted-foreground ring-1 ring-inset ring-border hover:bg-rose-500/12 hover:text-rose-300"><Ban /></IconAction>}
-          {unpaid && pay && <IconAction tip={`Record payment · ${total}`} onClick={() => setDialog("pay")}
+          {unpaid && pay && <IconAction tip={`Take payment · ${total}`} onClick={() => setDialog("pay")}
             className="bg-linear-to-b from-[oklch(0.87_0.085_86)] to-[oklch(0.7_0.12_76)] text-[oklch(0.2_0.03_60)] shadow-[0_8px_18px_-10px_oklch(0.7_0.12_80)] ring-1 ring-inset ring-white/30 hover:brightness-105"><Wallet /></IconAction>}
           {next && <Button size="sm" className="h-8 rounded-lg text-xs" disabled={pending} onClick={go}>{pending && <Loader2 className="animate-spin" />}{nextLabel}</Button>}
         </div>
       ) : (
       <>
       <div className="flex gap-1.5">
-        {unpaid && pay && <Button size="sm" className="h-8 flex-1 rounded-lg bg-emerald-600 text-xs hover:bg-emerald-700" onClick={() => setDialog("pay")}><Wallet className="size-3.5" />Record payment</Button>}
+        {unpaid && pay && <Button size="sm" className="h-8 flex-1 rounded-lg bg-emerald-600 text-xs hover:bg-emerald-700" onClick={() => setDialog("pay")}><Wallet className="size-3.5" />Take payment</Button>}
         {next && <Button size="sm" className="h-8 flex-1 rounded-lg text-xs" disabled={pending} onClick={go}>{pending && <Loader2 className="animate-spin" />}{nextLabel}</Button>}
         {update && <Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5 text-xs" onClick={whatsapp} title={`Send the customer an update on WhatsApp (${update.to})`}><MessageCircle className="size-3.5 text-[#128C7E]" />{labelled && "Update customer"}</Button>}
         {canCancel && <Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5 text-xs" onClick={() => setDialog("cancel")} aria-label={`Cancel ${number}`}><Ban className="size-3.5" />{labelled && "Cancel"}</Button>}
@@ -115,11 +116,20 @@ export function OrderCardActions({ id, number, total, next, nextLabel, unpaid, c
 
       <Dialog open={dialog === "pay"} onOpenChange={(o) => setDialog(o ? "pay" : null)}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader icon={<Wallet />} eyebrow="Payments" tone="emerald"><DialogTitle>Payment for {number}</DialogTitle><DialogDescription>{total} — recorded as restaurant, bar and room-service income into the account you choose.</DialogDescription></DialogHeader>
-          {pay && <AccountSelect accounts={pay.accounts} value={account} onChange={setAccount} />}
-          <Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Reference (mobile money / card slip) — optional" />
-          {dialog === "pay" && <BroughtBySelect value={broughtBy} onChange={setBroughtBy} prefill={pay?.waiterId} />}
-          <Button disabled={pending || !account} onClick={record}>{pending && <Loader2 className="animate-spin" />}Record {total}</Button>
+          {/* Mobile money first (a request to the customer's phone, recorded by itself when they pay); cash, card and the
+              rest folded under "Other payment methods" (owner, 2026-10-05). */}
+          <DialogHeader icon={<Wallet />} eyebrow="Payment" tone="emerald"><DialogTitle>{total} to pay</DialogTitle><DialogDescription>Order {number.replace(/^ORD-\d{4}-0*/, "#")}</DialogDescription></DialogHeader>
+          {pay?.due ? (
+            <SendToPhone target={{ kind: "orders", orderIds: [id], handedOverById: broughtBy || null }} amount={pay.due} phone={pay.phone ?? ""} who={pay.customer ?? undefined} primary onPaid={() => done("Paid by mobile money.")} />
+          ) : null}
+          <OtherWays fold={!!pay?.due}>
+            <div className="space-y-2.5 pt-1">
+              {pay && <AccountSelect accounts={pay.accounts} value={account} onChange={setAccount} />}
+              <Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Reference (card slip…) — optional" />
+              {dialog === "pay" && <BroughtBySelect value={broughtBy} onChange={setBroughtBy} prefill={pay?.waiterId} />}
+              <Button className="w-full" disabled={pending || !account} onClick={record}>{pending && <Loader2 className="animate-spin" />}Mark as paid · {total}</Button>
+            </div>
+          </OtherWays>
         </DialogContent>
       </Dialog>
 

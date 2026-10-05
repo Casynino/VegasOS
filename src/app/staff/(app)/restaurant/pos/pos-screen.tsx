@@ -639,7 +639,7 @@ function quickStep(o: PortalOrder, perms: PortalPerms, role: PortalRole): { stat
   if (o.status === "DELIVERED" && perms.serve) return "open";
   return null;
 }
-const DESK_LABEL = (o: PortalOrder) => (o.update && !o.told ? "Text customer" : (o.due ?? 0) > 0 ? (o.awaitsPayment ? "Confirm online payment" : "Record payment") : "Confirm payment");
+const DESK_LABEL = (o: PortalOrder) => (o.update && !o.told ? "Text customer" : (o.due ?? 0) > 0 ? (o.awaitsPayment ? "Confirm online payment" : "Take payment") : "Confirm payment");
 /** The strip button that opens the order: payment words only for those who record payments (the Counter) — never a waiter. */
 const openLabel = (o: PortalOrder, perms: PortalPerms) => {
   const due = (o.due ?? 0) > 0;
@@ -648,7 +648,7 @@ const openLabel = (o: PortalOrder, perms: PortalPerms) => {
   if ((o.status === "PREPARING" || o.status === "ACCEPTED") && perms.serve && !perms.device && !perms.watch && !perms.pay) return "Served";
   if (o.status === "PREPARING") return "Tick items";
   if (o.status === "OUT_FOR_DELIVERY") return due && perms.pay && !o.awaitsPayment ? "Mark served & record payment" : "Mark served";
-  if (o.status === "DELIVERED") return !due || !perms.pay ? "Open the order" : o.awaitsPayment ? "Confirm online payment" : "Record payment";
+  if (o.status === "DELIVERED") return !due || !perms.pay ? "Open the order" : o.awaitsPayment ? "Confirm online payment" : "Take payment";
   return "Open";
 };
 const PILL: Record<string, { label: string; dot: string }> = {

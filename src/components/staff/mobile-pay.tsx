@@ -154,26 +154,27 @@ export function SendToPhone({ target, amount, phone = "", editableAmount = false
   }
 
   return (
-    <div className={cn("space-y-2 rounded-xl border border-sky-500/40 bg-sky-500/[0.05] p-3", className)}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex min-w-0 flex-1 items-center gap-2.5">
-          <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-sky-600 text-white"><Smartphone className="size-4" /></span>
-          <span className="min-w-0 flex-1 leading-tight"><span className="block text-sm font-semibold">Mobile money</span><NetworkMarks label={null} compact className="mt-1" /></span>
-        </div>
-        {!primary && <button type="button" onClick={() => setOpen(false)} aria-label="Close" className="grid size-7 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"><X className="size-4" /></button>}
+    // Compact (owner, 2026-10-05: "nice, not too big"): one line saying what it is, then the number and the button.
+    <div className={cn("space-y-2 rounded-xl border border-sky-500/30 bg-sky-500/[0.04] p-2.5", className)}>
+      <div className="flex items-center gap-2">
+        <Smartphone className="size-4 shrink-0 text-sky-500" />
+        <span className="text-sm font-semibold">Mobile money</span>
+        {/* A definite width, so the marks shrink inside it (container query) instead of spilling out. */}
+        <div className="ml-auto w-44 min-w-0 max-w-[55%]"><NetworkMarks label={null} compact className="justify-end" /></div>
+        {!primary && <button type="button" onClick={() => setOpen(false)} aria-label="Close" className="grid size-7 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"><X className="size-4" /></button>}
       </div>
-      <div className={cn("grid gap-2", editableAmount && "grid-cols-2")}>
-        <input value={number} onChange={(e) => setNumber(e.target.value)} type="tel" inputMode="tel" placeholder="Phone number, e.g. 0712 345 678" aria-label="Customer's phone number"
-          className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-sky-500/30" />
+      <div className="flex flex-wrap gap-2">
+        <input value={number} onChange={(e) => setNumber(e.target.value)} type="tel" inputMode="tel" placeholder="Phone, e.g. 0712 345 678" aria-label="Customer's phone number"
+          className="h-9 min-w-[10rem] flex-1 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-sky-500/30" />
         {editableAmount && (
           <input value={ask} onChange={(e) => setAsk(e.target.value.replace(/\D/g, ""))} inputMode="numeric" aria-label="Amount (TZS)"
-            className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm tabular-nums outline-none focus:ring-2 focus:ring-sky-500/30" />
+            className="h-9 w-28 rounded-lg border border-border bg-background px-3 text-sm tabular-nums outline-none focus:ring-2 focus:ring-sky-500/30" />
         )}
+        <button type="button" onClick={send} disabled={pending || (!number.trim() && target.kind === "orders") || (editableAmount && amt <= 0)}
+          className="flex h-9 shrink-0 grow items-center justify-center gap-1.5 rounded-lg bg-sky-600 px-3.5 text-sm font-semibold text-white transition hover:bg-sky-500 disabled:opacity-60 sm:grow-0">
+          {pending ? <Loader2 className="size-4 animate-spin" /> : <Smartphone className="size-4" />}Send request · {fmt(editableAmount ? amt : amount)}
+        </button>
       </div>
-      <button type="button" onClick={send} disabled={pending || (!number.trim() && target.kind === "orders") || (editableAmount && amt <= 0)}
-        className="flex h-10 w-full items-center justify-center gap-1.5 rounded-lg bg-sky-600 text-sm font-semibold text-white transition hover:bg-sky-500 disabled:opacity-60">
-        {pending ? <Loader2 className="size-4 animate-spin" /> : <Smartphone className="size-4" />}Send payment request · {fmt(editableAmount ? amt : amount)}
-      </button>
     </div>
   );
 }
