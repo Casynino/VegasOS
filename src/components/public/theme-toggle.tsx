@@ -75,6 +75,7 @@ export function ThemeToggle({ className, withLabel, compact }: { className?: str
     );
   }
 
+  // withLabel (the phone menu): the icon and its word, nothing around them (owner, 2026-10-06: no shapes).
   return (
     <button
       type="button"
@@ -83,23 +84,14 @@ export function ThemeToggle({ className, withLabel, compact }: { className?: str
       aria-pressed={dark}
       title={dark ? "Light mode" : "Dark mode"}
       className={cn(
-        "group relative inline-flex h-11 items-center gap-2.5 rounded-full border border-white/15 bg-white/[0.05] px-1 text-white transition-colors duration-200 hover:border-gold/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none",
-        withLabel ? "pr-4" : "",
+        "group inline-flex min-h-11 items-center gap-2.5 rounded-sm text-[14px] text-white/75 transition-colors duration-200 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none",
         className,
       )}
     >
-      <span className="relative grid h-8 w-14 grid-cols-2 place-items-center rounded-full bg-black/25">
-        <span
-          aria-hidden="true"
-          className={cn(
-            "absolute left-0.5 top-0.5 size-7 rounded-full bg-gold shadow-[0_0_14px_oklch(0.78_0.12_80/0.6)] transition-transform duration-300 ease-pub motion-reduce:transition-none",
-            dark && "translate-x-6",
-          )}
-        />
-        <Sun className={cn("relative size-3.5 transition-colors", dark ? "text-white/50" : "text-[#15120e]")} aria-hidden="true" />
-        <Moon className={cn("relative size-3.5 transition-colors", dark ? "text-[#15120e]" : "text-white/50")} aria-hidden="true" />
-      </span>
-      {withLabel && <span className="text-[13px] text-white/80">{dark ? "Dark mode" : "Light mode"}</span>}
+      {dark
+        ? <Moon className="size-4 text-gold" strokeWidth={1.6} aria-hidden="true" />
+        : <Sun className="size-4 text-gold" strokeWidth={1.6} aria-hidden="true" />}
+      {withLabel && <span>{dark ? "Dark mode" : "Light mode"}</span>}
     </button>
   );
 }

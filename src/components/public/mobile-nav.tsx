@@ -5,10 +5,9 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Dialog } from "@base-ui/react/dialog";
-import { MessageCircle, Phone, X } from "lucide-react";
+import { ArrowRight, MessageCircle, Phone, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { telHref, whatsappHref } from "./contact";
-import { LinkButton } from "./kit/button";
 import { MENU_NAV, isNavActive } from "./site-config";
 import { StaffLink } from "./staff-link";
 import { ThemeToggle } from "./theme-toggle";
@@ -152,9 +151,12 @@ export function MobileNav({
                 className="mt-auto pt-6 motion-safe:animate-in motion-safe:fade-in motion-safe:fill-mode-both motion-safe:duration-500"
                 style={{ animationDelay: `${140 + MENU_NAV.length * 40}ms` }}
               >
-                <LinkButton href="/book" onClick={close} full icon="arrow">
+                {/* Book now: plain gold words and an arrow — no box (owner, 2026-10-06). */}
+                <Link href="/book" onClick={close}
+                  className="group inline-flex min-h-12 items-center gap-2.5 rounded-sm font-display text-[1.9rem] leading-none text-gold transition-colors duration-200 hover:text-[#f0d6a0] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-gold motion-reduce:transition-none">
                   Book now
-                </LinkButton>
+                  <ArrowRight className="size-5 transition-transform duration-200 group-hover:translate-x-1 motion-reduce:transition-none" strokeWidth={1.5} aria-hidden="true" />
+                </Link>
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-x-5">
                   {contacts > 0 && (
                     <div className="flex items-center gap-5">
