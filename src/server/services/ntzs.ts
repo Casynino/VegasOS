@@ -57,6 +57,8 @@ async function call<T>(method: "GET" | "POST", path: string, body?: unknown, ext
       const j = (json ?? {}) as { error?: string | { code?: string; message?: string }; message?: string; code?: string };
       const code = typeof j.error === "object" ? j.error?.code : j.code ?? (typeof j.error === "string" ? j.error : undefined);
       const message = (typeof j.error === "object" ? j.error?.message : undefined) ?? j.message ?? (typeof j.error === "string" ? j.error : undefined) ?? text.slice(0, 200);
+      // What nTZS said, for the logs (never the key): the screens get it in plain words below.
+      console.error("[ntzs] refused", { method, path: path.split("?")[0], status: res.status, code: code ?? null, message: message?.slice(0, 300) ?? null });
       return { ok: false, status: res.status, code, error: friendly(code, message, res.status) };
     }
     return { ok: true, data: json as T };
@@ -65,13 +67,24 @@ async function call<T>(method: "GET" | "POST", path: string, body?: unknown, ext
   }
 }
 
+/**
+ * nTZS's answer in plain words for staff (customers get a shorter line — see friendlyForCustomer). Each refusal says
+ * its own reason: a 403 is usually NOT the key (2026-10-05: a TZS 160,000 request was refused with `kyb_required` —
+ * until nTZS approves the business, it collects at most TZS 100,000 — and the screen wrongly said "check the key").
+ */
 function friendly(code: string | undefined, message: string | undefined, status: number) {
   switch (code) {
     case "invalid_phone": return "That phone number is not a Tanzanian mobile-money number.";
     case "invalid_amount": return `The amount must be at least TZS ${NTZS_MIN_TZS.toLocaleString("en-US")}.`;
     case "rate_limited": return "nTZS is busy — wait a few seconds and try again.";
+    case "kyb_required": return "nTZS has not yet approved the hotel's business account (KYB). Until it does, mobile-money collections are limited to TZS 100,000 in total — ask nTZS to finish the approval, or use another payment method for now.";
+    case "capability_required": return "The hotel's nTZS account is not allowed to collect payments yet — ask nTZS to switch collections on.";
+    case "wallet_frozen": return "The hotel's nTZS wallet is frozen — contact nTZS.";
+    case "ip_not_allowed": return "nTZS blocks this server (its IP allowlist) — switch the allowlist off in the nTZS dashboard.";
+    case "user_not_found": return "nTZS does not know the hotel's wallet (NTZS_USER_ID) — check it in Vercel.";
   }
-  if (status === 401 || status === 403) return "nTZS refused the hotel's key — check NTZS_API_KEY.";
+  if (status === 401) return "nTZS did not accept the hotel's API key — check NTZS_API_KEY in Vercel (it may have been changed in the nTZS dashboard).";
+  if (status === 403) return `nTZS refused this request (${code ?? "403"})${message ? ` — ${message.slice(0, 160)}` : ""}.`;
   return `nTZS: ${message || `error ${status}`}`;
 }
 
