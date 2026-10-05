@@ -336,18 +336,20 @@ export default async function CollectionsPage({ searchParams }: PageProps<"/staf
             <p className="text-sm tabular-nums"><span className="font-semibold">{formatTZS(awaiting.amount)}</span> <span className="text-muted-foreground">· {plural(awaiting.count, "payment")}</span></p>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">Guests paid by mobile money before arriving. It goes into your collections when you check them in.</p>
+          {/* The 5 newest; the rest one tap away (owner, 2026-10-05: "only 5 on the list — if we want more we view more"). */}
           <ul className="mt-3 divide-y divide-border/60 overflow-hidden rounded-2xl border border-border/60 bg-card">
-            {awaiting.rows.map((a) => (
-              <li key={a.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3">
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold">{a.guest} <span className="font-normal text-muted-foreground">· {a.reference}</span></span>
-                  <span className="block truncate text-xs text-muted-foreground">{a.room}{a.arrival ? ` · arrives ${formatBusinessDate(a.arrival)}` : ""} · paid {formatDateTime(a.paidAt)}{a.balance > 0 ? ` · ${formatTZS(a.balance)} still owed` : " · fully paid"}</span>
-                </span>
-                <span className="text-sm font-semibold tabular-nums text-sky-300">{formatTZS(a.amount)}</span>
-                {takesRoomMoney && <Link href={`/staff/check-in?id=${a.reservationId}#workspace`} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border px-3 text-sm font-medium hover:bg-muted">Check in<ArrowRight className="size-3.5" /></Link>}
-              </li>
-            ))}
+            {awaiting.rows.slice(0, 5).map((a) => <AwaitingLine key={a.id} a={a} checkIn={takesRoomMoney} />)}
           </ul>
+          {awaiting.rows.length > 5 && (
+            <details className="group mt-2">
+              <summary className="inline-flex h-9 cursor-pointer list-none items-center gap-1.5 rounded-xl px-3 text-sm font-medium text-sky-300 hover:bg-sky-500/10 [&::-webkit-details-marker]:hidden">
+                <span className="group-open:hidden">View {awaiting.rows.length - 5} more</span><span className="hidden group-open:inline">Show fewer</span>
+              </summary>
+              <ul className="mt-2 divide-y divide-border/60 overflow-hidden rounded-2xl border border-border/60 bg-card">
+                {awaiting.rows.slice(5).map((a) => <AwaitingLine key={a.id} a={a} checkIn={takesRoomMoney} />)}
+              </ul>
+            </details>
+          )}
         </section>
       )}
 
@@ -527,3 +529,18 @@ function Stat({ icon: Icon, tone, label, value, sub, href }: { icon: typeof Wall
 
 /** The accounts' colours, one each in the order the summary lists them (several accounts never share one). */
 const ACCOUNT_TONES = ["oklch(0.8 0.12 82)", "oklch(0.72 0.12 230)", "oklch(0.74 0.13 160)", "oklch(0.7 0.13 300)", "oklch(0.72 0.14 25)", "oklch(0.78 0.1 120)", "oklch(0.72 0.08 200)", "oklch(0.75 0.12 340)"];
+
+/** One guest who paid by mobile money before arriving: who, the booking and room, when it was paid — and Check in. */
+function AwaitingLine({ a, checkIn }: { a: Awaited<ReturnType<typeof paidOnlineAwaitingCheckIn>>["rows"][number]; checkIn: boolean }) {
+  return (
+    <li className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3">
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-semibold">{a.guest} <span className="font-normal text-muted-foreground">· {a.reference}</span></span>
+        <span className="block truncate text-xs text-muted-foreground">{a.room}{a.arrival ? ` · arrives ${formatBusinessDate(a.arrival)}` : ""} · paid {formatDateTime(a.paidAt)}{a.balance > 0 ? ` · ${formatTZS(a.balance)} still owed` : " · fully paid"}</span>
+      </span>
+      <span className="text-sm font-semibold tabular-nums text-sky-300">{formatTZS(a.amount)}</span>
+      {checkIn && <Link href={`/staff/check-in?id=${a.reservationId}#workspace`} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border px-3 text-sm font-medium hover:bg-muted">Check in<ArrowRight className="size-3.5" /></Link>}
+    </li>
+  );
+}
+

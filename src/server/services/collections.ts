@@ -578,7 +578,7 @@ export async function paidOnlineAwaitingCheckIn() {
   const where = { recordedById: ONLINE_RECORDER_ID, creditedToId: null, status: "POSTED" as const, kind: "PAYMENT" as const, reservation: { status: { in: ["INQUIRY" as const, "RESERVED" as const, "CONFIRMED" as const] } } };
   const [ps, sum] = await Promise.all([
     db.payment.findMany({
-      where, orderBy: { createdAt: "desc" }, take: 30,
+      where, orderBy: { createdAt: "desc" }, take: 60,
       select: {
         id: true, amount: true, createdAt: true,
         reservation: {
