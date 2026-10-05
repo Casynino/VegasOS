@@ -8,6 +8,7 @@ import type { ActionResult } from "@/server/errors";
 import type { GuestStay } from "@/server/services/guest-comms";
 import { cn } from "@/lib/utils";
 import { darkButton } from "@/components/hotel-qr/ui";
+import { qrSvg } from "@/lib/qr-svg";
 import { dayShort, dayWeek, nightsText, plural, tzs } from "@/components/hotel-qr/lib";
 import { BillPayOnline } from "@/components/ordering/bill-pay-online";
 import {
@@ -138,6 +139,8 @@ export function StayTop({ stay, info }: { stay: GuestStay; info: StayInfo }) {
             : info.contact.mapHref && !inHouse ? <QuickLink icon={MapPin} label="Directions" href={info.contact.mapHref} external /> : null}
           <QuickLink icon={ConciergeBell} label="Reception" onClick={() => setSheet("reception")} />
         </QuickRow>
+      {/* In the room: the Wi-Fi right away — no tapping around for it (owner, 2026-10-06). */}
+      {inHouse && !info.meeting && info.wifi?.network && <WifiCard wifi={info.wifi} className="mt-5" />}
       <PhotoViewer photos={info.photos} start={viewing} title={info.room ? place : info.types || info.hotel} onClose={() => setViewing(null)} />
 
       {/* ── The bill and the orders; what they can ask for the room (staying) or their booking (before / after) ── */}
@@ -302,6 +305,53 @@ function CopyButton({ text }: { text: string }) {
       className={cn(darkButton, "h-11 shrink-0 px-4 text-[13px]")}>
       {done ? <Check className="size-4 text-(--vr-gold)" /> : <Copy className="size-4 text-(--vr-gold)" />}{done ? "Copied" : "Copy"}
     </button>
+  );
+}
+
+/** Wi-Fi join code (the standard "WIFI:" format phones read): scanned by a laptop's or a partner's phone camera. */
+const wifiCode = (network: string, password: string | null) => {
+  const esc = (v: string) => v.replace(/([\\;,:"])/g, "\\$1");
+  return password ? `WIFI:T:WPA;S:${esc(network)};P:${esc(password)};;` : `WIFI:T:nopass;S:${esc(network)};;`;
+};
+
+/** THE WI-FI, on the guest's page while they stay: the network, the password to copy, and a code for another device. */
+function WifiCard({ wifi, className }: { wifi: { network: string | null; password: string | null }; className?: string }) {
+  const [qr, setQr] = useState(false);
+  if (!wifi.network) return null;
+  return (
+    <section aria-labelledby="wifi-title" className={cn(card, "overflow-hidden", className)}>
+      <div className="flex items-center gap-3 px-4 pb-1 pt-4 sm:px-5">
+        <span className="grid size-10 shrink-0 place-items-center rounded-full bg-(--vr-gold)/15 text-(--vr-gold-ink)"><Wifi className="size-[18px]" /></span>
+        <div className="min-w-0">
+          <h2 id="wifi-title" className="text-[15px] font-semibold leading-tight">Wi-Fi</h2>
+          <p className="text-[12.5px] text-(--vr-muted)">Free in your room and around the hotel</p>
+        </div>
+      </div>
+      <dl className="mx-4 mt-2 divide-y divide-(--vr-line) border-t border-(--vr-line) sm:mx-5">
+        <div className="flex min-h-12 items-center justify-between gap-3 py-2">
+          <dt className="text-[13px] text-(--vr-muted)">Network</dt>
+          <dd className="min-w-0 truncate text-right text-[15.5px] font-semibold">{wifi.network}</dd>
+        </div>
+        <div className="flex min-h-14 items-center justify-between gap-3 py-2">
+          <div className="min-w-0">
+            <dt className="text-[13px] text-(--vr-muted)">Password</dt>
+            <dd className="mt-0.5 truncate font-mono text-[17px] font-semibold tracking-wide">{wifi.password || "No password"}</dd>
+          </div>
+          {wifi.password && <CopyButton text={wifi.password} />}
+        </div>
+      </dl>
+      <button type="button" onClick={() => setQr((v) => !v)} aria-expanded={qr}
+        className="flex min-h-12 w-full items-center justify-between gap-3 border-t border-(--vr-line) px-4 text-left text-[13px] font-medium text-(--vr-gold-ink) sm:px-5">
+        {qr ? "Hide the code" : "Connect another device — scan a code"}<ChevronRight className={cn("size-4 transition-transform", qr && "rotate-90")} />
+      </button>
+      {qr && (
+        <div className="flex flex-col items-center gap-2 border-t border-(--vr-line) px-4 py-5">
+          <div className="size-44 rounded-2xl bg-white p-3 ring-1 ring-(--vr-line)" role="img" aria-label={`Wi-Fi code for ${wifi.network}`}
+            dangerouslySetInnerHTML={{ __html: qrSvg(wifiCode(wifi.network, wifi.password), "#14110c", "M") }} />
+          <p className="text-center text-[12.5px] text-(--vr-muted)">Point the other phone&apos;s camera at it to join.</p>
+        </div>
+      )}
+    </section>
   );
 }
 
