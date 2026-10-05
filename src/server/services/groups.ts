@@ -143,6 +143,7 @@ export async function createGroupBooking(input: CreateGroupInput, actor: Actor, 
 async function createGroupTx(tx: Tx, input: CreateGroupInput, actor: Actor, now: Date) {
   const source = await tx.bookingSource.findUnique({ where: { code: input.sourceCode } });
   if (!source || !source.isActive) throw new AppError("Choose a valid booking source.", "VALIDATION", { sourceCode: "Invalid" });
+  if (source.code === "HOTEL_QR") throw new AppError("Hotel QR bookings are made by guests from the QR — choose how this group booked.", "VALIDATION", { sourceCode: "Invalid" });
   const company = input.corporateCustomerId ? await tx.corporateCustomer.findUnique({ where: { id: input.corporateCustomerId } }) : null;
   if (input.corporateCustomerId && (!company || company.status !== "ACTIVE")) throw new AppError("That company account is not active.");
   const contactGuestId = await resolveGuest(tx, input.contact);

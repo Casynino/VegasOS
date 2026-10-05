@@ -39,6 +39,9 @@ const WORDS: Record<string, string> = {
   "reservation.charge_added": "added a charge to a bill", "reservation.late_arrival": "noted a late arrival",
   "report.shift_generated": "made a shift report", "report.shift_regenerated": "regenerated a shift report", "report.daily_regenerated": "regenerated the daily report",
   "shift.started": "started a shift", "shift.ended": "closed their shift", "shift.closed_by_manager": "closed someone's shift (manager, with the reason)", "shift.taken_over": "took over a shift", "shift.note_added": "left a handover note",
+  "hotel_qr.created": "made a Hotel QR", "hotel_qr.renamed": "renamed a Hotel QR", "hotel_qr.regenerated": "made a new Hotel QR code (the old card stopped working)",
+  "hotel_qr.enabled": "switched a Hotel QR on", "hotel_qr.disabled": "switched a Hotel QR off", "hotel_qr.archived": "archived a Hotel QR",
+  "hotel_qr.settings": "changed the Hotel QR switches",
 };
 
 /** What an action was, in plain words ("checked a guest in"). */
@@ -50,7 +53,7 @@ export type ActivityArea = "Sign-in" | "Front desk" | "Bookings" | "Money" | "Re
 export function activityArea(a: string): ActivityArea {
   if (a.startsWith("auth.")) return "Sign-in";
   if (/^reservation\.(checked_in|checked_out|walk_in|late_checkout|room_)/.test(a)) return "Front desk";
-  if (a.startsWith("reservation.") || a.startsWith("booking_request.") || a.startsWith("table_reservation.")) return "Bookings";
+  if (a.startsWith("reservation.") || a.startsWith("booking_request.") || a.startsWith("table_reservation.") || a.startsWith("hotel_qr.")) return "Bookings";
   if (/^(payment|revenue|expense|invoice)\./.test(a)) return "Money";
   if (a.startsWith("stock_request.")) return "Stores";
   if (a.startsWith("restaurant_order.") || a.startsWith("dining_session.")) return "Restaurant";

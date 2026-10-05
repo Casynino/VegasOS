@@ -7,7 +7,7 @@ import {
 import { can, requirePagePermission } from "@/server/auth";
 import { db } from "@/server/db";
 import { businessToday, getSettings } from "@/server/settings";
-import { toDbDate } from "@/lib/time/business-date";
+import { addDays, toDbDate } from "@/lib/time/business-date";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Control centre" };
@@ -37,6 +37,11 @@ export default async function ControlCentrePage() {
     db.asset.count({ where: { status: { notIn: ["DISPOSED", "LOST"] } } }),
     db.dailyReport.findFirst({ orderBy: { businessDate: "desc" }, select: { deliveries: { select: { status: true } } } }),
   ]);
+  // The Hotel QR: codes working now and bookings made from it in the last 30 days.
+  const [qrCodes, qrBookings30] = can(user, "hotel_qr.manage") ? await Promise.all([
+    db.bookingQrCode.count({ where: { isActive: true, active: true } }),
+    db.reservation.count({ where: { source: { code: "HOTEL_QR" }, status: { not: "INQUIRY" }, businessDate: { gte: toDbDate(addDays(today, -29)) } } }),
+  ]) : [0, 0];
   const recipients = Array.isArray(s.reportRecipients) ? s.reportRecipients.length : 0;
   const tax = s.taxRatePercent ? `${s.taxName || "Tax"} ${Number(s.taxRatePercent)}%${s.taxIncludedInRates ? " incl." : ""}` : "Not set";
   const reportFailed = lastReport?.deliveries.some((d) => d.status === "FAILED") ?? false;
@@ -78,6 +83,7 @@ export default async function ControlCentrePage() {
         { href: "/staff/restaurant/menu", icon: BookOpenText, title: "Menu & categories", sub: "Dishes, drinks, prices and photos", stat: `${menuItems} items · ${menuCats} categories`, show: can(user, "restaurant.menu") },
         { href: "/staff/restaurant/tables", icon: Armchair, title: "Tables & table QR codes", sub: "Add or switch off tables; print their QR cards", stat: `${tables} places`, show: can(user, "restaurant.menu") || can(user, "restaurant.orders") },
         { href: "/staff/rooms/qr", icon: QrCode, title: "Room QR codes", sub: "The card in each room for ordering and the guest's stay", show: can(user, "rooms.view") },
+        { href: "/staff/hotel-qr", icon: QrCode, title: "Hotel booking QR", sub: "The card guests scan to book a room and pay — codes, switches, numbers", stat: `Booking ${s.hotelQrEnabled ? "on" : "off"} · ${qrCodes} code${qrCodes === 1 ? "" : "s"} · ${qrBookings30} booking${qrBookings30 === 1 ? "" : "s"} (30 days)`, warn: !s.hotelQrEnabled || qrCodes === 0, show: can(user, "hotel_qr.manage") },
       ],
     },
     {

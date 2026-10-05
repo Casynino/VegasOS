@@ -2,20 +2,27 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { toJpeg } from "html-to-image";
+import { toJpeg, toPng } from "html-to-image";
 import {
-  BellRing, Coffee, ConciergeBell, Download, ExternalLink, Loader2, Plus, Printer, Receipt, ShoppingBag, Store, UtensilsCrossed, Wine,
+  BedDouble, BellRing, CalendarCheck, CalendarDays, Coffee, ConciergeBell, Download, ExternalLink, Loader2, Plus, Printer, Receipt, ShoppingBag, Store, Tag, UtensilsCrossed, Wine,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-/** A room / the meeting room / the public menu card — or a restaurant place: a table, the counter, the main restaurant QR. */
-export type Printable = { id: string; kind: "room" | "meeting" | "public" | "table" | "counter" | "restaurant"; title: string; url: string; qr: string; table?: string; area?: string };
+/**
+ * A room / the meeting room / the public menu card — or a restaurant place: a table, the counter, the main restaurant QR —
+ * or a Hotel booking QR ("Scan to book your stay"; its place, e.g. Entrance, stays off the card).
+ */
+export type Printable = { id: string; kind: "room" | "meeting" | "public" | "table" | "counter" | "restaurant" | "booking"; title: string; url: string; qr: string; table?: string; area?: string };
 const GOLD = "#e3bd6a";
 
 /** A card as a sharp JPEG, whatever size it is shown at (≈1050 px wide, A6 proportions). */
 export function snapQrCard(node: HTMLElement) {
   return toJpeg(node, { pixelRatio: 1050 / Math.max(1, node.offsetWidth), quality: 0.93, cacheBust: true, backgroundColor: "#0b1026" });
+}
+/** The same card as a PNG (sharp edges for print shops and social media). */
+export function snapQrCardPng(node: HTMLElement) {
+  return toPng(node, { pixelRatio: 1050 / Math.max(1, node.offsetWidth), cacheBust: true, backgroundColor: "#0b1026" });
 }
 export function saveFile(href: string, name: string) {
   const a = document.createElement("a");
@@ -44,11 +51,13 @@ export function QrPreview({ card, hotel, phone, printHref, fileName, className }
       <div className="w-full min-w-0 space-y-2 text-center @[30rem]:text-left">
         <p className="text-sm text-muted-foreground">{card.kind === "public"
           ? "Put it on restaurant tables, the bar and reception — anyone can order (dine in, takeaway, pickup)."
-          : "Put it in the room. Scanning it opens the guest checked in to this room right now — their stay, bill and ordering. When the room is free it shows the room and the menu."}</p>
+          : card.kind === "booking"
+            ? "Put it at reception, the entrance, in rooms and on flyers — guests see our rooms, pick their dates, book and pay."
+            : "Put it in the room. Scanning it opens the guest checked in to this room right now — their stay, bill and ordering. When the room is free it shows the room and the menu."}</p>
         <div className="flex flex-wrap justify-center gap-2 @[30rem]:justify-start">
           <Button size="sm" disabled={busy} onClick={download}>{busy ? <Loader2 className="animate-spin" /> : <Download />}Download</Button>
           <a href={printHref} target="_blank" rel="noopener" className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium hover:bg-muted"><Printer className="size-4" />Print</a>
-          <a href={card.kind === "public" ? card.url : `${card.url}?view=guest`} target="_blank" rel="noopener" className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium hover:bg-muted"><ExternalLink className="size-4" />See what guests see</a>
+          <a href={card.kind === "public" || card.kind === "booking" ? card.url : `${card.url}?view=guest`} target="_blank" rel="noopener" className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium hover:bg-muted"><ExternalLink className="size-4" />See what guests see</a>
         </div>
       </div>
     </div>
@@ -63,7 +72,10 @@ export function QrPreview({ card, hotel, phone, printHref, fileName, className }
  */
 export function QrPrintCard({ card, hotel, phone }: { card: Printable; hotel: string; phone: string | null }) {
   const place = card.kind === "table" || card.kind === "counter" || card.kind === "restaurant";
-  const copy = place
+  const copy = card.kind === "booking"
+    // The Hotel QR: only what is always true (no payment way — the Admin can switch those on and off).
+    ? { head: "Scan to book", sub: "your stay with us", items: [[BedDouble, "Our rooms"], [CalendarDays, "Your dates"], [Tag, "Live prices"], [CalendarCheck, "Book now"]] as const, tag: "Book your stay", foot: "Book direct with the hotel" }
+    : place
     ? {
       head: card.title, sub: card.area ?? "order food & drinks",
       items: card.kind === "restaurant"
@@ -77,7 +89,7 @@ export function QrPrintCard({ card, hotel, phone }: { card: Printable; hotel: st
     : card.kind === "public"
       ? { head: "Scan for our menu", sub: "order food & drinks", items: [[UtensilsCrossed, "Dine in"], [ShoppingBag, "Takeaway"], [Store, "Pickup"], [Wine, "Bar"]] as const, tag: card.table ?? "Restaurant & bar", foot: "Order and pay at the counter" }
       : { head: "Scan to order", sub: "food, drinks & more", items: [[UtensilsCrossed, "Food"], [Wine, "Drinks"], [BellRing, "Room service"], [ConciergeBell, "Hotel services"]] as const, tag: `Room ${card.title}`, foot: "Delivered to your room · added to your bill" };
-  const steps = card.kind === "public" ? ["Scan", "Choose", "Enjoy"] : place ? ["Scan", "Order", "We serve you"] : ["Scan", "Choose", "We bring it"];
+  const steps = card.kind === "booking" ? ["Scan", "Choose", "Book"] : card.kind === "public" ? ["Scan", "Choose", "Enjoy"] : place ? ["Scan", "Order", "We serve you"] : ["Scan", "Choose", "We bring it"];
   return (
     <article id={`qr-${card.id}`} className="@container relative aspect-[105/148] w-full overflow-hidden rounded-[22px] bg-[#0b1026] text-center text-white shadow-[0_24px_50px_-28px_rgba(5,8,25,0.9)] [print-color-adjust:exact] print:rounded-none print:shadow-none">
       {/* Night-navy with a warm glow, fine gold lines and an inner gold border */}

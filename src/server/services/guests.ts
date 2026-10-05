@@ -19,6 +19,12 @@ export interface GuestInput {
   notes?: string | null;
   /** Staff confirmed this is a different person with the same phone / email: save a new customer. */
   createNew?: boolean;
+  /**
+   * Typed by the customer themselves on a public page (the website, the Hotel booking QR) — nobody has checked who
+   * they are. Found again by their phone only (never by an email anyone could type), and a customer found is not
+   * changed from there: what they typed stays on the booking, for reception to check and save.
+   */
+  selfService?: boolean;
 }
 
 /** Normalise Tanzanian/international numbers: "0710 223 344" → "+255710223344". */
@@ -57,14 +63,19 @@ export async function resolveGuest(tx: Tx, input: GuestInput): Promise<string> {
   if (!existing && !input.createNew && (phone || email)) {
     // One customer per number: two phones scanning the same number at once must not make twins.
     if (phone) await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`guest-phone:${phone}`}))::text`;
-    // Their main number first, then their second number, then their email.
+    // Their main number first, then their second number, then their email (not from a public page — see selfService).
     existing = (phone ? await tx.guest.findFirst({ where: { deletedAt: null, phone }, orderBy: { updatedAt: "desc" } }) : null)
       ?? (phone ? await tx.guest.findFirst({ where: { deletedAt: null, altPhone: phone }, orderBy: { updatedAt: "desc" } }) : null)
-      ?? (email ? await tx.guest.findFirst({ where: { deletedAt: null, email }, orderBy: { updatedAt: "desc" } }) : null);
+      ?? (email && !input.selfService ? await tx.guest.findFirst({ where: { deletedAt: null, email }, orderBy: { updatedAt: "desc" } }) : null);
   }
   if (!existing) {
     const created = await tx.guest.create({ data: clean });
     return created.id;
+  }
+  if (input.selfService) {
+    // Only a stand-in name ("Restaurant customer") gives way to the real one — as the restaurant's QR does.
+    if (isPlaceholderName(existing.fullName) && !isPlaceholderName(clean.fullName)) await tx.guest.update({ where: { id: existing.id }, data: { fullName: clean.fullName } });
+    return existing.id;
   }
   const fill: Record<string, string> = {};
   for (const [k, v] of Object.entries(clean)) {
@@ -75,6 +86,24 @@ export async function resolveGuest(tx: Tx, input: GuestInput): Promise<string> {
   if (!input.id && isPlaceholderName(existing.fullName) && !isPlaceholderName(clean.fullName)) fill.fullName = clean.fullName;
   if (Object.keys(fill).length) await tx.guest.update({ where: { id: existing.id }, data: fill });
   return existing.id;
+}
+
+/**
+ * A booking a customer made themselves on a public page, matched to a customer already on file by their phone: what
+ * they typed that differs from the profile (another name, an email) — a line for the booking's notes, so reception
+ * can check with them and save it. The profile itself is not changed from a public page (see selfService).
+ */
+export async function typedDifferences(tx: Tx, guestId: string, input: GuestInput): Promise<string | null> {
+  if (!input.selfService) return null;
+  const g = await tx.guest.findUnique({ where: { id: guestId }, select: { fullName: true, email: true } });
+  if (!g) return null;
+  const name = input.fullName.trim().replace(/\s+/g, " ");
+  const email = input.email?.trim().toLowerCase() || null;
+  const diff = [
+    name.toLowerCase() !== g.fullName.trim().replace(/\s+/g, " ").toLowerCase() ? `name "${name}"` : null,
+    email && email !== g.email?.toLowerCase() ? `email ${email}` : null,
+  ].filter(Boolean);
+  return diff.length ? `Booked as ${diff.join(", ")} — found by their phone; check with the guest before changing their profile.` : null;
 }
 
 /** Names saved when the customer gave only a number (a table QR, a quick order). */

@@ -3,10 +3,12 @@ import { inHouseGuestIds, isHotelOrder } from "@/server/desk";
 import { db } from "../db";
 import { worksWaiterShift } from "@/lib/permissions";
 import { REQUEST_TYPE_LABEL } from "@/lib/request-meta";
+import { HOTEL_QR_SOURCE, QR_PAY_ONLINE_NOTE } from "./booking-qr";
+import { guestNotifyConnected } from "./guest-notify";
 
 /**
  * What is waiting for this staff member right now — by what they do (their permissions):
- * reception: new booking requests, new guest requests, payments to confirm; waiters: tables
+ * reception: new booking requests, Hotel QR bookings, new guest requests, payments to confirm; waiters: tables
  * asking for the bill, ready orders; the kitchen: new orders; managers: stock requests to review
  * and bought stock waiting for the final approval. The top-bar bell rings when something new
  * appears (and keeps ringing, when the manager chose "repeat", until handled).
@@ -19,12 +21,47 @@ const place = (o: { tableLabel: string | null; roomNumber: string | null; type: 
 const no = (n: string) => `#${n.replace(/^ORD-\d{4}-0*/, "")}`;
 const day = (d: Date) => d.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 
+/**
+ * Hotel QR bookings reception should know about (owner, 2026-10-05) — made straight into the reservations, so nothing
+ * else rings for them: one reserved to pay at the hotel, while it waits; one paid online, for half an hour after nTZS
+ * confirmed it. Each rings once (its id never changes) and leaves the list by itself.
+ */
+async function hotelQrBookings(now: Date) {
+  const rows = await db.reservation.findMany({
+    where: {
+      source: { code: HOTEL_QR_SOURCE },
+      OR: [
+        { status: "RESERVED", paidAmount: { lte: 0 }, mobilePayments: { none: { initiator: "CUSTOMER" } }, OR: [{ holdUntil: null }, { holdUntil: { gt: now } }] },
+        { status: "CONFIRMED", paidAmount: { gt: 0 }, confirmedAt: { gte: new Date(now.getTime() - 30 * 60_000) }, mobilePayments: { some: { initiator: "CUSTOMER", status: "COMPLETED" } } },
+      ],
+    },
+    orderBy: { createdAt: "asc" }, take: 20,
+    select: {
+      id: true, status: true, createdAt: true, confirmedAt: true, arrivalDate: true, departureDate: true, internalNotes: true,
+      guest: { select: { fullName: true } }, rooms: { where: { status: { not: "CANCELLED" } }, select: { room: { select: { number: true } } } },
+      guestMessages: { where: { type: { in: ["BOOKING_CREATED", "BOOKING_CONFIRMED"] }, status: "SENT" }, take: 1, select: { id: true } },
+    },
+  });
+  // Still paying online (its payment request did not start): not a booking to act on yet.
+  return rows.filter((r) => r.status === "CONFIRMED" || !r.internalNotes?.includes(QR_PAY_ONLINE_NOTE)).map((r) => {
+    const paid = r.status === "CONFIRMED";
+    const rooms = r.rooms.map((x) => x.room.number).join(", ");
+    // Without a messaging provider nothing reaches the guest by itself: reception sends the details (one tap on the booking).
+    const unsent = !r.guestMessages.length && (!guestNotifyConnected() || now.getTime() - r.createdAt.getTime() > 2 * 60_000);
+    return {
+      id: `hotelqr:${r.id}:${paid ? "paid" : "hotel"}`, kind: "booking" as const, href: `/staff/reservations/${r.id}`, at: (paid ? r.confirmedAt ?? r.createdAt : r.createdAt).toISOString(),
+      text: `Hotel QR booking — ${r.guest.fullName}${rooms ? ` · Room ${rooms}` : ""} · ${day(r.arrivalDate)} → ${day(r.departureDate)} · ${paid ? "paid online" : "pay at hotel"}${unsent ? " · booking details not sent yet" : ""}`,
+    };
+  });
+}
+
 export async function staffAlerts(perms: ReadonlySet<string>, userId: string | null = null): Promise<StaffAlert[]> {
   const has = (p: string) => perms.has(p);
   // A waiter hears their own orders and tables (and the ones nobody has yet); everyone else (the restaurant screen, managers) hears all.
   const mine = !!userId && worksWaiterShift(perms);
-  const [bookings, requests, payments, bills, fresh, ready, stock] = await Promise.all([
+  const [bookings, qrBookings, requests, payments, bills, fresh, ready, stock] = await Promise.all([
     has("booking_requests.view") ? db.bookingRequest.findMany({ where: { status: "NEW" }, orderBy: { createdAt: "asc" }, take: 20, select: { id: true, fullName: true, checkInDate: true, checkOutDate: true, createdAt: true } }) : [],
+    has("reservations.view") ? hotelQrBookings(new Date()) : [],
     // New requests ring for everyone who handles them; one given to a person rings for them until they accept it.
     has("requests.view") || has("requests.manage") ? db.serviceRequest.findMany({
       where: { OR: [{ status: "NEW" }, ...(userId ? [{ status: "ASSIGNED" as const, assignedToId: userId }] : [])] }, orderBy: { createdAt: "asc" }, take: 20,
@@ -57,6 +94,7 @@ export async function staffAlerts(perms: ReadonlySet<string>, userId: string | n
   const hotelPayments = inHouse ? payments.filter((p) => isHotelOrder(p.order, inHouse)) : payments;
   return [
     ...bookings.map((b) => ({ id: `booking:${b.id}`, kind: "booking" as const, text: `New booking request — ${b.fullName} · ${day(b.checkInDate)} → ${day(b.checkOutDate)}`, href: "/staff/booking-requests", at: b.createdAt.toISOString() })),
+    ...qrBookings,
     ...requests.map((r) => ({
       // The time it last came back to waiting is in the id: a request put back to New (a shift ended) rings again.
       id: `request:${r.id}:${r.status}:${r.updatedAt.getTime()}`, kind: "request" as const, href: "/staff/requests", at: (r.status === "ASSIGNED" ? r.updatedAt : r.createdAt).toISOString(),

@@ -7,12 +7,12 @@ import { cn } from "@/lib/utils";
 
 /**
  * WHAT'S GOING ON at the desk right now — read before starting a shift: who arrives, who leaves (and owes), what
- * guests asked for, rooms to clean or fix, online requests and today's transport.
+ * guests asked for, rooms to clean or fix, online requests (and today's Hotel QR bookings) and today's transport.
  */
 export async function whatsOn(today: BusinessDate, cfg: BusinessDayConfig) {
   const d = toDbDate(today);
   const { start, end } = businessDayBounds(today, cfg);
-  const [arrivals, departures, requests, dirty, broken, online, trips] = await Promise.all([
+  const [arrivals, departures, requests, dirty, broken, online, trips, qr] = await Promise.all([
     db.reservation.findMany({
       where: { status: { in: ["RESERVED", "CONFIRMED"] }, arrivalDate: { lte: d }, OR: [{ departureDate: { gt: d } }, { departureDate: d, rooms: { some: { isDayUse: true } } }] }, orderBy: { arrivalDate: "asc" }, take: 30,
       select: { id: true, arrivalDate: true, kind: true, guest: { select: { fullName: true } }, rooms: { select: { room: { select: { number: true } } } }, trips: { where: { status: { notIn: ["CANCELLED", "COMPLETED", "NO_SHOW"] } }, select: { pickupAt: true } } },
@@ -26,8 +26,10 @@ export async function whatsOn(today: BusinessDate, cfg: BusinessDayConfig) {
     db.room.findMany({ where: { isActive: true, status: { in: ["MAINTENANCE", "OUT_OF_SERVICE"] } }, select: { number: true, statusNote: true }, orderBy: { number: "asc" } }),
     db.bookingRequest.count({ where: { status: "NEW" } }),
     db.transportTrip.findMany({ where: { pickupAt: { gte: start, lt: end }, status: { notIn: ["CANCELLED", "COMPLETED", "NO_SHOW"] } }, orderBy: { pickupAt: "asc" }, take: 6, select: { id: true, type: true, pickupAt: true, passengerName: true, destination: true } }),
+    // Booked by guests from the Hotel QR today — real reservations already (not requests to call back).
+    db.reservation.count({ where: { source: { code: "HOTEL_QR" }, status: { not: "INQUIRY" }, createdAt: { gte: start, lt: end } } }),
   ]);
-  return { today, arrivals, departures, requests, dirty, broken, online, trips };
+  return { today, arrivals, departures, requests, dirty, broken, online, trips, qr };
 }
 type On = Awaited<ReturnType<typeof whatsOn>>;
 
@@ -119,10 +121,11 @@ export function WhatsOn({ on, timezone, now }: { on: On; timezone: string; now: 
             {on.trips.map((t) => <Line key={t.id} lead={clock(t.pickupAt)} title={t.passengerName} sub={`${t.type.charAt(0)}${t.type.slice(1).toLowerCase().replace(/_/g, " ")} · ${t.destination}`} />)}
           </ul>
         </Card>
-        <Card icon={Inbox} tone="bg-[oklch(0.75_0.12_80)]/15 text-[oklch(0.55_0.11_75)] dark:text-[#f0cf86]" title="Online requests" count={on.online}
-          href="/staff/booking-requests" cta="Online requests" empty="No new online booking request.">
+        <Card icon={Inbox} tone="bg-[oklch(0.75_0.12_80)]/15 text-[oklch(0.55_0.11_75)] dark:text-[#f0cf86]" title="Online bookings" count={on.online + on.qr}
+          href={on.online || !on.qr ? "/staff/booking-requests" : "/staff/hotel-qr?list=today#bookings"} cta={on.online || !on.qr ? "Online requests" : "Hotel QR bookings"} empty="No new online booking request.">
           <ul className="space-y-2">
             {on.online > 0 && <Line lead={String(on.online)} title={`New online booking request${on.online === 1 ? "" : "s"}`} sub="From the website — call them back" tag="New" tagTone="bg-sky-500/15 text-sky-700 dark:text-sky-300" />}
+            {on.qr > 0 && <Line lead={String(on.qr)} title={`Hotel QR booking${on.qr === 1 ? "" : "s"} today`} sub="Booked by the guest from the QR — already in Reservations" tag="QR" tagTone="bg-[oklch(0.75_0.12_80)]/15 text-[oklch(0.5_0.11_75)] dark:text-[#f0cf86]" />}
           </ul>
         </Card>
       </div>

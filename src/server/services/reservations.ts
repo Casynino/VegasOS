@@ -8,7 +8,7 @@ import { AppError, isExclusionViolation, isUniqueViolation } from "../errors";
 import { getSettingsTx, stayConfig } from "../settings";
 import { findAvailableRooms, lockRoomTypes } from "./availability";
 import { recalculateReservation, syncRoomNights, ACTIVE_STATUSES } from "./reservation-financials";
-import { normalizePhone, resolveGuest, type GuestInput } from "./guests";
+import { normalizePhone, resolveGuest, typedDifferences, type GuestInput } from "./guests";
 import { thankYouAfterCheckout } from "./thank-you";
 import { setRoomStatusTx } from "./rooms";
 import { postRoomChargesTx, recordPaymentTx, type ChargeLine } from "./payments";
@@ -23,7 +23,7 @@ import {
   addDays, businessDateOf, eachDate, fromDbDate, isBusinessDate, parseTimeToMinutes, toDbDate, zonedInstant, type BusinessDate,
 } from "@/lib/time/business-date";
 import { dayUseStay, isLateArrivalInstant, meetingStay, overnightStay, StayError, walkInStay, type Stay } from "@/lib/time/stay";
-import type { HotelSettings } from "@/generated/prisma/client";
+import type { HotelSettings, Prisma } from "@/generated/prisma/client";
 import type { ReservationStatus } from "@/generated/prisma/enums";
 
 /**
@@ -90,6 +90,14 @@ export interface CreateReservationInput {
   bookingRequestId?: string | null;
   /** Booked online and being paid online now: an unpaid booking holds its room only this long (the payment confirms it). */
   holdMinutes?: number | null;
+  /** Booked from a Hotel booking QR (source HOTEL_QR): which one — found on the server from the scanned token, never sent by the phone. */
+  bookingQrId?: string | null;
+  /**
+   * What a public booking page received with the booking (the website, the Hotel QR): the name and contact the
+   * customer typed (the booking's own pages show these back — never the profile found by the phone) and, from the
+   * QR, the key of the "Book" press that made it.
+   */
+  externalData?: Prisma.InputJsonValue | null;
 }
 
 const REF_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -158,6 +166,12 @@ export async function createReservationTx(tx: Tx, input: CreateReservationInput,
   const settings = await getSettingsTx(tx);
   const source = await tx.bookingSource.findUnique({ where: { code: input.sourceCode } });
   if (!source || !source.isActive) throw new AppError("Choose a valid booking source.", "VALIDATION", { sourceCode: "Invalid" });
+  // A Hotel QR booking keeps which QR it came from (its numbers); nothing else can claim one — and the desk cannot book "as" the QR.
+  const bookingQr = input.bookingQrId ? await tx.bookingQrCode.findUnique({ where: { id: input.bookingQrId }, select: { id: true, label: true } }) : null;
+  if (input.bookingQrId && (!bookingQr || source.code !== "HOTEL_QR")) throw new AppError("Choose a valid booking source.", "VALIDATION", { sourceCode: "Invalid" });
+  if (source.code === "HOTEL_QR" && !bookingQr) {
+    throw new AppError("Hotel QR bookings are made by guests from the QR — choose how this guest booked.", "VALIDATION", { sourceCode: "Invalid" });
+  }
 
   const stay = buildStay(input.stay, settings, now);
   const today = businessDateOf(now, stayConfig(settings));
@@ -241,6 +255,8 @@ export async function createReservationTx(tx: Tx, input: CreateReservationInput,
   });
 
   const guestId = await resolveGuest(tx, input.guest);
+  // Booked on a public page by a customer found by their phone: what they typed differently goes in the notes.
+  const typed = await typedDifferences(tx, guestId, input.guest);
   // A group room billed to the group (its company or contact person); otherwise a company, or the guest.
   const billTo = input.groupId && input.billing?.billTo === "GROUP" ? "GROUP"
     : input.corporateCustomerId ? (input.billing?.billTo === "GROUP" ? "COMPANY" : input.billing?.billTo ?? "COMPANY") : "GUEST";
@@ -275,7 +291,9 @@ export async function createReservationTx(tx: Tx, input: CreateReservationInput,
       kind: meeting ? "MEETING" : "STAY",
       groupId: input.groupId ?? null,
       sourceId: source.id,
+      bookingQrId: bookingQr?.id ?? null,
       externalReference: input.externalReference?.trim() || null,
+      ...(input.externalData != null && { externalData: input.externalData }),
       guestId,
       corporateCustomerId: input.corporateCustomerId ?? null,
       companyName: input.companyName?.trim() || null,
@@ -288,7 +306,7 @@ export async function createReservationTx(tx: Tx, input: CreateReservationInput,
       arrivalDate: toDbDate(stay.arrivalDate),
       departureDate: toDbDate(stay.departureDate),
       specialRequests: input.specialRequests?.trim() || null,
-      internalNotes: input.internalNotes?.trim() || null,
+      internalNotes: [input.internalNotes?.trim(), typed].filter(Boolean).join(" ") || null,
       eta: input.eta ?? null,
       holdUntil,
       createdById: actor.userId ?? null,
@@ -394,6 +412,7 @@ export async function createReservationTx(tx: Tx, input: CreateReservationInput,
     after: {
       reference: result.reference,
       source: source.code,
+      ...(bookingQr && { bookingQr: bookingQr.label }),
       guest: result.guest.fullName,
       rooms: result.rooms.map((r) => r.room.number),
       arrival: stay.arrivalDate,

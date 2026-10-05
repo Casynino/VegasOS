@@ -2,7 +2,7 @@ import Link from "next/link";
 import { billMenu } from "@/server/services/restaurant";
 import { recentChargeItems } from "@/server/services/payments";
 import { discountLimit } from "@/lib/discounts";
-import { AlertTriangle, ArrowRight, Banknote, BedDouble, BedSingle, CalendarPlus, Car, CheckCircle2, ChevronRight, Clock, ConciergeBell, Inbox, KeyRound, LogIn, LogOut, Luggage, NotebookTabs, Plane, Receipt, Sunrise, Users, Wallet, Wrench } from "lucide-react";
+import { AlertTriangle, ArrowRight, Banknote, BedDouble, BedSingle, CalendarPlus, Car, CheckCircle2, ChevronRight, Clock, ConciergeBell, Inbox, KeyRound, LogIn, LogOut, Luggage, NotebookTabs, Plane, QrCode, Receipt, Sunrise, Users, Wallet, Wrench } from "lucide-react";
 import { REQUEST_TYPE_LABEL } from "@/lib/request-meta";
 import { mobilePaymentsNeedingAttention } from "@/server/services/mobile-payments";
 import { can, getMyOpenShift, requireUser } from "@/server/auth";
@@ -111,6 +111,11 @@ export async function FrontDeskToday() {
   const tomorrowRooms = arrivingTomorrow.reduce((t, r) => t + r.rooms.length, 0);
   // Mobile money (nTZS) that came in but did not fit the bill — someone must deal with it.
   const mobileToCheck = can(user, "payments.record") ? (await mobilePaymentsNeedingAttention()).length : 0;
+  // The Hotel QR today: bookings guests made from it, and those arriving today not paid yet (pay at the hotel).
+  const [qrToday, qrToPay] = can(user, "reservations.view") ? await Promise.all([
+    db.reservation.count({ where: { source: { code: "HOTEL_QR" }, businessDate: todayDb, status: { not: "INQUIRY" } } }),
+    db.reservation.count({ where: { source: { code: "HOTEL_QR" }, arrivalDate: todayDb, status: "RESERVED" } }),
+  ]) : [0, 0];
   const todayParts: TodayPart[] = [
     { label: "Arrivals", icon: <LogIn />, tone: "sky", href: "/staff/check-in", value: board.arrivals.length, unit: "to check in",
       done: arrivedToday, of: arrivedToday + board.arrivals.length, note: arrivedToday + board.arrivals.length ? `${arrivedToday} of ${arrivedToday + board.arrivals.length} checked in` : "Nobody due today" },
@@ -130,6 +135,7 @@ export async function FrontDeskToday() {
   const attention: AttentionItem[] = [
     overdue.length > 0 && { tone: "rose", icon: <Clock />, group: "Check-out", title: `${overdue.length} checkout${overdue.length === 1 ? "" : "s"} overdue`, detail: "Past checkout time with no extension — check out or extend", href: `/staff/check-out?id=${overdue[0].id}#workspace` },
     (worksShift ? !myShift : !shift.open) && { tone: "amber", icon: <AlertTriangle />, group: "Shift", title: worksShift ? "You have no active shift" : "No reception shift started", detail: worksShift ? "Start your shift before working the desk" : "Nobody is on reception right now", href: "#shift" },
+    qrToPay > 0 && { tone: "gold", icon: <QrCode />, group: "Bookings", title: `${qrToPay} Hotel QR booking${qrToPay === 1 ? "" : "s"} arriving today not paid yet`, detail: "Reserved from the QR — take the payment at check-in", href: "/staff/hotel-qr?list=arriving#bookings" },
     board.requestsDue.length > 0 && { tone: "gold", icon: <Inbox />, group: "Bookings", title: `${board.requestsDue.length} online request${board.requestsDue.length === 1 ? "" : "s"} for today not confirmed`, detail: "Call the guest and confirm the booking", href: "/staff/booking-requests" },
     owing.length > 0 && { tone: "rose", icon: <Wallet />, group: "Money", title: `${owing.length} leaving today still owe${owing.length === 1 ? "s" : ""} money`, detail: `${formatTZS(owing.reduce((s, r) => s + owes(r), 0))} to collect before checkout`, href: "/staff/check-out" },
     snap.unpaidAfterCheckout.count > 0 && { tone: "rose", icon: <Receipt />, group: "Money", title: `${snap.unpaidAfterCheckout.count} unpaid after checkout`, detail: "Past guests with an open balance", href: "#unpaid" },
@@ -154,6 +160,7 @@ export async function FrontDeskToday() {
       <QuickActions items={([
         { href: "/staff/reservations/new", label: "New booking", hint: "Walk-in or reserve", icon: <CalendarPlus />, tone: "gold", perm: "reservations.create" },
         { href: "/staff/reservations", label: "Reservations", hint: "All bookings", icon: <NotebookTabs />, tone: "amber", perm: "reservations.view" },
+        { href: "/staff/hotel-qr", label: "Hotel QR", hint: qrToday ? `${qrToday} booked from the QR today` : "Show · print · QR bookings", icon: <QrCode />, tone: "violet", perm: "reservations.view", badge: qrToday },
         { href: "/staff/check-in", label: "Check in", hint: board.arrivals.length ? `${board.arrivals.length} arriving today` : "Hand over the key", icon: <KeyRound />, tone: "emerald", perm: "reservations.check_in", badge: board.arrivals.length },
         { href: "/staff/check-out", label: "Check out", hint: snap.departures.length ? `${snap.departures.length} leaving today` : "Settle the bill", icon: <Luggage />, tone: "rose", perm: "reservations.check_out", badge: snap.departures.length },
         { href: "/staff/rooms", label: "Rooms", hint: "Board & cleaning", icon: <BedDouble />, tone: "sky", perm: "rooms.view" },

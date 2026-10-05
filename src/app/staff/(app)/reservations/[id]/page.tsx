@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { discountLimit } from "@/lib/discounts";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, BedDouble, Building2, Car, ClipboardList, Clock3, FileText, History, MessageCircle, Receipt, UserRound, Users, UtensilsCrossed, Wallet } from "lucide-react";
+import { ArrowLeft, BedDouble, BadgeCheck, Building2, Car, ClipboardList, Clock3, FileText, History, Loader2, MessageCircle, QrCode, Receipt, UserRound, Users, UtensilsCrossed, Wallet } from "lucide-react";
 import { Occupants } from "@/components/staff/reception/occupants";
 import { can, requirePagePermission } from "@/server/auth";
 import { db } from "@/server/db";
@@ -59,7 +59,9 @@ export default async function ReservationPage({ params, searchParams }: PageProp
     db.reservation.findUnique({
       where: { id },
       include: {
-        guest: true, source: true, corporateCustomer: true, createdBy: { select: { fullName: true } },
+        guest: true, source: true, corporateCustomer: true, createdBy: { select: { fullName: true } }, bookingQr: { select: { label: true } },
+        // The guest paying online right now (a payment request on their phone) — reception does not ask again.
+        mobilePayments: { where: { initiator: "CUSTOMER", status: "PENDING" }, orderBy: { createdAt: "desc" }, take: 1, select: { amount: true, expiresAt: true } },
         group: { include: { corporateCustomer: { select: { companyName: true } }, contactGuest: { select: { fullName: true } }, _count: { select: { reservations: true } } } },
         guests: { where: { isPrimary: false }, include: { guest: { select: { id: true, fullName: true, phone: true, idNumber: true, nationality: true } } } },
         rooms: {
@@ -193,6 +195,10 @@ export default async function ReservationPage({ params, searchParams }: PageProp
     : sentParam === "welcome" && welcomeMsg && guestEventOn(settingsNow.guestNotifications, "checkIn") ? "WELCOME"
     : sentParam === "new" && bookingMsg && guestEventOn(settingsNow.guestNotifications, "bookingCreated") ? "BOOKING_CREATED" : null;
   const mr = meeting ? live[0] ?? r.rooms[0] : null;
+  // Paid online through NTZS (the guest's own payment, recorded when NTZS confirmed it) — said plainly, with NTZS's reference.
+  const ntzsPaid = r.payments.filter((p) => p.status === "POSTED" && p.kind === "PAYMENT" && p.method.code === "NTZS");
+  const ntzsRef = ntzsPaid.find((p) => p.reference)?.reference?.replace(/^nTZS\s+/, "") ?? null;
+  const payingOnline = !ntzsPaid.length && r.paidAmount === 0 && r.mobilePayments.some((m) => !m.expiresAt || m.expiresAt > now);
 
   return (
     <div className="w-full space-y-5">
@@ -214,6 +220,25 @@ export default async function ReservationPage({ params, searchParams }: PageProp
                 <Users className="size-3.5" />Group booking · {r.group.name} · {r.group.reference} · {r.group._count.reservations} room{r.group._count.reservations === 1 ? "" : "s"} →
               </Link>
             )}
+            {(r.source.code === "HOTEL_QR" || ntzsPaid.length > 0 || payingOnline) && (
+              <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                {r.source.code === "HOTEL_QR" && (
+                  <Link href="/staff/hotel-qr" className="inline-flex items-center gap-1.5 rounded-full bg-[oklch(0.75_0.12_80/0.14)] px-3 py-1 text-xs font-semibold text-[oklch(0.5_0.1_75)] hover:bg-[oklch(0.75_0.12_80/0.22)] dark:text-[oklch(0.85_0.1_84)]">
+                    <QrCode className="size-3.5" />Booked from the Hotel QR{r.bookingQr ? ` · ${r.bookingQr.label}` : ""}
+                  </Link>
+                )}
+                {ntzsPaid.length > 0 && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/12 px-3 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                    <BadgeCheck className="size-3.5" />Paid online · NTZS · {formatTZS(ntzsPaid.reduce((t, p) => t + p.amount, 0))}{ntzsRef ? <span className="font-mono font-medium"> · {ntzsRef}</span> : null}
+                  </span>
+                )}
+                {payingOnline && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-500/12 px-3 py-1 text-xs font-semibold text-sky-700 dark:text-sky-300">
+                    <Loader2 className="size-3.5 animate-spin" />Guest is paying online (NTZS) · {formatTZS(r.mobilePayments[0].amount)}
+                  </span>
+                )}
+              </span>
+            )}
             {atTables.map((t) => (
               <a key={t.id} href="#restaurant" className="mt-1.5 mr-1.5 inline-flex flex-wrap items-center gap-1.5 rounded-full bg-amber-500/12 px-3 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-500/20 dark:text-amber-200">
                 <UtensilsCrossed className="size-3.5" />At {t.table} now · {t.orders} order{t.orders === 1 ? "" : "s"}
@@ -222,7 +247,7 @@ export default async function ReservationPage({ params, searchParams }: PageProp
             ))}
             {mr && <p className="mt-1 text-sm font-semibold text-violet-700 dark:text-violet-300">Room {mr.room.number} — {mr.roomType.name} · {timeRange(mr.startAt, mr.endAt)}{meeting && r.companyName ? ` · contact ${r.guest.fullName}` : ""}</p>}
             <p className="mt-1 text-sm text-muted-foreground">
-              <span className="font-mono">{r.reference}</span> · {r.source.name}{r.externalReference && ` · ${r.externalReference}`} · booked {formatDateTime(r.createdAt)} by {r.createdBy?.fullName ?? "website"}
+              <span className="font-mono">{r.reference}</span> · {r.source.name}{r.externalReference && ` · ${r.externalReference}`} · booked {formatDateTime(r.createdAt)} by {r.createdBy?.fullName ?? r.source.name}
             </p>
           </div>
           {!["CANCELLED", "INQUIRY"].includes(r.status) && (

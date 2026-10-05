@@ -1,17 +1,21 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
+import { after } from "next/server";
 import { db, type Tx } from "../db";
 import { AppError } from "../errors";
 import { getSettings } from "../settings";
+import { siteOrigin } from "../site-origin";
 import { fromDbDate, formatMinutes } from "@/lib/time/business-date";
 import { formatTZS } from "@/lib/format";
 import {
-  DEFAULT_BOOKING_MESSAGE, DEFAULT_WELCOME_MESSAGE, guestMessageText, internationalPhone, maskEmail, maskPhone, prettyPhone, shortName,
+  DEFAULT_BOOKING_MESSAGE, DEFAULT_WELCOME_MESSAGE, guestEventOn, guestMessageText, internationalPhone, maskEmail, maskPhone, prettyPhone, shortName,
   type GuestMessageType,
 } from "@/lib/guest-messages";
 import { createRestaurantOrderTx } from "./restaurant";
 import { paidFirstTx, type PaidFirst } from "./online-orders";
 import { createGuestRequest } from "./requests";
+import { guestNotifyConnected, sendGuestText } from "./guest-notify";
+import { bookedAsOf } from "./public-booking";
 
 type Actor = { userId?: string | null; label?: string; ipAddress?: string | null };
 
@@ -99,6 +103,46 @@ export async function logGuestMessage(tx: Tx | typeof db, m: {
   });
 }
 
+/**
+ * The booking details, sent to the guest by themselves — a Hotel QR booking reserved to pay at the hotel, or a booking
+ * the guest paid online once nTZS confirmed it. Only when a messaging provider is connected and the hotel has "Booking
+ * saved" messages on; once per booking and event; logged on the guest's profile. Never throws: the booking stands either
+ * way (without a provider, reception sends the same details in one tap from the booking).
+ */
+export async function notifyBookingGuest(reservationId: string, event: "BOOKING_CREATED" | "BOOKING_CONFIRMED") {
+  try {
+    if (!guestNotifyConnected()) return false;
+    const s = await getSettings();
+    if (!guestEventOn(s.guestNotifications, "bookingCreated")) return false;
+    if (await db.guestMessage.count({ where: { reservationId, type: event, status: "SENT" } })) return false;
+    let origin = "";
+    try { origin = await siteOrigin(); } catch { origin = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? ""; }
+    // One text for both: its status and balance lines read "Confirmed" and "Paid in full" once paid.
+    const m = await guestMessage(reservationId, "BOOKING_CREATED", origin);
+    if (!m.guest.phone) return false;
+    const sent = await sendGuestText({ to: m.guest.phone, text: m.text, event });
+    await logGuestMessage(db, {
+      guestId: m.guest.id, reservationId, type: event, channel: sent.channel, to: m.guest.phone, body: m.text, status: sent.ok ? "SENT" : "FAILED", error: sent.error ?? null,
+    }, { label: "Automatic" });
+    return sent.ok;
+  } catch (e) {
+    console.error("booking notification", reservationId, e);
+    return false;
+  }
+}
+
+/**
+ * The same, once the answer has gone out — the guest's "Book" and nTZS's webhook never wait for the messaging
+ * provider. Where there is no request to wait for (a job, a test) it is sent straight away.
+ */
+export async function notifyBookingGuestSoon(reservationId: string, event: "BOOKING_CREATED" | "BOOKING_CONFIRMED") {
+  try {
+    after(() => notifyBookingGuest(reservationId, event));
+  } catch {
+    await notifyBookingGuest(reservationId, event);
+  }
+}
+
 // ───────────────────────── The guest's stay page ─────────────────────────
 
 /**
@@ -112,7 +156,7 @@ export async function stayView(where: { guestToken: string } | { id: string }) {
     where,
     select: {
       id: true, reference: true, status: true, kind: true, arrivalDate: true, departureDate: true, adults: true, children: true,
-      grossAmount: true, discountAmount: true, netAmount: true, paidAmount: true, balanceAmount: true, billTo: true, companyName: true,
+      grossAmount: true, discountAmount: true, netAmount: true, paidAmount: true, balanceAmount: true, billTo: true, companyName: true, externalData: true,
       guest: { select: { fullName: true, phone: true, email: true } },
       corporateCustomer: { select: { companyName: true } },
       group: { select: { name: true, corporateCustomer: { select: { companyName: true } } } },
@@ -149,10 +193,14 @@ export async function stayView(where: { guestToken: string } | { id: string }) {
   ].filter((l) => l.amount !== 0);
   const payer = r.billTo === "GROUP" ? r.group?.corporateCustomer?.companyName ?? r.group?.name ?? null : r.billTo !== "GUEST" ? r.corporateCustomer?.companyName ?? null : null;
   const meeting = r.kind === "MEETING" && r.rooms[0] ? { start: r.rooms[0].startAt.toISOString(), end: r.rooms[0].endAt.toISOString() } : null;
+  // Booked on a public page and not here yet: who it was booked as — never the profile found by the phone typed there
+  // (anyone can type a number). Once checked in, reception has met the guest.
+  const typed = r.status === "RESERVED" || r.status === "CONFIRMED" ? bookedAsOf(r.externalData) : null;
+  const who = typed ?? { fullName: r.guest.fullName, phone: r.guest.phone, email: r.guest.email };
   return {
     // Never the private stay link's token: the room QR shows this page to whoever scans the card.
     reference: r.reference, status: r.status, kind: r.kind,
-    guestName: shortName(r.guest.fullName), phone: maskPhone(r.guest.phone), email: maskEmail(r.guest.email), company: r.companyName,
+    guestName: shortName(who.fullName), phone: maskPhone(who.phone), email: maskEmail(who.email), company: r.companyName,
     arrival: fromDbDate(r.arrivalDate), departure: fromDbDate(r.departureDate), adults: r.adults, children: r.children, meeting,
     rooms: r.rooms.map((x) => ({ number: x.room.number, type: x.roomType.name, nights: x.isDayUse ? 0 : x.nights, inHouse: x.status === "CHECKED_IN" })),
     // Their room type, for the welcome: its photos, a line about it and what it has.

@@ -86,7 +86,7 @@ const AMENITIES = [
 ];
 
 const BOOKING_SOURCES = [
-  ["WEBSITE", "Website", true], ["BOOKING_COM", "Booking.com", false], ["EXPEDIA", "Expedia", false],
+  ["WEBSITE", "Website", true], ["HOTEL_QR", "Hotel QR", true], ["BOOKING_COM", "Booking.com", false], ["EXPEDIA", "Expedia", false],
   ["INSTAGRAM", "Instagram", false], ["PHONE", "Phone", false], ["WALK_IN", "Walk-in", true],
   ["CORPORATE", "Corporate", false], ["DIRECT", "Direct", false], ["WHATSAPP", "WhatsApp", false], ["OTHER", "Other", false],
 ] as const;

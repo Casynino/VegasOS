@@ -12,9 +12,9 @@ import { priceNight, type NightPrice, type PriceRuleLite, type PromoChannel, typ
 
 type Client = Tx | typeof db;
 
-/** Which promotions a booking channel sees: website bookings vs staff bookings. */
+/** Which promotions a booking channel sees: the guest's own bookings (website, Hotel QR) vs staff bookings. */
 export function channelFor(sourceCode: string): PromoChannel {
-  return sourceCode === "WEBSITE" ? "WEBSITE" : "STAFF";
+  return sourceCode === "WEBSITE" || sourceCode === "HOTEL_QR" ? "WEBSITE" : "STAFF";
 }
 
 /** Active promotions touching any night in [from, to] (inclusive business dates). */

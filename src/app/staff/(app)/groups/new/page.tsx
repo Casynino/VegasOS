@@ -14,7 +14,8 @@ export default async function NewGroupPage({ searchParams }: PageProps<"/staff/g
   const sp = await searchParams;
   const today = await businessToday();
   const [sources, companies] = await Promise.all([
-    db.bookingSource.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" }, select: { code: true, name: true } }),
+    // Hotel QR bookings are made by guests from the QR — never picked at the desk.
+    db.bookingSource.findMany({ where: { isActive: true, code: { not: "HOTEL_QR" } }, orderBy: { sortOrder: "asc" }, select: { code: true, name: true } }),
     bookingCompanies(today),
   ]);
   return (

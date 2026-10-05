@@ -132,6 +132,7 @@ model User {
   restaurantPaysHandedOver  RestaurantOrderPayment[] @relation("RestaurantPaymentHandedOverBy")
   restaurantLocationsQr     RestaurantLocation[]     @relation("RestaurantLocationQrBy")
   roomQrCodesGenerated      RoomQrCode[]             @relation("RoomQrGeneratedBy")
+  bookingQrCodesGenerated   BookingQrCode[]          @relation("BookingQrGeneratedBy")
   stockRequests             StockRequest[]           @relation("StockRequestBy")
   stockRequestsDecided      StockRequest[]           @relation("StockRequestDecidedBy")
   stockRequestsPurchased    StockRequest[]           @relation("StockRequestPurchasedBy")
@@ -234,6 +235,10 @@ model HotelSettings {
   onlinePayMeeting           Boolean  @default(true)
   onlinePayTransport         Boolean  @default(true)
   onlinePayInvoices          Boolean  @default(true)
+  /// The Hotel booking QR ("Scan to book your stay", owner 2026-10-05): booking from it on/off, and whether a guest may
+  /// reserve there and pay at the hotel (held by the hotel's hold rules) — paying online (nTZS) follows onlinePayBooking.
+  hotelQrEnabled             Boolean  @default(true)
+  hotelQrPayAtHotel          Boolean  @default(true)
   reportRecipients           Json     @default("[]") // [{ name, phone, channel }]
   publicBookingEnabled       Boolean  @default(true)
   maxAdvanceBookingDays      Int      @default(365)
@@ -754,13 +759,16 @@ model Reservation {
   trips            TransportTrip[]
   requests         ServiceRequest[]
   bookingRequest   BookingRequest?
+  /// Mobile-money prompts sent for this guest's bill (nTZS).
+  mobilePayments   MobilePayment[]
+  /// Booked from a Hotel booking QR (source HOTEL_QR): which printed QR — for its numbers.
+  bookingQrId      String?
+  bookingQr        BookingQrCode?      @relation(fields: [bookingQrId], references: [id])
 
   @@index([status])
   @@index([kind, arrivalDate])
   @@index([groupId])
-  /// Mobile-money prompts sent for this guest's bill (nTZS).
-  mobilePayments      MobilePayment[]
-
+  @@index([bookingQrId])
   @@index([arrivalDate])
   @@index([departureDate])
   @@index([businessDate])
@@ -966,7 +974,7 @@ enum InvoiceStatus {
 
 model Invoice {
   /// Online payments (nTZS) asked for on this invoice.
-  mobilePayments     MobilePayment[]
+  mobilePayments      MobilePayment[]
   id                  String             @id @default(cuid())
   number              String             @unique
   status              InvoiceStatus      @default(DRAFT)
@@ -1506,13 +1514,13 @@ model NotificationDelivery {
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 
-  @@index([status])
-  @@index([dailyReportId])
-  @@index([shiftReportId])
   /// One delivery per recipient for a report (two runs at once cannot both make one).
   @@unique([shiftReportId, recipient, channel])
   @@unique([dailyReportId, recipient, channel])
   @@unique([staffReportId, recipient, channel])
+  @@index([status])
+  @@index([dailyReportId])
+  @@index([shiftReportId])
   @@map("notification_deliveries")
 }
 
@@ -2415,6 +2423,54 @@ model RestaurantOrder {
   @@index([reservationId])
   @@index([guestId])
   @@map("restaurant_orders")
+}
+
+/// A Hotel booking QR (/b/<token>, owner 2026-10-05): "Scan to book your stay", one per placement (reception, entrance,
+/// a flyer…). The id is the identity — bookings and numbers point to it; the token is the printed key and can be
+/// regenerated (the old one stops working at once) or switched off. Archived, never deleted (bookings keep their link).
+model BookingQrCode {
+  id            String           @id @default(cuid())
+  label         String
+  placement     String?
+  token         String           @unique
+  /// The QR works (switched off = revoked; scanning it says so).
+  active        Boolean          @default(true)
+  /// Archived when false (no longer listed; past bookings keep their link).
+  isActive      Boolean          @default(true)
+  sortOrder     Int              @default(0)
+  generatedById String?
+  generatedBy   User?            @relation("BookingQrGeneratedBy", fields: [generatedById], references: [id])
+  regeneratedAt DateTime?
+  revokedAt     DateTime?
+  scanCount     Int              @default(0)
+  lastScannedAt DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  reservations  Reservation[]
+  events        BookingQrEvent[]
+
+  @@map("booking_qr_codes")
+}
+
+/// What visitors did after scanning a Hotel booking QR — the funnel before a booking exists (bookings, payments and
+/// revenue come from the reservations themselves).
+enum BookingQrEventType {
+  SCAN
+  SEARCH
+  SELECT
+  ATTEMPT
+}
+
+model BookingQrEvent {
+  id        String             @id @default(cuid())
+  qrId      String
+  qr        BookingQrCode      @relation(fields: [qrId], references: [id])
+  type      BookingQrEventType
+  createdAt DateTime           @default(now())
+
+  @@index([qrId, type, createdAt])
+  @@index([createdAt])
+  @@map("booking_qr_events")
 }
 
 /// A room's permanent QR (/r/<token>): it belongs to the room, never to a guest. Scanning it opens the stay

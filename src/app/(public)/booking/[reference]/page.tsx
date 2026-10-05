@@ -108,8 +108,8 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
           </dl>
           <h3 className="mt-8 text-xs uppercase tracking-[0.18em] text-tone/55">Room{booking.rooms.length === 1 ? "" : "s"}</h3>
           <ul className="mt-3 divide-y divide-tone/10 rounded-2xl ring-1 ring-tone/10">
-            {booking.rooms.map((r) => (
-              <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-4">
+            {booking.rooms.map((r, i) => (
+              <li key={`${r.roomNumber}-${i}`} className="flex flex-wrap items-center justify-between gap-2 px-5 py-4">
                 <span>
                   <span className="font-medium">{r.typeName}</span>
                   <span className="block text-sm text-tone/60">Room {r.roomNumber} <span className="text-tone/45">· assignment may change before arrival</span></span>

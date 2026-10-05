@@ -62,12 +62,14 @@ export const NAV: NavSection[] = [
   },
   {
     title: "Bookings", icon: "CalendarDays",
-    // One short word each, small to big: book a stay, all the stays, bookings from the website, the room calendar.
+    // Short names, small to big: book a stay, all the stays, bookings from the website, the Hotel QR, the room calendar.
     items: [
       // Reception books; managers and the MD follow the bookings (Stays, Online, Calendar).
       { href: "/staff/reservations/new", label: "Book", icon: "CalendarPlus", anyOf: ["reservations.create"], hideIf: ["dashboard.manager", "dashboard.owner", "dashboard.admin"] },
       { href: "/staff/reservations", label: "Stays", icon: "CalendarCheck", anyOf: ["reservations.view"] },
       { href: "/staff/booking-requests", label: "Online", icon: "Inbox", anyOf: ["booking_requests.view"] },
+      // The "Scan to book your stay" card: reception shows and prints it and follows its bookings; the Admin manages it.
+      { href: "/staff/hotel-qr", label: "Hotel QR", icon: "QrCode", anyOf: ["reservations.view", "hotel_qr.manage"] },
       { href: "/staff/reservations/calendar", label: "Calendar", icon: "CalendarRange", anyOf: ["reservations.view"] },
     ],
   },

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Ban, Banknote, BedDouble, CalendarClock, CalendarPlus, CalendarRange, Clock, DoorOpen, List, LogIn, LogOut, Plane, Search, Users } from "lucide-react";
+import { Ban, Banknote, BedDouble, CalendarClock, CalendarPlus, CalendarRange, Clock, DoorOpen, List, LogIn, LogOut, Plane, QrCode, Search, Users } from "lucide-react";
 import { can, requirePagePermission } from "@/server/auth";
 import { refreshBookingStates } from "@/server/services/booking-holds";
 import { db } from "@/server/db";
@@ -37,6 +37,8 @@ const FILTERS = [
   { key: "paid", label: "Confirmed · paid" },
   { key: "owes", label: "Owes money" },
   { key: "company", label: "Company invoice" },
+  // Booked by the guest from the Hotel QR ("Scan to book your stay").
+  { key: "qr", label: "Hotel QR" },
   { key: "in", label: "Checked in" },
   { key: "out", label: "Checked out" },
   { key: "late", label: "Late arrival" },
@@ -50,6 +52,7 @@ const BY_FILTER: Record<Filter, Prisma.ReservationWhereInput> = {
   paid: { status: "CONFIRMED" },
   owes: { balanceAmount: { gt: 0 }, status: { in: ["CHECKED_IN", "CHECKED_OUT", "CONFIRMED", "RESERVED"] } },
   company: { billTo: { not: "GUEST" } },
+  qr: { source: { code: "HOTEL_QR" } },
   in: { status: "CHECKED_IN" },
   out: { status: "CHECKED_OUT" },
   cancelled: { status: { in: ["CANCELLED", "NO_SHOW"] } },
@@ -115,7 +118,7 @@ export default async function ReservationsPage({ searchParams }: PageProps<"/sta
     db.reservation.findMany({
       where,
       include: {
-        guest: { select: { fullName: true, phone: true } }, source: { select: { name: true } },
+        guest: { select: { fullName: true, phone: true } }, source: { select: { name: true, code: true } },
         corporateCustomer: { select: { companyName: true } }, createdBy: { select: { fullName: true } }, group: { select: { id: true, name: true } },
         rooms: { where: { status: { notIn: ["CANCELLED"] } }, include: { room: { select: { number: true } }, roomType: { select: { name: true, category: true } } } },
         trips: { where: { status: { not: "CANCELLED" } }, select: { id: true } },
@@ -352,7 +355,7 @@ export default async function ReservationsPage({ searchParams }: PageProps<"/sta
                         <div className="min-w-0">
                           <p className={cn("truncate text-xs font-semibold tabular-nums", money.cls)}>{money.text}</p>
                           <p className="truncate text-[10px] text-muted-foreground">
-                            {formatTZS(r.netAmount)} · <span className="font-mono">{r.reference}</span> · {r.source.name}
+                            {formatTZS(r.netAmount)} · <span className="font-mono">{r.reference}</span> · {r.source.code === "HOTEL_QR" && <QrCode className="-mt-px mr-0.5 inline size-2.5 text-[oklch(0.8_0.11_82)]" aria-hidden />}{r.source.name}
                             {r.status === "RESERVED" && r.holdUntil ? ` · held till ${formatDateTime(r.holdUntil)}` : ""}
                           </p>
                         </div>

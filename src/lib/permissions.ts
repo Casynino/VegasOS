@@ -36,6 +36,7 @@ export const PERMISSIONS = {
   "rooms.view": "View rooms and room status",
   "rooms.status.update": "Change room housekeeping status",
   "rooms.manage": "Room set-up (Admin): add and edit rooms, room types, amenities and room QR cards",
+  "hotel_qr.manage": "Hotel booking QR (Admin): create, regenerate, revoke and switch QR codes on or off; booking from the QR; its numbers",
   "rooms.block": "Put rooms into maintenance / out of service",
 
   // Money

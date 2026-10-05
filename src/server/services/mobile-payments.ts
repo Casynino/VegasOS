@@ -8,6 +8,7 @@ import { recordPaymentTx } from "./payments";
 import { ordersDueForPrompt, payOrdersFromMobileTx } from "./restaurant";
 import { payTripFromMobileTx } from "./transport";
 import { recordInvoicePaymentTx } from "./invoices";
+import { notifyBookingGuestSoon } from "./guest-comms";
 import { createNtzsDeposit, depositCompleted, depositFailed, getNtzsDeposit, ntzsEnabled, ntzsLive, ntzsPhone, NTZS_MIN_TZS } from "./ntzs";
 import type { Actor } from "./reservations";
 import type { MobilePayment } from "@/generated/prisma/client";
@@ -42,8 +43,11 @@ const targetKeyOf = (t: PromptTarget, orderIds: string[]) =>
 const CUSTOMER_EXPIRES_MS = 10 * 60_000; // a phone's prompt times out within minutes; an abandoned payment never holds an order long
 const newToken = () => randomBytes(18).toString("base64url");
 
+/** Where a customer pays for a booking itself (the website's booking pages, the Hotel booking QR) — not a staying guest's bill. */
+export const BOOKING_PAY_SOURCES: readonly string[] = ["BOOKING_PAGE", "WEBSITE", "HOTEL_QR"];
+
 export type PromptOptions = {
-  /** Where it started (WEBSITE, TABLE_QR, ROOM_QR, STAY_LINK, ORDER_LINK, BOOKING_PAGE, DESK…). */
+  /** Where it started (WEBSITE, TABLE_QR, ROOM_QR, STAY_LINK, ORDER_LINK, BOOKING_PAGE, HOTEL_QR, DESK…). */
   source?: string | null;
   /** The browser's key for this "Pay" press — pressed twice (double tap, refresh, two tabs) it is the same attempt. */
   clientKey?: string | null;
@@ -216,7 +220,10 @@ async function settleActor(mp: MobilePayment): Promise<Actor & { userId: string 
  */
 export async function settleMobilePayment(id: string, info: { received?: number | null; pspReference?: string | null; source: "webhook" | "check" | "sweep" }, now = new Date()) {
   try {
-    return await recordMobilePayment(id, info, now);
+    const out = await recordMobilePayment(id, info, now);
+    // Recorded just now (exactly once, whichever way nTZS's answer came): a booking the guest paid is confirmed — tell them.
+    if (out.recorded) await bookingPaidNotice(out.mp);
+    return out;
   } catch (e) {
     // The money came in but could not go on the bill (a rule of the bill refused it): keep it as received, needing
     // attention — shown to staff, never retried forever. Anything else (the database busy…) is tried again.
@@ -229,6 +236,21 @@ export async function settleMobilePayment(id: string, info: { received?: number 
     });
     if (flagged.count) await audit(db, { label: "nTZS" }, { action: "mobile_payment.needs_attention", entityType: "MobilePayment", entityId: id, after: { reason: e.message, received } });
     return { mp: await db.mobilePayment.findUniqueOrThrow({ where: { id } }), recorded: false };
+  }
+}
+
+/**
+ * A room booking the guest paid online themselves (the website, the Hotel booking QR) is confirmed by its payment: the
+ * guest gets the booking details by message — when a provider is connected and the hotel has them on — sent once the
+ * answer to nTZS (or to the guest's page) has gone. Never throws.
+ */
+async function bookingPaidNotice(mp: MobilePayment) {
+  if (mp.purpose !== "RESERVATION" || !mp.reservationId || mp.initiator !== "CUSTOMER" || !BOOKING_PAY_SOURCES.includes(mp.source ?? "")) return;
+  try {
+    const r = await db.reservation.findUnique({ where: { id: mp.reservationId }, select: { kind: true, status: true, source: { select: { code: true } } } });
+    if (r?.kind === "STAY" && r.status === "CONFIRMED" && ["WEBSITE", "HOTEL_QR"].includes(r.source.code)) await notifyBookingGuestSoon(mp.reservationId, "BOOKING_CONFIRMED");
+  } catch (e) {
+    console.error("[ntzs] booking confirmation message", mp.reservationId, e);
   }
 }
 

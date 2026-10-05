@@ -18,6 +18,7 @@ export const PURPOSE_LABEL: Record<string, string> = { RESERVATION: "Rooms & bil
 export const SOURCE_LABEL: Record<string, string> = {
   DESK: "Staff · send to phone", WEBSITE: "Website", PUBLIC_QR: "Menu QR", TABLE_QR: "Table QR", COUNTER_QR: "Counter QR", RESTAURANT_QR: "Restaurant QR",
   ROOM_QR: "Room QR", GUEST_LINK: "Stay link", STAY_LINK: "Stay link", BOOKING_PAGE: "Website booking", TRANSPORT: "Website transport", INVOICE_LINK: "Invoice link",
+  HOTEL_QR: "Hotel QR booking",
 };
 export type OnlineStatusFilter = "all" | "paid" | "pending" | "failed" | "attention";
 const STATUS_WHERE: Record<Exclude<OnlineStatusFilter, "all" | "attention">, MobilePaymentStatus[]> = { paid: ["COMPLETED"], pending: ["PENDING"], failed: ["FAILED", "EXPIRED", "CANCELLED"] };

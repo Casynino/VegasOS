@@ -42,9 +42,12 @@ export interface PublicRoomType {
   amenities: { code: string; name: string; icon: string | null }[];
 }
 
+/** Photos uploaded on the live site are kept in Vercel Blob (allowed in next.config.ts); the rest are served by the app. */
+const BLOB_PHOTO = /^https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\//i;
+
 export function parseImages(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
-  return value.filter((v): v is string => typeof v === "string" && v.startsWith("/"));
+  return value.filter((v): v is string => typeof v === "string" && (v.startsWith("/") || BLOB_PHOTO.test(v)));
 }
 
 const roomTypeInclude = {
@@ -201,7 +204,8 @@ export function parseStayParams(
   return { kind: "ok", value: { checkIn: checkIn!, checkOut: checkOut!, adults, children } };
 }
 
-function buildStay(settings: HotelSettings, p: Pick<StayParams, "checkIn" | "checkOut">): Stay {
+/** The overnight stay for public dates (the Hotel QR builds its stays the same way). */
+export function buildStay(settings: HotelSettings, p: Pick<StayParams, "checkIn" | "checkOut">): Stay {
   try {
     return overnightStay({ arrivalDate: p.checkIn, departureDate: p.checkOut }, stayConfig(settings));
   } catch (e) {
@@ -357,6 +361,21 @@ export async function quoteSelection(sel: Selection): Promise<SelectionQuote> {
 
 // ───────────────────────────── Create booking ─────────────────────────────
 
+/** The name and contact a customer typed on a public booking page — kept with the booking (Reservation.externalData). */
+export type BookedAs = { fullName: string; phone: string | null; email: string | null };
+
+/** What a public page keeps with its booking: where it came from, what was typed, and anything the channel adds. */
+export const publicBookingData = (channel: "WEBSITE" | "HOTEL_QR", bookedAs: BookedAs, extra: Record<string, string> = {}) =>
+  ({ channel, bookedAs, ...extra });
+
+/** What the customer typed when booking on a public page (null for a booking made at the desk). */
+export function bookedAsOf(data: unknown): BookedAs | null {
+  const b = data && typeof data === "object" && "bookedAs" in data ? (data as { bookedAs: unknown }).bookedAs : null;
+  if (!b || typeof b !== "object" || typeof (b as BookedAs).fullName !== "string") return null;
+  const x = b as Partial<BookedAs>;
+  return { fullName: x.fullName!, phone: typeof x.phone === "string" ? x.phone : null, email: typeof x.email === "string" ? x.email : null };
+}
+
 export interface WebsiteGuest {
   fullName: string;
   phone: string;
@@ -384,12 +403,15 @@ export async function createWebsiteBooking(sel: Selection, guest: WebsiteGuest, 
     {
       sourceCode: WEBSITE_SOURCE,
       status: "RESERVED",
+      // Typed by the customer: found again by their phone only; what they typed stays with the booking.
       guest: {
         fullName: guest.fullName,
         phone: guest.phone,
         email: guest.email || null,
         nationality: guest.nationality || null,
+        selfService: true,
       },
+      externalData: publicBookingData("WEBSITE", { fullName: guest.fullName.trim(), phone: guest.phone.trim() || null, email: guest.email?.trim() || null }),
       stay: { kind: "overnight", arrivalDate: sel.checkIn, departureDate: sel.checkOut },
       rooms: quote.roomRequests, // no discount given → engine applies the standard website discount
       specialRequests: guest.specialRequests || null,
@@ -432,7 +454,10 @@ function sameToken(a: string, b: string): boolean {
   return x.length === y.length && timingSafeEqual(x, y);
 }
 
-/** Load a booking for its guest. Returns null unless the manage token matches. */
+/**
+ * Load a booking for its guest. Returns null unless the manage token matches. A booking made on a public page shows
+ * back the name and phone typed there — never the profile it was matched to by the phone (anyone can type a number).
+ */
 export async function getBookingForGuest(reference: string, token: string | undefined | null) {
   if (!token || token.length > 200 || !/^VLH-[A-Z0-9]{4,12}$/.test(reference)) return null;
   const r = await db.reservation.findUnique({
@@ -448,14 +473,15 @@ export async function getBookingForGuest(reference: string, token: string | unde
     orderBy: { createdAt: "desc" },
     select: { status: true, pickupAt: true, flightNumber: true, pickupLocation: true },
   });
+  const typed = bookedAsOf(r.externalData);
   return {
     pickup: trip,
     reference: r.reference,
     status: r.status,
     kind: r.kind,
     holdUntil: r.holdUntil,
-    guestName: r.guest.fullName,
-    guestPhone: r.guest.phone,
+    guestName: typed?.fullName ?? r.guest.fullName,
+    guestPhone: typed ? typed.phone : r.guest.phone,
     arrivalDate: fromDbDate(r.arrivalDate),
     departureDate: fromDbDate(r.departureDate),
     adults: r.adults,
@@ -468,8 +494,8 @@ export async function getBookingForGuest(reference: string, token: string | unde
     paidAmount: r.paidAmount,
     balanceAmount: r.balanceAmount,
     createdAt: r.createdAt,
+    // No database ids: this goes to a public page.
     rooms: r.rooms.map((rr) => ({
-      id: rr.id,
       typeName: rr.roomType.name,
       typeSlug: rr.roomType.slug,
       roomNumber: rr.room.number,

@@ -5,8 +5,9 @@ import { AppError } from "../errors";
 import { getSettings } from "../settings";
 import { rateLimit } from "../rate-limit";
 import { ntzsEnabled, ntzsPhone } from "./ntzs";
-import { cancelMobilePayment, checkMobilePayment, maskPhone, requestMobilePayment, type PromptTarget } from "./mobile-payments";
+import { BOOKING_PAY_SOURCES, cancelMobilePayment, checkMobilePayment, maskPhone, requestMobilePayment, type PromptTarget } from "./mobile-payments";
 import { guestStayBill } from "./stay-bill";
+import { qrConfirmPath } from "./booking-qr";
 import { OPEN_SESSION, seatOf } from "./dining-core";
 import type { HotelSettings, MobilePayment } from "@/generated/prisma/client";
 import { formatTime } from "@/lib/format";
@@ -109,34 +110,55 @@ export async function livePaymentForOrder(trackToken: string) {
 /** A booking made and paid online keeps its room this long while the guest pays — the payment confirms it. */
 export const ONLINE_BOOKING_HOLD_MINUTES = 30;
 
+/** The website's private page of a booking (reference + its manage token). */
+const websiteBookingPage = (b: { reference: string; manageToken: string }) => `/booking/${b.reference}?token=${encodeURIComponent(b.manageToken)}`;
+
 /**
  * "Pay online" while booking (a room, or the meeting room): the booking is made — held a short while — and its payment
  * request goes for the whole amount, worked out on the server. The same press twice is one booking and one payment.
  * Returns the payment page (or, when the request could not start, the booking's own page, which offers it again).
+ * The website and the Hotel booking QR both book through here: `source` says where the payment started (the website's
+ * booking page by default) and `page` which page is the booking's own.
  */
 export async function bookAndPayOnline(input: {
   service: "booking" | "meeting"; phone: string; clientKey: string; ip: string | null;
   create: () => Promise<{ id: string; reference: string; manageToken: string }>;
+  source?: "BOOKING_PAGE" | "HOTEL_QR";
+  page?: (b: { reference: string; manageToken: string }) => string;
 }) {
   await assertCanPayOnline(input.service, input.phone);
+  const pageOf = input.page ?? websiteBookingPage;
   const clientKey = `book:${input.clientKey}`;
-  const made = await db.mobilePayment.findUnique({ where: { clientKey }, select: { publicToken: true } });
-  if (made?.publicToken) return { pay: made.publicToken, booking: null, payError: null };
+  const made = await db.mobilePayment.findUnique({ where: { clientKey }, select: { publicToken: true, reservation: { select: { reference: true, manageToken: true } } } });
+  if (made?.publicToken) {
+    const ref = made.reservation ? { reference: made.reservation.reference, manageToken: made.reservation.manageToken } : null;
+    return { pay: made.publicToken, booking: ref ? pageOf(ref) : null, payError: null, ref };
+  }
   // One booking per press — even pressed twice at once (the screen sends a new key after an error).
-  try { await rateLimit(`book-once:${input.clientKey}`, 1, 3600); }
+  const once = `book-once:${input.clientKey}`;
+  try { await rateLimit(once, 1, 3600); }
   catch { throw new AppError("Your booking is on its way — check your phone for the payment request.", "CONFLICT"); }
-  const b = await input.create();
-  const page = `/booking/${b.reference}?token=${encodeURIComponent(b.manageToken)}`;
+  let b: Awaited<ReturnType<typeof input.create>>;
+  try {
+    b = await input.create();
+  } catch (e) {
+    // Nothing was booked (the room was just taken…): the same press may run again and get the real answer — not
+    // "on its way" for an hour when that answer was lost on the way to the phone.
+    await db.rateLimitBucket.deleteMany({ where: { key: once } }).catch(() => null);
+    throw e;
+  }
+  const ref = { reference: b.reference, manageToken: b.manageToken };
+  const page = pageOf(ref);
   const r = await db.reservation.findUniqueOrThrow({ where: { id: b.id }, select: { balanceAmount: true } });
   try {
     const started = await startCustomerPayment({
-      target: { purpose: "RESERVATION", reservationId: b.id, amount: r.balanceAmount }, phone: input.phone, clientKey, source: "BOOKING_PAGE", service: input.service, ip: input.ip,
+      target: { purpose: "RESERVATION", reservationId: b.id, amount: r.balanceAmount }, phone: input.phone, clientKey, source: input.source ?? "BOOKING_PAGE", service: input.service, ip: input.ip,
     });
-    return { pay: started.token, booking: page, payError: null };
+    return { pay: started.token, booking: page, payError: null, ref };
   } catch (e) {
     const tried = await db.mobilePayment.findUnique({ where: { clientKey }, select: { publicToken: true } });
-    if (tried?.publicToken) return { pay: tried.publicToken, booking: page, payError: null };
-    return { pay: null, booking: page, payError: e instanceof AppError ? e.message : "Online payment could not start — please try again." };
+    if (tried?.publicToken) return { pay: tried.publicToken, booking: page, payError: null, ref };
+    return { pay: null, booking: page, payError: e instanceof AppError ? e.message : "Online payment could not start — please try again.", ref };
   }
 }
 
@@ -165,15 +187,15 @@ export async function bookingPayOnline(reference: string, token: string) {
   return { offered: await onlinePayAvailable(bookingService(r)), live: live?.publicToken ?? null };
 }
 
-/** "Pay online" from a booking's page: what is still owed on it, worked out here. */
-export async function payBookingOnline(reference: string, token: string, input: { phone: string; clientKey: string | null; ip: string | null }) {
+/** "Pay online" from a booking's page (the website's, or the Hotel QR's confirmation — `source`): what is still owed on it, worked out here. */
+export async function payBookingOnline(reference: string, token: string, input: { phone: string; clientKey: string | null; ip: string | null; source?: "BOOKING_PAGE" | "HOTEL_QR" }) {
   const r = await bookingByLink(reference, token);
   if (!r) throw new AppError("Booking not found.", "NOT_FOUND");
   if (r.status === "CANCELLED" || r.status === "NO_SHOW") throw new AppError("This booking is closed — please contact us.", "CONFLICT");
   if (r.billTo !== "GUEST") throw new AppError("This booking is billed to your company — please contact us to pay.", "CONFLICT");
   if (r.balanceAmount <= 0) throw new AppError("Nothing is owed on this booking.", "CONFLICT");
   return startCustomerPayment({
-    target: { purpose: "RESERVATION", reservationId: r.id, amount: r.balanceAmount }, phone: input.phone, clientKey: input.clientKey, source: "BOOKING_PAGE", service: bookingService(r), ip: input.ip,
+    target: { purpose: "RESERVATION", reservationId: r.id, amount: r.balanceAmount }, phone: input.phone, clientKey: input.clientKey, source: input.source ?? "BOOKING_PAGE", service: bookingService(r), ip: input.ip,
   });
 }
 
@@ -365,14 +387,26 @@ async function describe(mp: MobilePayment) {
     };
   }
   if (mp.reservationId) {
-    const r = await db.reservation.findUnique({ where: { id: mp.reservationId }, select: { reference: true, kind: true, manageToken: true, guestToken: true, status: true, holdUntil: true } });
+    const r = await db.reservation.findUnique({
+      where: { id: mp.reservationId },
+      select: {
+        reference: true, kind: true, manageToken: true, guestToken: true, status: true, holdUntil: true, createdAt: true,
+        bookingQr: { select: { token: true, active: true, isActive: true, regeneratedAt: true } },
+      },
+    });
     if (r) {
-      const booking = mp.source === "BOOKING_PAGE" || mp.source === "WEBSITE";
+      const booking = BOOKING_PAY_SOURCES.includes(mp.source ?? "");
       const held = r.status === "RESERVED" && r.holdUntil && r.holdUntil > new Date() ? formatTime(r.holdUntil, (await getSettings()).timezone) : null;
+      // Booked from a Hotel QR: back to its confirmation — while that QR still works with the very code the guest
+      // scanned. Switched off, or given a new code since (the old card must stop working): the booking's own page, so
+      // this link never hands out a QR's new code.
+      const q = r.bookingQr;
+      const qr = booking && q?.active && q.isActive && (!q.regeneratedAt || q.regeneratedAt <= r.createdAt) ? q.token : null;
       return {
         unpaidNote: r.status === "CANCELLED" ? "The booking was released — please book again." : held ? `We hold your booking until ${held} — try again to confirm it.` : null,
         what: r.kind === "MEETING" ? `Meeting room booking ${r.reference}` : booking ? `Room booking ${r.reference}` : `Your bill · ${r.reference}`,
-        back: booking ? { href: `/booking/${r.reference}?token=${r.manageToken}`, label: "View your booking" }
+        back: qr ? { href: qrConfirmPath(qr, r.reference, r.manageToken), label: "View your booking" }
+          : booking ? { href: `/booking/${r.reference}?token=${r.manageToken}`, label: "View your booking" }
           : mp.source === "ROOM_QR" ? await roomPageOf(mp.reservationId)
           : mp.source === "INVOICE_LINK" ? await invoicePageOf(mp.reservationId)
           : r.guestToken ? { href: `/stay/${r.guestToken}`, label: "Back to your stay" } : null,
@@ -428,7 +462,7 @@ export async function retryCustomerPayment(token: string, input: { phone?: strin
     if (r?.status === "CANCELLED" || r?.status === "NO_SHOW") throw new AppError("This booking was released — please book again.", "CONFLICT");
     if (!r || r.balanceAmount <= 0) throw new AppError("Nothing is owed any more.", "CONFLICT");
     target = { purpose: "RESERVATION", reservationId: old.reservationId!, amount: Math.min(old.amount, r.balanceAmount) };
-    service = old.source === "BOOKING_PAGE" || old.source === "WEBSITE" ? (r.kind === "MEETING" ? "meeting" : "booking") : old.source === "INVOICE_LINK" ? "invoices" : "stayBill";
+    service = BOOKING_PAY_SOURCES.includes(old.source ?? "") ? (r.kind === "MEETING" ? "meeting" : "booking") : old.source === "INVOICE_LINK" ? "invoices" : "stayBill";
   }
   return startCustomerPayment({ target, phone: input.phone || old.phone, clientKey: input.clientKey, source: old.source ?? "WEBSITE", service, ip: input.ip });
 }

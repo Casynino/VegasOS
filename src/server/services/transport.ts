@@ -223,10 +223,11 @@ export async function requestTransportForReservation(input: {
         pickupLocation: input.airport?.trim() || DEFAULT_AIRPORT, destination: settings.hotelName,
         flightNumber: input.flightNumber?.trim().toUpperCase() || null, passengers: Math.max(1, Math.min(20, input.passengers ?? guests)), bags: Math.max(0, input.bags ?? 0),
         standardPrice: service.price, charge: service.price,
-        notes: input.notes?.trim() || null, source: r.source.code === "WEBSITE" ? "WEBSITE" : "STAFF",
+        // Asked for by the guest themselves (the website, the Hotel QR) — not booked by staff.
+        notes: input.notes?.trim() || null, source: r.source.code === "WEBSITE" || r.source.code === "HOTEL_QR" ? "WEBSITE" : "STAFF",
       },
     });
-    await audit(tx, { label: "website" }, { action: "transport.requested", entityType: "TransportTrip", entityId: trip.id, after: { reference: trip.reference, reservation: r.reference, flight: trip.flightNumber, pickupAt, price: service.price } });
+    await audit(tx, { label: r.source.code === "HOTEL_QR" ? "Hotel QR" : "website" }, { action: "transport.requested", entityType: "TransportTrip", entityId: trip.id, after: { reference: trip.reference, reservation: r.reference, flight: trip.flightNumber, pickupAt, price: service.price } });
     return trip;
   });
 }

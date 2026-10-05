@@ -74,7 +74,7 @@ export async function OwnerOverview({ searchParams, basePath }: {
     where: { reservationId: null, balanceAmount: { gt: 0 }, status: { in: ["ISSUED", "PARTIALLY_PAID", "OVERDUE"] }, dueDate: { lt: new Date(`${today}T00:00:00Z`) } },
     _sum: { balanceAmount: true }, _count: true,
   });
-  const [pl, plPrev, occ, occPrev, occTrend, trendPl, owed, allRooms, snap, shift, reqs, payments, activity, meeting, latestRequests] = await Promise.all([
+  const [pl, plPrev, occ, occPrev, occTrend, trendPl, owed, allRooms, snap, shift, reqs, payments, activity, meeting, latestRequests, qrBooked] = await Promise.all([
     profitLoss(range), profitLoss(prev), occupancy(range), occupancy(prev), occupancy(trend), profitLoss(trend), outstanding(), getRoomBoard(today),
     getFrontDeskSnapshot(today), getShiftOverview(today), requestStats(range.from, range.to),
     db.payment.findMany({
@@ -88,7 +88,16 @@ export async function OwnerOverview({ searchParams, basePath }: {
       orderBy: { createdAt: "desc" }, take: 4,
       select: { id: true, fullName: true, companyName: true, status: true, checkInDate: true, checkOutDate: true, roomCount: true, meetingStartAt: true, createdAt: true, roomType: { select: { name: true } }, source: { select: { name: true } } },
     }),
+    // Booked by guests themselves from the Hotel QR in the period (real reservations, by the day they were made).
+    db.reservation.groupBy({
+      by: ["status"], _count: true,
+      where: { source: { code: "HOTEL_QR" }, status: { not: "INQUIRY" }, businessDate: { gte: toDbDate(range.from), lte: toDbDate(range.to) } },
+    }),
   ]);
+  const qr = {
+    booked: qrBooked.reduce((t, g) => t + g._count, 0),
+    confirmed: qrBooked.filter((g) => ["CONFIRMED", "CHECKED_IN", "CHECKED_OUT"].includes(g.status)).reduce((t, g) => t + g._count, 0),
+  };
   // Guest rooms only on the room tiles; the meeting room has its own tile (utilisation, not occupancy).
   const board = allRooms.filter((r) => r.roomType.category === "GUEST_ROOM");
   const rev = pl.revenue;
@@ -319,6 +328,13 @@ export async function OwnerOverview({ searchParams, basePath }: {
             ))}
           </div>
           {reqs.conversionRate !== null && <p className="mt-2.5 text-xs text-muted-foreground"><strong className="font-semibold text-foreground">{Math.round(reqs.conversionRate)}%</strong> became bookings{reqs.bySource.length ? ` · most from ${[...reqs.bySource].sort((a, b) => b.count - a.count)[0].name}` : ""}.</p>}
+          {/* Hotel QR bookings are made straight into the reservations (no request first): counted here beside them. */}
+          {qr.booked > 0 && (
+            <Link href="/staff/hotel-qr" className="mt-2.5 flex items-center justify-between gap-2 rounded-xl bg-muted/50 px-3 py-2 text-xs hover:bg-muted">
+              <span className="text-muted-foreground">Hotel QR</span>
+              <span><strong className="font-semibold tabular-nums text-foreground">{qr.booked}</strong> booked · <strong className="font-semibold tabular-nums text-foreground">{qr.confirmed}</strong> confirmed</span>
+            </Link>
+          )}
           {/* The latest ones, like the payments beside it */}
           {latestRequests.length === 0 ? <p className="mt-4 text-sm text-muted-foreground">No online bookings yet.</p> : (
             <ul className="mt-2 divide-y divide-border text-sm">
