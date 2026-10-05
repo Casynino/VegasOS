@@ -3,6 +3,7 @@ import Link from "next/link";
 import { CodeXml, Mail, MapPin, MessageCircle, Phone } from "lucide-react";
 import type { HotelSettings } from "@/generated/prisma/client";
 import { DEFAULT_CONTENT } from "./content";
+import { FacebookIcon, InstagramIcon, TikTokIcon, socialHandle } from "./social-icons";
 import { cn } from "@/lib/utils";
 import { LocalTime } from "./cinema/local-time";
 import { addressLines, telHref, whatsappHref } from "./contact";
@@ -29,10 +30,10 @@ export function SiteFooter({ settings, blurb = DEFAULT_CONTENT.pages.footer.blur
   const place = [settings.city, settings.country].filter(Boolean).join(", ");
   const wordmark = settings.hotelName.split(" ")[0] || settings.hotelName;
   const socials = [
-    settings.instagramUrl ? { label: "Instagram", href: settings.instagramUrl } : null,
-    settings.facebookUrl ? { label: "Facebook", href: settings.facebookUrl } : null,
-    settings.tiktokUrl ? { label: "TikTok", href: settings.tiktokUrl } : null,
-  ].filter((s): s is { label: string; href: string } => s !== null);
+    settings.instagramUrl ? { label: "Instagram", href: settings.instagramUrl, Icon: InstagramIcon } : null,
+    settings.tiktokUrl ? { label: "TikTok", href: settings.tiktokUrl, Icon: TikTokIcon } : null,
+    settings.facebookUrl ? { label: "Facebook", href: settings.facebookUrl, Icon: FacebookIcon } : null,
+  ].filter((s) => s !== null);
   const link = cn(
     "inline-flex min-h-11 items-center text-[15px] text-white/70 transition-colors duration-200 hover:text-white sm:min-h-10 lg:min-h-9 lg:text-sm motion-reduce:transition-none",
     focus,
@@ -152,12 +153,17 @@ export function SiteFooter({ settings, blurb = DEFAULT_CONTENT.pages.footer.blur
               )}
             </ul>
             {socials.length > 0 && (
-              <ul className="mt-4 flex flex-wrap gap-x-6">
+              // Follow us: each network as a pill with its own mark and the hotel's handle (owner, 2026-10-06).
+              <ul className="mt-5 flex flex-wrap gap-2.5" aria-label="Follow us">
                 {socials.map((s) => (
-                  <li key={s.label}>
-                    <a href={s.href} target="_blank" rel="noopener noreferrer" className={cn(typeScale.meta, "inline-flex min-h-11 items-center text-white/60 transition-colors hover:text-white", focus)}>
-                      {s.label}
-                      <span className="sr-only"> (opens in a new tab)</span>
+                  <li key={s.label} className="min-w-0">
+                    <a href={s.href} target="_blank" rel="noopener noreferrer" title={s.label}
+                      className={cn(focus, "group inline-flex h-11 max-w-full items-center gap-2.5 rounded-full border border-white/12 bg-white/[0.04] py-1 pl-1.5 pr-4 text-[14px] text-white/80 transition-colors duration-200 hover:border-gold/45 hover:bg-white/[0.07] hover:text-white motion-reduce:transition-none")}>
+                      <span className="grid size-8 shrink-0 place-items-center rounded-full bg-gold/12 text-gold ring-1 ring-inset ring-gold/25 transition-colors group-hover:bg-gold/20">
+                        <s.Icon className="size-4" />
+                      </span>
+                      <span className="truncate">{socialHandle(s.href)}</span>
+                      <span className="sr-only"> — {s.label} (opens in a new tab)</span>
                     </a>
                   </li>
                 ))}

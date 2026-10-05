@@ -1,10 +1,11 @@
+import type { ComponentType } from "react";
 import { ArrowUpRight, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { typeScale } from "../kit/tokens";
 
 export type Channel = {
   key: string;
-  icon: LucideIcon;
+  icon: LucideIcon | ComponentType<{ className?: string; strokeWidth?: number }>;
   /** "Call", "WhatsApp", "Email". */
   label: string;
   /** What the guest sees: the number, the address, or a short line. */

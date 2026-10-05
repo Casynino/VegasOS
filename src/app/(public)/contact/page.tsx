@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { Camera, Clapperboard, Mail, MessageCircle, Phone } from "lucide-react";
+import { Mail, MessageCircle, Phone } from "lucide-react";
+import { InstagramIcon, TikTokIcon, socialHandle } from "@/components/public/social-icons";
 import { getSettings } from "@/server/settings";
 import { bookingWindow } from "@/server/services/public-booking";
 import { cn } from "@/lib/utils";
@@ -69,9 +70,9 @@ export default async function ContactPage({ searchParams }: PageProps<"/contact"
     settings.phone && { key: "call", icon: Phone, label: "Call", value: settings.phone, href: telHref(settings.phone) },
     settings.whatsapp && { key: "whatsapp", icon: MessageCircle, label: "WhatsApp", value: "Chat with the front desk", href: whatsappHref(settings.whatsapp), external: true },
     settings.email && { key: "email", icon: Mail, label: "Email", value: settings.email, href: `mailto:${settings.email}` },
-    settings.instagramUrl && { key: "instagram", icon: Camera, label: "Instagram", value: settings.instagramUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, "@").replace(/[/?].*$/, ""), href: settings.instagramUrl, external: true },
-    settings.tiktokUrl && { key: "tiktok", icon: Clapperboard, label: "TikTok", value: settings.tiktokUrl.replace(/^https?:\/\/(www\.)?tiktok\.com\//, "").replace(/[/?].*$/, ""), href: settings.tiktokUrl, external: true },
-  ].filter((x): x is Channel => Boolean(x));
+    settings.instagramUrl && { key: "instagram", icon: InstagramIcon, label: "Instagram", value: socialHandle(settings.instagramUrl), href: settings.instagramUrl, external: true },
+    settings.tiktokUrl && { key: "tiktok", icon: TikTokIcon, label: "TikTok", value: socialHandle(settings.tiktokUrl), href: settings.tiktokUrl, external: true },
+  ].filter(Boolean) as Channel[];
 
   return (
     <>
