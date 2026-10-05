@@ -1,119 +1,203 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Dialog } from "@base-ui/react/dialog";
 import { MessageCircle, Phone, X } from "lucide-react";
-import { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { telHref, whatsappHref } from "./contact";
-import { Ornament } from "./ornament";
-import { PillLink } from "./pill-link";
-import { NAV_LINKS } from "./site-config";
+import { LinkButton } from "./kit/button";
+import { MENU_NAV, isNavActive } from "./site-config";
 import { StaffLink } from "./staff-link";
 import { ThemeToggle } from "./theme-toggle";
 
-/** Full-screen mobile menu: Book CTA first, numbered editorial links, contact at the bottom. */
-export function MobileNav({ hotelName, phone, whatsapp }: { hotelName: string; phone: string | null; whatsapp: string | null }) {
+const focus = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold";
+
+/**
+ * The phone/tablet menu (below 1024px): a full-screen night drawer that drops like a curtain.
+ * Large serif links in the order of the story, related pages as small links beside their parent,
+ * then Book your stay, call / WhatsApp, the theme switch and a discreet staff door.
+ * Base UI Dialog gives the focus trap, Escape to close, scroll lock and focus return.
+ */
+export function MobileNav({
+  hotelName,
+  phone,
+  whatsapp,
+  className,
+}: {
+  hotelName: string;
+  phone: string | null;
+  whatsapp: string | null;
+  className?: string;
+}) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
-  const links = [{ href: "/", label: "Home" }, ...NAV_LINKS];
+  // Close when the route changes (e.g. browser Back while the menu is open).
+  const [path, setPath] = useState(pathname);
+  if (path !== pathname) {
+    setPath(pathname);
+    setOpen(false);
+  }
   const close = () => setOpen(false);
+  const contacts = [phone, whatsapp].filter(Boolean).length;
+
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger
+    <Dialog.Root open={open} onOpenChange={setOpen}>
+      <Dialog.Trigger
         render={
           <button
             type="button"
-            className="group inline-flex size-11 flex-col items-center justify-center gap-1.5 rounded-full border border-white/15 text-white transition-colors hover:border-gold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold xl:hidden"
+            className={cn(
+              "group inline-flex size-11 items-center justify-center rounded-full border border-white/20 text-white transition-colors duration-200 hover:border-white/50 motion-reduce:transition-none",
+              focus,
+              className,
+            )}
           />
         }
       >
-        <span className="h-px w-5 bg-current transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
-        <span className="h-px w-5 bg-current transition-transform group-hover:-translate-x-0.5" aria-hidden="true" />
+        <span aria-hidden="true" className="flex w-[18px] flex-col items-end gap-[5px]">
+          <span className="h-px w-[18px] bg-current" />
+          <span className="h-px w-3 bg-current transition-[width] duration-300 ease-pub group-hover:w-[18px] motion-reduce:transition-none" />
+        </span>
         <span className="sr-only">Open menu</span>
-      </SheetTrigger>
-      <SheetContent
-        side="right"
-        showCloseButton={false}
-        className="w-full max-w-none gap-0 border-l border-white/10 bg-[#15120e] p-0 text-white data-[side=right]:w-full sm:data-[side=right]:max-w-md"
-      >
-        <div
-          className="pointer-events-none absolute inset-0 opacity-80"
-          aria-hidden="true"
-          style={{ backgroundImage: "radial-gradient(ellipse 70% 40% at 100% 0%, oklch(0.72 0.12 80 / 0.18), transparent 70%)" }}
-        />
-        <div className="relative flex h-18 items-center justify-between px-5">
-          <SheetTitle className="font-display text-xl font-semibold text-gold">{hotelName}</SheetTitle>
-          <SheetClose
-            render={
-              <button
-                type="button"
-                className="inline-flex size-11 items-center justify-center rounded-full border border-white/15 text-white/90 hover:border-gold hover:text-gold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
-              />
-            }
-          >
-            <X className="size-5" aria-hidden="true" />
-            <span className="sr-only">Close menu</span>
-          </SheetClose>
-        </div>
+      </Dialog.Trigger>
 
-        <div className="relative px-5 pt-2 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-4 motion-safe:fill-mode-both motion-safe:duration-500">
-          <PillLink href="/book" onClick={close} className="w-full justify-between py-2 text-base">
-            Book your stay
-          </PillLink>
-        </div>
+      <Dialog.Portal>
+        <Dialog.Popup
+          data-tone="night"
+          className={cn(
+            "pub-sky fixed inset-0 z-[60] isolate flex flex-col overflow-y-auto overscroll-contain bg-night text-white outline-none",
+            "transition-[clip-path] duration-500 ease-pub [clip-path:inset(0)] data-[ending-style]:duration-300 data-[ending-style]:[clip-path:inset(0_0_100%_0)] data-[starting-style]:[clip-path:inset(0_0_100%_0)] motion-reduce:transition-none",
+          )}
+        >
+          <Dialog.Title className="sr-only">Menu</Dialog.Title>
 
-        <nav aria-label="Mobile" className="relative flex-1 overflow-y-auto px-5 pb-4 pt-6">
-          <ul className="divide-y divide-white/[0.07]">
-            {links.map((l, i) => {
-              const active = l.href === "/" ? pathname === "/" : pathname === l.href || pathname.startsWith(`${l.href}/`);
-              return (
-                <li
-                  key={l.href}
-                  className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-right-6 motion-safe:fill-mode-both motion-safe:duration-500"
-                  style={{ animationDelay: `${80 + i * 45}ms` }}
-                >
-                  <Link
-                    href={l.href}
-                    onClick={close}
-                    aria-current={active ? "page" : undefined}
-                    className="group flex items-baseline gap-4 py-3.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
-                  >
-                    <span className="w-6 text-xs tabular-nums text-gold/70">{String(i + 1).padStart(2, "0")}</span>
-                    <span
-                      className={cn(
-                        "font-display text-[1.9rem] leading-none text-white/90 transition-colors group-hover:text-gold",
-                        active && "italic text-gold",
-                      )}
-                    >
-                      {l.label}
-                    </span>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </nav>
-
-        <div className="relative border-t border-white/10 px-5 py-5">
-          <Ornament className="mb-4" />
-          <div className="grid grid-cols-2 gap-3">
-            {phone && (
-              <a href={telHref(phone)} className="inline-flex items-center justify-center gap-2 rounded-full border border-white/15 py-3 text-sm text-white/90 hover:border-gold hover:text-gold">
-                <Phone className="size-4" aria-hidden="true" /> Call
-              </a>
-            )}
-            {whatsapp && (
-              <a href={whatsappHref(whatsapp)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 rounded-full border border-white/15 py-3 text-sm text-white/90 hover:border-gold hover:text-gold">
-                <MessageCircle className="size-4" aria-hidden="true" /> WhatsApp<span className="sr-only"> (opens in a new tab)</span>
-              </a>
-            )}
+          <div className="mx-auto flex h-16 w-full max-w-[90rem] shrink-0 items-center justify-between gap-4 px-4 sm:px-8">
+            <Link href="/" onClick={close} className={cn("flex items-center gap-2.5 rounded-sm", focus)}>
+              <Image src="/brand/logo-192.png" alt="" width={40} height={40} className="size-9" />
+              <span className="font-display text-xl font-semibold text-gold">{hotelName}</span>
+            </Link>
+            <Dialog.Close
+              render={
+                <button
+                  type="button"
+                  className={cn(
+                    "inline-flex size-11 items-center justify-center rounded-full border border-white/20 text-white transition-colors duration-200 hover:border-white/50 motion-reduce:transition-none",
+                    focus,
+                  )}
+                />
+              }
+            >
+              <X className="size-5" strokeWidth={1.6} aria-hidden="true" />
+              <span className="sr-only">Close menu</span>
+            </Dialog.Close>
           </div>
-          <div className="mt-4 flex justify-center"><ThemeToggle withLabel /></div>
-          <StaffLink withIcon onClick={close} className="mt-4 w-full justify-center py-2 text-sm text-white/55 hover:text-gold" />
-        </div>
-      </SheetContent>
-    </Sheet>
+
+          <div className="mx-auto grid w-full max-w-[90rem] flex-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]">
+            <div className="flex min-w-0 flex-col px-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-3 sm:px-8 sm:pt-8">
+              <nav aria-label="Menu">
+                <ul className="border-t border-white/10">
+                  {MENU_NAV.map((item, i) => {
+                    const active = isNavActive(item, pathname);
+                    return (
+                      <li
+                        key={item.href}
+                        className="flex items-center justify-between gap-3 border-b border-white/10 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:fill-mode-both motion-safe:duration-500"
+                        style={{ animationDelay: `${140 + i * 40}ms` }}
+                      >
+                        <Link
+                          href={item.href}
+                          onClick={close}
+                          aria-current={active ? "page" : undefined}
+                          className={cn(
+                            "flex min-h-[3.25rem] min-w-0 flex-1 items-center py-2 font-display text-[1.75rem] leading-none text-white/90 transition-colors duration-200 hover:text-gold aria-[current=page]:text-gold sm:min-h-16 sm:text-[2.25rem] motion-reduce:transition-none",
+                            focus,
+                          )}
+                        >
+                          {item.label}
+                        </Link>
+                        {item.sub && (
+                          <span className="flex shrink-0 items-center">
+                            {item.sub.map((s) => (
+                              <Link
+                                key={s.href}
+                                href={s.href}
+                                onClick={close}
+                                aria-current={pathname === s.href ? "page" : undefined}
+                                className={cn(
+                                  "inline-flex h-11 items-center px-2.5 text-[10.5px] font-medium uppercase tracking-[0.2em] text-white/55 transition-colors duration-200 hover:text-gold aria-[current=page]:text-gold motion-reduce:transition-none",
+                                  focus,
+                                )}
+                              >
+                                {s.label}
+                              </Link>
+                            ))}
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </nav>
+
+              <div
+                className="mt-auto pt-8 motion-safe:animate-in motion-safe:fade-in motion-safe:fill-mode-both motion-safe:duration-500"
+                style={{ animationDelay: `${140 + MENU_NAV.length * 40}ms` }}
+              >
+                <LinkButton href="/book" onClick={close} full icon="arrow">
+                  Book your stay
+                </LinkButton>
+                {contacts > 0 && (
+                  <div className={cn("mt-3 grid gap-3", contacts > 1 && "grid-cols-2")}>
+                    {phone && (
+                      <a
+                        href={telHref(phone)}
+                        className={cn(
+                          "inline-flex h-12 items-center justify-center gap-2 rounded-full border border-white/15 text-[13px] text-white/85 transition-colors duration-200 hover:border-white/45 hover:text-white motion-reduce:transition-none",
+                          focus,
+                        )}
+                      >
+                        <Phone className="size-4" strokeWidth={1.6} aria-hidden="true" /> Call
+                      </a>
+                    )}
+                    {whatsapp && (
+                      <a
+                        href={whatsappHref(whatsapp)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={cn(
+                          "inline-flex h-12 items-center justify-center gap-2 rounded-full border border-white/15 text-[13px] text-white/85 transition-colors duration-200 hover:border-white/45 hover:text-white motion-reduce:transition-none",
+                          focus,
+                        )}
+                      >
+                        <MessageCircle className="size-4" strokeWidth={1.6} aria-hidden="true" /> WhatsApp
+                        <span className="sr-only"> (opens in a new tab)</span>
+                      </a>
+                    )}
+                  </div>
+                )}
+                <div className="mt-6 flex items-center justify-between gap-4 border-t border-white/10 pt-5">
+                  <ThemeToggle withLabel />
+                  <StaffLink
+                    withIcon
+                    onClick={close}
+                    labels={{ signedIn: "Staff dashboard", signedOut: "Staff login" }}
+                    className={cn("min-h-11 rounded-sm text-[13px] text-white/45 transition-colors hover:text-white", focus)}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Tablets: a hotel photo beside the links (loads only when the menu opens). */}
+            <div className="relative hidden min-h-[28rem] overflow-hidden sm:block">
+              <Image src="/images/lobby/lobby-02.webp" alt="" fill sizes="45vw" className="object-cover object-[50%_40%]" />
+              <div aria-hidden="true" className="absolute inset-0 bg-linear-to-r from-night via-night/30 to-night/10" />
+            </div>
+          </div>
+        </Dialog.Popup>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

@@ -1,3 +1,4 @@
+import type { Viewport } from "next";
 import { getSettings } from "@/server/settings";
 import { getSiteContent } from "@/server/services/site-content";
 import { MobileBookBar } from "@/components/public/mobile-book-bar";
@@ -10,12 +11,18 @@ import { SiteHeader } from "@/components/public/site-header";
 // settings, rooms and prices appear quickly while pages stay fast.
 export const revalidate = 60;
 
+// Phone browser chrome matches the night header (the root layout's colour stays for staff).
+export const viewport: Viewport = { themeColor: "#0f0c09" };
+
+/**
+ * Public site shell. `.pub-site` scopes the design system (globals.css); the header is fixed
+ * and overlays the page (first blocks clear var(--pub-header-h)); the night-sky backdrop is static.
+ */
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {
   const [settings, content] = await Promise.all([getSettings(), getSiteContent()]);
   return (
     <MotionProvider>
-      <div className="relative isolate flex min-h-svh flex-1 flex-col bg-[#0b0906] text-tone transition-colors duration-500">
-        {/* Living night sky behind every dark (translucent) section */}
+      <div className="pub-site relative isolate flex min-h-svh flex-1 flex-col bg-night text-tone transition-colors duration-500">
         <Starfield />
         <a
           href="#main"
@@ -24,11 +31,10 @@ export default async function PublicLayout({ children }: { children: React.React
           Skip to content
         </a>
         <SiteHeader settings={settings} />
-        <main id="main" className="flex flex-1 flex-col">
+        <main id="main" tabIndex={-1} className="flex flex-1 flex-col focus:outline-none">
           {children}
         </main>
         <SiteFooter settings={settings} blurb={content.pages.footer.blurb} />
-        <div className="h-[calc(4.5rem+env(safe-area-inset-bottom))] bg-[#100d0a] sm:hidden" aria-hidden="true" />
         <MobileBookBar phone={settings.phone} />
       </div>
     </MotionProvider>

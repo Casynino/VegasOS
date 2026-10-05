@@ -1,15 +1,24 @@
 "use client";
 
 import { startTransition, useActionState, useEffect, useRef } from "react";
-import { AlertCircle, CheckCircle2, LoaderCircle } from "lucide-react";
+import { CircleAlert, CircleCheck, LoaderCircle } from "lucide-react";
 import type { ActionResult } from "@/server/errors";
 import { cn } from "@/lib/utils";
-import { ArrowBadge } from "./pill-link";
+import { Button, field } from "./kit";
 import { CONTACT_SUBJECTS } from "./site-config";
-import { fieldError, fieldInput, fieldLabel, fieldTextarea, pillGold } from "./ui";
 
 type Action = (prev: ActionResult<null> | undefined, fd: FormData) => Promise<ActionResult<null>>;
 
+const Req = () => (
+  <span aria-hidden="true" className="ml-1 text-pub-eyebrow">
+    *
+  </span>
+);
+
+/**
+ * The enquiry form on /contact (useActionState, FormData: name, email, phone, subject, message and the off-screen
+ * honeypot "company"). Tone-aware fields; the reply arrives in the status line at the top, which takes focus.
+ */
 export function ContactForm({ action, defaultSubject }: { action: Action; defaultSubject?: string }) {
   const [state, run, pending] = useActionState(action, undefined);
   const formRef = useRef<HTMLFormElement>(null);
@@ -31,42 +40,43 @@ export function ContactForm({ action, defaultSubject }: { action: Action; defaul
 
   return (
     <form ref={formRef} action={run} onSubmit={onSubmit} noValidate className="grid gap-5 sm:grid-cols-2" aria-describedby="contact-status">
-      <div id="contact-status" ref={statusRef} tabIndex={-1} className="outline-none sm:col-span-2" aria-live="polite">
+      {/* Always in the page (a live region must exist before it speaks); empty, it gives its row gap back. */}
+      <div id="contact-status" ref={statusRef} tabIndex={-1} className="scroll-mt-header outline-none empty:-mb-5 sm:col-span-2" aria-live="polite">
         {state?.ok && (
-          <p className="flex items-start gap-3 rounded-2xl bg-emerald-50 p-4 text-sm text-emerald-900 ring-1 ring-emerald-700/15">
-            <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" /> {state.message}
+          <p className="flex items-start gap-3 rounded-[0.75rem] border border-gold/45 bg-gold/[0.08] p-4 text-[15px] leading-snug text-pub-fg">
+            <CircleCheck className="mt-0.5 size-5 shrink-0 text-pub-eyebrow" strokeWidth={1.6} aria-hidden="true" /> {state.message}
           </p>
         )}
         {state && !state.ok && (
-          <p role="alert" className="flex items-start gap-3 rounded-2xl bg-red-50 p-4 text-sm text-red-900 ring-1 ring-red-700/15">
-            <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" /> {state.error}
+          <p role="alert" className="flex items-start gap-3 rounded-[0.75rem] border border-pub-error/35 bg-pub-error/[0.08] p-4 text-[15px] leading-snug text-pub-error">
+            <CircleAlert className="mt-0.5 size-5 shrink-0" strokeWidth={1.6} aria-hidden="true" /> {state.error}
           </p>
         )}
       </div>
-      <div className="sm:col-span-2">
-        <label htmlFor="c-name" className={fieldLabel}>Your name <span aria-hidden="true">*</span></label>
-        <input id="c-name" name="name" required autoComplete="name" aria-invalid={errors?.name ? true : undefined} className={fieldInput} />
-        {errors?.name && <p className={fieldError}>{errors.name}</p>}
+      <div className="min-w-0 sm:col-span-2">
+        <label htmlFor="c-name" className={field.label}>Your name<Req /></label>
+        <input id="c-name" name="name" required autoComplete="name" aria-invalid={errors?.name ? true : undefined} className={field.input} />
+        {errors?.name && <p className={field.error}>{errors.name}</p>}
       </div>
-      <div>
-        <label htmlFor="c-email" className={fieldLabel}>Email</label>
-        <input id="c-email" name="email" type="email" autoComplete="email" aria-invalid={errors?.email ? true : undefined} className={fieldInput} />
-        {errors?.email && <p className={fieldError}>{errors.email}</p>}
+      <div className="min-w-0">
+        <label htmlFor="c-email" className={field.label}>Email</label>
+        <input id="c-email" name="email" type="email" autoComplete="email" aria-invalid={errors?.email ? true : undefined} className={field.input} />
+        {errors?.email && <p className={field.error}>{errors.email}</p>}
       </div>
-      <div>
-        <label htmlFor="c-phone" className={fieldLabel}>Phone / WhatsApp</label>
-        <input id="c-phone" name="phone" type="tel" inputMode="tel" autoComplete="tel" aria-invalid={errors?.phone ? true : undefined} className={fieldInput} />
-        {errors?.phone && <p className={fieldError}>{errors.phone}</p>}
+      <div className="min-w-0">
+        <label htmlFor="c-phone" className={field.label}>Phone / WhatsApp</label>
+        <input id="c-phone" name="phone" type="tel" inputMode="tel" autoComplete="tel" aria-invalid={errors?.phone ? true : undefined} className={field.input} />
+        {errors?.phone && <p className={field.error}>{errors.phone}</p>}
       </div>
-      <div className="sm:col-span-2">
-        <label htmlFor="c-subject" className={fieldLabel}>Subject</label>
-        <select id="c-subject" name="subject" defaultValue={subject} className={cn(fieldInput, "appearance-auto")}>
+      <div className="min-w-0 sm:col-span-2">
+        <label htmlFor="c-subject" className={field.label}>Subject</label>
+        <select id="c-subject" name="subject" defaultValue={subject} className={cn(field.input, "appearance-auto pr-3")}>
           {CONTACT_SUBJECTS.map((s) => <option key={s.key} value={s.label}>{s.label}</option>)}
         </select>
-        {errors?.subject && <p className={fieldError}>{errors.subject}</p>}
+        {errors?.subject && <p className={field.error}>{errors.subject}</p>}
       </div>
-      <div className="sm:col-span-2">
-        <label htmlFor="c-message" className={fieldLabel}>Message <span aria-hidden="true">*</span></label>
+      <div className="min-w-0 sm:col-span-2">
+        <label htmlFor="c-message" className={field.label}>Message<Req /></label>
         <textarea
           id="c-message"
           name="message"
@@ -75,23 +85,24 @@ export function ContactForm({ action, defaultSubject }: { action: Action; defaul
           maxLength={3000}
           placeholder={defaultSubject === "meeting" ? "Preferred date, times and number of people…" : "How can we help?"}
           aria-invalid={errors?.message ? true : undefined}
-          className={fieldTextarea}
+          className={field.textarea}
         />
-        {errors?.message && <p className={fieldError}>{errors.message}</p>}
+        {errors?.message && <p className={field.error}>{errors.message}</p>}
       </div>
       <div className="absolute -left-[9999px] h-px w-px overflow-hidden" aria-hidden="true">
         <label htmlFor="c-company">Company</label>
         <input id="c-company" name="company" tabIndex={-1} autoComplete="off" />
       </div>
-      <div className="sm:col-span-2">
-        <button type="submit" disabled={pending} className={cn(pillGold, "h-12 w-full justify-between py-1.5 pl-6 pr-1.5 sm:w-auto sm:min-w-60")}>
-          <span className="relative inline-flex items-center gap-2">
-            {pending && <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />}
+      <div className="flex flex-col gap-4 sm:col-span-2 sm:flex-row sm:items-center sm:justify-between sm:gap-8">
+        <Button type="submit" disabled={pending} size="lg" icon={pending ? "none" : "arrow"} full className="sm:w-auto sm:min-w-56">
+          <span className="inline-flex items-center gap-2">
+            {pending && <LoaderCircle className="size-4 motion-safe:animate-spin" aria-hidden="true" />}
             {pending ? "Sending…" : "Send message"}
           </span>
-          <ArrowBadge />
-        </button>
-        <p className="mt-3 text-xs text-tone/55">We use your details only to reply to this message.</p>
+        </Button>
+        <p className="text-[13px] leading-relaxed text-pub-muted sm:max-w-60 sm:text-right">
+          Leave an email or a phone number. We use your details only to reply to this message.
+        </p>
       </div>
     </form>
   );

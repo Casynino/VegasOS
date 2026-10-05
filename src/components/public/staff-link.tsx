@@ -24,13 +24,24 @@ function useStaffHint() {
   return signedIn;
 }
 
-export function StaffLink({ className, onClick, withIcon }: { className?: string; onClick?: () => void; withIcon?: boolean }) {
+export function StaffLink({
+  className,
+  onClick,
+  withIcon,
+  labels = { signedIn: "Dashboard", signedOut: "Login" },
+}: {
+  className?: string;
+  onClick?: () => void;
+  withIcon?: boolean;
+  /** Visible text for each state (e.g. "Staff login" in the footer). */
+  labels?: { signedIn: string; signedOut: string };
+}) {
   const signedIn = useStaffHint();
   const Icon = signedIn ? LayoutDashboard : LockKeyhole;
   return (
     <Link href={signedIn ? "/staff" : "/staff/login"} onClick={onClick} className={cn("inline-flex items-center gap-1.5", className)}>
       {withIcon && <Icon className="size-3.5" aria-hidden="true" />}
-      {signedIn ? "Dashboard" : "Login"}
+      {signedIn ? labels.signedIn : labels.signedOut}
     </Link>
   );
 }

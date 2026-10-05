@@ -1,25 +1,24 @@
 import type { Metadata } from "next";
 import { ViewTransition } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Baby, BedDouble, ChevronLeft, Clock, Maximize2, User } from "lucide-react";
+import { ChevronLeft, MessageCircle, Phone } from "lucide-react";
 import { getSettings } from "@/server/settings";
 import { bookingWindow, getPublicRoomType, listPublicRoomTypes, websitePricer } from "@/server/services/public-booking";
 import { addDays } from "@/lib/time/business-date";
 import { formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { blurFor } from "@/components/public/blur-data";
+import { RoomBookDock } from "@/components/public/booking/room-book-dock";
 import { telHref, whatsappHref } from "@/components/public/contact";
 import { NamedIcon } from "@/components/public/icon";
-import { Ornament } from "@/components/public/ornament";
-import { PillLink } from "@/components/public/pill-link";
-import { Reveal } from "@/components/public/reveal";
-import { RoomCard } from "@/components/public/room-card";
+import {
+  Actions, Eyebrow, Heading, InfoList, LinkButton, MediaFrame, PriceTag, Rail, Reveal, Section, SectionIntro, TextLink,
+  containers, measure, rhythm, surface, typeScale,
+} from "@/components/public/kit";
+import { RoomCard, roomFacts } from "@/components/public/room-card";
 import { RoomGallery } from "@/components/public/room-gallery";
 import { photo } from "@/components/public/site-config";
 import { StaySearchForm } from "@/components/public/stay-search-form";
-import { container, cream, espresso, eyebrow, goldText, type } from "@/components/public/ui";
 
 const HIGHLIGHT = new Set(["WIFI", "BREAKFAST"]);
 
@@ -38,168 +37,199 @@ export async function generateMetadata({ params }: PageProps<"/rooms/[slug]">): 
   };
 }
 
+/**
+ * One room type: the photograph (it morphs from the room's card), a filmstrip of its photos,
+ * the story, the booking panel (sticky beside the details on desktop, right after the story on
+ * phones), amenities as a quiet list, the times, and the other room types. Phones get a slim
+ * floating Book dock that steps aside at the panel.
+ */
 export default async function RoomPage({ params }: PageProps<"/rooms/[slug]">) {
   const { slug } = await params;
   const [room, settings, all] = await Promise.all([getPublicRoomType(slug), getSettings(), listPublicRoomTypes()]);
   if (!room) notFound();
-  const window = bookingWindow(settings);
+  const stay = bookingWindow(settings);
   const priceOf = await websitePricer(settings);
   const price = priceOf(room);
   const images = room.images.map((src) => ({ ...photo(src), alt: `${room.name}: ${photo(src).alt.toLowerCase()}` }));
   const hero = images[0];
   const amenities = [...room.amenities].sort((a, b) => Number(HIGHLIGHT.has(b.code)) - Number(HIGHLIGHT.has(a.code)));
+  const codes = new Set(room.amenities.map((a) => a.code));
+  const included = [codes.has("BREAKFAST") && "Breakfast", codes.has("WIFI") && "Wi-Fi"].filter(Boolean) as string[];
   const others = all.filter((t) => t.slug !== room.slug).slice(0, 3).map((t) => {
     const p = priceOf(t);
     return { ...t, image: t.images[0], net: p.net, baseRate: p.baseRate, promo: p.promoLabel };
   });
-
-  const bookingPanel = (
-    <div className="rounded-[2rem] bg-panel p-6 shadow-[0_30px_80px_-40px_rgba(21,18,14,0.45)] ring-1 ring-tone/[0.07] sm:p-7">
-      <p className="text-[11px] uppercase tracking-[0.22em] text-tone/60">From, per night</p>
-      <p className="mt-1 flex flex-wrap items-baseline gap-x-3">
-        <span className="font-display text-5xl font-semibold">{formatTZS(price.net)}</span>
-        {price.discount > 0 && (
-          <s className="text-tone/50"><span className="sr-only">instead of </span>{formatTZS(price.baseRate)}</s>
-        )}
-      </p>
-      {price.discount > 0 && (
-        <p className="mt-2 inline-flex rounded-full bg-gold/15 px-3 py-1 text-xs font-medium text-accent-ink">
-          {price.promotion ?? "Website rate"}{price.promoLabel ? ` · ${price.promoLabel}` : ""} · save {formatTZS(price.discount)} per night
-        </p>
-      )}
-      <p className="mt-3 text-sm text-tone/65">Breakfast and Wi-Fi included · pay at the hotel</p>
-      <div className="my-6 h-px bg-[#15120e]/10" />
-      {window.enabled ? (
-        <>
-          <h2 className="font-display text-2xl">Check availability</h2>
-          <div className="mt-4">
-            <StaySearchForm
-              variant="panel"
-              defaults={{ checkIn: window.today, checkOut: addDays(window.today, 1), adults: Math.min(2, room.maxAdults), children: 0, type: room.slug }}
-              minDate={window.today}
-              maxDate={window.maxArrival}
-              maxNights={window.maxNights}
-              submitLabel="Check dates"
-              stacked
-            />
-          </div>
-        </>
-      ) : (
-        <div className="space-y-3">
-          <p className="text-sm text-tone/70">Online booking is paused — contact us and we’ll reserve this room for you.</p>
-          {settings.phone && <PillLink href={telHref(settings.phone)} external variant="dark" className="w-full justify-between">Call {settings.phone}</PillLink>}
-          {settings.whatsapp && <PillLink href={whatsappHref(settings.whatsapp, `Hello, I would like to book a ${room.name}.`)} external target="_blank" rel="noopener noreferrer" variant="outline" className="w-full justify-between">WhatsApp</PillLink>}
-        </div>
-      )}
-    </div>
-  );
+  const facts = roomFacts(room);
+  const bookHref = stay.enabled ? "#book" : "/contact?subject=booking";
 
   return (
     <>
-      {/* Hero */}
-      <section className={cn(espresso, "relative isolate overflow-hidden text-white")} aria-labelledby="room-title">
-        {hero && (
+      {/* Hero: the room's first photograph, its name and facts. */}
+      <section data-tone="night" aria-labelledby="room-title" className="relative isolate flex min-h-[74svh] overflow-hidden bg-night text-pub-fg sm:min-h-[64svh] lg:min-h-[78vh]">
+        {hero ? (
           <ViewTransition name={`room-${room.slug}`} share="vlh-morph" default="none">
-            <Image src={hero.src} alt={hero.alt} fill priority sizes="100vw" {...blurFor(hero.src)} className="-z-10 object-cover" />
+            <MediaFrame src={hero.src} alt={hero.alt} ratio="fill" sizes="100vw" preload overlay="hero" imgClassName="pub-settle" className="-z-10" />
           </ViewTransition>
+        ) : (
+          <div aria-hidden="true" className="pub-sky absolute inset-0 -z-10" />
         )}
-        <div className="absolute inset-0 -z-10 bg-linear-to-t from-[#15120e] via-[#15120e]/50 to-[#15120e]/10" aria-hidden="true" />
-        <div className={cn(container, "flex min-h-[420px] flex-col justify-end pb-10 pt-24 sm:min-h-[62svh] sm:pb-14")}>
-          <Link href="/rooms" className="mb-auto inline-flex w-fit items-center gap-1.5 rounded-full border border-white/20 bg-[#15120e]/40 px-4 py-2 text-sm text-white/85 backdrop-blur-md hover:border-gold hover:text-gold">
-            <ChevronLeft className="size-4" aria-hidden="true" /> All rooms
+        <div className={cn(containers.wide, "flex w-full flex-col justify-end pb-10 pt-[calc(var(--pub-header-h)+3rem)] sm:pb-14 lg:pb-20")}>
+          <Link
+            href="/rooms"
+            className={cn(typeScale.eyebrow, "-ml-1 inline-flex min-h-11 w-fit items-center gap-1.5 rounded-sm px-1 text-gold transition-colors duration-200 hover:text-white focus-visible:outline-2 focus-visible:outline-gold motion-reduce:transition-none")}
+          >
+            <ChevronLeft className="size-3.5" strokeWidth={1.8} aria-hidden="true" /> All rooms
           </Link>
-          <p className={cn(eyebrow, "mt-10 text-gold")}>Room type</p>
-          <h1 id="room-title" className={cn("mt-3 text-balance", type.display)}>{room.name}</h1>
-          <ul className="mt-6 flex flex-wrap gap-2 text-sm" aria-label="Room facts">
-            <li className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 backdrop-blur-md"><User className="size-4 text-gold" aria-hidden="true" />Up to {room.maxAdults} adult{room.maxAdults === 1 ? "" : "s"}</li>
-            {room.maxChildren > 0 && <li className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 backdrop-blur-md"><Baby className="size-4 text-gold" aria-hidden="true" />{room.maxChildren} child{room.maxChildren === 1 ? "" : "ren"}</li>}
-            {room.bedType && <li className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 backdrop-blur-md"><BedDouble className="size-4 text-gold" aria-hidden="true" />{room.bedType}</li>}
-            {room.sizeSqm && <li className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 backdrop-blur-md"><Maximize2 className="size-4 text-gold" aria-hidden="true" />{room.sizeSqm} m²</li>}
-          </ul>
+          <h1
+            id="room-title"
+            className={cn(
+              "mt-2 max-w-4xl",
+              typeScale.title,
+              "motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 motion-safe:fill-mode-both motion-safe:duration-700 motion-safe:ease-pub",
+            )}
+          >
+            {room.name}
+          </h1>
+          {room.shortDescription && <p className={cn("mt-4 text-white/80 sm:mt-5", typeScale.lede, measure.lede)}>{room.shortDescription}</p>}
+          <InfoList items={facts} className="mt-5" />
+          <Actions className="mt-7 sm:mt-8">
+            <LinkButton href={bookHref} icon="arrow">{stay.enabled ? "Book this room" : "Ask to book"}</LinkButton>
+            {images.length > 1 && <TextLink href="#photos">View photos</TextLink>}
+          </Actions>
         </div>
       </section>
 
-      {/* Body */}
-      <section className={cn(cream, "py-14 sm:py-20")}>
-        <div className={cn(container, "grid gap-12 lg:grid-cols-[1.6fr_1fr] lg:gap-14")}>
-          <div className="min-w-0">
-            {images.length > 1 && <RoomGallery images={images} roomName={room.name} />}
+      {/* The other photographs (the hero already shows the first). */}
+      {images.length > 1 && (
+        <Section id="photos" labelledBy="photos-title" space="sm" width="wide" className="pb-6 sm:pb-8 lg:pb-10">
+          <Eyebrow rule className="mb-6">
+            <span id="photos-title">Inside the {room.name}</span>
+          </Eyebrow>
+          <RoomGallery images={images} roomName={room.name} from={1} />
+        </Section>
+      )}
 
-            <Reveal className="mt-12">
-              <p className={cn(eyebrow, goldText)}>About this room</p>
-              <h2 className={cn("mt-3", type.h2)}>{room.shortDescription ?? room.name}</h2>
-              <Ornament className="mt-5" />
-              {room.description && <p className={cn("mt-6 max-w-2xl text-tone/75", type.lead)}>{room.description}</p>}
-            </Reveal>
+      {/* Story, booking panel, amenities and times. Phones: story → panel → details. */}
+      <Section space="md" width="wide" labelledBy="about-title" className={images.length > 1 ? "pt-10 sm:pt-12 lg:pt-16" : undefined}>
+        <div className="grid gap-12 lg:grid-cols-12 lg:grid-rows-[auto_1fr] lg:gap-x-10 lg:gap-y-16">
+          <Reveal className="min-w-0 lg:col-span-7">
+            <Eyebrow as="h2" rule>
+              <span id="about-title">About this room</span>
+            </Eyebrow>
+            <p className={cn("mt-6 text-pub-fg/85", typeScale.lede, "lg:text-[1.1875rem] lg:leading-[1.7]", "max-w-[38rem]")}>
+              {room.description ?? room.shortDescription ?? `${room.name} at Vegas Luxury Hotel.`}
+            </p>
+          </Reveal>
 
+          <aside id="book" aria-label={`Book the ${room.name}`} className="min-w-0 scroll-mt-[calc(var(--pub-header-h)+1rem)] lg:col-span-4 lg:col-start-9 lg:row-span-2 lg:row-start-1">
+            <div className={cn(surface.panel, "lg:sticky lg:top-24")}>
+              <PriceTag
+                amount={price.net}
+                from
+                size="lg"
+                was={price.discount > 0 ? price.baseRate : null}
+                note={included.length > 0 ? `${included.join(" and ")} included` : undefined}
+              />
+              {price.discount > 0 && (
+                <p className="mt-3 text-[13px] leading-snug text-pub-eyebrow">
+                  {price.promotion ?? "Website rate"}{price.promoLabel ? ` · ${price.promoLabel}` : ""} · save {formatTZS(price.discount)} per night
+                </p>
+              )}
+              <div className="my-6 h-px bg-pub-line" />
+              {stay.enabled ? (
+                <>
+                  <Heading as="h2" size="subheading">Choose your dates</Heading>
+                  <div className="mt-5">
+                    <StaySearchForm
+                      variant="panel"
+                      defaults={{ checkIn: stay.today, checkOut: addDays(stay.today, 1), adults: Math.min(2, room.maxAdults), children: 0, type: room.slug }}
+                      minDate={stay.today}
+                      maxDate={stay.maxArrival}
+                      maxNights={stay.maxNights}
+                      submitLabel="Check availability"
+                      stacked
+                    />
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <Heading as="h2" size="subheading">Book with us directly</Heading>
+                  <p className={cn(typeScale.small, "mt-2 text-pub-muted")}>Online booking is paused — contact us and we’ll reserve this room for you.</p>
+                  <div className="mt-5 grid gap-3">
+                    {settings.phone && (
+                      <LinkButton href={telHref(settings.phone)} full icon={<Phone className="size-4" strokeWidth={1.6} aria-hidden="true" />}>
+                        Call {settings.phone}
+                      </LinkButton>
+                    )}
+                    {settings.whatsapp && (
+                      <LinkButton
+                        href={whatsappHref(settings.whatsapp, `Hello, I would like to book a ${room.name}.`)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        variant="secondary"
+                        full
+                        icon={<MessageCircle className="size-4" strokeWidth={1.6} aria-hidden="true" />}
+                      >
+                        WhatsApp
+                      </LinkButton>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </aside>
+
+          <div className="min-w-0 space-y-12 lg:col-span-7 lg:row-start-2 lg:space-y-16">
             {amenities.length > 0 && (
-              <Reveal className="mt-12">
-                <h2 className={type.h3}>Amenities</h2>
-                <ul className="mt-6 grid gap-3 sm:grid-cols-2">
+              <Reveal>
+                <Heading as="h2" size="subheading" id="amenities-title">In the room</Heading>
+                <ul aria-labelledby="amenities-title" className="mt-5 grid border-t border-pub-line sm:grid-cols-2 sm:gap-x-10">
                   {amenities.map((a) => (
-                    <li
-                      key={a.code}
-                      className={cn(
-                        "flex items-center gap-4 rounded-2xl px-5 py-4",
-                        HIGHLIGHT.has(a.code) ? cn(espresso, "text-white") : "bg-panel ring-1 ring-tone/[0.06]",
-                      )}
-                    >
-                      <span className={cn("grid size-10 shrink-0 place-items-center rounded-full border", HIGHLIGHT.has(a.code) ? "border-gold/40 text-gold" : "border-accent-ink/30 text-accent-ink")}>
-                        <NamedIcon name={a.icon} className="size-5" />
-                      </span>
-                      <span className="font-medium">{a.name}</span>
-                      {HIGHLIGHT.has(a.code) && <span className="ml-auto rounded-full bg-gold/15 px-2.5 py-1 text-[11px] uppercase tracking-wider text-gold">Included</span>}
+                    <li key={a.code} className="flex min-w-0 items-center gap-3.5 border-b border-pub-line py-4">
+                      <NamedIcon name={a.icon} className="size-5 shrink-0 text-pub-eyebrow" />
+                      <span className="min-w-0 flex-1 text-[15px] leading-snug text-pub-fg">{a.name}</span>
+                      {HIGHLIGHT.has(a.code) && <span className={cn(typeScale.meta, "shrink-0 text-pub-eyebrow")}>Included</span>}
                     </li>
                   ))}
                 </ul>
               </Reveal>
             )}
 
-            <Reveal className="mt-12 grid gap-4 sm:grid-cols-2">
-              <div className="rounded-2xl bg-panel p-6 ring-1 ring-tone/[0.06]">
-                <Clock className="size-5 text-accent-ink" aria-hidden="true" />
-                <p className="mt-3 font-medium">Check-in from {window.checkInTime}</p>
-                <p className="mt-1 text-sm text-tone/65">Our 24-hour front desk welcomes late arrivals.</p>
-              </div>
-              <div className="rounded-2xl bg-panel p-6 ring-1 ring-tone/[0.06]">
-                <Clock className="size-5 text-accent-ink" aria-hidden="true" />
-                <p className="mt-3 font-medium">Check-out by {window.checkoutTime}</p>
-                <p className="mt-1 text-sm text-tone/65">Payment is taken at the hotel during your stay.</p>
-              </div>
+            <Reveal>
+              <Heading as="h2" size="subheading" id="times-title">Good to know</Heading>
+              <InfoList
+                variant="rows"
+                className="mt-5"
+                items={[
+                  { label: "Check-in", value: `From ${stay.checkInTime}` },
+                  { label: "Check-out", value: `By ${stay.checkoutTime}` },
+                  ...(settings.receptionHours ? [{ label: "Reception", value: settings.receptionHours }] : []),
+                ]}
+              />
             </Reveal>
           </div>
-
-          {/* Sticky booking panel (desktop) / inline (mobile) */}
-          <aside id="book" aria-label={`Book the ${room.name}`} className="scroll-mt-24">
-            <div className="lg:sticky lg:top-28">{bookingPanel}</div>
-          </aside>
         </div>
-      </section>
+      </Section>
 
       {others.length > 0 && (
-        <section className={cn(espresso, "py-16 text-white sm:py-24")} aria-labelledby="other-rooms">
-          <div className={container}>
-            <div className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-              <h2 id="other-rooms" className={type.h2}>Other rooms</h2>
-              <PillLink href="/rooms" variant="glass" className="self-start">All rooms</PillLink>
-            </div>
-            <ul className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {others.map((r) => <li key={r.slug}><RoomCard room={r} /></li>)}
-            </ul>
-          </div>
-        </section>
+        <Section tone="night" glow="top" space="md" labelledBy="other-rooms">
+          <SectionIntro
+            align="split"
+            eyebrow="Stay your way"
+            title="Other rooms"
+            id="other-rooms"
+            actions={<TextLink href="/rooms">All rooms</TextLink>}
+          />
+          <Rail label="Other room types" desktop="grid" cols={3} className={rhythm.afterIntro}>
+            {others.map((r) => (
+              <RoomCard key={r.slug} room={r} />
+            ))}
+          </Rail>
+        </Section>
       )}
 
-      {/* Sticky mobile CTA */}
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-white/10 bg-[#15120e]/92 px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 text-white backdrop-blur-xl sm:hidden">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="truncate text-xs text-white/60">{room.name} · from</p>
-            <p className="font-display text-2xl leading-tight text-gold">{formatTZS(price.net)}<span className="text-sm text-white/60"> /night</span></p>
-          </div>
-          <PillLink href={window.enabled ? "#book" : "/contact?subject=booking"} className="h-12 shrink-0">Book</PillLink>
-        </div>
-      </div>
+      {/* Phones: a slim floating Book dock (steps aside at the booking panel). */}
+      <RoomBookDock name={room.name} price={formatTZS(price.net)} href={bookHref} label={stay.enabled ? "Book" : "Ask us"} />
     </>
   );
 }

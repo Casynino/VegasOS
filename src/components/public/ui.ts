@@ -1,9 +1,14 @@
 /**
  * Shared class recipes for the public website: warm espresso + gold, cream
  * contrast bands, glass panels, rounded cards and pill buttons.
+ *
+ * Older recipes, kept for the forms and pages that use them (booking, menu ordering,
+ * payments). New work uses the design system in ./kit (Section, Heading, LinkButton,
+ * MediaFrame…); the type scale below now comes from it, so every page shares one scale.
  */
+import { containers, typeScale } from "./kit/tokens";
 
-export const container = "mx-auto w-full max-w-7xl px-4 sm:px-8";
+export const container = containers.default;
 
 /** Warm dark background (espresso) and its raised surface. */
 export const espresso = "bg-[#15120e]";
@@ -29,7 +34,7 @@ export const pillOutline = `${pillBase} border border-tone/25 text-tone hover:bo
 export const pillPad = "px-6 py-3";
 export const pillPadIcon = "py-1.5 pl-6 pr-1.5";
 
-export const eyebrow = "text-[11px] font-medium uppercase tracking-[0.32em]";
+export const eyebrow = typeScale.eyebrow;
 
 export const fieldLabel = "mb-1.5 block text-[11px] font-medium uppercase tracking-[0.18em] text-tone/70";
 export const fieldInput =
@@ -38,12 +43,12 @@ export const fieldTextarea =
   "block min-h-28 w-full rounded-xl border border-tone/15 bg-panel px-4 py-3 text-base text-tone placeholder:text-tone/40 transition-colors focus:border-tone/60 focus:outline-none focus:ring-3 focus:ring-gold/40 aria-invalid:border-red-700";
 export const fieldError = "mt-1.5 text-sm text-red-700";
 
-/** Fluid type scale (clamp) — the single source for public-site typography. */
+/** Fluid type scale — aliases of the kit scale (kit/tokens.ts typeScale), the single source. */
 export const type = {
-  display: "font-display font-medium tracking-[-0.01em] text-[clamp(2.6rem,7vw+0.6rem,6.75rem)] leading-[0.95]",
-  h1: "font-display font-medium text-[clamp(2.4rem,5vw+0.8rem,5rem)] leading-[1.02]",
-  h2: "font-display font-medium text-[clamp(2.1rem,3.4vw+0.9rem,3.9rem)] leading-[1.04]",
-  h3: "font-display font-medium text-[clamp(1.6rem,1.2vw+1.15rem,2.2rem)] leading-[1.1]",
-  lead: "text-[clamp(1rem,0.35vw+0.92rem,1.2rem)] leading-relaxed",
-  body: "text-[15px] sm:text-base leading-relaxed",
+  display: typeScale.display,
+  h1: typeScale.title,
+  h2: typeScale.heading,
+  h3: typeScale.subheading,
+  lead: typeScale.lede,
+  body: typeScale.body,
 } as const;

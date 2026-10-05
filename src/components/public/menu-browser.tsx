@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
-import { BedDouble, ChevronLeft, ChevronRight, Plus, Search, UtensilsCrossed, Wine, X } from "lucide-react";
+import { BedDouble, ChevronLeft, ChevronRight, Search, ShoppingBag, UtensilsCrossed, Wine, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { eyebrow, goldText, type } from "./ui";
-import { AddControl, BasketPill, OrderDrawer, useMenuOrder, WhoDialog, type MenuOrder } from "./menu-order";
+import { buttonClass } from "./kit/button";
+import { typeScale } from "./kit/tokens";
+import { Eyebrow } from "./kit/typography";
+import { AddControl, BasketPill, OrderDrawer, SHEET, useMenuOrder, WhoDialog, type MenuOrder } from "./menu-order";
 import type { PayOption } from "@/components/restaurant/pay-first";
 
 export type MenuSize = { id: string; label: string | null; price: number; available: boolean };
@@ -15,7 +17,8 @@ export type MenuEntry = {
   name: string;
   description: string | null;
   subcategory: string | null;
-  image: { src: string; alt: string } | null;
+  /** `stock`: a licensed stock photo — shown with the "Illustrative" tag where it is large. */
+  image: { src: string; alt: string; stock?: boolean } | null;
   /** One entry per size of the same drink (Jameson 750ML / 500ML / 250ML); a single entry for everything else. */
   sizes: MenuSize[];
 };
@@ -25,15 +28,19 @@ const n = (v: number) => v.toLocaleString("en-US");
 const minPrice = (e: MenuEntry) => Math.min(...e.sizes.map((s) => s.price));
 const available = (e: MenuEntry) => e.sizes.some((s) => s.available);
 const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const reduceMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/** Under the fixed header (4rem once scrolled) and the 3rem section bar: where a section's top lands. */
+const SECTION_TOP = "scroll-mt-32";
 
 /**
- * The public menu, made for browsing: a sticky bar with the sections (it follows
- * the page) and a search; food as a classic menu list — small photo, name, a dotted
- * line to the price — with a large photo beside it on wide screens that follows the
- * dish you point at; drinks as compact tiles, the sizes of one drink together. Any
- * dish or drink opens its own card: big photo, what it is, the price (or sizes).
- * Everything can be ordered right here — "Add", then "View your order" and send: the same
- * live menu, the same order and the same restaurant flow as the table and room QR codes.
+ * The public menu, made for browsing like a hotel menu, not a till: a slim bar with the sections
+ * (it follows the page, under the header) and a search; food as a classic menu — small photo, name,
+ * a dotted line to the price — with a large photo beside it on wide screens that follows the dish
+ * you point at; drinks as a two-column list, the sizes of one drink together. Any dish or drink
+ * opens its own card: big photo, what it is, the price (or sizes).
+ * Everything can be ordered right here — "Add", then "View your order" and send: the same live
+ * menu, the same order and the same restaurant flow as the table and room QR codes.
  * Cards can be shared: /menu?item=…
  */
 export function MenuBrowser({ sections, whatsapp, roomServiceFee, initialItem = null, payTo }: {
@@ -44,6 +51,8 @@ export function MenuBrowser({ sections, whatsapp, roomServiceFee, initialItem = 
   initialItem?: string | null;
 }) {
   const [q, setQ] = useState("");
+  const [searching, setSearching] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
   const [active, setActive] = useState(sections[0]?.slug ?? "");
   const [openKey, setOpenKey] = useState<string | null>(() => (initialItem && sections.some((s) => s.entries.some((e) => e.key === initialItem)) ? initialItem : null));
   const chipsRef = useRef<HTMLDivElement>(null);
@@ -67,7 +76,7 @@ export function MenuBrowser({ sections, whatsapp, roomServiceFee, initialItem = 
   const openAt = flat.findIndex((x) => x.e.key === openKey);
   const current = openAt >= 0 ? flat[openAt] : null;
 
-  // The section chip follows the page.
+  // The section tab follows the page.
   useEffect(() => {
     const els = shown.map((s) => document.getElementById(s.slug)).filter((x): x is HTMLElement => !!x);
     const io = new IntersectionObserver((list) => {
@@ -80,8 +89,9 @@ export function MenuBrowser({ sections, whatsapp, roomServiceFee, initialItem = 
   useEffect(() => {
     const box = chipsRef.current;
     const chip = box?.querySelector<HTMLElement>(`[data-chip="${active}"]`);
-    if (box && chip) box.scrollTo({ left: chip.offsetLeft - box.clientWidth / 2 + chip.clientWidth / 2, behavior: "smooth" });
+    if (box && chip) box.scrollTo({ left: chip.offsetLeft - box.clientWidth / 2 + chip.clientWidth / 2, behavior: reduceMotion() ? "auto" : "smooth" });
   }, [active]);
+  useEffect(() => { if (searching) searchRef.current?.focus(); }, [searching]);
 
   // Shareable cards: the open dish or drink is kept in the address (?item=…).
   const setOpen = useCallback((key: string | null) => {
@@ -93,50 +103,66 @@ export function MenuBrowser({ sections, whatsapp, roomServiceFee, initialItem = 
 
   const whatsappOrder = (text: string) => (whatsapp ? `https://wa.me/${whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(text)}` : null);
   const lastBar = [...shown].reverse().find((s) => s.bar)?.id;
+  const searchOpen = searching || q !== "";
 
   return (
     <>
-      {/* Sections + search */}
-      <nav aria-label="Menu sections" className="sticky top-16 z-30 border-y border-tone/10 bg-paper/90 backdrop-blur-xl sm:top-20">
-        <div className="mx-auto flex w-full max-w-7xl flex-col gap-2 px-4 py-2.5 sm:px-8 md:flex-row md:items-center md:gap-4">
-          <div ref={chipsRef} className="-mx-1 flex min-w-0 flex-1 gap-1.5 overflow-x-auto px-1 py-0.5 [scrollbar-width:none]">
+      {/* Sections + search: one slim bar under the header (search folds behind an icon on phones). */}
+      <nav aria-label="Menu sections" data-tone="paper" className="sticky top-16 z-30 border-b border-pub-line bg-paper/90 text-pub-fg backdrop-blur-xl">
+        <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center px-4 sm:px-8 md:flex-nowrap md:gap-6">
+          <div ref={chipsRef}
+            className="relative flex min-w-0 flex-1 overflow-x-auto [mask-image:linear-gradient(to_right,#000_calc(100%-2.5rem),transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {shown.map((s) => (
               <a key={s.id} href={`#${s.slug}`} data-chip={s.slug} aria-current={active === s.slug ? "true" : undefined}
-                className={cn("shrink-0 rounded-full border px-3.5 py-1.5 text-[13px] font-medium transition-colors",
-                  active === s.slug ? "border-tone bg-tone text-paper" : "border-tone/15 bg-panel text-tone/80 hover:border-gold hover:text-tone")}>
+                className={cn(
+                  "relative flex h-12 shrink-0 items-center px-3 text-[13px] font-medium tracking-[0.02em] transition-colors duration-200 first:pl-0 last:pr-10 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none",
+                  "after:absolute after:bottom-0 after:left-3 after:right-3 after:h-0.5 after:origin-left after:bg-gold after:transition-transform after:duration-300 after:ease-pub first:after:left-0 last:after:right-10 motion-reduce:after:transition-none",
+                  active === s.slug ? "text-pub-fg after:scale-x-100" : "text-pub-muted after:scale-x-0 hover:text-pub-fg",
+                )}>
                 {s.name}
               </a>
             ))}
           </div>
-          <label className="relative block md:w-64 md:shrink-0">
+          <button type="button" aria-expanded={searchOpen} aria-controls="menu-search"
+            onClick={() => { if (searchOpen) { setSearching(false); setQ(""); } else setSearching(true); }}
+            className="-mr-2 ml-1 grid size-11 shrink-0 place-items-center rounded-full text-pub-muted transition-colors duration-200 hover:text-pub-fg focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-gold motion-reduce:transition-none md:hidden">
+            {searchOpen ? <X className="size-[1.125rem]" strokeWidth={1.6} aria-hidden="true" /> : <Search className="size-[1.125rem]" strokeWidth={1.6} aria-hidden="true" />}
+            <span className="sr-only">{searchOpen ? "Close search" : "Search the menu"}</span>
+          </button>
+          <label id="menu-search" className={cn("relative w-full pb-3 md:w-64 md:shrink-0 md:pb-0", searchOpen ? "block" : "hidden md:block")}>
             <span className="sr-only">Search the menu</span>
-            <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-tone/45" aria-hidden />
-            <input value={q} onChange={(e) => setQ(e.target.value)} type="search" placeholder="Find a dish or drink"
-              className="h-10 w-full rounded-full border border-tone/15 bg-panel pl-10 pr-9 text-sm text-tone placeholder:text-tone/45 focus:border-tone/40 focus:outline-none focus:ring-2 focus:ring-gold/40" />
-            {q && <button type="button" onClick={() => setQ("")} aria-label="Clear search" className="absolute right-3 top-1/2 -translate-y-1/2 text-tone/50 hover:text-tone"><X className="size-4" /></button>}
+            <Search className="pointer-events-none absolute left-4 top-[1.375rem] size-4 -translate-y-1/2 text-pub-faint" strokeWidth={1.6} aria-hidden="true" />
+            <input ref={searchRef} value={q} onChange={(e) => setQ(e.target.value)} type="search" placeholder="Find a dish or drink"
+              className="h-11 w-full rounded-full border border-pub-line bg-pub-field pl-11 pr-11 text-base text-pub-fg placeholder:text-pub-faint transition-[border-color,box-shadow] duration-200 focus:border-pub-fg/40 focus:outline-none focus:ring-3 focus:ring-gold/30 motion-reduce:transition-none md:text-sm [&::-webkit-search-cancel-button]:hidden" />
+            {q && (
+              <button type="button" onClick={() => { setQ(""); searchRef.current?.focus(); }} aria-label="Clear search"
+                className="absolute right-0.5 top-0 grid size-11 place-items-center rounded-full text-pub-muted hover:text-pub-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-gold">
+                <X className="size-4" strokeWidth={1.8} aria-hidden="true" />
+              </button>
+            )}
           </label>
         </div>
       </nav>
 
-      <div className="bg-paper pb-20">
+      <div data-tone="paper" className="bg-[var(--pub-paper)] pb-20 text-pub-fg sm:pb-28">
         {shown.length === 0 && (
-          <p className="mx-auto max-w-xl px-4 pt-20 text-center text-tone/65">Nothing on the menu matches “{q}”. Try “chicken”, “fish”, “beer” or “whisky”.</p>
+          <p className={cn(typeScale.lede, "mx-auto max-w-xl px-4 pt-20 text-center text-pub-muted")}>Nothing on the menu matches “{q}”. Try “chicken”, “fish”, “beer” or “whisky”.</p>
         )}
-        {shown.map((s, si) => (
-          <section key={s.id} id={s.slug} aria-labelledby={`${s.slug}-title`} className="scroll-mt-40 pt-14 sm:pt-20">
+        {shown.map((s) => (
+          <section key={s.id} id={s.slug} aria-labelledby={`${s.slug}-title`} className={cn(SECTION_TOP, "pt-12 sm:pt-16 lg:pt-20")}>
             <div className="mx-auto w-full max-w-7xl px-4 sm:px-8">
-              <header className="mb-6 flex flex-wrap items-end justify-between gap-x-6 gap-y-2 border-b border-tone/10 pb-4 sm:mb-8">
-                <div>
-                  <p className={cn(eyebrow, goldText)}>{String(sections.findIndex((x) => x.id === s.id) + 1).padStart(2, "0")} · {s.kind === "DRINK" ? "Drinks" : "Food"}</p>
-                  <h2 id={`${s.slug}-title`} className={cn("mt-2", type.h3)}>{s.name}</h2>
+              <header className="grid gap-3 pb-6 sm:pb-8 lg:grid-cols-12 lg:items-end lg:gap-x-10">
+                <div className="min-w-0 lg:col-span-7">
+                  <Eyebrow rule>{s.kind === "DRINK" ? (s.bar ? "From the bar" : "Drinks") : "From the kitchen"}</Eyebrow>
+                  <h2 id={`${s.slug}-title`} className="mt-4 font-display text-[clamp(1.875rem,1.5rem+1.4vw,2.75rem)] font-medium leading-[1.05] text-balance">{s.name}</h2>
                 </div>
-                {s.description && <p className="max-w-md text-sm leading-relaxed text-tone/60 sm:text-[15px]">{s.description}</p>}
+                {s.description && <p className={cn(typeScale.body, "max-w-md text-pub-muted lg:col-span-4 lg:col-start-9 lg:pb-1")}>{s.description}</p>}
               </header>
               {s.kind === "FOOD"
-                ? <FoodList section={s} onOpen={setOpen} first={si === 0} order={order} />
-                : <DrinkTiles section={s} onOpen={setOpen} order={order} />}
+                ? <FoodList section={s} onOpen={setOpen} order={order} />
+                : <DrinkList section={s} onOpen={setOpen} order={order} />}
               {s.id === lastBar && (
-                <p className="mt-8 rounded-2xl border border-tone/10 bg-panel px-5 py-4 text-sm leading-relaxed text-tone/65">
+                <p className={cn(typeScale.small, "mt-8 max-w-2xl border-l-2 border-gold/60 pl-4 text-pub-muted")}>
                   Alcohol is served only to guests aged 18 and over — please drink responsibly. Drinks are served at the bar, at your table or through room service — you can also order them online.
                 </p>
               )}
@@ -157,111 +183,152 @@ export function MenuBrowser({ sections, whatsapp, roomServiceFee, initialItem = 
   );
 }
 
-function Photo({ entry, sizes, className, priority }: { entry: MenuEntry; sizes: string; className?: string; priority?: boolean }) {
-  if (!entry.image) {
-    return (
-      <span className={cn("grid size-full place-items-center bg-linear-to-br from-[#3a2412] via-[#6b3f1d] to-[#c7883f] text-white/85", className)}>
-        <UtensilsCrossed className="size-6" strokeWidth={1.4} aria-hidden />
-      </span>
-    );
-  }
-  return <Image src={entry.image.src} alt={entry.image.alt} fill sizes={sizes} priority={priority} loading={priority ? undefined : "lazy"} className={cn("object-cover", className)} />;
-}
-
-function Price({ entry, className }: { entry: MenuEntry; className?: string }) {
+/** The honest label on a stock photo (same look as the kit's IllustrativeTag). */
+function StockTag({ className }: { className?: string }) {
   return (
-    <span className={cn("whitespace-nowrap tabular-nums", className)}>
-      {entry.sizes.length > 1 && <span className="mr-1 text-[0.8em] font-normal text-tone/50">from</span>}TZS {n(minPrice(entry))}
+    <span className={cn("pointer-events-none inline-flex items-center rounded-full bg-black/50 px-2.5 py-1 text-[9px] font-medium uppercase leading-none tracking-[0.22em] text-white/85 backdrop-blur-sm", className)}>
+      Illustrative
     </span>
   );
 }
 
+/** A dish or drink photo filling its frame; an espresso tile with a quiet mark when there is none. */
+function Photo({ entry, sizes, className, decorative, eager }: { entry: MenuEntry; sizes: string; className?: string; decorative?: boolean; eager?: boolean }) {
+  if (!entry.image) {
+    return (
+      <span className={cn("grid size-full place-items-center bg-[#1c1712] text-gold/55", className)}>
+        <UtensilsCrossed className="size-5" strokeWidth={1.3} aria-hidden="true" />
+      </span>
+    );
+  }
+  return <Image src={entry.image.src} alt={decorative ? "" : entry.image.alt} fill sizes={sizes} loading={eager ? "eager" : undefined} className={cn("object-cover", className)} />;
+}
+
+/** "TZS 9,000" — the amount in the serif, the currency small; "from" when sizes differ. */
+function Amount({ entry, value, className, large }: { entry?: MenuEntry; value?: number; className?: string; large?: boolean }) {
+  const from = !!entry && entry.sizes.length > 1;
+  const amount = value ?? (entry ? minPrice(entry) : 0);
+  return (
+    <span className={cn("inline-flex shrink-0 items-baseline gap-1 whitespace-nowrap", className)}>
+      {from && <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-pub-muted">from</span>}
+      <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-pub-muted">TZS</span>
+      <span className={cn(typeScale.price, large ? "text-[1.625rem]" : "text-[1.1875rem]", "leading-none text-pub-fg")}>{n(amount)}</span>
+    </span>
+  );
+}
+
+/** "Choose" for a drink in several sizes — the sizes are on its card; a gold count once some are in the order. */
+function ChooseControl({ entry, inOrder, onOpen }: { entry: MenuEntry; inOrder: number; onOpen: () => void }) {
+  if (!available(entry)) return <span className={cn(typeScale.meta, "shrink-0 px-1 text-pub-muted")}>Not today</span>;
+  return (
+    <button type="button" onClick={onOpen} aria-haspopup="dialog" aria-label={`Choose a size of ${entry.name}${inOrder ? ` — ${inOrder} in your order` : ""}`}
+      className={buttonClass({ variant: "secondary", size: "sm", className: "shrink-0 gap-2 px-4" })}>
+      Choose
+      {inOrder > 0 && <span className="grid size-5 place-items-center rounded-full bg-gold text-[10px] font-bold tracking-normal text-[#16110a]">{inOrder}</span>}
+    </button>
+  );
+}
+
 /** Food: a classic menu list; on wide screens a large photo beside it follows the dish you point at. */
-function FoodList({ section, onOpen, first, order }: { section: MenuSection; onOpen: (key: string) => void; first: boolean; order: MenuOrder }) {
+function FoodList({ section, onOpen, order }: { section: MenuSection; onOpen: (key: string) => void; order: MenuOrder }) {
   const [focus, setFocus] = useState(section.entries[0]?.key);
   const preview = section.entries.find((e) => e.key === focus) ?? section.entries[0];
+  const withPreview = section.entries.some((e) => e.image);
   return (
-    <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-12">
-      {preview && (
-        <figure className="sticky top-40 hidden overflow-hidden rounded-[2rem] border border-tone/10 bg-paper-deep shadow-[0_30px_60px_-40px_rgba(20,15,10,0.6)] lg:block">
-          <div className="relative aspect-[5/4]">
-            <span key={preview.key} className="absolute inset-0 animate-in fade-in duration-500 motion-reduce:animate-none">
-              <Photo entry={preview} sizes="(min-width:1280px) 480px, 38vw" priority={first} />
+    <div className="grid items-start gap-10 lg:grid-cols-12 lg:gap-x-10">
+      {withPreview && preview && (
+        <figure className="sticky top-[8.5rem] hidden lg:col-span-5 lg:block">
+          <div className="relative aspect-[5/4] overflow-hidden rounded-[0.375rem] bg-[#1c1712]">
+            <span key={preview.key} className="absolute inset-0 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500">
+              <Photo entry={preview} sizes="(min-width: 1280px) 500px, 40vw" />
             </span>
-            <span className="pointer-events-none absolute inset-0 bg-linear-to-t from-black/70 via-black/10 to-transparent" aria-hidden />
+            <span aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_top,rgb(12_10_7/0.86)_0%,rgb(12_10_7/0.3)_42%,rgb(12_10_7/0)_68%)]" />
+            {preview.image?.stock && <StockTag className="absolute left-3 top-3" />}
             <figcaption className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-4 p-6 text-white">
               <span className="min-w-0">
-                <span className="block font-display text-3xl leading-tight">{preview.name}</span>
-                <span className="mt-1 block text-xs uppercase tracking-[0.22em] text-white/70">Tap for details</span>
+                <span className="block font-display text-[1.75rem] font-medium leading-tight">{preview.name}</span>
+                <span className={cn(typeScale.meta, "mt-2 block text-white/65")}>Select for details</span>
               </span>
-              <Price entry={preview} className="rounded-full bg-black/45 px-3 py-1.5 text-sm font-semibold text-[#f0cf86] backdrop-blur" />
+              <span className="shrink-0 whitespace-nowrap font-display text-[1.375rem] font-medium tabular-nums lining-nums text-gold">
+                <span className="mr-1 font-sans text-[10px] font-medium tracking-[0.16em] text-gold/75">TZS</span>{n(minPrice(preview))}
+              </span>
             </figcaption>
           </div>
         </figure>
       )}
-      <ul className="divide-y divide-tone/10">
-        {section.entries.map((e) => (
-          <li key={e.key} className={cn("flex flex-col rounded-2xl transition-colors hover:bg-panel sm:flex-row sm:items-center sm:gap-2 sm:pr-3", focus === e.key && "lg:bg-panel/70", order.qty(e.sizes[0].id) > 0 && "bg-panel ring-1 ring-gold/40")}>
-            <button type="button" onClick={() => onOpen(e.key)} onMouseEnter={() => setFocus(e.key)} onFocus={() => setFocus(e.key)} aria-haspopup="dialog"
-              className={cn("group flex min-w-0 flex-1 items-center gap-4 rounded-2xl px-2 py-3.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/50 sm:px-3",
-                !available(e) && "opacity-60")}>
-              <span className="relative size-16 shrink-0 overflow-hidden rounded-2xl bg-paper-deep sm:size-[4.5rem]">
-                <Photo entry={e} sizes="72px" className="transition duration-500 group-hover:scale-105 motion-reduce:transition-none" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="flex items-baseline gap-3">
-                  <span className="font-display text-[1.3rem] leading-tight text-tone sm:text-[1.45rem]">{e.name}</span>
-                  <span aria-hidden className="mb-1.5 hidden min-w-8 flex-1 border-b border-dotted border-tone/25 sm:block" />
-                  <Price entry={e} className="ml-auto text-[15px] font-semibold text-tone sm:ml-0" />
-                </span>
-                {e.description && <span className="mt-1 line-clamp-2 block text-sm leading-relaxed text-tone/60">{e.description}</span>}
-                {!available(e) && <span className="mt-1 block text-xs font-medium text-tone/70">Not available today</span>}
-              </span>
-            </button>
-            {/* Under the dish on phones, at the end of the row on wider screens */}
-            <div className="-mt-2 flex justify-end pb-3 pr-2 sm:m-0 sm:p-0">
-              {e.sizes.length === 1
-                ? <AddControl qty={order.qty(e.sizes[0].id)} name={e.name} size="sm" disabled={!available(e)} onChange={(q) => order.setQty(e.sizes[0].id, q)} />
-                : <button type="button" onClick={() => onOpen(e.key)} className="h-9 shrink-0 rounded-full border border-tone/20 px-3 text-xs font-semibold hover:border-tone">Choose</button>}
-            </div>
-          </li>
-        ))}
+      <ul className={cn("border-t border-pub-line", withPreview ? "lg:col-span-7" : "lg:col-span-12 lg:max-w-4xl")}>
+        {section.entries.map((e) => {
+          const single = e.sizes.length === 1;
+          const inOrder = e.sizes.reduce((t, x) => t + order.qty(x.id), 0);
+          return (
+            <li key={e.key}
+              className={cn("relative border-b border-pub-line transition-colors duration-200 motion-reduce:transition-none",
+                focus === e.key && withPreview && "lg:bg-pub-fg/[0.025]",
+                inOrder > 0 && "before:absolute before:inset-y-4 before:-left-3 before:w-0.5 before:rounded-full before:bg-gold sm:before:-left-4")}>
+              <div className="flex flex-col py-4 sm:flex-row sm:items-center sm:gap-6 sm:py-5 lg:px-3">
+                <button type="button" onClick={() => onOpen(e.key)} onMouseEnter={() => setFocus(e.key)} onFocus={() => setFocus(e.key)} aria-haspopup="dialog"
+                  className={cn("group flex min-w-0 flex-1 items-start gap-4 rounded-[0.375rem] text-left focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-gold sm:items-center sm:gap-5",
+                    !available(e) && "opacity-60")}>
+                  <span className="relative size-14 shrink-0 overflow-hidden rounded-[0.375rem] bg-[#1c1712] sm:size-[4.5rem]">
+                    <Photo entry={e} decorative sizes="72px" className="transition-transform duration-500 ease-pub group-hover:scale-105 motion-reduce:transition-none" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-baseline gap-3">
+                      <span className={cn(typeScale.item, "text-pub-fg transition-colors duration-200 group-hover:text-pub-eyebrow motion-reduce:transition-none")}>{e.name}</span>
+                      <span aria-hidden="true" className="mb-1 hidden min-w-6 flex-1 border-b border-dotted border-pub-fg/25 sm:block" />
+                      <Amount entry={e} className="hidden sm:inline-flex" />
+                    </span>
+                    {e.description && <span className="mt-1 line-clamp-2 block text-[14px] leading-relaxed text-pub-muted">{e.description}</span>}
+                    {!available(e) && <span className={cn(typeScale.meta, "mt-1.5 block text-pub-muted")}>Not available today</span>}
+                  </span>
+                </button>
+                {/* Under the dish on phones (price left, Add right); at the end of the row on wider screens. */}
+                <div className="mt-3 flex items-center justify-between gap-3 pl-[4.5rem] sm:mt-0 sm:pl-0">
+                  <Amount entry={e} className="sm:hidden" />
+                  {single
+                    ? <AddControl qty={order.qty(e.sizes[0].id)} name={e.name} size="sm" disabled={!available(e)} onChange={(q) => order.setQty(e.sizes[0].id, q)} />
+                    : <ChooseControl entry={e} inOrder={inOrder} onOpen={() => onOpen(e.key)} />}
+                </div>
+              </div>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
 }
 
-/** Drinks: compact tiles; every size of one drink on one tile. */
-function DrinkTiles({ section, onOpen, order }: { section: MenuSection; onOpen: (key: string) => void; order: MenuOrder }) {
+/** Drinks: a two-column list (one on phones); every size of one drink on one row. */
+function DrinkList({ section, onOpen, order }: { section: MenuSection; onOpen: (key: string) => void; order: MenuOrder }) {
   return (
-    <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-5">
+    <ul className="grid border-t border-pub-line md:grid-cols-2 md:gap-x-10 lg:gap-x-14">
       {section.entries.map((e) => {
+        const single = e.sizes.length === 1;
         const inOrder = e.sizes.reduce((t, x) => t + order.qty(x.id), 0);
         return (
-        <li key={e.key} className="relative">
-          <button type="button" onClick={() => onOpen(e.key)} aria-haspopup="dialog"
-            className={cn("group flex h-full w-full flex-col overflow-hidden rounded-3xl border border-tone/10 bg-panel text-left transition duration-300 hover:-translate-y-0.5 hover:border-gold/60 hover:shadow-[0_24px_50px_-30px_rgba(20,15,10,0.55)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 motion-reduce:transition-none",
-              !available(e) && "opacity-60")}>
-            <span className="relative block aspect-[4/3] overflow-hidden bg-paper-deep">
-              <Photo entry={e} sizes="(min-width:1024px) 17vw, (min-width:640px) 30vw, 46vw" className="transition duration-700 group-hover:scale-105 motion-reduce:transition-none" />
-            </span>
-            <span className="flex flex-1 flex-col gap-1 p-3.5 sm:p-4">
-              <span className="font-display text-[1.15rem] leading-tight text-tone sm:text-xl">{e.name}</span>
-              <span className="text-[11px] uppercase tracking-[0.16em] text-tone/50">
-                {e.sizes.length > 1 ? e.sizes.map((x) => x.label).join(" · ") : e.subcategory ?? (section.bar ? "Bar" : "Drink")}
-              </span>
-              <Price entry={e} className="mt-auto pt-2 pr-12 text-[15px] font-semibold text-tone" />
-            </span>
-          </button>
-          {/* Add straight from the tile (one size), or choose the size on its card */}
-          <span className="absolute bottom-3 right-3">
-            {e.sizes.length === 1
-              ? (available(e) && (order.qty(e.sizes[0].id) === 0
-                ? <button type="button" onClick={() => order.setQty(e.sizes[0].id, 1)} aria-label={`Add ${e.name}`} className="grid size-9 place-items-center rounded-full bg-gold text-[#1a140c] shadow-[0_8px_20px_-8px_oklch(0.72_0.12_80/0.9)] transition active:scale-90"><Plus className="size-4" strokeWidth={2.5} /></button>
-                : <button type="button" onClick={() => onOpen(e.key)} aria-label={`${e.name} in your order`} className="grid size-9 place-items-center rounded-full bg-tone text-sm font-bold text-paper">{order.qty(e.sizes[0].id)}</button>))
-              : <button type="button" onClick={() => onOpen(e.key)} aria-label={`Choose a size of ${e.name}`} className={cn("grid size-9 place-items-center rounded-full text-sm font-bold", inOrder ? "bg-tone text-paper" : "bg-gold text-[#1a140c]")}>{inOrder || <Plus className="size-4" strokeWidth={2.5} />}</button>}
-          </span>
-        </li>
+          <li key={e.key}
+            className={cn("relative min-w-0 border-b border-pub-line",
+              inOrder > 0 && "before:absolute before:inset-y-3.5 before:-left-3 before:w-0.5 before:rounded-full before:bg-gold sm:before:-left-4")}>
+            <div className="flex items-center gap-3 py-3.5 sm:gap-4">
+              <button type="button" onClick={() => onOpen(e.key)} aria-haspopup="dialog"
+                className={cn("group flex min-w-0 flex-1 items-center gap-4 rounded-[0.375rem] text-left focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-gold",
+                  !available(e) && "opacity-60")}>
+                <span className="relative hidden size-14 shrink-0 overflow-hidden rounded-[0.375rem] bg-[#1c1712] sm:block">
+                  <Photo entry={e} decorative sizes="56px" className="transition-transform duration-500 ease-pub group-hover:scale-105 motion-reduce:transition-none" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className={cn(typeScale.item, "line-clamp-2 text-pub-fg transition-colors duration-200 group-hover:text-pub-eyebrow motion-reduce:transition-none")}>{e.name}</span>
+                  <span className={cn(typeScale.meta, "mt-1 block truncate text-pub-muted")}>
+                    {e.sizes.length > 1 ? e.sizes.map((x) => x.label).join(" · ") : e.subcategory ?? (section.bar ? "Bar" : "Drink")}
+                  </span>
+                  <Amount entry={e} className="mt-1.5" />
+                </span>
+              </button>
+              {single
+                ? <AddControl qty={order.qty(e.sizes[0].id)} name={e.name} size="sm" disabled={!available(e)} onChange={(q) => order.setQty(e.sizes[0].id, q)} />
+                : <ChooseControl entry={e} inOrder={inOrder} onOpen={() => onOpen(e.key)} />}
+            </div>
+          </li>
         );
       })}
     </ul>
@@ -275,6 +342,7 @@ function DishCard({ entry, section, roomServiceFee, whatsappOrder, order, onRevi
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const opener = useRef<HTMLElement | null>(null);
+  const touch = useRef<{ x: number; y: number } | null>(null);
   useEffect(() => {
     const d = ref.current;
     if (!d) return;
@@ -282,71 +350,92 @@ function DishCard({ entry, section, roomServiceFee, whatsappOrder, order, onRevi
     if (!entry && d.open) d.close();
   }, [entry]);
 
+  // A sideways swipe on the photo moves to the next or previous dish.
+  function onTouchStart(e: React.TouchEvent) {
+    const t = e.touches[0];
+    touch.current = t ? { x: t.clientX, y: t.clientY } : null;
+  }
+  function onTouchEnd(e: React.TouchEvent) {
+    const start = touch.current;
+    const t = e.changedTouches[0];
+    touch.current = null;
+    if (!start || !t || !onMove) return;
+    const dx = t.clientX - start.x;
+    if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(t.clientY - start.y) * 1.4) onMove(dx < 0 ? 1 : -1);
+  }
+
   const multi = !!entry && entry.sizes.length > 1;
   const wa = entry ? whatsappOrder(`Hello, I would like to order ${entry.name}.`) : null;
+  const overPhoto = "grid size-11 place-items-center rounded-full border border-white/20 bg-black/45 text-white backdrop-blur-md transition-colors duration-200 hover:border-gold/70 hover:text-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none";
   return (
-    <dialog ref={ref} aria-labelledby="dish-title"
+    <dialog ref={ref} aria-labelledby="dish-title" data-tone="paper"
       onClose={() => { onClose(); opener.current?.focus(); }}
       onClick={(e) => { if (e.target === e.currentTarget) ref.current?.close(); }}
       onKeyDown={(e) => { if (!onMove) return; if (e.key === "ArrowRight") { e.preventDefault(); onMove(1); } if (e.key === "ArrowLeft") { e.preventDefault(); onMove(-1); } }}
-      className="m-auto w-full max-w-[40rem] overflow-hidden border-0 bg-panel p-0 text-tone shadow-2xl backdrop:bg-[#0d0b08]/70 backdrop:backdrop-blur-sm max-sm:mb-0 max-sm:mt-auto max-sm:max-w-none max-sm:rounded-t-[2rem] sm:rounded-[2rem] open:animate-in open:fade-in-0 max-sm:open:slide-in-from-bottom-10 sm:open:zoom-in-95 motion-reduce:open:animate-none">
+      className={cn(SHEET, "max-w-[40rem]")}>
       {entry && section && (
         <div className="flex max-h-[92dvh] flex-col">
-          <div className="relative aspect-[4/3] shrink-0 bg-paper-deep">
-            <Photo entry={entry} sizes="(min-width:640px) 640px, 100vw" priority />
-            <span className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-linear-to-b from-black/45 to-transparent" aria-hidden />
-            <button type="button" onClick={() => ref.current?.close()} aria-label="Close" autoFocus
-              className="absolute right-3 top-3 grid size-10 place-items-center rounded-full bg-black/50 text-white backdrop-blur transition hover:bg-black/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold">
-              <X className="size-5" />
+          <div className="relative aspect-[16/11] shrink-0 bg-[#1c1712] sm:aspect-[4/3]" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+            <span key={entry.key} className="absolute inset-0 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300">
+              <Photo entry={entry} sizes="(min-width: 640px) 640px, 100vw" eager />
+            </span>
+            <span className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-linear-to-b from-black/45 to-transparent" aria-hidden="true" />
+            {entry.image?.stock && <StockTag className="absolute left-4 top-4" />}
+            <button type="button" onClick={() => ref.current?.close()} aria-label="Close" autoFocus className={cn(overPhoto, "absolute right-3 top-3")}>
+              <X className="size-5" strokeWidth={1.6} aria-hidden="true" />
             </button>
             {onMove && (
-              <span className="absolute bottom-3 right-3 flex gap-1.5">
-                <button type="button" onClick={() => onMove(-1)} aria-label="Previous" className="grid size-10 place-items-center rounded-full bg-black/50 text-white backdrop-blur transition hover:bg-black/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"><ChevronLeft className="size-5" /></button>
-                <button type="button" onClick={() => onMove(1)} aria-label="Next" className="grid size-10 place-items-center rounded-full bg-black/50 text-white backdrop-blur transition hover:bg-black/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"><ChevronRight className="size-5" /></button>
+              <span className="absolute bottom-3 right-3 flex gap-2">
+                <button type="button" onClick={() => onMove(-1)} aria-label="Previous" className={overPhoto}><ChevronLeft className="size-5" strokeWidth={1.6} aria-hidden="true" /></button>
+                <button type="button" onClick={() => onMove(1)} aria-label="Next" className={overPhoto}><ChevronRight className="size-5" strokeWidth={1.6} aria-hidden="true" /></button>
               </span>
             )}
           </div>
-          <div className="overflow-y-auto overscroll-contain p-6 sm:p-8">
-            <p className={cn(eyebrow, goldText, "flex items-center gap-2")}>
-              {section.kind === "DRINK" ? <Wine className="size-3.5" aria-hidden /> : <UtensilsCrossed className="size-3.5" aria-hidden />}
+          <div className="overflow-y-auto overscroll-contain px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-5 sm:px-8 sm:pb-8 sm:pt-7">
+            <p className={cn(typeScale.eyebrow, "flex items-center gap-2 text-pub-eyebrow")}>
+              {section.kind === "DRINK" ? <Wine className="size-3.5" strokeWidth={1.6} aria-hidden="true" /> : <UtensilsCrossed className="size-3.5" strokeWidth={1.6} aria-hidden="true" />}
               {section.name}{entry.subcategory && entry.subcategory !== section.name ? ` · ${entry.subcategory}` : ""}
             </p>
             <div className="mt-3 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
-              <h2 id="dish-title" className="font-display text-[2rem] leading-[1.05] sm:text-[2.4rem]">{entry.name}</h2>
-              {!multi && <span className="text-xl font-semibold tabular-nums">TZS {n(entry.sizes[0].price)}</span>}
+              <h2 id="dish-title" className="font-display text-[clamp(1.875rem,1.6rem+1vw,2.375rem)] font-medium leading-[1.05] text-balance">{entry.name}</h2>
+              {!multi && <Amount value={entry.sizes[0].price} large />}
             </div>
-            {entry.description && <p className="mt-3 text-[15px] leading-relaxed text-tone/70">{entry.description}</p>}
+            {entry.description && <p className={cn(typeScale.body, "mt-3 text-pub-muted")}>{entry.description}</p>}
 
             {multi && (
-              <ul className="mt-5 divide-y divide-tone/10 rounded-2xl border border-tone/10">
+              <ul className="mt-5 border-t border-pub-line">
                 {entry.sizes.map((x) => (
-                  <li key={x.id} className={cn("flex items-center gap-3 px-4 py-3", !x.available && "opacity-55")}>
-                    <span className="font-medium">{x.label}</span>
-                    <span aria-hidden className="mb-1 min-w-6 flex-1 self-end border-b border-dotted border-tone/25" />
-                    <span className="font-semibold tabular-nums">TZS {n(x.price)}</span>
+                  <li key={x.id} className={cn("flex items-center gap-3 border-b border-pub-line py-2.5", !x.available && "opacity-55")}>
+                    <span className={cn(typeScale.meta, "mr-auto text-pub-fg min-[380px]:mr-0")}>{x.label}</span>
+                    <span aria-hidden="true" className="mb-1 hidden min-w-6 flex-1 self-end border-b border-dotted border-pub-fg/25 min-[380px]:block" />
+                    <Amount value={x.price} />
                     <AddControl qty={order.qty(x.id)} name={`${entry.name} ${x.label}`} size="sm" disabled={!x.available} onChange={(q) => order.setQty(x.id, q)} />
                   </li>
                 ))}
               </ul>
             )}
-            {!available(entry) && <p className="mt-4 rounded-xl bg-paper-deep px-4 py-2.5 text-sm font-medium">Not available today — ask the restaurant what&apos;s fresh.</p>}
+            {!available(entry) && <p className="mt-4 border-l-2 border-gold/60 pl-4 text-sm font-medium text-pub-fg">Not available today — ask the restaurant what&apos;s fresh.</p>}
 
             <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               {!multi && available(entry) && (
                 <div className="flex items-center gap-3">
                   <AddControl qty={order.qty(entry.sizes[0].id)} name={entry.name} onChange={(q) => order.setQty(entry.sizes[0].id, q)} />
-                  {order.qty(entry.sizes[0].id) > 0 && <span className="text-sm text-tone/60">In your order · TZS {n(entry.sizes[0].price * order.qty(entry.sizes[0].id))}</span>}
+                  {order.qty(entry.sizes[0].id) > 0 && <span className="text-sm tabular-nums text-pub-muted">In your order · TZS {n(entry.sizes[0].price * order.qty(entry.sizes[0].id))}</span>}
                 </div>
               )}
-              {wa && <a href={wa} target="_blank" rel="noopener" className="text-xs font-medium text-tone/60 underline-offset-4 hover:text-tone hover:underline">Or ask on WhatsApp</a>}
+              {wa && <a href={wa} target="_blank" rel="noopener" className="inline-flex min-h-11 items-center self-start text-[13px] font-medium text-pub-muted underline decoration-pub-line underline-offset-4 transition-colors duration-200 hover:text-pub-fg hover:decoration-gold motion-reduce:transition-none sm:self-auto">Or ask on WhatsApp</a>}
             </div>
             {order.count > 0 && (
-              <button type="button" onClick={onReview} className="mt-5 flex h-12 w-full items-center justify-between rounded-full bg-tone px-5 text-sm font-semibold text-paper transition hover:opacity-90">
-                <span>View your order · {order.count} item{order.count === 1 ? "" : "s"}</span><span className="tabular-nums text-gold">TZS {n(order.subtotal)}</span>
+              <button type="button" onClick={onReview} className={buttonClass({ variant: "primary", size: "md", full: true, className: "mt-5 justify-between px-5" })}>
+                <span className="flex min-w-0 items-center gap-2.5">
+                  <ShoppingBag className="size-4 shrink-0" strokeWidth={1.8} aria-hidden="true" />
+                  <span className="truncate">View your order · {order.count}<span className="sr-only"> item{order.count === 1 ? "" : "s"}</span></span>
+                </span>
+                <span className="shrink-0 font-display text-[1.125rem] font-medium normal-case tracking-normal tabular-nums lining-nums">TZS {n(order.subtotal)}</span>
               </button>
             )}
-            <p className="mt-4 flex items-center gap-2 text-xs leading-relaxed text-tone/60">
-              <BedDouble className="size-4 shrink-0 text-accent-ink" aria-hidden />
+            <p className="mt-5 flex items-start gap-2.5 border-t border-pub-line pt-4 text-[13px] leading-relaxed text-pub-muted">
+              <BedDouble className="mt-0.5 size-4 shrink-0 text-pub-eyebrow" strokeWidth={1.6} aria-hidden="true" />
               Staying with us? Scan the QR card in your room — we bring it up and add it to your room bill (TZS {n(roomServiceFee)} delivery).
             </p>
           </div>

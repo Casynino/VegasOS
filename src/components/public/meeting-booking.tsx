@@ -1,16 +1,19 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarCheck, CheckCircle2, Clock, Loader2, Search, ShieldCheck, Smartphone, Users, XCircle } from "lucide-react";
+import { CalendarCheck, CircleCheck, CircleX, LoaderCircle, Lock, Search, Send, Smartphone, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { bookMeetingAction, checkMeetingAction, payMeetingAction, type MeetingCheck, type MeetingReceipt } from "@/app/(public)/meeting-room/actions";
-import { eyebrow, fieldError, fieldInput, fieldLabel, fieldTextarea, goldText, pillGold, pillPad } from "./ui";
 import { NetworkMarks } from "@/components/payments/networks";
+import { Button, Eyebrow, InfoList, LinkButton, PriceTag, field, surface, toneAttr, typeScale } from "./kit";
+import { ChoiceRow } from "./services/choice-row";
+import { Field, StepLegend } from "./services/form-field";
+import { Receipt } from "./services/receipt";
 
 const n = (v: number) => v.toLocaleString("en-US");
 const longDate = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+const shortDate = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
 const newKey = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (x) => x.toString(16).padStart(2, "0")).join("");
 const payPhoneOk = (p: string) => /^(?:\+?255|0)?[67]\d{8}$/.test(p.replace(/[\s-]/g, ""));
 const SLOTS = [["Morning", "08:00", "12:00"], ["Half day", "09:00", "13:00"], ["Afternoon", "13:00", "17:00"], ["Full day", "08:00", "17:00"]] as const;
@@ -19,9 +22,14 @@ const SLOTS = [["Morning", "08:00", "12:00"], ["Half day", "09:00", "13:00"], ["
  * Meeting room on the website: pick a date and time → "Check availability"
  * (live, from the same booking engine as reception) → "Book now" with the
  * customer's details. The booking is a request until the hotel confirms it — or, paying online (nTZS), it is booked
- * at once and the payment confirms it.
+ * at once and the payment confirms it. "Pay now" comes first and is pre-selected; "Pay at the hotel" sends the request.
+ * One panel for the steps; on desktop a night summary rides beside it.
  */
-export function MeetingBooking({ today, price, capacity, online = false }: { today: string; price: number; capacity: number; online?: boolean }) {
+export function MeetingBooking({ today, price, capacity, online = false, name = "Meeting Room" }: {
+  today: string; price: number; capacity: number; online?: boolean;
+  /** The room's public name for the summary (never the internal room number). */
+  name?: string;
+}) {
   const router = useRouter();
   const [when, setWhen] = useState({ date: "", start: "09:00", end: "13:00", attendees: "10" });
   const [f, setF] = useState({ fullName: "", companyName: "", phone: "", email: "", requirements: "", notes: "", website: "" });
@@ -33,6 +41,7 @@ export function MeetingBooking({ today, price, capacity, online = false }: { tod
   const [booking, startBook] = useTransition();
   const [paying, startPay] = useTransition();
   const [payPhone, setPayPhone] = useState<string | null>(null);
+  const [way, setWay] = useState<"NOW" | "LATER">("NOW");
   const payKey = useRef("");
   const key = `${when.date}|${when.start}|${when.end}`;
   const fresh = check?.for === key ? check : null;
@@ -51,8 +60,7 @@ export function MeetingBooking({ today, price, capacity, online = false }: { tod
     });
   }
 
-  function book(e: React.FormEvent) {
-    e.preventDefault();
+  function book() {
     setFormError(null);
     startBook(async () => {
       const res = await bookMeetingAction({ ...when, attendees: Number(when.attendees), ...f });
@@ -80,143 +88,198 @@ export function MeetingBooking({ today, price, capacity, online = false }: { tod
     });
   }
 
+  // Enter before the time is checked checks it; after, the chosen way to pay runs.
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!fresh?.available) { runCheck(); return; }
+    if (online && way === "NOW") payOnline();
+    else book();
+  }
+
   if (done) {
     return (
-      <div className="mx-auto max-w-xl rounded-[2rem] border border-tone/10 bg-panel p-8 text-center shadow-[0_30px_60px_-40px_rgba(20,15,10,0.6)] sm:p-10" role="status">
-        <span className="mx-auto grid size-14 place-items-center rounded-full bg-gold/15 text-accent-ink"><CheckCircle2 className="size-7" /></span>
-        <p className={cn(eyebrow, goldText, "mt-5")}>Request received</p>
-        <h3 className="mt-3 font-display text-3xl leading-tight text-tone sm:text-4xl">Thank you, {done.name}.</h3>
-        <p className="mt-3 text-tone/70">We have your meeting room request. Our team will call or WhatsApp you to confirm it.</p>
-        <dl className="mt-7 divide-y divide-tone/10 rounded-2xl border border-tone/10 text-left text-sm">
-          {[
-            ["Reference", <span key="r" className="font-mono font-semibold tracking-wide">{done.reference}</span>],
-            ["Room", done.room],
-            ["Date", longDate(done.date)],
-            ["Time", <span key="t" className="tabular-nums">{done.time}</span>],
-            ["Price", <span key="p" className="font-semibold tabular-nums">TZS {n(done.price)}</span>],
-          ].map(([k, v]) => (
-            <div key={String(k)} className="flex items-center justify-between gap-4 px-5 py-3"><dt className="text-tone/55">{k}</dt><dd className="text-right text-tone">{v}</dd></div>
-          ))}
-        </dl>
-        <p className="mt-5 text-xs text-tone/55">Keep your reference. The time is held for you once we confirm.</p>
-        <div className="mt-6 flex flex-wrap justify-center gap-4 text-sm font-medium">
-          <Link href={`/booking/${done.reference}?token=${encodeURIComponent(done.manageToken)}`} className="text-tone underline underline-offset-4">View your request</Link>
-          <button type="button" onClick={() => { setDone(null); setCheck(null); setWhen((w) => ({ ...w, date: "" })); }} className="text-tone/70 underline-offset-4 hover:underline">Book another time</button>
-        </div>
-      </div>
+      <Receipt
+        eyebrow="Request received"
+        title={`Thank you, ${done.name}.`}
+        line="We have your meeting room request. Our team will call or WhatsApp you to confirm it."
+        rows={[
+          { label: "Reference", value: <span className="font-mono font-semibold tracking-wide">{done.reference}</span> },
+          { label: "Room", value: done.room },
+          { label: "Date", value: longDate(done.date) },
+          { label: "Time", value: <span className="tabular-nums">{done.time}</span> },
+          { label: "Price", value: <span className="tabular-nums">TZS {n(done.price)}</span> },
+        ]}
+        note="Keep your reference. The time is held for you once we confirm."
+        actions={
+          <>
+            <LinkButton href={`/booking/${done.reference}?token=${encodeURIComponent(done.manageToken)}`} icon="arrow">View your request</LinkButton>
+            <Button variant="text" onClick={() => { setDone(null); setCheck(null); setWhen((w) => ({ ...w, date: "" })); }}>Book another time</Button>
+          </>
+        }
+      />
     );
   }
 
-  return (
-    <form onSubmit={book} className="mx-auto grid max-w-5xl gap-6 lg:grid-cols-[1.35fr_1fr]" noValidate>
-      <div className="space-y-6 rounded-[2rem] border border-tone/10 bg-panel p-6 shadow-[0_30px_60px_-45px_rgba(20,15,10,0.6)] sm:p-8">
-        <fieldset className="space-y-4">
-          <legend className={cn(eyebrow, goldText, "mb-4")}>1 · When is your meeting?</legend>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <F label="Date *" error={errors.date}><input className={fieldInput} type="date" min={today} value={when.date} onChange={setW("date")} aria-invalid={!!errors.date} /></F>
-            <F label="Starts *" error={errors.start}><input className={fieldInput} type="time" step={900} value={when.start} onChange={setW("start")} /></F>
-            <F label="Ends *" error={errors.end}><input className={fieldInput} type="time" step={900} value={when.end} onChange={setW("end")} /></F>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {SLOTS.map(([label, a, b]) => {
-              const on = when.start === a && when.end === b;
-              return (
-                <button key={label} type="button" aria-pressed={on} onClick={() => setWhen((w) => ({ ...w, start: a, end: b }))}
-                  className={cn("rounded-full border px-4 py-2 text-left text-xs transition", on ? "border-gold bg-gold/15 text-tone" : "border-tone/15 text-tone/70 hover:border-tone/35")}>
-                  <span className="font-semibold">{label}</span> <span className="tabular-nums opacity-70">{a}–{b}</span>
-                </button>
-              );
-            })}
-          </div>
-          <div className="flex flex-wrap items-end gap-4">
-            <div className="w-40"><F label="People *" error={errors.attendees}><input className={fieldInput} type="number" min={1} max={capacity} value={when.attendees} onChange={setW("attendees")} /></F></div>
-            <button type="button" onClick={runCheck} disabled={checking} className={cn(pillGold, pillPad, "h-12")}>
-              {checking ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />} Check availability
-            </button>
-          </div>
+  const busy = booking || paying;
+  const note = online
+    ? "No account needed. Pay now and your booking is confirmed at once — or send a request and our team calls or messages you to confirm it."
+    : "No account needed and nothing to pay online. Your booking is confirmed when our team calls or messages you.";
 
-          {fresh && (
-            <div role="status" className={cn("rounded-2xl border p-4 text-sm", fresh.available ? "border-emerald-600/30 bg-emerald-600/[0.07]" : "border-red-700/25 bg-red-700/[0.06]")}>
-              <p className="flex items-center gap-2 font-semibold text-tone">
-                {fresh.available ? <CheckCircle2 className="size-5 text-emerald-700" /> : <XCircle className="size-5 text-red-700" />}
-                {fresh.available ? `Available · ${longDate(when.date)}, ${when.start}–${when.end}` : "Already booked for part of that time"}
-              </p>
-              {fresh.available
-                ? <p className="mt-1 text-tone/70">TZS {n(fresh.price)} for this booking. Add your details below to book it.</p>
-                : <p className="mt-1 text-tone/70">Please choose another time on this day, or another date.</p>}
-              {fresh.booked.length > 0 && (
-                <p className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-tone/65">
-                  <span>Booked that day:</span>
-                  {fresh.booked.map((t) => <span key={t} className="rounded-full bg-tone/10 px-2.5 py-1 font-medium tabular-nums text-tone">{t}</span>)}
-                </p>
+  return (
+    <form onSubmit={submit} className="grid gap-6 lg:grid-cols-12 lg:gap-10" noValidate>
+      <div className="min-w-0 lg:col-span-7">
+        <div className={cn(surface.panel, "space-y-9")}>
+          <fieldset>
+            <StepLegend step={1}>When is your meeting?</StepLegend>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Field label="Date" required error={errors.date}>
+                <input className={field.input} type="date" min={today} value={when.date} onChange={setW("date")} aria-invalid={!!errors.date} aria-required="true" />
+              </Field>
+              <div className="grid grid-cols-2 gap-4 sm:contents">
+                <Field label="Starts" required error={errors.start}>
+                  <input className={field.input} type="time" step={900} value={when.start} onChange={setW("start")} aria-invalid={!!errors.start} aria-required="true" />
+                </Field>
+                <Field label="Ends" required error={errors.end}>
+                  <input className={field.input} type="time" step={900} value={when.end} onChange={setW("end")} aria-invalid={!!errors.end} aria-required="true" />
+                </Field>
+              </div>
+            </div>
+            <div role="group" aria-label="Quick times" className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {SLOTS.map(([label, a, b]) => {
+                const on = when.start === a && when.end === b;
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => setWhen((w) => ({ ...w, start: a, end: b }))}
+                    className={cn(
+                      "flex min-h-12 flex-col items-start justify-center rounded-[0.625rem] border px-3 py-2 text-left transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none",
+                      on ? "border-gold/70 bg-gold/[0.08]" : "border-pub-line hover:border-pub-fg/30",
+                    )}
+                  >
+                    <span className="text-[13px] font-medium leading-tight text-pub-fg">{label}</span>
+                    <span className="text-[12px] tabular-nums leading-tight text-pub-muted">{a}–{b}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mt-5 grid gap-4 sm:grid-cols-[9rem_auto] sm:items-end sm:justify-start">
+              <Field label="People" required error={errors.attendees}>
+                <input className={field.input} type="number" inputMode="numeric" min={1} max={capacity} value={when.attendees} onChange={setW("attendees")} aria-invalid={!!errors.attendees} aria-required="true" />
+              </Field>
+              <Button onClick={runCheck} disabled={checking} variant={fresh?.available ? "secondary" : "primary"} full className="sm:w-auto">
+                <span className="inline-flex items-center gap-2">
+                  {checking ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : <Search className="size-4" aria-hidden="true" />}
+                  Check availability
+                </span>
+              </Button>
+            </div>
+
+            <div aria-live="polite">
+              {fresh && (
+                <div className={cn("mt-5 rounded-[0.75rem] border p-4", fresh.available ? "border-emerald-600/35 bg-emerald-600/[0.06]" : "border-pub-error/35 bg-pub-error/[0.06]")}>
+                  <p className="flex items-start gap-2.5 font-medium leading-snug text-pub-fg">
+                    {fresh.available
+                      ? <CircleCheck className="mt-0.5 size-5 shrink-0 text-emerald-700 pub-dark:text-emerald-400" aria-hidden="true" />
+                      : <CircleX className="mt-0.5 size-5 shrink-0 text-pub-error" aria-hidden="true" />}
+                    <span>{fresh.available ? `Available · ${longDate(when.date)}, ${when.start}–${when.end}` : "Already booked for part of that time"}</span>
+                  </p>
+                  <p className="mt-1.5 pl-7.5 text-[14px] leading-relaxed text-pub-muted">
+                    {fresh.available ? `TZS ${n(fresh.price)} for this booking. Add your details below to book it.` : "Please choose another time on this day, or another date."}
+                  </p>
+                  {fresh.booked.length > 0 && (
+                    <p className={cn(typeScale.meta, "mt-3 pl-7.5 text-pub-muted")}>
+                      Booked that day: <span className="tabular-nums text-pub-fg">{fresh.booked.join(" · ")}</span>
+                    </p>
+                  )}
+                </div>
               )}
             </div>
-          )}
-        </fieldset>
-
-        {fresh?.available && (
-          <fieldset className="space-y-4 border-t border-tone/10 pt-6">
-            <legend className={cn(eyebrow, goldText, "mb-4")}>2 · Your details</legend>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <F label="Full name *" error={errors.fullName}><input className={fieldInput} value={f.fullName} onChange={set("fullName")} autoComplete="name" /></F>
-              <F label="Company" error={errors.companyName}><input className={fieldInput} value={f.companyName} onChange={set("companyName")} autoComplete="organization" placeholder="Optional" /></F>
-              <F label="Phone *" error={errors.phone}><input className={fieldInput} value={f.phone} onChange={set("phone")} inputMode="tel" autoComplete="tel" placeholder="+255 …" /></F>
-              <F label="Email" error={errors.email}><input className={fieldInput} type="email" value={f.email} onChange={set("email")} autoComplete="email" placeholder="Optional" /></F>
-            </div>
-            <F label="Special requirements" error={errors.requirements}><textarea className={fieldTextarea} value={f.requirements} onChange={set("requirements")} placeholder="e.g. projector, seating layout, tea break at 10:30, lunch for 12" /></F>
-            <F label="Notes" error={errors.notes}><textarea className={cn(fieldTextarea, "min-h-20")} value={f.notes} onChange={set("notes")} /></F>
-            <input type="text" name="website" value={f.website} onChange={set("website")} tabIndex={-1} autoComplete="off" aria-hidden="true" className="hidden" />
-            {online ? (
-              <div className="space-y-4 border-t border-tone/10 pt-6">
-                <p className={cn(eyebrow, goldText)}>3 · Pay online and confirm now</p>
-                <F label="Mobile-money number *" error={errors.payPhone}>
-                  <input className={fieldInput} value={number} onChange={(e) => setPayPhone(e.target.value)} type="tel" inputMode="tel" autoComplete="tel" placeholder="e.g. 0712 345 678" aria-invalid={!!errors.payPhone} />
-                </F>
-                <button type="button" onClick={payOnline} disabled={paying || booking} className={cn(pillGold, pillPad, "h-12 w-full sm:w-auto")}>
-                  {paying ? <Loader2 className="size-4 animate-spin" /> : <Smartphone className="size-4" />} Pay TZS {n(fresh.price)} & confirm
-                </button>
-                <NetworkMarks />
-                <p className="text-xs leading-relaxed text-tone/60">You will get a payment request on your phone — enter your PIN to pay. The time is held for you while you pay.</p>
-                <p className="flex items-center gap-1.5 text-[11px] font-medium text-tone/55"><ShieldCheck className="size-3.5 text-accent-ink" />Secure payment powered by NTZS</p>
-                <button type="submit" disabled={booking || paying} className="text-sm font-medium text-tone/70 underline-offset-4 hover:text-tone hover:underline">
-                  {booking ? "Sending your request…" : "Or send a request — pay at the hotel"}
-                </button>
-              </div>
-            ) : (
-              <button type="submit" disabled={booking} className={cn(pillGold, pillPad, "h-12 w-full sm:w-auto")}>
-                {booking ? <Loader2 className="size-4 animate-spin" /> : <CalendarCheck className="size-4" />} Book now
-              </button>
-            )}
           </fieldset>
-        )}
-        {formError && <p className={fieldError} role="alert">{formError}</p>}
+
+          {fresh?.available && (
+            <fieldset className="border-t border-pub-line pt-8">
+              <StepLegend step={2}>Your details</StepLegend>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Full name" required error={errors.fullName}>
+                  <input className={field.input} value={f.fullName} onChange={set("fullName")} autoComplete="name" aria-invalid={!!errors.fullName} aria-required="true" />
+                </Field>
+                <Field label="Company" error={errors.companyName}>
+                  <input className={field.input} value={f.companyName} onChange={set("companyName")} autoComplete="organization" placeholder="Optional" />
+                </Field>
+                <Field label="Phone" required error={errors.phone}>
+                  <input className={field.input} value={f.phone} onChange={set("phone")} inputMode="tel" autoComplete="tel" placeholder="+255 …" aria-invalid={!!errors.phone} aria-required="true" />
+                </Field>
+                <Field label="Email" error={errors.email}>
+                  <input className={field.input} type="email" value={f.email} onChange={set("email")} autoComplete="email" placeholder="Optional" aria-invalid={!!errors.email} />
+                </Field>
+              </div>
+              <div className="mt-4 grid gap-4">
+                <Field label="Special requirements" error={errors.requirements}>
+                  <textarea className={field.textarea} value={f.requirements} onChange={set("requirements")} placeholder="e.g. projector, seating layout, tea break at 10:30, lunch for 12" />
+                </Field>
+                <Field label="Notes" error={errors.notes}>
+                  <textarea className={cn(field.textarea, "min-h-20")} value={f.notes} onChange={set("notes")} />
+                </Field>
+              </div>
+              <input type="text" name="website" value={f.website} onChange={set("website")} tabIndex={-1} autoComplete="off" aria-hidden="true" className="hidden" />
+            </fieldset>
+          )}
+
+          {fresh?.available && (
+            <fieldset className="border-t border-pub-line pt-8">
+              <StepLegend step={3}>{online ? "How would you like to pay?" : "Book it"}</StepLegend>
+              {online && (
+                <div role="radiogroup" aria-label="How would you like to pay?" className="mb-6 grid gap-2.5">
+                  <ChoiceRow kind="radio" on={way === "NOW"} onSelect={() => setWay("NOW")} icon={<Smartphone className="size-[18px]" strokeWidth={1.6} />} title="Pay now" sub={<NetworkMarks label={null} compact />}>
+                    <div className="space-y-3">
+                      <Field label="Mobile-money number" required error={errors.payPhone}>
+                        <input className={cn(field.input, "tabular-nums")} value={number} onChange={(e) => setPayPhone(e.target.value)} type="tel" inputMode="tel" autoComplete="tel" placeholder="e.g. 0712 345 678" aria-invalid={!!errors.payPhone} aria-required="true" />
+                      </Field>
+                      <p className="text-[13px] leading-relaxed text-pub-muted">You will get a payment request on your phone — enter your PIN to pay. The time is held for you while you pay.</p>
+                      <p className="flex items-center gap-1.5 text-[11px] font-medium text-pub-muted">
+                        <Lock className="size-3 shrink-0 text-pub-eyebrow" aria-hidden="true" />Secure payment by <span className="font-semibold tracking-wide text-pub-fg">NTZS</span>
+                      </p>
+                    </div>
+                  </ChoiceRow>
+                  <ChoiceRow kind="radio" on={way === "LATER"} onSelect={() => setWay("LATER")} icon={<Wallet className="size-[18px]" strokeWidth={1.6} />} title="Pay at the hotel" sub="Send a request — our team calls or messages you to confirm it." />
+                </div>
+              )}
+              <Button type="submit" size="lg" full disabled={busy} className="sm:w-auto">
+                <span className="inline-flex items-center gap-2">
+                  {busy ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />
+                    : !online ? <CalendarCheck className="size-4" aria-hidden="true" />
+                      : way === "NOW" ? <Smartphone className="size-4" aria-hidden="true" /> : <Send className="size-4" aria-hidden="true" />}
+                  {!online ? "Book now"
+                    : way === "NOW" ? (paying ? "Booking your time…" : `Pay TZS ${n(fresh.price)}`)
+                      : (booking ? "Sending your request…" : "Send request")}
+                </span>
+              </Button>
+            </fieldset>
+          )}
+          {formError && <p className={field.error} role="alert">{formError}</p>}
+        </div>
+        <p className="mt-4 px-1 text-[13px] leading-relaxed text-pub-muted lg:hidden">{note}</p>
       </div>
 
-      <aside className="space-y-4 lg:sticky lg:top-28 lg:self-start">
-        <div className="rounded-[2rem] bg-[#15120e] p-6 text-white sm:p-8">
-          <p className={cn(eyebrow, "text-gold")}>Meeting room</p>
-          <p className="mt-3 font-display text-4xl tabular-nums">TZS {n(price)}</p>
-          <p className="text-sm text-white/60">per booking</p>
-          <ul className="mt-6 space-y-3 text-sm text-white/80">
-            <li className="flex gap-3"><Users className="size-4 shrink-0 text-gold" />Up to {capacity} people</li>
-            <li className="flex gap-3"><Clock className="size-4 shrink-0 text-gold" />Choose your own start and end time</li>
-            <li className="flex gap-3"><CalendarCheck className="size-4 shrink-0 text-gold" />Food & drinks from our restaurant and bar can go on the same bill</li>
-          </ul>
+      {/* Desktop: what you are booking, beside the steps. */}
+      <aside aria-label="Your booking" className="hidden lg:col-span-4 lg:col-start-9 lg:block lg:sticky lg:top-24 lg:self-start">
+        <div {...toneAttr("night")} className="rounded-[1rem] bg-night p-7 text-pub-fg">
+          <Eyebrow>{name}</Eyebrow>
+          <PriceTag className="mt-4" amount={fresh?.available ? fresh.price : price} unit="booking" size="lg" />
+          <InfoList
+            variant="rows"
+            className="mt-6"
+            items={[
+              { label: "People", value: `Up to ${capacity}` },
+              { label: "When", value: when.date ? <span className="tabular-nums">{shortDate(when.date)} · {when.start}–{when.end}</span> : "Choose a date" },
+              { label: "Food & drinks", value: "On the same bill" },
+            ]}
+          />
         </div>
-        <p className="px-2 text-xs leading-relaxed text-tone/55">{online
-          ? "No account needed. Pay online and your booking is confirmed at once — or send a request and our team calls or messages you to confirm it."
-          : "No account needed and nothing to pay online. Your booking is confirmed when our team calls or messages you."}</p>
+        <p className="mt-4 px-1 text-[13px] leading-relaxed text-pub-muted">{note}</p>
       </aside>
     </form>
-  );
-}
-
-function F({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className={fieldLabel}>{label}</span>
-      {children}
-      {error && <span className={fieldError}>{error}</span>}
-    </label>
   );
 }

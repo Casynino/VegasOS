@@ -1,10 +1,12 @@
-import Image from "next/image";
 import { cn } from "@/lib/utils";
-import { Ornament } from "./ornament";
-import { blurFor } from "./blur-data";
-import { container, eyebrow, type } from "./ui";
+import { MediaFrame } from "./kit/media-frame";
+import { containers, measure, typeScale } from "./kit/tokens";
 
-/** Photo hero for inner pages (only used where a real photo exists). */
+/**
+ * Photo hero for inner pages: the photograph does the talking — eyebrow, H1 and at most one
+ * short line at the bottom over a soft scrim; CTAs go in `children`. Clears the fixed header.
+ * Phones: ~62% of the screen, never a wall. The image is the page's LCP (`preload`).
+ */
 export function PageHero({
   kicker,
   title,
@@ -13,6 +15,11 @@ export function PageHero({
   imageAlt,
   children,
   className,
+  focal,
+  focalSm,
+  illustrative,
+  size = "md",
+  id,
 }: {
   kicker: string;
   title: string;
@@ -21,18 +28,53 @@ export function PageHero({
   imageAlt: string;
   children?: React.ReactNode;
   className?: string;
+  /** object-position on phones (e.g. "50% 35%"); focalSm from 640px. */
+  focal?: string;
+  focalSm?: string;
+  /** Force the Illustrative tag (automatic for /images/illustrative/ photos). */
+  illustrative?: boolean;
+  /** md: inner pages; lg: a taller, more cinematic opening. */
+  size?: "md" | "lg";
+  /** H1 id (aria-labelledby). */
+  id?: string;
 }) {
   return (
-    <section className={cn("relative isolate overflow-hidden bg-[#15120e] text-white", className)}>
-      <Image src={image} alt={imageAlt} fill priority sizes="100vw" {...blurFor(image)} className="-z-10 object-cover opacity-55 motion-safe:animate-in motion-safe:zoom-in-110 motion-safe:duration-[2.5s] motion-safe:ease-out" />
-      <div className="absolute inset-0 -z-10 bg-linear-to-t from-[#15120e] via-[#15120e]/60 to-[#15120e]/30" aria-hidden="true" />
-      <div className={cn(container, "flex min-h-[380px] flex-col justify-end pb-12 pt-24 sm:min-h-[52svh] sm:pb-20 sm:pt-32")}>
-        <p className={cn(eyebrow, "text-gold motion-safe:animate-in motion-safe:fade-in motion-safe:duration-700")}>{kicker}</p>
-        <h1 className={cn("mt-4 max-w-4xl text-balance", type.h1, "motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 motion-safe:duration-700")}>
+    <section
+      data-tone="night"
+      aria-labelledby={id}
+      className={cn(
+        "relative isolate flex overflow-hidden bg-night text-pub-fg",
+        size === "lg" ? "min-h-[78svh] lg:min-h-[86vh]" : "min-h-[62svh] sm:min-h-[52svh] lg:min-h-[60vh]",
+        className,
+      )}
+    >
+      <MediaFrame
+        src={image}
+        alt={imageAlt}
+        ratio="fill"
+        sizes="100vw"
+        preload
+        focal={focal}
+        focalSm={focalSm}
+        illustrative={illustrative}
+        overlay="hero"
+        imgClassName="pub-settle"
+        tagClassName="left-auto right-4 top-[calc(var(--pub-header-h)+0.75rem)] sm:right-8"
+        className="-z-10"
+      />
+      <div className={cn(containers.wide, "flex w-full flex-col justify-end pb-10 pt-[calc(var(--pub-header-h)+3rem)] sm:pb-14 lg:pb-20")}>
+        <p className={cn(typeScale.eyebrow, "text-gold motion-safe:animate-in motion-safe:fade-in motion-safe:duration-700")}>{kicker}</p>
+        <h1
+          id={id}
+          className={cn(
+            "mt-4 max-w-4xl",
+            typeScale.title,
+            "motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 motion-safe:fill-mode-both motion-safe:duration-700 motion-safe:ease-pub",
+          )}
+        >
           {title}
         </h1>
-        <Ornament className="mt-6" />
-        {intro && <div className={cn("mt-6 max-w-2xl text-pretty text-white/80", type.lead)}>{intro}</div>}
+        {intro && <div className={cn("mt-4 text-white/80 sm:mt-5", typeScale.lede, measure.lede)}>{intro}</div>}
         {children}
       </div>
     </section>
@@ -40,8 +82,8 @@ export function PageHero({
 }
 
 /**
- * Typographic hero for venues without photography (restaurant, bar, meeting
- * room): textured ink gradient with a fine gold line illustration.
+ * Typographic hero for venues without photography: a night band with a soft gold light and a
+ * fine gold line illustration (desktop). Clears the fixed header.
  */
 export function VenueHero({
   kicker,
@@ -57,34 +99,28 @@ export function VenueHero({
   children?: React.ReactNode;
 }) {
   return (
-    <section className="relative isolate overflow-hidden bg-[#15120e] text-white">
+    <section data-tone="night" className="pub-sky relative isolate overflow-hidden bg-night text-pub-fg">
       <div
-        className="absolute inset-0 -z-10 opacity-90"
-        aria-hidden="true"
-        style={{
-          backgroundImage:
-            "radial-gradient(ellipse 80% 60% at 85% 20%, oklch(0.72 0.12 80 / 0.16), transparent 60%), radial-gradient(ellipse 60% 50% at 10% 90%, oklch(0.45 0.08 265 / 0.45), transparent 60%)",
-        }}
-      />
-      <div
-        className="absolute inset-0 -z-10 opacity-[0.06]"
-        aria-hidden="true"
-        style={{
-          backgroundImage:
-            "repeating-linear-gradient(45deg, #fff 0 1px, transparent 1px 14px), repeating-linear-gradient(-45deg, #fff 0 1px, transparent 1px 14px)",
-        }}
-      />
-      <div className={cn(container, "grid min-h-[380px] items-end gap-10 pb-12 pt-24 sm:min-h-[52svh] sm:pb-20 sm:pt-32 lg:grid-cols-[1.4fr_1fr] lg:items-center")}>
-        <div>
-          <p className={cn(eyebrow, "text-gold")}>{kicker}</p>
-          <h1 className={cn("mt-4 max-w-4xl text-balance", type.h1, "motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 motion-safe:duration-700")}>
+        className={cn(
+          containers.wide,
+          "grid items-end gap-10 pb-12 pt-[calc(var(--pub-header-h)+3rem)] sm:pb-16 sm:pt-[calc(var(--pub-header-h)+4rem)] lg:grid-cols-[1.4fr_1fr] lg:items-center lg:pb-20",
+        )}
+      >
+        <div className="min-w-0">
+          <p className={cn(typeScale.eyebrow, "text-gold")}>{kicker}</p>
+          <h1
+            className={cn(
+              "mt-4 max-w-4xl",
+              typeScale.title,
+              "motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 motion-safe:fill-mode-both motion-safe:duration-700 motion-safe:ease-pub",
+            )}
+          >
             {title}
           </h1>
-          <Ornament className="mt-6" />
-          {intro && <div className={cn("mt-6 max-w-2xl text-pretty text-white/80", type.lead)}>{intro}</div>}
+          {intro && <div className={cn("mt-4 text-white/75 sm:mt-5", typeScale.lede, measure.lede)}>{intro}</div>}
           {children}
         </div>
-        <div className="hidden justify-center text-gold lg:flex motion-safe:animate-in motion-safe:fade-in motion-safe:duration-1000">
+        <div className="hidden justify-center text-gold/80 lg:flex motion-safe:animate-in motion-safe:fade-in motion-safe:duration-1000">
           {illustration}
         </div>
       </div>

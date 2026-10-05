@@ -1,14 +1,15 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { CalendarClock, CheckCircle2, MapPin, MessageCircle, Phone, Plane, Users } from "lucide-react";
+import { CircleCheck } from "lucide-react";
 import { getSettings } from "@/server/settings";
 import { tripForCustomer } from "@/server/services/online-pay";
-import { formatDateTime, formatTZS } from "@/lib/format";
+import { formatDateTime } from "@/lib/format";
 import { TRIP_TYPE_LABEL } from "@/lib/transport-meta";
 import { cn } from "@/lib/utils";
 import { telHref, whatsappHref } from "@/components/public/contact";
+import { StatusPill } from "@/components/public/booking/confirmation";
+import { Actions, Eyebrow, Heading, InfoList, PriceTag, Section, TextLink, typeScale } from "@/components/public/kit";
 import { PayOnlineCard } from "@/components/public/pay-online-card";
-import { container, cream, eyebrow, type } from "@/components/public/ui";
 import { payTripOnlineAction } from "../../actions";
 
 export const metadata: Metadata = { title: "Your trip", robots: { index: false, follow: false }, referrer: "no-referrer" };
@@ -16,61 +17,90 @@ export const dynamic = "force-dynamic";
 
 const STATUS: Record<string, string> = {
   REQUESTED: "Requested — we confirm by phone or WhatsApp", CONFIRMED: "Confirmed", ASSIGNED: "Driver assigned", IN_PROGRESS: "On the way",
-  COMPLETED: "Completed — thank you", CANCELLED: "Cancelled", NO_SHOW: "Missed",
+  EN_ROUTE: "On the way", PICKED_UP: "On the way", COMPLETED: "Completed — thank you", CANCELLED: "Cancelled", NO_SHOW: "Missed",
 };
 
-/** A website trip's private page: what was asked for, where it stands, and Pay online for its price. */
+/**
+ * A website trip's private page: where it stands (the reference and the status first), Pay now for its price —
+ * first on phones, beside the details on desktop — then what was asked for and who to call.
+ */
 export default async function TripPage({ params }: PageProps<"/transport/trip/[token]">) {
   const { token } = await params;
   const [t, s] = await Promise.all([tripForCustomer(token), getSettings()]);
   if (!t) notFound();
   const tz = s.timezone;
+  const stopped = t.status === "CANCELLED" || t.status === "NO_SHOW";
+  const status = t.paid && t.status !== "CANCELLED" ? `${STATUS[t.status] ?? t.status} · paid` : STATUS[t.status] ?? t.status;
+  const note = t.paid ? "Paid — thank you." : t.onBill ? "On your room bill."
+    : t.online ? "Pay now, after the trip, or add it to your room bill if you are staying with us."
+      : "Pay after the trip, or add it to your room bill if you are staying with us.";
+
   return (
-    <div className={cn(cream, "flex-1 pb-20")}>
-      <section className="bg-[#15120e] text-white">
-        <div className={cn(container, "pb-24 pt-28 sm:pt-32")}>
-          <p className={cn(eyebrow, "flex items-center gap-2 text-gold")}><CheckCircle2 className="size-4" aria-hidden="true" />{TRIP_TYPE_LABEL[t.type]}</p>
-          <h1 className={cn("mt-3", type.h1)}>Thank you, {t.name.split(/\s+/)[0]}</h1>
-          <p className="mt-3 text-white/70">Your trip reference is</p>
-          <p className="mt-1 font-display text-5xl tracking-wide text-gold sm:text-6xl">{t.reference}</p>
-          <p className={cn("mt-6 inline-flex w-fit rounded-full px-5 py-2.5 text-sm font-medium", t.status === "CANCELLED" || t.status === "NO_SHOW" ? "bg-red-100 text-red-900" : "bg-gold text-[#15120e]")}>
-            {t.paid && t.status !== "CANCELLED" ? `${STATUS[t.status] ?? t.status} · paid` : STATUS[t.status] ?? t.status}
-          </p>
+    <>
+      <Section tone="night" first space="sm" glow="top" width="wide" labelledBy="trip-title" className="pb-10 sm:pb-14 lg:pb-14">
+        <Eyebrow className="flex items-center gap-2">
+          <CircleCheck className="size-4 shrink-0" strokeWidth={1.6} aria-hidden="true" />
+          {TRIP_TYPE_LABEL[t.type]}
+        </Eyebrow>
+        <Heading as="h1" size="title" id="trip-title" className="mt-4">
+          Thank you, {t.name.split(/\s+/)[0]}
+        </Heading>
+        <div className="mt-7 flex flex-wrap items-end gap-x-10 gap-y-5">
+          <div className="min-w-0">
+            <p className={cn(typeScale.meta, "text-pub-muted")}>Your trip reference</p>
+            <p className="mt-2 font-display text-[clamp(1.875rem,1.4rem+2vw,2.75rem)] leading-none tracking-[0.02em] text-gold lining-nums [overflow-wrap:anywhere]">
+              {t.reference}
+            </p>
+          </div>
+          <StatusPill label={status} tone={stopped ? "warn" : "ok"} />
         </div>
-      </section>
+      </Section>
 
-      <div className={cn(container, "-mt-12 grid gap-6 lg:grid-cols-[1.4fr_1fr]")}>
-        <section className="rounded-[2rem] bg-panel p-6 ring-1 ring-tone/[0.07] sm:p-8">
-          <h2 className={type.h3}>Your trip</h2>
-          <dl className="mt-6 grid gap-4 text-sm sm:grid-cols-2">
-            <div className="rounded-2xl bg-paper p-5"><dt className="flex items-center gap-2 text-tone/55"><CalendarClock className="size-4" aria-hidden="true" />When</dt><dd className="mt-2 font-medium">{formatDateTime(t.pickupAt, tz)}</dd></div>
-            <div className="rounded-2xl bg-paper p-5"><dt className="flex items-center gap-2 text-tone/55"><Users className="size-4" aria-hidden="true" />Guests</dt><dd className="mt-2 font-medium">{t.passengers}</dd></div>
-            <div className="rounded-2xl bg-paper p-5 sm:col-span-2"><dt className="flex items-center gap-2 text-tone/55"><MapPin className="size-4" aria-hidden="true" />Route</dt><dd className="mt-2 font-medium">{t.pickupLocation} → {t.destination}</dd></div>
-            {t.flightNumber && <div className="rounded-2xl bg-paper p-5"><dt className="flex items-center gap-2 text-tone/55"><Plane className="size-4" aria-hidden="true" />Flight</dt><dd className="mt-2 font-medium">{t.flightNumber}</dd></div>}
-          </dl>
-        </section>
-
-        <aside className="space-y-6">
-          <section className="rounded-[2rem] bg-[#15120e] p-6 text-white sm:p-8">
-            <h2 className={type.h3}>Price</h2>
-            <div className="mt-5 flex items-baseline justify-between gap-4">
-              <span className="text-white/65">{t.option ?? "Transport"}</span>
-              <span className="font-display text-3xl font-semibold text-gold">{formatTZS(t.price)}</span>
+      <Section space="md" width="wide">
+        <div className="grid gap-12 lg:grid-cols-12 lg:gap-x-10">
+          {/* What is owed and Pay now: first on phones, the right-hand column on desktop. */}
+          <section aria-labelledby="price-title" className="min-w-0 lg:col-span-5 lg:col-start-8 lg:row-start-1">
+            <Eyebrow as="h2">
+              <span id="price-title">Price</span>
+            </Eyebrow>
+            <div className="mt-4 flex items-baseline justify-between gap-4 border-y border-pub-line py-4">
+              <span className="min-w-0 text-[15px] text-pub-muted">{t.option ?? "Transport"}</span>
+              <PriceTag amount={t.price} unit={null} className="shrink-0" />
             </div>
             {(t.online || t.live) && t.due > 0 && (
-              <div className="mt-5"><PayOnlineCard due={t.due} phone={t.phone ?? ""} live={t.live} action={payTripOnlineAction.bind(null, token)} /></div>
+              <PayOnlineCard className="mt-6" tone="inherit" due={t.due} phone={t.phone ?? ""} live={t.live} action={payTripOnlineAction.bind(null, token)} />
             )}
-            <p className="mt-4 text-xs text-white/55">{t.paid ? "Paid — thank you." : t.onBill ? "On your room bill." : t.online ? "Pay online now, after the trip, or add it to your room bill if you are staying with us." : "Pay after the trip, or add it to your room bill if you are staying with us."}</p>
+            <p className="mt-4 text-[13px] leading-relaxed text-pub-muted">{note}</p>
           </section>
-          <section className="rounded-[2rem] bg-panel p-6 text-sm ring-1 ring-tone/[0.07] sm:p-8">
-            <p className="text-tone/70">Questions about your trip? Quote <strong>{t.reference}</strong>.</p>
-            <ul className="mt-4 space-y-3">
-              {s.phone && <li><a href={telHref(s.phone)} className="inline-flex items-center gap-2 hover:underline"><Phone className="size-4 text-accent-ink" aria-hidden="true" />{s.phone}</a></li>}
-              {s.whatsapp && <li><a href={whatsappHref(s.whatsapp, `Hello, about my trip ${t.reference}`)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 hover:underline"><MessageCircle className="size-4 text-accent-ink" aria-hidden="true" />WhatsApp</a></li>}
-            </ul>
+
+          <section aria-labelledby="details-title" className="min-w-0 lg:col-span-6 lg:col-start-1 lg:row-start-1">
+            <Heading size="subheading" id="details-title">Your trip</Heading>
+            <InfoList
+              variant="rows"
+              className="mt-5"
+              items={[
+                { label: "When", value: formatDateTime(t.pickupAt, tz) },
+                { label: "Guests", value: t.passengers },
+                { label: "Route", value: <span className="[overflow-wrap:anywhere]">{t.pickupLocation} → {t.destination}</span> },
+                ...(t.flightNumber ? [{ label: "Flight", value: t.flightNumber }] : []),
+              ]}
+            />
+            <p className="mt-10 text-[15px] leading-relaxed text-pub-muted">
+              Questions about your trip? Quote <strong className="font-semibold text-pub-fg">{t.reference}</strong>.
+            </p>
+            {(s.phone || s.whatsapp) && (
+              <Actions className="mt-4">
+                {s.phone && <TextLink href={telHref(s.phone)} icon="none">Call {s.phone}</TextLink>}
+                {s.whatsapp && (
+                  <TextLink href={whatsappHref(s.whatsapp, `Hello, about my trip ${t.reference}`)} target="_blank" rel="noopener noreferrer">
+                    WhatsApp<span className="sr-only"> (opens in a new tab)</span>
+                  </TextLink>
+                )}
+              </Actions>
+            )}
           </section>
-        </aside>
-      </div>
-    </div>
+        </div>
+      </Section>
+    </>
   );
 }

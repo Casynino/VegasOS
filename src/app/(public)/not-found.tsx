@@ -1,24 +1,21 @@
-import Link from "next/link";
-import { Ornament } from "@/components/public/ornament";
-import { PillLink } from "@/components/public/pill-link";
-import { container, eyebrow, type } from "@/components/public/ui";
-import { cn } from "@/lib/utils";
+import { Actions, LinkButton, Section, SectionIntro, TextLink } from "@/components/public/kit";
 
+/** 404 inside the public shell (a wrong booking link, an unknown room): a calm night moment and the two ways on. */
 export default function PublicNotFound() {
   return (
-    <section className={cn(container, "flex flex-1 flex-col items-center justify-center bg-paper pb-28 pt-40 text-center max-w-none")}>
-      <p className={cn(eyebrow, "text-accent-ink")}>Not found</p>
-      <h1 className={cn("mt-4 max-w-2xl text-balance", type.h2)}>We couldn’t find that page</h1>
-      <Ornament className="mx-auto mt-6" />
-      <p className={cn("mt-6 max-w-lg text-tone/70", type.lead)}>
-        If you followed a booking link, please use the full link from your confirmation, or contact us and we’ll look it up.
-      </p>
-      <div className="mt-10 flex flex-wrap justify-center gap-3">
-        <PillLink href="/">Back to home</PillLink>
-        <Link href="/contact?subject=existing" className="inline-flex items-center rounded-full border border-tone/25 px-6 py-3 text-sm font-medium hover:border-tone">
-          Help with a booking
-        </Link>
-      </div>
-    </section>
+    <Section tone="night" first glow="sky" width="narrow" labelledBy="not-found-title" className="flex flex-1 flex-col justify-center pb-24 sm:pb-28">
+      <SectionIntro
+        align="center"
+        as="h1"
+        eyebrow="Not found"
+        id="not-found-title"
+        title="We couldn’t find that page"
+        lede="If you followed a booking link, please use the full link from your confirmation, or contact us and we’ll look it up."
+      />
+      <Actions align="center" className="mt-8">
+        <LinkButton href="/" icon="arrow">Back to home</LinkButton>
+        <TextLink href="/contact?subject=existing">Help with a booking</TextLink>
+      </Actions>
+    </Section>
   );
 }

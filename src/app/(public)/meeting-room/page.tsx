@@ -1,21 +1,31 @@
 import type { Metadata } from "next";
-import Image from "next/image";
-import { MessageCircle, Phone, Users } from "lucide-react";
 import { businessToday, getSettings } from "@/server/settings";
 import { publicMeetingRoom } from "@/server/services/booking-requests";
 import { parseImages } from "@/server/services/public-booking";
-import { cn } from "@/lib/utils";
+import { onlinePayAvailable } from "@/server/services/online-pay";
+import { getSiteContent } from "@/server/services/site-content";
 import { contentVars, telHref, whatsappHref } from "@/components/public/contact";
 import { fill, ILLUSTRATIVE, MEETING_GALLERY_KEYS } from "@/components/public/content";
-import { getSiteContent } from "@/server/services/site-content";
-import { NamedIcon } from "@/components/public/icon";
+import {
+  Accent,
+  Actions,
+  EditorialSplit,
+  Eyebrow,
+  Heading,
+  InfoList,
+  Lede,
+  LinkButton,
+  MediaFrame,
+  PriceTag,
+  Rail,
+  Reveal,
+  Section,
+  SectionIntro,
+  TextLink,
+  rhythm,
+} from "@/components/public/kit";
 import { MeetingBooking } from "@/components/public/meeting-booking";
-import { onlinePayAvailable } from "@/server/services/online-pay";
-import { Ornament } from "@/components/public/ornament";
-import { PillLink } from "@/components/public/pill-link";
-import { Reveal, Stagger, StaggerItem } from "@/components/public/reveal";
-import { SectionHeading } from "@/components/public/section-heading";
-import { container, cream, espresso, eyebrow, goldText, type } from "@/components/public/ui";
+import { PageHero } from "@/components/public/page-hero";
 
 export const metadata: Metadata = {
   title: "Meeting Room",
@@ -23,11 +33,15 @@ export const metadata: Metadata = {
   alternates: { canonical: "/meeting-room" },
 };
 
-const n = (v: number) => v.toLocaleString("en-US");
-/** Stock photos until the hotel adds its own — always tagged "Illustrative". */
-const isIllustrative = (src: string) => src.includes("/illustrative/");
 const ALT = new Map<string, string>(MEETING_GALLERY_KEYS.map((k) => [ILLUSTRATIVE[k].src, ILLUSTRATIVE[k].alt]));
 
+/**
+ * The Meeting Room as a hotel service ("Meet differently"): the photograph with the name, price and
+ * capacity · the room in a few words and what is close at hand · #book — live availability and booking through
+ * the same engine as reception (MeetingBooking). Stock photos stand in until the hotel adds its own,
+ * always tagged "Illustrative"; only the hotel's own photos earn a gallery. Generic name only —
+ * never the internal room number.
+ */
 export default async function MeetingRoomPage() {
   const [settings, c, room, today] = await Promise.all([getSettings(), getSiteContent(), publicMeetingRoom(), businessToday()]);
   const p = c.pages.meeting;
@@ -35,95 +49,102 @@ export default async function MeetingRoomPage() {
   // Public name is generic — the internal room number is not shown to guests.
   const name = room?.name ?? p.fallbackName;
   const own = room ? parseImages(room.images) : [];
-  const photos = (own.length ? own : MEETING_GALLERY_KEYS.map((k) => ILLUSTRATIVE[k].src)).slice(0, 6);
-  const [hero, ...gallery] = photos;
-  const contact = settings.whatsapp ? whatsappHref(settings.whatsapp, `Hello, I would like to book the ${name}.`) : settings.phone ? telHref(settings.phone) : "/contact?subject=meeting";
+  const photos = own.length ? own : MEETING_GALLERY_KEYS.map((k) => ILLUSTRATIVE[k].src);
+  const [hero, detail] = photos;
+  const more = own.slice(2, 8);
+  const alt = (src: string) => ALT.get(src) ?? `${name} at ${settings.hotelName}`;
+  const intro = room?.shortDescription || room?.description || p.fallbackDescription;
+  const online = room ? await onlinePayAvailable("meeting", settings) : false;
+  const contact = settings.whatsapp
+    ? { href: whatsappHref(settings.whatsapp, `Hello, I would like to book the ${name}.`), label: "WhatsApp us", external: true }
+    : settings.phone
+      ? { href: telHref(settings.phone), label: "Call us", external: false }
+      : { href: "/contact?subject=meeting", label: "Send us a message", external: false };
+  const external = contact.external ? { target: "_blank", rel: "noopener noreferrer" } : {};
+
+  const story = (
+    <>
+      <Eyebrow>The room</Eyebrow>
+      <Heading id="room-title" className={rhythm.afterEyebrow}>
+        Meet <Accent>differently</Accent>
+      </Heading>
+      <Lede className={rhythm.afterHeading}>
+        {room
+          ? "For business meetings, workshops and private gatherings — choose your hours and book them online in minutes."
+          : "For business meetings, workshops and private gatherings — tell us your date and we will help you plan it."}
+      </Lede>
+      {/* Price and capacity are in the hero and beside the booking form — not repeated here. */}
+      <InfoList items={p.why.map((x) => ({ label: f(x.title), icon: x.icon }))} className="mt-8" />
+    </>
+  );
 
   return (
     <>
-      <section className={cn(espresso, "relative overflow-hidden pb-16 pt-32 text-white sm:pb-24 sm:pt-40")}>
-        <Image src={hero} alt="" fill priority sizes="100vw" className="object-cover object-center opacity-75" />
-        <div className="pointer-events-none absolute inset-0 bg-linear-to-b from-[#15120e]/70 via-[#15120e]/40 to-[#15120e]" aria-hidden="true" />
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,oklch(0.72_0.12_80/0.16),transparent_60%)]" aria-hidden="true" />
-        {isIllustrative(hero) && <span className="absolute right-4 top-24 rounded-full bg-black/45 px-2.5 py-1 text-[9px] font-medium uppercase tracking-[0.22em] text-white/70 backdrop-blur-md sm:top-28">Illustrative</span>}
-        <div className={cn(container, "relative text-center")}>
-          <Reveal>
-            <p className={cn(eyebrow, "text-gold")}>{p.kicker}</p>
-            <h1 className={cn("mx-auto mt-5 max-w-4xl text-balance", type.h1)}>{name}</h1>
-            <Ornament className="mx-auto mt-7" />
-            <p className={cn("mx-auto mt-7 max-w-2xl text-white/70", type.lead)}>{room?.description ?? p.fallbackDescription}</p>
-            {room && (
-              <div className="mx-auto mt-9 inline-flex items-center gap-4 rounded-full border border-white/15 bg-white/[0.07] py-2 pl-2 pr-6 backdrop-blur-md">
-                <span className="grid size-11 place-items-center rounded-full bg-gold text-[#1a140c]"><Users className="size-5" /></span>
-                <span className="text-left leading-tight">
-                  <span className="block text-xs uppercase tracking-[0.2em] text-white/60">Up to {room.maxAdults} people · per booking</span>
-                  <span className="font-display text-2xl tabular-nums text-white">TZS {n(room.baseRate)}</span>
-                </span>
-              </div>
-            )}
-            <div className="mt-9 flex flex-wrap justify-center gap-3">
-              {room && <PillLink href="#book">Check availability &amp; book</PillLink>}
-              <PillLink href={contact} external={contact.startsWith("http")} variant="glass" arrow={false}>
-                {settings.whatsapp ? <MessageCircle className="mr-1 inline size-4" aria-hidden="true" /> : <Phone className="mr-1 inline size-4" aria-hidden="true" />}Call or WhatsApp
-              </PillLink>
-            </div>
-          </Reveal>
-        </div>
-      </section>
+      <PageHero kicker={p.kicker} title={name} intro={<p>{intro}</p>} image={hero} imageAlt={alt(hero)} focal="50% 55%" id="meeting-title">
+        {room && <PriceTag className="mt-6" amount={room.baseRate} unit="booking" note={`Up to ${room.maxAdults} people`} />}
+        <Actions className="mt-7 sm:mt-8">
+          {room ? (
+            <LinkButton href="#book" icon="arrow">Check availability</LinkButton>
+          ) : (
+            <LinkButton href={contact.href} icon="arrow" {...external}>
+              {contact.label}
+              {contact.external && <span className="sr-only"> (opens in a new tab)</span>}
+            </LinkButton>
+          )}
+          {room ? (
+            <TextLink href={contact.href} {...external}>
+              {contact.label}
+              {contact.external && <span className="sr-only"> (opens in a new tab)</span>}
+            </TextLink>
+          ) : (
+            contact.href !== "/contact?subject=meeting" && <TextLink href="/contact?subject=meeting">Send a message</TextLink>
+          )}
+        </Actions>
+      </PageHero>
 
-      {gallery.length > 0 && (
-        <section className={cn(cream, "py-14 sm:py-20")} aria-label="Photos">
-          <div className={container}>
-            <Stagger as="ul" className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4 lg:grid-rows-2">
-              {gallery.map((src, i) => (
-                <StaggerItem as="li" key={src} index={i}
-                  className={cn("group relative overflow-hidden rounded-3xl bg-paper-deep ring-1 ring-tone/[0.06]", i === 0 ? "col-span-2 aspect-[4/3] lg:row-span-2 lg:aspect-auto" : "aspect-[4/3]")}>
-                  <Image src={src} alt={ALT.get(src) ?? `${name} photo`} fill sizes={i === 0 ? "(min-width:1024px) 50vw, 100vw" : "(min-width:1024px) 25vw, 50vw"}
-                    className="object-cover transition duration-700 group-hover:scale-[1.04]" />
-                  {isIllustrative(src) && <span className="absolute left-3 top-3 rounded-full bg-black/45 px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.22em] text-white/80 backdrop-blur-md">Illustrative</span>}
-                </StaggerItem>
+      {/* The room: a second photograph, a few words, what is close at hand. */}
+      <Section labelledBy="room-title">
+        <Reveal>
+          {detail ? (
+            <EditorialSplit
+              layout="media-wide"
+              reverse
+              media={<MediaFrame src={detail} alt={alt(detail)} ratio="4/3" ratioLg="5/4" zoom sizes="(min-width: 1024px) 55vw, 100vw" />}
+            >
+              {story}
+            </EditorialSplit>
+          ) : (
+            <div className="max-w-2xl">{story}</div>
+          )}
+        </Reveal>
+        {more.length > 0 && (
+          <Reveal className="mt-14 sm:mt-16">
+            <Rail label={`${name} photos`} size="md" desktop={more.length <= 3 ? "grid" : "rail"} cols={3}>
+              {more.map((src) => (
+                <MediaFrame key={src} src={src} alt={alt(src)} ratio="4/3" zoom sizes="(min-width: 1024px) 31vw, (min-width: 640px) 44vw, 76vw" />
               ))}
-            </Stagger>
-          </div>
-        </section>
-      )}
+            </Rail>
+          </Reveal>
+        )}
+      </Section>
 
       {room && (
-        <section id="book" className={cn(cream, "scroll-mt-24 pb-16 sm:pb-24", gallery.length === 0 && "pt-16 sm:pt-24")}>
-          <div className={container}>
-            <Reveal className="mx-auto mb-10 max-w-2xl text-center">
-              <p className={cn(eyebrow, goldText)}>Book the meeting room</p>
-              <h2 className={cn("mt-3 text-balance text-tone", type.h2)}>Check your date and time</h2>
-              <p className="mt-4 text-tone/65">See straight away if the room is free, then book it — no account needed.</p>
-            </Reveal>
-            <MeetingBooking today={today} price={room.baseRate} capacity={room.maxAdults} online={await onlinePayAvailable("meeting", settings)} />
+        <Section id="book" tone="deep" labelledBy="book-title">
+          <SectionIntro
+            eyebrow="Book the Meeting Room"
+            title="Check your date and time"
+            id="book-title"
+            lede={
+              online
+                ? "See at once if the room is free. Pay now and it is confirmed straight away — or send a request and we confirm it with you."
+                : "See at once if the room is free, then book it — no account needed. We confirm by phone or WhatsApp."
+            }
+          />
+          <div className={rhythm.afterIntro}>
+            <MeetingBooking today={today} price={room.baseRate} capacity={room.maxAdults} online={online} name={name} />
           </div>
-        </section>
+        </Section>
       )}
-
-      <section className={cn(espresso, "py-16 text-white sm:py-24")} aria-labelledby="why-title">
-        <div className={container}>
-          <Reveal><SectionHeading tone="dark" kicker="Why meet here" title={p.whyTitle} /></Reveal>
-          <Stagger as="ul" className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {p.why.map((w, i) => (
-              <StaggerItem as="li" key={w.title} index={i} className="rounded-3xl border border-white/10 bg-white/[0.04] p-7">
-                <NamedIcon name={w.icon} className="size-7 text-gold" />
-                <h3 className="mt-6 font-display text-2xl">{w.title}</h3>
-                <p className="mt-2 text-[15px] text-white/65">{f(w.body)}</p>
-              </StaggerItem>
-            ))}
-          </Stagger>
-          <ol className="mx-auto mt-16 grid max-w-5xl gap-6 md:grid-cols-3">
-            {p.steps.map((s, i) => (
-              <Reveal as="li" key={s.title} delay={i * 0.1} className="relative rounded-3xl border border-white/10 p-7">
-                <span className="grid size-12 place-items-center rounded-full bg-gold font-display text-xl text-[#15120e]">{String(i + 1).padStart(2, "0")}</span>
-                <h3 className="mt-6 font-display text-2xl">{s.title}</h3>
-                <p className="mt-2 text-white/65">{f(s.body)}</p>
-              </Reveal>
-            ))}
-          </ol>
-        </div>
-      </section>
     </>
   );
 }

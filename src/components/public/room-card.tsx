@@ -1,11 +1,7 @@
 import { ViewTransition } from "react";
-import Image from "next/image";
 import Link from "next/link";
-import { Baby, User } from "lucide-react";
-import { formatTZS } from "@/lib/format";
-import { blurFor } from "./blur-data";
-import { NamedIcon } from "./icon";
-import { ArrowBadge } from "./pill-link";
+import { cn } from "@/lib/utils";
+import { InfoList, LinkButton, MediaFrame, PriceTag, TextLink, typeScale } from "./kit";
 
 export interface RoomCardData {
   slug: string;
@@ -19,68 +15,115 @@ export interface RoomCardData {
   /** Promotion label from the pricing engine, e.g. "10% off". */
   promo?: string | null;
   amenities: { code: string; name: string; icon: string | null }[];
+  bedType?: string | null;
+  sizeSqm?: number | null;
 }
 
-/** Photo + dark panel room card with gold price pill (whole card is one link). */
-export function RoomCard({ room, headingLevel = 3 }: { room: RoomCardData; headingLevel?: 2 | 3 }) {
+/** "Up to 2 adults · 1 child · King bed · 28 m²" — the room's facts, from the database only. */
+export function roomFacts(room: Pick<RoomCardData, "maxAdults" | "maxChildren" | "bedType" | "sizeSqm">) {
+  return [
+    { label: `Up to ${room.maxAdults} adult${room.maxAdults === 1 ? "" : "s"}` },
+    room.maxChildren > 0 ? { label: `${room.maxChildren} child${room.maxChildren === 1 ? "" : "ren"}` } : null,
+    room.bedType ? { label: room.bedType } : null,
+    room.sizeSqm ? { label: `${room.sizeSqm} m²` } : null,
+  ].filter((f): f is { label: string } => f !== null);
+}
+
+/**
+ * A room type, experience first and details second. The photo shares the ViewTransition
+ * `room-{slug}` with the room page's hero, so render one RoomCard per slug on a page.
+ * - "tile" (default): the photo, then name, facts and price — for rails and grids.
+ * - "row": the editorial row of the rooms page — a large photo beside the name, one line,
+ *   facts, price and two actions. Alternate `reverse` between rows (desktop).
+ */
+export function RoomCard({
+  room,
+  headingLevel = 3,
+  variant = "tile",
+  reverse = false,
+  sizes,
+}: {
+  room: RoomCardData;
+  headingLevel?: 2 | 3;
+  variant?: "tile" | "row";
+  reverse?: boolean;
+  /** next/image sizes for the photo (the defaults match the rails and the rooms list). */
+  sizes?: string;
+}) {
   const H = headingLevel === 2 ? "h2" : "h3";
+  const href = `/rooms/${room.slug}`;
   const discounted = room.net < room.baseRate;
-  return (
-    <article className="group relative flex h-full flex-col overflow-hidden rounded-3xl bg-[#1f1a14] text-white ring-1 ring-white/10 transition-[box-shadow,transform] duration-500 hover:-translate-y-1 hover:shadow-[0_30px_70px_-30px_oklch(0.72_0.12_80/0.55)] hover:ring-gold/50 motion-reduce:hover:translate-y-0">
-      <div className="relative aspect-[4/3] overflow-hidden">
-        {room.image && (
-          <ViewTransition name={`room-${room.slug}`} share="vlh-morph" default="none">
-            <Image
-              src={room.image}
-              alt=""
-              fill
-              sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 85vw"
-              {...blurFor(room.image)}
-              className="object-cover transition-transform duration-[1.2s] ease-out motion-safe:group-hover:scale-110"
-            />
-          </ViewTransition>
-        )}
-        <div className="absolute inset-0 bg-linear-to-t from-[#1f1a14] via-transparent to-transparent" aria-hidden="true" />
-        {room.promo && discounted && (
-          <p className="absolute right-4 top-4 rounded-full bg-gold px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#15120e]">{room.promo}</p>
-        )}
-        <p className="absolute left-4 top-4 rounded-full border border-gold/40 bg-[#15120e]/70 px-3.5 py-1.5 text-xs text-white backdrop-blur-md">
-          <span className="text-white/70">From </span>
-          <span className="font-semibold text-gold">{formatTZS(room.net)}</span>
-          <span className="text-white/70"> / night</span>
-          {discounted && (
-            <>
-              {" "}<s className="text-white/50"><span className="sr-only">instead of </span>{formatTZS(room.baseRate)}</s>
-            </>
-          )}
-        </p>
-      </div>
-      <div className="flex flex-1 flex-col px-6 pb-6 pt-2 sm:px-7">
-        <div className="flex items-start justify-between gap-4">
-          <H className="font-display text-3xl font-medium leading-tight">
-            <Link href={`/rooms/${room.slug}`} className="rounded-sm after:absolute after:inset-0 after:rounded-3xl focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-gold">
+  const facts = roomFacts(room);
+
+  const photo = (ratio: string, ratioLg: string | undefined, fallbackSizes: string) =>
+    room.image ? (
+      <ViewTransition name={`room-${room.slug}`} share="vlh-morph" default="none">
+        <MediaFrame src={room.image} alt={`${room.name} at Vegas Luxury Hotel`} ratio={ratio} ratioLg={ratioLg} sizes={sizes ?? fallbackSizes} zoom />
+      </ViewTransition>
+    ) : (
+      <div style={{ aspectRatio: ratio }} className="bg-pub-fg/[0.06]" aria-hidden="true" />
+    );
+
+  if (variant === "row") {
+    return (
+      <article className="group grid gap-5 sm:gap-8 lg:grid-cols-12 lg:items-center lg:gap-x-10">
+        {/* The photo repeats the name link for pointer users only (one link per room for keyboards). */}
+        <Link
+          href={href}
+          tabIndex={-1}
+          aria-hidden="true"
+          className={cn("block min-w-0 lg:col-span-7 lg:row-start-1", reverse ? "lg:col-start-6" : "lg:col-start-1")}
+        >
+          {photo("3/2", undefined, "(min-width: 1024px) 56vw, 100vw")}
+        </Link>
+        <div className={cn("min-w-0 lg:col-span-4 lg:row-start-1", reverse ? "lg:col-start-1" : "lg:col-start-9")}>
+          {/* A room name is an item, not a section: the scale's featured-item size. */}
+          <H className={typeScale.feature}>
+            <Link
+              href={href}
+              className="rounded-sm transition-colors duration-200 hover:text-pub-eyebrow focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-gold motion-reduce:transition-none"
+            >
               {room.name}
             </Link>
           </H>
-          <ArrowBadge tone="gold" className="mt-1" />
+          {room.shortDescription && <p className={cn(typeScale.body, "mt-2.5 max-w-[34rem] text-pub-muted sm:mt-3")}>{room.shortDescription}</p>}
+          <InfoList items={facts} className="mt-3.5 sm:mt-4" />
+          <div className="mt-5 flex flex-wrap items-end justify-between gap-x-6 gap-y-4 border-t border-pub-line pt-4 sm:mt-6 sm:pt-5 lg:block">
+            <PriceTag
+              amount={room.net}
+              from
+              was={discounted ? room.baseRate : null}
+              note={discounted && room.promo ? <span className="text-pub-eyebrow">{room.promo}</span> : undefined}
+            />
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-3 lg:mt-6">
+              <LinkButton href={`/book?type=${room.slug}`} variant="secondary" size="sm">
+                Book this room
+              </LinkButton>
+              <TextLink href={href}>
+                Explore room<span className="sr-only">: {room.name}</span>
+              </TextLink>
+            </div>
+          </div>
         </div>
-        <p className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-white/60">
-          <span className="inline-flex items-center gap-1.5"><User className="size-4" aria-hidden="true" />Up to {room.maxAdults} adult{room.maxAdults === 1 ? "" : "s"}</span>
-          {room.maxChildren > 0 && (
-            <span className="inline-flex items-center gap-1.5"><Baby className="size-4" aria-hidden="true" />{room.maxChildren} child{room.maxChildren === 1 ? "" : "ren"}</span>
-          )}
-        </p>
-        {room.shortDescription && <p className="mt-4 text-[15px] leading-relaxed text-white/70">{room.shortDescription}</p>}
-        {room.amenities.length > 0 && (
-          <ul className="mt-auto flex flex-wrap gap-2 pt-6 text-xs text-white/70" aria-label={`${room.name} amenities`}>
-            {room.amenities.slice(0, 4).map((a) => (
-              <li key={a.code} className="inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1.5">
-                <NamedIcon name={a.icon} className="size-3.5 text-gold" />
-                {a.name}
-              </li>
-            ))}
-          </ul>
-        )}
+      </article>
+    );
+  }
+
+  return (
+    <article className="group relative flex h-full flex-col">
+      {photo("4/5", undefined, "(min-width: 1024px) 30vw, (min-width: 640px) 44vw, 76vw")}
+      <div className="flex flex-1 flex-col pt-5">
+        <H className={typeScale.subheading}>
+          {/* The name is the tile's one link; it stretches over the whole tile. */}
+          <Link
+            href={href}
+            className="rounded-sm transition-colors duration-200 after:absolute after:inset-0 hover:text-pub-eyebrow focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-offset-4 focus-visible:after:outline-gold motion-reduce:transition-none"
+          >
+            {room.name}
+          </Link>
+        </H>
+        <InfoList items={facts.slice(0, 3)} className="mt-2.5" />
+        <PriceTag amount={room.net} from was={discounted ? room.baseRate : null} size="sm" className="mt-auto pt-4" />
       </div>
     </article>
   );

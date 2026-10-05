@@ -1,13 +1,12 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Baby, CalendarSearch, Check, Coffee, User, Wifi } from "lucide-react";
+import { CalendarSearch } from "lucide-react";
 import { listPublicRoomTypes, searchAvailability, type SearchOption, type StayParams } from "@/server/services/public-booking";
 import { addDays, diffDays } from "@/lib/time/business-date";
-import { formatBusinessDate, formatTZS } from "@/lib/format";
+import { formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { blurFor } from "../blur-data";
-import { ArrowBadge } from "../pill-link";
-import { pillGold, type } from "../ui";
+import { Button, Eyebrow, InfoList, MediaFrame, PriceTag, TextLink, field, typeScale } from "../kit";
+import { formatDay } from "./parts";
 
 function stayQuery(p: StayParams, extra: Record<string, string | number> = {}) {
   const q = new URLSearchParams({ checkIn: p.checkIn, checkOut: p.checkOut, adults: String(p.adults), children: String(p.children) });
@@ -16,12 +15,26 @@ function stayQuery(p: StayParams, extra: Record<string, string | number> = {}) {
 }
 
 /** Live availability for a stay (server component, streamed behind a skeleton). */
-export async function AvailabilityResults({ params, preferred, today, maxArrival }: { params: StayParams; preferred?: string; today: string; maxArrival: string }) {
+export async function AvailabilityResults({
+  params,
+  preferred,
+  today,
+  maxArrival,
+  online = false,
+}: {
+  params: StayParams;
+  preferred?: string;
+  today: string;
+  maxArrival: string;
+  /** Pay online (nTZS) is offered for room bookings — the next step offers Pay now or pay later. */
+  online?: boolean;
+}) {
   const [result, allTypes] = await Promise.all([searchAvailability(params), listPublicRoomTypes()]);
   const { options, nights } = result;
   const available = new Set(options.map((o) => o.type.slug));
   const unavailable = allTypes.filter((t) => !available.has(t.slug));
   const ordered = [...options].sort((a, b) => Number(b.type.slug === preferred) - Number(a.type.slug === preferred));
+  const discounted = options.some((o) => o.perRoom.discountPerNight > 0);
 
   if (options.length === 0) {
     // Look for nearby dates that do have rooms, so the guest has a next step.
@@ -38,68 +51,83 @@ export async function AvailabilityResults({ params, preferred, today, maxArrival
       }
     }
     return (
-      <div className="rounded-[2rem] bg-panel px-6 py-12 text-center ring-1 ring-tone/[0.06] sm:px-12 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 motion-safe:duration-700">
-        <CalendarSearch className="mx-auto size-10 text-accent-ink" strokeWidth={1.3} aria-hidden="true" />
-        <h2 className={cn("mt-4", type.h3)}>A full house on these dates</h2>
-        <p className="mx-auto mt-3 max-w-md text-tone/70">
+      <div className="mx-auto max-w-2xl py-6 text-center motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 motion-safe:duration-700 sm:py-10">
+        <CalendarSearch className="mx-auto size-9 text-pub-eyebrow" strokeWidth={1.2} aria-hidden="true" />
+        <h2 className={cn("mt-5", typeScale.subheading)}>A full house on these dates</h2>
+        <p className={cn("mx-auto mt-3 max-w-md text-pub-muted", typeScale.body)}>
           {result.tooSmall.length > 0
             ? `We have rooms free, but not enough to fit ${params.adults} adult(s)${params.children ? ` and ${params.children} child(ren)` : ""} in one booking. Try fewer guests per booking, or contact us and we’ll arrange it.`
             : "Every room is taken for this stay. Try different dates — or contact us, as cancellations do come up."}
         </p>
         {nearby.length > 0 && (
-          <div className="mt-8">
-            <p className="text-sm font-medium">Rooms are free on these nearby dates:</p>
-            <ul className="mt-4 flex flex-wrap justify-center gap-3">
+          <div className="mt-10 text-left">
+            <Eyebrow className="text-center">Rooms are free on these nearby dates</Eyebrow>
+            <ul className="mt-5 border-t border-pub-line">
               {nearby.map((n) => (
-                <li key={n.checkIn}>
-                  <Link href={stayQuery({ ...params, checkIn: n.checkIn, checkOut: n.checkOut })} className="block rounded-2xl border border-tone/15 px-5 py-3 text-left transition-colors hover:border-tone focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold">
-                    <span className="block text-sm font-medium">{formatBusinessDate(n.checkIn)} → {formatBusinessDate(n.checkOut)}</span>
-                    <span className="text-xs text-tone/60">from {formatTZS(n.from)} / night</span>
+                <li key={n.checkIn} className="border-b border-pub-line">
+                  <Link
+                    href={stayQuery({ ...params, checkIn: n.checkIn, checkOut: n.checkOut })}
+                    className="group flex min-h-14 items-center justify-between gap-4 py-4 transition-colors duration-200 hover:text-pub-eyebrow focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none"
+                  >
+                    <span className="font-display text-[1.25rem] leading-tight">{formatDay(n.checkIn)} → {formatDay(n.checkOut)}</span>
+                    <span className={cn(typeScale.meta, "shrink-0 text-pub-muted")}>From {formatTZS(n.from)} / night</span>
                   </Link>
                 </li>
               ))}
             </ul>
           </div>
         )}
-        <div className="mt-8 flex flex-wrap justify-center gap-3">
-          <Link href="/contact?subject=booking" className="inline-flex items-center rounded-full border border-tone/25 px-6 py-3 text-sm font-medium hover:border-tone">Contact the front desk</Link>
+        <div className="mt-8 flex justify-center">
+          <TextLink href="/contact?subject=booking">Contact the front desk</TextLink>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-5">
-      <p className="text-sm text-tone/65" aria-live="polite">
-        {options.length} room type{options.length === 1 ? "" : "s"} available for {nights} night{nights === 1 ? "" : "s"} · prices include the website discount
-      </p>
-      <ul className="space-y-5">
+    <div>
+      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-8">
+        <p className={cn(typeScale.meta, "text-pub-muted")} aria-live="polite">
+          {options.length} room type{options.length === 1 ? "" : "s"} free for {nights} night{nights === 1 ? "" : "s"}
+          {discounted && " · prices include the website discount"}
+        </p>
+        {/* How paying works, said once for every room below. */}
+        <p className="text-[13px] leading-snug text-pub-muted">{online ? "Pay now by mobile money, or later at the hotel — you choose next." : "No payment now — pay at the hotel."}</p>
+      </div>
+      <ul className="mt-5 border-t border-pub-line">
         {ordered.map((o, i) => (
-          <li key={o.type.slug} className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-4 motion-safe:fill-mode-both motion-safe:duration-700" style={{ animationDelay: `${i * 90}ms` }}>
-            <AvailabilityCard option={o} params={params} nights={nights} preferred={o.type.slug === preferred} />
+          <li
+            key={o.type.slug}
+            className="border-b border-pub-line motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-4 motion-safe:fill-mode-both motion-safe:duration-700"
+            style={{ animationDelay: `${i * 90}ms` }}
+          >
+            <AvailabilityRow option={o} params={params} nights={nights} preferred={o.type.slug === preferred} />
           </li>
         ))}
       </ul>
 
       {unavailable.length > 0 && (
-        <div className="pt-6">
-          <h2 className="text-sm font-medium uppercase tracking-[0.18em] text-tone/60">Currently unavailable for these dates</h2>
-          <ul className="mt-4 grid gap-3 sm:grid-cols-2">
+        <section aria-labelledby="unavailable-title" className="mt-12">
+          <h2 id="unavailable-title" className={cn(typeScale.eyebrow, "text-pub-muted")}>Not free for these dates</h2>
+          <ul className="mt-4 grid gap-x-10 border-t border-pub-line sm:grid-cols-2">
             {unavailable.map((t) => {
               const small = result.tooSmall.find((s) => s.name === t.name);
               return (
-                <li key={t.slug} className="flex items-center gap-4 rounded-2xl border border-dashed border-tone/20 p-4">
+                <li key={t.slug} className="flex items-center gap-4 border-b border-pub-line py-4">
                   {t.images[0] && (
-                    <div className="relative size-16 shrink-0 overflow-hidden rounded-xl grayscale">
-                      <Image src={t.images[0]} alt="" fill sizes="64px" className="object-cover opacity-70" />
+                    <div className="relative size-14 shrink-0 overflow-hidden grayscale">
+                      <Image src={t.images[0]} alt="" fill sizes="56px" className="object-cover opacity-60" />
                     </div>
                   )}
                   <div className="min-w-0">
-                    <p className="font-display text-xl">{t.name}</p>
-                    <p className="text-sm text-tone/60">
+                    <p className="font-display text-[1.2rem] leading-tight text-pub-fg/80">{t.name}</p>
+                    <p className="mt-0.5 text-[13px] leading-snug text-pub-muted">
                       {small ? `Too small for ${params.adults + params.children} guests in one booking` : "Fully booked"} — try{" "}
                       {options.slice(0, 2).map((o, j) => (
-                        <span key={o.type.slug}>{j > 0 && " or "}<a href={`#option-${o.type.slug}`} className="underline underline-offset-2 hover:text-tone">{o.type.name}</a></span>
+                        <span key={o.type.slug}>
+                          {j > 0 && " or "}
+                          <a href={`#option-${o.type.slug}`} className="text-pub-fg underline decoration-pub-line underline-offset-4 hover:decoration-gold">{o.type.name}</a>
+                        </span>
                       ))}
                     </p>
                   </div>
@@ -107,62 +135,66 @@ export async function AvailabilityResults({ params, preferred, today, maxArrival
               );
             })}
           </ul>
-        </div>
+        </section>
       )}
     </div>
   );
 }
 
-function AvailabilityCard({ option: o, params, nights, preferred }: { option: SearchOption; params: StayParams; nights: number; preferred: boolean }) {
+function AvailabilityRow({ option: o, params, nights, preferred }: { option: SearchOption; params: StayParams; nights: number; preferred: boolean }) {
   const t = o.type;
   const codes = new Set(t.amenities.map((a) => a.code));
-  const includes = [codes.has("WIFI") && "Wi-Fi", codes.has("BREAKFAST") && "Breakfast"].filter(Boolean) as string[];
+  const includes = [codes.has("BREAKFAST") && "Breakfast", codes.has("WIFI") && "Wi-Fi"].filter(Boolean) as string[];
   const choices = Array.from({ length: o.maxRooms - o.minRooms + 1 }, (_, i) => o.minRooms + i);
-  return (
-    <article
-      id={`option-${t.slug}`}
-      className={cn(
-        "group grid scroll-mt-28 overflow-hidden rounded-3xl bg-panel ring-1 transition-shadow duration-500 hover:shadow-[0_24px_60px_-30px_rgba(21,18,14,0.45)] md:grid-cols-[18rem_1fr]",
-        preferred ? "ring-2 ring-gold" : "ring-tone/[0.07]",
-      )}
-    >
-      <div className="relative aspect-[16/10] overflow-hidden md:aspect-auto md:min-h-60">
-        {t.images[0] && (
-          <Image src={t.images[0]} alt={`${t.name} at Vegas Luxury Hotel`} fill sizes="(min-width: 768px) 18rem, 100vw" {...blurFor(t.images[0])} className="object-cover transition-transform duration-[1.2s] motion-safe:group-hover:scale-105" />
-        )}
-        <span className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-[#15120e]/75 px-3 py-1.5 text-xs text-white backdrop-blur-md">
-          <span className="size-1.5 rounded-full bg-emerald-400" aria-hidden="true" />
-          {o.available <= 2 ? `Only ${o.available} left` : "Available"}
-        </span>
-        {preferred && <span className="absolute right-3 top-3 rounded-full bg-gold px-3 py-1.5 text-xs font-medium text-[#15120e]">Your choice</span>}
-      </div>
-      <div className="flex flex-col p-6 sm:p-7">
-        <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
-          <h3 className={type.h3}>
-            <Link href={`/rooms/${t.slug}`} className="hover:text-accent-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold">{t.name}</Link>
-          </h3>
-          <p className="text-right">
-            <span className="font-display text-3xl font-semibold">{formatTZS(o.perRoom.netPerNight)}</span>
-            <span className="text-sm text-tone/60"> / night</span>
-            {o.perRoom.discountPerNight > 0 && (
-              <span className="block text-sm text-tone/50"><s><span className="sr-only">instead of </span>{formatTZS(o.perRoom.ratePerNight)}</s></span>
-            )}
-          </p>
-        </div>
-        <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-sm text-tone/65">
-          <li className="inline-flex items-center gap-1.5"><User className="size-4" aria-hidden="true" />Up to {t.maxAdults} adult{t.maxAdults === 1 ? "" : "s"} per room</li>
-          {t.maxChildren > 0 && <li className="inline-flex items-center gap-1.5"><Baby className="size-4" aria-hidden="true" />{t.maxChildren} child{t.maxChildren === 1 ? "" : "ren"}</li>}
-          {includes.length > 0 && (
-            <li className="inline-flex items-center gap-1.5 text-accent-ink">
-              {codes.has("WIFI") && <Wifi className="size-4" aria-hidden="true" />}
-              {codes.has("BREAKFAST") && <Coffee className="size-4" aria-hidden="true" />}
-              Includes {includes.join(" & ")}
-            </li>
-          )}
-        </ul>
-        {t.shortDescription && <p className="mt-3 text-[15px] text-tone/70">{t.shortDescription}</p>}
+  const facts = [
+    { label: `Up to ${t.maxAdults} adult${t.maxAdults === 1 ? "" : "s"} per room` },
+    t.maxChildren > 0 ? { label: `${t.maxChildren} child${t.maxChildren === 1 ? "" : "ren"}` } : null,
+    t.bedType ? { label: t.bedType } : null,
+    includes.length ? { label: `${includes.join(" & ")} included` } : null,
+  ].filter((f): f is { label: string } => f !== null);
 
-        <form action="/book" method="get" className="mt-auto flex flex-col gap-4 border-t border-tone/10 pt-5 sm:flex-row sm:items-end sm:justify-between">
+  return (
+    <article id={`option-${t.slug}`} className="group grid scroll-mt-[calc(var(--pub-header-h)+1.5rem)] gap-5 py-7 sm:gap-6 sm:py-8 md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] md:gap-10 lg:py-10">
+      <Link href={`/rooms/${t.slug}`} tabIndex={-1} aria-hidden="true" className="block min-w-0">
+        {t.images[0] ? (
+          <MediaFrame
+            src={t.images[0]}
+            alt={`${t.name} at Vegas Luxury Hotel`}
+            ratio="16/9"
+            ratioSm="3/2"
+            ratioLg="4/3"
+            sizes="(min-width: 1024px) 34vw, (min-width: 768px) 40vw, 100vw"
+            zoom
+            corners={preferred}
+          />
+        ) : (
+          <div className="aspect-[16/9] bg-pub-fg/[0.06] sm:aspect-[3/2] lg:aspect-[4/3]" />
+        )}
+      </Link>
+
+      <div className="flex min-w-0 flex-col">
+        {(preferred || o.available <= 2) && (
+          <p className={cn(typeScale.meta, "mb-2 flex flex-wrap items-center gap-x-3 text-pub-eyebrow")}>
+            {preferred && <span>Your choice</span>}
+            {preferred && o.available <= 2 && <span aria-hidden="true" className="text-pub-faint">·</span>}
+            {o.available <= 2 && <span>Only {o.available} left</span>}
+          </p>
+        )}
+        <h3 className={typeScale.subheading}>
+          <Link href={`/rooms/${t.slug}`} className="rounded-sm transition-colors duration-200 hover:text-pub-eyebrow focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-gold motion-reduce:transition-none">
+            {t.name}
+          </Link>
+        </h3>
+        <InfoList items={facts} className="mt-2.5" />
+        {t.shortDescription && <p className={cn(typeScale.body, "mt-3 hidden max-w-[34rem] text-pub-muted sm:block")}>{t.shortDescription}</p>}
+
+        <PriceTag
+          amount={o.perRoom.netPerNight}
+          was={o.perRoom.discountPerNight > 0 ? o.perRoom.ratePerNight : null}
+          className="mt-4 sm:mt-5"
+        />
+
+        <form action="/book" method="get" className="mt-5 flex flex-col gap-4 border-t border-pub-line pt-5 sm:mt-6 sm:flex-row sm:items-end sm:justify-between sm:gap-5">
           <input type="hidden" name="checkIn" value={params.checkIn} />
           <input type="hidden" name="checkOut" value={params.checkOut} />
           <input type="hidden" name="adults" value={params.adults} />
@@ -170,30 +202,33 @@ function AvailabilityCard({ option: o, params, nights, preferred }: { option: Se
           <input type="hidden" name="type" value={t.slug} />
           <div className="flex items-end gap-5">
             {choices.length > 1 ? (
-              <div>
-                <label htmlFor={`rooms-${t.slug}`} className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.18em] text-tone/60">Rooms</label>
-                <select id={`rooms-${t.slug}`} name="rooms" defaultValue={o.minRooms} className="h-11 rounded-xl border border-tone/15 bg-panel px-3 text-base focus:outline-none focus:ring-3 focus:ring-gold/40">
+              <div className="w-32 shrink-0">
+                <label htmlFor={`rooms-${t.slug}`} className={field.label}>Rooms</label>
+                <select
+                  id={`rooms-${t.slug}`}
+                  name="rooms"
+                  defaultValue={o.minRooms}
+                  className={cn(field.input, "appearance-auto px-3 [color-scheme:light] pub-dark:[color-scheme:dark]")}
+                >
                   {choices.map((n) => <option key={n} value={n}>{n} room{n === 1 ? "" : "s"}</option>)}
                 </select>
               </div>
             ) : (
               <input type="hidden" name="rooms" value={o.minRooms} />
             )}
-            <p className="text-sm text-tone/65">
+            <p className="min-w-0 pb-0.5 text-[13px] leading-snug text-pub-muted">
               {nights} night{nights === 1 ? "" : "s"}
               {choices.length === 1 && o.minRooms > 1 && <> · {o.minRooms} rooms</>}
-              <span className="block font-medium text-tone">
-                {formatTZS(o.perRoom.netAmount * o.minRooms)} total{choices.length > 1 && " for " + o.minRooms + " room" + (o.minRooms === 1 ? "" : "s")}
+              <span className="block font-display text-[1.25rem] leading-tight text-pub-fg lining-nums tabular-nums">
+                {formatTZS(o.perRoom.netAmount * o.minRooms)}
               </span>
+              <span className="block">total{choices.length > 1 && ` for ${o.minRooms} room${o.minRooms === 1 ? "" : "s"}`}</span>
             </p>
           </div>
-          <button type="submit" className={cn(pillGold, "h-12 justify-between py-1.5 pl-6 pr-1.5")}>
-            <span className="relative">Select room</span>
-            <ArrowBadge />
-            <span className="sr-only"> {t.name}</span>
-          </button>
+          <Button type="submit" icon="arrow" className="w-full sm:w-auto">
+            Select room<span className="sr-only"> {t.name}</span>
+          </Button>
         </form>
-        <p className="mt-3 inline-flex items-center gap-1.5 text-xs text-tone/55"><Check className="size-3.5" aria-hidden="true" />No payment now — pay at the hotel</p>
       </div>
     </article>
   );

@@ -7,7 +7,7 @@ import { businessToday } from "@/server/settings";
 import { fromDbDate } from "@/lib/time/business-date";
 import { formatBusinessDate, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { container, cream, eyebrow } from "@/components/public/ui";
+import { InfoList, PageIntro, PriceTag, Section, surface, typeScale } from "@/components/public/kit";
 import { PayOnlineCard } from "@/components/public/pay-online-card";
 import { invoicePayOnline } from "@/server/services/online-pay";
 import { payInvoiceOnlineAction } from "./actions";
@@ -21,6 +21,7 @@ export const metadata: Metadata = {
 /**
  * Scan-to-verify: anyone holding the invoice can check it is genuine and what
  * is still owed. Only the headline figures are shown — no guest or line details.
+ * A short night band (the verdict), then the invoice as a quiet receipt with Pay now when something is owed.
  */
 export default async function VerifyInvoicePage({ params }: PageProps<"/verify/[token]">) {
   const { token } = await params;
@@ -35,50 +36,64 @@ export default async function VerifyInvoicePage({ params }: PageProps<"/verify/[
   const dead = inv.status === "VOID" || inv.status === "CANCELLED";
   const due = inv.dueDate ? fromDbDate(inv.dueDate) : null;
   const overdue = !dead && inv.balanceAmount > 0 && due && due < today;
-  const state = dead ? { label: inv.status === "VOID" ? "Void — not payable" : "Cancelled — not payable", cls: "bg-zinc-200 text-zinc-700" }
-    : inv.balanceAmount <= 0 ? { label: "Paid in full", cls: "bg-emerald-600 text-white" }
-      : overdue ? { label: "Overdue", cls: "bg-rose-600 text-white" }
-        : inv.paidAmount > 0 ? { label: "Partly paid", cls: "bg-amber-500 text-black" } : { label: "Unpaid", cls: "bg-[#15110c] text-[#f0cf86]" };
+  // Tone-aware badges: readable on cream and on the dark theme alike.
+  const state = dead ? { label: inv.status === "VOID" ? "Void — not payable" : "Cancelled — not payable", cls: "border-pub-line text-pub-muted" }
+    : inv.balanceAmount <= 0 ? { label: "Paid in full", cls: "border-emerald-700/30 bg-emerald-600/10 text-emerald-800 pub-dark:text-emerald-300" }
+      : overdue ? { label: "Overdue", cls: "border-pub-error/40 bg-pub-error/10 text-pub-error" }
+        : inv.paidAmount > 0 ? { label: "Partly paid", cls: "border-amber-600/35 bg-amber-500/10 text-amber-800 pub-dark:text-amber-300" }
+          : { label: "Unpaid", cls: "border-gold/50 bg-gold/10 text-pub-fg" };
   const who = inv.corporateCustomer?.companyName ?? inv.group?.name ?? inv.guest?.fullName ?? "—";
+  const owed = dead ? 0 : Math.max(0, inv.balanceAmount);
 
   return (
-    <div className={cn(cream, "flex-1 pb-20")}>
-      <section className="bg-[#15120e] pb-28 pt-32 text-white">
-        <div className={cn(container, "text-center")}>
-          <p className={cn(eyebrow, "inline-flex items-center gap-2 text-gold")}>{dead ? <Ban className="size-4" /> : <BadgeCheck className="size-4" />}Invoice check</p>
-          <h1 className="mt-3 font-display text-4xl sm:text-5xl">{dead ? "This invoice is not valid for payment" : `Genuine ${s.hotelName} invoice`}</h1>
-        </div>
-      </section>
-      <div className={cn(container, "-mt-16")}>
-        <div className="mx-auto max-w-lg overflow-hidden rounded-3xl bg-white text-[#1d1a16] shadow-[0_30px_60px_-30px_rgba(0,0,0,0.5)]">
-          <div className="flex items-center justify-between gap-3 border-b border-[#efe7da] px-6 py-5">
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#9a7a35]">Invoice</p>
-              <p className="font-mono text-xl font-semibold">{inv.number}</p>
+    <>
+      <PageIntro
+        space="sm"
+        align="center"
+        id="verify-title"
+        eyebrow={
+          <span className="inline-flex items-center gap-2">
+            {dead ? <Ban className="size-4" strokeWidth={1.6} aria-hidden="true" /> : <BadgeCheck className="size-4" strokeWidth={1.6} aria-hidden="true" />}
+            Invoice check
+          </span>
+        }
+        title={dead ? "This invoice is not valid for payment" : `Genuine ${s.hotelName} invoice`}
+      />
+
+      <Section space="sm" width="narrow" labelledBy="invoice-number" className="flex-1">
+        <article className={cn(surface.panel, "mx-auto max-w-lg")}>
+          <header className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className={cn(typeScale.eyebrow, "text-pub-eyebrow")}>Invoice</p>
+              <h2 id="invoice-number" className="mt-2 font-mono text-xl font-semibold text-pub-fg [overflow-wrap:anywhere]">{inv.number}</h2>
             </div>
-            <span className={cn("rounded-full px-3 py-1 text-xs font-semibold", state.cls)}>{state.label}</span>
-          </div>
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-3 px-6 py-5 text-sm">
-            <dt className="text-[#8a8177]">For</dt><dd className="text-right font-medium">{who}</dd>
-            <dt className="text-[#8a8177]">Issued</dt><dd className="text-right">{inv.issueDate ? formatBusinessDate(fromDbDate(inv.issueDate)) : "—"}</dd>
-            <dt className="text-[#8a8177]">Due</dt><dd className={cn("text-right", overdue && "font-semibold text-rose-600")}>{due ? formatBusinessDate(due) : "—"}</dd>
-            <dt className="text-[#8a8177]">Invoice total</dt><dd className="text-right tabular-nums">{s.currency} {formatNumber(inv.netAmount)}</dd>
-            <dt className="text-[#8a8177]">Paid</dt><dd className="text-right tabular-nums">{s.currency} {formatNumber(inv.paidAmount)}</dd>
-          </dl>
-          <div className={cn("flex items-end justify-between px-6 py-5", dead ? "bg-zinc-100 text-zinc-500" : "bg-[#15110c] text-white")}>
-            <span className="text-[10px] font-semibold uppercase tracking-[0.2em] opacity-70">Still owed</span>
-            <span className="text-3xl font-semibold tabular-nums"><span className="mr-1 text-sm opacity-60">{s.currency}</span>{formatNumber(dead ? 0 : Math.max(0, inv.balanceAmount))}</span>
+            <span className={cn("shrink-0 rounded-full border px-3 py-1.5 text-[12px] font-semibold", state.cls)}>{state.label}</span>
+          </header>
+          <InfoList
+            variant="rows"
+            className="mt-6"
+            items={[
+              { label: "For", value: <span className="font-medium [overflow-wrap:anywhere]">{who}</span> },
+              { label: "Issued", value: inv.issueDate ? formatBusinessDate(fromDbDate(inv.issueDate)) : "—" },
+              { label: "Due", value: <span className={cn(overdue && "font-semibold text-pub-error")}>{due ? formatBusinessDate(due) : "—"}</span> },
+              { label: "Invoice total", value: <span className="tabular-nums">{s.currency} {formatNumber(inv.netAmount)}</span> },
+              { label: "Paid", value: <span className="tabular-nums">{s.currency} {formatNumber(inv.paidAmount)}</span> },
+            ]}
+          />
+          <div className={cn("mt-6 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2", dead && "opacity-60")}>
+            <p className={cn(typeScale.meta, "text-pub-muted")}>Still owed</p>
+            <PriceTag amount={owed} currency={s.currency} unit={null} size="lg" />
           </div>
           {!dead && (online.offered || online.live) && (
-            <div className="bg-[#15110c] px-6 pb-6 text-white">
-              <PayOnlineCard due={online.due} phone="" live={online.live} action={payInvoiceOnlineAction.bind(null, token)} />
+            <div className="mt-6 border-t border-pub-line pt-6">
+              <PayOnlineCard tone="inherit" flush due={online.due} phone="" live={online.live} action={payInvoiceOnlineAction.bind(null, token)} />
             </div>
           )}
-        </div>
-        <p className="mx-auto mt-6 max-w-lg text-center text-sm text-[#6b6258]">
+        </article>
+        <p className="mx-auto mt-6 max-w-lg text-center text-[13px] leading-relaxed text-pub-muted">
           Questions about this invoice? Call {s.phone ?? "the hotel"}{s.email ? ` or email ${s.email}` : ""}. Always quote {inv.number} with your payment.
         </p>
-      </div>
-    </div>
+      </Section>
+    </>
   );
 }

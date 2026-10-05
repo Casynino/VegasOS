@@ -1,11 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Search } from "lucide-react";
 import { addDays, isBusinessDate } from "@/lib/time/business-date";
 import { cn } from "@/lib/utils";
-import { ArrowBadge } from "./pill-link";
-import { glass, pillGold } from "./ui";
+import { Button } from "./kit/button";
+import { field } from "./kit/tokens";
 
 export interface StaySearchDefaults {
   checkIn?: string;
@@ -18,6 +17,7 @@ export interface StaySearchDefaults {
 /**
  * Date & guests search. A plain GET form to /book, so it works without
  * JavaScript and produces a shareable URL; JS only keeps check-out after check-in.
+ * Fields follow the surrounding tone (paper or night) and the visitor's light/dark choice.
  */
 export function StaySearchForm({
   defaults,
@@ -28,13 +28,14 @@ export function StaySearchForm({
   errors,
   roomTypes,
   stacked = false,
-  submitLabel = "Search availability",
+  submitLabel = "Check availability",
   bare = false,
 }: {
   defaults: StaySearchDefaults;
   minDate: string;
   maxDate: string;
   maxNights: number;
+  /** "hero": on a night (dark) band; "panel": on paper. Also prefixes the field ids. */
   variant?: "hero" | "panel";
   errors?: Record<string, string>;
   /** When given, shows a room-type picker; otherwise a preselected type is kept hidden. */
@@ -42,7 +43,7 @@ export function StaySearchForm({
   submitLabel?: string;
   /** Always two columns (for narrow side panels). */
   stacked?: boolean;
-  /** No container styling (when embedded in another card). */
+  /** Kept for older callers: the form never draws its own box now (the page frames it). */
   bare?: boolean;
 }) {
   const [checkIn, setCheckIn] = useState(defaults.checkIn ?? "");
@@ -50,6 +51,7 @@ export function StaySearchForm({
   const validIn = isBusinessDate(checkIn);
   const minOut = validIn ? addDays(checkIn, 1) : addDays(minDate, 1);
   const maxOut = validIn ? addDays(checkIn, maxNights) : undefined;
+  void bare;
 
   function onCheckIn(value: string) {
     setCheckIn(value);
@@ -57,15 +59,11 @@ export function StaySearchForm({
   }
 
   const hero = variant === "hero";
-  const label = cn("mb-1.5 block text-[11px] font-medium uppercase tracking-[0.2em]", hero ? "text-white/70" : "text-tone/70");
-  const input = cn(
-    "block h-12 w-full min-w-0 rounded-xl border px-3 text-base transition-colors focus:outline-none focus:ring-2 focus:ring-gold/70 [color-scheme:light]",
-    hero
-      ? "border-white/25 bg-white/95 text-tone focus:border-gold"
-      : "border-tone/20 bg-panel text-tone focus:border-tone",
-    "aria-invalid:border-red-700",
-  );
-  const err = cn("mt-1.5 text-sm", hero ? "text-red-200" : "text-red-700");
+  // Native date pickers and select menus follow the surface: dark on night bands and in the dark theme.
+  const scheme = hero ? "[color-scheme:dark]" : "[color-scheme:light] pub-dark:[color-scheme:dark]";
+  const input = cn(field.input, "min-w-0 px-3 sm:px-4", scheme);
+  const select = cn(input, "appearance-auto pr-2");
+  const wide = !stacked;
 
   return (
     <form
@@ -73,15 +71,12 @@ export function StaySearchForm({
       method="get"
       role="search"
       aria-label="Check room availability"
-      className={cn(
-        "grid grid-cols-2 gap-3 sm:gap-4 lg:items-end",
-        stacked ? "" : roomTypes ? "lg:grid-cols-[1.15fr_1.15fr_0.7fr_0.7fr_1.2fr_auto]" : "lg:grid-cols-[1.2fr_1.2fr_0.8fr_0.8fr_auto]",
-        bare ? "" : hero ? cn(glass, "rounded-3xl bg-[#15120e]/55 p-4 sm:p-5") : stacked ? "" : "rounded-3xl bg-panel p-5 shadow-[0_20px_60px_-30px_rgba(21,18,14,0.35)] ring-1 ring-tone/10 sm:p-6",
-      )}
+      {...(hero ? { "data-tone": "night" } : {})}
+      className={cn("grid grid-cols-2 gap-x-3 gap-y-4 sm:gap-x-4", wide && "sm:grid-cols-4 sm:items-end")}
     >
       {defaults.type && !roomTypes && <input type="hidden" name="type" value={defaults.type} />}
       <div className="min-w-0">
-        <label htmlFor={`${variant}-checkIn`} className={label}>Check-in</label>
+        <label htmlFor={`${variant}-checkIn`} className={field.label}>Check-in</label>
         <input
           id={`${variant}-checkIn`}
           name="checkIn"
@@ -95,10 +90,10 @@ export function StaySearchForm({
           aria-describedby={errors?.checkIn ? `${variant}-checkIn-error` : undefined}
           className={input}
         />
-        {errors?.checkIn && <p id={`${variant}-checkIn-error`} className={err}>{errors.checkIn}</p>}
+        {errors?.checkIn && <p id={`${variant}-checkIn-error`} className={field.error}>{errors.checkIn}</p>}
       </div>
       <div className="min-w-0">
-        <label htmlFor={`${variant}-checkOut`} className={label}>Check-out</label>
+        <label htmlFor={`${variant}-checkOut`} className={field.label}>Check-out</label>
         <input
           id={`${variant}-checkOut`}
           name="checkOut"
@@ -112,40 +107,36 @@ export function StaySearchForm({
           aria-describedby={errors?.checkOut ? `${variant}-checkOut-error` : undefined}
           className={input}
         />
-        {errors?.checkOut && <p id={`${variant}-checkOut-error`} className={err}>{errors.checkOut}</p>}
+        {errors?.checkOut && <p id={`${variant}-checkOut-error`} className={field.error}>{errors.checkOut}</p>}
       </div>
-      <div>
-        <label htmlFor={`${variant}-adults`} className={label}>Adults</label>
-        <select id={`${variant}-adults`} name="adults" defaultValue={String(defaults.adults ?? 2)} className={cn(input, "appearance-auto")}
-          aria-invalid={errors?.adults ? true : undefined}>
+      <div className="min-w-0">
+        <label htmlFor={`${variant}-adults`} className={field.label}>Adults</label>
+        <select id={`${variant}-adults`} name="adults" defaultValue={String(defaults.adults ?? 2)} className={select}
+          aria-invalid={errors?.adults ? true : undefined} aria-describedby={errors?.adults ? `${variant}-adults-error` : undefined}>
           {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}</option>)}
         </select>
-        {errors?.adults && <p className={err}>{errors.adults}</p>}
+        {errors?.adults && <p id={`${variant}-adults-error`} className={field.error}>{errors.adults}</p>}
       </div>
-      <div>
-        <label htmlFor={`${variant}-children`} className={label}>Children</label>
-        <select id={`${variant}-children`} name="children" defaultValue={String(defaults.children ?? 0)} className={cn(input, "appearance-auto")}
-          aria-invalid={errors?.children ? true : undefined}>
+      <div className="min-w-0">
+        <label htmlFor={`${variant}-children`} className={field.label}>Children</label>
+        <select id={`${variant}-children`} name="children" defaultValue={String(defaults.children ?? 0)} className={select}
+          aria-invalid={errors?.children ? true : undefined} aria-describedby={errors?.children ? `${variant}-children-error` : undefined}>
           {Array.from({ length: 7 }, (_, i) => i).map((n) => <option key={n} value={n}>{n}</option>)}
         </select>
-        {errors?.children && <p className={err}>{errors.children}</p>}
+        {errors?.children && <p id={`${variant}-children-error`} className={field.error}>{errors.children}</p>}
       </div>
       {roomTypes && (
-        <div className={cn("col-span-2", !stacked && "lg:col-span-1")}>
-          <label htmlFor={`${variant}-type`} className={label}>Room type</label>
-          <select id={`${variant}-type`} name="type" defaultValue={defaults.type ?? ""} className={cn(input, "appearance-auto")}>
+        <div className="col-span-2 min-w-0">
+          <label htmlFor={`${variant}-type`} className={field.label}>Room type</label>
+          <select id={`${variant}-type`} name="type" defaultValue={defaults.type ?? ""} className={select}>
             <option value="">Any room type</option>
             {roomTypes.map((t) => <option key={t.slug} value={t.slug}>{t.name}</option>)}
           </select>
         </div>
       )}
-      <button type="submit" className={cn(pillGold, "col-span-2 h-12 w-full justify-between py-1.5 pl-6 pr-1.5", !stacked && "lg:col-span-1 lg:w-auto")}>
-        <span className="relative inline-flex items-center gap-2">
-          <Search className="size-4" aria-hidden="true" />
-          {submitLabel}
-        </span>
-        <ArrowBadge />
-      </button>
+      <Button type="submit" icon="arrow" full className={cn("col-span-2", wide && !roomTypes && "sm:col-span-4 lg:col-span-2 lg:col-start-3", "mt-1 sm:mt-0")}>
+        {submitLabel}
+      </Button>
     </form>
   );
 }

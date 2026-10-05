@@ -51,7 +51,10 @@ export function MotionProvider({ children }: { children: React.ReactNode }) {
   return <MotionConfig reducedMotion="user">{children}</MotionConfig>;
 }
 
-/** Full-bleed hero photo with a slow Ken Burns settle and scroll parallax. */
+/**
+ * Full-bleed hero photo with a settle and scroll parallax (currently unused — the kit's
+ * MediaFrame with `preload` + the .pub-settle class is the lighter default for heroes).
+ */
 export function HeroImage({ src, alt, className }: { src: string; alt: string; className?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const reduce = useReducedMotion();
@@ -62,11 +65,11 @@ export function HeroImage({ src, alt, className }: { src: string; alt: string; c
       <motion.div style={{ y }} className="absolute inset-0">
         <motion.div
           className="absolute inset-0"
-          initial={{ scale: 1.14 }}
+          initial={{ scale: 1.06 }}
           animate={{ scale: 1 }}
-          transition={{ duration: 9, ease: [0.16, 1, 0.3, 1] }}
+          transition={{ duration: 1.6, ease: EASE }}
         >
-          <Image src={src} alt={alt} fill priority sizes="100vw" className="object-cover" />
+          <Image src={src} alt={alt} fill preload sizes="100vw" className="object-cover" />
         </motion.div>
       </motion.div>
     </div>

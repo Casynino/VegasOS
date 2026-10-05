@@ -428,7 +428,8 @@ export const DEFAULT_CONTENT = {
       pausedIntro: "Online booking is paused right now. Our front desk will happily reserve your room directly.",
     },
     footer: {
-      blurb: "Book direct on our website and pay at the hotel on arrival.",
+      // One line about the hotel (no payment promise: guests can now also pay online).
+      blurb: "Refined rooms, a restaurant and bar, and a warm welcome at Mlimani City, Dar es Salaam.",
     },
   },
 };

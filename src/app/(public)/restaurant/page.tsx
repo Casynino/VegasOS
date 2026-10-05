@@ -1,13 +1,33 @@
 import type { Metadata } from "next";
-import { Coffee, Leaf } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { DiningIllustration } from "@/components/public/illustrations";
-import { Ornament } from "@/components/public/ornament";
-import { VenueHero } from "@/components/public/page-hero";
-import { PillLink } from "@/components/public/pill-link";
-import { Reveal, Stagger, StaggerItem } from "@/components/public/reveal";
+import { getSettings } from "@/server/settings";
+import { publicMenu } from "@/server/services/restaurant";
+import { mediaUrl } from "@/server/services/media";
 import { getSiteContent } from "@/server/services/site-content";
-import { container, cream, espresso, eyebrow, goldText, type } from "@/components/public/ui";
+import { formatNumber } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import { ILLUSTRATIVE } from "@/components/public/content";
+import {
+  Actions,
+  EditorialSplit,
+  Eyebrow,
+  Heading,
+  InfoList,
+  Lede,
+  LinkButton,
+  MediaFrame,
+  Reveal,
+  Section,
+  SectionIntro,
+  TextLink,
+  rhythm,
+  typeScale,
+} from "@/components/public/kit";
+import { DiningHero } from "@/components/public/dining/dining-hero";
+import { DiningNav } from "@/components/public/dining/dining-nav";
+import { DishRail } from "@/components/public/dining/dish-rail";
+import { diningHours } from "@/components/public/dining/facts";
+import { buildMenuSections, creditsFor, kitchenDishes } from "@/components/public/dining/menu-data";
+import { PhotoCredits } from "@/components/public/dining/photo-credits";
 
 export const metadata: Metadata = {
   title: "Restaurant",
@@ -16,84 +36,163 @@ export const metadata: Metadata = {
   alternates: { canonical: "/restaurant" },
 };
 
+/**
+ * The restaurant as part of the stay: the room in a photograph · Restaurant / Room service /
+ * Drinks · real dishes and prices from the live menu (each opens its card on /menu) · the day
+ * from breakfast to dinner with the hours the hotel set · room service · a word with the team.
+ * Copy comes from the CMS (pages.restaurant); its lists render at any length. Stock photos are
+ * tagged "Illustrative", and the dish photos shown here are credited at the foot of the page.
+ */
 export default async function RestaurantPage() {
-  const p = (await getSiteContent()).pages.restaurant;
-  const meals = p.meals;
+  const [c, s, cats] = await Promise.all([getSiteContent(), getSettings(), publicMenu()]);
+  const p = c.pages.restaurant;
+  const sections = buildMenuSections(cats, mediaUrl);
+  const dishes = kitchenDishes(cats, sections, 6);
+  const firstFood = sections.find((x) => x.kind === "FOOD") ?? sections[0];
+  const orderHref = firstFood ? `/menu#${firstFood.slug}` : "/menu";
+  const hours = diningHours(s);
+  const credits = creditsFor(dishes.map((d) => ({ name: d.name, src: d.image.src })));
+  const evening = ILLUSTRATIVE.dinnerCityNight;
+
   return (
     <>
-      <VenueHero
+      <DiningHero
+        id="restaurant-title"
         kicker={p.kicker}
         title={p.title}
-        illustration={<DiningIllustration className="h-80 w-80" />}
         intro={<p>{p.intro}</p>}
+        image={{ src: ILLUSTRATIVE.restaurantWarm.src, alt: ILLUSTRATIVE.restaurantWarm.alt }}
+        imageTall={{ src: ILLUSTRATIVE.restaurantLounge.src, alt: ILLUSTRATIVE.restaurantLounge.alt }}
+        alt="Warmly lit dining room with set tables (illustrative)"
+        focal="50% 62%"
+        focalWide="50% 55%"
       >
-        <div className="mt-8 flex flex-wrap gap-3">
-          <PillLink href="/menu">See the menu & prices</PillLink>
-          <PillLink href="/contact?subject=dining" variant="glass" arrow={false}>Ask about dining</PillLink>
-          <PillLink href="/book" variant="glass" arrow={false}>Book a room</PillLink>
-        </div>
-      </VenueHero>
+        <Actions className={rhythm.beforeActions}>
+          <LinkButton href="/menu" icon="arrow">
+            Explore the menu
+          </LinkButton>
+          <LinkButton href={orderHref} variant="glass">
+            Order now
+          </LinkButton>
+        </Actions>
+      </DiningHero>
 
-      <section className={cn(cream, "py-16 sm:py-24")} aria-labelledby="cuisines-title">
-        <div className={cn(container, "grid gap-12 lg:grid-cols-[1fr_1.5fr]")}>
-          <Reveal>
-            <p className={cn(eyebrow, goldText)}>Cuisines</p>
-            <h2 id="cuisines-title" className={cn("mt-4 text-balance", type.h2)}>{p.cuisinesTitle}</h2>
-            <Ornament className="mt-6" />
-            <p className={cn("mt-6 max-w-md text-tone/70", type.body)}>
-              {p.cuisinesBody}
-            </p>
-          </Reveal>
-          <Stagger as="ol" className="divide-y divide-tone/10 border-y border-tone/10">
-            {p.cuisines.map((c, i) => (
-              <StaggerItem as="li" key={c} index={i} className="group flex items-baseline gap-6 py-5">
-                <span className={cn("w-8 text-xs tabular-nums", goldText)}>{String(i + 1).padStart(2, "0")}</span>
-                <span className="font-display text-[clamp(1.9rem,3vw+1rem,3.2rem)] leading-none transition-transform duration-500 group-hover:translate-x-2 motion-reduce:transition-none">{c}</span>
-              </StaggerItem>
-            ))}
-          </Stagger>
-        </div>
-      </section>
+      <DiningNav active="restaurant" />
 
-      <section className={cn(espresso, "py-16 text-white sm:py-24")} aria-labelledby="meals-title">
-        <div className={container}>
-          <Reveal className="text-center">
-            <p className={cn(eyebrow, "text-gold")}>Served</p>
-            <h2 id="meals-title" className={cn("mt-4", type.h2)}>{p.mealsTitle}</h2>
+      {/* From the kitchen: where the menu travels, then real dishes with their prices. */}
+      <Section labelledBy="kitchen-title">
+        <SectionIntro
+          align="split"
+          eyebrow="From the kitchen"
+          title={p.cuisinesTitle}
+          id="kitchen-title"
+          lede={
+            <>
+              <p>{p.cuisinesBody}</p>
+              {p.cuisines.length > 0 && <InfoList className="mt-5" items={p.cuisines.map((x) => ({ label: x }))} />}
+            </>
+          }
+          actions={<TextLink href="/menu">See every dish and price</TextLink>}
+        />
+        {dishes.length > 0 && (
+          <Reveal className={rhythm.afterIntro}>
+            <DishRail dishes={dishes} />
           </Reveal>
-          <Stagger as="ol" className="relative mt-14 grid gap-4 sm:grid-cols-3 lg:grid-cols-6">
-            {meals.map((m, i) => (
-              <StaggerItem as="li" key={m} index={i} className="relative rounded-3xl border border-white/10 p-6 text-center">
-                <span className="mx-auto grid size-10 place-items-center rounded-full bg-gold text-sm font-medium text-[#15120e]">{i + 1}</span>
-                <span className="mt-4 block font-display text-2xl">{m}</span>
-              </StaggerItem>
-            ))}
-          </Stagger>
-          <div className="mt-12 grid gap-4 md:grid-cols-2">
-            <Reveal className="flex gap-4 rounded-3xl bg-white/[0.04] p-6">
-              <Coffee className="size-6 shrink-0 text-gold" aria-hidden="true" />
-              <p className="text-white/80">{p.breakfastNote}</p>
-            </Reveal>
-            <Reveal className="flex gap-4 rounded-3xl bg-white/[0.04] p-6">
-              <Leaf className="size-6 shrink-0 text-gold" aria-hidden="true" />
-              <div>
-                <p className="font-medium">Dietary options</p>
-                <ul className="mt-3 flex flex-wrap gap-2">
-                  {p.dietary.map((d) => <li key={d} className="rounded-full border border-white/15 px-3 py-1 text-sm text-white/80">{d}</li>)}
-                </ul>
+        )}
+      </Section>
+
+      {/* Morning to night: the meals, breakfast with every room, the hours, dietary options. */}
+      <Section tone="night" glow="bottom" labelledBy="day-title">
+        <Reveal>
+          <EditorialSplit
+            layout="balanced"
+            reverse
+            media={
+              <MediaFrame
+                src={evening.src}
+                alt={evening.alt}
+                ratio="4/3"
+                ratioLg="4/5"
+                focal="50% 62%"
+                focalSm="50% 55%"
+                zoom
+                sizes="(min-width: 1024px) 46vw, 100vw"
+              />
+            }
+          >
+            <Eyebrow>Served</Eyebrow>
+            <Heading id="day-title" className={rhythm.afterEyebrow}>
+              {p.mealsTitle}
+            </Heading>
+            <Lede className={rhythm.afterHeading}>{p.breakfastNote}</Lede>
+            {p.meals.length > 0 && (
+              <ul className="mt-8 grid grid-cols-2 gap-x-6 border-t border-pub-line sm:grid-cols-3 lg:grid-cols-2">
+                {p.meals.map((m) => (
+                  <li key={m} className={cn(typeScale.item, "min-w-0 border-b border-pub-line py-3 text-pub-fg")}>
+                    {m}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {hours.length > 0 && (
+              <div className="mt-8">
+                <p className={cn(typeScale.eyebrow, "text-pub-eyebrow")}>Opening hours</p>
+                <InfoList variant="rows" items={hours} className="mt-3" />
               </div>
-            </Reveal>
+            )}
+            {p.dietary.length > 0 && (
+              <div className="mt-8">
+                <p className={cn(typeScale.eyebrow, "text-pub-eyebrow")}>Dietary options</p>
+                <InfoList items={p.dietary.map((d) => ({ label: d }))} className="mt-3" />
+              </div>
+            )}
+          </EditorialSplit>
+        </Reveal>
+      </Section>
+
+      {/* Room service: the same menu, to a guest's room (ordered from the room's own QR card). */}
+      <Section id="room-service" tone="deep" labelledBy="room-service-title">
+        <Reveal>
+          <SectionIntro
+            align="center"
+            eyebrow="Room service"
+            title="The same menu, in your room"
+            id="room-service-title"
+            lede="Staying with us? Scan the QR card in your room — we bring your order up and add it to your room bill, settled at check-out."
+            actions={
+              <>
+                <LinkButton href="/book" icon="arrow">
+                  Book your stay
+                </LinkButton>
+                <TextLink href="/menu">Explore the menu</TextLink>
+              </>
+            }
+          />
+          <InfoList
+            className="mt-8 justify-center"
+            items={[{ label: "Same menu" }, { label: "On your room bill" }, { label: `Delivery TZS ${formatNumber(s.roomServiceFee)}` }]}
+          />
+        </Reveal>
+      </Section>
+
+      {/* A word with the team: celebrations, working lunches. */}
+      <Section space="sm" labelledBy="plan-title">
+        <div className="grid gap-6 sm:gap-8 lg:grid-cols-12 lg:items-center lg:gap-10">
+          <div className="min-w-0 lg:col-span-8">
+            <Heading id="plan-title" size="subheading" className="max-w-2xl text-balance">
+              {p.closingTitle}
+            </Heading>
+            <p className={cn(typeScale.body, "mt-3 text-pub-muted")}>{p.closingBody}</p>
+          </div>
+          <div className="lg:col-span-4 lg:flex lg:justify-end">
+            <LinkButton href="/contact?subject=dining" variant="secondary" icon="arrow">
+              Contact the team
+            </LinkButton>
           </div>
         </div>
-      </section>
+      </Section>
 
-      <section className={cn(cream, "py-16 sm:py-20")}>
-        <Reveal className={cn(container, "flex flex-col items-center text-center")}>
-          <h2 className={cn("max-w-xl text-balance", type.h3)}>{p.closingTitle}</h2>
-          <p className="mt-3 max-w-lg text-tone/70">{p.closingBody}</p>
-          <div className="mt-8"><PillLink href="/contact?subject=dining" variant="dark">Contact the restaurant</PillLink></div>
-        </Reveal>
-      </section>
+      <PhotoCredits credits={credits} />
     </>
   );
 }
