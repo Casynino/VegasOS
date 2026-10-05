@@ -1,4 +1,5 @@
 import "server-only";
+import { ONLINE_RECORDER_ID } from "@/server/services/online-recorder";
 import { can, type CurrentUser } from "@/server/auth";
 import { db } from "@/server/db";
 import type { getSettings } from "@/server/settings";
@@ -82,7 +83,9 @@ export function toPortalOrders(orders: BoardOrder[], ctx: { seesMoney: boolean; 
       payments: seesMoney ? o.payments.map((p) => ({
         id: p.id, amount: p.amount, account: p.account.name, reference: p.reference, status: p.status,
         collectedBy: p.collectedBy?.fullName ?? null, collectedRole: p.collectedByRole, collectedAt: p.collectedAt.toISOString(),
-        atCounter: p.atCounter, online: p.online, notReceived: p.notReceived, handedOverBy: p.handedOverBy?.fullName ?? null,
+        atCounter: p.atCounter, online: p.online, byPhone: p.account.code === "NTZS",
+        phoneSentBy: p.account.code === "NTZS" && p.collectedById !== ONLINE_RECORDER_ID ? p.collectedBy?.fullName ?? null : null,
+        notReceived: p.notReceived, handedOverBy: p.handedOverBy?.fullName ?? null,
         confirmedBy: p.confirmedBy?.fullName ?? null, confirmedAt: p.confirmedAt?.toISOString() ?? null, reverseReason: p.reverseReason,
       })) : [],
       round: o.round,

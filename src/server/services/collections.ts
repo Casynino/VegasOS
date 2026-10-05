@@ -366,7 +366,7 @@ export async function collectionRows(f: CollectionFilter): Promise<{ count: numb
         amount: p.amount, fee: p.fee, refund: false, reference: p.reference, account: p.account.name, how: KIND_GROUP[p.account.kind], method: p.paymentMethod.name,
         status, confirmed: status === "COLLECTED",
         // Paid online and recorded automatically (not by hand from the proof): "Paid online · automatic".
-        collector, recordedBy: p.online && !p.confirmedBy && p.confirmedByRole?.startsWith("Automatic") ? "Paid online · automatic" : collector, collectorId: p.collectedBy?.id ?? null, role: p.atCounter ? null : p.collectedByRole,
+        collector, recordedBy: p.online && !p.confirmedBy && p.confirmedByRole?.startsWith("Automatic") ? "Paid by phone" : collector, collectorId: p.collectedBy?.id ?? null, role: p.atCounter ? null : p.collectedByRole,
         atCounter: p.atCounter, broughtBy: clean(p.handedOverBy?.fullName), online: p.online, notReceived: p.notReceived,
         confirmedBy: clean(p.confirmedBy?.fullName), confirmedAt: p.confirmedAt?.toISOString() ?? null,
         reversedBy: clean(p.reversedBy?.fullName), reversedAt: p.reversedAt?.toISOString() ?? null, reverseReason: p.reverseReason,

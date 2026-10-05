@@ -245,12 +245,12 @@ export { ONLINE_RECORDER_ID };
 
 /**
  * Who the payment is recorded by: the staff member who sent the prompt (as if they had recorded it) — or, for a
- * customer paying online themselves, "Online · nTZS" (never a person who did not handle it).
+ * customer paying from their phone by themselves, "Customer (paid by phone)" (never a person who did not handle it).
  */
 async function settleActor(mp: MobilePayment): Promise<Actor & { userId: string }> {
   // Checked when the prompt was sent (payments.record / revenue.record): the confirmation itself is from nTZS.
   const permissions = new Set(["payments.record", "revenue.record", "restaurant.payments.confirm"]);
-  if (!mp.requestedById) return { userId: ONLINE_RECORDER_ID, label: "Online · nTZS", role: "Paid online", permissions };
+  if (!mp.requestedById) return { userId: ONLINE_RECORDER_ID, label: "Customer (paid by phone)", role: "Paid by phone", permissions };
   const u = await db.user.findUnique({ where: { id: mp.requestedById }, select: { fullName: true, role: { select: { name: true } } } });
   return { userId: mp.requestedById, label: `${u?.fullName ?? "Staff"} · nTZS`, role: u?.role.name ?? null, permissions };
 }

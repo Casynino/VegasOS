@@ -20,6 +20,10 @@ export type PortalPayment = {
   atCounter: boolean;
   /** Paid online by the customer (LIPA) — recorded automatically as the order came in. */
   online: boolean;
+  /** Paid by mobile money from a phone (nTZS) — recorded by itself when the money arrived: shown simply as "Paid". */
+  byPhone: boolean;
+  /** …the staff member who sent the payment request — null when the customer paid from their phone by themselves. */
+  phoneSentBy: string | null;
   /** Paid online but the money never reached the account ("Payment not received") — reversed, not a refund. */
   notReceived: boolean;
   /** The waiter who physically brought the money to the Counter (optional; not the collector). */

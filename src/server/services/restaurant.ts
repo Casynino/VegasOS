@@ -1568,7 +1568,7 @@ const ORDER_INCLUDE = {
     orderBy: { collectedAt: "asc" },
     select: {
       id: true, amount: true, reference: true, status: true, collectedAt: true, collectedByRole: true, confirmedAt: true, confirmedByRole: true, reverseReason: true, reversedAt: true,
-      atCounter: true, online: true, notReceived: true, account: { select: { name: true } }, collectedBy: person, confirmedBy: person, handedOverBy: person,
+      atCounter: true, online: true, notReceived: true, account: { select: { name: true, code: true } }, collectedById: true, collectedBy: person, confirmedBy: person, handedOverBy: person,
     },
   },
 } satisfies Prisma.RestaurantOrderInclude;
@@ -1685,7 +1685,7 @@ export async function orderHistory(id: string) {
         orderBy: { collectedAt: "asc" },
         select: {
           id: true, amount: true, reference: true, status: true, collectedAt: true, collectedByRole: true, confirmedAt: true, confirmedByRole: true, reverseReason: true,
-          atCounter: true, online: true, notReceived: true, account: { select: { name: true } }, collectedBy: person, confirmedBy: person, reversedBy: person, handedOverBy: person,
+          atCounter: true, online: true, notReceived: true, account: { select: { name: true, code: true } }, collectedById: true, collectedBy: person, confirmedBy: person, reversedBy: person, handedOverBy: person,
         },
       },
       charges: { select: { id: true, amount: true, description: true, isVoided: true } },

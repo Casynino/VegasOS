@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ONLINE_RECORDER_ID } from "@/server/services/online-recorder";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Armchair, ArrowLeft, ArrowRightLeft, BedDouble, Check, ChefHat, CircleCheck, Clock, Flame, HandPlatter, Package, Plus, Printer, Receipt, ShoppingBag, UserRoundCheck, UserRoundSearch, UserRoundX, UtensilsCrossed, Wallet, X } from "lucide-react";
@@ -142,7 +143,14 @@ export default async function OrderHistoryPage({ params }: PageProps<"/staff/res
               </p>
               {o.payments.length > 0 && (
                 <ul className="mt-3 space-y-2">
-                  {o.payments.map((p) => (
+                  {o.payments.map((p) => p.account.code === "NTZS" ? (
+                    // Paid by mobile money from a phone: "Paid · TZS 1,000", how and when — nothing technical (owner, 2026-10-05).
+                    <li key={p.id} className={cn("rounded-xl border border-border/70 px-3 py-2 text-xs", p.status !== "POSTED" && "opacity-70")}>
+                      <p className={cn("flex justify-between gap-2 text-sm font-semibold", p.status !== "POSTED" && "line-through")}><span>{p.status !== "POSTED" ? "Reversed" : "Paid"}</span><span className="tabular-nums">{formatTZS(p.amount)}</span></p>
+                      <p className="text-muted-foreground">Mobile money{p.collectedBy && p.collectedById !== ONLINE_RECORDER_ID ? ` · sent by ${p.collectedBy.fullName.replace(/\s*\(.*\)/, "")}` : " · from the customer's phone"} · {time(p.collectedAt)} · {day(p.collectedAt)}</p>
+                      {p.status !== "POSTED" && <p className="text-rose-600 dark:text-rose-300">{p.reverseReason ?? "Reversed"}</p>}
+                    </li>
+                  ) : (
                     <li key={p.id} className={cn("rounded-xl border border-border/70 px-3 py-2 text-xs", p.status !== "POSTED" && "opacity-70")}>
                       <p className={cn("flex justify-between gap-2 text-sm font-semibold", p.status !== "POSTED" && "line-through")}><span>{p.account.name}{p.reference ? ` · ref ${p.reference}` : ""}</span><span className="tabular-nums">{formatTZS(p.amount)}</span></p>
                       <p className="text-muted-foreground">{p.atCounter

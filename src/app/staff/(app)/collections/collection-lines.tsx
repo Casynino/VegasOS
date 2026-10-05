@@ -17,7 +17,7 @@ export const STATUS: Record<CollectionStatus, { label: string; tone: string }> =
   REVERSED: { label: "Reversed", tone: "bg-rose-500/12 text-rose-700 dark:text-rose-300" },
 };
 const REFUND = { label: "Refund", tone: "bg-sky-500/12 text-sky-700 dark:text-sky-300" };
-const ONLINE = { label: "Paid online", tone: "bg-sky-500/12 text-sky-700 dark:text-sky-300" };
+const ONLINE = { label: "Paid by phone", tone: "bg-sky-500/12 text-sky-700 dark:text-sky-300" };
 const NOT_RECEIVED = { label: "Not received", tone: "bg-rose-500/12 text-rose-700 dark:text-rose-300" };
 /** An online payment the Counter (or reception) may still say never arrived: the order can still be declined. */
 const DECLINABLE = ["PENDING", "ACCEPTED", "PREPARING"];
@@ -90,7 +90,7 @@ export function PaymentRow({ r, meId, confirm, waiters = true, collector = true 
   const s = r.notReceived ? NOT_RECEIVED : r.status === "REVERSED" ? STATUS.REVERSED : r.refund ? REFUND : r.online && r.status === "COLLECTED" ? ONLINE : STATUS[r.status];
   const notReceivable = confirm && r.online && r.status === "COLLECTED" && !!r.orderId && DECLINABLE.includes(r.order?.status ?? "");
   const restaurant = r.source === "RESTAURANT";
-  const recordedBy = r.online ? r.recordedBy : r.atCounter ? "Restaurant Counter" : r.collectorId === meId ? "You" : r.paidOnline && !r.paidOnline.creditedTo ? "Paid online" : r.recordedBy;
+  const recordedBy = r.online ? r.recordedBy : r.atCounter ? "Restaurant Counter" : r.collectorId === meId ? "You" : r.paidOnline && !r.paidOnline.creditedTo ? "Paid by phone" : r.recordedBy;
   const placeKind = restaurant ? r.placeKind : r.stay ? "STAY" : "SALE";
   return (
     <li>
@@ -121,9 +121,9 @@ export function PaymentRow({ r, meId, confirm, waiters = true, collector = true 
           {/* Collected by (and who brought it) — paid online: nobody typed it in */}
           {collector && (
             <span className="hidden min-w-0 leading-tight lg:block">
-              <span className={cn("block truncate text-sm", recordedBy === "You" && "font-semibold")}>{r.online && !r.atCounter ? "Paid online · automatic" : recordedBy}</span>
+              <span className={cn("block truncate text-sm", recordedBy === "You" && "font-semibold")}>{r.online && !r.atCounter ? "Paid by phone" : recordedBy}</span>
               {r.broughtBy && <span className="block truncate text-[11px] text-muted-foreground">brought by {r.broughtBy}</span>}
-              {r.paidOnline && <span className="block truncate text-[11px] text-sky-300">{r.paidOnline.creditedTo ? "paid online · counted at check-in" : r.paidOnline.waiting ? "not checked in yet" : "by the guest, online"}</span>}
+              {r.paidOnline && <span className="block truncate text-[11px] text-sky-300">{r.paidOnline.creditedTo ? "paid by phone · counted at check-in" : r.paidOnline.waiting ? "not checked in yet" : "by the guest, online"}</span>}
             </span>
           )}
           {/* How, into which account */}
@@ -154,9 +154,9 @@ export function PaymentRow({ r, meId, confirm, waiters = true, collector = true 
             {r.stay && <Row k="Bill" v={`${formatTZS(r.stay.net)}${r.stay.balance > 0 ? ` · ${formatTZS(r.stay.balance)} still owed` : " · settled"}`} />}
             <Row k="This payment" v={`${formatTZS(r.amount)}${r.fee ? ` (incl. room-service fee ${formatTZS(r.fee)})` : ""} · ${r.method} · ${r.account}${r.reference ? ` · ref ${r.reference}` : ""}`} />
             {r.paidOnline
-              ? <Row k="Paid" v={`Online by the guest (mobile money) · ${formatDateTime(r.paidOnline.paidAt)}${r.paidOnline.creditedTo ? ` — counted for ${r.paidOnline.creditedToId === meId ? "you" : r.paidOnline.creditedTo} at check-in${r.paidOnline.creditedAt ? ` · ${formatDateTime(r.paidOnline.creditedAt)}` : ""}` : r.paidOnline.waiting ? " — not checked in yet: it counts for whoever checks them in" : ""}`} />
+              ? <Row k="Paid" v={`By the guest, from their phone (mobile money) · ${formatDateTime(r.paidOnline.paidAt)}${r.paidOnline.creditedTo ? ` — counted for ${r.paidOnline.creditedToId === meId ? "you" : r.paidOnline.creditedTo} at check-in${r.paidOnline.creditedAt ? ` · ${formatDateTime(r.paidOnline.creditedAt)}` : ""}` : r.paidOnline.waiting ? " — not checked in yet: it counts for whoever checks them in" : ""}`} />
               : r.online
-              ? <Row k={collector ? "Collected by" : "Paid"} v={`${collector ? "Automatically — the customer paid online (LIPA)" : "Online (LIPA) · automatic"} · ${formatBusinessDate(r.day)} ${formatTime(r.at)}`} />
+              ? <Row k={collector ? "Collected by" : "Paid"} v={`${collector ? "The customer paid from their phone — recorded by itself" : "Paid by phone"} · ${formatBusinessDate(r.day)} ${formatTime(r.at)}`} />
               : !collector
               ? <Row k="Time" v={`${formatBusinessDate(r.day)} ${formatTime(r.at)}`} />
               : r.atCounter

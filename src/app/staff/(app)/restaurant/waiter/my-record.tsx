@@ -22,7 +22,7 @@ const KIND_TONE: Record<OrderSourceKind, string> = {
 /** How an order is paid, in plain words — what the Counter recorded. */
 const MONEY: Record<MoneyState, { text: string; tone: string }> = {
   PAID: { text: "Paid", tone: "bg-emerald-500/12 text-emerald-300" },
-  PAID_ONLINE: { text: "Paid online", tone: "bg-sky-500/12 text-sky-300" },
+  PAID_ONLINE: { text: "Paid by phone", tone: "bg-sky-500/12 text-sky-300" },
   ROOM_BILL: { text: "Charged to room", tone: "bg-violet-500/12 text-violet-300" },
   PARTLY_PAID: { text: "Part-paid", tone: "bg-amber-500/15 text-amber-300" },
   UNPAID: { text: "Not paid yet", tone: "bg-rose-500/12 text-rose-300" },
@@ -68,7 +68,7 @@ export function ShiftSummary({ s, onShift }: { s: WaiterActivity["summary"]; onS
       {s.orders > 0 && (
         <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-border/60 pt-3 text-xs sm:grid-cols-5">
           {[
-            ["Orders' value", s.value], ["Paid at the Counter", s.paidCounter], ["Charged to rooms", s.onRooms], ["Paid online", s.paidOnline], ["Still to pay", s.unpaid],
+            ["Orders' value", s.value], ["Paid at the Counter", s.paidCounter], ["Charged to rooms", s.onRooms], ["Paid by phone", s.paidOnline], ["Still to pay", s.unpaid],
           ].map(([k, v]) => (
             <div key={k as string} className="min-w-0">
               <dt className="truncate text-muted-foreground">{k}</dt>
@@ -147,7 +147,7 @@ function OrderLine({ r }: { r: WaiterOrderRow }) {
 const WAYS = [
   { key: "counter", label: "At the Counter", icon: Store, bar: "bg-emerald-400", tile: "bg-emerald-500/12 text-emerald-300" },
   { key: "rooms", label: "On room bills", icon: BedDouble, bar: "bg-violet-400", tile: "bg-violet-500/12 text-violet-300" },
-  { key: "online", label: "Paid online", icon: Globe, bar: "bg-sky-400", tile: "bg-sky-500/12 text-sky-300" },
+  { key: "online", label: "Paid by phone", icon: Globe, bar: "bg-sky-400", tile: "bg-sky-500/12 text-sky-300" },
   { key: "unpaid", label: "Still to pay", icon: Clock, bar: "bg-rose-400", tile: "bg-rose-500/12 text-rose-300" },
 ] as const;
 type Filter = "all" | "unpaid" | "paid" | "rooms";

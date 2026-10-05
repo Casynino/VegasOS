@@ -600,7 +600,7 @@ describe("admin: online payments, reconciliation, reports", () => {
     await db.restaurantOrderPayment.updateMany({ where: { orderId: a.order.id }, data: { status: "POSTED" } });
 
     const report = await paymentsByMethod(day, day);
-    expect(report.rows.find((r) => r.code === "NTZS")).toMatchObject({ method: "NTZS online", amount: a.order.total });
+    expect(report.rows.find((r) => r.code === "NTZS")).toMatchObject({ method: "Mobile money (phone)", amount: a.order.total });
 
     // The customer's profile: their online payments.
     const guestId = (await db.restaurantOrder.findUniqueOrThrow({ where: { id: a.order.id } })).guestId!;

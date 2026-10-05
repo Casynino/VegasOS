@@ -88,8 +88,8 @@ export function payBadge(o: PortalOrder) {
   if (o.online === "PAYING") return { text: "Paying online…", tone: "bg-sky-500/10 text-sky-700 ring-sky-500/20 dark:text-sky-300" };
   if (o.online === "NOT_PAID") return { text: `Not paid online${o.due ? ` · ${tzs(o.due)}` : ""}`, tone: "bg-rose-500/10 text-rose-700 ring-rose-500/20 dark:text-rose-300" };
   if (o.settlement === "ROOM") return { text: `Charged to room${o.room ? ` · Room ${o.room}` : ""}`, tone: "bg-violet-500/10 text-violet-700 ring-violet-500/20 dark:text-violet-300" };
-  // Paid online by the customer (nTZS): said plainly, not as an account name.
-  if (o.payment === "PAID" && o.paidTo?.startsWith("NTZS")) return { text: "Paid online · NTZS", tone: "bg-emerald-500/10 text-emerald-700 ring-emerald-500/20 dark:text-emerald-300" };
+  // Paid by mobile money from a phone: just "Paid" (owner, 2026-10-05 — no "online payment", no provider name).
+  if (o.payment === "PAID" && o.payments.some((p) => p.byPhone && p.status === "POSTED")) return { text: "Paid · mobile money", tone: "bg-emerald-500/10 text-emerald-700 ring-emerald-500/20 dark:text-emerald-300" };
   if (o.payment === "PAID") return { text: `Paid${o.paidTo ? ` · ${o.paidTo}` : ""}`, tone: "bg-emerald-500/10 text-emerald-700 ring-emerald-500/20 dark:text-emerald-300" };
   if (o.payment === "PENDING_CONFIRMATION") return { text: "Payment pending", tone: "bg-amber-500/10 text-amber-700 ring-amber-500/25 dark:text-amber-300" };
   if (o.payment === "PARTIALLY_PAID") return { text: `Part-paid · ${tzs(o.due ?? 0)} due`, tone: "bg-rose-500/10 text-rose-700 ring-rose-500/20 dark:text-rose-300" };
@@ -686,13 +686,26 @@ export function OrderCard({ o, perms, now, fresh, accounts, rooms, drag, roomy, 
                             {reversed ? <Undo2 className="size-4" /> : p.confirmedAt ? <Check className="size-4" strokeWidth={3} /> : <Icon className="size-4" />}
                           </span>
                           <div className="min-w-0 flex-1 leading-tight">
-                            <p className={cn("text-sm font-semibold tabular-nums", reversed && "text-muted-foreground line-through")}>{tzs(p.amount)} · {p.account}</p>
-                            <p suppressHydrationWarning className="truncate text-xs text-muted-foreground">
-                              {p.atCounter ? "Recorded at the Restaurant Counter" : `Collected by ${first(p.collectedBy) ?? "—"}${p.collectedRole ? ` (${p.collectedRole})` : ""}`}{p.handedOverBy ? ` · brought by ${first(p.handedOverBy)}` : ""} · {clock(p.collectedAt)}{p.reference ? ` · Ref ${p.reference}` : ""}
-                            </p>
-                            <p suppressHydrationWarning className={cn("truncate text-xs", reversed ? "text-rose-300" : p.confirmedAt ? "text-emerald-300/80" : "text-amber-300")}>
-                              {reversed ? p.reverseReason ?? "Reversed" : p.confirmedAt ? `${p.online && !p.confirmedBy ? "Paid online — recorded automatically" : p.atCounter && p.confirmedBy === p.collectedBy ? "Confirmed at the Restaurant Counter" : `Confirmed by ${first(p.confirmedBy) ?? "—"}`} · ${clock(p.confirmedAt)}` : "Waiting to be confirmed"}
-                            </p>
+                            {p.byPhone ? (
+                              // Paid by mobile money from a phone: "Paid · TZS 1,000" — how and when, nothing technical.
+                              <>
+                                <p className={cn("text-sm font-semibold tabular-nums", reversed && "text-muted-foreground line-through")}>{reversed ? "Reversed" : "Paid"} · {tzs(p.amount)}</p>
+                                <p suppressHydrationWarning className="truncate text-xs text-muted-foreground">
+                                  Mobile money{p.phoneSentBy ? ` · sent by ${first(p.phoneSentBy)}` : " · from the customer's phone"} · {clock(p.collectedAt)}
+                                </p>
+                                {reversed && <p className="truncate text-xs text-rose-300">{p.reverseReason ?? "Reversed"}</p>}
+                              </>
+                            ) : (
+                              <>
+                                <p className={cn("text-sm font-semibold tabular-nums", reversed && "text-muted-foreground line-through")}>{tzs(p.amount)} · {p.account}</p>
+                                <p suppressHydrationWarning className="truncate text-xs text-muted-foreground">
+                                  {p.atCounter ? "Recorded at the Restaurant Counter" : `Collected by ${first(p.collectedBy) ?? "—"}${p.collectedRole ? ` (${p.collectedRole})` : ""}`}{p.handedOverBy ? ` · brought by ${first(p.handedOverBy)}` : ""} · {clock(p.collectedAt)}{p.reference ? ` · Ref ${p.reference}` : ""}
+                                </p>
+                                <p suppressHydrationWarning className={cn("truncate text-xs", reversed ? "text-rose-300" : p.confirmedAt ? "text-emerald-300/80" : "text-amber-300")}>
+                                  {reversed ? p.reverseReason ?? "Reversed" : p.confirmedAt ? `${p.online && !p.confirmedBy ? "Paid online — recorded automatically" : p.atCounter && p.confirmedBy === p.collectedBy ? "Confirmed at the Restaurant Counter" : `Confirmed by ${first(p.confirmedBy) ?? "—"}`} · ${clock(p.confirmedAt)}` : "Waiting to be confirmed"}
+                                </p>
+                              </>
+                            )}
                           </div>
                         </div>
                         {!reversed && ((perms.confirm && !p.confirmedAt) || perms.cancelLate) && (

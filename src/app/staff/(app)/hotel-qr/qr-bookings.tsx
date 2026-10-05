@@ -17,7 +17,7 @@ export const QR_LISTS = [
   { key: "arriving", label: "Arriving today" },
   { key: "upcoming", label: "Upcoming" },
   { key: "waiting", label: "Waiting to pay" },
-  { key: "online", label: "Paid online" },
+  { key: "online", label: "Paid by phone" },
   { key: "cancelled", label: "Cancelled" },
 ] as const;
 export type QrList = (typeof QR_LISTS)[number]["key"];
@@ -30,7 +30,7 @@ function payChip(r: QrBookingRow): { text: string; tone: string; dot: string } {
   if (r.status === "INQUIRY" && r.paid === 0 && r.paymentStatus !== "PAYMENT_PENDING") return { text: "Not paid · room not held", tone: "bg-orange-500/12 text-orange-800 dark:text-orange-300", dot: "bg-orange-500" };
   const online = r.payWay === "ONLINE" || !!r.ntzsReference;
   const map: Record<QrPaymentStatus, { text: string; tone: string; dot: string }> = {
-    PAID: online ? { text: "Paid online", tone: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300", dot: "bg-emerald-500" } : { text: "Paid", tone: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300", dot: "bg-emerald-500" },
+    PAID: online ? { text: "Paid by phone", tone: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300", dot: "bg-emerald-500" } : { text: "Paid", tone: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300", dot: "bg-emerald-500" },
     PARTIALLY_PAID: { text: online ? "Part paid online" : "Part paid", tone: "bg-sky-500/12 text-sky-700 dark:text-sky-300", dot: "bg-sky-500" },
     PAYMENT_PENDING: { text: "Paying now", tone: "bg-sky-500/12 text-sky-700 dark:text-sky-300", dot: "bg-sky-500" },
     PAY_AT_HOTEL: { text: "Pay at hotel", tone: "bg-amber-500/12 text-amber-800 dark:text-amber-300", dot: "bg-amber-500" },
