@@ -8,13 +8,16 @@ import { containers } from "./kit/tokens";
 import { MobileNav } from "./mobile-nav";
 import { NavLink } from "./nav-link";
 import { PRIMARY_NAV } from "./site-config";
+import { StaffLink } from "./staff-link";
 import { ThemeToggle } from "./theme-toggle";
 
 /**
  * Desktop (≥1024px): logo · Rooms Dining Experiences Services About Contact · Book your stay
  * (+ the theme switch from 1280px; it is also in the footer). Phones and tablets: compact logo ·
  * small Book · menu. Book is a slim hairline button (no gold block) and the only Book on phones.
- * Phone, WhatsApp, theme and the staff door live in the menu and the footer.
+ * Staff login is always in sight (owner, 2026-10-05: "the log in should be very visible"): a labelled "Staff login" on
+ * computers, a lock button beside Book on phones and tablets — "Dashboard" once signed in.
+ * Phone, WhatsApp and theme live in the menu and the footer.
  */
 export function SiteHeader({ settings }: { settings: HotelSettings }) {
   const [first, ...rest] = settings.hotelName.split(" ");
@@ -43,7 +46,7 @@ export function SiteHeader({ settings }: { settings: HotelSettings }) {
           <span className="min-w-0 leading-none">
             <span className="block font-display text-[1.3rem] font-bold uppercase tracking-[0.16em] text-gold lg:text-[1.45rem]">{first}</span>
             {rest.length > 0 && (
-              <span className="mt-1 block truncate text-[8.5px] font-semibold uppercase tracking-[0.38em] text-white/85 lg:text-[9.5px]">{rest.join(" ")}</span>
+              <span className="mt-1 block truncate text-[8.5px] font-semibold uppercase tracking-[0.38em] text-white/85 max-[359px]:hidden lg:text-[9.5px]">{rest.join(" ")}</span>
             )}
           </span>
         </Link>
@@ -60,8 +63,12 @@ export function SiteHeader({ settings }: { settings: HotelSettings }) {
           </ul>
         </nav>
 
-        <div className="flex items-center justify-end gap-2 sm:gap-3">
+        <div className="flex items-center justify-end gap-1.5 min-[360px]:gap-2 sm:gap-3">
           <ThemeToggle compact className="hidden xl:inline-grid" />
+          <StaffLink withIcon labels={{ signedIn: "Dashboard", signedOut: "Staff login" }}
+            className="hidden h-10 whitespace-nowrap rounded-full border border-white/25 bg-white/[0.06] px-4 text-[13px] font-medium text-white transition-colors duration-200 hover:border-white/50 hover:bg-white/[0.12] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold lg:inline-flex motion-reduce:transition-none" />
+          <StaffLink iconOnly labels={{ signedIn: "Staff dashboard", signedOut: "Staff login" }}
+            className="h-10 w-10 justify-center rounded-full border border-white/25 bg-white/[0.06] text-white transition-colors duration-200 hover:border-white/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold lg:hidden motion-reduce:transition-none" />
           <LinkButton href="/book" size="sm" aria-label="Book your stay" className="px-4 sm:px-[1.125rem]">
             <span className="sm:hidden">Book</span>
             <span className="hidden sm:inline">Book your stay</span>

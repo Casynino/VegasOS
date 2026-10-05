@@ -28,11 +28,14 @@ export function StaffLink({
   className,
   onClick,
   withIcon,
+  iconOnly,
   labels = { signedIn: "Dashboard", signedOut: "Login" },
 }: {
   className?: string;
   onClick?: () => void;
   withIcon?: boolean;
+  /** Just the icon (the words stay for screen readers) — the phone header. */
+  iconOnly?: boolean;
   /** Visible text for each state (e.g. "Staff login" in the footer). */
   labels?: { signedIn: string; signedOut: string };
 }) {
@@ -40,8 +43,8 @@ export function StaffLink({
   const Icon = signedIn ? LayoutDashboard : LockKeyhole;
   return (
     <Link href={signedIn ? "/staff" : "/staff/login"} onClick={onClick} className={cn("inline-flex items-center gap-1.5", className)}>
-      {withIcon && <Icon className="size-3.5" aria-hidden="true" />}
-      {signedIn ? labels.signedIn : labels.signedOut}
+      {(withIcon || iconOnly) && <Icon className={iconOnly ? "size-4" : "size-3.5"} aria-hidden="true" />}
+      {iconOnly ? <span className="sr-only">{signedIn ? labels.signedIn : labels.signedOut}</span> : signedIn ? labels.signedIn : labels.signedOut}
     </Link>
   );
 }
