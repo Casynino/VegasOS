@@ -24,7 +24,7 @@ const SLOTS = [["Morning", "08:00", "12:00"], ["Half day", "09:00", "13:00"], ["
  * Meeting room on the website: pick a date and time → "Check availability"
  * (live, from the same booking engine as reception) → "Book now" with the
  * customer's details. The booking is a request until the hotel confirms it — or, paying online (nTZS), it is booked
- * at once and the payment confirms it. "Pay now" comes first and is pre-selected; "Pay at the hotel" sends the request.
+ * at once and the payment confirms it. "Pay now" (mobile money, nTZS) comes first and is pre-selected; "Pay later" sends the request.
  * Presented as a booking console: smoked glass with a live header and a step track; on desktop a
  * ticket with the price and the chosen time rides beside it. (Meant for a night band.)
  */
@@ -252,7 +252,7 @@ export function MeetingBooking({ today, price, capacity, online = false, name = 
                         </p>
                       </div>
                     </ChoiceRow>
-                    <ChoiceRow kind="radio" on={way === "LATER"} onSelect={() => setWay("LATER")} icon={<Wallet className="size-[18px]" strokeWidth={1.6} />} title="Pay at the hotel" sub="Send a request — our team calls or messages you to confirm it." />
+                    <ChoiceRow kind="radio" on={way === "LATER"} onSelect={() => setWay("LATER")} icon={<Wallet className="size-[18px]" strokeWidth={1.6} />} title="Pay later" sub="Send a request — not reserved until paid; you pay by mobile money from your booking link." />
                   </div>
                 )}
                 <Button type="submit" full disabled={busy} className="sm:w-auto sm:min-w-48">

@@ -4,7 +4,6 @@ import { redirect } from "next/navigation";
 import { can, getCurrentUser } from "@/server/auth";
 import { roomForQr, scanRoomQr } from "@/server/services/room-qr";
 import { restaurantMenu } from "@/server/services/online-orders";
-import { customerPayAccounts } from "@/server/services/payment-accounts";
 import { onlinePayAvailable } from "@/server/services/online-pay";
 import { roomTypeOffer, roomTypePhotos } from "@/server/services/room-qr-page";
 import { StayPage } from "@/components/restaurant/stay-page";
@@ -44,11 +43,11 @@ export default async function RoomQrPage({ params, searchParams }: PageProps<"/r
   const room = scan?.room?.active ? scan.room : null;
   const label = room ? (room.meeting ? `Meeting room ${room.number}` : `Room ${room.number}`) : null;
   const { brand, status } = restaurantShell(s);
-  const [menu, payTo, online] = await Promise.all([restaurantMenu(), customerPayAccounts(), onlinePayAvailable("restaurant", s)]);
+  const [menu, online] = await Promise.all([restaurantMenu(), onlinePayAvailable("restaurant", s)]);
   const app = {
     status, menu, canOrder: s.publicOrderingEnabled,
     place: { kind: "public" as const, table: null, room: !!room, label, note: room ? "Eat at the restaurant or take out · room service once you are checked in" : null },
-    checkout: { kind: "public" as const, table: null, fromQr: true, payTo, online },
+    checkout: { kind: "public" as const, table: null, fromQr: true, online },
   };
   if (!room || !scan?.info) return <RestaurantApp brand={brand} {...app} />;
 

@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { getSettings } from "@/server/settings";
 import { restaurantMenu } from "@/server/services/online-orders";
-import { customerPayAccounts } from "@/server/services/payment-accounts";
 import { onlinePayAvailable } from "@/server/services/online-pay";
 import { freeTables } from "@/server/services/restaurant-locations";
 import { RestaurantApp } from "@/components/restaurant/restaurant-app";
@@ -19,5 +18,5 @@ export default async function OrderPage({ searchParams }: PageProps<"/order">) {
   const table = typeof sp.table === "string" ? sp.table.slice(0, 40) : null;
   const [s, menu] = await Promise.all([getSettings(), restaurantMenu()]);
   const { brand, status } = restaurantShell(s);
-  return <RestaurantApp brand={brand} status={status} menu={menu} place={{ kind: "public", table }} checkout={{ kind: "public", table, fromQr: sp.qr === "1", payTo: await customerPayAccounts(), online: await onlinePayAvailable("restaurant", s), tables: await freeTables() }} canOrder={s.publicOrderingEnabled} />;
+  return <RestaurantApp brand={brand} status={status} menu={menu} place={{ kind: "public", table }} checkout={{ kind: "public", table, fromQr: sp.qr === "1", online: await onlinePayAvailable("restaurant", s), tables: await freeTables() }} canOrder={s.publicOrderingEnabled} />;
 }

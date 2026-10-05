@@ -24,7 +24,7 @@ export interface QrHero {
 /**
  * THE OPENING — exactly the website's landing (owner, 2026-10-05: "the same look as our landing page"): the hotel's
  * own photographs full screen with the cinematic grade, the plain local time and weather, and the words at the bottom.
- * The header is the website's wordmark with plain icons: the phone to call, "Book" in gold — no shapes around them.
+ * The header is the website's wordmark with plain icons: the phone to call, "Book now" in gold — no shapes around them.
  */
 export function Opening({ hero, hotel, onBook, children }: {
   hero: QrHero; hotel: { name: string; phone: string | null }; onBook: (() => void) | null; children: React.ReactNode;
@@ -53,7 +53,7 @@ export function Opening({ hero, hotel, onBook, children }: {
             )}
             {onBook && (
               <button type="button" onClick={onBook} className={cn(quiet, "gap-1 whitespace-nowrap px-1 text-[14px] font-semibold text-gold hover:text-[#f0d6a0]")}>
-                <span className="sm:hidden">Book</span><span className="hidden sm:inline">Book your stay</span>
+                Book now
               </button>
             )}
           </span>

@@ -24,8 +24,8 @@ export const metadata: Metadata = {
 
 const STATUS: Record<string, { label: string; tone: "ok" | "muted" | "warn" }> = {
   INQUIRY: { label: "Enquiry received — we’ll be in touch", tone: "muted" },
-  RESERVED: { label: "Reserved — pay at the hotel", tone: "ok" },
-  CONFIRMED: { label: "Confirmed — pay at the hotel", tone: "ok" },
+  RESERVED: { label: "Reserved — not paid yet", tone: "ok" },
+  CONFIRMED: { label: "Confirmed — not paid yet", tone: "ok" },
   CHECKED_IN: { label: "Checked in — enjoy your stay", tone: "ok" },
   CHECKED_OUT: { label: "Checked out — thank you for staying", tone: "muted" },
   CANCELLED: { label: "Cancelled", tone: "warn" },
@@ -179,8 +179,8 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
         )}
         <p className="mt-4 text-[12.5px] leading-relaxed text-pub-muted">
           {booking.balanceAmount <= 0 && booking.paidAmount > 0 ? "Paid in full — thank you."
-            : booking.paidAmount > 0 ? "Received with thanks — the rest can be paid online or at the hotel."
-            : online.offered ? "Pay now from your phone, or at the hotel."
+            : booking.paidAmount > 0 ? (online.offered ? "Received with thanks — pay the rest by mobile money here." : "Received with thanks — the rest is paid at the hotel.")
+            : online.offered ? "Pay now by mobile money — a payment request comes to your phone."
             : "Payment is made at the hotel. Nothing has been charged online."}
         </p>
       </div>

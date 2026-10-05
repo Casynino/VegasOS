@@ -4,13 +4,16 @@ import type { StayBill } from "@/server/services/stay-bill";
 import type { getSettings } from "@/server/settings";
 import { StayBillDoc } from "@/components/staff/bills/stay-bill-doc";
 import { ReceiptActions } from "./receipt-actions";
-import type { PayTo } from "./folio";
 import { BillPayOnline } from "./bill-pay-online";
 import type { ActionResult } from "@/server/errors";
 
-/** The guest's room bill page (from their stay link or the room's QR card): print or download it. */
-export function GuestBillPage({ bill, settings, payTo, back, pay }: {
-  bill: StayBill; settings: Awaited<ReturnType<typeof getSettings>>; payTo: PayTo[]; back: string;
+/**
+ * The guest's room bill page (from their stay link or the room's QR card): print or download it. Paying online is only
+ * mobile money (nTZS, the card at the top) — the bill never lists the hotel's account numbers to pay into (owner,
+ * 2026-10-05: "any online payment is nTZS, nothing more").
+ */
+export function GuestBillPage({ bill, settings, back, pay }: {
+  bill: StayBill; settings: Awaited<ReturnType<typeof getSettings>>; back: string;
   /** Pay online (nTZS) for what is owed — when offered. */
   pay?: { due: number; live: string | null; action: (input: { phone: string; clientKey: string }) => Promise<ActionResult<{ pay: string }>> } | null;
 }) {
@@ -24,7 +27,7 @@ export function GuestBillPage({ bill, settings, payTo, back, pay }: {
         </div>
         {pay && <BillPayOnline due={pay.due} live={pay.live} action={pay.action} />}
         <ReceiptActions fileName={`${settings.hotelName.replace(/\s+/g, "-")}-${bill.reference}-bill`} />
-        <StayBillDoc bill={bill} payTo={payTo}
+        <StayBillDoc bill={bill} payTo={[]}
           hotel={{ name: settings.hotelName, address: settings.addressLine, phone: settings.phone, whatsapp: settings.whatsapp, email: settings.email, website: settings.website }} />
       </div>
     </main>

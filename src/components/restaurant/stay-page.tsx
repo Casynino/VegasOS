@@ -1,7 +1,6 @@
 import type { HotelSettings } from "@/generated/prisma/client";
 import type { GuestStay } from "@/server/services/guest-comms";
 import { restaurantMenu } from "@/server/services/online-orders";
-import { customerPayAccounts } from "@/server/services/payment-accounts";
 import { onlinePayAvailable, stayBillPayOnline } from "@/server/services/online-pay";
 import { guestRequestNotes } from "@/server/services/room-qr-page";
 import { payRoomBillOnlineAction } from "@/app/r/[token]/actions";
@@ -40,8 +39,8 @@ export async function StayPage({ stay, s, target, via }: {
   // booking reference, phone, email or company (they would otherwise travel in the page's data).
   const shown: GuestStay = via === "room" ? { ...stay, guestName: first, reference: "", phone: null, email: null, company: null } : stay;
 
-  const [menu, payTo, online, bill, notes] = await Promise.all([
-    restaurantMenu(), customerPayAccounts(), onlinePayAvailable("roomService", s),
+  const [menu, online, bill, notes] = await Promise.all([
+    restaurantMenu(), onlinePayAvailable("roomService", s),
     stayBillPayOnline(target.kind === "room" ? { roomQrToken: target.token } : { guestToken: target.token }),
     ask ? guestRequestNotes(stay.requests.map((q) => q.id)) : Promise.resolve({} as Record<string, string>),
   ]);
@@ -76,7 +75,7 @@ export async function StayPage({ stay, s, target, via }: {
         kind: "room", room: room || "—", guest: first, meeting, fee: s.roomServiceFee, stayHref: info.billHref,
         orders: stay.orders.map((o) => ({ number: o.number, status: o.status, total: o.total, track: o.track })),
       }}
-      checkout={{ kind: "room", target, where: meeting ? "the meeting room" : `Room ${room}`, guest: first, payTo, online }}
+      checkout={{ kind: "room", target, where: meeting ? "the meeting room" : `Room ${room}`, guest: first, online }}
       top={<StayTop key="stay-top" stay={shown} info={info} />}
       bottom={<StayBottom key="stay-bottom" stay={shown} info={info} />} />
   );

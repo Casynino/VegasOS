@@ -95,7 +95,7 @@ export function TransportRequest({ services, today, initial, online = false }: {
           <>
             {done.page && (
               <LinkButton href={done.page} icon="arrow">
-                {payNow ? `Pay TZS ${n(done.price)} online` : "View your trip"}
+                {payNow ? `Pay TZS ${n(done.price)} now` : "View your trip"}
               </LinkButton>
             )}
             <Button variant="text" onClick={() => { setDone(null); setF((x) => ({ ...x, date: "", time: "", flightNumber: "", notes: "" })); }}>

@@ -73,7 +73,7 @@ export type PaidFirst = { proofId: string; accountId: string; reference?: string
  * account one customers pay into (never cash). What the order keeps — staff check it and record the payment.
  */
 export async function paidFirstTx(tx: Tx, p: PaidFirst | null | undefined, now: Date) {
-  if (!p?.proofId) throw new AppError("Take out is paid first — please add a screenshot of your payment.", "VALIDATION", { proof: "Required" });
+  if (!p?.proofId) throw new AppError("Take out is paid first by mobile money — choose Pay now.", "VALIDATION", { proof: "Required" });
   const [file, account] = await Promise.all([
     tx.storedFile.findUnique({ where: { id: p.proofId }, select: { purpose: true, createdAt: true, restaurantOrder: { select: { id: true } } } }),
     tx.moneyAccount.findUnique({ where: { id: p.accountId }, select: { isActive: true, acceptsPayments: true, kind: true, accountNumber: true } }),

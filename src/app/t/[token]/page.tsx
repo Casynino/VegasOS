@@ -7,7 +7,6 @@ import { prettyPhone } from "@/lib/guest-messages";
 import { restaurantMenu } from "@/server/services/online-orders";
 import { freeTables, scanLocationQr } from "@/server/services/restaurant-locations";
 import { guestTableState, SEAT_COOKIE } from "@/server/services/dining-sessions";
-import { customerPayAccounts } from "@/server/services/payment-accounts";
 import { onlinePayAvailable, tableBillPayOnline } from "@/server/services/online-pay";
 import { RestaurantApp, type AppPlace } from "@/components/restaurant/restaurant-app";
 import { restaurantShell } from "@/components/restaurant/shell";
@@ -46,5 +45,5 @@ export default async function TableQrPage({ params }: PageProps<"/t/[token]">) {
   const state = spot.kind === "TABLE" ? await guestTableState(spot.id, seat) : null;
   // Their own table: Pay online for what is due on it.
   const table = state?.mine && state.mine.due > 0 ? { ...state, pay: await tableBillPayOnline(seat) } : state;
-  return <RestaurantApp brand={brand} status={status} menu={menu} place={place} checkout={{ kind: "spot", token, spot: spot.kind, payTo: await customerPayAccounts(), online: await onlinePayAvailable("restaurant", s), tables: spot.kind === "MAIN" ? await freeTables() : undefined }} canOrder={s.publicOrderingEnabled} table={table} />;
+  return <RestaurantApp brand={brand} status={status} menu={menu} place={place} checkout={{ kind: "spot", token, spot: spot.kind, online: await onlinePayAvailable("restaurant", s), tables: spot.kind === "MAIN" ? await freeTables() : undefined }} canOrder={s.publicOrderingEnabled} table={table} />;
 }

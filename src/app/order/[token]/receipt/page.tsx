@@ -3,7 +3,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { getSettings } from "@/server/settings";
-import { accountOptions } from "@/server/services/payment-accounts";
 import { orderBillByTrackToken } from "@/server/services/restaurant";
 import { OrderReceipt } from "@/components/ordering/order-receipt";
 import { ReceiptActions } from "@/components/ordering/receipt-actions";
@@ -14,10 +13,9 @@ export const dynamic = "force-dynamic";
 /** The customer's receipt for their order — print it or keep it as a PDF / picture. */
 export default async function OrderReceiptPage({ params }: PageProps<"/order/[token]/receipt">) {
   const { token } = await params;
-  const [found, settings, accounts] = await Promise.all([orderBillByTrackToken(token), getSettings(), accountOptions("payments")]);
+  const [found, settings] = await Promise.all([orderBillByTrackToken(token), getSettings()]);
   if (!found) notFound();
   const { bill, id } = found;
-  const payTo = accounts.filter((a) => a.number && a.kind !== "CASH");
   return (
     <main className="min-h-svh bg-[#e9e6e1] px-3 py-6 sm:px-4 text-[#1b1611] print:bg-white print:p-0">
       <style>{`@media print { @page { margin: 6mm; } body { background: #fff !important; } }`}</style>
@@ -27,7 +25,7 @@ export default async function OrderReceiptPage({ params }: PageProps<"/order/[to
           <p className="text-xs text-black/55">Your receipt</p>
         </div>
         <ReceiptActions fileName={`${settings.hotelName.replace(/\s+/g, "-")}-${bill.orders[0].number}`} />
-        <OrderReceipt bill={bill} leadId={id} payTo={payTo}
+        <OrderReceipt bill={bill} leadId={id} payTo={[]}
           hotel={{ name: settings.hotelName, address: settings.addressLine, phone: settings.phone, whatsapp: settings.whatsapp, email: settings.email, website: settings.website }} />
       </div>
     </main>

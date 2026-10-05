@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { getSettings } from "@/server/settings";
 import { publicMenu } from "@/server/services/restaurant";
-import { customerPayAccounts } from "@/server/services/payment-accounts";
+import { onlinePayAvailable } from "@/server/services/online-pay";
 import { mediaUrl } from "@/server/services/media";
 import { formatNumber } from "@/lib/format";
 import { MenuBrowser } from "@/components/public/menu-browser";
@@ -81,7 +81,7 @@ export default async function MenuPage({ searchParams }: PageProps<"/menu">) {
         </Actions>
       </DiningHero>
 
-      <MenuBrowser sections={sections} whatsapp={s.whatsapp ?? null} roomServiceFee={s.roomServiceFee} initialItem={typeof item === "string" ? item : null} payTo={await customerPayAccounts()} />
+      <MenuBrowser sections={sections} whatsapp={s.whatsapp ?? null} roomServiceFee={s.roomServiceFee} initialItem={typeof item === "string" ? item : null} online={await onlinePayAvailable("restaurant", s)} />
 
       <RoomService
         titleId="room-order-title"

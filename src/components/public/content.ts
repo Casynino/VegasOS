@@ -311,7 +311,7 @@ export const DEFAULT_CONTENT = {
     experience: {
       kicker: "Why guests choose Vegas",
       title: "Thoughtful things, already included",
-      intro: "No surprises at check-out: these come with your room. Send a booking request online, our team confirms it with you, and you pay at the hotel.",
+      intro: "No surprises at check-out: these come with your room. Book online and pay by mobile money in seconds.",
       image: { src: "/images/bath/bath-07.webp", alt: "En-suite bathroom with a jetted jacuzzi bathtub" },
       features: [
         { icon: "Coffee", title: "Breakfast included", body: "Breakfast is included with every room, every morning of your stay." },
@@ -319,7 +319,7 @@ export const DEFAULT_CONTENT = {
         { icon: "ConciergeBell", title: "Room service", body: "Meals and drinks brought to your room when you would rather stay in." },
         { icon: "CircleParking", title: "Free on-site parking", body: "Private parking on site, free for hotel guests." },
         { icon: "Clock", title: "24-hour reception", body: "Arriving late or leaving early, someone is always at the front desk." },
-        { icon: "Wallet", title: "Pay at the hotel", body: "Online bookings need no card — you settle your bill during your stay." },
+        { icon: "Wallet", title: "Pay by mobile money", body: "No card needed — M-Pesa, Airtel Money, Mixx by Yas or HaloPesa, straight from your phone." },
       ],
     },
     services: {
@@ -480,7 +480,7 @@ export const DEFAULT_CONTENT = {
       formIntro: "For bookings, meeting room enquiries, airport transfers or anything else.",
     },
     book: {
-      intro: "Choose your dates and guests to see live availability and prices. Send a request and our reservations team will contact you to confirm. You pay at the hotel.",
+      intro: "Choose your dates and guests to see live availability and prices. Pay now by mobile money to reserve your room, or pay later.",
       pausedIntro: "Online booking is paused right now. Our front desk will happily reserve your room directly.",
     },
     footer: {

@@ -52,12 +52,12 @@ function headline(b: QrConfirmation): { tone: Tone; title: string; line: string 
     case "REFUNDED": return { tone: "off", title: "Payment refunded", line: "Your payment was refunded. Questions? Call us." };
     default:
       if (b.confirmed) return { tone: "ok", title: "Booking confirmed", line: `${thanks}Pay at reception when you arrive.` };
-      return { tone: "ok", title: "Room reserved", line: hold ? `${thanks}We hold your room until ${hold}. Pay online now, or at reception by then.` : `${thanks}Pay at reception when you arrive.` };
+      return { tone: "ok", title: "Room reserved", line: hold ? `${thanks}We hold your room until ${hold} — pay now by mobile money before then.` : `${thanks}Pay at reception when you arrive.` };
   }
 }
 
 const PAYMENT_WORD: Record<QrConfirmation["paymentStatus"], string> = {
-  PAID: "Paid", PARTIALLY_PAID: "Part paid", PAY_AT_HOTEL: "Pay at the hotel", PAYMENT_PENDING: "Waiting for your payment",
+  PAID: "Paid", PARTIALLY_PAID: "Part paid", PAY_AT_HOTEL: "Not paid yet", PAYMENT_PENDING: "Waiting for your payment",
   PAYMENT_FAILED: "Not completed", PAYMENT_EXPIRED: "Not completed — time ran out", REFUNDED: "Refunded",
 };
 const paymentWord = (b: QrConfirmation) => (b.paymentStatus === "PAID" && b.ntzsReference ? "Paid online"

@@ -11,7 +11,6 @@ import { tones, typeScale } from "./kit/tokens";
 import fx from "./dining/dining.module.css";
 import roomFx from "./room-fx.module.css";
 import { AddControl, BasketPill, OrderDrawer, SHEET, useMenuOrder, WhoDialog, type MenuOrder } from "./menu-order";
-import type { PayOption } from "@/components/restaurant/pay-first";
 
 export type MenuSize = { id: string; label: string | null; price: number; available: boolean };
 export type MenuEntry = {
@@ -47,10 +46,11 @@ const SECTION_TOP = "scroll-mt-32";
  * menu, the same order and the same restaurant flow as the table and room QR codes.
  * Cards can be shared: /menu?item=…
  */
-export function MenuBrowser({ sections, whatsapp, roomServiceFee, initialItem = null, payTo }: {
+export function MenuBrowser({ sections, whatsapp, roomServiceFee, initialItem = null, online }: {
   sections: MenuSection[]; whatsapp: string | null; roomServiceFee: number;
   /** Where take out is paid first (mobile money, banks). */
-  payTo: PayOption[];
+  /** Paying now by mobile money (nTZS) is on for the restaurant. */
+  online: boolean;
   /** From a shared link (/menu?item=…): open that dish or drink straight away. */
   initialItem?: string | null;
 }) {
@@ -227,7 +227,7 @@ export function MenuBrowser({ sections, whatsapp, roomServiceFee, initialItem = 
         onMove={flat.length > 1 ? (d) => { const x = flat[(openAt + d + flat.length) % flat.length]; if (x) setOpen(x.e.key); } : null} />
 
       <BasketPill order={order} onOpen={() => { setOpen(null); setReviewing(true); }} />
-      <OrderDrawer open={reviewing} order={order} onClose={closeReview} payTo={payTo} />
+      <OrderDrawer open={reviewing} order={order} onClose={closeReview} online={online} />
       <WhoDialog order={order} />
     </>
   );

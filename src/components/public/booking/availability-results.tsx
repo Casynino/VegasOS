@@ -99,7 +99,7 @@ export async function AvailabilityResults({
           {discounted && <span className="text-[13px] text-pub-muted">Prices include the website discount.</span>}
         </p>
         {/* How paying works, said once for every room below. */}
-        <p className="text-[13px] leading-snug text-pub-muted">{online ? "Pay now by mobile money, or later at the hotel — you choose next." : "No payment now — pay at the hotel."}</p>
+        <p className="text-[13px] leading-snug text-pub-muted">{online ? "Pay now by mobile money, or pay later — you choose next." : "No payment now — pay at the hotel."}</p>
       </div>
       <ul className="mt-6 space-y-5 sm:mt-8 sm:space-y-6 lg:mt-4 lg:space-y-0">
         {ordered.map((o, i) => (

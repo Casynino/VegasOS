@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { BedDouble, BellRing, Bike, Check, ChefHat, CircleCheck, CreditCard, KeyRound, Loader2, Lock, MapPin, Phone, Plus, Receipt, ShoppingBag, Smartphone, UserRound, UtensilsCrossed } from "lucide-react";
+import { BedDouble, BellRing, Bike, Check, ChefHat, CircleCheck, KeyRound, Loader2, Lock, MapPin, Phone, Plus, Receipt, ShoppingBag, Smartphone, UserRound, UtensilsCrossed } from "lucide-react";
 import { NetworkMarks } from "@/components/payments/networks";
 import { cn } from "@/lib/utils";
 import { identifyAtTableAction, placeTableOrderAction } from "@/app/t/[token]/actions";
@@ -11,17 +11,17 @@ import { placeRoomQrOrderAction } from "@/app/r/[token]/actions";
 import { placeStayOrderAction } from "@/app/stay/[token]/actions";
 import type { CartLine } from "./restaurant-app";
 import { phoneLabel, rememberAddress, whoForOrder, type Who } from "./who";
-import { NO_PAYMENT, PayFirst, payFirstReady, type PayFirstValue, type PayOption } from "./pay-first";
 import type { FreeTable } from "@/server/services/restaurant-locations";
 
 /**
- * How this place sends its order — the existing order actions. `online`: "Pay online" (nTZS) is offered here — then
- * paying now is online (the prompt on the customer's phone); otherwise paying now is with the proof of payment.
+ * How this place sends its order — the existing order actions. `online`: paying now (nTZS — the prompt on the
+ * customer's phone) is offered here. Paying now is ONLY ever mobile money through nTZS (owner, 2026-10-05: "any online
+ * payment is nTZS, nothing more") — no account numbers, no screenshots; with it off, customers pay after / on the bill.
  */
 export type CheckoutConfig =
-  | { kind: "spot"; token: string; spot: "TABLE" | "COUNTER" | "MAIN"; payTo: PayOption[]; online?: boolean; /** Main QR: free tables to pick. */ tables?: FreeTable[] }
-  | { kind: "public"; table: string | null; fromQr: boolean; payTo: PayOption[]; online?: boolean; /** Free tables to pick when eating here. */ tables?: FreeTable[] }
-  | { kind: "room"; target: { kind: "stay" | "room"; token: string }; where: string; guest?: string; payTo?: PayOption[]; online?: boolean }
+  | { kind: "spot"; token: string; spot: "TABLE" | "COUNTER" | "MAIN"; online?: boolean; /** Main QR: free tables to pick. */ tables?: FreeTable[] }
+  | { kind: "public"; table: string | null; fromQr: boolean; online?: boolean; /** Free tables to pick when eating here. */ tables?: FreeTable[] }
+  | { kind: "room"; target: { kind: "stay" | "room"; token: string }; where: string; guest?: string; online?: boolean }
   | { kind: "more"; token: string; number: string };
 
 /** "ORD-2026-000046" → "46" — the short number the customer sees everywhere else. */
@@ -40,10 +40,10 @@ const KINDS: { v: Kind; label: string; icon: typeof UtensilsCrossed }[] = [
 ];
 const addressOk = (a: string) => a.trim().length >= 5;
 
-/** On the bill (table / room — paid later) or paid now (mobile money or bank, with the screenshot). */
+/** On the bill (table / room — paid later) or paid now (mobile money through nTZS). */
 type PayWay = "BILL" | "NOW";
-const paidFirstOf = (pay: PayFirstValue, total: number) => ({ proofId: pay.proofId!, accountId: pay.accountId!, reference: pay.reference.trim() || undefined, expectedTotal: total });
-const PAY_FIRST_MISSING = "Pay first — choose the account, add the screenshot and tick “I have paid”.";
+/** Take out is always paid first — by mobile money; while that is off, it cannot be ordered here. */
+const TAKE_OUT_OFF = "Take out is paid first by mobile money, which is not available right now — choose Eat here, or call us.";
 const PAY_PHONE_MISSING = "Enter your mobile-money number to pay now.";
 /** A Tanzanian mobile-money number (0712 345 678, +255 712 345 678…) — the server checks it again. */
 const payPhoneOk = (p: string) => /^(?:\+?255|0)?[67]\d{8}$/.test(p.replace(/[\s-]/g, ""));
@@ -55,28 +55,29 @@ function afterOrder(res: { track: string | null; pay: string | null; payError: s
 }
 
 /**
- * HOW WOULD YOU LIKE TO PAY — one card, "Pay now" first: mobile money on the customer's phone (the prompt comes to it;
- * where online payment is off, mobile money or bank with the proof), then paying later (the bill, the room bill). The
- * chosen way opens in place with what it needs. Take out has only "Pay now" (it is always paid first).
+ * HOW WOULD YOU LIKE TO PAY — one card, "Pay now" first: mobile money on the customer's phone (the nTZS prompt comes to
+ * it), then paying later (the bill, the room bill). The chosen way opens in place with what it needs. Take out has only
+ * "Pay now" (it is always paid first). With mobile money off there is no "Pay now" at all — never account numbers or
+ * screenshots.
  */
-function PaymentChoice({ way, setWay, later, online, phone, setPhone, after, proof }: {
+function PaymentChoice({ way, setWay, later, online, phone, setPhone, after }: {
   way: PayWay; setWay: (w: PayWay) => void;
   /** Paying later here ("Pay after", "Add to my bill", "Bill to my room") — none for take out. */
   later: { label: string; hint: string; icon?: typeof Receipt } | null;
   online: boolean; phone: string; setPhone: (v: string) => void;
   /** The third step — what happens once it is paid. */
   after: { text: string; icon: typeof Receipt };
-  /** Where online payment is off: paying now with the proof of payment. */
-  proof: React.ReactNode;
 }) {
+  if (!online && !later) return <p role="note" className="rounded-xl bg-(--vr-gold-soft) px-3.5 py-2.5 text-[12.5px] leading-snug text-(--vr-gold-ink)">{TAKE_OUT_OFF}</p>;
   return (
     <section aria-labelledby="pay-way">
       <p id="pay-way" className={heading}>Payment</p>
       <div role="radiogroup" aria-labelledby="pay-way" className="mt-2 overflow-hidden rounded-[22px] bg-(--vr-card) shadow-[0_18px_40px_-34px_rgba(29,23,18,0.85)] ring-1 ring-(--vr-line)">
-        <WayRow on={way === "NOW"} onSelect={() => setWay("NOW")} icon={Smartphone} title="Pay now"
-          sub={online ? <NetworkMarks label={null} compact /> : <span>Mobile money or bank</span>}>
-          {online ? <PayNowDetails phone={phone} setPhone={setPhone} after={after} /> : proof}
-        </WayRow>
+        {online && (
+          <WayRow on={way === "NOW"} onSelect={() => setWay("NOW")} icon={Smartphone} title="Pay now" sub={<NetworkMarks label={null} compact />}>
+            <PayNowDetails phone={phone} setPhone={setPhone} after={after} />
+          </WayRow>
+        )}
         {later && <WayRow on={way === "BILL"} onSelect={() => setWay("BILL")} icon={later.icon ?? Receipt} title={later.label} sub={<span>{later.hint}</span>} />}
       </div>
     </section>
@@ -257,10 +258,6 @@ function Problem({ error }: { error: string | null }) {
   return error ? <p role="alert" className="rounded-xl bg-rose-50 px-3.5 py-2.5 text-[13px] text-rose-800 ring-1 ring-rose-200">{error} Your order was not sent — please try again.</p> : null;
 }
 
-function PayNote({ children }: { children: React.ReactNode }) {
-  return <p className="flex items-start gap-2 text-[12px] leading-snug text-(--vr-muted)"><CreditCard className="mt-px size-3.5 shrink-0 text-(--vr-gold-ink)" />{children}</p>;
-}
-
 /** The details this place needs, and "Place order" — then the order's own page (status, bill). */
 export function Checkout({ config, lines, total, who, onWho, onDone, seated }: {
   config: CheckoutConfig; lines: CartLine[]; total: number; who: Who | null; onWho: () => void; onDone: () => void;
@@ -295,7 +292,6 @@ function SpotCheckout({ config, items, total, who, onWho, onDone, seated }: {
   // Main QR, eating here: the free table they pick (or none — a waiter finds them).
   const [tableId, setTableId] = useState<string | null>(null);
   const [address, setAddress] = useState(who?.address ?? "");
-  const [pay, setPay] = useState<PayFirstValue>(NO_PAYMENT);
   const [payPhone, setPayPhone] = useState(who?.phone ?? "");
   const [trap, setTrap] = useState("");
   const [key, setKey] = useState<string | null>(null);
@@ -320,7 +316,7 @@ function SpotCheckout({ config, items, total, who, onWho, onDone, seated }: {
   const payNow = takeOut || way === "NOW";
   const joining = !!open && joinOpen && !payNow;
   const online = !!config.online;
-  const payReady = !payNow || (online ? payPhoneOk(payPhone) : payFirstReady(pay));
+  const payReady = !payNow || (online && payPhoneOk(payPhone));
   const ready = (atTable ? !!seated : !!who) && (!takeOut || addressOk(address)) && payReady;
 
   const send = () => start(async () => {
@@ -334,11 +330,11 @@ function SpotCheckout({ config, items, total, who, onWho, onDone, seated }: {
     }
     const clientKey = key ?? newKey(); setKey(clientKey);
     if (takeOut && !addressOk(address)) { setError("Please add the delivery address."); return; }
-    if (!payReady) { setError(online ? PAY_PHONE_MISSING : PAY_FIRST_MISSING); return; }
+    if (!payReady) { setError(online ? PAY_PHONE_MISSING : TAKE_OUT_OFF); return; }
     const res = await placeTableOrderAction({
       token: config.token, clientKey, items, notes: notes.trim() || undefined, ...(who && !atTable ? whoForOrder(who) : {}),
       kind: takeOut ? "TAKEAWAY" : "DINE_IN", tableId: main && !takeOut && tableId ? tableId : undefined, deliveryAddress: takeOut ? address.trim() : undefined,
-      paidFirst: payNow && !online ? paidFirstOf(pay, total) : undefined, payOnline: payNow && online ? { phone: payPhone.trim() } : undefined, website: trap,
+      payOnline: payNow && online ? { phone: payPhone.trim() } : undefined, website: trap,
     });
     if (!res.ok) {
       setError(res.error);
@@ -360,8 +356,7 @@ function SpotCheckout({ config, items, total, who, onWho, onDone, seated }: {
       {takeOut && <DeliveryAddress value={address} onChange={setAddress} />}
       <PaymentChoice way={takeOut ? "NOW" : way} setWay={setWay} online={online} phone={payPhone} setPhone={setPayPhone}
         later={takeOut ? null : { label: main ? "Pay after" : "Add to my bill", hint: "Cash, card or mobile money" }}
-        after={takeOut ? { text: "We bring it to you", icon: Bike } : { text: "Kitchen starts", icon: ChefHat }}
-        proof={<PayFirst total={total} accounts={config.payTo} value={pay} onChange={setPay} />} />
+        after={takeOut ? { text: "We bring it to you", icon: Bike } : { text: "Kitchen starts", icon: ChefHat }} />
       {open && !payNow && (
         <div className="space-y-1.5 rounded-2xl bg-(--vr-gold-soft) p-3">
           <p className="text-[12.5px] font-semibold text-(--vr-gold-ink)">You have an open order here — #{shortNo(open.number)} · {tzs(open.total)}</p>
@@ -377,10 +372,8 @@ function SpotCheckout({ config, items, total, who, onWho, onDone, seated }: {
 
       {!joining && <Notes value={notes} onChange={setNotes} />}
       <input value={trap} onChange={(e) => setTrap(e.target.value)} tabIndex={-1} autoComplete="off" aria-hidden className="hidden" name="website" />
-      {payNow && !online && <PayNote>{takeOut ? "Paid first — your order starts right away and we bring it to you. If the payment does not reach us, we call you."
-        : "Paid now — your order starts right away. If the payment does not reach us, we call you."}</PayNote>}
       <Footer error={error}>
-        <Submit pending={pending} disabled={!ready} onClick={send} paying={payNow && online && !joining}>{joining ? `Add to order #${shortNo(open?.number ?? "")} · ${tzs(total)}` : payNow && online ? `Pay ${tzs(total)} now` : payNow ? `Place paid order · ${tzs(total)}` : `Place order · ${tzs(total)}`}</Submit>
+        <Submit pending={pending} disabled={!ready} onClick={send} paying={payNow && online && !joining}>{joining ? `Add to order #${shortNo(open?.number ?? "")} · ${tzs(total)}` : payNow && online ? `Pay ${tzs(total)} now` : `Place order · ${tzs(total)}`}</Submit>
       </Footer>
     </div>
   );
@@ -395,14 +388,13 @@ function PublicCheckout({ config, items, total, who, onWho, onDone }: {
   const [table] = useState(config.table ?? "");
   const [tableId, setTableId] = useState<string | null>(null);
   const [address, setAddress] = useState(who?.address ?? "");
-  const [pay, setPay] = useState<PayFirstValue>(NO_PAYMENT);
   const [payPhone, setPayPhone] = useState(who?.phone ?? "");
   // Pay now first (where online payment is on); paying after is one tap away.
   const [way, setWay] = useState<PayWay>(config.online ? "NOW" : "BILL");
   const takeOut = kind === "TAKEAWAY";
   const payNow = takeOut || way === "NOW";
   const online = !!config.online;
-  const payReady = !payNow || (online ? payPhoneOk(payPhone) : payFirstReady(pay));
+  const payReady = !payNow || (online && payPhoneOk(payPhone));
   const ready = !!who && (!takeOut || addressOk(address)) && payReady;
   const [notes, setNotes] = useState("");
   const [trap, setTrap] = useState("");
@@ -414,11 +406,11 @@ function PublicCheckout({ config, items, total, who, onWho, onDone }: {
     if (!who) { onWho(); return; }
     const clientKey = key ?? newKey(); setKey(clientKey);
     if (takeOut && !addressOk(address)) { setError("Please add the delivery address."); return; }
-    if (!payReady) { setError(online ? PAY_PHONE_MISSING : PAY_FIRST_MISSING); return; }
+    if (!payReady) { setError(online ? PAY_PHONE_MISSING : TAKE_OUT_OFF); return; }
     const res = await placeOnlineOrderAction({
       clientKey, items, notes: notes.trim() || undefined, ...whoForOrder(who),
       kind, tableLabel: takeOut || tableId ? undefined : table || undefined, tableId: takeOut ? undefined : tableId ?? undefined, deliveryAddress: takeOut ? address.trim() : undefined,
-      paidFirst: payNow && !online ? paidFirstOf(pay, total) : undefined, payOnline: payNow && online ? { phone: payPhone.trim() } : undefined, fromQr: config.fromQr, website: trap,
+      payOnline: payNow && online ? { phone: payPhone.trim() } : undefined, fromQr: config.fromQr, website: trap,
     });
     if (!res.ok) { setError(res.error); return; }
     if (takeOut) rememberAddress(address);
@@ -433,14 +425,12 @@ function PublicCheckout({ config, items, total, who, onWho, onDone }: {
         : config.tables ? <TablePicker tables={config.tables} value={tableId} onChange={setTableId} /> : null}
       <PaymentChoice way={takeOut ? "NOW" : way} setWay={setWay} online={online} phone={payPhone} setPhone={setPayPhone}
         later={takeOut ? null : { label: "Pay after", hint: "Cash, card or mobile money" }}
-        after={takeOut ? { text: "We bring it to you", icon: Bike } : { text: "Kitchen starts", icon: ChefHat }}
-        proof={<PayFirst total={total} accounts={config.payTo} value={pay} onChange={setPay} />} />
+        after={takeOut ? { text: "We bring it to you", icon: Bike } : { text: "Kitchen starts", icon: ChefHat }} />
       <Notes value={notes} onChange={setNotes} />
       <input value={trap} onChange={(e) => setTrap(e.target.value)} tabIndex={-1} autoComplete="off" aria-hidden className="hidden" name="website" />
-      {payNow && !online && <PayNote>{takeOut ? "Paid first — your order starts right away and we bring it to you. If the payment does not reach us, we call you." : "Paid now — your order starts right away. If the payment does not reach us, we call you."}</PayNote>}
       <p className="flex items-start gap-2 text-[12px] text-(--vr-muted)"><BedDouble className="mt-px size-3.5 shrink-0" />Staying with us? Scan the QR card in your room to order to your room bill.</p>
       <Footer error={error}>
-        <Submit pending={pending} disabled={!ready} onClick={send} paying={payNow && online}>{payNow && online ? `Pay ${tzs(total)} now` : `${payNow ? "Place paid order" : "Place order"} · ${tzs(total)}`}</Submit>
+        <Submit pending={pending} disabled={!ready} onClick={send} paying={payNow && online}>{payNow && online ? `Pay ${tzs(total)} now` : `Place order · ${tzs(total)}`}</Submit>
       </Footer>
     </div>
   );
@@ -452,21 +442,20 @@ function RoomCheckout({ config, items, total, onDone }: { config: Extract<Checko
   const [notes, setNotes] = useState("");
   // Pay now first (where online payment is on); the room bill is one tap away.
   const [way, setWay] = useState<PayWay>(config.online ? "NOW" : "BILL");
-  const [pay, setPay] = useState<PayFirstValue>(NO_PAYMENT);
   const [payPhone, setPayPhone] = useState("");
   const [key, setKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const payNow = way === "NOW";
   const online = !!config.online;
-  const payReady = !payNow || (online ? payPhoneOk(payPhone) : payFirstReady(pay));
+  const payReady = !payNow || (online && payPhoneOk(payPhone));
   const send = () => start(async () => {
     setError(null);
-    if (!payReady) { setError(online ? PAY_PHONE_MISSING : PAY_FIRST_MISSING); return; }
+    if (!payReady) { setError(online ? PAY_PHONE_MISSING : TAKE_OUT_OFF); return; }
     const clientKey = key ?? newKey(); setKey(clientKey);
     const body = {
       token: config.target.token, items, notes: notes.trim() || undefined, clientKey,
-      paidFirst: payNow && !online ? paidFirstOf(pay, total) : undefined, payOnline: payNow && online ? { phone: payPhone.trim() } : undefined,
+      payOnline: payNow && online ? { phone: payPhone.trim() } : undefined,
     };
     const res = config.target.kind === "room" ? await placeRoomQrOrderAction(body) : await placeStayOrderAction(body);
     if (!res.ok) { setError(res.error); return; }
@@ -479,14 +468,13 @@ function RoomCheckout({ config, items, total, onDone }: { config: Extract<Checko
       {config.guest && <WhoCard who={{ name: config.guest, phone: "" }} sub={config.where.replace(/^the /, "The ")} />}
       <PaymentChoice way={way} setWay={setWay} online={online} phone={payPhone} setPhone={setPayPhone}
         later={{ label: "Bill to my room", hint: "Settle at check-out", icon: BedDouble }}
-        after={{ text: /meeting/i.test(config.where) ? "Brought to your meeting" : "Sent to your room", icon: BedDouble }}
-        proof={<PayFirst total={total} accounts={config.payTo ?? []} value={pay} onChange={setPay} />} />
+        after={{ text: /meeting/i.test(config.where) ? "Brought to your meeting" : "Sent to your room", icon: BedDouble }} />
       <p className="flex items-start gap-2 rounded-xl bg-(--vr-gold-soft) px-3 py-2.5 text-[12.5px] text-(--vr-gold-ink)"><BedDouble className="mt-0.5 size-4 shrink-0" />
         {payNow ? `Delivered to ${config.where} — paid now, so it is not added to your room bill.` : `Delivered to ${config.where} and added to your room bill — you settle everything at check-out.`}
       </p>
       <Notes value={notes} onChange={setNotes} />
       <Footer error={error}>
-        <Submit pending={pending} disabled={!payReady} onClick={send} paying={payNow && online}>{payNow && online ? `Pay ${tzs(total)} now` : `${payNow ? "Place paid order" : "Place order"} · ${tzs(total)}`}</Submit>
+        <Submit pending={pending} disabled={!payReady} onClick={send} paying={payNow && online}>{payNow && online ? `Pay ${tzs(total)} now` : `Place order · ${tzs(total)}`}</Submit>
       </Footer>
     </div>
   );

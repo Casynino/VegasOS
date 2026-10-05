@@ -26,7 +26,7 @@ import { onlinePayAvailable } from "@/server/services/online-pay";
 
 export const metadata: Metadata = {
   title: "Book your stay",
-  description: "Check live availability and book a room at Vegas Luxury Hotel, Dar es Salaam. Instant booking reference, pay at the hotel.",
+  description: "Check live availability and book a room at Vegas Luxury Hotel, Dar es Salaam. Instant booking reference, pay by mobile money.",
   alternates: { canonical: "/book" },
   robots: { index: true, follow: false },
 };
@@ -43,7 +43,7 @@ function stayHref(p: StayParams, extra: Record<string, string> = {}) {
 /**
  * The booking funnel on one URL, driven by its search params (checkIn, checkOut, adults,
  * children, type, rooms, edit): dates & guests → room types free for the stay → details and
- * review (Pay now by mobile money, or a request to pay at the hotel). Each step opens on a
+ * review (Pay now by mobile money, or Pay later). Each step opens on a
  * night band (where am I, what did I search) and works on paper below it.
  */
 export default async function BookPage({ searchParams }: PageProps<"/book">) {
@@ -119,7 +119,7 @@ export default async function BookPage({ searchParams }: PageProps<"/book">) {
   if (parsed.kind !== "ok") {
     const preferredType = roomTypes.find((t) => t.slug === preferred);
     const intro = online
-      ? "Choose your dates and guests to see live availability and prices — pay now by mobile money, or at the hotel."
+      ? "Choose your dates and guests to see live availability and prices — pay now by mobile money, or pay later."
       : c.pages.book.intro;
     return (
       <Shell title="Book your stay" lede={intro} step={1}>

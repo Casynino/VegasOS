@@ -11,7 +11,7 @@ import { StaffLink } from "./staff-link";
 import { ThemeToggle } from "./theme-toggle";
 
 /**
- * Desktop (≥1024px): logo · Rooms Dining Experiences Services About Contact · Book your stay
+ * Desktop (≥1024px): logo · Rooms Dining Experiences Services About Contact · Book now
  * (+ the theme switch from 1280px; it is also in the footer). Phones and tablets: compact logo ·
  * small Book · menu. Book is a slim hairline button (no gold block) and the only Book on phones.
  * Staff login is always in sight (owner, 2026-10-05: "the log in should be very visible"): a labelled "Staff login" on
@@ -67,10 +67,10 @@ export function SiteHeader({ settings }: { settings: HotelSettings }) {
           {/* Staff login is just the plain lock, on every screen (owner, 2026-10-05: "just icon, no words", no shape). */}
           <StaffLink iconOnly labels={{ signedIn: "Staff dashboard", signedOut: "Staff login" }}
             className="h-10 w-9 justify-center rounded-sm text-white/90 transition-colors duration-200 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none [&_svg]:size-[19px]" />
-          <Link href="/book" aria-label="Book your stay"
+          <Link href="/book"
             className="inline-flex h-10 items-center gap-1 whitespace-nowrap rounded-sm px-1 text-[14px] font-semibold text-gold transition-colors duration-200 hover:text-[#f0d6a0] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none">
-            <span className="sm:hidden">Book</span>
-            <span className="hidden sm:inline">Book your stay</span>
+            {/* Owner, 2026-10-05: just "Book now". */}
+            Book now
           </Link>
           <MobileNav hotelName={settings.hotelName} phone={settings.phone} whatsapp={settings.whatsapp} className="lg:hidden" />
         </div>

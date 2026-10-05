@@ -68,7 +68,6 @@ const Order = z.object({
   /** Eating here at a free table they picked. */
   tableId: z.string().min(1).max(40).optional(),
   deliveryAddress: z.string().trim().max(200).optional(),
-  paidFirst: z.object({ proofId: z.string().min(1).max(40), accountId: z.string().min(1).max(40), reference: z.string().trim().max(60).optional(), expectedTotal: z.number().int().nonnegative().max(100_000_000).optional() }).optional(),
   /** "Pay online" (nTZS): the mobile-money number the payment request goes to. */
   payOnline: z.object({ phone: z.string().trim().min(9).max(30) }).optional(),
   website: z.string().max(0).optional(), // honeypot
@@ -84,7 +83,7 @@ export async function placeTableOrderAction(input: z.input<typeof Order>): Promi
     const d = parseInput(Order, input);
     await rateLimit(`table-order:spot:${d.token}:${d.phone?.replace(/\D/g, "").slice(-9) || ipAddress || "unknown"}`, 12, 600);
     if (d.payOnline) await assertCanPayOnline("restaurant", d.payOnline.phone);
-    const o = await placeLocationOrder(d.token, { clientKey: d.clientKey, items: d.items, notes: d.notes, name: d.name, phone: d.phone, email: d.email || null, kind: d.kind, where: d.where, tableId: d.tableId, deliveryAddress: d.deliveryAddress, paidFirst: d.payOnline ? null : d.paidFirst, payOnline: !!d.payOnline, seatToken: await seatToken() });
+    const o = await placeLocationOrder(d.token, { clientKey: d.clientKey, items: d.items, notes: d.notes, name: d.name, phone: d.phone, email: d.email || null, kind: d.kind, where: d.where, tableId: d.tableId, deliveryAddress: d.deliveryAddress, paidFirst: null, payOnline: !!d.payOnline, seatToken: await seatToken() });
     // A table they picked is theirs now: this phone is remembered at it (like sitting down there).
     if (o.seat) (await cookies()).set(SEAT_COOKIE, o.seat, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", maxAge: SEAT_HOURS * 3600 });
     const paying = d.payOnline ? await payForNewOrder(o, { phone: d.payOnline.phone, clientKey: d.clientKey, ip: ipAddress }) : null;

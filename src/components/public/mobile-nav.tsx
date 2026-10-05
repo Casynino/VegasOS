@@ -153,7 +153,7 @@ export function MobileNav({
                 style={{ animationDelay: `${140 + MENU_NAV.length * 40}ms` }}
               >
                 <LinkButton href="/book" onClick={close} full icon="arrow">
-                  Book your stay
+                  Book now
                 </LinkButton>
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-x-5">
                   {contacts > 0 && (

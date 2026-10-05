@@ -416,7 +416,7 @@ export function GuestStep({
                   </dl>
                   <p className="mt-3 text-[12.5px] leading-relaxed text-pub-muted">{payingNow
                     ? "Breakfast and Wi-Fi included. Paying now, this is the amount you pay — no card details are needed."
-                    : "Breakfast and Wi-Fi included. Not reserved until paid — pay any time from your booking page, or at the hotel."}</p>
+                    : "Breakfast and Wi-Fi included. Not reserved until paid — pay any time by mobile money from your booking page."}</p>
 
                   {online ? (
                     <div className="mt-6">

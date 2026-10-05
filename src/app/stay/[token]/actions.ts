@@ -13,7 +13,6 @@ const Order = z.object({
   items: z.array(z.object({ menuItemId: z.string().min(1).max(80), quantity: z.number().int().min(1).max(20) })).min(1, "Add something from the menu.").max(30),
   notes: z.string().trim().max(300).optional(),
   clientKey: z.string().regex(/^[a-f0-9]{32}$/).optional(),
-  paidFirst: z.object({ proofId: z.string().min(1).max(40), accountId: z.string().min(1).max(40), reference: z.string().trim().max(60).optional(), expectedTotal: z.number().int().nonnegative().max(100_000_000).optional() }).optional(),
   /** "Pay online" (nTZS): the mobile-money number the payment request goes to. */
   payOnline: z.object({ phone: z.string().trim().min(9).max(30) }).optional(),
 });
@@ -30,7 +29,7 @@ export async function placeStayOrderAction(input: z.input<typeof Order>): Promis
       if (!d.clientKey) throw new AppError("Please try again.", "VALIDATION");
       await assertCanPayOnline("roomService", d.payOnline.phone);
     }
-    const order = await placeStayOrder(d.token, { items: d.items, notes: d.notes, clientKey: d.clientKey, paidFirst: d.payOnline ? null : d.paidFirst, payOnline: !!d.payOnline });
+    const order = await placeStayOrder(d.token, { items: d.items, notes: d.notes, clientKey: d.clientKey, paidFirst: null, payOnline: !!d.payOnline });
     const paying = d.payOnline ? await payForNewOrder(order, { phone: d.payOnline.phone, clientKey: d.clientKey!, ip: ipAddress }) : null;
     return { number: order.number, total: order.total, track: order.trackToken, pay: paying?.pay ?? null, payError: paying?.payError ?? null };
   });

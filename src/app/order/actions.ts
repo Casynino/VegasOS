@@ -4,10 +4,10 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { z } from "zod";
 import { requestMeta } from "@/server/auth";
-import { AppError, runAction, type ActionResult } from "@/server/errors";
+import { runAction, type ActionResult } from "@/server/errors";
 import { rateLimit } from "@/server/rate-limit";
 import { parseInput } from "@/server/validation";
-import { identifyCustomer, placeOnlineOrder, storePaymentProof } from "@/server/services/online-orders";
+import { identifyCustomer, placeOnlineOrder } from "@/server/services/online-orders";
 import { addItemsByTrackToken } from "@/server/services/restaurant-locations";
 import { assertCanPayOnline, payForNewOrder, payOrderOnline } from "@/server/services/online-pay";
 import { SEAT_COOKIE, SEAT_HOURS } from "@/server/services/dining-core";
@@ -24,7 +24,6 @@ const Order = z.object({
   /** Eating here at a free table they picked. */
   tableId: z.string().min(1).max(40).optional(),
   deliveryAddress: z.string().trim().max(200).optional(),
-  paidFirst: z.object({ proofId: z.string().min(1).max(40), accountId: z.string().min(1).max(40), reference: z.string().trim().max(60).optional(), expectedTotal: z.number().int().nonnegative().max(100_000_000).optional() }).optional(),
   fromQr: z.boolean().optional(),
   /** "Pay online" (nTZS): the mobile-money number the payment request goes to. */
   payOnline: z.object({ phone: z.string().trim().min(9).max(30) }).optional(),
@@ -46,7 +45,7 @@ export async function placeOnlineOrderAction(input: z.input<typeof Order>): Prom
     if (d.payOnline) await assertCanPayOnline("restaurant", d.payOnline.phone);
     const order = await placeOnlineOrder({
       clientKey: d.clientKey, items: d.items, notes: d.notes, name: d.name, phone: d.phone, email: d.email || null,
-      kind: d.kind, tableLabel: d.tableLabel, tableId: d.tableId, deliveryAddress: d.deliveryAddress, paidFirst: d.payOnline ? null : d.paidFirst, fromQr: d.fromQr, payOnline: !!d.payOnline,
+      kind: d.kind, tableLabel: d.tableLabel, tableId: d.tableId, deliveryAddress: d.deliveryAddress, paidFirst: null, fromQr: d.fromQr, payOnline: !!d.payOnline,
     });
     // A table they picked is theirs now: this phone is remembered at it (like sitting down there).
     if (order.seat) (await cookies()).set(SEAT_COOKIE, order.seat, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", maxAge: SEAT_HOURS * 3600 });
@@ -78,17 +77,6 @@ export async function identifyCustomerAction(input: { phone: string }): Promise<
     const { ipAddress } = await requestMeta();
     await rateLimit(`order-identify:${ipAddress ?? "unknown"}`, 60, 600);
     return identifyCustomer(z.string().trim().max(30).parse(input.phone));
-  });
-}
-
-/** Take out is paid first: the customer adds the screenshot of their payment (a photo, kept for staff only). */
-export async function uploadPaymentProofAction(form: FormData): Promise<ActionResult<{ id: string }>> {
-  return runAction(async () => {
-    const { ipAddress } = await requestMeta();
-    await rateLimit(`pay-proof:${ipAddress ?? "unknown"}`, 15, 600);
-    const file = form.get("file");
-    if (!(file instanceof File)) throw new AppError("Add a screenshot of your payment.", "VALIDATION", { proof: "Required" });
-    return storePaymentProof(file);
   });
 }
 

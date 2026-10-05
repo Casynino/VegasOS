@@ -3,15 +3,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowRight, BedDouble, Check, CreditCard, Loader2, MapPin, Minus, Phone, Plus, ShoppingBag, Trash2, UserRound, UtensilsCrossed, X } from "lucide-react";
+import { ArrowRight, BedDouble, Check, Loader2, Lock, MapPin, Minus, Phone, Plus, ShoppingBag, Smartphone, Trash2, UserRound, UtensilsCrossed, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { identifyCustomerAction, placeOnlineOrderAction } from "@/app/order/actions";
 import { phoneLabel, rememberAddress, useWho, useWhoForm, whoForOrder, type Who } from "@/components/restaurant/who";
-import { NO_PAYMENT, PayFirst, payFirstReady, type PayFirstValue, type PayOption } from "@/components/restaurant/pay-first";
+import { NetworkMarks } from "@/components/payments/networks";
 import { buttonClass } from "./kit/button";
 import { field, typeScale } from "./kit/tokens";
 
 const n = (v: number) => v.toLocaleString("en-US");
+/** A Tanzanian mobile-money number (0712 345 678, +255 712 345 678…) — the server checks it again. */
+const payPhoneOk = (p: string) => /^(?:\+?255|0)?[67]\d{8}$/.test(p.replace(/[\s-]/g, ""));
 
 /**
  * The menu's sheets (a dish, your order, who is ordering): a bottom sheet on phones, a centred
@@ -128,9 +130,12 @@ export function BasketPill({ order, onOpen }: { order: MenuOrder; onOpen: () => 
 /**
  * Sending the order from the website — the same order as from a table or the menu QR: the
  * lines (change anything), how you want it, who you are (a returning customer is found by
- * phone), a note, and send. It goes straight to the restaurant portal; you follow it next.
+ * phone), how to pay, a note, and send. Paying now is ONLY mobile money through nTZS (owner,
+ * 2026-10-05: "any online payment is nTZS, nothing more") — first and pre-selected; the prompt
+ * comes to their phone and the payment page follows. Take out is always paid first, so with
+ * mobile money off it cannot be ordered here. Never account numbers or screenshots.
  */
-export function OrderDrawer({ open, order, onClose, payTo }: { open: boolean; order: MenuOrder; onClose: () => void; payTo: PayOption[] }) {
+export function OrderDrawer({ open, order, onClose, online }: { open: boolean; order: MenuOrder; onClose: () => void; online: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
   const router = useRouter();
   const who = order.who;
@@ -140,9 +145,12 @@ export function OrderDrawer({ open, order, onClose, payTo }: { open: boolean; or
   const address = addressIn ?? who?.address ?? "";
   const takeOut = kind === "TAKEAWAY";
   const addressOk = address.trim().length >= 5;
-  const [pay, setPay] = useState<PayFirstValue>(NO_PAYMENT);
-  const [payNowIn, setPayNow] = useState(false);
-  const payNow = takeOut || payNowIn;
+  // Pay now first (mobile money); paying after is one tap away. The number starts as theirs.
+  const [payNowIn, setPayNow] = useState(online);
+  const payNow = takeOut || (online && payNowIn);
+  const [payPhoneIn, setPayPhone] = useState<string | null>(null);
+  const payPhone = payPhoneIn ?? who?.phone ?? "";
+  const payReady = !payNow || (online && payPhoneOk(payPhone));
   const [notes, setNotes] = useState("");
   const [trap, setTrap] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -161,18 +169,19 @@ export function OrderDrawer({ open, order, onClose, payTo }: { open: boolean; or
     setError(null);
     if (!who) { order.askWho(); return; }
     if (takeOut && !addressOk) { setError("Please add the delivery address."); return; }
-    if (payNow && !payFirstReady(pay)) { setError("Pay first — choose the account, add the screenshot and tick “I have paid”."); return; }
+    if (!payReady) { setError(online ? "Enter your mobile-money number to pay now, e.g. 0712 345 678." : "Take out is paid first by mobile money, which is not available right now — choose Eat here, or call us."); return; }
     const clientKey = key ?? (() => { const b = crypto.getRandomValues(new Uint8Array(16)); return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join(""); })();
     setKey(clientKey);
     const res = await placeOnlineOrderAction({
       clientKey, items: order.lines.map((l) => ({ menuItemId: l.id, quantity: l.qty })), notes: notes.trim() || undefined,
       ...whoForOrder(who), kind, tableLabel: takeOut ? undefined : table, deliveryAddress: takeOut ? address.trim() : undefined,
-      paidFirst: payNow ? { proofId: pay.proofId!, accountId: pay.accountId!, reference: pay.reference.trim() || undefined, expectedTotal: order.subtotal } : undefined, website: trap,
+      payOnline: payNow ? { phone: payPhone.trim() } : undefined, website: trap,
     });
     if (!res.ok) { setError(res.error); return; }
     if (takeOut) rememberAddress(address);
     order.clear(); setKey(null);
-    router.push(`/order/${res.data.track}?new=1`);
+    // Paying now: the payment page (waiting for the prompt → paid). Otherwise the order's own page.
+    router.push(res.data.pay ? `/pay/${res.data.pay}` : `/order/${res.data.track}?new=1${res.data.payError ? "&pay=0" : ""}`);
   });
 
   return (
@@ -253,40 +262,58 @@ export function OrderDrawer({ open, order, onClose, payTo }: { open: boolean; or
                   placeholder="e.g. Mikocheni B, Plot 45, near the pharmacy" className={cn(field.textarea, "min-h-20")} />
                 <span className={cn(field.hint, "block")}>Street, house or building, and a landmark — we bring your order here.</span></label>
             ) : (
-              <>
-                <div className="mt-2.5 grid grid-cols-2 gap-2.5">
-                  {([[false, "Pay after", "When you are done"], [true, "Pay now", "Mobile money or bank"]] as const).map(([v, l, h]) => (
-                    <button key={String(v)} type="button" onClick={() => setPayNow(v)} aria-pressed={payNowIn === v} className={choice(payNowIn === v)}>
-                      <span className="text-[15px] font-medium leading-tight">{l}</span>
-                      <span className="text-xs leading-tight text-pub-muted">{h}</span>
-                      {payNowIn === v && <Check className="absolute right-3 top-3 size-3.5 text-pub-eyebrow" strokeWidth={2.5} aria-hidden="true" />}
-                    </button>
-                  ))}
-                </div>
-                <label className="mt-4 block"><span className={field.label}>Table <span className="normal-case tracking-normal text-pub-muted">(optional)</span></span>
-                  <input value={table} onChange={(e) => setTable(e.target.value)} placeholder="e.g. Table 3 outside" className={field.input} /></label>
-              </>
+              <label className="mt-4 block"><span className={field.label}>Table <span className="normal-case tracking-normal text-pub-muted">(optional)</span></span>
+                <input value={table} onChange={(e) => setTable(e.target.value)} placeholder="e.g. Table 3 outside" className={field.input} /></label>
             )}
           </div>
 
-          {payNow && <div className="vr"><PayFirst total={order.subtotal} accounts={payTo} value={pay} onChange={setPay} /></div>}
+          {/* How to pay — Pay now (mobile money) first; take out has only Pay now. */}
+          {online ? (
+            <div>
+              <p className={field.label}>Payment</p>
+              <div className={cn("grid gap-2.5", !takeOut && "grid-cols-2")}>
+                {([[true, "Pay now", null], ...(takeOut ? [] : [[false, "Pay after", "When you are done"]])] as [boolean, string, string | null][]).map(([v, l, h]) => {
+                  const on = v ? payNow : !payNow;
+                  return (
+                    <button key={String(v)} type="button" onClick={() => setPayNow(v)} aria-pressed={on} className={choice(on)}>
+                      <span className="flex items-center gap-2">
+                        {v && <Smartphone className={cn("size-4", on ? "text-pub-eyebrow" : "text-pub-muted")} strokeWidth={1.7} aria-hidden="true" />}
+                        <span className="text-[15px] font-medium leading-tight">{l}</span>
+                      </span>
+                      {h ? <span className="text-xs leading-tight text-pub-muted">{h}</span> : <NetworkMarks label={null} compact className="w-full max-w-[11rem]" />}
+                      {on && <Check className="absolute right-3 top-3 size-3.5 text-pub-eyebrow" strokeWidth={2.5} aria-hidden="true" />}
+                    </button>
+                  );
+                })}
+              </div>
+              {payNow && (
+                <label className="mt-4 block"><span className={field.label}>Mobile-money number</span>
+                  <input value={payPhone} onChange={(e) => setPayPhone(e.target.value)} type="tel" inputMode="tel" autoComplete="tel" placeholder="0712 345 678"
+                    aria-invalid={payPhone !== "" && !payPhoneOk(payPhone)} className={cn(field.input, "tabular-nums")} />
+                  <span className={cn(field.hint, "flex items-start gap-1.5")}><Lock className="mt-0.5 size-3 shrink-0 text-pub-eyebrow" aria-hidden="true" /><span>A payment request comes to this phone — enter your PIN. Secure payment by <span className="font-semibold tracking-wide text-pub-fg">NTZS</span></span></span>
+                </label>
+              )}
+            </div>
+          ) : takeOut ? (
+            <p role="note" className="rounded-[0.75rem] border border-gold/40 bg-gold/[0.08] px-4 py-3 text-sm leading-relaxed">Take out is paid first by mobile money, which is not available right now — choose Eat here, or call us.</p>
+          ) : null}
 
           <label className="block"><span className={field.label}>Anything we should know? <span className="normal-case tracking-normal text-pub-muted">(optional)</span></span>
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={300} rows={2} placeholder="No onions, extra ice, bring it at 8 pm…" className={cn(field.textarea, "min-h-20")} /></label>
 
           <div className="space-y-2.5 border-t border-pub-line pt-5 text-sm leading-relaxed text-pub-muted">
-            <p className="flex items-start gap-3"><CreditCard className="mt-0.5 size-4 shrink-0 text-pub-eyebrow" strokeWidth={1.6} aria-hidden="true" />{takeOut ? "Paid first — your order starts right away and we bring it to you. If the payment does not reach us, we call you." : payNow ? "Paid now — your order starts right away. If the payment does not reach us, we call you." : "Pay after your meal — cash, card or mobile money. Order more any time."}</p>
+            <p className="flex items-start gap-3"><Smartphone className="mt-0.5 size-4 shrink-0 text-pub-eyebrow" strokeWidth={1.6} aria-hidden="true" />{takeOut ? "Paid first by mobile money — once it is paid, your order starts and we bring it to you." : payNow ? "Paid now by mobile money — your order starts as soon as it is paid." : "Pay after your meal. Order more any time."}</p>
             <p className="flex items-start gap-3"><BedDouble className="mt-0.5 size-4 shrink-0 text-pub-eyebrow" strokeWidth={1.6} aria-hidden="true" />Staying with us? Scan the QR card in your room to order to your room bill.</p>
           </div>
           {error && <p role="alert" className="rounded-[0.75rem] border border-pub-error/30 bg-pub-error/[0.08] px-4 py-3 text-sm text-pub-error">{error} Your order was not sent — please try again.</p>}
         </div>
 
         <footer className="border-t border-pub-line px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 sm:px-7">
-          <button type="button" disabled={pending || order.count === 0 || !who || (takeOut && !addressOk) || (payNow && !payFirstReady(pay))} onClick={submit}
+          <button type="button" disabled={pending || order.count === 0 || !who || (takeOut && !addressOk) || !payReady} onClick={submit}
             className={buttonClass({ variant: "primary", full: true, className: "h-auto min-h-10 whitespace-normal px-5 py-2.5 text-center leading-snug tabular-nums" })}>
-            {pending ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Check className="size-4" strokeWidth={2.25} aria-hidden="true" />}Send my order · TZS {n(order.subtotal)}
+            {pending ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : payNow ? <Lock className="size-4" strokeWidth={2} aria-hidden="true" /> : <Check className="size-4" strokeWidth={2.25} aria-hidden="true" />}{payNow ? `Pay TZS ${n(order.subtotal)} now` : `Send my order · TZS ${n(order.subtotal)}`}
           </button>
-          <p className="mt-2.5 text-center text-xs text-pub-muted">It goes straight to our kitchen and bar — you can follow it on the next page.</p>
+          <p className="mt-2.5 text-center text-xs text-pub-muted">{payNow ? "Check your phone for the payment request — then follow your order on the next page." : "It goes straight to our kitchen and bar — you can follow it on the next page."}</p>
         </footer>
       </div>
     </dialog>

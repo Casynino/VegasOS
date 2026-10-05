@@ -55,12 +55,12 @@ export function RequestReceived({ request, settings }: { request: CustomerReques
   const confirmed = request.status === "CONVERTED" || request.status === "CONFIRMED";
   const pickup = request.transportRequested ? request.transportDetails : null;
   const open = request.status === "NEW" || request.status === "REVIEWING" || request.status === "CONTACTED";
-  const payInto = Boolean(settings.bankAccountNumber || settings.mobileMoneyNumber);
 
   const steps = [
     ["We check availability", "Our reservations team reviews your dates and room."],
     ["We contact you", `By phone or WhatsApp on ${request.phone}${request.email ? `, or by email` : ""}.`],
-    ["Pay to secure your room", `We hold your room for a short time. A payment — a deposit is fine — confirms the booking; unpaid holds are released.${payInto ? " Payment details are below." : " Pay at reception or as we explain when we call."}`],
+    // Paying is only ever mobile money through nTZS, from the booking's own link (owner, 2026-10-05) — no account numbers.
+    ["Pay to secure your room", "Once we confirm, you pay by mobile money from your booking link — a payment request comes to your phone. Unpaid holds are released."],
   ] as const;
 
   return (
@@ -123,26 +123,6 @@ export function RequestReceived({ request, settings }: { request: CustomerReques
                     </li>
                   ))}
                 </ol>
-                {payInto && (
-                  <div className="mt-6 space-y-2 border-t border-pub-line pt-5 text-[14px] leading-relaxed">
-                    <p className={cn(typeScale.meta, "text-pub-eyebrow")}>Pay into</p>
-                    {settings.bankAccountNumber && (
-                      <p className="text-pub-fg/85">
-                        {settings.bankName} · {settings.bankAccountName ? `${settings.bankAccountName} · ` : ""}
-                        <span className="font-mono [overflow-wrap:anywhere]">{settings.bankAccountNumber}</span>
-                      </p>
-                    )}
-                    {settings.mobileMoneyNumber && (
-                      <p className="text-pub-fg/85">
-                        {settings.mobileMoneyName || "Mobile money"} · <span className="font-mono">{settings.mobileMoneyNumber}</span>
-                        {settings.mobileMoneyAccountName ? ` · ${settings.mobileMoneyAccountName}` : ""}
-                      </p>
-                    )}
-                    <p className="text-[13px] text-pub-muted">
-                      Use <strong className="font-medium text-pub-fg">{request.reference}</strong> as the reference, then send us the confirmation by WhatsApp.
-                    </p>
-                  </div>
-                )}
               </div>
             )}
           </section>
