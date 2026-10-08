@@ -7,6 +7,9 @@ import { maskPhone } from "./mobile-payments";
 import { businessRangeBounds, type BusinessDate } from "@/lib/time/business-date";
 import type { MobilePaymentStatus } from "@/generated/prisma/enums";
 import type { HotelSettings } from "@/generated/prisma/client";
+import { msg } from "@/i18n/msg";
+import { getT } from "@/i18n/server";
+import { englishT } from "@/i18n/translate";
 
 /**
  * ONLINE PAYMENTS (admin) — nTZS at a glance: is it connected and on, every payment attempt (who, what, how much,
@@ -14,11 +17,12 @@ import type { HotelSettings } from "@/generated/prisma/client";
  * confirmed must be on the hotel's books — once, for the same amount.
  */
 
-export const PURPOSE_LABEL: Record<string, string> = { RESERVATION: "Rooms & bills", RESTAURANT: "Restaurant", TRANSPORT: "Transport", INVOICE: "Invoices" };
+/** Shown with t(label). The "what" of a payment below ("Booking VLH-…", "Order #19") is written in the reader's words. */
+export const PURPOSE_LABEL: Record<string, string> = { RESERVATION: msg("Rooms & bills"), RESTAURANT: msg("Restaurant"), TRANSPORT: msg("Transport"), INVOICE: msg("Invoices") };
 export const SOURCE_LABEL: Record<string, string> = {
-  DESK: "Staff · send to phone", WEBSITE: "Website", PUBLIC_QR: "Menu QR", TABLE_QR: "Table QR", COUNTER_QR: "Counter QR", RESTAURANT_QR: "Restaurant QR",
-  ROOM_QR: "Room QR", GUEST_LINK: "Stay link", STAY_LINK: "Stay link", BOOKING_PAGE: "Website booking", TRANSPORT: "Website transport", INVOICE_LINK: "Invoice link",
-  HOTEL_QR: "Hotel QR booking",
+  DESK: msg("Staff · send to phone"), WEBSITE: msg("Website"), PUBLIC_QR: msg("Menu QR"), TABLE_QR: msg("Table QR"), COUNTER_QR: msg("Counter QR"), RESTAURANT_QR: msg("Restaurant QR"),
+  ROOM_QR: msg("Room QR"), GUEST_LINK: msg("Stay link"), STAY_LINK: msg("Stay link"), BOOKING_PAGE: msg("Website booking"), TRANSPORT: msg("Website transport"), INVOICE_LINK: msg("Invoice link"),
+  HOTEL_QR: msg("Hotel QR booking"),
 };
 export type OnlineStatusFilter = "all" | "paid" | "pending" | "failed" | "attention";
 const STATUS_WHERE: Record<Exclude<OnlineStatusFilter, "all" | "attention">, MobilePaymentStatus[]> = { paid: ["COMPLETED"], pending: ["PENDING"], failed: ["FAILED", "EXPIRED", "CANCELLED"] };
@@ -75,8 +79,12 @@ export async function onlinePayments(input: {
 }
 export type OnlinePaymentRow = Awaited<ReturnType<typeof onlinePayments>>[number];
 
-/** What each attempt paid for — one query per kind, not per row. */
+/**
+ * What each attempt paid for — one query per kind, not per row. Display only: written in the words of the person looking
+ * ("Booking VLH-…", "Order #19" in English; nothing reads it back).
+ */
 async function describeMany(rows: { id: string; purpose: string; reservationId: string | null; orderIds: string[]; tripId: string | null; invoiceId: string | null }[]) {
+  const t = await getT().catch(() => englishT);
   const [res, orders, trips, invoices] = await Promise.all([
     db.reservation.findMany({ where: { id: { in: rows.flatMap((r) => (r.reservationId ? [r.reservationId] : [])) } }, select: { id: true, reference: true, kind: true, guest: { select: { fullName: true } } } }),
     db.restaurantOrder.findMany({ where: { id: { in: rows.flatMap((r) => r.orderIds) } }, select: { id: true, number: true, customerName: true } }),
@@ -87,16 +95,17 @@ async function describeMany(rows: { id: string; purpose: string; reservationId: 
   for (const r of rows) {
     if (r.purpose === "RESERVATION" && r.reservationId) {
       const x = res.find((y) => y.id === r.reservationId);
-      if (x) out.set(r.id, { what: `${x.kind === "MEETING" ? "Meeting room" : "Booking"} ${x.reference}`, customer: x.guest.fullName, href: `/staff/reservations/${x.id}` });
+      if (x) out.set(r.id, { what: x.kind === "MEETING" ? t("Meeting room {reference}", { reference: x.reference }) : t("Booking {reference}", { reference: x.reference }), customer: x.guest.fullName, href: `/staff/reservations/${x.id}` });
     } else if (r.purpose === "RESTAURANT") {
       const os = orders.filter((o) => r.orderIds.includes(o.id));
-      if (os.length) out.set(r.id, { what: `Order${os.length > 1 ? "s" : ""} ${os.map((o) => `#${o.number.replace(/^ORD-\d{4}-0*/, "")}`).join(", ")}`, customer: os[0].customerName, href: `/staff/restaurant/history?q=${encodeURIComponent(os[0].number)}` });
+      const numbers = os.map((o) => `#${o.number.replace(/^ORD-\d{4}-0*/, "")}`).join(", ");
+      if (os.length) out.set(r.id, { what: os.length > 1 ? t("Orders {numbers}", { numbers }) : t("Order {number}", { number: numbers }), customer: os[0].customerName, href: `/staff/restaurant/history?q=${encodeURIComponent(os[0].number)}` });
     } else if (r.purpose === "TRANSPORT" && r.tripId) {
-      const t = trips.find((y) => y.id === r.tripId);
-      if (t) out.set(r.id, { what: `Trip ${t.reference}`, customer: t.passengerName, href: "/staff/transport" });
+      const trip = trips.find((y) => y.id === r.tripId);
+      if (trip) out.set(r.id, { what: t("Trip {reference}", { reference: trip.reference }), customer: trip.passengerName, href: "/staff/transport" });
     } else if (r.purpose === "INVOICE" && r.invoiceId) {
       const i = invoices.find((y) => y.id === r.invoiceId);
-      if (i) out.set(r.id, { what: `Invoice ${i.number}`, customer: i.corporateCustomer?.companyName ?? i.guest?.fullName ?? null, href: `/staff/invoices/${i.id}` });
+      if (i) out.set(r.id, { what: t("Invoice {number}", { number: i.number }), customer: i.corporateCustomer?.companyName ?? i.guest?.fullName ?? null, href: `/staff/invoices/${i.id}` });
     }
   }
   return out;
@@ -134,19 +143,21 @@ export async function reconcileOnlinePayments(from: BusinessDate, to: BusinessDa
     db.revenueTransaction.findMany({ where: { transportTripId: { in: done.flatMap((m) => (m.tripId ? [m.tripId] : [])) }, isVoided: false, account: { code: "NTZS" } }, select: { transportTripId: true, amount: true } }),
   ]);
   const what = await describeMany(done);
+  // What is wrong, in the reader's words (the payment's stored note is shown as it was written).
+  const t = await getT().catch(() => englishT);
   const issues: { id: string; at: Date; what: string; amount: number; problem: string }[] = [];
   let matched = 0, recorded = 0;
   for (const m of done) {
     const booked = m.purpose === "RESTAURANT"
-      ? orderPayments.filter((p) => m.orderPaymentIds.includes(p.id) && p.status === "POSTED").reduce((t, p) => t + p.amount, 0)
-      : m.purpose === "TRANSPORT" ? sales.filter((x) => x.transportTripId === m.tripId).reduce((t, x) => t + x.amount, 0)
-      : payments.filter((p) => p.id === m.paymentId && p.status === "POSTED").reduce((t, p) => t + p.amount, 0);
+      ? orderPayments.filter((p) => m.orderPaymentIds.includes(p.id) && p.status === "POSTED").reduce((sum, p) => sum + p.amount, 0)
+      : m.purpose === "TRANSPORT" ? sales.filter((x) => x.transportTripId === m.tripId).reduce((sum, x) => sum + x.amount, 0)
+      : payments.filter((p) => p.id === m.paymentId && p.status === "POSTED").reduce((sum, p) => sum + p.amount, 0);
     recorded += booked;
     const label = what.get(m.id)?.what ?? PURPOSE_LABEL[m.purpose] ?? m.purpose;
     // A person already dealt with it (refunded, applied elsewhere): not an open difference any more.
     const problem = m.resolvedAt ? null
-      : booked === 0 ? (m.attentionAt ? `Not on the books — ${m.lastError ?? "needs a person"}` : "Confirmed by nTZS but not on the hotel's books")
-      : booked !== m.amount ? `On the books: ${booked.toLocaleString("en-US")} of ${m.amount.toLocaleString("en-US")}${m.lastError ? ` — ${m.lastError}` : ""}`
+      : booked === 0 ? (m.attentionAt ? t("Not on the books — {reason}", { reason: m.lastError ?? t("needs a person") }) : t("Confirmed by nTZS but not on the hotel's books"))
+      : booked !== m.amount ? `${t("On the books: {booked} of {amount}", { booked: booked.toLocaleString("en-US"), amount: m.amount.toLocaleString("en-US") })}${m.lastError ? ` — ${m.lastError}` : ""}`
       : null;
     if (problem) issues.push({ id: m.id, at: m.completedAt ?? m.createdAt, what: label, amount: m.amount, problem });
     else matched++;
@@ -157,9 +168,9 @@ export async function reconcileOnlinePayments(from: BusinessDate, to: BusinessDa
   for (const [, list] of byTarget) {
     if (list.length < 2) continue;
     const last = list[list.length - 1];
-    issues.push({ id: last.id, at: last.completedAt ?? last.createdAt, what: what.get(last.id)?.what ?? PURPOSE_LABEL[last.purpose] ?? last.purpose, amount: list.reduce((t, x) => t + x.amount, 0), problem: `Paid by ${list.length} confirmed attempts — check it is not paid twice` });
+    issues.push({ id: last.id, at: last.completedAt ?? last.createdAt, what: what.get(last.id)?.what ?? PURPOSE_LABEL[last.purpose] ?? last.purpose, amount: list.reduce((sum, x) => sum + x.amount, 0), problem: t("Paid by {n} confirmed attempts — check it is not paid twice", { n: list.length }) });
   }
-  return { confirmed: done.length, confirmedAmount: done.reduce((t, m) => t + m.amount, 0), recorded, matched, issues };
+  return { confirmed: done.length, confirmedAmount: done.reduce((sum, m) => sum + m.amount, 0), recorded, matched, issues };
 }
 
 /** Money that came in by nTZS but needs a person (any time) — for the attention lists (Collections, Online payments). */

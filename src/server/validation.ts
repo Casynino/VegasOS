@@ -1,6 +1,7 @@
 import "server-only";
 import type { z } from "zod";
 import { AppError } from "./errors";
+import { msg } from "@/i18n/msg";
 
 const ZOD_DEFAULT = /^(Too (big|small): expected|Invalid (input|option|string|type|value|format|key|element|union)\b|Unrecognized key)/;
 
@@ -13,9 +14,9 @@ export function parseInput<S extends z.ZodType>(schema: S, input: unknown): z.in
     for (const issue of result.error.issues) {
       const key = issue.path.join(".") || "_";
       // Zod's own wording ("Too big: expected string to have <=40 characters") is never shown to people.
-      fieldErrors[key] ??= ZOD_DEFAULT.test(issue.message) ? "Something in the form is not right — please check it and try again." : issue.message;
+      fieldErrors[key] ??= ZOD_DEFAULT.test(issue.message) ? msg("Something in the form is not right — please check it and try again.") : issue.message;
     }
-    throw new AppError(Object.values(fieldErrors)[0] ?? "Please check the form.", "VALIDATION", fieldErrors);
+    throw new AppError(Object.values(fieldErrors)[0] ?? msg("Please check the form."), "VALIDATION", fieldErrors);
   }
   return result.data;
 }

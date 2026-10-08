@@ -4,7 +4,6 @@ import { ArrowDownToLine, Boxes, ClipboardList, Coins, Flame, Hourglass, Layers,
 import { can, requirePagePermission } from "@/server/auth";
 import { businessToday } from "@/server/settings";
 import { assetSummary, expiringStock, inventoryDay, inventorySetup, recentMovements, recipesData } from "@/server/services/inventory";
-import { formatShortDate } from "@/lib/format";
 import { KIND_LABEL, formatQty, type MovementKind } from "@/lib/inventory";
 import { cn } from "@/lib/utils";
 import { StockView, ReceivePicker } from "./stock-view";
@@ -15,8 +14,12 @@ import { CountView } from "./count-view";
 import { WasteView } from "./waste-view";
 import { RecipesView } from "./recipes-view";
 import { SetupView } from "./setup-view";
+import { getT } from "@/i18n/server";
+import { msg } from "@/i18n/msg";
 
-export const metadata: Metadata = { title: "Inventory" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getT())("Inventory") };
+}
 
 type View = "overview" | "stock" | "movements" | "waste" | "count" | "recipes" | "setup";
 const tzs = (v: number) => `TZS ${Math.round(v).toLocaleString("en-US")}`;
@@ -31,6 +34,7 @@ const short = (v: number) => (Math.abs(v) >= 1_000_000 ? `TZS ${Number((v / 1_00
 export default async function InventoryPage({ searchParams }: PageProps<"/staff/inventory">) {
   const user = await requirePagePermission("inventory.view");
   const sp = await searchParams;
+  const t = await getT();
   const perms = { receive: can(user, "inventory.receive"), use: can(user, "inventory.use"), approve: can(user, "inventory.approve"), manage: can(user, "inventory.manage") };
   // Purchase prices and suppliers on the stock movements: only for those who buy or approve stock.
   const seesPrices = perms.receive || perms.approve || can(user, "expenses.approve") || can(user, "finance.view");
@@ -43,13 +47,13 @@ export default async function InventoryPage({ searchParams }: PageProps<"/staff/
   const dept = setup.departments.find((d) => d.code === code) ?? null;
   const supervisor = perms.approve || perms.manage;
   const views: { key: View; label: string; show: boolean }[] = [
-    { key: "overview", label: "Overview", show: true },
-    { key: "stock", label: "Stock", show: true },
-    { key: "movements", label: "Movements", show: true },
-    { key: "waste", label: "Waste", show: true },
-    { key: "count", label: "Count", show: perms.approve },
-    { key: "recipes", label: "Recipes", show: perms.manage },
-    { key: "setup", label: "Setup", show: perms.manage || perms.approve },
+    { key: "overview", label: t("Overview"), show: true },
+    { key: "stock", label: t("Stock"), show: true },
+    { key: "movements", label: t.ctx("stock", "Movements"), show: true },
+    { key: "waste", label: t("Waste"), show: true },
+    { key: "count", label: t.ctx("stock", "Count"), show: perms.approve },
+    { key: "recipes", label: t("Recipes"), show: perms.manage },
+    { key: "setup", label: t("Setup"), show: perms.manage || perms.approve },
   ];
   const raw = typeof sp.v === "string" ? sp.v : supervisor ? "overview" : "stock";
   const view: View = views.some((v) => v.show && v.key === raw) ? (raw as View) : "overview";
@@ -66,7 +70,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/staff/
   const items = (dept ? setup.items.filter((i) => i.department.id === dept.id) : setup.items);
   const active = items.filter((i) => i.isActive);
   const pendingAll = await recentMovements({ money: seesPrices, status: "PENDING", kind: "WASTE", take: 100, departmentId: dept?.id });
-  const title = dept ? `${dept.name} stock` : "Hotel inventory";
+  const title = dept ? t("{department} stock", { department: t(dept.name) }) : t("Hotel inventory");
 
   return (
     <div className="w-full space-y-4">
@@ -77,14 +81,14 @@ export default async function InventoryPage({ searchParams }: PageProps<"/staff/
           <div className="flex min-w-0 items-center gap-3.5">
             <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-linear-to-br from-amber-400 to-orange-600 text-white shadow-[0_10px_24px_-12px_rgb(234_88_12)]"><Boxes className="size-6" /></span>
             <div className="min-w-0">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[oklch(0.62_0.11_78)] dark:text-[oklch(0.8_0.1_82)]">Inventory · {user.roleName}</p>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[oklch(0.62_0.11_78)] dark:text-[oklch(0.8_0.1_82)]">{t("Inventory · {role}", { role: t(user.roleName) })}</p>
               <h1 className="text-lg font-semibold leading-tight tracking-tight sm:text-xl">{title}</h1>
-              <p className="text-xs text-muted-foreground">{active.length} items · worth {tzs(active.reduce((t, i) => t + i.value, 0))} · {formatShortDate(today)}</p>
+              <p className="text-xs text-muted-foreground">{t("{n} items · worth {amount} · {date}", { n: active.length, amount: tzs(active.reduce((sum, i) => sum + i.value, 0)), date: t.shortDate(today) })}</p>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            {can(user, "inventory.request") && !supervisor && <Link href="/staff/stock-requests" className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border/80 bg-card px-3 text-sm font-semibold hover:bg-muted"><ClipboardList className="size-4" />Ask for stock</Link>}
-            {can(user, "assets.view") && <Link href="/staff/assets" className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border/80 bg-card px-3 text-sm font-semibold hover:bg-muted"><Sofa className="size-4" />Assets</Link>}
+            {can(user, "inventory.request") && !supervisor && <Link href="/staff/stock-requests" className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border/80 bg-card px-3 text-sm font-semibold hover:bg-muted"><ClipboardList className="size-4" />{t("Ask for stock")}</Link>}
+            {can(user, "assets.view") && <Link href="/staff/assets" className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border/80 bg-card px-3 text-sm font-semibold hover:bg-muted"><Sofa className="size-4" />{t("Assets")}</Link>}
             {perms.manage && <NewItemButton setup={setupProps} defaultDepartmentId={dept?.id} />}
             {perms.receive && <ReceivePicker items={items} perms={perms} setup={setupProps} />}
           </div>
@@ -92,16 +96,16 @@ export default async function InventoryPage({ searchParams }: PageProps<"/staff/
       </section>
 
       {/* Department — one bar that slides on phones */}
-      <nav aria-label="Department" className="-mx-1 overflow-x-auto px-1 [scrollbar-width:none]">
+      <nav aria-label={t("Department")} className="-mx-1 overflow-x-auto px-1 [scrollbar-width:none]">
         <div className="flex w-max gap-1 rounded-2xl border border-border/70 bg-card p-1">
-          {[{ code: "ALL", name: "Whole hotel", id: null as string | null }, ...setup.departments.filter((d) => d.isActive)].map((d) => {
+          {[{ code: "ALL", name: msg("Whole hotel"), id: null as string | null }, ...setup.departments.filter((d) => d.isActive)].map((d) => {
             const its = setup.items.filter((i) => i.isActive && (!d.id || i.department.id === d.id));
             const alerts = its.filter((i) => i.level === "OUT" || i.level === "LOW").length;
             const on = (dept?.code ?? "ALL") === d.code;
             return (
               <Link key={d.code} href={href({ d: d.code })} aria-current={on ? "page" : undefined}
                 className={cn("inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors", on ? "bg-foreground text-background" : "text-muted-foreground hover:bg-muted hover:text-foreground")}>
-                {d.name}<span className={cn("min-w-5 rounded-full px-1.5 text-center text-[10px] tabular-nums", alerts ? "bg-amber-500 text-black" : on ? "bg-background/20" : "bg-muted")}>{alerts || its.length}</span>
+                {t(d.name)}<span className={cn("min-w-5 rounded-full px-1.5 text-center text-[10px] tabular-nums", alerts ? "bg-amber-500 text-black" : on ? "bg-background/20" : "bg-muted")}>{alerts || its.length}</span>
               </Link>
             );
           })}
@@ -109,7 +113,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/staff/
       </nav>
 
       {/* View */}
-      <nav aria-label="View" className="-mx-1 overflow-x-auto px-1 [scrollbar-width:none]">
+      <nav aria-label={t("View")} className="-mx-1 overflow-x-auto px-1 [scrollbar-width:none]">
         <div className="flex w-max gap-4 border-b border-border/70 px-1">
           {views.filter((v) => v.show).map((v) => (
             <Link key={v.key} href={href({ v: v.key })} aria-current={v.key === view ? "page" : undefined}
@@ -144,21 +148,22 @@ async function Overview({ today, deptId, items, pending, perms, setup, wasteHref
     inventoryDay(today, today, deptId), recentMovements({ money: seesPrices, take: 12, departmentId: deptId }), expiringStock(today),
     assets ? assetSummary() : Promise.resolve(null),
   ]);
+  const t = await getT();
   const active = items.filter((i) => i.isActive);
   const exp = deptId ? expiring.filter((e) => active.some((i) => i.id === e.item.id)) : expiring;
   const n = (l: string) => active.filter((i) => i.level === l).length;
   const figures: { label: string; value: string; sub: string; icon: LucideIcon; tint: string; tone?: string }[] = [
-    { label: "Stock items", value: String(active.length), sub: `${new Set(active.map((i) => i.category.id)).size} categories`, icon: Layers, tint: "bg-sky-500/15 text-sky-500" },
-    { label: "Low stock", value: String(n("LOW") + n("REORDER")), sub: `${n("LOW")} below minimum`, icon: TrendingDown, tint: "bg-amber-500/15 text-amber-500", tone: n("LOW") ? "text-amber-600 dark:text-amber-400" : undefined },
-    { label: "Out of stock", value: String(n("OUT")), sub: n("OUT") ? "nothing left" : "none", icon: PackageX, tint: "bg-rose-500/15 text-rose-500", tone: n("OUT") ? "text-rose-600 dark:text-rose-400" : undefined },
-    { label: "Stock value", value: short(active.reduce((t, i) => t + i.value, 0)), sub: "at the last price paid", icon: Coins, tint: "bg-[oklch(0.72_0.12_80/0.18)] text-[oklch(0.72_0.12_80)]" },
-    { label: "Received today", value: short(day.receivedValue), sub: `${day.receivedLines} deliver${day.receivedLines === 1 ? "y" : "ies"}`, icon: ArrowDownToLine, tint: "bg-emerald-500/15 text-emerald-500", tone: day.receivedValue ? "text-emerald-600 dark:text-emerald-400" : undefined },
-    { label: "Used today", value: short(day.usedValue), sub: `${day.usedItems} item${day.usedItems === 1 ? "" : "s"}${day.soldValue ? ` · ${tzs(day.soldValue)} by recipes` : ""}`, icon: Flame, tint: "bg-orange-500/15 text-orange-500" },
-    { label: "Waste today", value: short(day.wasteValue), sub: `${day.wasteLines} record${day.wasteLines === 1 ? "" : "s"}`, icon: Trash2, tint: "bg-rose-500/15 text-rose-500", tone: day.wasteValue ? "text-rose-600 dark:text-rose-400" : undefined },
-    { label: "Waiting approval", value: String(pending), sub: pending ? "waste to review" : "nothing waiting", icon: Hourglass, tint: "bg-violet-500/15 text-violet-500", tone: pending ? "text-amber-600 dark:text-amber-400" : undefined },
+    { label: t("Stock items"), value: String(active.length), sub: t("{n} categories", { n: new Set(active.map((i) => i.category.id)).size }), icon: Layers, tint: "bg-sky-500/15 text-sky-500" },
+    { label: t("Low stock"), value: String(n("LOW") + n("REORDER")), sub: t("{n} below minimum", { n: n("LOW") }), icon: TrendingDown, tint: "bg-amber-500/15 text-amber-500", tone: n("LOW") ? "text-amber-600 dark:text-amber-400" : undefined },
+    { label: t("Out of stock"), value: String(n("OUT")), sub: n("OUT") ? t("nothing left") : t("none"), icon: PackageX, tint: "bg-rose-500/15 text-rose-500", tone: n("OUT") ? "text-rose-600 dark:text-rose-400" : undefined },
+    { label: t("Stock value"), value: short(active.reduce((sum, i) => sum + i.value, 0)), sub: t("at the last price paid"), icon: Coins, tint: "bg-[oklch(0.72_0.12_80/0.18)] text-[oklch(0.72_0.12_80)]" },
+    { label: t.ctx("stock", "Received today"), value: short(day.receivedValue), sub: t.plural(day.receivedLines, "{n} delivery", "{n} deliveries"), icon: ArrowDownToLine, tint: "bg-emerald-500/15 text-emerald-500", tone: day.receivedValue ? "text-emerald-600 dark:text-emerald-400" : undefined },
+    { label: t("Used today"), value: short(day.usedValue), sub: `${t.plural(day.usedItems, "{n} item", "{n} items")}${day.soldValue ? ` · ${t("{amount} by recipes", { amount: tzs(day.soldValue) })}` : ""}`, icon: Flame, tint: "bg-orange-500/15 text-orange-500" },
+    { label: t("Waste today"), value: short(day.wasteValue), sub: t.plural(day.wasteLines, "{n} record", "{n} records"), icon: Trash2, tint: "bg-rose-500/15 text-rose-500", tone: day.wasteValue ? "text-rose-600 dark:text-rose-400" : undefined },
+    { label: t("Waiting approval"), value: String(pending), sub: pending ? t("waste to review") : t("nothing waiting"), icon: Hourglass, tint: "bg-violet-500/15 text-violet-500", tone: pending ? "text-amber-600 dark:text-amber-400" : undefined },
     ...(asset ? [
-      { label: "Assets", value: asset.units.toLocaleString("en-US"), sub: `${asset.records} records · ${short(asset.value)}`, icon: Sofa, tint: "bg-indigo-500/15 text-indigo-500" },
-      { label: "Assets in repair", value: String(asset.underRepair + asset.outOfOrder), sub: `${asset.outOfOrder} out of order`, icon: Wrench, tint: "bg-amber-500/15 text-amber-500", tone: asset.underRepair + asset.outOfOrder ? "text-amber-600 dark:text-amber-400" : undefined },
+      { label: t("Assets"), value: asset.units.toLocaleString("en-US"), sub: t("{n} records · {amount}", { n: asset.records, amount: short(asset.value) }), icon: Sofa, tint: "bg-indigo-500/15 text-indigo-500" },
+      { label: t("Assets in repair"), value: String(asset.underRepair + asset.outOfOrder), sub: t("{n} out of order", { n: asset.outOfOrder }), icon: Wrench, tint: "bg-amber-500/15 text-amber-500", tone: asset.underRepair + asset.outOfOrder ? "text-amber-600 dark:text-amber-400" : undefined },
     ] : []),
   ];
   const maxUsed = Math.max(1, ...day.topUsed.map((u) => u.value));
@@ -178,16 +183,16 @@ async function Overview({ today, deptId, items, pending, perms, setup, wasteHref
         <AlertsPanel items={items} expiring={exp} pendingWaste={pending} wasteHref={wasteHref} perms={perms} setup={setup} />
         <div className="space-y-4">
           <section className="rounded-3xl border border-border/70 bg-card px-4 py-3">
-            <p className="mb-1 flex items-center justify-between text-sm font-semibold">Recent movements<Link href={movementsHref} className="text-xs font-semibold text-[oklch(0.6_0.12_78)] dark:text-[oklch(0.8_0.1_82)]">All →</Link></p>
-            {moves.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">Nothing has moved yet.</p> : <MovementList rows={moves} />}
+            <p className="mb-1 flex items-center justify-between text-sm font-semibold">{t("Recent movements")}<Link href={movementsHref} className="text-xs font-semibold text-[oklch(0.6_0.12_78)] dark:text-[oklch(0.8_0.1_82)]">{t("All →")}</Link></p>
+            {moves.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">{t("Nothing has moved yet.")}</p> : <MovementList rows={moves} />}
           </section>
           {day.topUsed.length > 0 && (
             <section className="rounded-3xl border border-border/70 bg-card p-4">
-              <p className="mb-3 flex items-center gap-2 text-sm font-semibold"><Flame className="size-4 text-orange-500" />Used most today</p>
+              <p className="mb-3 flex items-center gap-2 text-sm font-semibold"><Flame className="size-4 text-orange-500" />{t("Used most today")}</p>
               <ul className="space-y-2">
                 {day.topUsed.map((u) => (
                   <li key={u.name} className="text-xs">
-                    <p className="flex justify-between gap-2"><span className="truncate">{u.name} · {formatQty(u.qty, u.unit)}</span><span className="font-semibold tabular-nums">{tzs(u.value)}</span></p>
+                    <p className="flex justify-between gap-2"><span className="truncate">{u.name} · {formatQty(u.qty, u.unit, t)}</span><span className="font-semibold tabular-nums">{tzs(u.value)}</span></p>
                     <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-orange-500" style={{ width: `${(u.value / maxUsed) * 100}%` }} /></span>
                   </li>
                 ))}
@@ -203,6 +208,7 @@ async function Overview({ today, deptId, items, pending, perms, setup, wasteHref
 async function Movements({ deptId, kind, base, seesPrices }: { deptId: string | null; kind: string | null; base: string; seesPrices: boolean }) {
   const kinds: (MovementKind | null)[] = [null, "RECEIVE", "USE", "SALE", "WASTE", "COUNT", "ADJUST"];
   const rows = await recentMovements({ money: seesPrices, take: 150, departmentId: deptId, kind: kind && kinds.includes(kind as MovementKind) ? kind : null });
+  const t = await getT();
   const link = (k: string | null) => (k ? `${base}${base.includes("?") ? "&" : "?"}k=${k.toLowerCase()}` : base);
   return (
     <section className="rounded-3xl border border-border/70 bg-card">
@@ -211,12 +217,12 @@ async function Movements({ deptId, kind, base, seesPrices }: { deptId: string | 
           {kinds.map((k) => (
             <Link key={k ?? "all"} href={link(k)} aria-current={(kind ?? null) === k ? "page" : undefined}
               className={cn("rounded-lg px-3 py-1.5 text-xs font-semibold", (kind ?? null) === k ? "bg-foreground text-background" : "text-muted-foreground hover:bg-muted")}>
-              {k ? KIND_LABEL[k] : "Everything"}
+              {k ? t(KIND_LABEL[k]) : t("Everything")}
             </Link>
           ))}
         </div>
       </div>
-      <div className="px-4 py-1">{rows.length === 0 ? <p className="py-10 text-center text-sm text-muted-foreground">Nothing recorded.</p> : <MovementList rows={rows} />}</div>
+      <div className="px-4 py-1">{rows.length === 0 ? <p className="py-10 text-center text-sm text-muted-foreground">{t("Nothing recorded.")}</p> : <MovementList rows={rows} />}</div>
     </section>
   );
 }

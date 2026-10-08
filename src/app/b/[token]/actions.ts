@@ -6,6 +6,7 @@ import { getCurrentUser, requestMeta } from "@/server/auth";
 import { AppError, runAction, type ActionResult } from "@/server/errors";
 import { rateLimit } from "@/server/rate-limit";
 import { parseInput } from "@/server/validation";
+import { msg } from "@/i18n/msg";
 import { recordQrEvent } from "@/server/services/booking-qr";
 import {
   qrBook, qrConfirmation, qrPayNow, qrQuote, qrSearch, type QrBooked, type QrConfirmationResult, type QrQuote, type QrSearchResult, type QrVisit,
@@ -16,31 +17,31 @@ import {
  * from its token and lets the server work out availability, prices and payment; the phone never names a database id.
  */
 
-const Token = z.string().regex(/^[a-f0-9]{24}$/, "This QR code is not valid — please scan it again.");
+const Token = z.string().regex(/^[a-f0-9]{24}$/, msg("This QR code is not valid — please scan it again."));
 /** The browser's own random key (kept on the phone), so one visitor is counted once. */
 const Visitor = z.string().regex(/^[a-f0-9]{16,64}$/).optional();
-const Day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a date.");
+const Day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, msg("Choose a date."));
 const Stay = z.object({
   checkIn: Day,
   checkOut: Day,
-  adults: z.number().int().min(1, "At least one adult.").max(20, "For more than 20 guests, please call us."),
-  children: z.number().int().min(0).max(10, "For more than 10 children, please call us.").default(0),
+  adults: z.number().int().min(1, msg("At least one adult.")).max(20, msg("For more than 20 guests, please call us.")),
+  children: z.number().int().min(0).max(10, msg("For more than 10 children, please call us.")).default(0),
   visitor: Visitor,
 });
 const Search = Stay.extend({ roomType: z.string().regex(/^[a-z0-9-]{1,80}$/).nullish() });
-const RoomNumber = z.string().trim().regex(/^[A-Za-z0-9-]{1,12}$/, "Choose a room.");
+const RoomNumber = z.string().trim().regex(/^[A-Za-z0-9-]{1,12}$/, msg("Choose a room."));
 const Quote = Stay.extend({ roomNumber: RoomNumber });
-const Time = z.union([z.literal(""), z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Enter the time like 14:30.")]).nullish();
+const Time = z.union([z.literal(""), z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, msg("Enter the time like 14:30."))]).nullish();
 const Book = Stay.extend({
   roomNumber: RoomNumber,
   guest: z.object({
     /** Blank for a returning guest (found by their phone): the name we have is used. */
-    fullName: z.union([z.literal(""), z.string().trim().min(2, "Please enter your full name.").max(80)]),
-    phone: z.string().trim().min(7, "Please enter your phone number.").max(30),
-    email: z.union([z.literal(""), z.email("Enter a valid email.").max(160)]).nullish(),
+    fullName: z.union([z.literal(""), z.string().trim().min(2, msg("Please enter your full name.")).max(80)]),
+    phone: z.string().trim().min(7, msg("Please enter your phone number.")).max(30),
+    email: z.union([z.literal(""), z.email(msg("Enter a valid email.")).max(160)]).nullish(),
   }),
   arrivalTime: Time,
-  specialRequest: z.string().trim().max(500, "Keep the request under 500 characters.").nullish(),
+  specialRequest: z.string().trim().max(500, msg("Keep the request under 500 characters.")).nullish(),
   transportRequest: z.object({ flightNumber: z.string().trim().max(12).nullish(), arrivalTime: Time, note: z.string().trim().max(300).nullish() }).nullish(),
   pay: z.enum(["ONLINE", "HOTEL"]),
   payPhone: z.string().trim().max(30).nullish(),
@@ -48,7 +49,7 @@ const Book = Stay.extend({
   website: z.string().max(0).optional(), // honeypot
 });
 const Link = z.object({ ref: z.string().regex(/^VLH-[A-Z0-9]{4,12}$/), key: z.string().min(16).max(200) });
-const Pay = z.object({ phone: z.string().trim().min(9, "Enter your mobile-money number.").max(30), clientKey: z.string().regex(/^[a-f0-9]{32}$/) });
+const Pay = z.object({ phone: z.string().trim().min(9, msg("Enter your mobile-money number.")).max(30), clientKey: z.string().regex(/^[a-f0-9]{32}$/) });
 const Event = z.object({ type: z.literal("SCAN"), visitor: Visitor });
 
 /** Who is visiting: their address (rate limits) and browser key (counting). Staff signed in on this device are not counted. */

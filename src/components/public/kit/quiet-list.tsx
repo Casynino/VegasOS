@@ -1,18 +1,21 @@
 import { BedDouble, Car, Clock, ConciergeBell, Coffee, Plane, Presentation, UtensilsCrossed, Wifi, Wine, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-/** A fitting small icon for an offer line ("Free Wi-Fi" → Wi-Fi), or none. */
+/**
+ * A fitting small icon for an offer line ("Free Wi-Fi" → Wi-Fi), or none. Items arrive in the visitor's language
+ * (the page translates them), so each line also knows its Chinese words.
+ */
 const ICONS: [RegExp, LucideIcon][] = [
-  [/wi-?fi/i, Wifi],
-  [/24|reception/i, Clock],
-  [/breakfast|coffee/i, Coffee],
-  [/room service|service/i, ConciergeBell],
-  [/parking|car\b/i, Car],
-  [/airport|pickup|transfer/i, Plane],
-  [/meeting/i, Presentation],
-  [/restaurant|dining|menu/i, UtensilsCrossed],
-  [/\bbar\b|drinks?/i, Wine],
-  [/room|suite/i, BedDouble],
+  [/wi-?fi|无线/i, Wifi],
+  [/24|reception|前台/i, Clock],
+  [/breakfast|coffee|早餐|咖啡/i, Coffee],
+  [/room service|service|送餐|服务/i, ConciergeBell],
+  [/parking|car\b|停车/i, Car],
+  [/airport|pickup|transfer|机场|接机|送机|接送/i, Plane],
+  [/meeting|会议/i, Presentation],
+  [/restaurant|dining|menu|餐厅|餐饮|用餐|菜单/i, UtensilsCrossed],
+  [/\bbar\b|drinks?|酒吧|饮品|酒水/i, Wine],
+  [/room|suite|客房|房间|套房/i, BedDouble],
 ];
 const iconFor = (text: string) => ICONS.find(([re]) => re.test(text))?.[1] ?? null;
 

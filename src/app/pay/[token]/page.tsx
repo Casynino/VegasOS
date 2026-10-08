@@ -4,8 +4,13 @@ import { notFound } from "next/navigation";
 import { getSettings } from "@/server/settings";
 import { customerPaymentByToken } from "@/server/services/online-pay";
 import { PayStatus } from "./pay-status";
+import { getT, guestLocale } from "@/i18n/server";
 
-export const metadata: Metadata = { title: "Payment", robots: { index: false, follow: false }, referrer: "no-referrer" };
+export async function generateMetadata(): Promise<Metadata> {
+  await guestLocale();
+  const t = await getT();
+  return { title: t("Payment"), robots: { index: false, follow: false }, referrer: "no-referrer" };
+}
 export const dynamic = "force-dynamic";
 
 /**
@@ -14,6 +19,8 @@ export const dynamic = "force-dynamic";
  * completed with "Try again". The link is private (random) and shows only this payment.
  */
 export default async function PayPage({ params }: PageProps<"/pay/[token]">) {
+  await guestLocale();
+  const t = await getT();
   const { token } = await params;
   const [view, s] = await Promise.all([customerPaymentByToken(token, { check: true }), getSettings()]);
   if (!view) notFound();
@@ -24,7 +31,7 @@ export default async function PayPage({ params }: PageProps<"/pay/[token]">) {
           <Image src="/brand/logo-192.png" alt="" width={40} height={40} className="rounded-full ring-1 ring-(--vr-line)" />
           <div className="leading-tight">
             <p className="font-display text-lg font-semibold">{s.hotelName}</p>
-            <p className="text-[11px] uppercase tracking-[0.18em] text-(--vr-muted)">Payment</p>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-(--vr-muted)">{t("Payment")}</p>
           </div>
         </header>
         <PayStatus initial={view} />

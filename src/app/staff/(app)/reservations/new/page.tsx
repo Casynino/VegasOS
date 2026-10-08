@@ -1,4 +1,3 @@
-import type { Metadata } from "next";
 import { ntzsEnabled } from "@/server/services/ntzs";
 import { discountLimit } from "@/lib/discounts";
 import { can, requirePagePermission } from "@/server/auth";
@@ -10,11 +9,16 @@ import { PageHeader } from "@/components/staff/page-header";
 import { bookingCompanies } from "@/server/services/company-billing";
 import { billMenu } from "@/server/services/restaurant";
 import { BookingForm } from "./booking-form";
+import { getT } from "@/i18n/server";
 
-export const metadata: Metadata = { title: "New booking" };
+export async function generateMetadata() {
+  const t = await getT();
+  return { title: t("New booking") };
+}
 
 export default async function NewReservationPage({ searchParams }: PageProps<"/staff/reservations/new">) {
   const user = await requirePagePermission("reservations.create");
+  const t = await getT();
   const sp = await searchParams;
   const [today, sources, companies, methods] = await Promise.all([
     businessToday(),
@@ -42,7 +46,7 @@ export default async function NewReservationPage({ searchParams }: PageProps<"/s
     : sp.mode === "dayuse" ? "dayUse" : sp.mode === "reserve" || from || !canWalkIn ? "overnight" : "walkIn";
   return (
     <div className="w-full">
-      <PageHeader title="New booking" description="Check in a guest at the desk, reserve a room for later, give a room for a short time, book the meeting room, or book several rooms for a group. Prices and free rooms are live." />
+      <PageHeader title={t("New booking")} description={t("Check in a guest at the desk, reserve a room for later, give a room for a short time, book the meeting room, or book several rooms for a group. Prices and free rooms are live.")} />
       <BookingForm
         initialMode={mode}
         today={today}

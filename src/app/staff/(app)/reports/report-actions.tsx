@@ -6,6 +6,7 @@ import { toCanvas } from "html-to-image";
 import { FileDown, FileSpreadsheet, Loader2, Printer, Share2 } from "lucide-react";
 import { jpegFromDataUrl, jpegsToPdf } from "@/lib/jpeg-pdf";
 import { cn } from "@/lib/utils";
+import { useT } from "@/i18n/client";
 
 const A4 = 842 / 595;
 /** The width the document is drawn at for the PDF — the same on a phone and a computer. */
@@ -29,6 +30,7 @@ export function ReportActions({ fileName, csv, share, target = "report" }: {
   target?: string;
 }) {
   const [busy, setBusy] = useState(false);
+  const t = useT();
 
   const pdf = async () => {
     const el = document.getElementById(target);
@@ -66,7 +68,7 @@ export function ReportActions({ fileName, csv, share, target = "report" }: {
       save(href, `${fileName}.pdf`);
       setTimeout(() => URL.revokeObjectURL(href), 10_000);
     } catch {
-      toast.error("Could not make the PDF — try Print and choose “Save as PDF”.");
+      toast.error(t("Could not make the PDF — try Print and choose “Save as PDF”."));
     } finally {
       el.style.width = old.width; el.style.maxWidth = old.maxWidth;
       delete el.dataset.paper;
@@ -85,10 +87,10 @@ export function ReportActions({ fileName, csv, share, target = "report" }: {
   const btn = "inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl border border-border/70 bg-card px-3 text-xs font-semibold transition-colors hover:bg-muted disabled:opacity-60 sm:flex-none";
   return (
     <div className="flex w-full items-center gap-2 sm:w-auto print:hidden">
-      <button type="button" onClick={() => window.print()} className={cn(btn, "border-transparent bg-linear-to-b from-[oklch(0.87_0.085_86)] to-[oklch(0.7_0.12_76)] text-[oklch(0.2_0.03_60)] hover:brightness-105")}><Printer className="size-3.5" />Print</button>
+      <button type="button" onClick={() => window.print()} className={cn(btn, "border-transparent bg-linear-to-b from-[oklch(0.87_0.085_86)] to-[oklch(0.7_0.12_76)] text-[oklch(0.2_0.03_60)] hover:brightness-105")}><Printer className="size-3.5" />{t("Print")}</button>
       <button type="button" onClick={pdf} disabled={busy} className={btn}>{busy ? <Loader2 className="size-3.5 animate-spin" /> : <FileDown className="size-3.5" />}PDF</button>
-      {csv && <a href={csv} className={btn}><FileSpreadsheet className="size-3.5" />Excel<span className="hidden sm:inline"> (CSV)</span></a>}
-      {share && <button type="button" onClick={shareIt} className={btn}><Share2 className="size-3.5" />Share</button>}
+      {csv && <a href={csv} className={btn}><FileSpreadsheet className="size-3.5" />{t("Excel")}<span className="hidden sm:inline"> (CSV)</span></a>}
+      {share && <button type="button" onClick={shareIt} className={btn}><Share2 className="size-3.5" />{t("Share")}</button>}
     </div>
   );
 }

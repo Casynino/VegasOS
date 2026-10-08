@@ -6,8 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { changePasswordAction } from "./actions";
+import { useT } from "@/i18n/client";
 
 export function ChangePasswordForm({ first }: { first: boolean }) {
+  const t = useT();
   return (
     <ActionForm action={changePasswordAction} resetOnSuccess className="space-y-3">
       {({ pending, fieldErrors: e }) => (
@@ -16,23 +18,23 @@ export function ChangePasswordForm({ first }: { first: boolean }) {
           {/* The first time: only the new password (they just signed in with the temporary one). */}
           {!first && (
             <div className="space-y-1.5">
-              <Label htmlFor="currentPassword">Current password</Label>
+              <Label htmlFor="currentPassword">{t("Current password")}</Label>
               <Input id="currentPassword" name="currentPassword" type="password" autoComplete="current-password" required />
               <FieldError message={e?.currentPassword} />
             </div>
           )}
           <div className="space-y-1.5">
-            <Label htmlFor="newPassword">New password</Label>
+            <Label htmlFor="newPassword">{t("New password")}</Label>
             <Input id="newPassword" name="newPassword" type="password" autoComplete="new-password" required />
-            <p className="text-xs text-muted-foreground">At least 10 characters with letters and numbers.</p>
+            <p className="text-xs text-muted-foreground">{t("At least 10 characters with letters and numbers.")}</p>
             <FieldError message={e?.newPassword} />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="confirmPassword">Confirm new password</Label>
+            <Label htmlFor="confirmPassword">{t("Confirm new password")}</Label>
             <Input id="confirmPassword" name="confirmPassword" type="password" autoComplete="new-password" required />
             <FieldError message={e?.confirmPassword} />
           </div>
-          <Button type="submit" disabled={pending}>{pending && <Loader2 className="animate-spin" />}Change password</Button>
+          <Button type="submit" disabled={pending}>{pending && <Loader2 className="animate-spin" />}{t("Change password")}</Button>
         </>
       )}
     </ActionForm>

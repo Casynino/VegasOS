@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { startWaiterShiftAction } from "../waiter-actions";
 import { CloseShiftDialog, type WorkLeft } from "./close-shift";
 import type { TransferRequest } from "./shared";
+import { useT } from "@/i18n/client";
 
 /**
  * A waiter's shift on their Home (the Live board), as one small switch beside the Restaurant QR:
@@ -21,6 +22,7 @@ export function WaiterShiftSwitch({ me, shift, left }: {
   left: WorkLeft;
 }) {
   const router = useRouter();
+  const t = useT();
   const [pending, start] = useTransition();
   const [closing, setClosing] = useState(false);
   const [transfer, setTransfer] = useState<TransferRequest | null>(null);
@@ -34,7 +36,7 @@ export function WaiterShiftSwitch({ me, shift, left }: {
     setClosing(false); setTransferOpen(false);
     start(async () => {
       const r = await startWaiterShiftAction();
-      if (r.ok) { toast.success(r.message ?? "Your shift has started."); router.refresh(); } else toast.error(r.error, { duration: 8000 });
+      if (r.ok) { toast.success(r.message ?? t("Your shift has started.")); router.refresh(); } else toast.error(r.error, { duration: 8000 });
     });
   };
   const on = !!shift;
@@ -42,7 +44,7 @@ export function WaiterShiftSwitch({ me, shift, left }: {
   return (
     <>
       <button type="button" role="switch" aria-checked={on} disabled={pending} onClick={toggle}
-        aria-label={on ? `On shift since ${shift.since} — tap to end your shift` : "Start my shift"}
+        aria-label={on ? t("On shift since {time} — tap to end your shift", { time: shift.since }) : t("Start my shift")}
         className={cn("group inline-flex h-8 shrink-0 items-center gap-2 rounded-full border bg-card pl-1 pr-3 text-xs font-medium transition-colors disabled:opacity-70 sm:h-9 sm:pl-1.5 sm:pr-3.5 sm:text-sm",
           on ? "border-emerald-500/40 hover:bg-emerald-500/[0.07]" : "border-[oklch(0.75_0.12_80)]/50 hover:bg-[oklch(0.75_0.12_80)]/10")}>
         {/* The switch itself */}
@@ -52,13 +54,16 @@ export function WaiterShiftSwitch({ me, shift, left }: {
           </span>
         </span>
         {on
-          ? <span className="tabular-nums"><strong className="font-semibold text-emerald-700 dark:text-emerald-300">On shift</strong> · since <strong className="font-semibold text-foreground">{shift.since}</strong></span>
-          : <span className="font-semibold text-foreground">Start my shift</span>}
+          ? <span className="tabular-nums">{t.rich("<on>On shift</on> · since <b>{time}</b>", {
+              on: (c) => <strong className="font-semibold text-emerald-700 dark:text-emerald-300">{c}</strong>,
+              b: (c) => <strong className="font-semibold text-foreground">{c}</strong>,
+            }, { time: shift.since })}</span>
+          : <span className="font-semibold text-foreground">{t("Start my shift")}</span>}
       </button>
 
       {shift && <CloseShiftDialog open={closing && !!shift} onOpenChange={setClosing} left={left} onTransfer={askTransfer} />}
       <TransferDialog open={transferOpen} onOpenChange={transferShut} title={transfer?.title ?? ""} what={transfer?.what ?? ""} exceptId={me}
-        onTransfer={(toWaiterId, reason) => transfer ? transfer.run(toWaiterId, reason) : Promise.resolve({ ok: false, error: "Nothing to transfer." })} onDone={() => router.refresh()} />
+        onTransfer={(toWaiterId, reason) => transfer ? transfer.run(toWaiterId, reason) : Promise.resolve({ ok: false, error: t("Nothing to transfer.") })} onDone={() => router.refresh()} />
     </>
   );
 }

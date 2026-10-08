@@ -1,27 +1,30 @@
 import Link from "next/link";
 import { ArrowUpRight, CalendarCheck, Car, Presentation, UtensilsCrossed, Wine } from "lucide-react";
 import { GOLD, GOLD_GRADIENT } from "./menu-picker";
+import { useT } from "@/i18n/client";
+import { msg } from "@/i18n/msg";
 
 /** The hotel's main website, for "Explore the hotel". */
 const EXPLORE = [
-  { href: "/rooms", title: "Rooms & suites", text: "See every room and book your next stay", image: "/images/room-red/room-red-05.webp" },
-  { href: "/gallery", title: "Gallery", text: "Take a look around the hotel", image: "/images/lobby/lobby-02.webp" },
-  { href: "/restaurant", title: "Restaurant", text: "Breakfast to dinner", icon: UtensilsCrossed },
-  { href: "/bar", title: "Bar & lounge", text: "Drinks when the day is done", icon: Wine },
-  { href: "/meeting-room", title: "Meeting room", text: "Book it for your team", icon: Presentation },
-  { href: "/transport", title: "Airport transfer", text: "We pick you up or drop you off", icon: Car },
+  { href: "/rooms", title: msg("Rooms & suites"), text: msg("See every room and book your next stay"), image: "/images/room-red/room-red-05.webp" },
+  { href: "/gallery", title: msg("Gallery"), text: msg("Take a look around the hotel"), image: "/images/lobby/lobby-02.webp" },
+  { href: "/restaurant", title: msg("Restaurant"), text: msg("Breakfast to dinner"), icon: UtensilsCrossed },
+  { href: "/bar", title: msg("Bar & lounge"), text: msg("Drinks when the day is done"), icon: Wine },
+  { href: "/meeting-room", title: msg("Meeting room"), text: msg("Book it for your team"), icon: Presentation },
+  { href: "/transport", title: msg("Airport transfer"), text: msg("We pick you up or drop you off"), icon: Car },
 ] as const;
 
-/** "Explore Vegas": the rest of the hotel on the main website, and booking the next stay. */
+/** "Explore Vegas": the rest of the hotel on the main website, and booking the next stay. Shown inside the guest apps (browser). */
 export function ExploreHotel({ hotel }: { hotel: string }) {
+  const t = useT();
   return (
     <section className="rounded-3xl border border-white/10 bg-white/[0.04] p-4 sm:p-5">
       <div className="flex items-end justify-between gap-3">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.3em]" style={{ color: GOLD }}>Discover more</p>
-          <h2 className="font-display text-2xl sm:text-3xl">Explore {hotel}</h2>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.3em]" style={{ color: GOLD }}>{t("Discover more")}</p>
+          <h2 className="font-display text-2xl sm:text-3xl">{t("Explore {hotel}", { hotel })}</h2>
         </div>
-        <Link href="/" className="hidden shrink-0 items-center gap-1 text-sm font-medium text-white/75 hover:text-white sm:inline-flex">Visit our website<ArrowUpRight className="size-4" /></Link>
+        <Link href="/" className="hidden shrink-0 items-center gap-1 text-sm font-medium text-white/75 hover:text-white sm:inline-flex">{t("Visit our website")}<ArrowUpRight className="size-4" /></Link>
       </div>
       <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3">
         {EXPLORE.map((e) => (
@@ -37,8 +40,8 @@ export function ExploreHotel({ hotel }: { hotel: string }) {
               <span className="absolute right-3 top-3 grid size-10 place-items-center rounded-full bg-[#e3bd6a]/15 ring-1 ring-[#e3bd6a]/40"><e.icon className="size-5" style={{ color: GOLD }} /></span>
             )}
             <span className="relative">
-              <span className="flex items-center gap-1 text-[15px] font-semibold">{e.title}<ArrowUpRight className="size-3.5 opacity-60 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:opacity-100" /></span>
-              <span className="block text-[12px] leading-snug text-white/65">{e.text}</span>
+              <span className="flex items-center gap-1 text-[15px] font-semibold">{t(e.title)}<ArrowUpRight className="size-3.5 opacity-60 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:opacity-100" /></span>
+              <span className="block text-[12px] leading-snug text-white/65">{t(e.text)}</span>
             </span>
           </Link>
         ))}
@@ -46,7 +49,7 @@ export function ExploreHotel({ hotel }: { hotel: string }) {
       <Link href="/book" className="mt-3 flex items-center justify-between gap-3 rounded-2xl p-4 text-[#1a1206]" style={{ background: GOLD_GRADIENT }}>
         <span className="flex items-center gap-3">
           <CalendarCheck className="size-6 shrink-0" />
-          <span className="leading-tight"><span className="block font-semibold">Book your next stay</span><span className="text-[12px] opacity-80">Best rates when you book with us directly</span></span>
+          <span className="leading-tight"><span className="block font-semibold">{t("Book your next stay")}</span><span className="text-[12px] opacity-80">{t("Best rates when you book with us directly")}</span></span>
         </span>
         <ArrowUpRight className="size-5 shrink-0" />
       </Link>

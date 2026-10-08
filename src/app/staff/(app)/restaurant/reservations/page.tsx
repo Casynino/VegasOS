@@ -7,8 +7,12 @@ import { addDays, isBusinessDate, localCalendarDate } from "@/lib/time/business-
 import { orderLocations } from "@/server/services/restaurant-locations";
 import { listTableReservations, reservationClock } from "@/server/services/table-reservations";
 import { ReservationsBoard } from "./reservations-board";
+import { getT } from "@/i18n/server";
 
-export const metadata: Metadata = { title: "Table reservations" };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT();
+  return { title: t("Table reservations") };
+}
 export const dynamic = "force-dynamic";
 
 /**

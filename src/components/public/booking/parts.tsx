@@ -1,20 +1,21 @@
 import { AlertCircle } from "lucide-react";
+import { englishT, type T } from "@/i18n/translate";
 import { cn } from "@/lib/utils";
 
 /**
- * Small shared pieces of the booking screens (server- and client-safe, no hooks).
+ * Small shared pieces of the booking screens (server- and client-safe, no hooks). The helpers take the person's
+ * translator (`await getT()` on the server, `useT()` in the browser); without one they answer in English.
  */
 
-const shortDate = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
-
-/** "2026-10-10" → "Sat 10 Oct" (business dates are plain calendar days). */
-export function formatDay(date: string) {
-  return shortDate.format(new Date(`${date}T00:00:00Z`));
+/** "2026-10-10" → "Sat 10 Oct" / "10月10日周六" (business dates are plain calendar days). */
+export function formatDay(date: string, t: T = englishT) {
+  return t.dayMonth(date);
 }
 
 /** "2 adults, 1 child". */
-export function guestsLabel(adults: number, children: number) {
-  return `${adults} adult${adults === 1 ? "" : "s"}${children ? `, ${children} child${children === 1 ? "" : "ren"}` : ""}`;
+export function guestsLabel(adults: number, children: number, t: T = englishT) {
+  const a = t.plural(adults, "{n} adult", "{n} adults");
+  return children ? t("{adults}, {children}", { adults: a, children: t.plural(children, "{n} child", "{n} children") }) : a;
 }
 
 /**

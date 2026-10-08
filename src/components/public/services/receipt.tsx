@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { CircleCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useT } from "@/i18n/client";
 import { InfoList, type InfoItem } from "../kit/info-list";
 import { HudLabel } from "../kit/hud";
 import { typeScale } from "../kit/tokens";
@@ -31,6 +32,7 @@ export function Receipt({
   actions?: React.ReactNode;
   className?: string;
 }) {
+  const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = ref.current;
@@ -56,7 +58,7 @@ export function Receipt({
           <CircleCheck className="size-5 shrink-0 text-pub-eyebrow" strokeWidth={1.6} aria-hidden="true" />
           <Eyebrow>{eyebrow}</Eyebrow>
         </div>
-        <HudLabel tick={false} className="hidden sm:inline-flex">Reference kept</HudLabel>
+        <HudLabel tick={false} className="hidden sm:inline-flex">{t("Reference kept")}</HudLabel>
       </div>
       <h3 className={cn(typeScale.feature, "mt-4 text-pub-fg")}>{title}</h3>
       <p className={cn(typeScale.body, "mt-3 text-pub-muted")}>{line}</p>

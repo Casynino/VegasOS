@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Image from "next/image";
 import { Expand, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useT } from "@/i18n/client";
 import { blurFor } from "../blur-data";
 import { useLightbox } from "../lightbox";
 import type { GalleryCategory, GalleryImage } from "../content";
@@ -39,6 +40,7 @@ const rank = (src: string) => { const i = FEATURED.indexOf(src); return i === -1
 export interface GalleryChapter { key: string; label: string; categories: GalleryCategory[] }
 
 function Mosaic({ images, rhythm, onOpen, offset }: { images: GalleryImage[]; rhythm: string[]; onOpen: (i: number) => void; offset: number }) {
+  const t = useT();
   return (
     <ul className="grid grid-flow-dense auto-rows-[42vw] grid-cols-2 gap-3 sm:auto-rows-[28vw] lg:auto-rows-[7.25rem] lg:grid-cols-12 lg:gap-4 xl:auto-rows-[8.25rem]">
       {images.map((img, i) => (
@@ -52,7 +54,7 @@ function Mosaic({ images, rhythm, onOpen, offset }: { images: GalleryImage[]; rh
               <span className="line-clamp-2 text-sm text-white/90">{img.alt}</span>
               <span className="grid size-9 shrink-0 place-items-center rounded-full border border-white/30 bg-white/10 text-white backdrop-blur-md"><Expand className="size-4" aria-hidden="true" /></span>
             </span>
-            <span className="sr-only">Open photo: {img.alt}</span>
+            <span className="sr-only">{t("Open photo: {alt}", { alt: img.alt })}</span>
           </button>
         </li>
       ))}
@@ -66,6 +68,7 @@ function Mosaic({ images, rhythm, onOpen, offset }: { images: GalleryImage[]; rh
  * "Show all", and one full-screen lightbox across everything visible.
  */
 export function GalleryExperience({ images, chapters: defs }: { images: GalleryImage[]; chapters: GalleryChapter[] }) {
+  const t = useT();
   const [filter, setFilter] = useState<string>("all");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const chapters = useMemo(
@@ -86,14 +89,14 @@ export function GalleryExperience({ images, chapters: defs }: { images: GalleryI
 
   return (
     <div>
-      <div role="group" aria-label="Filter photos" className="relative z-20 mx-auto mb-14 flex w-fit sm:sticky sm:top-20 max-w-full gap-1 overflow-x-auto rounded-full p-1.5 vlh-glass vlh-hud [scrollbar-width:none]">
-        {[{ key: "all" as const, label: "All", count: images.length }, ...chapters.map((c) => ({ key: c.key, label: c.label, count: c.all.length }))].map((t) => (
-          <button key={t.key} type="button" aria-pressed={filter === t.key} onClick={() => setFilter(t.key)}
+      <div role="group" aria-label={t("Filter photos")} className="relative z-20 mx-auto mb-14 flex w-fit sm:sticky sm:top-20 max-w-full gap-1 overflow-x-auto rounded-full p-1.5 vlh-glass vlh-hud [scrollbar-width:none]">
+        {[{ key: "all" as const, label: t("All"), count: images.length }, ...chapters.map((c) => ({ key: c.key, label: t(c.label), count: c.all.length }))].map((tab) => (
+          <button key={tab.key} type="button" aria-pressed={filter === tab.key} onClick={() => setFilter(tab.key)}
             className={cn(
               "shrink-0 rounded-full px-4 py-2 text-xs font-medium uppercase tracking-[0.16em] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold",
-              filter === t.key ? "bg-gold text-[#15120e] shadow-[0_0_20px_oklch(0.78_0.12_80/0.5)]" : "text-white/75 hover:bg-white/10 hover:text-white",
+              filter === tab.key ? "bg-gold text-[#15120e] shadow-[0_0_20px_oklch(0.78_0.12_80/0.5)]" : "text-white/75 hover:bg-white/10 hover:text-white",
             )}>
-            {t.label} <span className="ml-1 opacity-60">{t.count}</span>
+            {tab.label} <span className="ml-1 opacity-60">{tab.count}</span>
           </button>
         ))}
       </div>
@@ -106,16 +109,16 @@ export function GalleryExperience({ images, chapters: defs }: { images: GalleryI
               <div className="mb-8 flex items-end justify-between gap-6 border-b border-white/10 pb-5">
                 <h2 id={`g-${c.key}`} className="flex items-baseline gap-5 font-display text-[clamp(2.2rem,4.5vw,4.4rem)] leading-none text-white">
                   <span className="vlh-outline font-display text-[0.7em] text-gold" aria-hidden="true">{String(ci + 1).padStart(2, "0")}</span>
-                  {c.label}
+                  {t(c.label)}
                 </h2>
-                <p className="shrink-0 font-mono text-xs uppercase tracking-[0.25em] text-white/50">{c.all.length} photo{c.all.length === 1 ? "" : "s"}</p>
+                <p className="shrink-0 font-mono text-xs uppercase tracking-[0.25em] text-white/50">{t.plural(c.all.length, "{n} photo", "{n} photos")}</p>
               </div>
               <Mosaic images={c.shown} rhythm={ci % 2 === 0 ? RHYTHM_A : RHYTHM_B} onOpen={open} offset={start} />
               {filter === "all" && c.all.length > c.preview && !expanded[c.key] && (
                 <div className="mt-8 flex justify-center">
                   <button type="button" onClick={() => setExpanded((e) => ({ ...e, [c.key]: true }))}
                     className="inline-flex items-center gap-2 rounded-full border border-white/20 px-6 py-3 text-sm uppercase tracking-[0.16em] text-white/80 transition-colors hover:border-gold hover:text-white">
-                    <Plus className="size-4 text-gold" aria-hidden="true" /> Show all {c.all.length}
+                    <Plus className="size-4 text-gold" aria-hidden="true" /> {t("Show all {count}", { count: c.all.length })}
                   </button>
                 </div>
               )}

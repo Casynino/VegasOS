@@ -9,8 +9,11 @@ import { businessDateOf, businessDayBounds } from "@/lib/time/business-date";
 import { LiveRefresh } from "@/components/live-refresh";
 import { cn } from "@/lib/utils";
 import { NewRequestDialog, RequestCard, type RequestView } from "./request-forms";
+import { getT } from "@/i18n/server";
 
-export const metadata: Metadata = { title: "Guest requests" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getT())("Guest requests") };
+}
 export const dynamic = "force-dynamic";
 
 const RANK: Record<string, number> = { URGENT: 0, HIGH: 1, NORMAL: 2, LOW: 3 };
@@ -21,7 +24,7 @@ const RANK: Record<string, number> = { URGENT: 0, HIGH: 1, NORMAL: 2, LOW: 3 };
  */
 export default async function RequestsPage() {
   const user = await requirePagePermission("requests.view");
-  const s = await getSettings();
+  const [s, t] = await Promise.all([getSettings(), getT()]);
   const at = new Date();
   const { start } = businessDayBounds(businessDateOf(at, businessDayConfig(s)), businessDayConfig(s));
   const [rows, inHouse, handlers] = await Promise.all([
@@ -55,9 +58,9 @@ export default async function RequestsPage() {
   const fromGuests = waiting.filter((r) => r.source !== "STAFF").length;
 
   const columns = [
-    { key: "new", title: "New", sub: "Waiting for someone to accept", list: waiting, dot: "bg-sky-400", empty: "Nothing waiting. New requests ring the bell." },
-    { key: "on", title: "On it", sub: "Accepted — being handled", list: onIt, dot: "bg-amber-400", empty: "Nobody is working on a request right now." },
-    { key: "done", title: "Done today", sub: "Finished since the day began", list: done, dot: "bg-emerald-400", empty: "Nothing finished yet today." },
+    { key: "new", title: t("New"), sub: t("Waiting for someone to accept"), list: waiting, dot: "bg-sky-400", empty: t("Nothing waiting. New requests ring the bell.") },
+    { key: "on", title: t("On it"), sub: t("Accepted — being handled"), list: onIt, dot: "bg-amber-400", empty: t("Nobody is working on a request right now.") },
+    { key: "done", title: t("Done today"), sub: t("Finished since the day began"), list: done, dot: "bg-emerald-400", empty: t("Nothing finished yet today.") },
   ];
 
   return (
@@ -69,18 +72,18 @@ export default async function RequestsPage() {
         <div className="relative flex flex-wrap items-center gap-4 px-5 pb-4 pt-5 sm:px-6">
           <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-sky-500/20 text-sky-100 ring-1 ring-sky-300/30"><ConciergeBell className="size-6" /></span>
           <div className="min-w-[12rem] flex-1">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#f0cf86]">Guest care</p>
-            <h1 className="font-display text-[28px] font-semibold leading-tight">Guest requests</h1>
-            <p className="mt-0.5 text-xs text-white/60">Towels, cleaning, repairs, help — accept it, handle it, mark it done.{boss ? " Give one to a person when it needs someone." : ""}</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#f0cf86]">{t("Guest care")}</p>
+            <h1 className="font-display text-[28px] font-semibold leading-tight">{t("Guest requests")}</h1>
+            <p className="mt-0.5 text-xs text-white/60">{t("Towels, cleaning, repairs, help — accept it, handle it, mark it done.")}{boss ? ` ${t("Give one to a person when it needs someone.")}` : ""}</p>
           </div>
           {manage && <NewRequestDialog guests={guests} staff={handlers} hero />}
         </div>
         <dl className="relative grid grid-cols-2 gap-px border-t border-white/10 bg-white/5 sm:grid-cols-4">
           {[
-            { label: "New", value: waiting.length, sub: fromGuests ? `${fromGuests} from guests' phones` : "waiting to be accepted", tone: waiting.length ? "text-sky-200" : "text-white/50" },
-            { label: "Yours", value: yours, sub: "given to you or accepted", tone: yours ? "text-violet-200" : "text-white/50" },
-            { label: "On it", value: onIt.length, sub: "being handled now", tone: onIt.length ? "text-amber-200" : "text-white/50" },
-            { label: "Done today", value: done.length, sub: "finished", tone: "text-emerald-300" },
+            { label: t("New"), value: waiting.length, sub: fromGuests ? t("{n} from guests' phones", { n: fromGuests }) : t("waiting to be accepted"), tone: waiting.length ? "text-sky-200" : "text-white/50" },
+            { label: t("Yours"), value: yours, sub: t("given to you or accepted"), tone: yours ? "text-violet-200" : "text-white/50" },
+            { label: t("On it"), value: onIt.length, sub: t("being handled now"), tone: onIt.length ? "text-amber-200" : "text-white/50" },
+            { label: t("Done today"), value: done.length, sub: t("finished"), tone: "text-emerald-300" },
           ].map((x) => (
             <div key={x.label} className="bg-[#15110c] px-5 py-3">
               <dt className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-white/50">{x.label}</dt>

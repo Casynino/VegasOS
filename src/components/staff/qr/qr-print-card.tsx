@@ -7,6 +7,7 @@ import { Camera, Download, ExternalLink, Loader2, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { NETWORK_MARKS } from "@/components/payments/networks";
+import { useT } from "@/i18n/client";
 
 /**
  * A room / the meeting room / the public menu card — or a restaurant place: a table, the counter, the main restaurant QR —
@@ -37,12 +38,13 @@ export function saveFile(href: string, name: string) {
 export function QrPreview({ card, hotel, phone, printHref, fileName, className }: {
   card: Printable; hotel: string; phone: string | null; printHref: string; fileName: string; className?: string;
 }) {
+  const t = useT();
   const [busy, setBusy] = useState(false);
   const download = async () => {
     const node = document.getElementById(`qr-${card.id}`);
     if (!node) return;
     setBusy(true);
-    try { saveFile(await snapQrCard(node), `${fileName}.jpg`); } catch { toast.error("Could not make the image — try again."); } finally { setBusy(false); }
+    try { saveFile(await snapQrCard(node), `${fileName}.jpg`); } catch { toast.error(t("Could not make the image — try again.")); } finally { setBusy(false); }
   };
   return (
     <div className={cn("@container", className)}>
@@ -50,14 +52,14 @@ export function QrPreview({ card, hotel, phone, printHref, fileName, className }
       <div className="w-[220px] shrink-0"><QrPrintCard card={card} hotel={hotel} phone={phone} /></div>
       <div className="w-full min-w-0 space-y-2 text-center @[30rem]:text-left">
         <p className="text-sm text-muted-foreground">{card.kind === "public"
-          ? "Put it on restaurant tables, the bar and reception — anyone can order (dine in, takeaway, pickup)."
+          ? t("Put it on restaurant tables, the bar and reception — anyone can order (dine in, takeaway, pickup).")
           : card.kind === "booking"
-            ? "Put it at reception, the entrance, in rooms and on flyers — guests see our rooms, pick their dates, book and pay."
-            : "Put it in the room. Scanning it opens the guest checked in to this room right now — their stay, bill and ordering. When the room is free it shows the room and the menu."}</p>
+            ? t("Put it at reception, the entrance, in rooms and on flyers — guests see our rooms, pick their dates, book and pay.")
+            : t("Put it in the room. Scanning it opens the guest checked in to this room right now — their stay, bill and ordering. When the room is free it shows the room and the menu.")}</p>
         <div className="flex flex-wrap justify-center gap-2 @[30rem]:justify-start">
-          <Button size="sm" disabled={busy} onClick={download}>{busy ? <Loader2 className="animate-spin" /> : <Download />}Download</Button>
-          <a href={printHref} target="_blank" rel="noopener" className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium hover:bg-muted"><Printer className="size-4" />Print</a>
-          <a href={card.kind === "public" || card.kind === "booking" ? card.url : `${card.url}?view=guest`} target="_blank" rel="noopener" className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium hover:bg-muted"><ExternalLink className="size-4" />See what guests see</a>
+          <Button size="sm" disabled={busy} onClick={download}>{busy ? <Loader2 className="animate-spin" /> : <Download />}{t("Download")}</Button>
+          <a href={printHref} target="_blank" rel="noopener" className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium hover:bg-muted"><Printer className="size-4" />{t("Print")}</a>
+          <a href={card.kind === "public" || card.kind === "booking" ? card.url : `${card.url}?view=guest`} target="_blank" rel="noopener" className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium hover:bg-muted"><ExternalLink className="size-4" />{t("See what guests see")}</a>
         </div>
       </div>
     </div>

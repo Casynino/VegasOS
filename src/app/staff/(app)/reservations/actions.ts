@@ -29,6 +29,8 @@ import { changeRoomStatus } from "@/server/services/rooms";
 import { dayUseStay, meetingStay, overnightStay, walkInStay, StayError, type Stay } from "@/lib/time/stay";
 import { timeRange } from "@/lib/meeting";
 import { fromDbDate, parseTimeToMinutes, toDbDate, zonedInstant } from "@/lib/time/business-date";
+import { msg, msgf } from "@/i18n/msg";
+import { getT } from "@/i18n/server";
 
 async function actorFor(user: CurrentUser): Promise<Actor> {
   const { ipAddress } = await requestMeta();
@@ -41,7 +43,7 @@ function refresh(id?: string) {
   if (id) revalidatePath(`/staff/reservations/${id}`);
 }
 
-const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a date.");
+const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, msg("Choose a date."));
 const StaySchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("overnight"), arrivalDate: date, departureDate: date }),
   z.object({ kind: z.literal("walkIn"), nights: z.coerce.number().int().min(1).max(90) }),
@@ -82,7 +84,7 @@ async function previewStay(req: StayRequest): Promise<Stay> {
     if (req.kind === "meeting") return meetingStay(req, cfg);
     return dayUseStay(req, cfg);
   } catch (e) {
-    if (e instanceof StayError) throw new AppError(e.message);
+    if (e instanceof StayError) throw new AppError(e.localized ?? e.message);
     throw e;
   }
 }
@@ -125,7 +127,7 @@ export async function checkAvailabilityAction(input: { stay: StayInput; sourceCo
     const today = await businessToday();
     const meeting = input.stay.kind === "meeting";
     const category = meeting ? "MEETING_ROOM" as const : "GUEST_ROOM" as const;
-    if (input.stay.kind !== "walkIn" && stay.arrivalDate < today) throw new AppError(meeting ? "The meeting date cannot be in the past." : "Arrival date cannot be in the past.");
+    if (input.stay.kind !== "walkIn" && stay.arrivalDate < today) throw new AppError(meeting ? msg("The meeting date cannot be in the past.") : msg("Arrival date cannot be in the past."));
     if (meeting && stay.endAt <= new Date()) throw new AppError("That meeting time has already passed.");
     const [free, types, allRooms] = await Promise.all([
       findAvailableRooms({ stay, category }),
@@ -135,7 +137,9 @@ export async function checkAvailabilityAction(input: { stay: StayInput; sourceCo
     const channel = channelFor(input.sourceCode);
     const { promos, rules } = stay.isDayUse ? { promos: [], rules: [] } : await loadPricing(db, stay.arrivalDate, addDaysIso(stay.departureDate, -1));
     const promoById = new Map(promos.map((p) => [p.id, p]));
-    const promoInfo = (p: { id: string; name: string } | null) => (p ? { name: p.name, label: promoLabel(promoById.get(p.id)!) } : null);
+    // The promotion's label ("20% off") is only shown: in the language of whoever is booking.
+    const words = await getT();
+    const promoInfo = (p: { id: string; name: string } | null) => (p ? { name: p.name, label: promoLabel(promoById.get(p.id)!, words) } : null);
     const walkIn = !meeting && (input.checkInNow || input.stay.kind === "walkIn");
     const sellable = new Set(free.filter((f) => !walkIn || ["AVAILABLE", "READY"].includes(f.status)).map((f) => f.id));
     const freeIds = new Set(free.map((f) => f.id));
@@ -230,17 +234,17 @@ export async function checkAvailabilityAction(input: { stay: StayInput; sourceCo
 }
 
 const CreateSchema = z.object({
-  sourceCode: z.string().min(1, "Choose a booking source."),
+  sourceCode: z.string().min(1, msg("Choose a booking source.")),
   externalReference: z.string().trim().max(60).optional(),
   status: z.enum(["INQUIRY", "RESERVED", "CONFIRMED"]).default("RESERVED"),
   checkInNow: z.boolean().default(false),
   stay: StaySchema,
   guest: z.object({
     id: z.string().optional().nullable(),
-    fullName: z.string().trim().min(2, "Guest name is required.").max(120),
+    fullName: z.string().trim().min(2, msg("Guest name is required.")).max(120),
     // Every customer is saved with a phone: booking details and the welcome go to it.
-    phone: z.string().trim().max(30).refine(validPhone, "Enter the guest's phone number (e.g. 0712 345 678 or +44…)."),
-    email: z.union([z.literal(""), z.string().trim().email("Enter a valid email.")]).optional(),
+    phone: z.string().trim().max(30).refine(validPhone, msg("Enter the guest's phone number (e.g. 0712 345 678 or +44…).")),
+    email: z.union([z.literal(""), z.string().trim().email(msg("Enter a valid email."))]).optional(),
     idType: z.string().trim().max(40).optional(),
     idNumber: z.string().trim().max(60).optional(),
     nationality: z.string().trim().max(60).optional(),
@@ -254,7 +258,7 @@ const CreateSchema = z.object({
     covers: z.array(z.enum(BILLING_GROUP_CODES)).max(10).default([]),
     paymentTermDays: z.coerce.number().int().min(0).max(180).nullable().optional(),
   }).nullable().optional(),
-  creditOverride: z.object({ reason: z.string().trim().min(3, "Say why the company may go over its limit.").max(300) }).nullable().optional(),
+  creditOverride: z.object({ reason: z.string().trim().min(3, msg("Say why the company may go over its limit.")).max(300) }).nullable().optional(),
   /** Company name when the company has no company account (meeting room bookings). */
   companyName: z.string().trim().max(120).optional(),
   rooms: z.array(z.object({
@@ -265,25 +269,25 @@ const CreateSchema = z.object({
     children: z.coerce.number().int().min(0).max(10),
     discountPerNight: z.coerce.number().int().min(0).optional().nullable(),
     discountReason: z.string().trim().max(200).optional().nullable(),
-  })).min(1, "Add at least one room.").max(10),
+  })).min(1, msg("Add at least one room.")).max(10),
   charges: z.array(z.object({
     type: z.enum(CHARGE_CODES),
-    item: z.string().trim().min(1, "Say what the item is.").max(80),
+    item: z.string().trim().min(1, msg("Say what the item is.")).max(80),
     qty: z.number().int().min(1).max(99),
-    unitPrice: z.number().int().positive("Enter a price."),
+    unitPrice: z.number().int().positive(msg("Enter a price.")),
   })).max(20).nullable().optional(),
   // Food & drinks from the menu: only the item and how many — prices come from the menu on the server.
   menuItems: z.array(z.object({ menuItemId: z.string().min(1), quantity: z.number().int().min(1).max(99) })).max(40).nullable().optional(),
   menuRoomService: z.boolean().optional(),
   payment: z.object({
-    amount: z.coerce.number().int().positive("Enter the amount received."),
-    accountId: z.string().min(1, "Choose where the money was received."),
+    amount: z.coerce.number().int().positive(msg("Enter the amount received.")),
+    accountId: z.string().min(1, msg("Choose where the money was received.")),
     reference: z.string().trim().max(80).optional(),
   }).nullable().optional(),
   /** "Send to phone": a mobile-money prompt (nTZS) to the guest right after the booking is saved — paid on their phone. */
   prompt: z.object({
-    amount: z.coerce.number().int().positive("Enter the amount."),
-    phone: z.string().trim().min(9, "Enter the guest's phone number.").max(30),
+    amount: z.coerce.number().int().positive(msg("Enter the amount.")),
+    phone: z.string().trim().min(9, msg("Enter the guest's phone number.")).max(30),
   }).nullable().optional(),
   specialRequests: z.string().trim().max(1000).optional(),
   internalNotes: z.string().trim().max(1000).optional(),
@@ -313,22 +317,24 @@ export async function createReservationAction(input: z.input<typeof CreateSchema
         const mp = await requestMobilePayment({ purpose: "RESERVATION", reservationId: r.id, amount: prompt.amount }, prompt.phone, { ...actor, userId: user.id });
         sent = { id: mp.id };
       } catch (e) {
-        promptError = e instanceof AppError ? e.message : "The payment request could not be sent.";
+        // Shown to the person who made the booking: in their language.
+        const t = await getT();
+        promptError = e instanceof AppError ? (e.i18n ? t(e.i18n.key, e.i18n.vars) : t(e.message)) : t("The payment request could not be sent.");
       }
     }
     refresh();
     return { id: r.id, reference: r.reference, prompt: sent, promptError };
-  }, "Booking saved.");
+  }, msg("Booking saved."));
 }
 
 const IdSchema = z.object({ reservationId: z.string().min(1) });
 
 const MeetingChangeSchema = z.object({
   reservationId: z.string().min(1),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a date."),
-  startTime: z.string().regex(/^\d{2}:\d{2}$/, "Choose a start time."),
-  endTime: z.string().regex(/^\d{2}:\d{2}$/, "Choose an end time."),
-  attendees: z.coerce.number().int().min(1, "At least 1 person.").max(500),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, msg("Choose a date.")),
+  startTime: z.string().regex(/^\d{2}:\d{2}$/, msg("Choose a start time.")),
+  endTime: z.string().regex(/^\d{2}:\d{2}$/, msg("Choose an end time.")),
+  attendees: z.coerce.number().int().min(1, msg("At least 1 person.")).max(500),
   companyName: z.string().trim().max(120).optional(),
   specialRequests: z.string().trim().max(1000).optional(),
   internalNotes: z.string().trim().max(1000).optional(),
@@ -348,7 +354,7 @@ export async function changeMeetingAction(input: z.input<typeof MeetingChangeSch
     refresh(d.reservationId);
     revalidatePath("/staff/meeting-room");
     return r;
-  }, "Meeting updated.");
+  }, msg("Meeting updated."));
 }
 
 export async function confirmAction(input: { reservationId: string }) {
@@ -358,7 +364,7 @@ export async function confirmAction(input: { reservationId: string }) {
     await confirmReservation(reservationId, await actorFor(user));
     refresh(reservationId);
     return null;
-  }, "Done.");
+  }, msg("Done."));
 }
 
 export async function checkInAction(input: { reservationId: string; roomIds?: string[] }) {
@@ -368,7 +374,7 @@ export async function checkInAction(input: { reservationId: string; roomIds?: st
     const res = await checkIn(reservationId, await actorFor(user), input.roomIds ?? null);
     refresh(reservationId);
     return res;
-  }, "Guest checked in.");
+  }, msg("Guest checked in."));
 }
 
 export async function checkOutAction(input: { reservationId: string; roomIds?: string[]; allowBalance?: boolean; earlyReason?: string; overrideReason?: string }) {
@@ -380,7 +386,7 @@ export async function checkOutAction(input: { reservationId: string; roomIds?: s
     });
     refresh(reservationId);
     return res;
-  }, "Guest checked out. Room marked dirty for housekeeping.");
+  }, msg("Guest checked out. Room marked dirty for housekeeping."));
 }
 
 /** Start Meeting: the meeting room booking goes "In use" (check-in underneath: actual start time and who). */
@@ -392,7 +398,7 @@ export async function startMeetingAction(input: { reservationId: string }) {
     refresh(reservationId);
     revalidatePath("/staff/meeting-room");
     return res;
-  }, "Meeting started — the room is in use.");
+  }, msg("Meeting started — the room is in use."));
 }
 
 /** Complete Meeting: actual end time and who; the room is available again. The bill must be settled (or a manager accepts a balance). */
@@ -404,14 +410,14 @@ export async function completeMeetingAction(input: { reservationId: string; allo
     refresh(reservationId);
     revalidatePath("/staff/meeting-room");
     return res;
-  }, "Meeting completed — the room is available again.");
+  }, msg("Meeting completed — the room is available again."));
 }
 
 /** No stay without the guest's phone: the one typed in now, or the one already on file. */
 async function requireGuestPhone(reservationId: string, typed?: string | null) {
   if (typed && validPhone(typed)) return;
   const r = await db.reservation.findUnique({ where: { id: reservationId }, select: { guest: { select: { phone: true } } } });
-  if (!r?.guest.phone) throw new AppError("Add the guest's phone number — every stay needs one.", "VALIDATION", { phone: "Required" });
+  if (!r?.guest.phone) throw new AppError("Add the guest's phone number — every stay needs one.", "VALIDATION", { phone: msg("Required") });
 }
 
 const HereSchema = z.object({
@@ -445,7 +451,7 @@ export async function checkInHereAction(input: z.input<typeof HereSchema>) {
     const today = await businessToday();
     const original = { arrivalDate: rr.arrivalDate.toISOString().slice(0, 10), departureDate: rr.departureDate.toISOString().slice(0, 10) };
     const moving = d.moveArrivalToToday && original.arrivalDate > today;
-    if (original.arrivalDate > today && !moving) throw new AppError(`This booking starts ${original.arrivalDate}. Check in early to move the arrival to today.`);
+    if (original.arrivalDate > today && !moving) throw new AppError(msgf("This booking starts {date}. Check in early to move the arrival to today.", { date: original.arrivalDate }));
     if (d.markReady) {
       if (!user.permissions.has("rooms.status.update")) throw new AppError("You cannot change room housekeeping status.", "FORBIDDEN");
       const room = await db.room.findUniqueOrThrow({ where: { id: rr.roomId } });
@@ -466,7 +472,7 @@ export async function checkInHereAction(input: z.input<typeof HereSchema>) {
       if (moving) await changeStayDates(rr.id, original, actor).catch(() => undefined);
       throw e;
     }
-  }, "Guest checked in. Room is now occupied.");
+  }, msg("Guest checked in. Room is now occupied."));
 }
 
 /** The exact final bill if this guest checks out now (extra nights / early departure worked out by the server). */
@@ -484,7 +490,7 @@ const SettleSchema = z.object({
   earlyReason: z.string().trim().max(300).optional(),
   allowBalance: z.boolean().default(false),
   overrideReason: z.string().trim().max(300).optional(),
-  payment: z.object({ amount: z.number().int().positive("Enter the amount received."), accountId: z.string().min(1, "Choose where the money was received."), reference: z.string().trim().max(80).optional() }).nullable().optional(),
+  payment: z.object({ amount: z.number().int().positive(msg("Enter the amount received.")), accountId: z.string().min(1, msg("Choose where the money was received.")), reference: z.string().trim().max(80).optional() }).nullable().optional(),
   invoiceMode: z.enum(["ISSUE", "OPEN"]).nullable().optional(),
 });
 
@@ -510,7 +516,7 @@ const QuickCheckInSchema = z.object({
   guest: z.object({
     fullName: z.string().trim().max(120).optional(),
     phone: z.string().trim().max(30).optional(),
-    email: z.union([z.literal(""), z.string().trim().email("Enter a valid email.").max(120)]).optional(),
+    email: z.union([z.literal(""), z.string().trim().email(msg("Enter a valid email.")).max(120)]).optional(),
     idType: z.string().trim().max(30).optional(),
     idNumber: z.string().trim().max(60).optional(),
     nationality: z.string().trim().max(60).optional(),
@@ -519,8 +525,8 @@ const QuickCheckInSchema = z.object({
   /** New stay dates set on the check-in screen (an early guest moved to today, a stay made longer…) — applied first. */
   dates: z.array(z.object({
     reservationRoomId: z.string().min(1),
-    arrivalDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose the check-in date."),
-    departureDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose the check-out date."),
+    arrivalDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, msg("Choose the check-in date.")),
+    departureDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, msg("Choose the check-out date.")),
   })).max(20).default([]),
 });
 
@@ -559,7 +565,12 @@ export async function quickCheckInAction(input: z.input<typeof QuickCheckInSchem
       const warnings = [...(res.warnings ?? [])];
       for (const x of changes.filter(sameArrival)) {
         try { await changeStayDates(x.reservationRoomId, { arrivalDate: x.arrivalDate, departureDate: x.departureDate }, actor); }
-        catch (e) { warnings.push(`Checked in — but the new check-out date was not saved: ${e instanceof AppError ? e.message : "change it on the booking."}`); }
+        catch (e) {
+          // Shown to the receptionist as a warning: in their language.
+          const t = await getT();
+          const why = e instanceof AppError ? (e.i18n ? t(e.i18n.key, e.i18n.vars) : t(e.message)) : t("change it on the booking.");
+          warnings.push(t("Checked in — but the new check-out date was not saved: {reason}", { reason: why }));
+        }
       }
       refresh(d.reservationId);
       revalidatePath("/staff/rooms");
@@ -568,7 +579,7 @@ export async function quickCheckInAction(input: z.input<typeof QuickCheckInSchem
       for (const m of moved.reverse()) await changeStayDates(m.id, m.original, actor, { roomId: m.roomId }).catch(() => undefined);
       throw e;
     }
-  }, "Guest checked in. Room is now occupied.");
+  }, msg("Guest checked in. Room is now occupied."));
 }
 
 export async function cancelAction(input: { reservationId: string; reason: string; keepPayment?: boolean | null }) {
@@ -578,7 +589,7 @@ export async function cancelAction(input: { reservationId: string; reason: strin
     await cancelReservation(reservationId, await actorFor(user), String(input.reason ?? ""), { keepPayment: input.keepPayment ?? null });
     refresh(reservationId);
     return null;
-  }, "Booking cancelled.");
+  }, msg("Booking cancelled."));
 }
 
 export async function noShowAction(input: { reservationId: string; release?: boolean }) {
@@ -588,7 +599,7 @@ export async function noShowAction(input: { reservationId: string; release?: boo
     await markNoShow(reservationId, await actorFor(user), new Date(), { release: !!input.release });
     refresh(reservationId);
     return null;
-  }, "Marked as no-show.");
+  }, msg("Marked as no-show."));
 }
 
 export async function reassignRoomAction(input: { reservationId: string; reservationRoomId: string; roomId: string; reason?: string; chargeDifference?: boolean }) {
@@ -597,7 +608,7 @@ export async function reassignRoomAction(input: { reservationId: string; reserva
     await reassignRoom(input.reservationRoomId, input.roomId, await actorFor(user), input.reason, { chargeDifference: !!input.chargeDifference });
     refresh(input.reservationId);
     return null;
-  }, "Room changed.");
+  }, msg("Room changed."));
 }
 
 export async function changeDatesAction(input: { reservationId: string; reservationRoomId: string; arrivalDate: string; departureDate: string; roomId?: string | null; reason?: string; payment?: { accountId: string; reference?: string } | null }) {
@@ -608,7 +619,7 @@ export async function changeDatesAction(input: { reservationId: string; reservat
     await changeStayDates(input.reservationRoomId, { arrivalDate: input.arrivalDate, departureDate: input.departureDate }, await actorFor(user), { roomId: input.roomId ?? null, reason: input.reason ?? null, payment: input.payment ?? null });
     refresh(input.reservationId);
     return null;
-  }, "Dates updated.");
+  }, msg("Dates updated."));
 }
 
 /** Before changing dates: is the room free, which rooms are, and what does it cost (system prices only). */
@@ -628,7 +639,7 @@ export async function correctPaymentAction(input: { reservationId?: string; paym
     refresh(input.reservationId);
     revalidatePath("/staff/finance", "layout");
     return null;
-  }, "Payment corrected — the amount is unchanged.");
+  }, msg("Payment corrected — the amount is unchanged."));
 }
 
 export async function lateArrivalAction(input: { reservationId: string; eta?: string | null; note?: string | null }) {
@@ -637,7 +648,7 @@ export async function lateArrivalAction(input: { reservationId: string; eta?: st
     await noteLateArrival(input.reservationId, { eta: input.eta, note: input.note }, await actorFor(user));
     refresh(input.reservationId);
     return null;
-  }, "Late arrival noted — the room stays reserved.");
+  }, msg("Late arrival noted — the room stays reserved."));
 }
 
 export async function reinstateNoShowAction(input: { reservationId: string; note: string }) {
@@ -646,7 +657,7 @@ export async function reinstateNoShowAction(input: { reservationId: string; note
     await reinstateNoShow(input.reservationId, input.note ?? "", await actorFor(user));
     refresh(input.reservationId);
     return null;
-  }, "Booking active again — marked as a late arrival.");
+  }, msg("Booking active again — marked as a late arrival."));
 }
 
 export async function releaseNoShowAction(input: { reservationId: string; reason?: string }) {
@@ -655,7 +666,7 @@ export async function releaseNoShowAction(input: { reservationId: string; reason
     await releaseNoShow(input.reservationId, await actorFor(user), input.reason ?? null);
     refresh(input.reservationId);
     return null;
-  }, "Room released — it can be sold again. The booking stays as a no-show.");
+  }, msg("Room released — it can be sold again. The booking stays as a no-show."));
 }
 
 export async function changeDiscountAction(input: { reservationId: string; reservationRoomId: string; discountPerNight: number; reason: string }) {
@@ -666,13 +677,13 @@ export async function changeDiscountAction(input: { reservationId: string; reser
     await changeDiscount(input.reservationRoomId, amount, input.reason, await actorFor(user));
     refresh(input.reservationId);
     return null;
-  }, "Discount updated.");
+  }, msg("Discount updated."));
 }
 
 const PaymentSchema = z.object({
   reservationId: z.string().min(1),
-  amount: z.coerce.number().int("Whole shillings only.").positive("Enter an amount."),
-  accountId: z.string().min(1, "Choose where the money was received."),
+  amount: z.coerce.number().int(msg("Whole shillings only.")).positive(msg("Enter an amount.")),
+  accountId: z.string().min(1, msg("Choose where the money was received.")),
   reference: z.string().trim().max(80).optional(),
   notes: z.string().trim().max(300).optional(),
   kind: z.enum(["PAYMENT", "REFUND"]).default("PAYMENT"),
@@ -685,7 +696,7 @@ export async function recordPaymentAction(_prev: unknown, formData: FormData): P
     await recordReservationPayment(data, await actorFor(user));
     refresh(data.reservationId);
     return null;
-  }, "Payment recorded.");
+  }, msg("Payment recorded."));
 }
 
 export async function reversePaymentAction(input: { reservationId: string; paymentId: string; reason: string }) {
@@ -694,13 +705,13 @@ export async function reversePaymentAction(input: { reservationId: string; payme
     await reversePayment(input.paymentId, input.reason, await actorFor(user));
     refresh(input.reservationId);
     return null;
-  }, "Payment reversed.");
+  }, msg("Payment reversed."));
 }
 
 const ChargeSchema = z.object({
   reservationId: z.string().min(1),
-  description: z.string().trim().min(2, "Describe the charge.").max(120),
-  amount: z.coerce.number().int().positive("Enter an amount."),
+  description: z.string().trim().min(2, msg("Describe the charge.")).max(120),
+  amount: z.coerce.number().int().positive(msg("Enter an amount.")),
   category: z.enum(CHARGE_CODES).default("OTHER"),
 });
 
@@ -711,17 +722,17 @@ export async function addChargeAction(_prev: unknown, formData: FormData): Promi
     await addReservationCharge(data, await actorFor(user));
     refresh(data.reservationId);
     return null;
-  }, "Charge added.");
+  }, msg("Charge added."));
 }
 
 const PostChargesSchema = z.object({
   reservationId: z.string().min(1),
   lines: z.array(z.object({
     type: z.enum(CHARGE_CODES),
-    item: z.string().trim().min(1, "Say what the item is.").max(80),
+    item: z.string().trim().min(1, msg("Say what the item is.")).max(80),
     qty: z.number().int().min(1).max(99),
-    unitPrice: z.number().int().positive("Enter a price."),
-  })).min(1, "Add at least one item.").max(20),
+    unitPrice: z.number().int().positive(msg("Enter a price.")),
+  })).min(1, msg("Add at least one item.")).max(20),
   pay: z.object({ accountId: z.string().min(1), reference: z.string().trim().max(80).optional() }).nullable().optional(),
 });
 
@@ -742,7 +753,7 @@ export async function voidChargeAction(input: { reservationId: string; chargeId:
     await voidReservationCharge(input.chargeId, input.reason, await actorFor(user));
     refresh(input.reservationId);
     return null;
-  }, "Charge voided.");
+  }, msg("Charge voided."));
 }
 
 /** Rooms a guest could be moved to (same stay window). */
@@ -828,7 +839,7 @@ export async function extendStayAction(input: {
     if (disc != null) await changeDiscount(input.reservationRoomId, disc, input.discountReason?.trim() || "Discount on extended stay", actor);
     refresh(input.reservationId);
     return p;
-  }, "Stay extended. Charges and balance updated.");
+  }, msg("Stay extended. Charges and balance updated."));
 }
 
 export async function lateCheckoutAction(input: { reservationId: string; reservationRoomId: string; until: string; fee?: number | null; note?: string }) {
@@ -838,16 +849,16 @@ export async function lateCheckoutAction(input: { reservationId: string; reserva
     await approveLateCheckout(input.reservationRoomId, { until: input.until, fee, note: input.note }, await actorFor(user));
     refresh(input.reservationId);
     return null;
-  }, "Late checkout approved.");
+  }, msg("Late checkout approved."));
 }
 
 const WizardSchema = z.object({
   reservationId: z.string().min(1),
   eta: z.string().regex(/^\d{2}:\d{2}$/).optional().or(z.literal("")),
   guest: z.object({
-    fullName: z.string().trim().min(2, "Guest name is required."),
+    fullName: z.string().trim().min(2, msg("Guest name is required.")),
     phone: z.string().trim().max(30).optional(),
-    email: z.union([z.literal(""), z.string().trim().email("Enter a valid email.")]).optional(),
+    email: z.union([z.literal(""), z.string().trim().email(msg("Enter a valid email."))]).optional(),
     idType: z.string().trim().max(40).optional(),
     idNumber: z.string().trim().max(60).optional(),
     nationality: z.string().trim().max(60).optional(),
@@ -864,7 +875,7 @@ export async function checkInWizardAction(input: z.input<typeof WizardSchema>) {
     const res = await checkInWithDetails(d.reservationId, { guest: d.guest, checklist: d.checklist, eta: d.eta || null }, await actorFor(user));
     refresh(d.reservationId);
     return res;
-  }, "Guest checked in. Welcome!");
+  }, msg("Guest checked in. Welcome!"));
 }
 
 const BillingSchema = z.object({
@@ -884,7 +895,7 @@ export async function changeBillingAction(input: z.input<typeof BillingSchema>) 
     await changeBilling(d.reservationId, d, await actorFor(user));
     refresh(d.reservationId);
     return null;
-  }, "Billing updated.");
+  }, msg("Billing updated."));
 }
 
 /** Change room: free rooms for the rest of the stay, each with its price difference. */
@@ -899,12 +910,12 @@ export async function roomChangeOptionsAction(input: { reservationRoomId: string
 const RoomChangeSchema = z.object({
   reservationId: z.string().min(1),
   reservationRoomId: z.string().min(1),
-  toRoomId: z.string().min(1, "Choose the new room."),
+  toRoomId: z.string().min(1, msg("Choose the new room.")),
   source: z.enum(["CUSTOMER", "HOTEL"]),
   reasonCode: z.enum(HOTEL_MOVE_CODES).nullable().optional(),
   note: z.string().trim().max(300).optional(),
   downgrade: z.enum(["NO_REFUND", "CREDIT"]).nullable().optional(),
-  payment: z.object({ accountId: z.string().min(1, "Choose where the money was received."), reference: z.string().trim().max(80).optional() }).nullable().optional(),
+  payment: z.object({ accountId: z.string().min(1, msg("Choose where the money was received.")), reference: z.string().trim().max(80).optional() }).nullable().optional(),
   addToBill: z.boolean().optional(),
   oldRoomStatus: z.enum(["DIRTY", "MAINTENANCE", "READY"]).nullable().optional(),
 });

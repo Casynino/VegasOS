@@ -9,17 +9,19 @@ import type { InventoryRow } from "@/server/services/inventory";
 import { ItemSheet, type Perms, type Tab } from "./item-sheet";
 import type { Setup } from "./item-form";
 import { field, tzs } from "./ui";
+import { useT } from "@/i18n/client";
 
 const LEVEL_ORDER: StockLevel[] = ["OUT", "LOW", "REORDER", "OVER", "OK"];
 
 /** The stock, by category: level at a glance; tap an item to receive, use, report waste, move or see its history. */
 export function StockView({ items, perms, setup, showDepartment }: { items: InventoryRow[]; perms: Perms; setup: Setup; showDepartment: boolean }) {
+  const t = useT();
   const [q, setQ] = useState("");
   const [level, setLevel] = useState<StockLevel | "ALL">("ALL");
   const [open, setOpen] = useState<{ id: string; tab?: Tab } | null>(null);
   const shown = useMemo(() => {
-    const t = q.trim().toLowerCase();
-    return items.filter((i) => (level === "ALL" || i.level === level) && (!t || `${i.name} ${i.sku ?? ""} ${i.category.name} ${i.location ?? ""}`.toLowerCase().includes(t)));
+    const term = q.trim().toLowerCase();
+    return items.filter((i) => (level === "ALL" || i.level === level) && (!term || `${i.name} ${i.sku ?? ""} ${i.category.name} ${i.location ?? ""}`.toLowerCase().includes(term)));
   }, [items, q, level]);
   const groups = useMemo(() => {
     const m = new Map<string, InventoryRow[]>();
@@ -36,17 +38,17 @@ export function StockView({ items, perms, setup, showDepartment }: { items: Inve
       <div className="flex flex-wrap items-center gap-2 border-b border-border/70 p-3 sm:px-4">
         <div className="relative min-w-0 flex-1 basis-56">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find an item…" className={cn(field, "pl-9")} />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("Find an item…")} className={cn(field, "pl-9")} />
         </div>
         <div className="-mx-1 flex max-w-full gap-1 overflow-x-auto px-1 [scrollbar-width:none]">
-          <LevelChip on={level === "ALL"} onClick={() => setLevel("ALL")} label="All" count={items.length} />
-          {LEVEL_ORDER.filter((l) => counts[l] > 0).map((l) => <LevelChip key={l} on={level === l} onClick={() => setLevel(l)} label={LEVEL_META[l].label} count={counts[l]} dot={LEVEL_META[l].dot} />)}
+          <LevelChip on={level === "ALL"} onClick={() => setLevel("ALL")} label={t("All")} count={items.length} />
+          {LEVEL_ORDER.filter((l) => counts[l] > 0).map((l) => <LevelChip key={l} on={level === l} onClick={() => setLevel(l)} label={t(LEVEL_META[l].label)} count={counts[l]} dot={LEVEL_META[l].dot} />)}
         </div>
       </div>
-      {groups.length === 0 ? <p className="px-4 py-10 text-center text-sm text-muted-foreground">{items.length ? "Nothing matches." : "No stock items here yet."}</p> : groups.map(([cat, rows]) => (
+      {groups.length === 0 ? <p className="px-4 py-10 text-center text-sm text-muted-foreground">{items.length ? t("Nothing matches.") : t("No stock items here yet.")}</p> : groups.map(([cat, rows]) => (
         <div key={cat}>
           <p className="flex items-center justify-between gap-3 bg-muted/40 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            <span>{cat} · {rows.length}</span><span className="tabular-nums normal-case tracking-normal">{tzs(rows.reduce((t, r) => t + r.value, 0))}</span>
+            <span>{t(cat)} · {rows.length}</span><span className="tabular-nums normal-case tracking-normal">{tzs(rows.reduce((sum, r) => sum + r.value, 0))}</span>
           </p>
           <ul className="divide-y divide-border/50">
             {rows.map((i) => {
@@ -56,11 +58,11 @@ export function StockView({ items, perms, setup, showDepartment }: { items: Inve
                 <li key={i.id} className={cn(!i.isActive && "opacity-50")}>
                   <div className="group flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/40">
                     <button type="button" onClick={() => setOpen({ id: i.id })} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                      <span className={cn("size-2.5 shrink-0 rounded-full", lv.dot)} title={lv.label} />
+                      <span className={cn("size-2.5 shrink-0 rounded-full", lv.dot)} title={t(lv.label)} />
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium">{i.name}{!i.isActive && " · off"}</span>
+                        <span className="block truncate text-sm font-medium">{i.name}{!i.isActive && ` · ${t("off")}`}</span>
                         <span className="block truncate text-[11px] text-muted-foreground">
-                          {[showDepartment ? i.department.name : null, i.location, i.minStock != null ? `min ${formatQty(i.minStock, i.unit)}` : null, i.level !== "OK" ? lv.label : null].filter(Boolean).join(" · ") || "—"}
+                          {[showDepartment ? t(i.department.name) : null, i.location ? t(i.location) : null, i.minStock != null ? t("min {qty}", { qty: formatQty(i.minStock, i.unit, t) }) : null, i.level !== "OK" ? t(lv.label) : null].filter(Boolean).join(" · ") || "—"}
                         </span>
                       </span>
                       <span className="hidden w-28 shrink-0 sm:block">
@@ -70,14 +72,14 @@ export function StockView({ items, perms, setup, showDepartment }: { items: Inve
                         </span>
                       </span>
                       <span className="shrink-0 text-right">
-                        <span className={cn("block text-sm font-semibold tabular-nums", i.level === "OUT" && "text-rose-600 dark:text-rose-400", i.level === "LOW" && "text-amber-600 dark:text-amber-400")}>{formatQty(i.quantity, i.unit)}</span>
+                        <span className={cn("block text-sm font-semibold tabular-nums", i.level === "OUT" && "text-rose-600 dark:text-rose-400", i.level === "LOW" && "text-amber-600 dark:text-amber-400")}>{formatQty(i.quantity, i.unit, t)}</span>
                         <span className="block text-[11px] tabular-nums text-muted-foreground">{tzs(i.value)}</span>
                       </span>
                     </button>
                     {i.isActive && (perms.receive || perms.use || perms.approve) && (
                       <span className="flex shrink-0 gap-1">
-                        {perms.receive && <QuickBtn label={`Receive ${i.name}`} onClick={() => setOpen({ id: i.id, tab: "receive" })}><ArrowDownToLine /></QuickBtn>}
-                        {(perms.use || perms.approve) && <QuickBtn label={`Waste ${i.name}`} onClick={() => setOpen({ id: i.id, tab: "waste" })}><Trash2 /></QuickBtn>}
+                        {perms.receive && <QuickBtn label={t("Receive {item}", { item: i.name })} onClick={() => setOpen({ id: i.id, tab: "receive" })}><ArrowDownToLine /></QuickBtn>}
+                        {(perms.use || perms.approve) && <QuickBtn label={t("Waste {item}", { item: i.name })} onClick={() => setOpen({ id: i.id, tab: "waste" })}><Trash2 /></QuickBtn>}
                       </span>
                     )}
                   </div>
@@ -108,28 +110,29 @@ function QuickBtn({ label, onClick, children }: { label: string; onClick: () => 
 
 /** Header button: pick an item, then receive it. */
 export function ReceivePicker({ items, perms, setup }: { items: InventoryRow[]; perms: Perms; setup: Setup }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [picked, setPicked] = useState<string | null>(null);
-  const t = q.trim().toLowerCase();
-  const list = items.filter((i) => i.isActive && (!t || i.name.toLowerCase().includes(t))).slice(0, 40);
+  const term = q.trim().toLowerCase();
+  const list = items.filter((i) => i.isActive && (!term || i.name.toLowerCase().includes(term))).slice(0, 40);
   const item = picked ? items.find((i) => i.id === picked) : null;
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-linear-to-b from-[oklch(0.87_0.085_86)] to-[oklch(0.7_0.12_76)] px-3 text-sm font-semibold text-[oklch(0.2_0.03_60)] hover:brightness-105"><ArrowDownToLine className="size-4" />Receive stock</button>
+      <button type="button" onClick={() => setOpen(true)} className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-linear-to-b from-[oklch(0.87_0.085_86)] to-[oklch(0.7_0.12_76)] px-3 text-sm font-semibold text-[oklch(0.2_0.03_60)] hover:brightness-105"><ArrowDownToLine className="size-4" />{t("Receive stock")}</button>
       {open && !item && (
         <Dialog open onOpenChange={(o) => !o && setOpen(false)}>
           <DialogContent className="max-h-[calc(100svh-1.5rem)] overflow-y-auto sm:max-w-md">
-            <DialogHeader icon={<ArrowDownToLine />} eyebrow="Stock" tone="amber">
-              <DialogTitle>Receive stock</DialogTitle>
-              <DialogDescription>Which item came in?</DialogDescription>
+            <DialogHeader icon={<ArrowDownToLine />} eyebrow={t("Stock")} tone="amber">
+              <DialogTitle>{t("Receive stock")}</DialogTitle>
+              <DialogDescription>{t("Which item came in?")}</DialogDescription>
             </DialogHeader>
-            <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Beef, water, soap…" className={field} />
+            <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("Beef, water, soap…")} className={field} />
             <ul className="max-h-80 divide-y divide-border/50 overflow-y-auto">
               {list.map((i) => (
                 <li key={i.id}><button type="button" onClick={() => setPicked(i.id)} className="flex w-full items-center justify-between gap-3 px-1 py-2 text-left text-sm hover:bg-muted/50">
-                  <span className="min-w-0"><span className="block truncate font-medium">{i.name}</span><span className="text-[11px] text-muted-foreground">{i.department.name}</span></span>
-                  <span className="shrink-0 tabular-nums text-muted-foreground">{formatQty(i.quantity, i.unit)}</span>
+                  <span className="min-w-0"><span className="block truncate font-medium">{i.name}</span><span className="text-[11px] text-muted-foreground">{t(i.department.name)}</span></span>
+                  <span className="shrink-0 tabular-nums text-muted-foreground">{formatQty(i.quantity, i.unit, t)}</span>
                 </button></li>
               ))}
             </ul>

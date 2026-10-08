@@ -8,10 +8,12 @@ import { createSession, destroySession, getCurrentUser, hashPassword, requestMet
 import { rateLimit } from "@/server/rate-limit";
 import { AppError } from "@/server/errors";
 import { isRestaurantDevice } from "@/lib/permissions";
+import { msg } from "@/i18n/msg";
+import { getT } from "@/i18n/server";
 
 const LoginSchema = z.object({
-  email: z.string().trim().toLowerCase().email("Enter a valid email address."),
-  password: z.string().min(1, "Enter your password."),
+  email: z.string().trim().toLowerCase().email(msg("Enter a valid email address.")),
+  password: z.string().min(1, msg("Enter your password.")),
 });
 
 export type LoginState = { error?: string; email?: string } | undefined;
@@ -23,21 +25,23 @@ const getDummyHash = () => (dummyHash ??= hashPassword(crypto.randomUUID()));
 export async function loginAction(_prev: LoginState, formData: FormData): Promise<LoginState> {
   const parsed = LoginSchema.safeParse({ email: formData.get("email"), password: formData.get("password") });
   const email = String(formData.get("email") ?? "");
-  if (!parsed.success) return { error: parsed.error.issues[0].message, email };
+  // The answer is shown on the sign-in screen in the visitor's language (English stays as it is).
+  const t = await getT();
+  if (!parsed.success) return { error: t(parsed.error.issues[0].message), email };
 
   const { ipAddress } = await requestMeta();
   try {
     await rateLimit(`login:ip:${ipAddress ?? "unknown"}`, 20, 15 * 60);
     await rateLimit(`login:email:${parsed.data.email}`, 8, 15 * 60);
   } catch (e) {
-    if (e instanceof AppError) return { error: e.message, email };
+    if (e instanceof AppError) return { error: e.i18n ? t(e.i18n.key, e.i18n.vars) : t(e.message), email };
     throw e;
   }
 
   const user = await db.user.findUnique({ where: { email: parsed.data.email } });
   const ok = await verifyPassword(user?.passwordHash ?? (await getDummyHash()), parsed.data.password);
   if (!user || !ok || !user.isActive) {
-    return { error: "Incorrect email or password.", email };
+    return { error: t("Incorrect email or password."), email };
   }
 
   await createSession(user.id);

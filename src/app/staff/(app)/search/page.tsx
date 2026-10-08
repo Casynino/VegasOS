@@ -5,15 +5,19 @@ import { can, requirePagePermission } from "@/server/auth";
 import { receptionSearch } from "@/server/services/reception-search";
 import { businessToday } from "@/server/settings";
 import { fromDbDate, toDbDate } from "@/lib/time/business-date";
-import { formatBusinessDate, formatTZS } from "@/lib/format";
+import { formatTZS } from "@/lib/format";
 import { BOOKING_REQUEST_STATUS } from "@/lib/booking-request-meta";
 import { cn } from "@/lib/utils";
 import { MEETING_STATUS_LABEL, timeRange } from "@/lib/meeting";
 import { EmptyState, PageHeader } from "@/components/staff/page-header";
 import { ReceptionSearch } from "@/components/staff/reception/search";
 import { buttonVariants } from "@/components/ui/button";
+import { getT } from "@/i18n/server";
+import { msg } from "@/i18n/msg";
 
-export const metadata: Metadata = { title: "Find guest" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getT())("Find guest") };
+}
 
 const STATUS_TONE: Record<string, string> = {
   CHECKED_IN: "bg-emerald-600/10 text-emerald-800 dark:text-emerald-300",
@@ -24,39 +28,43 @@ const STATUS_TONE: Record<string, string> = {
   CANCELLED: "bg-red-600/10 text-red-800 dark:text-red-300",
   NO_SHOW: "bg-red-600/10 text-red-800 dark:text-red-300",
 };
+/** The status word on a reservation card (shown lower-case, capitalised by CSS). */
+const STATUS_WORD: Record<string, string> = {
+  CHECKED_IN: msg("checked in"), CONFIRMED: msg("confirmed"), RESERVED: msg("reserved"), CHECKED_OUT: msg("checked out"), CANCELLED: msg("cancelled"), NO_SHOW: msg("no show"),
+};
 
 export default async function SearchPage({ searchParams }: PageProps<"/staff/search">) {
   const user = await requirePagePermission("reservations.view");
   const sp = await searchParams;
   const q = typeof sp.q === "string" ? sp.q : "";
-  const [res, today] = await Promise.all([receptionSearch(q), businessToday()]);
+  const [res, today, t] = await Promise.all([receptionSearch(q), businessToday(), getT()]);
   const todayDb = toDbDate(today);
   const total = res ? res.reservations.length + res.guests.length + res.requests.length + res.groups.length : 0;
 
   return (
     <div className="w-full space-y-5">
-      <PageHeader eyebrow="Reception" title="Find a guest" description="Search by guest name, phone number, booking reference, room number, group, company or invoice number." />
+      <PageHeader eyebrow={t("Reception")} title={t("Find a guest")} description={t("Search by guest name, phone number, booking reference, room number, group, company or invoice number.")} />
       <ReceptionSearch defaultValue={q} autoFocus className="max-w-xl" />
 
       {!res ? (
-        <p className="text-sm text-muted-foreground">Type at least two characters — e.g. “John”, “0712”, “VLH-2048” or “204”.</p>
+        <p className="text-sm text-muted-foreground">{t("Type at least two characters — e.g. “John”, “0712”, “VLH-2048” or “204”.")}</p>
       ) : total === 0 ? (
-        <EmptyState icon={<SearchX />} title={`Nothing found for “${res.q}”`} description="Try part of the name, or the last digits of the phone number."
-          action={can(user, "reservations.create") ? <Link href="/staff/reservations/new" className={buttonVariants()}>New reservation</Link> : undefined} />
+        <EmptyState icon={<SearchX />} title={t.ctx("search", "Nothing found for “{q}”", { q: res.q })} description={t("Try part of the name, or the last digits of the phone number.")}
+          action={can(user, "reservations.create") ? <Link href="/staff/reservations/new" className={buttonVariants()}>{t("New reservation")}</Link> : undefined} />
       ) : (
         <>
           {res.groups.length > 0 && (
             <section aria-labelledby="grp-title" className="space-y-2">
-              <h2 id="grp-title" className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Group bookings</h2>
+              <h2 id="grp-title" className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{t("Group bookings")}</h2>
               <ul className="space-y-2">
                 {res.groups.map((g) => (
                   <li key={g.id}>
                     <Link href={`/staff/groups/${g.id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-4 hover:bg-muted/40">
                       <span className="min-w-0">
                         <span className="block font-semibold">{g.name} <span className="font-mono text-xs font-normal text-muted-foreground">{g.reference}</span></span>
-                        <span className="block text-sm text-muted-foreground">{g.rooms} room{g.rooms === 1 ? "" : "s"} · {g.guests} guest{g.guests === 1 ? "" : "s"} · {formatBusinessDate(g.arrival)} → {formatBusinessDate(g.departure)} · pays: {g.payer}</span>
+                        <span className="block text-sm text-muted-foreground">{t.plural(g.rooms, "{n} room", "{n} rooms")} · {t.plural(g.guests, "{n} guest", "{n} guests")} · {t.date(g.arrival)} → {t.date(g.departure)} · {t("pays: {payer}", { payer: g.payer })}</span>
                       </span>
-                      <span className={cn("text-sm tabular-nums", g.outstanding > 0 ? "font-medium text-destructive" : "text-muted-foreground")}>{g.outstanding > 0 ? `Owes ${formatTZS(g.outstanding)}` : "Nothing owed"}</span>
+                      <span className={cn("text-sm tabular-nums", g.outstanding > 0 ? "font-medium text-destructive" : "text-muted-foreground")}>{g.outstanding > 0 ? t("Owes {amount}", { amount: formatTZS(g.outstanding) }) : t("Nothing owed")}</span>
                     </Link>
                   </li>
                 ))}
@@ -65,7 +73,7 @@ export default async function SearchPage({ searchParams }: PageProps<"/staff/sea
           )}
           {res.reservations.length > 0 && (
             <section aria-labelledby="res-title" className="space-y-2">
-              <h2 id="res-title" className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Reservations</h2>
+              <h2 id="res-title" className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{t("Reservations")}</h2>
               <ul className="space-y-2">
                 {res.reservations.map((r) => {
                   const arrivingNow = (r.status === "RESERVED" || r.status === "CONFIRMED") && r.arrivalDate <= todayDb && r.departureDate > todayDb;
@@ -76,27 +84,27 @@ export default async function SearchPage({ searchParams }: PageProps<"/staff/sea
                       <Link href={`/staff/reservations/${r.id}`} className="min-w-0 flex-1">
                         <p className="flex flex-wrap items-center gap-2 font-semibold">
                           {meeting && r.companyName ? r.companyName : r.guest.fullName}
-                          {r.group && <span className="rounded-full bg-violet-500/12 px-2 py-0.5 text-[11px] font-medium text-violet-800 dark:text-violet-200">Group · {r.group.name}</span>}
-                          <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium capitalize", STATUS_TONE[r.status])}>{meeting ? MEETING_STATUS_LABEL[r.status].toLowerCase() : r.status === "INQUIRY" ? "not paid · room not held" : r.status.toLowerCase().replace("_", " ")}</span>
+                          {r.group && <span className="rounded-full bg-violet-500/12 px-2 py-0.5 text-[11px] font-medium text-violet-800 dark:text-violet-200">{t("Group · {name}", { name: r.group.name })}</span>}
+                          <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium capitalize", STATUS_TONE[r.status])}>{meeting ? t(MEETING_STATUS_LABEL[r.status]).toLowerCase() : r.status === "INQUIRY" ? t("not paid · room not held") : STATUS_WORD[r.status] ? t(STATUS_WORD[r.status]) : r.status.toLowerCase().replace("_", " ")}</span>
                         </p>
                         <p className="text-sm text-muted-foreground">
-                          <span className="font-mono text-xs">{r.reference}</span> · {r.guest.phone ?? "no phone"} · {r.source.name}
+                          <span className="font-mono text-xs">{r.reference}</span> · {r.guest.phone ?? t("no phone")} · {t(r.source.name)}
                         </p>
                         <p className="text-sm">
                           {meeting
-                            ? <>{r.rooms.map((x) => `Room ${x.room.number} — ${x.roomType.name}`).join(", ")} · {formatBusinessDate(fromDbDate(r.arrivalDate))} · {r.rooms[0] ? timeRange(r.rooms[0].startAt, r.rooms[0].endAt) : ""}</>
-                            : <>{r.rooms.map((x) => `${x.roomType.name} — Room ${x.room.number}`).join(", ")} · {formatBusinessDate(fromDbDate(r.arrivalDate))} → {formatBusinessDate(fromDbDate(r.departureDate))}</>}
+                            ? <>{r.rooms.map((x) => t("Room {room} — {type}", { room: x.room.number, type: t(x.roomType.name) })).join(", ")} · {t.date(fromDbDate(r.arrivalDate))} · {r.rooms[0] ? timeRange(r.rooms[0].startAt, r.rooms[0].endAt) : ""}</>
+                            : <>{r.rooms.map((x) => t("{type} — Room {room}", { type: t(x.roomType.name), room: x.room.number })).join(", ")} · {t.date(fromDbDate(r.arrivalDate))} → {t.date(fromDbDate(r.departureDate))}</>}
                         </p>
                       </Link>
                       <div className="flex flex-wrap items-center gap-2">
                         <span className={cn("text-sm tabular-nums", r.balanceAmount > 0 ? "font-medium text-destructive" : "text-muted-foreground")}>
-                          {r.balanceAmount > 0 ? `Balance ${formatTZS(r.balanceAmount)}` : "Paid"}
+                          {r.balanceAmount > 0 ? t("Balance {amount}", { amount: formatTZS(r.balanceAmount) }) : t("Paid")}
                         </span>
-                        {arrivingNow && !meeting && can(user, "reservations.check_in") && <Link href="/reception/dashboard#arrivals" className={buttonVariants({ size: "sm" })}>Check in</Link>}
+                        {arrivingNow && !meeting && can(user, "reservations.check_in") && <Link href="/reception/dashboard#arrivals" className={buttonVariants({ size: "sm" })}>{t("Check in")}</Link>}
                         {r.status === "CHECKED_IN" && !meeting && can(user, "reservations.check_out") && (
-                          <Link href={`/staff/check-out?id=${r.id}#workspace`} className={buttonVariants({ size: "sm", variant: leavingToday ? "default" : "outline" })}>Check out</Link>
+                          <Link href={`/staff/check-out?id=${r.id}#workspace`} className={buttonVariants({ size: "sm", variant: leavingToday ? "default" : "outline" })}>{t("Check out")}</Link>
                         )}
-                        <Link href={`/staff/reservations/${r.id}`} className={buttonVariants({ size: "sm", variant: "outline" })}>View</Link>
+                        <Link href={`/staff/reservations/${r.id}`} className={buttonVariants({ size: "sm", variant: "outline" })}>{t("View")}</Link>
                       </div>
                     </li>
                   );
@@ -107,16 +115,16 @@ export default async function SearchPage({ searchParams }: PageProps<"/staff/sea
 
           {res.requests.length > 0 && (
             <section aria-labelledby="req-title" className="space-y-2">
-              <h2 id="req-title" className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Open booking requests</h2>
+              <h2 id="req-title" className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{t("Open booking requests")}</h2>
               <ul className="space-y-2">
                 {res.requests.map((r) => (
                   <li key={r.id}>
                     <Link href={`/staff/booking-requests/${r.id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-4 hover:bg-muted">
                       <span>
                         <span className="flex items-center gap-2 font-semibold"><Inbox className="size-4" />{r.fullName}</span>
-                        <span className="block text-sm text-muted-foreground">{r.reference} · {r.roomType.name} · {formatBusinessDate(fromDbDate(r.checkInDate))} → {formatBusinessDate(fromDbDate(r.checkOutDate))}</span>
+                        <span className="block text-sm text-muted-foreground">{r.reference} · {t(r.roomType.name)} · {t.date(fromDbDate(r.checkInDate))} → {t.date(fromDbDate(r.checkOutDate))}</span>
                       </span>
-                      <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-medium", BOOKING_REQUEST_STATUS[r.status].className)}>{BOOKING_REQUEST_STATUS[r.status].label}</span>
+                      <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-medium", BOOKING_REQUEST_STATUS[r.status].className)}>{t(BOOKING_REQUEST_STATUS[r.status].label)}</span>
                     </Link>
                   </li>
                 ))}
@@ -126,7 +134,7 @@ export default async function SearchPage({ searchParams }: PageProps<"/staff/sea
 
           {res.guests.length > 0 && (
             <section aria-labelledby="guest-title" className="space-y-2">
-              <h2 id="guest-title" className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Guest profiles</h2>
+              <h2 id="guest-title" className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{t("Guest profiles")}</h2>
               <ul className="grid gap-2 sm:grid-cols-2">
                 {res.guests.map((g) => (
                   <li key={g.id} className="flex items-center justify-between gap-3 rounded-xl border bg-card p-4">
@@ -135,12 +143,12 @@ export default async function SearchPage({ searchParams }: PageProps<"/staff/sea
                       <p className="text-sm text-muted-foreground">{g.phone ?? g.email ?? "—"}</p>
                       <p className="text-xs text-muted-foreground">
                         {g._count.reservations > 0
-                          ? `Previous guest · ${g._count.reservations} stay${g._count.reservations === 1 ? "" : "s"}${g.reservations[0] ? ` · last ${formatBusinessDate(fromDbDate(g.reservations[0].departureDate), true)}` : ""}`
-                          : "No completed stays yet"}
+                          ? `${t.plural(g._count.reservations, "Previous guest · {n} stay", "Previous guest · {n} stays")}${g.reservations[0] ? ` · ${t("last {date}", { date: t.date(fromDbDate(g.reservations[0].departureDate), true) })}` : ""}`
+                          : t("No completed stays yet")}
                       </p>
                     </Link>
                     {can(user, "reservations.create") && (
-                      <Link href={`/staff/reservations/new?guest=${g.id}`} className={buttonVariants({ size: "sm", variant: "outline" })}><CalendarPlus /> Book</Link>
+                      <Link href={`/staff/reservations/new?guest=${g.id}`} className={buttonVariants({ size: "sm", variant: "outline" })}><CalendarPlus /> {t("Book")}</Link>
                     )}
                   </li>
                 ))}

@@ -1,9 +1,14 @@
 import { addDays, diffDays, isBusinessDate } from "@/lib/time/business-date";
+import { DEFAULT_LOCALE } from "@/i18n/config";
+import { msg } from "@/i18n/msg";
+import type { T } from "@/i18n/translate";
 
 /**
  * The Hotel QR app's small helpers: money and dates in words (written out by hand, so the server and the phone print
  * exactly the same text), the browser's keys, and the app's place in the flow — kept in the address (step, dates,
  * guests, room), so Back on the phone goes back a step and a reload opens the same step. Never a name or a number there.
+ * The words helpers take the person's translator (`t`): without one (or in English) they print the English as before;
+ * in another language the dates and counts are in that language.
  */
 
 export const tzs = (v: number) => `TZS ${Math.round(v).toLocaleString("en-US")}`;
@@ -17,14 +22,29 @@ const parts = (d: string) => {
   const x = new Date(`${d}T00:00:00Z`);
   return { y: x.getUTCFullYear(), m: x.getUTCMonth(), d: x.getUTCDate(), w: x.getUTCDay() };
 };
-/** "12 Oct" */
-export const dayShort = (d: string) => { const p = parts(d); return `${p.d} ${MONTHS[p.m]}`; };
-/** "Mon 12 Oct" */
-export const dayWeek = (d: string) => { const p = parts(d); return `${DAYS[p.w]} ${p.d} ${MONTHS[p.m]}`; };
-/** "Monday, 12 October 2026" */
-export const dayLong = (d: string) => { const p = parts(d); return `${DAYS_LONG[p.w]}, ${p.d} ${MONTHS_LONG[p.m]} ${p.y}`; };
-/** "12 October 2026" */
-export const dayFull = (d: string) => { const p = parts(d); return `${p.d} ${MONTHS_LONG[p.m]} ${p.y}`; };
+/** A translator for a language other than English (English keeps the hand-written words below). */
+const other = (t?: T): t is T => !!t && t.locale !== DEFAULT_LOCALE;
+const fmt = (t: T, d: string, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat(t.intl, { ...o, timeZone: "UTC" }).format(new Date(`${d}T00:00:00Z`));
+/** "12 Oct" · "10月12日" */
+export const dayShort = (d: string, t?: T) => {
+  if (other(t)) return fmt(t, d, { day: "numeric", month: "short" });
+  const p = parts(d); return `${p.d} ${MONTHS[p.m]}`;
+};
+/** "Mon 12 Oct" · "10月12日周一" */
+export const dayWeek = (d: string, t?: T) => {
+  if (other(t)) return t.dayMonth(d);
+  const p = parts(d); return `${DAYS[p.w]} ${p.d} ${MONTHS[p.m]}`;
+};
+/** "Monday, 12 October 2026" · "2026年10月12日星期一" */
+export const dayLong = (d: string, t?: T) => {
+  if (other(t)) return t.date(d, true);
+  const p = parts(d); return `${DAYS_LONG[p.w]}, ${p.d} ${MONTHS_LONG[p.m]} ${p.y}`;
+};
+/** "12 October 2026" · "2026年10月12日" */
+export const dayFull = (d: string, t?: T) => {
+  if (other(t)) return fmt(t, d, { day: "numeric", month: "long", year: "numeric" });
+  const p = parts(d); return `${p.d} ${MONTHS_LONG[p.m]} ${p.y}`;
+};
 export const weekday = (d: string) => parts(d).w;
 
 export const HOTEL_TIME_ZONE = "Africa/Dar_es_Salaam";
@@ -42,9 +62,10 @@ function wallClock(ms: number, timeZone: string) {
 }
 
 /** An instant as the hotel's clock shows it (the hotel's time zone, from the server) — "14:30 · Tue 13 Oct". */
-export function hotelClock(iso: string, timeZone = HOTEL_TIME_ZONE) {
+export function hotelClock(iso: string, timeZone = HOTEL_TIME_ZONE, t?: T) {
   const x = wallClock(Date.parse(iso), timeZone);
   const hh = String(x.getUTCHours()).padStart(2, "0"), mm = String(x.getUTCMinutes()).padStart(2, "0");
+  if (other(t)) return `${hh}:${mm} · ${t.dayMonth(x.toISOString().slice(0, 10))}`;
   return `${hh}:${mm} · ${DAYS[x.getUTCDay()]} ${x.getUTCDate()} ${MONTHS[x.getUTCMonth()]}`;
 }
 
@@ -57,12 +78,21 @@ export function hotelInstant(day: string, time: string, timeZone = HOTEL_TIME_ZO
   return new Date(guess - (wallClock(once, timeZone).getTime() - once));
 }
 
-export const nightsText = (n: number) => plural(n, "night");
-export const guestsText = (adults: number, children: number) =>
-  children ? `${plural(adults, "adult")} · ${plural(children, "child", "children")}` : plural(adults, "guest");
+export const nightsText = (n: number, t?: T) => (t ? t.plural(n, "{n} night", "{n} nights") : plural(n, "night"));
+export const guestsText = (adults: number, children: number, t?: T) => {
+  if (!t) return children ? `${plural(adults, "adult")} · ${plural(children, "child", "children")}` : plural(adults, "guest");
+  return children
+    ? `${t.plural(adults, "{n} adult", "{n} adults")} · ${t.plural(children, "{n} child", "{n} children")}`
+    : t.plural(adults, "{n} guest", "{n} guests");
+};
 /** "Up to 2 adults and 1 child" */
-export const holdsText = (t: { maxAdults: number; maxChildren: number }) =>
-  `Up to ${plural(t.maxAdults, "adult")}${t.maxChildren ? ` and ${plural(t.maxChildren, "child", "children")}` : ""}`;
+export const holdsText = (x: { maxAdults: number; maxChildren: number }, t?: T) => {
+  if (!t) return `Up to ${plural(x.maxAdults, "adult")}${x.maxChildren ? ` and ${plural(x.maxChildren, "child", "children")}` : ""}`;
+  const adults = t.plural(x.maxAdults, "{n} adult", "{n} adults");
+  return x.maxChildren
+    ? t("Up to {adults} and {children}", { adults, children: t.plural(x.maxChildren, "{n} child", "{n} children") })
+    : t("Up to {adults}", { adults });
+};
 
 /** A fresh 32-hex key: one per Book / Pay press (the server makes one booking and one payment per key). */
 export const newKey = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (x) => x.toString(16).padStart(2, "0")).join("");
@@ -160,12 +190,14 @@ export function stayFor(stay: StayQuery, t: { maxAdults: number; maxChildren: nu
 }
 
 /** "5 → 6 Oct" — for the narrowest phones. */
-export function datesShort(s: { checkIn: string; checkOut: string }) {
+export function datesShort(s: { checkIn: string; checkOut: string }, t?: T) {
+  if (other(t)) return `${dayShort(s.checkIn, t)} → ${dayShort(s.checkOut, t)}`;
   const a = parts(s.checkIn), b = parts(s.checkOut);
   return a.m === b.m ? `${a.d} → ${b.d} ${MONTHS[b.m]}` : `${a.d} ${MONTHS[a.m]} → ${b.d} ${MONTHS[b.m]}`;
 }
 /** "Mon 5 → Tue 6 Oct" — both dates, the month once when it is the same. */
-export function datesText(s: { checkIn: string; checkOut: string }) {
+export function datesText(s: { checkIn: string; checkOut: string }, t?: T) {
+  if (other(t)) return `${t.dayMonth(s.checkIn)} → ${t.dayMonth(s.checkOut)}`;
   const a = parts(s.checkIn), b = parts(s.checkOut);
   return a.m === b.m && a.y === b.y ? `${DAYS[a.w]} ${a.d} → ${DAYS[b.w]} ${b.d} ${MONTHS[b.m]}` : `${dayWeek(s.checkIn)} → ${dayWeek(s.checkOut)}`;
 }
@@ -206,14 +238,14 @@ export function saveGuest(g: SavedGuest | null) {
   window.dispatchEvent(new Event(GUEST_EVENT));
 }
 
-/** Quick picks for the dates sheet, inside the booking window. */
+/** Quick picks for the dates sheet, inside the booking window (labels in English — shown with t(label)). */
 export function quickDates(today: string, maxCheckIn: string) {
   const out: { label: string; checkIn: string; checkOut: string }[] = [];
   const add = (label: string, checkIn: string, nights: number) => { if (checkIn <= maxCheckIn) out.push({ label, checkIn, checkOut: addDays(checkIn, nights) }); };
-  add("Tonight", today, 1);
-  add("Tomorrow", addDays(today, 1), 1);
+  add(msg("Tonight"), today, 1);
+  add(msg("Tomorrow"), addDays(today, 1), 1);
   // The coming weekend: Friday and Saturday night (from a Saturday, the next one).
-  add("Weekend", addDays(today, (5 - weekday(today) + 7) % 7), 2);
+  add(msg("Weekend"), addDays(today, (5 - weekday(today) + 7) % 7), 2);
   return out;
 }
 

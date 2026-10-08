@@ -1,0 +1,97 @@
+// Staff shell: sidebar, top bar, phone tab bar, the bell, sign-in, error/not-found/forbidden screens, the stay date picker.
+import type { Catalog } from "../../../translate";
+
+const catalog: Catalog = {
+  // Error, not found, no access, loading
+  "Something went wrong": "出错了",
+  "This page couldn't load. Nothing was changed. Please try again.": "此页面无法加载，未做任何更改。请重试。",
+  "This page couldn't load. Nothing was changed. Please try again (reference {ref}).": "此页面无法加载，未做任何更改。请重试（参考编号 {ref}）。",
+  "Try again": "重试",
+  "You don't have access to this page": "你无权访问此页面",
+  "Ask a manager or the owner if you need this permission.": "如需此权限，请联系经理或老板。",
+  "Back to today": "返回今日",
+  "Not found": "未找到",
+  "This record doesn't exist or was removed from view.": "此记录不存在或已被移除。",
+  "Loading": "加载中",
+
+  // Sign in
+  "Staff sign in": "员工登录",
+  "Website": "网站",
+  "Back to site": "返回网站",
+  "Welcome back.": "欢迎回来。",
+  "Every arrival starts at reception.": "每一次抵达，都从前台开始。",
+  "Every room ready on time.": "每一间客房，都准时备好。",
+  "Every guest leaves wanting to return.": "每一位客人，离开时都想再来。",
+  "Reception · Management · Administration — one sign-in for the whole hotel.": "前台 · 管理 · 行政 — 全酒店统一登录。",
+  "Staff access only": "仅限员工",
+  "Sign in": "登录",
+  "Signing in…": "正在登录…",
+  "Your dashboard opens for your role.": "登录后将打开与你的角色对应的工作台。",
+  "Forgot your password? Ask the hotel administrator.": "忘记密码？请联系酒店管理员。",
+  "Password": "密码",
+  "Hide password": "隐藏密码",
+  "Show password": "显示密码",
+  "Enter a valid email address.": "请输入有效的电子邮箱地址。",
+  "Enter your password.": "请输入密码。",
+  "Incorrect email or password.": "邮箱或密码错误。",
+  "Please sign in again.": "请重新登录。",
+
+  // Sidebar, top bar, phone tab bar
+  "Hotel management": "酒店管理",
+  "Staff navigation": "员工导航",
+  "Quick navigation": "快捷导航",
+  "Open menu": "打开菜单",
+  "Find": "查找",
+  "{n} new": "{n} 条新",
+  "nav::Online": "在线预订",
+  "nav::Book": "新建预订",
+  "nav::People": "人员",
+  "nav::Requests": "客人需求",
+  "Hotel day 04:00 → 04:00": "酒店营业日 04:00 → 04:00",
+  "Your shift — what you did and collected so far": "你的班次 — 目前已完成的工作和收款",
+  "You have no active shift — start it to do reception work": "你没有进行中的班次 — 开始上班后才能处理前台工作",
+  "No active shift · Start": "无进行中的班次 · 开始",
+  "The hotel website (opens in a new tab)": "酒店网站（在新标签页打开）",
+  "{name} · {role} — your account": "{name} · {role} — 我的账户",
+  "Your account — {name}, {role}": "我的账户 — {name}，{role}",
+  "Print": "打印",
+
+  // The bell
+  "alert::New booking": "新预订",
+  "Open": "打开",
+  "Payment to confirm": "待确认付款",
+  "Sounds are switched off in the manager's sound settings.": "提示音已在经理的声音设置中关闭。",
+  "Sound off — no ringing on any of your screens.": "声音已关闭 — 你的所有屏幕都不会响铃。",
+  "Could not save that — check the connection, then tap the bell again.": "无法保存 — 请检查网络连接，然后再点一下铃铛。",
+  "Sound on — each new notification rings twice.": "声音已开启 — 每条新通知响铃两次。",
+  "Sound on — tap anywhere on the page once so the browser lets it ring.": "声音已开启 — 请在页面任意处点一下，浏览器才允许响铃。",
+  "Sounds are off (manager's setting)": "提示音已关闭（经理设置）",
+  "Sound off — tap to turn on": "声音已关闭 — 点按开启",
+  "Sound on · reconnecting… — tap to turn off": "声音已开启 · 正在重新连接… — 点按关闭",
+  "Sound on — tap anywhere on the page so the browser lets it ring · tap the bell to turn off": "声音已开启 — 请在页面任意处点一下，浏览器才允许响铃 · 点按铃铛关闭",
+  "Sound on — tap to turn off": "声音已开启 — 点按关闭",
+  "{n} waiting for you — see them": "{n} 项待你处理 — 点击查看",
+  "What is waiting for you": "待你处理的事项",
+  "Waiting for you · {n}": "待你处理 · {n}",
+
+  // Who is at the reception desk
+  "At the desk": "前台现场",
+  "{n} of {limit}": "{n}/{limit}",
+  "since {time}": "自 {time} 起",
+  "{h}h {m}m": "{h}小时{m}分",
+  "Free place": "空位",
+
+  // The stay date picker
+  "In {n} days": "{n} 天后",
+  "{n} days ago": "{n} 天前",
+  "{label}: {date} — change": "{label}：{date} — 更改",
+  "Previous month": "上个月",
+  "Next month": "下个月",
+  "{n} held by unpaid bookings": "{n} 间被未付款预订占用",
+  "{n} paid / confirmed": "{n} 间已付款 / 已确认",
+  "rooms free": "有空房",
+  "few / unpaid only": "房少 / 仅未付款预订",
+  "full (paid)": "满房（已付款）",
+};
+
+export default catalog;

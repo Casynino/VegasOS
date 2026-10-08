@@ -14,16 +14,21 @@ import { BroughtBySelect } from "@/components/staff/brought-by-select";
 import { ReceiptActions } from "@/components/ordering/receipt-actions";
 import type { PayAccount } from "@/lib/pay-account";
 import { cn } from "@/lib/utils";
+import { useT } from "@/i18n/client";
 import { logBillPrintedAction, payBillAction } from "@/app/staff/(app)/restaurant/actions";
 
 /** Above the bill (never printed): which bill, print / download it, record the payment (the Restaurant Counter, reception). */
-export function BillToolbar({ orderId, scope, can, place, room, count, fileName, due, onlineDue = 0, total, unpaid, pay, waiterId = null }: {
+export function BillToolbar({ orderId, scope, can, place, placeLabel, room, count, fileName, due, onlineDue = 0, total, unpaid, pay, waiterId = null }: {
   orderId: string; scope: "order" | "table" | "room"; can: { table: boolean; room: boolean }; place: string; room: string | null; count: number; fileName: string;
+  /** The place as the reader sees it (their language); `place` stays the English it is worked out from. */
+  placeLabel?: string;
   /** Still to pay here — without what the customer already paid online (onlineDue: confirmed once on the order, never paid again here). */
   due: number; onlineDue?: number; total: number; unpaid: string[]; pay: PayAccount[] | null;
   /** The order's waiter — prefilled as "Brought by" on the Restaurant Counter. */
   waiterId?: string | null;
 }) {
+  const t = useT();
+  const shown = placeLabel ?? place;
   const router = useRouter();
   const [paying, setPaying] = useState(false);
   const [account, setAccount] = useState(pay?.[0]?.id ?? "");
@@ -33,20 +38,20 @@ export function BillToolbar({ orderId, scope, can, place, room, count, fileName,
   // The official payment: recorded by whoever is signed in (the Restaurant Counter, reception) — never under a waiter.
   const record = () => start(async () => {
     const res = await payBillAction({ ids: unpaid, accountId: account, reference: reference || undefined, handedOverById: broughtBy || null });
-    if (res.ok) { toast.success(`Paid — ${res.data.count} order${res.data.count === 1 ? "" : "s"}, TZS ${res.data.total.toLocaleString("en-US")}.`); setPaying(false); setReference(""); setBroughtBy(""); router.refresh(); }
+    if (res.ok) { toast.success(t.plural(res.data.count, "Paid — {n} order, TZS {amount}.", "Paid — {n} orders, TZS {amount}.", { amount: res.data.total.toLocaleString("en-US") })); setPaying(false); setReference(""); setBroughtBy(""); router.refresh(); }
     else toast.error(res.error);
   });
   const scopes = [
-    { key: "order", label: "This order", show: true },
-    { key: "table", label: `Whole ${place.toLowerCase().startsWith("table") ? place : "table"}`, show: can.table },
-    { key: "room", label: `Room ${room ?? ""} stay`, show: can.room },
+    { key: "order", label: t("This order"), show: true },
+    { key: "table", label: place.toLowerCase().startsWith("table") ? t("Whole {place}", { place: shown }) : t("Whole table"), show: can.table },
+    { key: "room", label: t("Room {room} stay", { room: room ?? "" }), show: can.room },
   ].filter((x) => x.show);
 
   return (
     <div className="space-y-3 font-sans print:hidden">
       <div className="flex items-center justify-between gap-2">
-        <button type="button" onClick={() => (history.length > 1 ? history.back() : router.push("/staff/restaurant"))} className="inline-flex h-9 items-center gap-1.5 rounded-xl px-2 text-sm font-medium text-black/70 hover:bg-black/5"><ArrowLeft className="size-4" />Back</button>
-        <p className="text-xs text-black/55">{count} order{count === 1 ? "" : "s"} on this bill</p>
+        <button type="button" onClick={() => (history.length > 1 ? history.back() : router.push("/staff/restaurant"))} className="inline-flex h-9 items-center gap-1.5 rounded-xl px-2 text-sm font-medium text-black/70 hover:bg-black/5"><ArrowLeft className="size-4" />{t("Back")}</button>
+        <p className="text-xs text-black/55">{t.plural(count, "{n} order on this bill", "{n} orders on this bill")}</p>
       </div>
       {scopes.length > 1 && (
         <div className="grid gap-1 rounded-2xl bg-black/[0.06] p-1" style={{ gridTemplateColumns: `repeat(${scopes.length}, minmax(0, 1fr))` }}>
@@ -60,31 +65,33 @@ export function BillToolbar({ orderId, scope, can, place, room, count, fileName,
       <ReceiptActions fileName={fileName} onDone={(how) => { void logBillPrintedAction({ orderId, how, total, scope }); }} />
       {pay && due > 0 && (
         <Button onClick={() => setPaying(true)} className="h-11 w-full bg-linear-to-b from-[oklch(0.87_0.085_86)] to-[oklch(0.7_0.12_76)] text-[15px] font-semibold text-[oklch(0.2_0.03_60)] hover:brightness-105">
-          <Wallet />Take payment · TZS {due.toLocaleString("en-US")}
+          <Wallet />{t("Take payment · TZS {amount}", { amount: due.toLocaleString("en-US") })}
         </Button>
       )}
-      {!pay && due > 0 && <p className="text-center text-xs text-black/55">The Restaurant Counter records the payment.</p>}
+      {!pay && due > 0 && <p className="text-center text-xs text-black/55">{t("The Restaurant Counter records the payment.")}</p>}
       {onlineDue > 0 && (
         <p className="flex items-start gap-2 rounded-xl bg-sky-500/10 px-3 py-2 text-xs leading-snug text-sky-900 ring-1 ring-inset ring-sky-600/20">
           <ShieldCheck className="mt-px size-3.5 shrink-0" />
-          <span>Paid online · TZS {onlineDue.toLocaleString("en-US")} — {pay ? "confirm it once on the order, from the customer's proof" : "the Counter confirms it"}. It is never collected again.</span>
+          <span>{pay
+            ? t("Paid online · TZS {amount} — confirm it once on the order, from the customer's proof. It is never collected again.", { amount: onlineDue.toLocaleString("en-US") })
+            : t("Paid online · TZS {amount} — the Counter confirms it. It is never collected again.", { amount: onlineDue.toLocaleString("en-US") })}</span>
         </p>
       )}
 
       <Dialog open={paying} onOpenChange={setPaying}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader icon={<Wallet />} eyebrow={place} tone="emerald">
-            <DialogTitle>Payment · TZS {due.toLocaleString("en-US")}</DialogTitle>
-            <DialogDescription>Pays {unpaid.length} unpaid order{unpaid.length === 1 ? "" : "s"} on this bill — recorded as restaurant and bar income into the account you choose.</DialogDescription>
+          <DialogHeader icon={<Wallet />} eyebrow={shown} tone="emerald">
+            <DialogTitle>{t("Payment · TZS {amount}", { amount: due.toLocaleString("en-US") })}</DialogTitle>
+            <DialogDescription>{t.plural(unpaid.length, "Pays {n} unpaid order on this bill — recorded as restaurant and bar income into the account you choose.", "Pays {n} unpaid orders on this bill — recorded as restaurant and bar income into the account you choose.")}</DialogDescription>
           </DialogHeader>
           {/* The main way: a prompt to the customer's phone for the whole bill — recorded by itself when they approve. */}
           {unpaid.length > 0 && due > 0 && <SendToPhone target={{ kind: "orders", orderIds: unpaid, handedOverById: broughtBy || null }} amount={due} onPaid={() => setPaying(false)} primary />}
           <OtherWays>
             <div className="grid gap-3">
               {pay && <AccountSelect accounts={pay} value={account} onChange={setAccount} />}
-              <Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Reference (M-Pesa code / card slip) — optional" />
+              <Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder={t("Reference (M-Pesa code / card slip) — optional")} />
               {paying && <BroughtBySelect value={broughtBy} onChange={setBroughtBy} prefill={waiterId} />}
-              <Button disabled={pending || !account} onClick={record}>{pending && <Loader2 className="animate-spin" />}Record TZS {due.toLocaleString("en-US")}</Button>
+              <Button disabled={pending || !account} onClick={record}>{pending && <Loader2 className="animate-spin" />}{t("Record TZS {amount}", { amount: due.toLocaleString("en-US") })}</Button>
             </div>
           </OtherWays>
         </DialogContent>

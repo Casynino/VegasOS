@@ -4,6 +4,8 @@ import { timeRange } from "@/lib/meeting";
 import { fromDbDate, type BusinessDate } from "@/lib/time/business-date";
 import { DEPT_LABEL, type InvoiceDept, type InvoiceDoc } from "./invoice-document";
 import { groupBillTo } from "./bill-to";
+import { getT } from "@/i18n/server";
+import { englishT } from "@/i18n/translate";
 
 const chargeDept = (kind: string): InvoiceDept => (kind === "RESTAURANT" || kind === "BAR" || kind === "ROOM_SERVICE" || kind === "TRANSPORT" ? kind : "OTHER");
 
@@ -33,6 +35,8 @@ export async function groupStatementDoc(groupId: string, today: BusinessDate) {
     },
   });
   if (!g) return null;
+  // The statement's own words in the reader's language; English outside a request.
+  const t = await getT().catch(() => englishT);
 
   const items: InvoiceDoc["items"] = [];
   for (const r of g.reservations) {
@@ -68,11 +72,11 @@ export async function groupStatementDoc(groupId: string, today: BusinessDate) {
   const doc: InvoiceDoc = {
     number: `STM-${g.reference}`, status: "ISSUED", issueDate: today, dueDate: null,
     terms: g.paymentTermDays ?? g.corporateCustomer?.paymentTermDays ?? null,
-    billTo: groupBillTo(g, g.corporateCustomer),
+    billTo: groupBillTo(g, g.corporateCustomer, t),
     bookings: g.reservations.map((r) => r.reference),
     items, gross: net + discount, discount, net, paid, balance: Math.max(0, net - paid),
     payments: payments.map((p) => ({ id: p.id, at: p.receivedAt, method: p.method.name, reference: p.reference, amount: p.amount, refund: p.kind === "REFUND" })),
-    notes: `Statement of ${g.name}'s charges so far (group ${g.reference}). This is not a tax invoice and records nothing: the final group invoice is made when every room has checked out, and includes any charges added after today.`,
+    notes: t("Statement of {group}'s charges so far (group {reference}). This is not a tax invoice and records nothing: the final group invoice is made when every room has checked out, and includes any charges added after today.", { group: g.name, reference: g.reference }),
     cancelReason: null,
     stays: Object.fromEntries(g.reservations.map((r) => [r.id, {
       reference: r.reference, people: r.adults + r.children, others: r.guests.map((x) => x.guest.fullName),

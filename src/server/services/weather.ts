@@ -1,4 +1,5 @@
 import "server-only";
+import { msg } from "@/i18n/msg";
 
 /**
  * Current weather at the hotel (Mlimani City, Dar es Salaam) from Open-Meteo —
@@ -12,12 +13,12 @@ export type WeatherKind = "clear" | "partly" | "cloudy" | "fog" | "rain" | "stor
 export interface HotelWeather { temp: number; feelsLike: number; kind: WeatherKind; label: string; isDay: boolean }
 
 function describe(code: number): { kind: WeatherKind; label: string } {
-  if (code === 0) return { kind: "clear", label: "Clear sky" };
-  if (code <= 2) return { kind: "partly", label: "Partly cloudy" };
-  if (code === 3) return { kind: "cloudy", label: "Overcast" };
-  if (code <= 48) return { kind: "fog", label: "Fog" };
-  if (code >= 95) return { kind: "storm", label: "Thunderstorm" };
-  return { kind: "rain", label: code >= 80 ? "Showers" : "Rain" };
+  if (code === 0) return { kind: "clear", label: msg("Clear sky") };
+  if (code <= 2) return { kind: "partly", label: msg("Partly cloudy") };
+  if (code === 3) return { kind: "cloudy", label: msg("Overcast") };
+  if (code <= 48) return { kind: "fog", label: msg("Fog") };
+  if (code >= 95) return { kind: "storm", label: msg("Thunderstorm") };
+  return { kind: "rain", label: code >= 80 ? msg("Showers") : msg("Rain") };
 }
 
 export async function getHotelWeather(): Promise<HotelWeather | null> {

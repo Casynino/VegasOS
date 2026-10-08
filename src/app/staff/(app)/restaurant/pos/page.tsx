@@ -7,10 +7,14 @@ import { CLOSED_STATUSES, deliveryPlace, inHouseGuests, onlinePayStates, orderin
 import { orderLocations } from "@/server/services/restaurant-locations";
 import { openTableSessions } from "@/server/services/dining-sessions";
 import { LiveRefresh } from "@/components/live-refresh";
-import { onlyHotelOrders, orderStays, portalAccess, toPortalOrders } from "../portal/data";
+import { customerTranslators, onlyHotelOrders, orderStays, portalAccess, toPortalOrders } from "../portal/data";
 import { PosScreen, type Addable, type OpenBill, type PosGuest } from "./pos-screen";
+import { getT } from "@/i18n/server";
 
-export const metadata: Metadata = { title: "New order" };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT();
+  return { title: t("New order") };
+}
 export const dynamic = "force-dynamic";
 
 /**
@@ -20,6 +24,7 @@ export const dynamic = "force-dynamic";
  */
 export default async function PosPage({ searchParams }: PageProps<"/staff/restaurant/pos">) {
   const user = await requirePagePermission("restaurant.orders", "kitchen.orders");
+  const t = await getT();
   const today = await businessToday();
   const { perms, role, seesMoney } = portalAccess(user);
   const sp = await searchParams;
@@ -42,7 +47,7 @@ export default async function PosPage({ searchParams }: PageProps<"/staff/restau
     items: o.items.reduce((t, i) => t + i.quantity, 0),
   })) : [];
   const open = orders.filter((o) => !CLOSED_STATUSES.includes(o.status));
-  const line = toPortalOrders(open, { seesMoney, waiter: perms.waiter, settings, origin, stays: seesMoney ? await orderStays(open) : undefined, online: await onlinePayStates(open) });
+  const line = toPortalOrders(open, { seesMoney, waiter: perms.waiter, settings, origin, stays: seesMoney ? await orderStays(open) : undefined, online: await onlinePayStates(open), guestT: await customerTranslators() });
 
   // Open bills: a table still eating / not paid today, or a staying guest's restaurant orders — new orders add to them.
   const bills = new Map<string, OpenBill>();
@@ -52,7 +57,7 @@ export default async function PosPage({ searchParams }: PageProps<"/staff/restau
     const key = table ? `table:${o.tableLabel!.trim().toLowerCase()}` : o.reservationId ? `room:${o.reservationId}` : null;
     if (!key) continue;
     const b = bills.get(key) ?? {
-      key, kind: table ? "table" : "room", label: table ? deliveryPlace(o) : `Room ${o.roomNumber ?? ""}`, table: table ? o.tableLabel!.trim() : null,
+      key, kind: table ? "table" : "room", label: table ? deliveryPlace(o) : t("Room {room}", { room: o.roomNumber ?? "" }), table: table ? o.tableLabel!.trim() : null,
       reservationId: table ? null : o.reservationId, who: o.customerName ?? o.reservation?.guest.fullName ?? null, phone: null, orders: 0, total: seesMoney ? 0 : null, due: seesMoney ? 0 : null, orderId: o.id, stays: [],
     } satisfies OpenBill;
     b.orders += 1;

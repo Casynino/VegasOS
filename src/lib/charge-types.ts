@@ -1,16 +1,18 @@
+import { msg } from "@/i18n/msg";
+
 /**
  * What can be put on a guest's room account. `kind` decides which revenue line
  * it counts under in reports (restaurant, bar or other hotel income).
  */
 export const CHARGE_TYPES = [
-  { code: "RESTAURANT", label: "Restaurant", kind: "RESTAURANT", icon: "UtensilsCrossed" },
-  { code: "ROOM_SERVICE", label: "Room service", kind: "RESTAURANT", icon: "ConciergeBell" },
-  { code: "BAR", label: "Bar", kind: "BAR", icon: "Wine" },
-  { code: "MINIBAR", label: "Minibar", kind: "BAR", icon: "GlassWater" },
-  { code: "LAUNDRY", label: "Laundry", kind: "OTHER", icon: "Shirt" },
-  { code: "TRANSPORT", label: "Transport", kind: "TRANSPORT", icon: "Car" },
-  { code: "EXTRA_BED", label: "Extra bed", kind: "OTHER", icon: "BedSingle" },
-  { code: "OTHER", label: "Other", kind: "OTHER", icon: "Plus" },
+  { code: "RESTAURANT", label: msg("Restaurant"), kind: "RESTAURANT", icon: "UtensilsCrossed" },
+  { code: "ROOM_SERVICE", label: msg("Room service"), kind: "RESTAURANT", icon: "ConciergeBell" },
+  { code: "BAR", label: msg("Bar"), kind: "BAR", icon: "Wine" },
+  { code: "MINIBAR", label: msg("Minibar"), kind: "BAR", icon: "GlassWater" },
+  { code: "LAUNDRY", label: msg("Laundry"), kind: "OTHER", icon: "Shirt" },
+  { code: "TRANSPORT", label: msg("Transport"), kind: "TRANSPORT", icon: "Car" },
+  { code: "EXTRA_BED", label: msg("Extra bed"), kind: "OTHER", icon: "BedSingle" },
+  { code: "OTHER", label: msg("Other"), kind: "OTHER", icon: "Plus" },
 ] as const;
 
 export type ChargeTypeCode = (typeof CHARGE_TYPES)[number]["code"];
@@ -19,8 +21,8 @@ export const CHARGE_CODES = CHARGE_TYPES.map((t) => t.code) as [ChargeTypeCode, 
 /** Labels for every category that can appear on a folio (including system ones). */
 export const CHARGE_LABELS: Record<string, string> = {
   ...Object.fromEntries(CHARGE_TYPES.map((t) => [t.code, t.label])),
-  LATE_CHECKOUT: "Late checkout", EARLY_DEPARTURE: "Early departure", ROOM_UPGRADE: "Room change",
-  ROOM_SERVICE_FEE: "Room service fee", NO_SHOW: "No-show · payment kept", ROOM_CHANGE_CREDIT: "Room change · credit", DATE_CHANGE_KEPT: "Date change · price kept", CANCELLATION: "Cancellation · payment kept",
+  LATE_CHECKOUT: msg("Late checkout"), EARLY_DEPARTURE: msg("Early departure"), ROOM_UPGRADE: msg("Room change"),
+  ROOM_SERVICE_FEE: msg("Room service fee"), NO_SHOW: msg("No-show · payment kept"), ROOM_CHANGE_CREDIT: msg("Room change · credit"), DATE_CHANGE_KEPT: msg("Date change · price kept"), CANCELLATION: msg("Cancellation · payment kept"),
 };
 
 export function chargeKind(code: string | null | undefined): "RESTAURANT" | "BAR" | "TRANSPORT" | "OTHER" {

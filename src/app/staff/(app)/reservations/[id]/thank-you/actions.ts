@@ -5,6 +5,7 @@ import { authorize, requestMeta } from "@/server/auth";
 import { runAction } from "@/server/errors";
 import { generateThankYouNote } from "@/server/services/thank-you";
 import { db } from "@/server/db";
+import { msg } from "@/i18n/msg";
 
 /**
  * Make the thank-you note: the first one (a stay checked out before notes existed) by reception,
@@ -18,5 +19,5 @@ export async function makeThankYouAction(input: { reservationId: string; reason?
     const note = await generateThankYouNote(input.reservationId, { userId: user.id, label: user.fullName, ipAddress }, input.reason ?? null);
     revalidatePath(`/staff/reservations/${input.reservationId}`);
     return { version: note.version };
-  }, "Thank-you note ready.");
+  }, msg("Thank-you note ready."));
 }

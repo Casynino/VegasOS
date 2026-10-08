@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { z } from "zod";
+import { msg } from "@/i18n/msg";
 import { requestMeta } from "@/server/auth";
 import { runAction, type ActionResult } from "@/server/errors";
 import { rateLimit } from "@/server/rate-limit";
@@ -11,14 +12,17 @@ import { identifyCustomer, placeOnlineOrder } from "@/server/services/online-ord
 import { addItemsByTrackToken } from "@/server/services/restaurant-locations";
 import { assertCanPayOnline, payForNewOrder, payOrderOnline } from "@/server/services/online-pay";
 import { SEAT_COOKIE, SEAT_HOURS } from "@/server/services/dining-core";
+import { rememberGuestLanguage } from "@/i18n/server";
 
 const Order = z.object({
   clientKey: z.string().regex(/^[a-f0-9]{32}$/),
-  items: z.array(z.object({ menuItemId: z.string().min(1).max(80), quantity: z.number().int().min(1).max(20) })).min(1, "Add something from the menu.").max(30),
+  items: z.array(z.object({ menuItemId: z.string().min(1).max(80), quantity: z.number().int().min(1).max(20) })).min(1, msg("Add something from the menu.")).max(30),
   notes: z.string().trim().max(300).optional(),
+  /** Common requests ticked (ORDER_REQUESTS codes — unknown ones are dropped on the server). */
+  noteCodes: z.array(z.string().max(40)).max(20).optional(),
   name: z.string().trim().max(80).optional(), // blank: a returning customer, named from their phone
-  phone: z.string().trim().min(7, "Please enter your phone number.").max(30),
-  email: z.union([z.literal(""), z.email("Enter a valid email.").max(160)]).optional(),
+  phone: z.string().trim().min(7, msg("Please enter your phone number.")).max(30),
+  email: z.union([z.literal(""), z.email(msg("Enter a valid email.")).max(160)]).optional(),
   kind: z.enum(["DINE_IN", "TAKEAWAY", "PICKUP"]),
   tableLabel: z.string().trim().max(40).optional(),
   /** Eating here at a free table they picked. */
@@ -44,11 +48,12 @@ export async function placeOnlineOrderAction(input: z.input<typeof Order>): Prom
     await rateLimit(`online-order:phone:${d.phone.replace(/\D/g, "").slice(-9) || "unknown"}`, 12, 600);
     if (d.payOnline) await assertCanPayOnline("restaurant", d.payOnline.phone);
     const order = await placeOnlineOrder({
-      clientKey: d.clientKey, items: d.items, notes: d.notes, name: d.name, phone: d.phone, email: d.email || null,
+      clientKey: d.clientKey, items: d.items, notes: d.notes, noteCodes: d.noteCodes, name: d.name, phone: d.phone, email: d.email || null,
       kind: d.kind, tableLabel: d.tableLabel, tableId: d.tableId, deliveryAddress: d.deliveryAddress, paidFirst: null, fromQr: d.fromQr, payOnline: !!d.payOnline,
     });
     // A table they picked is theirs now: this phone is remembered at it (like sitting down there).
     if (order.seat) (await cookies()).set(SEAT_COOKIE, order.seat, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", maxAge: SEAT_HOURS * 3600 });
+    await rememberGuestLanguage(order.guestId); // their language for their messages (only a language they chose; never fails)
     const paying = d.payOnline ? await payForNewOrder(order, { phone: d.payOnline.phone, clientKey: d.clientKey, ip: ipAddress }) : null;
     revalidatePath("/staff/restaurant", "layout");
     return { number: order.number, track: order.trackToken!, pay: paying?.pay ?? null, payError: paying?.payError ?? null };
@@ -57,7 +62,7 @@ export async function placeOnlineOrderAction(input: z.input<typeof Order>): Prom
 
 const PayOrder = z.object({
   token: z.string().regex(/^[A-Za-z0-9_-]{12,40}$/),
-  phone: z.string().trim().min(9, "Enter your mobile-money number.").max(30),
+  phone: z.string().trim().min(9, msg("Enter your mobile-money number.")).max(30),
   clientKey: z.string().regex(/^[a-f0-9]{32}$/),
 });
 
@@ -82,7 +87,7 @@ export async function identifyCustomerAction(input: { phone: string }): Promise<
 
 const More = z.object({
   token: z.string().regex(/^[A-Za-z0-9_-]{12,40}$/),
-  items: z.array(z.object({ menuItemId: z.string().min(1).max(80), quantity: z.number().int().min(1).max(20) })).min(1, "Add something from the menu.").max(30),
+  items: z.array(z.object({ menuItemId: z.string().min(1).max(80), quantity: z.number().int().min(1).max(20) })).min(1, msg("Add something from the menu.")).max(30),
 });
 
 /** The customer adds more to their own open order (from their order link): same order, the kitchen gets the new items. */

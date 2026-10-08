@@ -5,6 +5,7 @@ import Image, { getImageProps } from "next/image";
 import { motion, useMotionTemplate, useScroll } from "motion/react";
 import { Pause, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useT } from "@/i18n/client";
 import { Atmosphere } from "../kit/atmosphere";
 import { HudLabel } from "../kit/hud";
 import { containers } from "../kit/tokens";
@@ -90,6 +91,7 @@ export function CinematicHero({
   labelledBy: string;
   className?: string;
 }) {
+  const t = useT();
   const ref = useRef<HTMLElement>(null);
   const desktop = useMedia("(min-width: 1024px)");
   const reduce = useMedia("(prefers-reduced-motion: reduce)");
@@ -112,11 +114,11 @@ export function CinematicHero({
   useEffect(() => {
     if (!rotate || paused || hidden) return;
     const next = (active + 1) % slides.length;
-    const t = window.setTimeout(() => {
+    const timer = window.setTimeout(() => {
       setActive(next);
       setReached((r) => Math.max(r, next));
     }, SLIDE_MS);
-    return () => window.clearTimeout(t);
+    return () => window.clearTimeout(timer);
   }, [rotate, paused, hidden, active, slides.length]);
 
   useEffect(() => {
@@ -199,7 +201,7 @@ export function CinematicHero({
         <div className={cn(containers.wide, "relative pt-[calc(var(--pub-header-h)+0.75rem)] sm:pt-[calc(var(--pub-header-h)+2rem)] lg:hidden")}>
           <p className="inline-flex max-w-full items-center [text-shadow:0_1px_8px_rgba(0,0,0,0.6)]">
             <HudLabel live className="text-white/80">
-              <span className="sr-only">Local time in </span>
+              <span className="sr-only">{t("Local time in")} </span>
               {hud.place}
               <LocalTime initial={hud.initialTime} className="ml-2 text-white tabular-nums" />
               {hud.temp && <span className="ml-2 text-white/80">{hud.temp}</span>}
@@ -231,7 +233,7 @@ export function CinematicHero({
                     key={s.src}
                     type="button"
                     onClick={() => go(i)}
-                    aria-label={`Show photo ${i + 1}: ${s.caption}`}
+                    aria-label={t("Show photo {n}: {caption}", { n: i + 1, caption: s.caption })}
                     aria-current={i === current ? "true" : undefined}
                     className="group relative flex h-11 w-9 items-center px-1 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-gold"
                   >
@@ -249,7 +251,7 @@ export function CinematicHero({
               <button
                 type="button"
                 onClick={() => setPaused((v) => !v)}
-                aria-label={paused ? "Play the slideshow" : "Pause the slideshow"}
+                aria-label={paused ? t("Play the slideshow") : t("Pause the slideshow")}
                 className="grid size-11 place-items-center rounded-full border border-white/25 bg-black/10 text-white/85 backdrop-blur-sm transition-colors duration-200 hover:border-white/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold"
               >
                 {paused ? <Play className="size-3.5" strokeWidth={1.6} aria-hidden="true" /> : <Pause className="size-3.5" strokeWidth={1.6} aria-hidden="true" />}

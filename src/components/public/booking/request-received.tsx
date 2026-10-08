@@ -1,8 +1,10 @@
 import { CheckCircle2 } from "lucide-react";
 import type { HotelSettings } from "@/generated/prisma/client";
 import { diffDays, formatMinutes, type BusinessDate } from "@/lib/time/business-date";
-import { formatBusinessDate, formatTZS } from "@/lib/format";
+import { formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { getT } from "@/i18n/server";
+import { msg } from "@/i18n/msg";
 import { LinkButton } from "../kit/button";
 import { Heading } from "../kit/typography";
 import { Section } from "../kit/section";
@@ -35,13 +37,13 @@ export interface CustomerRequestView {
 
 /** What the guest sees about their request. Never implies a confirmed room until staff have converted it. */
 const STATUS: Record<string, { title: string; body: string; tone: "gold" | "muted" | "warn" }> = {
-  NEW: { title: "Request received", body: "Our reservations team will contact you shortly to confirm availability and your booking.", tone: "gold" },
-  REVIEWING: { title: "Being reviewed", body: "Our team is checking availability for your dates. We’ll contact you shortly.", tone: "gold" },
-  CONTACTED: { title: "We’ve been in touch", body: "Our team has contacted you about this request. Reply to us by phone or WhatsApp if you haven’t yet.", tone: "gold" },
-  CONFIRMED: { title: "Confirmed by our team", body: "Your room has been confirmed by our reservations team.", tone: "gold" },
-  CONVERTED: { title: "Booking confirmed", body: "Our team has confirmed your booking. We look forward to welcoming you.", tone: "gold" },
-  REJECTED: { title: "We couldn’t accommodate this request", body: "Unfortunately we could not confirm these dates. Please contact us for alternatives.", tone: "warn" },
-  CANCELLED: { title: "Request cancelled", body: "This request has been cancelled. Contact us if you’d like to book again.", tone: "warn" },
+  NEW: { title: msg("Request received"), body: msg("Our reservations team will contact you shortly to confirm availability and your booking."), tone: "gold" },
+  REVIEWING: { title: msg("Being reviewed"), body: msg("Our team is checking availability for your dates. We’ll contact you shortly."), tone: "gold" },
+  CONTACTED: { title: msg("We’ve been in touch"), body: msg("Our team has contacted you about this request. Reply to us by phone or WhatsApp if you haven’t yet."), tone: "gold" },
+  CONFIRMED: { title: msg("Confirmed by our team"), body: msg("Your room has been confirmed by our reservations team."), tone: "gold" },
+  CONVERTED: { title: msg("Booking confirmed"), body: msg("Our team has confirmed your booking. We look forward to welcoming you."), tone: "gold" },
+  REJECTED: { title: msg("We couldn’t accommodate this request"), body: msg("Unfortunately we could not confirm these dates. Please contact us for alternatives."), tone: "warn" },
+  CANCELLED: { title: msg("Request cancelled"), body: msg("This request has been cancelled. Contact us if you’d like to book again."), tone: "warn" },
 };
 
 /**
@@ -49,7 +51,8 @@ const STATUS: Record<string, { title: string; body: string; tone: "gold" | "mute
  * the reference), what happens next on one dark panel — first on phones, beside the details
  * on desktop — the request as hairline lists, and how to reach us.
  */
-export function RequestReceived({ request, settings }: { request: CustomerRequestView; settings: HotelSettings }) {
+export async function RequestReceived({ request, settings }: { request: CustomerRequestView; settings: HotelSettings }) {
+  const t = await getT();
   const status = STATUS[request.status] ?? STATUS.NEW;
   const nights = diffDays(request.checkIn, request.checkOut);
   const confirmed = request.status === "CONVERTED" || request.status === "CONFIRMED";
@@ -57,10 +60,10 @@ export function RequestReceived({ request, settings }: { request: CustomerReques
   const open = request.status === "NEW" || request.status === "REVIEWING" || request.status === "CONTACTED";
 
   const steps = [
-    ["We check availability", "Our reservations team reviews your dates and room."],
-    ["We contact you", `By phone or WhatsApp on ${request.phone}${request.email ? `, or by email` : ""}.`],
+    [t("We check availability"), t("Our reservations team reviews your dates and room.")],
+    [t("We contact you"), request.email ? t("By phone or WhatsApp on {phone}, or by email.", { phone: request.phone }) : t("By phone or WhatsApp on {phone}.", { phone: request.phone })],
     // Paying is only ever mobile money through nTZS, from the booking's own link (owner, 2026-10-05) — no account numbers.
-    ["Pay to secure your room", "Once we confirm, you pay by mobile money from your booking link — a payment request comes to your phone. Unpaid holds are released."],
+    [t("Pay to secure your room"), t("Once we confirm, you pay by mobile money from your booking link — a payment request comes to your phone. Unpaid holds are released.")],
   ] as const;
 
   return (
@@ -70,17 +73,17 @@ export function RequestReceived({ request, settings }: { request: CustomerReques
         eyebrow={
           <>
             {status.tone !== "warn" && <CheckCircle2 className="size-4" strokeWidth={1.6} aria-hidden="true" />}
-            {request.meeting ? "Meeting room request" : "Booking request"}
+            {request.meeting ? t("Meeting room request") : t("Booking request")}
           </>
         }
-        title={status.title}
-        lede={<p>Thank you, {request.fullName.split(" ")[0]}. {status.body}</p>}
-        referenceLabel="Request reference"
+        title={t(status.title)}
+        lede={<p>{t("Thank you, {name}.", { name: request.fullName.split(" ")[0] })} {t(status.body)}</p>}
+        referenceLabel={t("Request reference")}
         reference={request.reference}
       >
         {request.reservation && confirmed && (
           <p className="mt-4 text-[14px] text-pub-muted">
-            Booking reference <strong className="font-medium text-pub-eyebrow">{request.reservation.reference}</strong>
+            {t.rich("Booking reference <b>{reference}</b>", { b: (c) => <strong className="font-medium text-pub-eyebrow">{c}</strong> }, { reference: request.reservation.reference })}
           </p>
         )}
       </ConfirmationBand>
@@ -92,21 +95,21 @@ export function RequestReceived({ request, settings }: { request: CustomerReques
             {status.tone === "warn" ? (
               <div data-tone="night" className={cn(fx.night, "relative p-5 text-pub-fg sm:p-7 lg:sticky lg:top-24", printInk)}>
                 <span aria-hidden="true" className="pub-hud-corners print:hidden" style={{ "--hud-o": "-0.625rem", "--hud-l": "0.875rem" } as React.CSSProperties} />
-                <h2 id="next-title" className={cn(typeScale.eyebrow, "text-pub-eyebrow")}>Another date?</h2>
+                <h2 id="next-title" className={cn(typeScale.eyebrow, "text-pub-eyebrow")}>{t("Another date?")}</h2>
                 <p className="mt-4 text-[14px] leading-relaxed text-pub-muted">
-                  {request.meeting ? "See when the Meeting Room is free and book it online." : "See which rooms are free on other dates and book online."}
+                  {request.meeting ? t("See when the Meeting Room is free and book it online.") : t("See which rooms are free on other dates and book online.")}
                 </p>
                 <LinkButton href={request.meeting ? "/meeting-room#book" : "/book"} icon="arrow" full className="mt-6 print:hidden">
-                  Check availability
+                  {t("Check availability")}
                 </LinkButton>
               </div>
             ) : (
               <div data-tone="night" className={cn(fx.night, "relative p-5 text-pub-fg sm:p-7 lg:sticky lg:top-24", printInk, "print:border print:border-pub-line")}>
                 <span aria-hidden="true" className="pub-hud-corners print:hidden" style={{ "--hud-o": "-0.625rem", "--hud-l": "0.875rem" } as React.CSSProperties} />
-                <h2 id="next-title" className={cn(typeScale.eyebrow, "text-pub-eyebrow")}>What happens next</h2>
+                <h2 id="next-title" className={cn(typeScale.eyebrow, "text-pub-eyebrow")}>{t("What happens next")}</h2>
                 <ol className="mt-6 space-y-5">
-                  {steps.map(([t, b], i) => (
-                    <li key={t} className="flex gap-4">
+                  {steps.map(([title, b], i) => (
+                    <li key={title} className="flex gap-4">
                       <span
                         aria-hidden="true"
                         className={cn(
@@ -117,7 +120,7 @@ export function RequestReceived({ request, settings }: { request: CustomerReques
                         {i + 1}
                       </span>
                       <span className="min-w-0 text-[14px] leading-relaxed">
-                        <span className="block font-medium text-pub-fg">{t}</span>
+                        <span className="block font-medium text-pub-fg">{title}</span>
                         <span className="text-pub-muted">{b}</span>
                       </span>
                     </li>
@@ -128,57 +131,57 @@ export function RequestReceived({ request, settings }: { request: CustomerReques
           </section>
 
           <section aria-labelledby="stay-title" className="min-w-0 lg:col-span-7 lg:col-start-1 lg:row-start-1">
-            <Heading as="h2" size="subheading" id="stay-title">{request.meeting ? "Your meeting room request" : "Your requested stay"}</Heading>
+            <Heading as="h2" size="subheading" id="stay-title">{request.meeting ? t("Your meeting room request") : t("Your requested stay")}</Heading>
             <div className="mt-6">
               {request.meeting ? (
-                <DatePair from={{ label: "Date", date: formatBusinessDate(request.checkIn) }} to={{ label: "Time", date: request.meeting.time }} />
+                <DatePair from={{ label: t("Date"), date: t.date(request.checkIn) }} to={{ label: t("Time"), date: request.meeting.time }} />
               ) : (
                 <DatePair
                   from={{
-                    label: "Check-in",
-                    date: formatBusinessDate(request.checkIn),
-                    note: request.expectedArrivalTime ? `arriving around ${request.expectedArrivalTime}` : `from ${formatMinutes(settings.standardCheckInMinutes)}`,
+                    label: t("Check-in"),
+                    date: t.date(request.checkIn),
+                    note: request.expectedArrivalTime ? t("arriving around {time}", { time: request.expectedArrivalTime }) : t("from {time}", { time: formatMinutes(settings.standardCheckInMinutes) }),
                   }}
-                  to={{ label: "Check-out", date: formatBusinessDate(request.checkOut), note: `by ${formatMinutes(settings.checkoutMinutes)}` }}
+                  to={{ label: t("Check-out"), date: t.date(request.checkOut), note: t("by {time}", { time: formatMinutes(settings.checkoutMinutes) }) }}
                 />
               )}
             </div>
             <dl>
-              <FactRow term="Room">
+              <FactRow term={t("Room")}>
                 <span className="font-display text-[1.25rem] leading-tight">
                   {request.roomCount > 1 ? `${request.roomCount} × ` : ""}
-                  {request.roomType.name}
+                  {t(request.roomType.name)}
                 </span>
               </FactRow>
               {request.meeting ? (
                 <>
-                  <FactRow term="Company">{request.meeting.company ?? "—"}</FactRow>
-                  <FactRow term="People">{request.adults}</FactRow>
+                  <FactRow term={t("Company")}>{request.meeting.company ?? "—"}</FactRow>
+                  <FactRow term={t("People")}>{request.adults}</FactRow>
                 </>
               ) : (
-                <FactRow term="Stay">
-                  {nights} night{nights === 1 ? "" : "s"} · {guestsLabel(request.adults, request.children)}
+                <FactRow term={t("Stay")}>
+                  {t.plural(nights, "{n} night", "{n} nights")} · {guestsLabel(request.adults, request.children, t)}
                 </FactRow>
               )}
               {request.estimatedNet != null && (
-                <FactRow term="Estimated total">
+                <FactRow term={t("Estimated total")}>
                   <span className="font-display text-[1.25rem] leading-tight lining-nums tabular-nums">{formatTZS(request.estimatedNet)}</span>
                 </FactRow>
               )}
               {pickup && (
-                <FactRow term="Airport pickup">
-                  <span className="block">Requested — we’ll confirm by phone or WhatsApp</span>
+                <FactRow term={t("Airport pickup")}>
+                  <span className="block">{t("Requested — we’ll confirm by phone or WhatsApp")}</span>
                   {(pickup.flightNumber || pickup.arrivalDate || pickup.arrivalTime) && (
                     <span className="mt-0.5 block text-[13px] text-pub-muted">
-                      {pickup.flightNumber ? `Flight ${pickup.flightNumber} · ` : ""}
-                      {pickup.arrivalDate ? formatBusinessDate(pickup.arrivalDate as BusinessDate) : ""}
-                      {pickup.arrivalTime ? ` at ${pickup.arrivalTime}` : ""}
+                      {pickup.flightNumber ? `${t("Flight {flight}", { flight: pickup.flightNumber })} · ` : ""}
+                      {pickup.arrivalDate ? t.date(pickup.arrivalDate as BusinessDate) : ""}
+                      {pickup.arrivalTime ? ` ${t("at {time}", { time: pickup.arrivalTime })}` : ""}
                     </span>
                   )}
                 </FactRow>
               )}
               {request.specialRequests && (
-                <FactRow term={request.meeting ? "Your requirements" : "Your requests"}>
+                <FactRow term={request.meeting ? t("Your requirements") : t("Your requests")}>
                   <span className="text-pub-muted">“{request.specialRequests}”</span>
                 </FactRow>
               )}
@@ -186,9 +189,9 @@ export function RequestReceived({ request, settings }: { request: CustomerReques
           </section>
 
           <section aria-labelledby="help-title" className="min-w-0 lg:col-span-7 lg:col-start-1 lg:row-start-2">
-            <Heading as="h2" size="subheading" id="help-title">Questions?</Heading>
+            <Heading as="h2" size="subheading" id="help-title">{t("Questions?")}</Heading>
             <p className={cn(typeScale.small, "mt-2 text-pub-muted")}>
-              Quote your reference <strong className="font-medium text-pub-fg">{request.reference}</strong>.
+              {t.rich("Quote your reference <b>{reference}</b>.", { b: (c) => <strong className="font-medium text-pub-fg">{c}</strong> }, { reference: request.reference })}
             </p>
             <div className="mt-5">
               <ContactRows
@@ -199,7 +202,7 @@ export function RequestReceived({ request, settings }: { request: CustomerReques
                 emailSubject={`Booking request ${request.reference}`}
               />
             </div>
-            <KeepLink what="check this request" />
+            <KeepLink what={t("check this request")} />
           </section>
         </div>
       </Section>

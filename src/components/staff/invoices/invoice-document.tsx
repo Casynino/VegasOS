@@ -1,19 +1,22 @@
 import Image from "next/image";
 import QRCode from "qrcode";
 import { Building2, Landmark, ScanLine, Smartphone } from "lucide-react";
-import { formatBusinessDate, formatDateTime, formatNumber } from "@/lib/format";
+import { formatNumber } from "@/lib/format";
 import { termsLabel } from "@/lib/billing";
 import { cn } from "@/lib/utils";
 import type { HotelSettings } from "@/generated/prisma/client";
 import type { InvoiceStatus } from "@/generated/prisma/enums";
+import { getT } from "@/i18n/server";
+import { msg } from "@/i18n/msg";
+import type { T } from "@/i18n/translate";
 
 /** The department a line came from — kept from the room's folio, so the invoice and the ledger agree. */
 export type InvoiceDept = "ROOM" | "MEETING" | "RESTAURANT" | "BAR" | "ROOM_SERVICE" | "TRANSPORT" | "OTHER";
 export const DEPT_LABEL: Record<InvoiceDept, string> = {
-  ROOM: "Accommodation", MEETING: "Meeting room", RESTAURANT: "Restaurant / food", BAR: "Bar", ROOM_SERVICE: "Room service", TRANSPORT: "Transport", OTHER: "Other",
+  ROOM: msg("Accommodation"), MEETING: msg("Meeting room"), RESTAURANT: msg("Restaurant / food"), BAR: msg("Bar"), ROOM_SERVICE: msg("Room service"), TRANSPORT: msg("Transport"), OTHER: msg("Other"),
 };
 const DEPT_ORDER: InvoiceDept[] = ["ROOM", "MEETING", "RESTAURANT", "BAR", "ROOM_SERVICE", "TRANSPORT", "OTHER"];
-const DEPT_SHORT: Record<InvoiceDept, string> = { ROOM: "Rooms", MEETING: "Meeting", RESTAURANT: "Food", BAR: "Bar", ROOM_SERVICE: "Room svc", TRANSPORT: "Transport", OTHER: "Other" };
+const DEPT_SHORT: Record<InvoiceDept, string> = { ROOM: msg("Rooms"), MEETING: msg("Meeting"), RESTAURANT: msg("Food"), BAR: msg("Bar"), ROOM_SERVICE: msg("Room svc"), TRANSPORT: msg("Transport"), OTHER: msg("Other") };
 
 export type InvoiceDoc = {
   number: string;
@@ -52,27 +55,27 @@ export type InvoiceDoc = {
 
 // Stamps sit on the dark header, so they use light ink.
 const STAMP: Record<InvoiceStatus, { label: string; cls: string }> = {
-  DRAFT: { label: "Draft", cls: "border-white/40 text-white/60" },
-  ISSUED: { label: "Unpaid", cls: "border-rose-400 text-rose-300" },
-  OVERDUE: { label: "Overdue", cls: "border-rose-400 bg-rose-500/15 text-rose-300" },
-  PARTIALLY_PAID: { label: "Part paid", cls: "border-amber-300 text-amber-200" },
-  PAID: { label: "Paid", cls: "border-emerald-400 bg-emerald-500/15 text-emerald-300" },
-  CANCELLED: { label: "Cancelled", cls: "border-white/40 text-white/50" },
-  VOID: { label: "Void", cls: "border-white/40 text-white/50" },
+  DRAFT: { label: msg("Draft"), cls: "border-white/40 text-white/60" },
+  ISSUED: { label: msg("Unpaid"), cls: "border-rose-400 text-rose-300" },
+  OVERDUE: { label: msg("Overdue"), cls: "border-rose-400 bg-rose-500/15 text-rose-300" },
+  PARTIALLY_PAID: { label: msg("Part paid"), cls: "border-amber-300 text-amber-200" },
+  PAID: { label: msg("Paid"), cls: "border-emerald-400 bg-emerald-500/15 text-emerald-300" },
+  CANCELLED: { label: msg("Cancelled"), cls: "border-white/40 text-white/50" },
+  VOID: { label: msg("Void"), cls: "border-white/40 text-white/50" },
 };
 
 const n = (v: number) => formatNumber(v);
 const ADJUSTMENT = /^(Adjustment|Credit):/;
-const shortDay = (d: string) => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${d}T00:00:00Z`));
-const day = (d: string | null) => (d ? formatBusinessDate(d) : "—");
+const shortDay = (d: string, t: T) => new Intl.DateTimeFormat(t.intl, { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${d}T00:00:00Z`));
+const day = (d: string | null, t: T) => (d ? t.date(d) : "—");
 /** A stay's dates come from its room lines (a dinner on the last night does not move the checkout). */
-const stayRange = (items: InvoiceDoc["items"]) => {
+const stayRange = (items: InvoiceDoc["items"], t: T) => {
   const rooms = items.filter((i) => i.isRoom && i.from);
   const src = rooms.length ? rooms : items.filter((i) => i.from);
   if (!src.length) return "";
-  return range(src.map((i) => i.from!).sort()[0], src.map((i) => i.to ?? i.from!).sort().at(-1)!);
+  return range(src.map((i) => i.from!).sort()[0], src.map((i) => i.to ?? i.from!).sort().at(-1)!, t);
 };
-const range = (a: string | null, b: string | null) => (a && b && a !== b ? `${formatBusinessDate(a)} → ${formatBusinessDate(b)}` : a ? formatBusinessDate(a) : "");
+const range = (a: string | null, b: string | null, t: T) => (a && b && a !== b ? `${t.date(a)} → ${t.date(b)}` : a ? t.date(a) : "");
 
 /**
  * The invoice as the company receives it: branded header with a status stamp,
@@ -88,14 +91,15 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
   /** A statement of charges so far (not an invoice): its own words throughout. */
   statement?: boolean;
 }) {
+  const t = await getT();
   const w = statement
-    ? { due: "Balance so far", total: "Charges so far", to: "Statement for", details: "Statement details", no: "Statement no.", tag: "STATEMENT", stamp: "Statement" }
-    : { due: "Amount due", total: "Invoice total", to: "Invoice to", details: "Invoice details", no: "Invoice no.", tag: "GROUP INVOICE", stamp: "Proforma" };
+    ? { due: t("Balance so far"), total: t("Charges so far"), to: t("Statement for"), details: t("Statement details"), no: t("Statement no."), tag: t("STATEMENT"), stamp: t("Statement") }
+    : { due: t("Amount due"), total: t("Invoice total"), to: t("Invoice to"), details: t("Invoice details"), no: t("Invoice no."), tag: t("GROUP INVOICE"), stamp: t("Proforma") };
   const payRef = statement ? inv.group?.reference ?? inv.number : inv.number;
   const qr = verifyUrl
     ? await QRCode.toString(verifyUrl, { type: "svg", margin: 0, errorCorrectionLevel: "M", color: { dark: "#15110c", light: "#00000000" } })
     : null;
-  const stamp = proforma ? { label: w.stamp, cls: "border-amber-300 text-amber-200" } : STAMP[inv.status];
+  const stamp = proforma ? { label: w.stamp, cls: "border-amber-300 text-amber-200" } : { ...STAMP[inv.status], label: t(STAMP[inv.status].label) };
   const dead = inv.status === "VOID" || inv.status === "CANCELLED";
 
   // Lines grouped by stay (company invoices), so every guest, room and date is clear.
@@ -112,7 +116,7 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
     const dept = (d: InvoiceDept) => g.items.filter((i) => (i.dept ?? (i.isRoom ? "ROOM" : "OTHER")) === d);
     const nights = g.items.filter((i) => i.isRoom && i.dept !== "MEETING" && !ADJUSTMENT.test(i.description) && !i.description.endsWith("short time")).reduce((t, i) => t + i.quantity, 0);
     return {
-      key: g.key, guest: g.head!.guestName ?? "Guest", room: g.head!.roomNumber, reference: stay?.reference ?? g.head!.reference,
+      key: g.key, guest: g.head!.guestName ?? t("Guest"), room: g.head!.roomNumber, reference: stay?.reference ?? g.head!.reference,
       others: stay?.others ?? [], people: stay?.people ?? null,
       from: stay?.arrival ?? g.items.find((i) => i.from)?.from ?? null, to: stay?.departure ?? g.items.find((i) => i.to)?.to ?? null, nights,
       depts: DEPT_ORDER.map((d) => ({ d, items: dept(d) })).filter((x) => x.items.length > 0),
@@ -142,7 +146,7 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
   const hasBank = !!(s.bankName && s.bankAccountNumber);
   // Prices include the tax (when set up): show the part of the total that is tax.
   const taxRate = s.taxRatePercent ? Number(s.taxRatePercent) : 0;
-  const tax = taxRate > 0 && s.taxIncludedInRates && inv.net > 0 ? { name: s.taxName || "VAT", rate: taxRate, amount: Math.round((inv.net * taxRate) / (100 + taxRate)) } : null;
+  const tax = taxRate > 0 && s.taxIncludedInRates && inv.net > 0 ? { name: t(s.taxName || "VAT"), rate: taxRate, amount: Math.round((inv.net * taxRate) / (100 + taxRate)) } : null;
   const hasMobile = !!s.mobileMoneyNumber;
   let row = 0;
 
@@ -159,7 +163,7 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
             </span>
             <div className="leading-tight">
               <p className="font-display text-2xl font-semibold tracking-tight">{s.hotelName}</p>
-              {s.tagline && <p className="mt-0.5 text-[11px] uppercase tracking-[0.22em] text-[#f0cf86]/80">{s.tagline}</p>}
+              {s.tagline && <p className="mt-0.5 text-[11px] uppercase tracking-[0.22em] text-[#f0cf86]/80">{t(s.tagline)}</p>}
               <p className="mt-2 max-w-sm text-[11px] leading-relaxed text-white/55">
                 {[s.postalAddress, s.addressLine, s.city, s.country].filter(Boolean).join(", ")}
                 <br />{[s.phone, s.email, s.website].filter(Boolean).join("  ·  ")}
@@ -167,9 +171,9 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
             </div>
           </div>
           <div className="text-right">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-[#f0cf86]">{proforma ? (title ?? "Proforma invoice") : inv.group ? (inv.group.final ? "Final group invoice" : "Group invoice") : "Invoice"}</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-[#f0cf86]">{proforma ? (title != null ? t(title) : t("Proforma invoice")) : inv.group ? (inv.group.final ? t("Final group invoice") : t("Group invoice")) : t("Invoice")}</p>
             <p className="mt-1 font-mono text-2xl font-semibold tracking-tight">{inv.number}</p>
-            <p className="mt-1 text-[11px] text-white/50">{proforma ? `Prepared ${day(inv.issueDate)} · not a tax invoice` : inv.issueDate ? `Issued ${day(inv.issueDate)}` : "Not issued yet"}</p>
+            <p className="mt-1 text-[11px] text-white/50">{proforma ? t("Prepared {date} · not a tax invoice", { date: day(inv.issueDate, t) }) : inv.issueDate ? t("Issued {date}", { date: day(inv.issueDate, t) }) : t("Not issued yet")}</p>
             <span className={cn("mt-3 inline-block -rotate-6 rounded-lg border-[3px] px-3 py-0.5 font-mono text-base font-bold uppercase tracking-[0.22em]", stamp.cls)}>
               {stamp.label}
             </span>
@@ -178,7 +182,7 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
         <div className="relative mt-7 grid grid-cols-3 gap-px overflow-hidden rounded-2xl bg-white/10 text-center ring-1 ring-white/10">
           {[
             [w.due, `${s.currency} ${n(Math.max(0, inv.balance))}`],
-            ["Due date", inv.dueDate ? day(inv.dueDate) : inv.terms != null ? termsLabel(inv.terms) : "—"],
+            [t("Due date"), inv.dueDate ? day(inv.dueDate, t) : inv.terms != null ? termsLabel(inv.terms, t) : "—"],
             [w.total, `${s.currency} ${n(inv.net)}`],
           ].map(([k, v], i) => (
             <div key={k} className={cn("bg-[#15110c]/60 px-3 py-3", i === 0 && "bg-[#c9a24a]/15")}>
@@ -196,10 +200,10 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
           <div className="rounded-2xl border border-[#eadfca] bg-[#fbf8f2] p-5">
             <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#9a7a35]"><Building2 className="size-3.5" />{w.to}</p>
             <p className="mt-2 text-lg font-semibold leading-snug">{inv.billTo.name}</p>
-            {inv.billTo.attn && <p className="text-sm text-[#5b534a]">Attn: {inv.billTo.attn}</p>}
+            {inv.billTo.attn && <p className="text-sm text-[#5b534a]">{t("Attn: {name}", { name: inv.billTo.attn })}</p>}
             {inv.billTo.person && (
               <p className="mt-1 text-sm text-[#5b534a]">
-                Contact person: <strong className="text-[#1d1a16]">{inv.billTo.person.name}</strong>
+                {t.rich("Contact person: <b>{name}</b>", { b: (c) => <strong className="text-[#1d1a16]">{c}</strong> }, { name: inv.billTo.person.name })}
                 {(inv.billTo.person.phone || inv.billTo.person.email) && <span className="block text-xs">{[inv.billTo.person.phone, inv.billTo.person.email].filter(Boolean).join("  ·  ")}</span>}
               </p>
             )}
@@ -212,13 +216,13 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 rounded-2xl border border-[#eadfca] p-5 text-sm">
             <p className="col-span-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#9a7a35]">{w.details}</p>
             <dt className="text-[#8a8177]">{w.no}</dt><dd className="text-right font-mono font-semibold">{inv.number}</dd>
-            <dt className="text-[#8a8177]">Issue date</dt><dd className="text-right">{day(inv.issueDate)}</dd>
-            <dt className="text-[#8a8177]">Due date</dt><dd className="text-right font-semibold">{day(inv.dueDate)}</dd>
-            {inv.terms != null && <><dt className="text-[#8a8177]">Terms</dt><dd className="text-right">{termsLabel(inv.terms)}</dd></>}
-            {folioMode && firstDay && <><dt className="text-[#8a8177]">Stay</dt><dd className="text-right">{range(firstDay, lastDay)}</dd></>}
-            {folioMode && <><dt className="text-[#8a8177]">Rooms · guests</dt><dd className="text-right font-semibold">{folios.length} room{folios.length === 1 ? "" : "s"} · {people} guest{people === 1 ? "" : "s"}</dd></>}
-            {inv.bookings.length > 0 && !folioMode && <><dt className="text-[#8a8177]">Booking{inv.bookings.length > 1 ? "s" : ""}</dt><dd className="text-right font-mono text-xs leading-5">{inv.bookings.join(", ")}</dd></>}
-            <dt className="text-[#8a8177]">Currency</dt><dd className="text-right">{s.currency}</dd>
+            <dt className="text-[#8a8177]">{t("Issue date")}</dt><dd className="text-right">{day(inv.issueDate, t)}</dd>
+            <dt className="text-[#8a8177]">{t("Due date")}</dt><dd className="text-right font-semibold">{day(inv.dueDate, t)}</dd>
+            {inv.terms != null && <><dt className="text-[#8a8177]">{t("Terms")}</dt><dd className="text-right">{termsLabel(inv.terms, t)}</dd></>}
+            {folioMode && firstDay && <><dt className="text-[#8a8177]">{t("Stay")}</dt><dd className="text-right">{range(firstDay, lastDay, t)}</dd></>}
+            {folioMode && <><dt className="text-[#8a8177]">{t("Rooms · guests")}</dt><dd className="text-right font-semibold">{t.plural(folios.length, "{n} room", "{n} rooms")} · {t.plural(people, "{n} guest", "{n} guests")}</dd></>}
+            {inv.bookings.length > 0 && !folioMode && <><dt className="text-[#8a8177]">{inv.bookings.length > 1 ? t("Bookings") : t("Booking")}</dt><dd className="text-right font-mono text-xs leading-5">{inv.bookings.join(", ")}</dd></>}
+            <dt className="text-[#8a8177]">{t("Currency")}</dt><dd className="text-right">{s.currency}</dd>
           </dl>
         </section>
 
@@ -226,14 +230,14 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
         {folioMode && (
           <section data-break className="space-y-5">
             <div className="break-inside-avoid">
-              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#9a7a35]">Room breakdown</p>
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#9a7a35]">{t("Room breakdown")}</p>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b-2 border-[#15110c] text-left text-[10px] uppercase tracking-[0.14em] text-[#8a8177]">
-                    <th className="py-2 font-semibold">Room</th><th className="py-2 font-semibold">Guest</th><th className="hidden py-2 font-semibold sm:table-cell group-data-[paper=true]/doc:table-cell">Room type</th>
-                    <th className="py-2 text-right font-semibold">Nights</th><th className="hidden py-2 text-right font-semibold sm:table-cell group-data-[paper=true]/doc:table-cell">Rate</th>
-                    {roomDiscount > 0 && <th className="py-2 text-right font-semibold">Discount</th>}
-                    <th className="py-2 text-right font-semibold">Room total</th>
+                    <th className="py-2 font-semibold">{t("Room")}</th><th className="py-2 font-semibold">{t("Guest")}</th><th className="hidden py-2 font-semibold sm:table-cell group-data-[paper=true]/doc:table-cell">{t("Room type")}</th>
+                    <th className="py-2 text-right font-semibold">{t("Nights")}</th><th className="hidden py-2 text-right font-semibold sm:table-cell group-data-[paper=true]/doc:table-cell">{t("Rate")}</th>
+                    {roomDiscount > 0 && <th className="py-2 text-right font-semibold">{t("Discount")}</th>}
+                    <th className="py-2 text-right font-semibold">{t("Room total")}</th>
                   </tr>
                 </thead>
                 <tbody className="tabular-nums">
@@ -243,9 +247,9 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
                     return (
                       <tr data-break key={i.id} className="border-b border-[#efe7da] align-top">
                         <td className="py-2 font-semibold">{i.roomNumber ?? "—"}</td>
-                        <td className="py-2">{i.guestName ?? "—"}{stay?.others.length ? <span className="block text-xs text-[#8a8177]">with {stay.others.join(", ")}</span> : null}</td>
-                        <td className="hidden py-2 sm:table-cell group-data-[paper=true]/doc:table-cell">{i.description.split(" · ")[0]}</td>
-                        <td className="py-2 text-right">{short ? "short time" : i.quantity}</td>
+                        <td className="py-2">{i.guestName ?? "—"}{stay?.others.length ? <span className="block text-xs text-[#8a8177]">{t("with {names}", { names: stay.others.join(", ") })}</span> : null}</td>
+                        <td className="hidden py-2 sm:table-cell group-data-[paper=true]/doc:table-cell">{t(i.description.split(" · ")[0])}</td>
+                        <td className="py-2 text-right">{short ? t("short time") : i.quantity}</td>
                         <td className="hidden py-2 text-right sm:table-cell group-data-[paper=true]/doc:table-cell">{n(i.unitAmount)}</td>
                         {roomDiscount > 0 && <td className="py-2 text-right text-emerald-700">{i.discountAmount ? `− ${n(i.discountAmount)}` : "—"}</td>}
                         <td className="py-2 text-right font-semibold">{n(i.netAmount)}</td>
@@ -253,21 +257,21 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
                     );
                   })}
                 </tbody>
-                <tfoot><tr className="font-semibold tabular-nums"><td colSpan={roomDiscount > 0 ? 6 : 5} className="py-2 text-right text-[#8a8177] max-sm:hidden group-data-[paper=true]/doc:table-cell">Rooms</td><td className="py-2 text-right sm:hidden group-data-[paper=true]/doc:hidden" colSpan={roomDiscount > 0 ? 4 : 3}>Rooms</td><td className="py-2 text-right">{n(roomLines.reduce((t, i) => t + i.netAmount, 0))}</td></tr></tfoot>
+                <tfoot><tr className="font-semibold tabular-nums"><td colSpan={roomDiscount > 0 ? 6 : 5} className="py-2 text-right text-[#8a8177] max-sm:hidden group-data-[paper=true]/doc:table-cell">{t("Rooms")}</td><td className="py-2 text-right sm:hidden group-data-[paper=true]/doc:hidden" colSpan={roomDiscount > 0 ? 4 : 3}>{t("Rooms")}</td><td className="py-2 text-right">{n(roomLines.reduce((t, i) => t + i.netAmount, 0))}</td></tr></tfoot>
               </table>
             </div>
 
             {extraDepts.length > 0 && (
               <div className="space-y-3">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#9a7a35]">Additional charges</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#9a7a35]">{t("Additional charges")}</p>
                 {extraDepts.map(({ d, items }) => (
                   <div key={d} className="break-inside-avoid overflow-hidden rounded-2xl border border-[#eadfca]">
-                    <p className="flex justify-between bg-[#f6efe2] px-4 py-2 text-sm font-semibold"><span>{DEPT_LABEL[d]}</span><span className="tabular-nums">{n(items.reduce((t, i) => t + i.netAmount, 0))}</span></p>
+                    <p className="flex justify-between bg-[#f6efe2] px-4 py-2 text-sm font-semibold"><span>{t(DEPT_LABEL[d])}</span><span className="tabular-nums">{n(items.reduce((t, i) => t + i.netAmount, 0))}</span></p>
                     <table className="w-full text-sm"><tbody className="tabular-nums">
                       {items.map((i) => (
                         <tr data-break key={i.id} className="border-t border-[#efe7da] align-top">
-                          <td className="px-4 py-1.5">{i.date && <span className="text-xs text-[#8a8177]">{shortDay(i.date)} · </span>}{d === "MEETING" ? i.description : i.description}</td>
-                          <td className="px-2 py-1.5 text-xs text-[#5b534a]">{i.roomNumber ? `Room ${i.roomNumber}` : ""}{i.guestName ? `${i.roomNumber ? " · " : ""}${i.guestName}` : ""}</td>
+                          <td className="px-4 py-1.5">{i.date && <span className="text-xs text-[#8a8177]">{shortDay(i.date, t)} · </span>}{d === "MEETING" ? i.description : i.description}</td>
+                          <td className="px-2 py-1.5 text-xs text-[#5b534a]">{i.roomNumber ? t("Room {number}", { number: i.roomNumber }) : ""}{i.guestName ? `${i.roomNumber ? " · " : ""}${i.guestName}` : ""}</td>
                           <td className="w-28 px-4 py-1.5 text-right font-semibold">{n(i.netAmount)}</td>
                         </tr>
                       ))}
@@ -279,12 +283,12 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
 
             {adjLines.length > 0 && (
               <div className="break-inside-avoid overflow-hidden rounded-2xl border border-[#eadfca]">
-                <p className="flex justify-between bg-[#f6efe2] px-4 py-2 text-sm font-semibold"><span>Adjustments</span><span className="tabular-nums">{adjustments < 0 ? "− " : ""}{n(Math.abs(adjustments))}</span></p>
+                <p className="flex justify-between bg-[#f6efe2] px-4 py-2 text-sm font-semibold"><span>{t("Adjustments")}</span><span className="tabular-nums">{adjustments < 0 ? "− " : ""}{n(Math.abs(adjustments))}</span></p>
                 <table className="w-full text-sm"><tbody className="tabular-nums">
                   {adjLines.map((i) => (
                     <tr data-break key={i.id} className="border-t border-[#efe7da]">
                       <td className="px-4 py-1.5">{i.description}</td>
-                      <td className="px-2 py-1.5 text-xs text-[#5b534a]">{i.roomNumber ? `Room ${i.roomNumber}` : ""}{i.guestName ? ` · ${i.guestName}` : ""}</td>
+                      <td className="px-2 py-1.5 text-xs text-[#5b534a]">{i.roomNumber ? t("Room {number}", { number: i.roomNumber }) : ""}{i.guestName ? ` · ${i.guestName}` : ""}</td>
                       <td className="w-28 px-4 py-1.5 text-right font-semibold">{i.netAmount < 0 ? "− " : ""}{n(Math.abs(i.netAmount))}</td>
                     </tr>
                   ))}
@@ -294,7 +298,7 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
 
             {loose.length > 0 && (
               <div className="break-inside-avoid overflow-hidden rounded-2xl border border-[#eadfca]">
-                <p className="bg-[#f6efe2] px-4 py-2 text-sm font-semibold">Other items</p>
+                <p className="bg-[#f6efe2] px-4 py-2 text-sm font-semibold">{t("Other items")}</p>
                 <table className="w-full text-sm"><tbody>
                   {loose.map((i) => <tr data-break key={i.id} className="border-t border-[#efe7da]"><td className="px-4 py-1.5">{i.description}{i.quantity > 1 && ` · ${i.quantity} × ${n(i.unitAmount)}`}</td><td className="w-28 px-4 py-1.5 text-right font-semibold tabular-nums">{n(i.netAmount)}</td></tr>)}
                 </tbody></table>
@@ -303,14 +307,14 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
 
             {folios.length > 1 && (
               <div className="break-inside-avoid overflow-x-auto rounded-2xl border border-[#eadfca]">
-                <p className="px-4 pt-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#9a7a35]">Summary by room</p>
+                <p className="px-4 pt-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#9a7a35]">{t("Summary by room")}</p>
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b border-[#15110c] text-left text-[10px] uppercase tracking-[0.12em] text-[#8a8177]">
-                      <th className="px-4 py-2 font-semibold">Room · guest</th>
-                      {usedDepts.map((d) => <th key={d} className="px-2 py-2 text-right font-semibold">{DEPT_SHORT[d]}</th>)}
-                      {inv.discount > 0 && <th className="px-2 py-2 text-right font-semibold">Discount</th>}
-                      <th className="px-4 py-2 text-right font-semibold">Total</th>
+                      <th className="px-4 py-2 font-semibold">{t("Room · guest")}</th>
+                      {usedDepts.map((d) => <th key={d} className="px-2 py-2 text-right font-semibold">{t(DEPT_SHORT[d])}</th>)}
+                      {inv.discount > 0 && <th className="px-2 py-2 text-right font-semibold">{t("Discount")}</th>}
+                      <th className="px-4 py-2 text-right font-semibold">{t("Total")}</th>
                     </tr>
                   </thead>
                   <tbody className="tabular-nums">
@@ -325,7 +329,7 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
                   </tbody>
                   <tfoot className="tabular-nums">
                     <tr className="bg-[#f6efe2] font-semibold">
-                      <td className="px-4 py-2">{folios.length} rooms</td>
+                      <td className="px-4 py-2">{t.plural(folios.length, "{n} room", "{n} rooms")}</td>
                       {usedDepts.map((d) => <td key={d} className="px-2 py-2 text-right">{n(folios.reduce((t, f) => t + (f.depts.find((x) => x.d === d)?.items.reduce((s2, i) => s2 + i.netAmount + i.discountAmount, 0) ?? 0), 0))}</td>)}
                       {inv.discount > 0 && <td className="px-2 py-2 text-right text-emerald-700">− {n(folios.reduce((t, f) => t + f.discount, 0))}</td>}
                       <td className="px-4 py-2 text-right text-sm">{n(folios.reduce((t, f) => t + f.total, 0))}</td>
@@ -343,11 +347,11 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
             <thead>
               <tr className="border-b-2 border-[#15110c] text-left text-[10px] uppercase tracking-[0.16em] text-[#8a8177]">
                 <th className="w-8 py-2.5 font-semibold">#</th>
-                <th className="py-2.5 font-semibold">Description</th>
-                <th className="py-2.5 text-right font-semibold">Qty</th>
-                <th className="py-2.5 text-right font-semibold">Rate</th>
-                <th className="hidden py-2.5 text-right font-semibold sm:table-cell group-data-[paper=true]/doc:table-cell">Discount</th>
-                <th className="py-2.5 text-right font-semibold">Amount</th>
+                <th className="py-2.5 font-semibold">{t("Description")}</th>
+                <th className="py-2.5 text-right font-semibold">{t("Qty")}</th>
+                <th className="py-2.5 text-right font-semibold">{t("Rate")}</th>
+                <th className="hidden py-2.5 text-right font-semibold sm:table-cell group-data-[paper=true]/doc:table-cell">{t("Discount")}</th>
+                <th className="py-2.5 text-right font-semibold">{t("Amount")}</th>
               </tr>
             </thead>
             {groups.map((g) => (
@@ -358,8 +362,8 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="text-[13px] font-semibold">
                           {g.head.guestName}
-                          {g.head.roomNumber && <span className="font-normal text-[#5b534a]"> · Room {g.head.roomNumber}</span>}
-                          {stayRange(g.items) && <span className="font-normal text-[#5b534a]"> · {stayRange(g.items)}</span>}
+                          {g.head.roomNumber && <span className="font-normal text-[#5b534a]"> · {t("Room {number}", { number: g.head.roomNumber })}</span>}
+                          {stayRange(g.items, t) && <span className="font-normal text-[#5b534a]"> · {stayRange(g.items, t)}</span>}
                         </span>
                         <span className="flex items-center gap-3 text-xs">
                           {g.head.reference && <span className="font-mono text-[#8a8177]">{g.head.reference}</span>}
@@ -374,7 +378,7 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
                     <td className="py-2.5 text-xs tabular-nums text-[#a39a8f]">{String(++row).padStart(2, "0")}</td>
                     <td className="py-2.5 pr-3">
                       {i.description}
-                      {!g.head && i.from && <span className="block text-xs text-[#8a8177]">{range(i.from, i.to)}</span>}
+                      {!g.head && i.from && <span className="block text-xs text-[#8a8177]">{range(i.from, i.to, t)}</span>}
                     </td>
                     <td className="py-2.5 text-right tabular-nums">{i.quantity}</td>
                     <td className="py-2.5 text-right tabular-nums">{n(i.unitAmount)}</td>
@@ -385,58 +389,58 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
               </tbody>
             ))}
           </table>
-          {inv.items.length === 0 && <p className="py-6 text-center text-sm text-[#8a8177]">No lines yet.</p>}
+          {inv.items.length === 0 && <p className="py-6 text-center text-sm text-[#8a8177]">{t("No lines yet.")}</p>}
         </section>}
 
         {/* Pay into + totals */}
         <section data-break className="grid gap-6 sm:grid-cols-[1fr_300px] group-data-[paper=true]/doc:grid-cols-[1fr_300px]">
           <div className="space-y-3">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#9a7a35]">Pay into</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#9a7a35]">{t("Pay into")}</p>
             {hasBank || hasMobile ? (
               <div className="grid gap-3 sm:grid-cols-2 group-data-[paper=true]/doc:grid-cols-2">
                 {hasBank && (
                   <div className="rounded-2xl border border-[#eadfca] p-4">
                     <p className="flex items-center gap-2 text-sm font-semibold"><span className="grid size-7 place-items-center rounded-lg bg-[#15110c] text-[#f0cf86]"><Landmark className="size-3.5" /></span>{s.bankName}</p>
                     <dl className="mt-3 space-y-1 text-xs">
-                      {s.bankAccountName && <PayRow k="Account name" v={s.bankAccountName} />}
-                      <PayRow k="Account no." v={s.bankAccountNumber!} mono />
-                      {s.bankBranch && <PayRow k="Branch" v={s.bankBranch} />}
+                      {s.bankAccountName && <PayRow k={t("Account name")} v={s.bankAccountName} />}
+                      <PayRow k={t("Account no.")} v={s.bankAccountNumber!} mono />
+                      {s.bankBranch && <PayRow k={t("Branch")} v={s.bankBranch} />}
                       {s.bankSwift && <PayRow k="SWIFT" v={s.bankSwift} mono />}
                     </dl>
                   </div>
                 )}
                 {hasMobile && (
                   <div className="rounded-2xl border border-[#eadfca] p-4">
-                    <p className="flex items-center gap-2 text-sm font-semibold"><span className="grid size-7 place-items-center rounded-lg bg-emerald-700 text-white"><Smartphone className="size-3.5" /></span>{s.mobileMoneyName || "Mobile money"}</p>
+                    <p className="flex items-center gap-2 text-sm font-semibold"><span className="grid size-7 place-items-center rounded-lg bg-emerald-700 text-white"><Smartphone className="size-3.5" /></span>{s.mobileMoneyName || t("Mobile money")}</p>
                     <dl className="mt-3 space-y-1 text-xs">
-                      <PayRow k="Number" v={s.mobileMoneyNumber!} mono />
-                      {s.mobileMoneyAccountName && <PayRow k="Name" v={s.mobileMoneyAccountName} />}
+                      <PayRow k={t("Number")} v={s.mobileMoneyNumber!} mono />
+                      {s.mobileMoneyAccountName && <PayRow k={t("Name")} v={s.mobileMoneyAccountName} />}
                     </dl>
                   </div>
                 )}
               </div>
             ) : (
-              <p className="rounded-2xl border border-dashed border-[#eadfca] p-4 text-xs text-[#8a8177]">Pay at reception, or contact us on {s.phone ?? "the hotel number"} for payment details.</p>
+              <p className="rounded-2xl border border-dashed border-[#eadfca] p-4 text-xs text-[#8a8177]">{t("Pay at reception, or contact us on {phone} for payment details.", { phone: s.phone ?? t("the hotel number") })}</p>
             )}
-            <p className="text-xs text-[#8a8177]">Please use <strong className="font-mono text-[#1d1a16]">{payRef}</strong> as the payment reference.</p>
+            <p className="text-xs text-[#8a8177]">{t.rich("Please use <b>{reference}</b> as the payment reference.", { b: (c) => <strong className="font-mono text-[#1d1a16]">{c}</strong> }, { reference: payRef })}</p>
           </div>
 
           <div className="overflow-hidden rounded-2xl border border-[#eadfca]">
             <dl className="space-y-1.5 p-4 text-sm">
               {(folioMode ? deptTotals.length > 1 : (inv.byKind?.length ?? 0) > 1) && (
                 <div className="mb-1.5 space-y-1 border-b border-[#efe7da] pb-1.5 text-xs">
-                  {(folioMode ? deptTotals : inv.byKind!).map((k) => <div key={k.label} className="flex justify-between"><dt className="text-[#8a8177]">{k.label}</dt><dd className="tabular-nums">{n(k.amount)}</dd></div>)}
+                  {(folioMode ? deptTotals : inv.byKind!).map((k) => <div key={k.label} className="flex justify-between"><dt className="text-[#8a8177]">{t(k.label)}</dt><dd className="tabular-nums">{n(k.amount)}</dd></div>)}
                 </div>
               )}
-              <div className="flex justify-between"><dt className="text-[#8a8177]">Subtotal</dt><dd className="tabular-nums">{n(folioMode ? subtotal : inv.gross)}</dd></div>
-              {(folioMode ? discounts : inv.discount) > 0 && <div className="flex justify-between"><dt className="text-[#8a8177]">Discounts</dt><dd className="tabular-nums text-emerald-700">− {n(folioMode ? discounts : inv.discount)}</dd></div>}
-              {folioMode && adjustments !== 0 && <div className="flex justify-between"><dt className="text-[#8a8177]">Adjustments</dt><dd className="tabular-nums">{adjustments < 0 ? "− " : "+ "}{n(Math.abs(adjustments))}</dd></div>}
-              <div className="flex justify-between border-t border-[#efe7da] pt-1.5 font-semibold"><dt>{folioMode ? "Final total" : "Total"}</dt><dd className="tabular-nums">{n(inv.net)}</dd></div>
-              {tax && <div className="flex justify-between text-xs"><dt className="text-[#8a8177]">incl. {tax.name} {tax.rate}%</dt><dd className="tabular-nums text-[#8a8177]">{n(tax.amount)}</dd></div>}
-              <div className="flex justify-between"><dt className="text-[#8a8177]">{folioMode ? "Payments already received" : "Paid"}</dt><dd className="tabular-nums">{inv.paid ? `− ${n(inv.paid)}` : "0"}</dd></div>
+              <div className="flex justify-between"><dt className="text-[#8a8177]">{t("Subtotal")}</dt><dd className="tabular-nums">{n(folioMode ? subtotal : inv.gross)}</dd></div>
+              {(folioMode ? discounts : inv.discount) > 0 && <div className="flex justify-between"><dt className="text-[#8a8177]">{t("Discounts")}</dt><dd className="tabular-nums text-emerald-700">− {n(folioMode ? discounts : inv.discount)}</dd></div>}
+              {folioMode && adjustments !== 0 && <div className="flex justify-between"><dt className="text-[#8a8177]">{t("Adjustments")}</dt><dd className="tabular-nums">{adjustments < 0 ? "− " : "+ "}{n(Math.abs(adjustments))}</dd></div>}
+              <div className="flex justify-between border-t border-[#efe7da] pt-1.5 font-semibold"><dt>{folioMode ? t("Final total") : t("Total")}</dt><dd className="tabular-nums">{n(inv.net)}</dd></div>
+              {tax && <div className="flex justify-between text-xs"><dt className="text-[#8a8177]">{t("incl. {tax} {rate}%", { tax: tax.name, rate: tax.rate })}</dt><dd className="tabular-nums text-[#8a8177]">{n(tax.amount)}</dd></div>}
+              <div className="flex justify-between"><dt className="text-[#8a8177]">{folioMode ? t("Payments already received") : t("Paid")}</dt><dd className="tabular-nums">{inv.paid ? `− ${n(inv.paid)}` : "0"}</dd></div>
             </dl>
             <div className={cn("flex items-end justify-between gap-2 px-4 py-4", dead ? "bg-zinc-100 text-zinc-500" : inv.balance <= 0 ? "bg-emerald-700 text-white" : "bg-[#15110c] text-white")}>
-              <span className="text-[10px] font-semibold uppercase tracking-[0.2em] opacity-70">{dead ? "Not payable" : inv.balance <= 0 ? "Paid in full" : folioMode && !statement ? "Outstanding balance" : w.due}</span>
+              <span className="text-[10px] font-semibold uppercase tracking-[0.2em] opacity-70">{dead ? t("Not payable") : inv.balance <= 0 ? t("Paid in full") : folioMode && !statement ? t("Outstanding balance") : w.due}</span>
               <span className="text-right leading-none">
                 <span className="mr-1 text-xs opacity-60">{s.currency}</span>
                 <span className="text-2xl font-semibold tabular-nums">{n(Math.max(0, inv.balance))}</span>
@@ -447,11 +451,11 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
 
         {inv.payments.length > 0 && (
           <section data-break className="rounded-2xl bg-[#fbf8f2] p-4 text-xs">
-            <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#9a7a35]">Payments received</p>
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#9a7a35]">{t("Payments received")}</p>
             <ul className="space-y-1">
               {inv.payments.map((p) => (
                 <li key={p.id} className="flex justify-between gap-3">
-                  <span className="text-[#5b534a]">{formatDateTime(p.at)} · {p.method}{p.reference ? ` · ${p.reference}` : ""}</span>
+                  <span className="text-[#5b534a]">{t.dateTime(p.at)} · {t(p.method)}{p.reference ? ` · ${p.reference}` : ""}</span>
                   <span className="font-semibold tabular-nums">{p.refund ? "−" : ""}{n(p.amount)}</span>
                 </li>
               ))}
@@ -459,22 +463,25 @@ export async function InvoiceDocument({ inv, s, verifyUrl, proforma = false, tit
           </section>
         )}
         {inv.notes && <p className="text-sm text-[#5b534a]">{inv.notes}</p>}
-        {inv.cancelReason && <p className="rounded-xl bg-rose-50 px-4 py-2.5 text-sm text-rose-700">{inv.status === "VOID" ? "Void" : "Cancelled"}: {inv.cancelReason}</p>}
+        {inv.cancelReason && <p className="rounded-xl bg-rose-50 px-4 py-2.5 text-sm text-rose-700">{inv.status === "VOID" ? t("Void: {reason}", { reason: inv.cancelReason }) : t("Cancelled: {reason}", { reason: inv.cancelReason })}</p>}
 
         {/* Footer */}
         <footer data-break className="grid items-end gap-6 border-t border-[#efe7da] pt-6 sm:grid-cols-[1fr_auto] group-data-[paper=true]/doc:grid-cols-[1fr_auto]">
           <div className="space-y-2 text-xs text-[#8a8177]">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#9a7a35]">Terms</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#9a7a35]">{t("Terms")}</p>
             <p className="max-w-lg leading-relaxed">
-              {statement ? `This statement lists the charges so far, room by room. The final group invoice follows when every room has checked out. Questions: ${[s.phone, s.email].filter(Boolean).join(" · ")}.` : s.invoiceTerms || `Payment is due ${inv.dueDate ? `by ${day(inv.dueDate)}` : "on receipt"}. Please quote the invoice number with your payment. Questions about this invoice: ${[s.phone, s.email].filter(Boolean).join(" · ")}.`}
+              {statement ? t("This statement lists the charges so far, room by room. The final group invoice follows when every room has checked out. Questions: {contact}.", { contact: [s.phone, s.email].filter(Boolean).join(" · ") })
+                : s.invoiceTerms || (inv.dueDate
+                  ? t("Payment is due by {date}. Please quote the invoice number with your payment. Questions about this invoice: {contact}.", { date: day(inv.dueDate, t), contact: [s.phone, s.email].filter(Boolean).join(" · ") })
+                  : t("Payment is due on receipt. Please quote the invoice number with your payment. Questions about this invoice: {contact}.", { contact: [s.phone, s.email].filter(Boolean).join(" · ") }))}
             </p>
-            <p className="pt-2 font-display text-base text-[#1d1a16]">Thank you for choosing {s.hotelName}.</p>
+            <p className="pt-2 font-display text-base text-[#1d1a16]">{t("Thank you for choosing {hotel}.", { hotel: s.hotelName })}</p>
           </div>
           {qr && (
             <div className="flex items-center gap-3 rounded-2xl border border-[#eadfca] p-3">
               <span className="block size-[84px] [&_svg]:size-full" dangerouslySetInnerHTML={{ __html: qr }} />
               <span className="max-w-[7.5rem] text-[11px] leading-snug text-[#8a8177]">
-                <ScanLine className="mb-1 size-4 text-[#9a7a35]" />Scan to check this invoice is genuine and see what is still owed.
+                <ScanLine className="mb-1 size-4 text-[#9a7a35]" />{t("Scan to check this invoice is genuine and see what is still owed.")}
               </span>
             </div>
           )}

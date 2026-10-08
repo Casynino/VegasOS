@@ -3,6 +3,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import type { RestaurantOrderStatus } from "@/generated/prisma/enums";
 import { audit } from "../audit";
 import { AppError } from "../errors";
+import { msgf, type Localized } from "@/i18n/msg";
 import { lockLocationTx, OPEN_SESSION, sessionEventTx } from "./dining-core";
 import type { Actor } from "./reservations";
 
@@ -23,9 +24,9 @@ export type AssignActor = Actor & { deviceUserId?: string | null };
 const DONE: RestaurantOrderStatus[] = ["COMPLETED", "COLLECTED", "CANCELLED"];
 
 /** A manager taking work from one waiter (to another, or to nobody) says why. */
-function managerNeedsReason(meta: { kind: AssignKind; reason?: string | null }, from: string | null, to: string | null, what: string) {
+function managerNeedsReason(meta: { kind: AssignKind; reason?: string | null }, from: string | null, to: string | null, message: Localized) {
   if (meta.kind === "MANAGER" && from && from !== to && (meta.reason?.trim().length ?? 0) < 3) {
-    throw new AppError(`Say why ${what} moves from its waiter.`, "VALIDATION", { reason: "Required" });
+    throw new AppError(message, "VALIDATION", { reason: "Required" });
   }
 }
 const who = (a: AssignActor) => ({ byId: a.userId ?? null, byLabel: a.label ?? null, byRole: a.role ?? null });
@@ -57,13 +58,15 @@ export async function setOrderWaiterTx(tx: Tx, orderId: string, toUserId: string
   await tx.$queryRaw`SELECT "id" FROM "restaurant_orders" WHERE "id" = ${orderId} FOR UPDATE`;
   const o = await tx.restaurantOrder.findUnique({ where: { id: orderId }, include: { assignedTo: { select: { fullName: true } } } });
   if (!o) throw new AppError("Order not found.", "NOT_FOUND");
-  if (DONE.includes(o.status)) throw new AppError(`Order ${shortOrder(o.number)} is already finished.`);
+  if (DONE.includes(o.status)) throw new AppError(msgf("Order {order} is already finished.", { order: shortOrder(o.number) }));
   const from = o.assignedToId ?? null;
   if (meta.expectFrom !== undefined && from !== meta.expectFrom) {
-    throw new AppError(from ? `${first(o.assignedTo?.fullName)} is serving order ${shortOrder(o.number)} — ask them (or a manager) to transfer it.` : `Order ${shortOrder(o.number)} has no waiter yet.`, "CONFLICT");
+    throw new AppError(from
+      ? msgf("{name} is serving order {order} — ask them (or a manager) to transfer it.", { name: String(first(o.assignedTo?.fullName)), order: shortOrder(o.number) })
+      : msgf("Order {order} has no waiter yet.", { order: shortOrder(o.number) }), "CONFLICT");
   }
   if (from === toUserId) return { changed: false, number: o.number, from, to: toUserId };
-  managerNeedsReason(meta, from, toUserId, `order ${shortOrder(o.number)}`);
+  managerNeedsReason(meta, from, toUserId, msgf("Say why order {order} moves from its waiter.", { order: shortOrder(o.number) }));
   const to = toUserId ? await tx.user.findUnique({ where: { id: toUserId }, select: { fullName: true } }) : null;
   if (toUserId && !to) throw new AppError("That waiter was not found.", "NOT_FOUND");
   await tx.restaurantOrder.update({ where: { id: o.id }, data: { assignedToId: toUserId, updatedAt: now } });
@@ -100,10 +103,12 @@ export async function setTableWaiterTx(tx: Tx, locationId: string, toUserId: str
   const open = l.openSession && OPEN_SESSION.includes(l.openSession.status) ? l.openSession : null;
   const from = meta.fromUserId !== undefined ? meta.fromUserId : open ? open.waiterId : l.waiterId;
   if (meta.expectFrom !== undefined && from !== meta.expectFrom) {
-    throw new AppError(from ? `${first(await nameOf(tx, from))} is serving ${l.name} — ask them (or a manager) to transfer it.` : `${l.name} has no waiter yet.`, "CONFLICT");
+    throw new AppError(from
+      ? msgf("{name} is serving {table} — ask them (or a manager) to transfer it.", { name: String(first(await nameOf(tx, from))), table: l.name })
+      : msgf("{table} has no waiter yet.", { table: l.name }), "CONFLICT");
   }
   if (toUserId && !(await nameOf(tx, toUserId))) throw new AppError("That waiter was not found.", "NOT_FOUND");
-  managerNeedsReason(meta, from, toUserId, l.name);
+  managerNeedsReason(meta, from, toUserId, msgf("Say why {table} moves from its waiter.", { table: l.name }));
   const session = open && open.waiterId === from ? open : null;
   const standing = meta.standing ?? (!!from && l.waiterId === from);
   const nobodys = !!session || standing;
@@ -146,9 +151,9 @@ const inRoom = (roomNumber: string | null, number: string) => (roomNumber ?? "")
  */
 export async function setRoomWaiterTx(tx: Tx, roomNumber: string, from: string | null, toUserId: string | null, actor: AssignActor, now: Date, meta: Meta & { standing?: boolean }) {
   const [r] = await tx.$queryRaw<{ id: string; serviceWaiterId: string | null }[]>`SELECT "id", "serviceWaiterId" FROM "rooms" WHERE "number" = ${roomNumber} FOR UPDATE`;
-  if (!r) throw new AppError(`Room ${roomNumber} not found.`, "NOT_FOUND");
+  if (!r) throw new AppError(msgf("Room {room} not found.", { room: roomNumber }), "NOT_FOUND");
   if (toUserId && !(await nameOf(tx, toUserId))) throw new AppError("That waiter was not found.", "NOT_FOUND");
-  managerNeedsReason(meta, from, toUserId, `room ${roomNumber}'s room service`);
+  managerNeedsReason(meta, from, toUserId, msgf("Say why room {room}'s room service moves from its waiter.", { room: roomNumber }));
   const standing = meta.standing ?? (!!from && r.serviceWaiterId === from);
   const orders = (await tx.restaurantOrder.findMany({
     where: { type: "ROOM_SERVICE", status: { notIn: DONE }, roomNumber: { contains: roomNumber }, OR: [{ assignedToId: from }, ...(standing ? [{ assignedToId: null }] : [])] },

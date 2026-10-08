@@ -8,9 +8,14 @@ import { mediaUrl } from "@/server/services/media";
 import { formatTZS } from "@/lib/format";
 import { PageHeader } from "@/components/staff/page-header";
 import { cn } from "@/lib/utils";
+import { getT } from "@/i18n/server";
+import { translationForms } from "@/server/services/translations";
 import { AvailableToggle, CategoryButton, MenuItemButton, MoveCategory } from "./menu-dialogs";
 
-export const metadata: Metadata = { title: "Menu & prices" };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT();
+  return { title: t("Menu & prices") };
+}
 
 /**
  * Menu & prices — the one place prices live. Changes reach the order screen and
@@ -18,6 +23,7 @@ export const metadata: Metadata = { title: "Menu & prices" };
  */
 export default async function MenuAdminPage() {
   await requirePagePermission("restaurant.menu");
+  const t = await getT();
   const [cats, settings] = await Promise.all([
     db.menuCategory.findMany({
       orderBy: { sortOrder: "asc" },
@@ -25,17 +31,20 @@ export default async function MenuAdminPage() {
     }),
     getSettings(),
   ]);
-  const options = cats.map((c) => ({ id: c.id, name: c.name }));
+  const options = cats.map((c) => ({ id: c.id, name: t(c.name) }));
+  const [catZh, itemZh] = await Promise.all([translationForms("menuCategory", cats), translationForms("menuItem", cats.flatMap((c) => c.items))]);
+  /** The Chinese shown to Chinese guests (saved, else the default), for a quiet hint beside the English. */
+  const zhName = (f: { values: Record<string, string>; hints: Record<string, string> } | undefined) => f?.values.name || f?.hints.name || null;
   const total = cats.reduce((s, c) => s + c.items.filter((i) => i.isActive).length, 0);
 
   return (
     <div className="w-full space-y-5">
-      <PageHeader title="Menu & prices" description={`${total} items on the menu. Room-service delivery fee: ${formatTZS(settings.roomServiceFee)} (change it in Settings → Hotel).`}
-        actions={<div className="flex gap-2"><Link href="/menu" target="_blank" className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border px-3 text-sm font-medium hover:bg-muted"><ExternalLink className="size-4" />See it on the website</Link><CategoryButton /></div>} />
+      <PageHeader title={t("Menu & prices")} description={t("{n} items on the menu. Room-service delivery fee: {fee} (change it in Settings → Hotel).", { n: total, fee: formatTZS(settings.roomServiceFee) })}
+        actions={<div className="flex gap-2"><Link href="/menu" target="_blank" className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border px-3 text-sm font-medium hover:bg-muted"><ExternalLink className="size-4" />{t("See it on the website")}</Link><CategoryButton /></div>} />
 
       <nav className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
         {cats.map((c) => (
-          <a key={c.id} href={`#${c.slug}`} className={cn("shrink-0 rounded-full border border-border/70 bg-card px-3.5 py-1.5 text-xs font-medium hover:bg-muted", !c.isActive && "opacity-50")}>{c.name} · {c.items.filter((i) => i.isActive).length}</a>
+          <a key={c.id} href={`#${c.slug}`} className={cn("shrink-0 rounded-full border border-border/70 bg-card px-3.5 py-1.5 text-xs font-medium hover:bg-muted", !c.isActive && "opacity-50")}>{t(c.name)} · {c.items.filter((i) => i.isActive).length}</a>
         ))}
       </nav>
 
@@ -47,14 +56,14 @@ export default async function MenuAdminPage() {
                 {c.type === "DRINK" ? <Wine className="size-4" /> : <UtensilsCrossed className="size-4" />}
               </span>
               <div className="leading-tight">
-                <p className="font-semibold">{c.name}{!c.isActive && <span className="ml-2 text-xs font-normal text-muted-foreground">hidden</span>}</p>
-                <p className="text-xs text-muted-foreground">{c.type === "DRINK" ? "Drinks" : "Food"} · counts as {c.revenueKind === "BAR" ? "bar" : "restaurant"} income{c.description ? ` · ${c.description}` : ""}</p>
+                <p className="font-semibold">{c.name}{zhName(catZh[c.id]) && <span lang="zh-CN" className="ml-2 text-sm font-normal text-muted-foreground">{zhName(catZh[c.id])}</span>}{!c.isActive && <span className="ml-2 text-xs font-normal text-muted-foreground">{t("hidden")}</span>}</p>
+                <p className="text-xs text-muted-foreground">{c.type === "DRINK" ? t("Drinks") : t("Food")} · {c.revenueKind === "BAR" ? t("counts as bar income") : t("counts as restaurant income")}{c.description ? ` · ${c.description}` : ""}</p>
               </div>
             </div>
-            <div className="flex items-center gap-1"><MoveCategory id={c.id} /><CategoryButton category={c} /><MenuItemButton categories={options} defaultCategory={c.id} /></div>
+            <div className="flex items-center gap-1"><MoveCategory id={c.id} /><CategoryButton category={c} zh={catZh[c.id]} /><MenuItemButton categories={options} defaultCategory={c.id} /></div>
           </header>
           <ul className="divide-y divide-border/50">
-            {c.items.length === 0 && <li className="px-4 py-6 text-center text-sm text-muted-foreground">No items yet.</li>}
+            {c.items.length === 0 && <li className="px-4 py-6 text-center text-sm text-muted-foreground">{t("No items yet.")}</li>}
             {c.items.map((i) => {
               const img = i.image?.isActive ? mediaUrl(i.image) : null;
               return (
@@ -64,12 +73,12 @@ export default async function MenuAdminPage() {
                     ? <img src={img} alt="" className="size-11 shrink-0 rounded-xl object-cover" loading="lazy" />
                     : <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-muted text-sm font-semibold text-muted-foreground">{i.name.slice(0, 1)}</span>}
                   <div className="min-w-0 flex-1 leading-tight">
-                    <p className="truncate font-medium">{i.name}{i.isFeatured && <span className="ml-2 rounded-full bg-amber-500/15 px-1.5 py-px text-[10px] font-semibold text-amber-600 dark:text-amber-300">★ Featured</span>}{!i.isActive && <span className="ml-2 text-xs font-normal">· off the menu</span>}</p>
-                    <p className="truncate text-xs text-muted-foreground">{[i.subcategory, i.description].filter(Boolean).join(" · ") || "No description"}</p>
+                    <p className="truncate font-medium">{i.name}{zhName(itemZh[i.id]) && <span lang="zh-CN" className="ml-2 text-xs font-normal text-muted-foreground">{zhName(itemZh[i.id])}</span>}{i.isFeatured && <span className="ml-2 rounded-full bg-amber-500/15 px-1.5 py-px text-[10px] font-semibold text-amber-600 dark:text-amber-300">★ {t("Featured")}</span>}{!i.isActive && <span className="ml-2 text-xs font-normal">· {t("off the menu")}</span>}</p>
+                    <p className="truncate text-xs text-muted-foreground">{[i.subcategory, i.description].filter(Boolean).join(" · ") || t("No description")}</p>
                   </div>
                   <span className="w-28 text-right font-semibold tabular-nums">{formatTZS(i.price)}</span>
                   <AvailableToggle id={i.id} isAvailable={i.isAvailable} />
-                  <MenuItemButton categories={options} item={{ id: i.id, categoryId: i.categoryId, name: i.name, description: i.description, price: i.price, subcategory: i.subcategory, isAvailable: i.isAvailable, isActive: i.isActive, isFeatured: i.isFeatured, image: img }} />
+                  <MenuItemButton categories={options} item={{ id: i.id, categoryId: i.categoryId, name: i.name, description: i.description, price: i.price, subcategory: i.subcategory, isAvailable: i.isAvailable, isActive: i.isActive, isFeatured: i.isFeatured, image: img }} zh={itemZh[i.id]} />
                 </li>
               );
             })}

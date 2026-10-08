@@ -20,6 +20,8 @@ import { validPhone } from "@/lib/guest-messages";
 import { actingWaiter, WaiterPin } from "@/server/waiter-pin";
 import { isRestaurantDevice } from "@/lib/permissions";
 import { deskOnlyHotelOrders, isDeskUser as isDesk } from "@/server/desk";
+import { msg } from "@/i18n/msg";
+import { saveTranslation, translationFromForm } from "@/server/services/translations";
 
 async function actor(user: CurrentUser) {
   const { ipAddress } = await requestMeta();
@@ -34,7 +36,7 @@ function refresh() {
 
 const OrderSchema = z.object({
   type: z.enum(["DINE_IN", "TAKEAWAY", "PICKUP", "ROOM_SERVICE"]),
-  items: z.array(z.object({ menuItemId: z.string().min(1), quantity: z.number().int().min(1).max(99) })).min(1, "Add at least one item.").max(60),
+  items: z.array(z.object({ menuItemId: z.string().min(1), quantity: z.number().int().min(1).max(99) })).min(1, msg("Add at least one item.")).max(60),
   reservationId: z.string().nullable().optional(),
   tableLabel: z.string().trim().max(40).nullable().optional(),
   locationId: z.string().max(40).nullable().optional(),
@@ -46,7 +48,7 @@ const OrderSchema = z.object({
   accountId: z.string().nullable().optional(),
   reference: z.string().trim().max(80).nullable().optional(),
   /** Outside customer's phone (takeaway / pickup by phone): saved on the customer and used for updates. */
-  customerPhone: z.string().trim().max(30).nullable().optional().refine((v) => !v || validPhone(v), "Enter a phone number like 0712 345 678."),
+  customerPhone: z.string().trim().max(30).nullable().optional().refine((v) => !v || validPhone(v), msg("Enter a phone number like 0712 345 678.")),
   /** On the shared restaurant screen: the waiter making the order (it is theirs, and so is any money taken now). */
   pin: WaiterPin.nullable().optional(),
   /** The customer picked in the search (that person, even if someone else shares the number). */
@@ -68,8 +70,8 @@ export async function createOrderAction(input: z.input<typeof OrderSchema>): Pro
     let stayGuest: string | null = null, stayPhone = customerPhone;
     if (forStay) {
       ({ guestId: stayGuest, phone: stayPhone } = await stayCustomer(d.reservationId, customerId, customerPhone, desk
-        ? "Reception orders are for guests staying in the hotel — pick their room. Anyone else orders at the restaurant."
-        : "Room service is for a guest staying in the hotel — pick their room."));
+        ? msg("Reception orders are for guests staying in the hotel — pick their room. Anyone else orders at the restaurant.")
+        : msg("Room service is for a guest staying in the hotel — pick their room.")));
       d.customerName = null;
     }
     // Every order has the customer's phone (for updates): typed in, or the staying guest's.
@@ -82,7 +84,7 @@ export async function createOrderAction(input: z.input<typeof OrderSchema>): Pro
       : user.permissions.has("restaurant.serve") && !user.permissions.has("dashboard.manager") ? "WAITER_MANUAL" : "STAFF_MANUAL";
     // On the shared Restaurant Counter every new order is a waiter's: their ID says who. Paid now, the payment
     // is the Counter's (the official one) — the waiter who made the order brought the money.
-    const by = await actingWaiter(user, pin, "making an order");
+    const by = await actingWaiter(user, pin, msg("making an order"));
     const counter = isRestaurantDevice(user.permissions);
     const payBy = counter && d.settlement === "PAY_NOW" ? await actor(user) : undefined;
     const o = await createRestaurantOrder(d, by, new Date(), { source, customerPhone: normalizePhone(stayPhone), pickedGuestId: forStay ? stayGuest : customerId ?? null,
@@ -92,14 +94,14 @@ export async function createOrderAction(input: z.input<typeof OrderSchema>): Pro
     refresh();
     revalidatePath("/staff/reservations", "layout");
     return { id: o.id, number: o.number, total: o.total };
-  }, "Order sent to the kitchen.");
+  }, msg("Order sent to the kitchen."));
 }
 
 const StepSchema = z.object({
   id: z.string().min(1),
   status: z.enum(["ACCEPTED", "PREPARING", "READY", "OUT_FOR_DELIVERY", "DELIVERED"]),
   /** Paid as it is served — recorded by the one recording payments (the Restaurant Counter). */
-  pay: z.object({ accountId: z.string().min(1, "Choose where the money was received."), reference: z.string().trim().max(80).optional(), handedOverById: z.string().max(40).nullable().optional() }).optional(),
+  pay: z.object({ accountId: z.string().min(1, msg("Choose where the money was received.")), reference: z.string().trim().max(80).optional(), handedOverById: z.string().max(40).nullable().optional() }).optional(),
   /** On the shared Restaurant Counter: the waiter serving an order nobody had (their ID). */
   pin: WaiterPin.nullable().optional(),
 });
@@ -111,7 +113,7 @@ export async function setOrderStatusAction(input: z.input<typeof StepSchema>): P
     const d = parseInput(StepSchema, input);
     // With an ID (the shared Counter): the waiter does the step — an order nobody had becomes theirs. The money,
     // if any, is the Counter's (whoever is signed in records payments), never the waiter's.
-    const by = d.pin ? await actingWaiter(user, d.pin, "serving an order") : await actor(user);
+    const by = d.pin ? await actingWaiter(user, d.pin, msg("serving an order")) : await actor(user);
     const { before, after: moved } = await setOrderStatus(d.id, d.status, by, new Date(), { pay: d.pay, payBy: d.pay ? await actor(user) : undefined });
     // One update per real step (preparing, ready, delivered / collected) — not for every click.
     const event = orderEventFor(moved.status, moved.type, !!moved.deliveryAddress);
@@ -148,11 +150,11 @@ export async function saveOrderSoundsAction(input: z.input<typeof SoundSchema>):
     await saveOrderSounds(parseInput(SoundSchema, input), await actor(user));
     refresh();
     return null;
-  }, "Sound settings saved for every restaurant screen.");
+  }, msg("Sound settings saved for every restaurant screen."));
 }
 
 const PaySchema = z.object({
-  id: z.string().min(1), accountId: z.string().min(1, "Choose where the money was received."), reference: z.string().trim().max(80).optional(),
+  id: z.string().min(1), accountId: z.string().min(1, msg("Choose where the money was received.")), reference: z.string().trim().max(80).optional(),
   /** On a room bill, but the guest pays now instead. */
   fromRoom: z.boolean().optional(),
   /** At the Restaurant Counter: the waiter who brought the money (optional — never the collector). */
@@ -172,10 +174,10 @@ export async function recordOrderPaymentAction(input: z.input<typeof PaySchema>)
     else await recordOrderPayment(d.id, pay, by);
     refresh();
     return null;
-  }, "Payment recorded.");
+  }, msg("Payment recorded."));
 }
 
-const BillPaySchema = z.object({ ids: z.array(z.string().min(1)).min(1).max(60), accountId: z.string().min(1, "Choose where the money was received."), reference: z.string().trim().max(80).optional(), handedOverById: z.string().max(40).nullable().optional() });
+const BillPaySchema = z.object({ ids: z.array(z.string().min(1)).min(1).max(60), accountId: z.string().min(1, msg("Choose where the money was received.")), reference: z.string().trim().max(80).optional(), handedOverById: z.string().max(40).nullable().optional() });
 
 /** The whole bill (a table's orders, say) paid at once. */
 export async function payBillAction(input: z.input<typeof BillPaySchema>): Promise<ActionResult<{ count: number; total: number }>> {
@@ -187,12 +189,12 @@ export async function payBillAction(input: z.input<typeof BillPaySchema>): Promi
     refresh();
     revalidatePath("/staff/restaurant-bill");
     return res;
-  }, "Payment recorded — the bill is paid.");
+  }, msg("Payment recorded — the bill is paid."));
 }
 
 const AddSchema = z.object({
   id: z.string().min(1),
-  items: z.array(z.object({ menuItemId: z.string().min(1), quantity: z.number().int().min(1).max(99) })).min(1, "Add at least one item.").max(60),
+  items: z.array(z.object({ menuItemId: z.string().min(1), quantity: z.number().int().min(1).max(99) })).min(1, msg("Add at least one item.")).max(60),
   /** On the shared restaurant screen: the waiter adding them. */
   pin: WaiterPin.nullable().optional(),
 });
@@ -202,12 +204,12 @@ export async function addOrderItemsAction(input: z.input<typeof AddSchema>): Pro
   return runAction(async () => {
     const user = await authorize("restaurant.serve", "kitchen.orders");
     const d = parseInput(AddSchema, input);
-    const o = await addOrderItems(d.id, d.items, await actingWaiter(user, d.pin, "adding to an order"));
+    const o = await addOrderItems(d.id, d.items, await actingWaiter(user, d.pin, msg("adding to an order")));
     refresh();
     revalidatePath("/order", "layout");
     if (o.settlement === "ROOM") revalidatePath("/staff/reservations", "layout");
     return { number: o.number, total: o.total, status: o.status };
-  }, "Added to the order — the kitchen has the new items.");
+  }, msg("Added to the order — the kitchen has the new items."));
 }
 
 /** Reception (or a manager) confirms a payment a waiter collected. */
@@ -220,7 +222,7 @@ export async function confirmOrderPaymentAction(input: { paymentId: string }): P
     await confirmOrderPayment(paymentId, await actor(user));
     refresh();
     return null;
-  }, "Payment confirmed.");
+  }, msg("Payment confirmed."));
 }
 
 /** A manager reverses a payment recorded by mistake (kept on record, with the reason). */
@@ -231,7 +233,7 @@ export async function reverseOrderPaymentAction(input: { paymentId: string; reas
     refresh();
     revalidatePath("/staff/restaurant-bill");
     return null;
-  }, "Payment reversed — the amount is due again.");
+  }, msg("Payment reversed — the amount is due again."));
 }
 
 /** Printing / downloading a bill is noted on the order (which amount was printed, by whom). */
@@ -250,7 +252,7 @@ export async function regenerateLocationQrAction(input: { id: string }): Promise
     await regenerateLocationQr(input.id, await actor(user));
     revalidatePath("/staff/restaurant/tables");
     return null;
-  }, "New QR made — print the new card.");
+  }, msg("New QR made — print the new card."));
 }
 
 /** Switch a table's QR off or back on. */
@@ -260,7 +262,7 @@ export async function setLocationQrActiveAction(input: { id: string; active: boo
     await setLocationQrActive(input.id, !!input.active, await actor(user));
     revalidatePath("/staff/restaurant/tables");
     return null;
-  }, input.active ? "QR switched on." : "QR switched off — scanning it now asks the customer to call a waiter.");
+  }, input.active ? msg("QR switched on.") : msg("QR switched off — scanning it now asks the customer to call a waiter."));
 }
 
 const ToRoom = z.object({ id: z.string().min(1).max(40), reservationId: z.string().min(1).max(40), reason: z.string().trim().max(200).optional() });
@@ -276,10 +278,10 @@ export async function chargeOrderToRoomAction(input: z.input<typeof ToRoom>): Pr
     revalidatePath("/staff/rooms", "layout");
     revalidatePath("/staff/check-out");
     return null;
-  }, "Added to the guest's room bill.");
+  }, msg("Added to the guest's room bill."));
 }
 
-const Billing = z.object({ id: z.string().min(1).max(40), to: z.string().min(1).max(40).nullable(), reason: z.string().trim().min(3, "Say why the bill changes.").max(200) });
+const Billing = z.object({ id: z.string().min(1).max(40), to: z.string().min(1).max(40).nullable(), reason: z.string().trim().min(3, msg("Say why the bill changes.")).max(200) });
 /** Change who pays an order (reception, managers, the MD): restaurant ↔ room, or another room — with the reason, nothing charged twice. */
 export async function changeOrderBillingAction(input: z.input<typeof Billing>): Promise<ActionResult<{ from: string; to: string }>> {
   return runAction(async () => {
@@ -302,7 +304,7 @@ export async function regenerateRoomQrAction(input: { roomId: string }): Promise
     await regenerateRoomQr(input.roomId, await actor(user));
     revalidatePath("/staff/rooms/qr");
     return null;
-  }, "New QR made — print the new card for the room.");
+  }, msg("New QR made — print the new card for the room."));
 }
 
 /** Switch a room's QR off or back on. */
@@ -312,7 +314,7 @@ export async function setRoomQrActiveAction(input: { roomId: string; active: boo
     await setRoomQrActive(input.roomId, !!input.active, await actor(user));
     revalidatePath("/staff/rooms/qr");
     return null;
-  }, input.active ? "QR switched on." : "QR switched off — scanning it now shows a message to contact reception.");
+  }, input.active ? msg("QR switched on.") : msg("QR switched off — scanning it now shows a message to contact reception."));
 }
 
 /** The Mpishi declines an order (out of stock…) — the dishes that ran out can be marked sold out too. */
@@ -326,7 +328,7 @@ export async function declineOrderAction(input: { id: string; reason: string; so
     revalidatePath("/order", "layout");
     revalidatePath("/staff/reservations", "layout");
     return null;
-  }, "Order declined — reception can see it and tell the customer.");
+  }, msg("Order declined — reception can see it and tell the customer."));
 }
 
 /**
@@ -344,7 +346,7 @@ export async function markPaymentNotReceivedAction(input: { id: string }): Promi
     revalidatePath("/staff/collections");
     revalidatePath("/order", "layout");
     return null;
-  }, "Payment not received — the order is declined and nothing is counted.");
+  }, msg("Payment not received — the order is declined and nothing is counted."));
 }
 
 /** Add the customer's phone to an order that has none. */
@@ -355,7 +357,7 @@ export async function setOrderPhoneAction(input: { id: string; phone: string }):
     await setOrderCustomerPhone(input.id, input.phone ?? "", await actor(user));
     refresh();
     return null;
-  }, "Phone added — you can text the customer now.");
+  }, msg("Phone added — you can text the customer now."));
 }
 
 export async function cancelOrderAction(input: { id: string; reason: string }): Promise<ActionResult<null>> {
@@ -367,7 +369,7 @@ export async function cancelOrderAction(input: { id: string; reason: string }): 
     refresh();
     revalidatePath("/staff/reservations", "layout");
     return null;
-  }, "Order cancelled — its charges were voided.");
+  }, msg("Order cancelled — its charges were voided."));
 }
 
 /** Take items off an open order, with a reason (kept in its history). */
@@ -379,7 +381,7 @@ export async function removeOrderItemAction(input: { orderId: string; itemId: st
     refresh();
     revalidatePath("/staff/reservations", "layout");
     return { total: res.total };
-  }, "Removed from the order.");
+  }, msg("Removed from the order."));
 }
 
 /** The customer changed table: their orders move there with everything. */
@@ -391,7 +393,7 @@ export async function moveOrdersToTableAction(input: { orderIds: string[]; locat
     const res = await moveOrdersToTable(ids, String(input.locationId ?? ""), await actor(user));
     refresh();
     return { to: res.to };
-  }, "Moved.");
+  }, msg("Moved."));
 }
 
 export async function setAvailableAction(input: { id: string; isAvailable: boolean }): Promise<ActionResult<null>> {
@@ -400,15 +402,15 @@ export async function setAvailableAction(input: { id: string; isAvailable: boole
     await setMenuItemAvailable(input.id, input.isAvailable, await actor(user));
     refresh();
     return null;
-  }, input.isAvailable ? "Back on the menu." : "Marked as not available.");
+  }, input.isAvailable ? msg("Back on the menu.") : msg("Marked as not available."));
 }
 
 const ItemSchema = z.object({
   id: z.string().optional().transform((v) => v || null),
-  categoryId: z.string().min(1, "Choose a category."),
-  name: z.string().trim().min(2, "Give the item a name.").max(80),
+  categoryId: z.string().min(1, msg("Choose a category.")),
+  name: z.string().trim().min(2, msg("Give the item a name.")).max(80),
   description: z.string().trim().max(300).optional(),
-  price: z.coerce.number().int("Whole shillings only.").positive("Enter the price."),
+  price: z.coerce.number().int(msg("Whole shillings only.")).positive(msg("Enter the price.")),
   subcategory: z.string().trim().max(40).optional(),
   isAvailable: z.string().optional().transform((v) => v === "on"),
   isActive: z.string().optional().transform((v) => v === "on"),
@@ -420,15 +422,19 @@ export async function saveMenuItemAction(_prev: unknown, formData: FormData): Pr
     const user = await authorize("restaurant.menu");
     const data = parseInput(ItemSchema, Object.fromEntries([...formData.entries()].filter(([k]) => k !== "image")));
     const image = formData.get("image");
-    await saveMenuItem({ ...data, image: image instanceof File && image.size > 0 ? image : null }, await actor(user));
+    const who = await actor(user);
+    const item = await saveMenuItem({ ...data, image: image instanceof File && image.size > 0 ? image : null }, who);
+    // Its Chinese, saved beside it (the same record — nothing duplicated).
+    const zh = translationFromForm("menuItem", formData);
+    if (zh) await saveTranslation("menuItem", item.id, "zh-CN", zh, who);
     refresh();
     return null;
-  }, "Menu saved.");
+  }, msg("Menu saved."));
 }
 
 const CategorySchema = z.object({
   id: z.string().optional().transform((v) => v || null),
-  name: z.string().trim().min(2, "Give the category a name.").max(60),
+  name: z.string().trim().min(2, msg("Give the category a name.")).max(60),
   type: z.enum(["FOOD", "DRINK"]),
   revenueKind: z.enum(["RESTAURANT", "BAR"]),
   description: z.string().trim().max(200).optional(),
@@ -438,10 +444,13 @@ const CategorySchema = z.object({
 export async function saveMenuCategoryAction(_prev: unknown, formData: FormData): Promise<ActionResult<null>> {
   return runAction(async () => {
     const user = await authorize("restaurant.menu");
-    await saveMenuCategory(parseInput(CategorySchema, Object.fromEntries(formData)), await actor(user));
+    const who = await actor(user);
+    const category = await saveMenuCategory(parseInput(CategorySchema, Object.fromEntries(formData)), who);
+    const zh = translationFromForm("menuCategory", formData);
+    if (zh) await saveTranslation("menuCategory", category.id, "zh-CN", zh, who);
     refresh();
     return null;
-  }, "Category saved.");
+  }, msg("Category saved."));
 }
 
 export async function moveMenuCategoryAction(input: { id: string; dir: -1 | 1 }): Promise<ActionResult<null>> {

@@ -5,20 +5,22 @@ import { can, requirePagePermission } from "@/server/auth";
 import { db } from "@/server/db";
 import { businessDayConfig, getSettings } from "@/server/settings";
 import { businessDateOf, businessRangeBounds, fromDbDate, addDays } from "@/lib/time/business-date";
-import { formatDateTime, formatTZS } from "@/lib/format";
+import { formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { sendingNow } from "@/server/services/report-delivery";
 import { lastCompleted, periodLabel, periodOf, type PersonPeriodData, type TeamPeriodData } from "@/server/services/staff-report";
 import { factLine, type ShiftReportData } from "@/server/services/shift-report";
 import { MakePeriodReportButton } from "./buttons";
+import { getT } from "@/i18n/server";
 
-export const metadata: Metadata = { title: "Staff reports" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getT())("Staff reports") };
+}
 export const dynamic = "force-dynamic";
 
 const dur = (m: number) => `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`;
 const minutes = (xs: { startedAt: Date; endedAt: Date | null }[], now: Date) => xs.reduce((t, x) => t + Math.max(0, Math.round(((x.endedAt ?? now).getTime() - x.startedAt.getTime()) / 60000)), 0);
 const first = (n: string) => n.replace(/\s*\(.*\)/, "");
-const dayMonth = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 
 /**
  * STAFF REPORTS — every shift's report, and each week's and month's. Staff see only their own: their shift reports,
@@ -28,8 +30,9 @@ const dayMonth = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("e
 export default async function StaffReportsPage() {
   const user = await requirePagePermission("shifts.view", "restaurant.shift", "shifts.manage", "reports.view");
   const manager = can(user, "shifts.manage") || can(user, "reports.view");
-  const s = await getSettings();
+  const [s, t] = await Promise.all([getSettings(), getT()]);
   const cfg = businessDayConfig(s);
+  const dayMonth = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString(t.intl, { day: "numeric", month: "short", timeZone: "UTC" });
   const now = new Date();
   const today = businessDateOf(now, cfg);
   const week = periodOf("WEEK", today), month = periodOf("MONTH", today);
@@ -59,7 +62,7 @@ export default async function StaffReportsPage() {
   const byPerson = [...new Set(people.map((p) => p.userId))].map((id) => {
     const rows = people.filter((p) => p.userId === id);
     const main = rows.reduce((b, r) => (r._count > b._count ? r : b), rows[0]);
-    return { id, name: who.get(id)?.fullName ?? "Staff", role: who.get(id)?.role.name ?? "", department: main.department, shifts: rows.reduce((t, r) => t + r._count, 0), last: rows.reduce((m, r) => (r._max.startedAt && (!m || r._max.startedAt > m) ? r._max.startedAt : m), null as Date | null) };
+    return { id, name: who.get(id)?.fullName ?? t("Staff"), role: who.get(id)?.role.name ?? "", department: main.department, shifts: rows.reduce((t, r) => t + r._count, 0), last: rows.reduce((m, r) => (r._max.startedAt && (!m || r._max.startedAt > m) ? r._max.startedAt : m), null as Date | null) };
   }).sort((a, b) => a.department.localeCompare(b.department) || a.name.localeCompare(b.name));
 
   const so = (label: string, kind: "WEEK" | "MONTH", range: { from: string; to: string }, xs: typeof weekShifts) => {
@@ -69,16 +72,16 @@ export default async function StaffReportsPage() {
         <div aria-hidden className="pointer-events-none absolute -right-16 -top-16 size-48 rounded-full bg-[oklch(0.75_0.12_80)]/10 blur-2xl" />
         <div className="relative flex items-start justify-between gap-3">
           <span className="grid size-11 place-items-center rounded-2xl bg-[oklch(0.75_0.12_80)]/15 text-[oklch(0.6_0.11_78)] dark:text-[#f0cf86]">{kind === "WEEK" ? <CalendarDays className="size-5" /> : <CalendarRange className="size-5" />}</span>
-          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/12 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300"><span className="size-1.5 rounded-full bg-emerald-500" />So far</span>
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/12 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300"><span className="size-1.5 rounded-full bg-emerald-500" />{t("So far")}</span>
         </div>
         <p className="relative mt-4 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
-        <p className="relative text-lg font-semibold">{periodLabel(kind, range.from, range.to)}</p>
+        <p className="relative text-lg font-semibold">{periodLabel(kind, range.from, range.to, t)}</p>
         <div className="relative mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm">
-          <span><strong className="text-xl font-semibold tabular-nums">{xs.length}</strong> <span className="text-muted-foreground">shift{xs.length === 1 ? "" : "s"}</span></span>
-          <span><strong className="text-xl font-semibold tabular-nums">{dur(minutes(xs, now))}</strong> <span className="text-muted-foreground">on shift</span></span>
-          {manager && <span><strong className="text-xl font-semibold tabular-nums">{people}</strong> <span className="text-muted-foreground">{people === 1 ? "person" : "people"}</span></span>}
+          <span><strong className="text-xl font-semibold tabular-nums">{xs.length}</strong> <span className="text-muted-foreground">{xs.length === 1 ? t("shift") : t("shifts")}</span></span>
+          <span><strong className="text-xl font-semibold tabular-nums">{dur(minutes(xs, now))}</strong> <span className="text-muted-foreground">{t("on shift")}</span></span>
+          {manager && <span><strong className="text-xl font-semibold tabular-nums">{people}</strong> <span className="text-muted-foreground">{people === 1 ? t("person") : t("people")}</span></span>}
         </div>
-        <p className="relative mt-4 inline-flex items-center gap-1 text-sm font-semibold text-[oklch(0.55_0.11_76)] dark:text-[#f0cf86]">{manager ? "Open the business & team so far" : "Open my report so far"}<ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" /></p>
+        <p className="relative mt-4 inline-flex items-center gap-1 text-sm font-semibold text-[oklch(0.55_0.11_76)] dark:text-[#f0cf86]">{manager ? t("Open the business & team so far") : t("Open my report so far")}<ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" /></p>
       </Link>
     );
   };
@@ -94,16 +97,16 @@ export default async function StaffReportsPage() {
         <Link href={`/staff/reports/staff/${r.id}`} className="flex items-center gap-3 rounded-2xl px-3 py-3 transition-colors hover:bg-muted/50">
           <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-muted text-muted-foreground"><FileText className="size-[18px]" /></span>
           <span className="min-w-0 flex-1 leading-tight">
-            <span className="block truncate text-sm font-semibold">{periodLabel(r.kind as "WEEK" | "MONTH", fromDbDate(r.fromDate), fromDbDate(r.toDate))}</span>
+            <span className="block truncate text-sm font-semibold">{periodLabel(r.kind as "WEEK" | "MONTH", fromDbDate(r.fromDate), fromDbDate(r.toDate), t)}</span>
             <span className="block truncate text-xs text-muted-foreground">
-              {team ? <>{team.business ? `Revenue ${formatTZS(team.business.revenue.total)} · ` : ""}{team.people.length} {team.people.length === 1 ? "person" : "people"} · {team.people.reduce((t, p) => t + p.shifts, 0)} shifts</>
-                : person ? <>{person.totals.shifts} shift{person.totals.shifts === 1 ? "" : "s"} · {dur(person.totals.minutes)} on shift</> : null}
+              {team ? <>{team.business ? `${t("Revenue {amount}", { amount: formatTZS(team.business.revenue.total) })} · ` : ""}{t.plural(team.people.length, "{n} person", "{n} people")} · {t("{n} shifts", { n: team.people.reduce((sum, p) => sum + p.shifts, 0) })}</>
+                : person ? <>{t.plural(person.totals.shifts, "{n} shift · {duration} on shift", "{n} shifts · {duration} on shift", { duration: dur(person.totals.minutes) })}</> : null}
             </span>
           </span>
           {manager && (
             <span className={cn("hidden shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold sm:inline-flex", sent ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : failed ? "bg-rose-500/15 text-rose-600 dark:text-rose-400" : "bg-muted text-muted-foreground")}>
               {sent ? <CheckCheck className="size-3" /> : failed ? <AlertTriangle className="size-3" /> : <CircleDashed className={cn("size-3", sending && "animate-spin")} />}
-              {sent ? "Sent to the Boss" : failed ? "Message failed" : sending ? "Sending…" : "Not sent"}
+              {sent ? t("Sent to the Boss") : failed ? t("Message failed") : sending ? t("Sending…") : t("Not sent")}
             </span>
           )}
           <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
@@ -126,33 +129,33 @@ export default async function StaffReportsPage() {
     <div className="w-full space-y-5">
       <section className="relative overflow-hidden rounded-3xl border border-border/70 bg-card px-5 py-5 sm:px-6">
         <div aria-hidden className="absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-[oklch(0.78_0.12_80)]/70 to-transparent" />
-        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[oklch(0.62_0.11_78)] dark:text-[oklch(0.8_0.1_82)]">{manager ? "Staff & business reports" : "My reports"}</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">{manager ? "Every shift, every week, every month" : `Your work, ${first(user.fullName).split(" ")[0]}`}</h1>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[oklch(0.62_0.11_78)] dark:text-[oklch(0.8_0.1_82)]">{manager ? t("Staff & business reports") : t("My reports")}</p>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight">{manager ? t("Every shift, every week, every month") : t("Your work, {name}", { name: first(user.fullName).split(" ")[0] })}</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
           {manager
-            ? "A report is made when each shift ends, every Monday for the week and on the 1st for the month — the Boss gets each one on WhatsApp with its link. Open, print or download any of them."
-            : "Your shift reports, and your week and month — counted from your own records. Only you and the managers see them."}
+            ? t("A report is made when each shift ends, every Monday for the week and on the 1st for the month — the Boss gets each one on WhatsApp with its link. Open, print or download any of them.")
+            : t("Your shift reports, and your week and month — counted from your own records. Only you and the managers see them.")}
         </p>
       </section>
 
       <div className="grid gap-4 md:grid-cols-2">
-        {so("This week", "WEEK", week, weekShifts)}
-        {so("This month", "MONTH", month, monthShifts)}
+        {so(t("This week"), "WEEK", week, weekShifts)}
+        {so(t("This month"), "MONTH", month, monthShifts)}
       </div>
 
       <div className="grid items-start gap-4 lg:grid-cols-2">
-        {list("Weekly reports", <CalendarDays className="size-4 text-muted-foreground" />, weekly, manager ? "The first weekly report is made next Monday morning." : "Your first weekly report is made next Monday.",
-          manager && !has("WEEK", lastWeek.from) ? <MakePeriodReportButton kind="WEEK" label="Make last week's report" className="h-8 text-xs" /> : undefined)}
-        {list("Monthly reports", <CalendarRange className="size-4 text-muted-foreground" />, monthly, manager ? "The first monthly report is made on the 1st." : "Your first monthly report is made on the 1st.",
-          manager && !has("MONTH", lastMonth.from) ? <MakePeriodReportButton kind="MONTH" label={`Make ${periodLabel("MONTH", lastMonth.from, lastMonth.to).split(" ")[0]}'s report`} className="h-8 text-xs" /> : undefined)}
+        {list(t("Weekly reports"), <CalendarDays className="size-4 text-muted-foreground" />, weekly, manager ? t("The first weekly report is made next Monday morning.") : t("Your first weekly report is made next Monday."),
+          manager && !has("WEEK", lastWeek.from) ? <MakePeriodReportButton kind="WEEK" label={t("Make last week's report")} className="h-8 text-xs" /> : undefined)}
+        {list(t("Monthly reports"), <CalendarRange className="size-4 text-muted-foreground" />, monthly, manager ? t("The first monthly report is made on the 1st.") : t("Your first monthly report is made on the 1st."),
+          manager && !has("MONTH", lastMonth.from) ? <MakePeriodReportButton kind="MONTH" label={t("Make {month}'s report", { month: t.locale === "en" ? periodLabel("MONTH", lastMonth.from, lastMonth.to).split(" ")[0] : periodLabel("MONTH", lastMonth.from, lastMonth.to, t) })} className="h-8 text-xs" /> : undefined)}
       </div>
 
       {manager && byPerson.length > 0 && (
         <section className="rounded-3xl border border-border/70 bg-card p-4 sm:p-5">
-          <h2 className="mb-3 flex items-center gap-2 text-base font-semibold"><Users className="size-4 text-muted-foreground" />Each person<span className="text-sm font-normal text-muted-foreground">· worked in the last 5 weeks</span></h2>
+          <h2 className="mb-3 flex items-center gap-2 text-base font-semibold"><Users className="size-4 text-muted-foreground" />{t("Each person")}<span className="text-sm font-normal text-muted-foreground">· {t("worked in the last 5 weeks")}</span></h2>
           {(["RECEPTION", "RESTAURANT"] as const).filter((k) => byPerson.some((p) => p.department === k)).map((k) => (
           <div key={k} className="mt-3 first:mt-0">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{k === "RECEPTION" ? "Reception" : "Restaurant & bar"}</p>
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{k === "RECEPTION" ? t("Reception") : t("Restaurant & bar")}</p>
           <ul className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
             {byPerson.filter((p) => p.department === k).map((p) => (
               <li key={p.id} className="rounded-2xl border border-border/70 p-3.5">
@@ -160,12 +163,12 @@ export default async function StaffReportsPage() {
                   <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-linear-to-br from-[#f0cf86] to-[#b0863a] text-xs font-bold text-[#1b1611]">{first(p.name).split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase()}</span>
                   <span className="min-w-0 flex-1 leading-tight">
                     <span className="block truncate text-sm font-semibold">{p.name}</span>
-                    <span className="block truncate text-xs text-muted-foreground">{p.role} · {p.shifts} shift{p.shifts === 1 ? "" : "s"}{p.last ? ` · last ${dayMonth(businessDateOf(p.last, cfg))}` : ""}</span>
+                    <span className="block truncate text-xs text-muted-foreground">{t(p.role)} · {t.plural(p.shifts, "{n} shift", "{n} shifts")}{p.last ? ` · ${t("last {date}", { date: dayMonth(businessDateOf(p.last, cfg)) })}` : ""}</span>
                   </span>
                 </div>
                 <div className="mt-3 flex gap-2">
-                  <Link href={`/staff/reports/staff/live?kind=WEEK&user=${p.id}`} className="flex-1 rounded-xl bg-muted/60 px-3 py-1.5 text-center text-xs font-semibold hover:bg-muted">This week</Link>
-                  <Link href={`/staff/reports/staff/live?kind=MONTH&user=${p.id}`} className="flex-1 rounded-xl bg-muted/60 px-3 py-1.5 text-center text-xs font-semibold hover:bg-muted">This month</Link>
+                  <Link href={`/staff/reports/staff/live?kind=WEEK&user=${p.id}`} className="flex-1 rounded-xl bg-muted/60 px-3 py-1.5 text-center text-xs font-semibold hover:bg-muted">{t("This week")}</Link>
+                  <Link href={`/staff/reports/staff/live?kind=MONTH&user=${p.id}`} className="flex-1 rounded-xl bg-muted/60 px-3 py-1.5 text-center text-xs font-semibold hover:bg-muted">{t("This month")}</Link>
                 </div>
               </li>
             ))}
@@ -177,23 +180,23 @@ export default async function StaffReportsPage() {
 
       <section className="rounded-3xl border border-border/70 bg-card p-4 sm:p-5">
         <div className="mb-2 flex items-center justify-between gap-2">
-          <h2 className="flex items-center gap-2 text-base font-semibold"><Clock className="size-4 text-muted-foreground" />{manager ? "Latest shift reports" : "My shift reports"}</h2>
-          <Link href="/staff/shifts/all" className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-muted">{manager ? "All shifts" : "All my shifts"}</Link>
+          <h2 className="flex items-center gap-2 text-base font-semibold"><Clock className="size-4 text-muted-foreground" />{manager ? t("Latest shift reports") : t("My shift reports")}</h2>
+          <Link href="/staff/shifts/all" className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-muted">{manager ? t("All shifts") : t("All my shifts")}</Link>
         </div>
-        {shifts.length === 0 ? <p className="rounded-2xl border border-dashed border-border/80 px-4 py-8 text-center text-sm text-muted-foreground">Shift reports show here once a shift has ended.</p> : (
+        {shifts.length === 0 ? <p className="rounded-2xl border border-dashed border-border/80 px-4 py-8 text-center text-sm text-muted-foreground">{t("Shift reports show here once a shift has ended.")}</p> : (
           <ul className="grid gap-1 md:grid-cols-2">
             {shifts.map((x) => {
               const d = x.report?.data as unknown as ShiftReportData | undefined;
-              const clock = (t: Date) => new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: s.timezone }).format(t);
+              const clock = (x: Date) => t.time(x, s.timezone);
               return (
                 <li key={x.id}>
                   <Link href={x.report ? `/staff/shifts/${x.id}/report` : `/staff/shifts/${x.id}`} className="flex items-center gap-3 rounded-2xl px-3 py-2.5 transition-colors hover:bg-muted/50">
-                    <span className="grid h-11 w-12 shrink-0 place-content-center rounded-xl bg-muted text-center leading-none"><span className="text-base font-semibold tabular-nums">{Number(fromDbDate(x.businessDate).slice(8))}</span><span className="mt-0.5 text-[10px] font-medium uppercase text-muted-foreground">{dayMonth(fromDbDate(x.businessDate)).split(" ")[1]}</span></span>
+                    <span className="grid h-11 w-12 shrink-0 place-content-center rounded-xl bg-muted text-center leading-none"><span className="text-base font-semibold tabular-nums">{Number(fromDbDate(x.businessDate).slice(8))}</span><span className="mt-0.5 text-[10px] font-medium uppercase text-muted-foreground">{new Date(`${fromDbDate(x.businessDate)}T12:00:00Z`).toLocaleDateString(t.intl, { month: "short", timeZone: "UTC" })}</span></span>
                     <span className="min-w-0 flex-1 leading-tight">
-                      <span className="block truncate text-sm font-semibold">{manager ? x.user.fullName : x.department === "RESTAURANT" ? "Restaurant shift" : "Reception shift"} <span className="font-normal text-muted-foreground">· {clock(x.startedAt)} → {x.endedAt ? clock(x.endedAt) : ""}</span></span>
-                      <span className="block truncate text-xs text-muted-foreground">{d?.headline?.length ? d.headline.slice(0, 3).map(factLine).join(" · ") : x.report ? "No recorded activity" : "Report not made yet"}</span>
+                      <span className="block truncate text-sm font-semibold">{manager ? x.user.fullName : x.department === "RESTAURANT" ? t("Restaurant shift") : t("Reception shift")} <span className="font-normal text-muted-foreground">· {clock(x.startedAt)} → {x.endedAt ? clock(x.endedAt) : ""}</span></span>
+                      <span className="block truncate text-xs text-muted-foreground">{d?.headline?.length ? d.headline.slice(0, 3).map((f) => factLine(f, t)).join(" · ") : x.report ? t("No recorded activity") : t("Report not made yet")}</span>
                     </span>
-                    <span className={cn("shrink-0 rounded-lg px-2 py-1 text-[11px] font-semibold", x.report ? "bg-[oklch(0.75_0.12_80)]/15 text-[oklch(0.5_0.1_75)] dark:text-[#f0cf86]" : "bg-muted text-muted-foreground")}>{x.report ? "Report" : "Shift"}</span>
+                    <span className={cn("shrink-0 rounded-lg px-2 py-1 text-[11px] font-semibold", x.report ? "bg-[oklch(0.75_0.12_80)]/15 text-[oklch(0.5_0.1_75)] dark:text-[#f0cf86]" : "bg-muted text-muted-foreground")}>{x.report ? t("Report") : t("Shift")}</span>
                   </Link>
                 </li>
               );
@@ -201,7 +204,7 @@ export default async function StaffReportsPage() {
           </ul>
         )}
       </section>
-      <p className="text-center text-[11px] text-muted-foreground">Reports count what was recorded in the system — facts, never a score. Updated {formatDateTime(now)}.</p>
+      <p className="text-center text-[11px] text-muted-foreground">{t("Reports count what was recorded in the system — facts, never a score. Updated {time}.", { time: t.dateTime(now, s.timezone) })}</p>
     </div>
   );
 }

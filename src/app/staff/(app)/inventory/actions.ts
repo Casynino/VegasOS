@@ -9,6 +9,9 @@ import {
   saveInventoryDepartment, saveInventoryItem, saveRecipe, saveSupplier, setAssetState, takeStock, transferStock,
 } from "@/server/services/inventory";
 import { formatQty } from "@/lib/inventory";
+import { getT } from "@/i18n/server";
+import { msg } from "@/i18n/msg";
+import type { T } from "@/i18n/translate";
 
 async function actor(user: CurrentUser) {
   const { ipAddress } = await requestMeta();
@@ -18,10 +21,11 @@ function refresh() {
   for (const p of ["/staff/inventory", "/staff/assets", "/manager/dashboard", "/admin/dashboard"]) revalidatePath(p, "layout");
 }
 const Id = z.string().min(1).max(40);
-const Qty = z.coerce.number().positive("Enter the quantity.").max(10_000_000);
+const Qty = z.coerce.number().positive(msg("Enter the quantity.")).max(10_000_000);
 const Text = (max = 300) => z.string().trim().max(max).nullish();
 const Date_ = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish().or(z.literal("").transform(() => null));
-const moved = (r: { name: string; before: number; after: number; unit: string }) => `${r.name}: ${formatQty(r.before, r.unit)} → ${formatQty(r.after, r.unit)}`;
+/** "Beef: 12 kg → 10 kg" — shown to the person who did it, units in their language. */
+const moved = (r: { name: string; before: number; after: number; unit: string }, t: T) => `${r.name}: ${formatQty(r.before, r.unit, t)} → ${formatQty(r.after, r.unit, t)}`;
 
 // ── Stock moving ──
 
@@ -31,7 +35,7 @@ export async function receiveStockAction(input: unknown): Promise<ActionResult<{
     const d = z.object({ itemId: Id, quantity: Qty, unitCost: z.coerce.number().int().min(0).max(1_000_000_000).nullish(), supplierId: Id.nullish().or(z.literal("")), reference: Text(80), expiresOn: Date_, note: Text() }).parse(input);
     const r = await receiveStock({ ...d, supplierId: d.supplierId || null }, await actor(user));
     refresh();
-    return { message: moved(r) };
+    return { message: moved(r, await getT()) };
   });
 }
 
@@ -41,7 +45,7 @@ export async function takeStockAction(input: unknown): Promise<ActionResult<{ me
     const d = z.object({ itemId: Id, quantity: Qty, reason: z.string().min(1).max(40), departmentId: Id.nullish(), note: Text() }).parse(input);
     const r = await takeStock(d, await actor(user));
     refresh();
-    return { message: moved(r) };
+    return { message: moved(r, await getT()) };
   });
 }
 
@@ -51,7 +55,8 @@ export async function reportWasteAction(input: unknown): Promise<ActionResult<{ 
     const d = z.object({ itemId: Id, quantity: Qty, reason: z.string().min(1).max(40), note: Text() }).parse(input);
     const r = await reportWaste(d, await actor(user));
     refresh();
-    return { pending: r.pending, message: r.pending ? `${r.name}: waste sent to the manager to approve.` : moved(r) };
+    const t = await getT();
+    return { pending: r.pending, message: r.pending ? t("{name}: waste sent to the manager to approve.", { name: r.name }) : moved(r, t) };
   });
 }
 
@@ -61,7 +66,8 @@ export async function decideWasteAction(input: unknown): Promise<ActionResult<{ 
     const d = z.object({ id: Id, approve: z.boolean(), note: Text() }).parse(input);
     const r = await decideWaste(d.id, d.approve, d.note ?? null, await actor(user));
     refresh();
-    return { message: r.approved ? `Approved — ${moved(r)}` : `Rejected — ${r.name} stays at ${formatQty(r.after, r.unit)}.` };
+    const t = await getT();
+    return { message: r.approved ? t("Approved — {change}", { change: moved(r, t) }) : t("Rejected — {name} stays at {qty}.", { name: r.name, qty: formatQty(r.after, r.unit, t) }) };
   });
 }
 
@@ -71,7 +77,8 @@ export async function transferStockAction(input: unknown): Promise<ActionResult<
     const d = z.object({ itemId: Id, toDepartmentId: Id, quantity: Qty, note: Text() }).parse(input);
     const r = await transferStock(d, await actor(user));
     refresh();
-    return { message: `${formatQty(r.qty, r.unit)} ${r.name}: ${r.from} → ${r.to}` };
+    const t = await getT();
+    return { message: `${formatQty(r.qty, r.unit, t)} ${r.name}: ${t(r.from)} → ${t(r.to)}` };
   });
 }
 
@@ -92,7 +99,7 @@ export async function clearExpiryAction(input: unknown): Promise<ActionResult<nu
     await clearExpiry(d.id, await actor(user));
     refresh();
     return null;
-  }, "Marked as dealt with.");
+  }, msg("Marked as dealt with."));
 }
 
 export async function itemDetailAction(input: unknown) {
@@ -113,14 +120,14 @@ export async function saveItemAction(input: unknown): Promise<ActionResult<{ id:
   return runAction(async () => {
     const user = await authorize("inventory.manage");
     const d = z.object({
-      id: Id.nullish(), name: z.string().trim().min(1, "Name the item.").max(80), sku: Text(40), categoryId: Id, departmentId: Id, unit: z.string().min(1).max(20),
+      id: Id.nullish(), name: z.string().trim().min(1, msg("Name the item.")).max(80), sku: Text(40), categoryId: Id, departmentId: Id, unit: z.string().min(1).max(20),
       minStock: Num, reorderLevel: Num, maxStock: Num, costPerUnit: Num, supplierId: Id.nullish().or(z.literal("")), location: Text(60), tracksExpiry: z.boolean().optional(),
       isActive: z.boolean().optional(), notes: Text(), openingQuantity: Num,
     }).parse(input);
     const r = await saveInventoryItem({ ...d, supplierId: d.supplierId || null }, await actor(user));
     refresh();
     return { id: r.id };
-  }, "Saved.");
+  }, msg("Saved."));
 }
 
 export async function saveDepartmentAction(input: unknown): Promise<ActionResult<null>> {
@@ -130,7 +137,7 @@ export async function saveDepartmentAction(input: unknown): Promise<ActionResult
     await saveInventoryDepartment(d, await actor(user));
     refresh();
     return null;
-  }, "Saved.");
+  }, msg("Saved."));
 }
 
 export async function saveCategoryAction(input: unknown): Promise<ActionResult<null>> {
@@ -140,7 +147,7 @@ export async function saveCategoryAction(input: unknown): Promise<ActionResult<n
     await saveInventoryCategory({ ...d, departmentId: d.departmentId || null }, await actor(user));
     refresh();
     return null;
-  }, "Saved.");
+  }, msg("Saved."));
 }
 
 export async function saveSupplierAction(input: unknown): Promise<ActionResult<null>> {
@@ -150,7 +157,7 @@ export async function saveSupplierAction(input: unknown): Promise<ActionResult<n
     await saveSupplier(d, await actor(user));
     refresh();
     return null;
-  }, "Saved.");
+  }, msg("Saved."));
 }
 
 export async function saveRecipeAction(input: unknown): Promise<ActionResult<null>> {
@@ -160,7 +167,7 @@ export async function saveRecipeAction(input: unknown): Promise<ActionResult<nul
     await saveRecipe(d.menuItemId, d.lines, await actor(user));
     revalidatePath("/staff/inventory", "layout");
     return null;
-  }, "Recipe saved.");
+  }, msg("Recipe saved."));
 }
 
 // ── Assets ──
@@ -169,7 +176,7 @@ export async function saveAssetAction(input: unknown): Promise<ActionResult<{ id
   return runAction(async () => {
     const user = await authorize("assets.manage");
     const d = z.object({
-      id: Id.nullish(), code: Text(30), name: z.string().trim().min(1, "Name the asset.").max(80), category: z.string().trim().min(1).max(60), location: Text(60),
+      id: Id.nullish(), code: Text(30), name: z.string().trim().min(1, msg("Name the asset.")).max(80), category: z.string().trim().min(1).max(60), location: Text(60),
       departmentId: Id.nullish().or(z.literal("")), quantity: z.coerce.number().int().min(1).max(100_000).nullish(), purchaseDate: Date_,
       purchaseCost: z.coerce.number().int().min(0).max(100_000_000_000).nullish().or(z.literal("").transform(() => null)),
       condition: z.string().min(1).max(20), status: z.string().min(1).max(20), supplierId: Id.nullish().or(z.literal("")),
@@ -178,7 +185,7 @@ export async function saveAssetAction(input: unknown): Promise<ActionResult<{ id
     const r = await saveAsset({ ...d, departmentId: d.departmentId || null, supplierId: d.supplierId || null }, await actor(user));
     refresh();
     return { id: r.id, code: r.code };
-  }, "Saved.");
+  }, msg("Saved."));
 }
 
 export async function moveAssetAction(input: unknown): Promise<ActionResult<{ message: string }>> {
@@ -187,7 +194,8 @@ export async function moveAssetAction(input: unknown): Promise<ActionResult<{ me
     const d = z.object({ assetId: Id, to: z.string().trim().min(1).max(60), quantity: z.coerce.number().int().min(1).nullish(), note: Text() }).parse(input);
     const r = await moveAsset(d, await actor(user));
     refresh();
-    return { message: `${r.qty > 1 ? `${r.qty} × ` : ""}${r.name}: ${r.from} → ${r.to}` };
+    const t = await getT();
+    return { message: `${r.qty > 1 ? `${r.qty} × ` : ""}${r.name}: ${t(r.from)} → ${t(r.to)}` };
   });
 }
 
@@ -206,5 +214,5 @@ export async function assetStateAction(input: unknown): Promise<ActionResult<nul
     await setAssetState(d, await actor(user));
     refresh();
     return null;
-  }, "Asset updated.");
+  }, msg("Asset updated."));
 }

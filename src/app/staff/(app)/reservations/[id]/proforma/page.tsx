@@ -12,8 +12,11 @@ import { buttonVariants } from "@/components/ui/button";
 import { ReportActions } from "@/app/staff/(app)/reports/report-actions";
 import { InvoiceDocument, type InvoiceDoc } from "@/components/staff/invoices/invoice-document";
 import { companyBillTo } from "@/components/staff/invoices/bill-to";
+import { getT } from "@/i18n/server";
 
-export const metadata: Metadata = { title: "Proforma invoice" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getT())("Proforma invoice") };
+}
 
 /**
  * Proforma / booking invoice — what a stay will cost, for a company (or guest) to
@@ -23,6 +26,7 @@ export const metadata: Metadata = { title: "Proforma invoice" };
  */
 export default async function ProformaPage({ params }: PageProps<"/staff/reservations/[id]/proforma">) {
   await requirePagePermission("invoices.view", "reservations.view");
+  const t = await getT();
   const { id } = await params;
   const [r, s, today] = await Promise.all([
     db.reservation.findUnique({
@@ -52,7 +56,7 @@ export default async function ProformaPage({ params }: PageProps<"/staff/reserva
     const net = nights.reduce((t, n) => t + n.netAmount, 0);
     const rates = new Set(nights.map((n) => n.grossAmount));
     items.push({
-      id: rr.id, description: `${rr.roomType.name} — ${nights.length} night${nights.length === 1 ? "" : "s"}${rates.size === 1 ? ` × ${formatTZS(nights[0].grossAmount)}` : " (dated prices)"}`,
+      id: rr.id, description: `${t.plural(nights.length, "{type} — {n} night", "{type} — {n} nights", { type: t(rr.roomType.name) })}${rates.size === 1 ? ` × ${formatTZS(nights[0].grossAmount)}` : ` ${t("(dated prices)")}`}`,
       quantity: nights.length, unitAmount: Math.round(gross / nights.length), discountAmount: gross - net, netAmount: net,
       reservationId: r.id, guestName: r.guest.fullName, roomNumber: rr.room?.number ?? null,
       from: iso(nights[0].businessDate), to: addDays(iso(nights.at(-1)!.businessDate), 1), reference: r.reference, isRoom: true,
@@ -76,21 +80,21 @@ export default async function ProformaPage({ params }: PageProps<"/staff/reserva
     billTo: c ? companyBillTo(c) : { name: r.guest.fullName, lines: r.guest.address ? [r.guest.address] : [], contact: [r.guest.phone, r.guest.email].filter(Boolean).join("  ·  ") || null },
     bookings: [r.reference], items, gross, discount: gross - net, net, paid, balance: Math.max(0, net - paid),
     payments: payments.map((p) => ({ id: p.id, at: p.receivedAt, method: p.method.name, reference: p.reference, amount: p.amount, refund: p.kind === "REFUND" })),
-    notes: `Proforma for booking ${r.reference}. This is a quotation / request for payment — not a tax invoice and not a receipt. No payment has been recorded by issuing it. The final invoice is prepared at checkout from the actual bill (restaurant, bar and other charges included).`,
+    notes: t("Proforma for booking {reference}. This is a quotation / request for payment — not a tax invoice and not a receipt. No payment has been recorded by issuing it. The final invoice is prepared at checkout from the actual bill (restaurant, bar and other charges included).", { reference: r.reference }),
     cancelReason: null,
   };
 
   return (
     <div className="w-full space-y-5 print:space-y-0">
       <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
-        <Link href={`/staff/reservations/${r.id}`} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" />Back to {r.reference}</Link>
+        <Link href={`/staff/reservations/${r.id}`} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" />{t("Back to {name}", { name: r.reference })}</Link>
         <div className="flex gap-2">
           {c && <Link href={`/staff/corporate/${c.id}`} className={buttonVariants({ variant: "outline" })}>{c.companyName}</Link>}
           <ReportActions target="invoice-doc" fileName={`${s.hotelName}-proforma-${doc.number}`.replace(/[^\w]+/g, "-").toLowerCase()} />
         </div>
       </div>
       <p className="mx-auto max-w-[880px] rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 print:hidden dark:text-amber-300">
-        Proforma only — nothing is recorded as paid or owed by printing it. Payments are recorded on the booking (or on the company invoice after checkout).
+        {t("Proforma only — nothing is recorded as paid or owed by printing it. Payments are recorded on the booking (or on the company invoice after checkout).")}
       </p>
       <InvoiceDocument inv={doc} s={s} verifyUrl={null} proforma />
     </div>

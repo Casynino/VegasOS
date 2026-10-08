@@ -3,6 +3,9 @@ import { Info } from "lucide-react";
 import { formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { Block, Cell, Column, Figure, Report, Tone } from "@/lib/report-types";
+import { getT } from "@/i18n/server";
+import type { T } from "@/i18n/translate";
+import { localizeReport } from "@/lib/report-i18n";
 
 /** Ink on paper — the document is always light, on screen and in print. */
 const INK: Record<Tone, string> = {
@@ -18,13 +21,16 @@ type Hotel = { name: string; tagline?: string | null; address: string; contact: 
  * bars, charts, a statement or a table — and lines to sign. Prints on A4 (Print) and is the same
  * page that becomes the PDF or picture to send.
  */
-export function ReportDocument({ report, hotel, preparedBy, preparedAt, number, eyebrow = "Report", signoff }: {
+export async function ReportDocument({ report: original, hotel, preparedBy, preparedAt, number, eyebrow, signoff }: {
   report: Report; hotel: Hotel; preparedBy: string; preparedAt: string; number: string;
   /** The small word above the title on paper ("Report", "Shift report"). */
   eyebrow?: string;
   /** The lines to sign at the end (label, name already written) — default: prepared, checked, approved by the MD. */
   signoff?: [string, string][];
 }) {
+  // In the reader's language — the same figures (the report itself is kept as it was made).
+  const t = await getT();
+  const report = localizeReport(original, t);
   // Two half-width blocks side by side; the rest full width.
   const rows: Block[][] = [];
   for (const b of report.blocks) {
@@ -53,20 +59,20 @@ export function ReportDocument({ report, hotel, preparedBy, preparedAt, number, 
             </div>
           </div>
           <div className="text-left sm:text-right">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.32em] text-[#f0cf86]">{eyebrow}</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.32em] text-[#f0cf86]">{eyebrow ?? t("Report")}</p>
             <h2 className="mt-1 font-display text-2xl font-semibold tracking-tight sm:text-[1.75rem]">{report.title}</h2>
             <p className="mt-1 text-sm text-white/80">{report.period}</p>
-            <p className="mt-1 font-mono text-[10px] text-white/45">{number} · prepared {preparedAt}</p>
+            <p className="mt-1 font-mono text-[10px] text-white/45">{number} · {t("prepared {at}", { at: preparedAt })}</p>
           </div>
         </div>
-        <p className="relative mt-4 max-w-3xl text-xs leading-relaxed text-white/60">{report.blurb} All amounts in TZS · hotel days run 04:00 → 04:00.</p>
+        <p className="relative mt-4 max-w-3xl text-xs leading-relaxed text-white/60">{report.blurb} {t("All amounts in TZS · hotel days run 04:00 → 04:00.")}</p>
       </header>
       <div className="hidden h-1 bg-linear-to-r from-[#8a6a25] via-[#f0cf86] to-[#8a6a25] group-data-[paper=true]/report:block print:block" />
 
       {/* Headline figures — every row full: up to 6 on a row, more in two even rows; a shorter last row stretches */}
       <section className="flex flex-wrap gap-px border-b border-[#eee4d2] bg-[#eee4d2]" data-break
         style={{ "--cols": report.figures.length <= 6 ? report.figures.length : Math.min(6, Math.ceil(report.figures.length / 2)) } as React.CSSProperties}>
-        {report.figures.map((f) => <FigureCell key={f.label} f={f} />)}
+        {report.figures.map((f) => <FigureCell key={f.label} f={f} t={t} />)}
       </section>
 
       {/* The report, part by part */}
@@ -75,7 +81,7 @@ export function ReportDocument({ report, hotel, preparedBy, preparedAt, number, 
           <div key={i} className={cn("grid gap-8", row.length === 2 && "md:grid-cols-2")}>
             {row.map((b, j) => {
               if (b.kind !== "note" && b.kind !== "section" && b.kind !== "list") no += 1;
-              return <BlockView key={j} b={b} no={no} />;
+              return <BlockView key={j} b={b} no={no} t={t} />;
             })}
           </div>
         ))}
@@ -84,21 +90,21 @@ export function ReportDocument({ report, hotel, preparedBy, preparedAt, number, 
       {/* Sign-off */}
       <footer className="hidden border-t border-[#eee4d2] bg-[#fbf8f2] px-5 py-6 group-data-[paper=true]/report:block print:block sm:px-9 xl:px-12" data-break>
         <div className="grid gap-6 sm:grid-cols-3">
-          {(signoff ?? [["Prepared by", preparedBy], ["Checked by", ""], ["Approved by (MD)", ""]]).map(([k, v]) => (
+          {(signoff ?? [[t("Prepared by"), preparedBy], [t("Checked by"), ""], [t("Approved by (MD)"), ""]]).map(([k, v]) => (
             <div key={k}>
               <p className="h-6 truncate text-sm font-medium">{v}</p>
               <div className="border-b border-dashed border-[#b8a88a]" />
-              <p className="mt-1.5 text-[10px] uppercase tracking-[0.18em] text-[#8c8173]">{k} · date & signature</p>
+              <p className="mt-1.5 text-[10px] uppercase tracking-[0.18em] text-[#8c8173]">{k} · {t("date & signature")}</p>
             </div>
           ))}
         </div>
-        <p className="mt-5 text-center text-[10px] text-[#8c8173]">{hotel.name} · {report.title} · {report.period} · {number} · figures from the hotel system</p>
+        <p className="mt-5 text-center text-[10px] text-[#8c8173]">{hotel.name} · {report.title} · {report.period} · {number} · {t("figures from the hotel system")}</p>
       </footer>
     </article>
   );
 }
 
-function FigureCell({ f }: { f: Figure }) {
+function FigureCell({ f, t }: { f: Figure; t: T }) {
   const good = f.delta == null ? null : f.invert ? f.delta <= 0 : f.delta >= 0;
   return (
     <div className="min-w-0 grow basis-[calc(50%_-_1px)] bg-white px-4 py-4 sm:basis-[calc(33.34%_-_1px)] lg:basis-[calc(100%/var(--cols)_-_1px)]">
@@ -111,7 +117,7 @@ function FigureCell({ f }: { f: Figure }) {
           </span>
         )}
         {f.sub && <span className="line-clamp-2">{f.sub}</span>}
-        {f.delta != null && !f.sub && <span>vs before</span>}
+        {f.delta != null && !f.sub && <span>{t("vs before")}</span>}
       </p>
     </div>
   );
@@ -129,12 +135,12 @@ function Heading({ no, title, subtitle }: { no: number; title: string; subtitle?
   );
 }
 
-function BlockView({ b, no }: { b: Block; no: number }) {
+function BlockView({ b, no, t }: { b: Block; no: number; t: T }) {
   switch (b.kind) {
     case "section":
       return (
         <div className="break-after-avoid pt-2" data-break>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-[#b08a3a]">Section</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-[#b08a3a]">{t("Section")}</p>
           <h2 className="mt-0.5 font-display text-2xl font-semibold tracking-tight">{b.title}</h2>
           {b.subtitle && <p className="mt-0.5 text-xs text-[#8c8173]">{b.subtitle}</p>}
           <div className="mt-2 h-px bg-linear-to-r from-[#c9a24a] via-[#eee4d2] to-transparent" />
@@ -163,7 +169,7 @@ function BlockView({ b, no }: { b: Block; no: number }) {
       return (
         <section className="min-w-0 break-inside-avoid" data-break>
           <Heading no={no} title={b.title} subtitle={b.subtitle} />
-          {shown.length === 0 ? <Empty text={b.empty ?? "Nothing in this period."} /> : (
+          {shown.length === 0 ? <Empty text={b.empty ?? t("Nothing in this period.")} /> : (
             <ul className="space-y-2.5">
               {shown.map((x) => (
                 <li key={x.label} className="min-w-0">
@@ -176,9 +182,9 @@ function BlockView({ b, no }: { b: Block; no: number }) {
                 </li>
               ))}
               {shown.length > 1 && !b.noTotal && (
-                <li className="flex justify-between border-t border-[#eee4d2] pt-2 text-[13px] font-semibold"><span>Total</span><span className="tabular-nums">{b.money ? money(total) : n(total)}</span></li>
+                <li className="flex justify-between border-t border-[#eee4d2] pt-2 text-[13px] font-semibold"><span>{t("Total")}</span><span className="tabular-nums">{b.money ? money(total) : n(total)}</span></li>
               )}
-              {zero.length > 0 && <li className="text-[11px] text-[#8c8173]">Nothing from {zero.map((x) => x.label.toLowerCase()).join(", ")}.</li>}
+              {zero.length > 0 && <li className="text-[11px] text-[#8c8173]">{t("Nothing from {list}.", { list: zero.map((x) => (t.locale === "en" ? x.label.toLowerCase() : x.label)).join(t.locale === "en" ? ", " : "、") })}</li>}
             </ul>
           )}
         </section>
@@ -193,7 +199,7 @@ function BlockView({ b, no }: { b: Block; no: number }) {
       return (
         <section className="min-w-0 break-inside-avoid" data-break>
           <Heading no={no} title={b.title} subtitle={b.subtitle} />
-          {b.points.length === 0 || totals.every((t) => t === 0) ? <Empty text={b.empty ?? "Nothing in this period."} /> : (
+          {b.points.length === 0 || totals.every((x) => x === 0) ? <Empty text={b.empty ?? t("Nothing in this period.")} /> : (
             <>
               <div className="relative">
                 <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 border-t border-dashed border-[#e8dfcd]" />
@@ -214,7 +220,7 @@ function BlockView({ b, no }: { b: Block; no: number }) {
               {legend.length > 1 && (
                 <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-[#6f665b]">
                   {legend.map((x) => (
-                    <span key={x.name} className="inline-flex items-center gap-1.5"><span className="size-2 rounded-sm" style={{ background: x.color }} />{x.name} <strong className="font-semibold tabular-nums text-[#1d1a16]">{(() => { const t = b.points.reduce((s, p) => s + (p.parts.find((y) => y.name === x.name)?.value ?? 0), 0); return b.money ? money(t) : n(t); })()}</strong></span>
+                    <span key={x.name} className="inline-flex items-center gap-1.5"><span className="size-2 rounded-sm" style={{ background: x.color }} />{x.name} <strong className="font-semibold tabular-nums text-[#1d1a16]">{(() => { const sum = b.points.reduce((s, p) => s + (p.parts.find((y) => y.name === x.name)?.value ?? 0), 0); return b.money ? money(sum) : n(sum); })()}</strong></span>
                   ))}
                 </p>
               )}
@@ -263,7 +269,7 @@ function BlockView({ b, no }: { b: Block; no: number }) {
       return (
         <section className="min-w-0" data-break>
           <Heading no={no} title={b.title} subtitle={b.subtitle} />
-          {b.rows.length === 0 ? <Empty text={b.empty ?? "Nothing in this period."} /> : (
+          {b.rows.length === 0 ? <Empty text={b.empty ?? t("Nothing in this period.")} /> : (
             <div className="report-scroll -mx-1 overflow-x-auto px-1">
               <table className="w-full min-w-max border-collapse text-[12px]">
                 <thead>
@@ -288,7 +294,7 @@ function BlockView({ b, no }: { b: Block; no: number }) {
               </table>
             </div>
           )}
-          {!!b.more && <p className="mt-2 text-[11px] text-[#8c8173]">…and {n(b.more)} more ({b.moreNote ?? "the CSV has every line"}).</p>}
+          {!!b.more && <p className="mt-2 text-[11px] text-[#8c8173]">{t("…and {n} more ({note}).", { n: n(b.more), note: b.moreNote ?? t("the CSV has every line") })}</p>}
         </section>
       );
   }

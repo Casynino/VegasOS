@@ -4,6 +4,7 @@ import { addDays, diffDays, eachDate, fromDbDate, toDbDate, type BusinessDate } 
 import { COUNTED_EXPENSE_STATUSES } from "./expenses";
 import { EARNED_NIGHT } from "./reservation-financials";
 import { MEETING_OPEN_HOURS } from "@/lib/meeting";
+import { msg } from "@/i18n/msg";
 
 /**
  * Reporting services — the single financial & occupancy source of truth.
@@ -143,7 +144,7 @@ export async function revenue(r: Range) {
   });
   const sourceName = new Map(sources.map((s) => [s.id, s.name]));
   const bySource = roomBySource
-    .map((s) => ({ sourceId: s.sourceId, name: sourceName.get(s.sourceId) ?? "Unknown", roomNights: s._count, net: s._sum.netAmount ?? 0 }))
+    .map((s) => ({ sourceId: s.sourceId, name: sourceName.get(s.sourceId) ?? msg("Unknown"), roomNights: s._count, net: s._sum.netAmount ?? 0 }))
     .sort((a, b) => b.net - a.net);
 
   return {
@@ -178,7 +179,7 @@ export async function expenseSummary(r: Range) {
   return {
     total: agg._sum.amount ?? 0,
     count: agg._count,
-    byCategory: byCategory.map((c) => ({ categoryId: c.categoryId, name: name.get(c.categoryId) ?? "Other", amount: c._sum.amount ?? 0 })),
+    byCategory: byCategory.map((c) => ({ categoryId: c.categoryId, name: name.get(c.categoryId) ?? msg("Other"), amount: c._sum.amount ?? 0 })),
     recent,
     highValue,
     pending: { count: pending._count, amount: pending._sum.amount ?? 0 },
@@ -397,5 +398,5 @@ export async function topCustomers(r: Range, take = 5) {
   const top = [...spend.entries()].map(([id, s]) => ({ id, ...s, total: s.rooms + s.food })).filter((x) => x.total > 0).sort((a, b) => b.total - a.total).slice(0, take);
   const people = await db.guest.findMany({ where: { id: { in: top.map((x) => x.id) } }, select: { id: true, fullName: true, vip: true } });
   const who = new Map(people.map((p) => [p.id, p]));
-  return top.map((x) => ({ ...x, name: who.get(x.id)?.fullName ?? "Customer", vip: who.get(x.id)?.vip ?? false }));
+  return top.map((x) => ({ ...x, name: who.get(x.id)?.fullName ?? msg("Customer"), vip: who.get(x.id)?.vip ?? false }));
 }

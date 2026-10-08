@@ -19,6 +19,9 @@ import { refreshSessionTx, sessionEventTx, sessionForTableOrderTx, sessionOrdere
 import { assignmentRowTx, setOrderWaiterTx, setRoomWaiterTx, setTableWaiterTx } from "./assignments";
 import { ensureWaiterShiftTx } from "./waiter-shift-core";
 import { isRestaurantDevice, worksWaiterShift } from "@/lib/permissions";
+import { cleanRequestCodes } from "@/lib/order-requests";
+import { menuNamesNow } from "./translations";
+import { msg, msgf } from "@/i18n/msg";
 
 /**
  * Restaurant & bar — menu, orders and how their money is counted.
@@ -42,7 +45,7 @@ export const ORDER_STEPS: RestaurantOrderStatus[] = ["PENDING", "ACCEPTED", "PRE
 export const ORDER_FLOW: Record<RestaurantOrderType, RestaurantOrderStatus[]> = { DINE_IN: ORDER_STEPS, TAKEAWAY: ORDER_STEPS, PICKUP: ORDER_STEPS, ROOM_SERVICE: ORDER_STEPS };
 /** The button that moves an order on, by the step it goes to. */
 export const NEXT_STEP_LABEL: Record<string, string> = {
-  ACCEPTED: "Accept", PREPARING: "Accept", READY: "Ready", OUT_FOR_DELIVERY: "Serve", DELIVERED: "Served",
+  ACCEPTED: msg("Accept"), PREPARING: msg("Accept"), READY: msg("Ready"), OUT_FOR_DELIVERY: msg("Serve"), DELIVERED: msg("Served"),
 };
 /** The next step someone presses for an order (completing is automatic). */
 export function nextOrderStep(o: { type: RestaurantOrderType; status: RestaurantOrderStatus }) {
@@ -52,10 +55,10 @@ export function nextOrderStep(o: { type: RestaurantOrderType; status: Restaurant
   return next === "COMPLETED" || !ORDER_STEPS.includes(o.status) ? null : next;
 }
 export const STATUS_LABEL: Record<RestaurantOrderStatus, string> = {
-  PENDING: "New", ACCEPTED: "Accepted", PREPARING: "Preparing", READY: "Ready to serve", OUT_FOR_DELIVERY: "Serving",
-  DELIVERED: "Served", COMPLETED: "Completed", CANCELLED: "Cancelled", COLLECTED: "Collected",
+  PENDING: msg("New"), ACCEPTED: msg("Accepted"), PREPARING: msg("Preparing"), READY: msg("Ready to serve"), OUT_FOR_DELIVERY: msg("Serving"),
+  DELIVERED: msg("Served"), COMPLETED: msg("Completed"), CANCELLED: msg("Cancelled"), COLLECTED: msg("Collected"),
 };
-export const TYPE_LABEL: Record<RestaurantOrderType, string> = { DINE_IN: "Dine in", TAKEAWAY: "Takeaway", PICKUP: "Pickup", ROOM_SERVICE: "Room service" };
+export const TYPE_LABEL: Record<RestaurantOrderType, string> = { DINE_IN: msg("Dine in"), TAKEAWAY: msg("Takeaway"), PICKUP: msg("Pickup"), ROOM_SERVICE: msg("Room service") };
 
 // ───────────────────────── Menu ─────────────────────────
 
@@ -168,7 +171,7 @@ export async function saveMenuCategory(input: { id?: string | null; name: string
       return c;
     }
     const clash = await tx.menuCategory.findUnique({ where: { slug } });
-    if (clash) throw new AppError(`There is already a category called ${clash.name}.`, "VALIDATION", { name: "Duplicate" });
+    if (clash) throw new AppError(msgf("There is already a category called {name}.", { name: clash.name }), "VALIDATION", { name: "Duplicate" });
     const last = await tx.menuCategory.aggregate({ _max: { sortOrder: true } });
     const c = await tx.menuCategory.create({ data: { ...data, slug, sortOrder: (last._max.sortOrder ?? 0) + 1 } });
     await audit(tx, actor, { action: "menu.category_created", entityType: "MenuCategory", entityId: c.id, after: data });
@@ -201,7 +204,10 @@ export interface OrderInput {
   /** A table / the counter / the main restaurant (its name becomes the order's place). */
   locationId?: string | null;
   customerName?: string | null;
+  /** The customer's own words, kept exactly as typed (never translated). */
   notes?: string | null;
+  /** Common requests ticked from ORDER_REQUESTS (codes — each person reads them in their own language). */
+  noteCodes?: string[] | null;
   /** Take out: where to deliver it (street, house or building, landmark). */
   deliveryAddress?: string | null;
   /** Pay now (into an account), charge to the guest's room, or pay later (at the counter / on delivery). */
@@ -253,10 +259,10 @@ export interface OrderContext {
 }
 
 export const ORDER_SOURCE: Record<string, string> = {
-  ROOM_QR: "Room QR", TABLE_QR: "Table QR", COUNTER_QR: "Counter QR", RESTAURANT_QR: "Restaurant QR",
-  WAITER_MANUAL: "Waiter", STAFF_MANUAL: "Staff", RECEPTION: "Reception",
-  PUBLIC_QR: "Public menu QR", WEBSITE: "Website menu", GUEST_LINK: "Guest's stay link", GUEST: "Guest's stay link",
-  RESTAURANT: "Waiter", BAR: "Bar", STAFF: "Staff",
+  ROOM_QR: msg("Room QR"), TABLE_QR: msg("Table QR"), COUNTER_QR: msg("Counter QR"), RESTAURANT_QR: msg("Restaurant QR"),
+  WAITER_MANUAL: msg("Waiter"), STAFF_MANUAL: msg("Staff"), RECEPTION: msg("Reception"),
+  PUBLIC_QR: msg("Public menu QR"), WEBSITE: msg("Website menu"), GUEST_LINK: msg("Guest's stay link"), GUEST: msg("Guest's stay link"),
+  RESTAURANT: msg("Waiter"), BAR: msg("Bar"), STAFF: msg("Staff"),
 };
 /** The source of an order from a restaurant place's QR. */
 export const LOCATION_SOURCE: Record<string, string> = { TABLE: "TABLE_QR", COUNTER: "COUNTER_QR", MAIN: "RESTAURANT_QR" };
@@ -276,7 +282,7 @@ function assertCanPrepare(actor: Actor, items: { type: MenuItemType }[]) {
   if (actor.permissions?.has("kitchen.orders")) return;
   const drinksOnly = items.length > 0 && items.every((i) => i.type === "DRINK");
   if (drinksOnly && actor.permissions?.has("bar.orders")) return;
-  throw new AppError(drinksOnly ? "Only the Mpishi or a waiter prepares orders." : "Orders with food are prepared by the Mpishi or a waiter.", "FORBIDDEN");
+  throw new AppError(drinksOnly ? msg("Only the Mpishi or a waiter prepares orders.") : msg("Orders with food are prepared by the Mpishi or a waiter."), "FORBIDDEN");
 }
 /**
  * Paid online first (the customer sent proof) and nothing recorded from it yet — the order waits for the
@@ -310,7 +316,7 @@ export async function payingByPhoneTx(tx: Tx, ids: string[], now = new Date()) {
   });
   return new Set(live.flatMap((m) => m.orderIds).filter((id) => ids.includes(id)));
 }
-const PAYING_BY_PHONE = "The customer is paying this order by phone right now — wait a moment for the payment to finish.";
+const PAYING_BY_PHONE = msg("The customer is paying this order by phone right now — wait a moment for the payment to finish.");
 
 /**
  * Where an order stands with "Pay online" (nTZS): PAYING — a payment is on its way from the customer's phone now;
@@ -360,7 +366,7 @@ async function postOrderSalesTx(tx: Tx, order: { id: string; number: string }, l
   const cats = await tx.revenueCategory.findMany({ where: { code: { in: parts.map((p) => p.kind) } } });
   for (const p of parts) {
     const cat = cats.find((c) => c.code === p.kind);
-    if (!cat) throw new AppError(`The ${p.kind.toLowerCase()} income category is missing.`);
+    if (!cat) throw new AppError(msgf("The {kind} income category is missing.", { kind: p.kind.toLowerCase() }));
     await tx.revenueTransaction.create({
       data: {
         categoryId: cat.id, kind: p.kind, amount: p.amount, paymentMethodId: paid.method.id, accountId: paid.account.id,
@@ -420,7 +426,7 @@ export async function stayCustomer(reservationId: string | null | undefined, cus
   const typed = normalizePhone(phone);
   if (typed) {
     const owner = await db.guest.findFirst({ where: { deletedAt: null, OR: [{ phone: typed }, { altPhone: typed }], id: { notIn: members } }, select: { fullName: true } });
-    if (owner) throw new AppError(`That number belongs to another customer (${owner.fullName}) — enter the staying guest's own phone.`, "VALIDATION", { customerPhone: "Someone else's" });
+    if (owner) throw new AppError(msgf("That number belongs to another customer ({name}) — enter the staying guest's own phone.", { name: owner.fullName }), "VALIDATION", { customerPhone: "Someone else's" });
   }
   return { guestId, phone };
 }
@@ -445,8 +451,8 @@ async function assertRoomForCustomerTx(tx: Tx, reservationId: string, customerId
   if (customerIds.length && (await activeStaysFor(tx, customerIds)).some((s) => s.id === reservationId)) return true;
   if (!canBillAnotherRoom(actor)) {
     throw new AppError(customerIds.length
-      ? "That room is not this customer's — food goes only on the room of the guest staying in it (or someone at their table). They pay at the restaurant."
-      : "Enter the customer's phone number first — then their room shows.", "FORBIDDEN");
+      ? msg("That room is not this customer's — food goes only on the room of the guest staying in it (or someone at their table). They pay at the restaurant.")
+      : msg("Enter the customer's phone number first — then their room shows."), "FORBIDDEN");
   }
   if (opts.reasonRequired && (opts.reason?.trim().length ?? 0) < 3) {
     throw new AppError("That room is not this customer's — say why it goes on that room (e.g. the guest there pays for them).", "VALIDATION", { reason: "Required" });
@@ -476,7 +482,7 @@ export async function createRestaurantOrderTx(tx: Tx, input: OrderInput, actor: 
   if (wanted.some((i) => !Number.isInteger(i.quantity) || i.quantity > 99)) throw new AppError("Quantities must be whole numbers up to 99.", "VALIDATION", { items: "Quantity" });
   // Room service and room bills only for a guest staying now — never a room number on its own.
   const needsStay = input.settlement === "ROOM" || input.type === "ROOM_SERVICE";
-  if (needsStay && !input.reservationId) throw new AppError(input.type === "ROOM_SERVICE" ? "Choose the guest's room for room service." : "Choose the guest whose room is charged.", "VALIDATION", { reservationId: "Required" });
+  if (needsStay && !input.reservationId) throw new AppError(input.type === "ROOM_SERVICE" ? msg("Choose the guest's room for room service.") : msg("Choose the guest whose room is charged."), "VALIDATION", { reservationId: "Required" });
   // Paid now: the official payment is recorded by whoever records restaurant payments (the Restaurant Counter) — never a waiter.
   if (input.settlement === "PAY_NOW" && !(ctx.payBy ?? actor).permissions?.has("revenue.record")) throw new AppError("Payments are recorded at the Restaurant Counter — choose pay later or the room bill.", "FORBIDDEN");
 
@@ -497,9 +503,9 @@ export async function createRestaurantOrderTx(tx: Tx, input: OrderInput, actor: 
     });
     if (!r) throw new AppError("Guest not found.", "NOT_FOUND");
     // An order linked to a stay is a hotel order: only while the guest is checked in (not a past, future or checked-out stay).
-    if (r.status !== "CHECKED_IN") throw new AppError(`${r.guest.fullName} is not checked in — hotel orders (room service, room bills) are only for guests staying now.`, "VALIDATION", { reservationId: "Not in house" });
+    if (r.status !== "CHECKED_IN") throw new AppError(msgf("{name} is not checked in — hotel orders (room service, room bills) are only for guests staying now.", { name: r.guest.fullName }), "VALIDATION", { reservationId: "Not in house" });
     const rooms = r.rooms.map((x) => x.room.number);
-    if (ctx.servedRoom && !rooms.includes(ctx.servedRoom)) throw new AppError(`Room ${ctx.servedRoom} is not part of this stay any more — please call reception.`, "VALIDATION");
+    if (ctx.servedRoom && !rooms.includes(ctx.servedRoom)) throw new AppError(msgf("Room {room} is not part of this stay any more — please call reception.", { room: ctx.servedRoom }), "VALIDATION");
     reservation = { id: r.id, reference: r.reference, guestId: r.guestId, guestName: r.guest.fullName, guestPhone: r.guest.phone, roomNumber: ctx.servedRoom ?? (rooms.join(", ") || null) };
   }
 
@@ -561,6 +567,7 @@ export async function createRestaurantOrderTx(tx: Tx, input: OrderInput, actor: 
       number: await nextOrderNumber(tx, businessDate.slice(0, 4)), type: input.type, settlement: payNow ? "UNPAID" : input.settlement,
       reservationId: reservation?.id ?? null, roomNumber: reservation?.roomNumber ?? null,
       customerName: input.customerName?.trim() || reservation?.guestName || null, notes: input.notes?.trim() || null,
+      noteCodes: cleanRequestCodes(input.noteCodes),
       deliveryAddress: input.type === "TAKEAWAY" ? input.deliveryAddress?.trim().slice(0, 200) || null : null,
       ...(ctx.byCustomer && ctx.paidFirst ? {
         paymentProofFileId: ctx.paidFirst.paymentProofFileId, customerPaidToId: ctx.paidFirst.customerPaidToId, customerPayRef: ctx.paidFirst.customerPayRef, customerPaidAt: ctx.paidFirst.customerPaidAt,
@@ -621,11 +628,14 @@ async function priceLinesTx(tx: Tx, wanted: { menuItemId: string; quantity: numb
   if (!items.length) throw new AppError("Add at least one item.", "VALIDATION", { items: "Empty" });
   if (items.some((i) => !Number.isInteger(i.quantity) || i.quantity > 99)) throw new AppError("Quantities must be whole numbers up to 99.", "VALIDATION", { items: "Quantity" });
   const menu = await tx.menuItem.findMany({ where: { id: { in: items.map((w) => w.menuItemId) } }, include: { category: true } });
+  // The dish's name in every other language right now, kept on the line: the kitchen reads the English, the customer
+  // their own language — and an old order never changes when the menu is renamed later.
+  const names = await menuNamesNow(tx, menu);
   return items.map((w) => {
     const m = menu.find((x) => x.id === w.menuItemId);
     if (!m || !m.isActive || !m.category.isActive) throw new AppError("An item on this order is no longer on the menu. Remove it and try again.", "VALIDATION", { items: "Inactive" });
-    if (!m.isAvailable) throw new AppError(`${m.name} is not available right now.`, "VALIDATION", { items: "Unavailable" });
-    return { menuItemId: m.id, name: m.name, unitPrice: m.price, quantity: w.quantity, lineTotal: m.price * w.quantity, type: m.type, revenueKind: m.category.revenueKind };
+    if (!m.isAvailable) throw new AppError(msgf("{dish} is not available right now.", { dish: m.name }), "VALIDATION", { items: "Unavailable" });
+    return { menuItemId: m.id, name: m.name, nameI18n: names.get(m.id) ?? {}, unitPrice: m.price, quantity: w.quantity, lineTotal: m.price * w.quantity, type: m.type, revenueKind: m.category.revenueKind };
   });
 }
 
@@ -763,15 +773,15 @@ export async function ordersDueForPrompt(orderIds: string[]) {
   const due: { id: string; number: string; amount: number; customerPhone: string | null; customerName: string | null }[] = [];
   for (const id of ids) {
     const { o, amount } = await outstandingTx(db as unknown as Tx, id);
-    if (o.status === "CANCELLED") throw new AppError(`Order ${o.number} was cancelled.`, "CONFLICT");
-    if (o.settlement === "ROOM") throw new AppError(`Order ${o.number} is on the guest's room bill — it is paid at check-out.`, "CONFLICT");
-    if ((await awaitingOnlineTx(db as unknown as Tx, [id])).length) throw new AppError(`The customer already paid order ${o.number} online — check their payment instead.`, "CONFLICT");
-    if (await db.reservationCharge.count({ where: { restaurantOrderId: id, isVoided: false } })) throw new AppError(`Order ${o.number} is still on a room bill.`, "CONFLICT");
+    if (o.status === "CANCELLED") throw new AppError(msgf("Order {order} was cancelled.", { order: o.number }), "CONFLICT");
+    if (o.settlement === "ROOM") throw new AppError(msgf("Order {order} is on the guest's room bill — it is paid at check-out.", { order: o.number }), "CONFLICT");
+    if ((await awaitingOnlineTx(db as unknown as Tx, [id])).length) throw new AppError(msgf("The customer already paid order {order} online — check their payment instead.", { order: o.number }), "CONFLICT");
+    if (await db.reservationCharge.count({ where: { restaurantOrderId: id, isVoided: false } })) throw new AppError(msgf("Order {order} is still on a room bill.", { order: o.number }), "CONFLICT");
     if (amount <= 0) continue;
     total += amount;
     due.push({ id, number: o.number, amount, customerPhone: o.customerPhone, customerName: o.customerName });
   }
-  if (!total) throw new AppError(ids.length > 1 ? "This bill is already paid." : "This order is already paid.", "CONFLICT");
+  if (!total) throw new AppError(ids.length > 1 ? msg("This bill is already paid.") : msg("This order is already paid."), "CONFLICT");
   return { total, orders: due };
 }
 
@@ -871,12 +881,16 @@ async function takeOrderOffRoomTx(tx: Tx, o: { id: string; number: string; statu
   await assertGroupBillOpen(tx, r.id, actor);
   const lines = await tx.reservationCharge.findMany({ where: { restaurantOrderId: o.id, isVoided: false }, select: { id: true } });
   const invoiced = await tx.invoiceItem.findFirst({ where: { sourceId: { in: lines.map((l) => l.id) }, invoice: { status: { notIn: ["CANCELLED", "VOID"] }, OR: [{ reservationId: null }, { reservationId: { not: r.id } }] } }, select: { invoice: { select: { number: true } } } });
-  if (invoiced) throw new AppError(`This order is already on invoice ${invoiced.invoice.number} — a manager credits it there.`, "CONFLICT");
+  if (invoiced) throw new AppError(msgf("This order is already on invoice {invoice} — a manager credits it there.", { invoice: invoiced.invoice.number }), "CONFLICT");
   const room = o.roomNumber ? `room ${o.roomNumber}` : "the room";
   await tx.reservationCharge.updateMany({ where: { restaurantOrderId: o.id, isVoided: false }, data: { isVoided: true, voidReason: `${why} · ${o.number}`.slice(0, 300) } });
   await recalculateReservation(tx, r.id);
   const stay = await tx.reservation.findUniqueOrThrow({ where: { id: r.id }, select: { balanceAmount: true } });
-  if (stay.balanceAmount < 0) throw new AppError(`The guest already paid ${room}'s bill including this order — nothing more to collect.`);
+  if (stay.balanceAmount < 0) {
+    throw new AppError(o.roomNumber
+      ? msgf("The guest already paid room {room}'s bill including this order — nothing more to collect.", { room: o.roomNumber })
+      : msg("The guest already paid the room's bill including this order — nothing more to collect."));
+  }
   await tx.restaurantOrder.update({ where: { id: o.id }, data: { settlement: "UNPAID" } });
   return { room, reservation: r.reference };
 }
@@ -893,7 +907,7 @@ export async function payRoomOrderNow(id: string, input: PayInput, actor: Actor,
     const o = await tx.restaurantOrder.findUnique({ where: { id } });
     if (!o) throw new AppError("Order not found.", "NOT_FOUND");
     if (o.status === "CANCELLED") throw new AppError("This order was cancelled.");
-    if (o.settlement !== "ROOM") throw new AppError(o.paidAmount >= o.total ? "This order is already paid." : "This order is not on a room bill.");
+    if (o.settlement !== "ROOM") throw new AppError(o.paidAmount >= o.total ? msg("This order is already paid.") : msg("This order is not on a room bill."));
     const off = await takeOrderOffRoomTx(tx, o, "Paid at the restaurant instead", actor);
     await tx.restaurantOrderEvent.create({ data: { orderId: id, from: o.status, to: o.status, ...by(actor), note: `Removed from ${off.room}'s bill — paid now`, at: now } });
     if (o.sessionId) await sessionEventTx(tx, o.sessionId, "OFF_ROOM", `Order ${shortNo(o.number)} · TZS ${o.total.toLocaleString("en-US")} removed from ${off.room}'s bill — paid now`, actor, now);
@@ -1007,7 +1021,7 @@ export async function addOrderItemsTx(tx: Tx, id: string, items: { menuItemId: s
   await tx.$queryRaw`SELECT "id" FROM "restaurant_orders" WHERE "id" = ${id} FOR UPDATE`;
   const o = await tx.restaurantOrder.findUnique({ where: { id } });
   if (!o) throw new AppError("Order not found.", "NOT_FOUND");
-  if (CLOSED_STATUSES.includes(o.status)) throw new AppError(o.status === "CANCELLED" ? "This order was cancelled." : "This order is closed — start a new order.");
+  if (CLOSED_STATUSES.includes(o.status)) throw new AppError(o.status === "CANCELLED" ? msg("This order was cancelled.") : msg("This order is closed — start a new order."));
   if (o.status === "READY" || o.status === "OUT_FOR_DELIVERY") throw new AppError("This order is already on its way — add the new items once it is served.");
   // Take out never starts unpaid: once the kitchen has it (paid), or once it was paid with the customer's proof, more
   // from the customer is a new order — paid first too.
@@ -1016,7 +1030,7 @@ export async function addOrderItemsTx(tx: Tx, id: string, items: { menuItemId: s
     if (o.paymentProofFileId && !o.payOnlineAt) throw new AppError("Your take-out order is already paid — please place a new order for the extra items.", "CONFLICT");
   }
   if ((await awaitingOnlineTx(tx, [id])).length) throw new AppError("This order was paid online and its payment is not checked yet — confirm it first, or start a new order for the extra items.", "CONFLICT");
-  if ((await payingByPhoneTx(tx, [id], now)).size) throw new AppError(opts.byCustomer ? "Your payment for this order is still on its way — add more once it is done." : PAYING_BY_PHONE, "CONFLICT");
+  if ((await payingByPhoneTx(tx, [id], now)).size) throw new AppError(opts.byCustomer ? msg("Your payment for this order is still on its way — add more once it is done.") : PAYING_BY_PHONE, "CONFLICT");
   // A hotel order (room service, or on a room bill) grows only while the guest is staying — and, on a room bill,
   // only for the room's own guest (or someone at their table), unless a manager moved it there.
   if (o.reservationId && (o.type === "ROOM_SERVICE" || o.settlement === "ROOM")) {
@@ -1101,17 +1115,17 @@ export async function removeOrderItem(orderId: string, itemId: string, quantity:
     await tx.$queryRaw`SELECT "id" FROM "restaurant_orders" WHERE "id" = ${orderId} FOR UPDATE`;
     const o = await tx.restaurantOrder.findUnique({ where: { id: orderId }, include: { items: { orderBy: { id: "asc" } } } });
     if (!o) throw new AppError("Order not found.", "NOT_FOUND");
-    if (CLOSED_STATUSES.includes(o.status)) throw new AppError(o.status === "CANCELLED" ? "This order was cancelled." : "This order is closed.");
+    if (CLOSED_STATUSES.includes(o.status)) throw new AppError(o.status === "CANCELLED" ? msg("This order was cancelled.") : msg("This order is closed."));
     // Paid online and not checked yet: the customer paid for every line — nothing comes off before the check.
     if ((await awaitingOnlineTx(tx, [orderId])).length) throw new AppError("The customer paid this order online — confirm or decline their payment first.", "CONFLICT");
     if ((await payingByPhoneTx(tx, [orderId], now)).size) throw new AppError(PAYING_BY_PHONE, "CONFLICT");
     const item = o.items.find((i) => i.id === itemId);
     if (!item) throw new AppError("That item is no longer on this order.", "NOT_FOUND");
-    if (item.paymentId) throw new AppError(`${item.name} is already paid — it cannot be removed here.`);
+    if (item.paymentId) throw new AppError(msgf("{item} is already paid — it cannot be removed here.", { item: item.name }));
     const n = Math.min(quantity, item.quantity);
     if (n === item.quantity && o.items.length === 1) throw new AppError("That is the only item — cancel the order instead.");
     const made = !!item.preparedAt || ["READY", "OUT_FOR_DELIVERY", "DELIVERED"].includes(o.status);
-    if (made && !actor.permissions?.has("revenue.void")) throw new AppError(`The kitchen has already made ${item.name} — ask a manager to remove it.`, "FORBIDDEN");
+    if (made && !actor.permissions?.has("revenue.void")) throw new AppError(msgf("The kitchen has already made {item} — ask a manager to remove it.", { item: item.name }), "FORBIDDEN");
 
     // What these come to on the bill (a discounted line gives back its share, not the full price).
     const amount = n === item.quantity ? item.lineTotal : Math.round((item.lineTotal * n) / item.quantity);
@@ -1237,7 +1251,7 @@ export async function discountOrders(orderIds: string[], input: { amount?: numbe
     if (base <= 0) throw new AppError("Everything on this bill is already paid — nothing left to discount.");
     const wanted = input.percent != null ? Math.round((base * input.percent) / 100) : Math.round(input.amount ?? 0);
     if (!Number.isFinite(wanted) || wanted <= 0) throw new AppError("Enter the discount (an amount or a %).", "VALIDATION", { amount: "Invalid" });
-    if (wanted > base) throw new AppError(`The discount can be at most TZS ${base.toLocaleString("en-US")} (what is still to pay).`, "VALIDATION", { amount: "Too big" });
+    if (wanted > base) throw new AppError(msgf("The discount can be at most TZS {amount} (what is still to pay).", { amount: base.toLocaleString("en-US") }), "VALIDATION", { amount: "Too big" });
     // In proportion to each line, whole shillings, the rounding left over to the biggest lines.
     const shares = lines.map((x) => Math.floor((wanted * x.i.lineTotal) / base));
     let left = wanted - shares.reduce((a, b) => a + b, 0);
@@ -1285,10 +1299,10 @@ export async function moveOrdersToTable(orderIds: string[], locationId: string, 
     const orders = await tx.restaurantOrder.findMany({ where: { id: { in: ids } }, include: { location: { select: { name: true } } } });
     if (orders.length !== ids.length) throw new AppError("An order was not found — refresh and try again.", "NOT_FOUND");
     for (const o of orders) {
-      if (CLOSED_STATUSES.includes(o.status)) throw new AppError(`${o.number} is closed — it cannot move.`);
-      if (o.type === "ROOM_SERVICE" || o.type === "TAKEAWAY") throw new AppError(`${o.number} is not a table order.`);
-      if (o.locationId === to.id) throw new AppError(`${o.number} is already at ${to.name}.`);
-      if (o.sessionId) throw new AppError(`${o.number} is part of a customer's table — move the table (the whole session) instead.`);
+      if (CLOSED_STATUSES.includes(o.status)) throw new AppError(msgf("{order} is closed — it cannot move.", { order: o.number }));
+      if (o.type === "ROOM_SERVICE" || o.type === "TAKEAWAY") throw new AppError(msgf("{order} is not a table order.", { order: o.number }));
+      if (o.locationId === to.id) throw new AppError(msgf("{order} is already at {table}.", { order: o.number, table: to.name }));
+      if (o.sessionId) throw new AppError(msgf("{order} is part of a customer's table — move the table (the whole session) instead.", { order: o.number }));
     }
     for (const o of orders) {
       const from = o.location?.name ?? o.tableLabel ?? "no table";
@@ -1322,7 +1336,7 @@ async function moveOrderTx(tx: Tx, id: string, status: RestaurantOrderStatus, ac
   const drinksOnly = o.items.length > 0 && o.items.every((i) => i.type === "DRINK");
   const drinksStraight = WAITER_STEPS.includes(status) && from < ORDER_STEPS.indexOf("READY") && from >= ORDER_STEPS.indexOf("ACCEPTED") && drinksOnly && canPrepareAny(actor);
   if (WAITER_STEPS.includes(status) && from < ORDER_STEPS.indexOf("READY") && !drinksStraight) {
-    throw new AppError(drinksOnly && from < ORDER_STEPS.indexOf("ACCEPTED") ? "Accept the order first." : "The kitchen has not marked this order ready yet.");
+    throw new AppError(drinksOnly && from < ORDER_STEPS.indexOf("ACCEPTED") ? msg("Accept the order first.") : msg("The kitchen has not marked this order ready yet."));
   }
   // Every order has one waiter: a waiter moving on an order nobody has (accepting it, taking it out…) makes it theirs —
   // on the shared screen with their ID. The Mpishi's steps never change who serves.
@@ -1335,7 +1349,7 @@ async function moveOrderTx(tx: Tx, id: string, status: RestaurantOrderStatus, ac
   }
   if (status === "READY") {
     const left = o.items.filter((i) => !i.preparedAt);
-    if (left.length) throw new AppError(`Tick every item first — still not ready: ${left.map((i) => `${i.quantity} × ${i.name}`).join(", ")}.`, "VALIDATION");
+    if (left.length) throw new AppError(msgf("Tick every item first — still not ready: {items}.", { items: left.map((i) => `${i.quantity} × ${i.name}`).join(", ") }), "VALIDATION");
   }
   const who = actor.userId ? { connect: { id: actor.userId } } : undefined;
   const stamp: Prisma.RestaurantOrderUpdateInput = { status, statusChangedAt: now };
@@ -1507,7 +1521,7 @@ export async function declineRestaurantOrder(id: string, reason: string, soldOut
     const o = await tx.restaurantOrder.findUnique({ where: { id }, include: { items: { select: { menuItemId: true, name: true, type: true } } } });
     if (!o) throw new AppError("Order not found.", "NOT_FOUND");
     assertCanPrepare(actor, o.items);
-    if (!["PENDING", "ACCEPTED", "PREPARING"].includes(o.status)) throw new AppError(o.status === "CANCELLED" ? "This order is already cancelled." : "This order is already ready — it can no longer be declined.");
+    if (!["PENDING", "ACCEPTED", "PREPARING"].includes(o.status)) throw new AppError(o.status === "CANCELLED" ? msg("This order is already cancelled.") : msg("This order is already ready — it can no longer be declined."));
     if ((await payingByPhoneTx(tx, [id], now)).size) throw new AppError(PAYING_BY_PHONE, "CONFLICT");
     // Declined because the online payment never arrived: that payment was never money — not a refund. Only those who
     // check the accounts (the Counter, reception) can say so; anyone else declining it owes the customer a refund.
@@ -1545,7 +1559,7 @@ export async function restaurantOrderHistory(opts: { from: BusinessDate; to: Bus
       ] }),
     },
     include: {
-      items: { orderBy: { id: "asc" }, select: { id: true, name: true, quantity: true, type: true } },
+      items: { orderBy: { id: "asc" }, select: { id: true, name: true, nameI18n: true, quantity: true, type: true } },
       account: { select: { name: true } }, acceptedBy: person, readyBy: person, deliveredBy: person, cancelledBy: person, createdBy: person,
       reservation: { select: { reference: true, guest: { select: { fullName: true } } } },
     },
@@ -1562,6 +1576,8 @@ const ORDER_INCLUDE = {
   reservation: { select: { id: true, reference: true, status: true, guestId: true, guest: { select: { fullName: true, phone: true } } } },
   cancelledBy: person, acceptedBy: person, readyBy: person, takenBy: person, deliveredBy: person,
   assignedTo: { select: { id: true, fullName: true } },
+  // The customer's language — their updates are written in it.
+  guest: { select: { preferredLanguage: true } },
   complaints: { where: { type: "COMPLAINT" }, select: { id: true, status: true } },
   location: { select: { id: true, kind: true, area: true, number: true, name: true } },
   payments: {

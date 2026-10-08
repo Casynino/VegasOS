@@ -1,24 +1,27 @@
 import Image from "next/image";
 import QRCode from "qrcode";
 import { BedDouble, Car, CheckCircle2, Coffee, Globe, Mail, MapPin, Phone, Presentation, UtensilsCrossed, Wine } from "lucide-react";
-import { formatBusinessDate, formatNumber } from "@/lib/format";
+import { formatNumber } from "@/lib/format";
 import { THANK_YOU_DEFAULTS, type StaySnapshot } from "@/lib/thank-you";
 import { cn } from "@/lib/utils";
 import type { HotelSettings } from "@/generated/prisma/client";
+import { getT } from "@/i18n/server";
+import { msg } from "@/i18n/msg";
+import type { T } from "@/i18n/translate";
 
 const n = (v: number) => formatNumber(v);
 const TZ = "Africa/Dar_es_Salaam";
-const at = (iso: string | null) => (iso ? new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: TZ }).format(new Date(iso)) : null);
+const at = (iso: string | null, t: T) => (iso ? new Intl.DateTimeFormat(t.intl, { weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: TZ }).format(new Date(iso)) : null);
 const firstName = (name: string) => name.trim().split(/\s+/)[0]?.replace(/[^\p{L}'-]/gu, "") || name;
 const websiteUrl = (w: string | null) => (w ? (/^https?:\/\//.test(w) ? w : `https://${w}`) : null);
 
 const SERVICES = [
-  { icon: BedDouble, label: "Comfortable rooms" },
-  { icon: UtensilsCrossed, label: "Restaurant" },
-  { icon: Wine, label: "Bar & lounge" },
-  { icon: Coffee, label: "Room service" },
-  { icon: Presentation, label: "Meeting room" },
-  { icon: Car, label: "Airport transfers" },
+  { icon: BedDouble, label: msg("Comfortable rooms") },
+  { icon: UtensilsCrossed, label: msg("Restaurant") },
+  { icon: Wine, label: msg("Bar & lounge") },
+  { icon: Coffee, label: msg("Room service") },
+  { icon: Presentation, label: msg("Meeting room") },
+  { icon: Car, label: msg("Airport transfers") },
 ];
 
 /**
@@ -28,19 +31,22 @@ const SERVICES = [
  * document on screen, on paper (A4) and as a PDF.
  */
 export async function ThankYouDocument({ note, s, preparedAt }: { note: StaySnapshot; s: HotelSettings; preparedAt: Date }) {
+  // The reader's language: the guest's own choice on their link, a staff member's account language in the app.
+  const t = await getT();
   const site = websiteUrl(s.website);
   const qr = site ? await QRCode.toString(site, { type: "svg", margin: 0, errorCorrectionLevel: "M", color: { dark: "#15110c", light: "#00000000" } }) : null;
-  const message = (s.thankYouMessage || THANK_YOU_DEFAULTS.message).split(/\n{2,}/);
-  const signoff = s.thankYouSignoff || THANK_YOU_DEFAULTS.signoff.replace("Vegas Luxury Hotel", s.hotelName);
+  // The hotel's own wording is shown as written; the built-in wording is in the reader's language.
+  const message = (s.thankYouMessage || t(THANK_YOU_DEFAULTS.message)).split(/\n{2,}/);
+  const signoff = s.thankYouSignoff || t(THANK_YOU_DEFAULTS.signoff).replace("Vegas Luxury Hotel", s.hotelName);
   const room = note.rooms[0];
   const rate = room ? room.rate : 0;
   const lines = ([
-    ["Room", note.charges.room, room ? (room.dayUse ? "Short stay" : `${note.nights} night${note.nights === 1 ? "" : "s"} × ${n(rate)}`) : ""],
-    ["Restaurant", note.charges.restaurant, "Food during your stay"],
-    ["Bar", note.charges.bar, "Drinks during your stay"],
-    ["Room service", note.charges.roomService, "Delivered to your room"],
-    ["Transport", note.charges.transport, "Airport & hotel transport"],
-    ["Other services", note.charges.other, "Additional hotel services"],
+    [t("Room"), note.charges.room, room ? (room.dayUse ? t("Short stay") : `${t.plural(note.nights, "{n} night", "{n} nights")} × ${n(rate)}`) : ""],
+    [t("Restaurant"), note.charges.restaurant, t("Food during your stay")],
+    [t("Bar"), note.charges.bar, t("Drinks during your stay")],
+    [t("Room service"), note.charges.roomService, t("Delivered to your room")],
+    [t("Transport"), note.charges.transport, t("Airport & hotel transport")],
+    [t("Other services"), note.charges.other, t("Additional hotel services")],
   ] as const).filter(([, v], i) => i === 0 || v !== 0);
   const settled = note.balance <= 0;
   const address = [s.postalAddress, s.addressLine, s.city, s.country].filter(Boolean).join(", ");
@@ -58,15 +64,15 @@ export async function ThankYouDocument({ note, s, preparedAt }: { note: StaySnap
             <span className="grid size-12 place-items-center rounded-2xl bg-white/[0.08] ring-1 ring-white/15 backdrop-blur-sm"><Image src="/brand/logo-192.png" alt="" width={40} height={40} /></span>
             <div className="leading-tight text-white">
               <p className="font-display text-xl font-semibold tracking-tight">{s.hotelName}</p>
-              {s.tagline && <p className="text-[10px] uppercase tracking-[0.24em] text-[#f0cf86]/85">{s.tagline}</p>}
+              {s.tagline && <p className="text-[10px] uppercase tracking-[0.24em] text-[#f0cf86]/85">{t(s.tagline)}</p>}
             </div>
           </div>
-          <p className="rounded-full bg-white/[0.08] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-white/80 ring-1 ring-white/15 backdrop-blur-sm">Guest departure</p>
+          <p className="rounded-full bg-white/[0.08] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-white/80 ring-1 ring-white/15 backdrop-blur-sm">{t("Guest departure")}</p>
         </div>
         <div className={cn("absolute inset-x-7 bottom-7 sm:inset-x-10", reveal)}>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-[#f0cf86]">With our warmest thanks</p>
-          <h1 className="mt-2 font-display text-4xl font-semibold leading-[1.05] tracking-tight text-white sm:text-[3.25rem]">Thank you, {firstName(note.guest.name)}.</h1>
-          <p className="mt-2 max-w-xl text-sm text-white/75">Thank you for choosing {s.hotelName}. It was a pleasure to have you with us.</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-[#f0cf86]">{t("With our warmest thanks")}</p>
+          <h1 className="mt-2 font-display text-4xl font-semibold leading-[1.05] tracking-tight text-white sm:text-[3.25rem]">{t("Thank you, {name}.", { name: firstName(note.guest.name) })}</h1>
+          <p className="mt-2 max-w-xl text-sm text-white/75">{t("Thank you for choosing {hotel}. It was a pleasure to have you with us.", { hotel: s.hotelName })}</p>
         </div>
       </header>
       <div className="h-1 bg-gradient-to-r from-[#8a6a25] via-[#f0cf86] to-[#8a6a25]" />
@@ -79,30 +85,30 @@ export async function ThankYouDocument({ note, s, preparedAt }: { note: StaySnap
             <p className="whitespace-pre-line pt-1 text-sm font-medium text-[#6b5320]">{signoff}</p>
           </div>
           <dl className="grid grid-cols-2 content-start gap-x-4 gap-y-3 rounded-2xl border border-[#eadfca] bg-white/70 p-5 text-sm">
-            <Fact k="Guest" v={note.guest.name} wide />
-            <Fact k="Reservation" v={note.reference} mono />
-            <Fact k="Guests" v={`${note.guests}`} />
-            <Fact k={note.rooms.length > 1 ? "Rooms" : "Room"} v={note.rooms.map((r) => r.number).join(", ") || "—"} />
-            <Fact k="Room type" v={[...new Set(note.rooms.map((r) => r.type))].join(", ") || "—"} />
-            {note.group && <Fact k="Group" v={note.group.name} wide />}
-            {!note.group && note.company && <Fact k="Company" v={note.company} wide />}
+            <Fact k={t("Guest")} v={note.guest.name} wide />
+            <Fact k={t("Reservation")} v={note.reference} mono />
+            <Fact k={t("Guests")} v={`${note.guests}`} />
+            <Fact k={note.rooms.length > 1 ? t("Rooms") : t("Room")} v={note.rooms.map((r) => r.number).join(", ") || "—"} />
+            <Fact k={t("Room type")} v={[...new Set(note.rooms.map((r) => t(r.type)))].join(", ") || "—"} />
+            {note.group && <Fact k={t("Group")} v={note.group.name} wide />}
+            {!note.group && note.company && <Fact k={t("Company")} v={note.company} wide />}
           </dl>
         </section>
 
         {/* Your stay */}
         <section className={cn("break-inside-avoid", reveal)}>
-          <Heading>Your stay</Heading>
+          <Heading>{t("Your stay")}</Heading>
           <div className="grid gap-3 sm:grid-cols-3">
-            <Card label="Check-in" value={at(note.checkedInAt) ?? formatBusinessDate(note.arrival, true)} />
-            <Card label="Check-out" value={at(note.checkedOutAt) ?? formatBusinessDate(note.departure, true)} />
-            <Card label="Length of stay" value={room?.dayUse && note.nights === 0 ? "Short stay" : `${note.nights} night${note.nights === 1 ? "" : "s"}`}
-              sub={room ? `${room.type}${rate ? ` · ${s.currency} ${n(rate)} a night` : ""}` : undefined} />
+            <Card label={t("Check-in")} value={at(note.checkedInAt, t) ?? t.date(note.arrival, true)} />
+            <Card label={t("Check-out")} value={at(note.checkedOutAt, t) ?? t.date(note.departure, true)} />
+            <Card label={t("Length of stay")} value={room?.dayUse && note.nights === 0 ? t("Short stay") : t.plural(note.nights, "{n} night", "{n} nights")}
+              sub={room ? `${t(room.type)}${rate ? ` · ${t("{currency} {amount} a night", { currency: s.currency, amount: n(rate) })}` : ""}` : undefined} />
           </div>
         </section>
 
         {/* Summary of charges */}
         <section className={cn("break-inside-avoid", reveal)}>
-          <Heading>Summary of your stay</Heading>
+          <Heading>{t("Summary of your stay")}</Heading>
           <div className="overflow-hidden rounded-2xl border border-[#eadfca] bg-white/70">
             <dl className="divide-y divide-[#efe7da] text-sm">
               {lines.map(([k, v, hint]) => (
@@ -113,16 +119,16 @@ export async function ThankYouDocument({ note, s, preparedAt }: { note: StaySnap
               ))}
             </dl>
             <dl className="space-y-1.5 border-t border-[#eadfca] bg-[#f6efe2]/70 px-5 py-4 text-sm">
-              <Row k="Subtotal" v={n(note.subtotal)} />
-              {note.discount > 0 && <Row k="Discount" v={`− ${n(note.discount)}`} tone="text-emerald-700" />}
-              {note.adjustments !== 0 && <Row k="Other adjustments" v={`${note.adjustments < 0 ? "− " : "+ "}${n(Math.abs(note.adjustments))}`} />}
-              <Row k="Total stay value" v={`${s.currency} ${n(note.total)}`} strong />
-              <Row k="Amount paid" v={n(note.paid)} />
-              {note.billedTo && <Row k={`Settled by ${note.billedTo.name}`} v={n(note.billedTo.amount)} />}
+              <Row k={t("Subtotal")} v={n(note.subtotal)} />
+              {note.discount > 0 && <Row k={t("Discount")} v={`− ${n(note.discount)}`} tone="text-emerald-700" />}
+              {note.adjustments !== 0 && <Row k={t("Other adjustments")} v={`${note.adjustments < 0 ? "− " : "+ "}${n(Math.abs(note.adjustments))}`} />}
+              <Row k={t("Total stay value")} v={`${s.currency} ${n(note.total)}`} strong />
+              <Row k={t("Amount paid")} v={n(note.paid)} />
+              {note.billedTo && <Row k={t("Settled by {name}", { name: note.billedTo.name })} v={n(note.billedTo.amount)} />}
             </dl>
             <div className={cn("flex items-center justify-between gap-3 px-5 py-4", settled ? "bg-[#15110c] text-white" : "bg-rose-50 text-rose-800")}>
               <span className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.2em]">
-                {settled ? <><CheckCircle2 className="size-5 text-[#f0cf86]" />{note.billedTo && note.paid === 0 ? `Settled by ${note.billedTo.name}` : "Paid in full"}</> : "Balance"}
+                {settled ? <><CheckCircle2 className="size-5 text-[#f0cf86]" />{note.billedTo && note.paid === 0 ? t("Settled by {name}", { name: note.billedTo.name }) : t("Paid in full")}</> : t("Balance")}
               </span>
               <span className="text-right leading-none"><span className="mr-1 text-xs opacity-60">{s.currency}</span><span className="text-2xl font-semibold tabular-nums">{n(note.balance)}</span></span>
             </div>
@@ -134,20 +140,20 @@ export async function ThankYouDocument({ note, s, preparedAt }: { note: StaySnap
           <div className="grid gap-6 p-6 sm:grid-cols-[1fr_auto] sm:p-7">
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-[#f0cf86]">{s.hotelName}</p>
-              <h2 className="mt-1 font-display text-2xl font-semibold">{s.thankYouPromoTitle || THANK_YOU_DEFAULTS.promoTitle}</h2>
-              <p className="mt-2 max-w-md text-sm text-white/70">{s.thankYouPromoText || THANK_YOU_DEFAULTS.promoText}</p>
+              <h2 className="mt-1 font-display text-2xl font-semibold">{s.thankYouPromoTitle || t(THANK_YOU_DEFAULTS.promoTitle)}</h2>
+              <p className="mt-2 max-w-md text-sm text-white/70">{s.thankYouPromoText || t(THANK_YOU_DEFAULTS.promoText)}</p>
               <ul className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {SERVICES.map(({ icon: I, label }) => (
-                  <li key={label} className="flex items-center gap-2 rounded-xl bg-white/[0.06] px-3 py-2 text-xs ring-1 ring-white/10"><I className="size-4 text-[#f0cf86]" />{label}</li>
+                  <li key={label} className="flex items-center gap-2 rounded-xl bg-white/[0.06] px-3 py-2 text-xs ring-1 ring-white/10"><I className="size-4 text-[#f0cf86]" />{t(label)}</li>
                 ))}
               </ul>
-              <p className="mt-5 text-sm text-white/85">{s.thankYouRebookText || THANK_YOU_DEFAULTS.rebookText}</p>
+              <p className="mt-5 text-sm text-white/85">{s.thankYouRebookText || t(THANK_YOU_DEFAULTS.rebookText)}</p>
               {s.website && <p className="mt-1 text-base font-semibold text-[#f0cf86]">{s.website.replace(/^https?:\/\//, "")}</p>}
             </div>
             {qr && (
               <div className="flex flex-col items-center justify-center gap-2 self-center rounded-2xl bg-[#fbf8f2] p-4 text-center text-[#1d1a16]">
                 <span className="block size-[108px] [&_svg]:size-full" dangerouslySetInnerHTML={{ __html: qr }} />
-                <span className="text-[11px] font-medium leading-tight text-[#6b5320]">Scan to book<br />your next stay</span>
+                <span className="text-[11px] font-medium leading-tight text-[#6b5320]">{t.rich("Scan to book<l>your next stay</l>", { l: (c) => <><br />{c}</> })}</span>
               </div>
             )}
           </div>
@@ -165,7 +171,7 @@ export async function ThankYouDocument({ note, s, preparedAt }: { note: StaySnap
           {s.facebookUrl && <span>Facebook · {s.facebookUrl.replace(/^https?:\/\/(www\.)?facebook\.com\//, "").replace(/\/$/, "")}</span>}
           {s.tiktokUrl && <span>TikTok · {s.tiktokUrl.replace(/^https?:\/\/(www\.)?tiktok\.com\//, "").replace(/[/?].*$/, "")}</span>}
         </div>
-        <p className="mt-2 text-[10px] text-[#8a8177]">Prepared {at(preparedAt.toISOString())} · reservation {note.reference}. Thank you for staying with us.</p>
+        <p className="mt-2 text-[10px] text-[#8a8177]">{t("Prepared {date} · reservation {reference}. Thank you for staying with us.", { date: at(preparedAt.toISOString(), t), reference: note.reference })}</p>
       </footer>
     </article>
   );

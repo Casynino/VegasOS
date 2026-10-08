@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { StockGroup, StockItem } from "@/lib/stock-catalog";
 import { statusMeta, unitWord, type StoreItem } from "@/lib/stock-requests";
+import { useT } from "@/i18n/client";
+import { msg } from "@/i18n/msg";
 
 /** A picture tile: a catalogue item, a drink from the menu, or a stock item from the stores (`stockId`). */
 export type Tile = StockItem & { stockId?: string | null };
@@ -38,8 +40,9 @@ export const DeptIcon = ({ code, className }: { code: string; className?: string
 };
 
 export function StatusChip({ status, className }: { status: string; className?: string }) {
+  const t = useT();
   const m = statusMeta(status);
-  return <span className={cn("shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-semibold", m.tone, className)}>{m.label}</span>;
+  return <span className={cn("shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-semibold", m.tone, className)}>{t(m.label)}</span>;
 }
 
 /** The item's picture: its photo (drinks from the menu) or a clear icon on a soft tile. */
@@ -57,7 +60,7 @@ export function storeGroup(items: StoreItem[], dept: { id: string; code: string 
   if (!own.length) return null;
   const known = new Map(catalog.flatMap((g) => g.items.map((i) => [norm(i.name), i] as const)));
   return {
-    key: "stores", name: "From the stores", emoji: "🏬",
+    key: "stores", name: msg("From the stores"), emoji: "🏬",
     items: own.map((i) => {
       const k = known.get(norm(i.name));
       return { name: i.name, unit: unitWord(i.unit), emoji: k?.emoji ?? deptMeta(dept.code).emoji, image: k?.image ?? null, stockId: i.id };
@@ -81,6 +84,7 @@ export function picsFor(groups: TileGroup[], items: StoreItem[], departments: { 
 export function ReasonBox({ placeholder, action, tone = "destructive", optional = false, pending, onConfirm, onCancel }: {
   placeholder: string; action: string; tone?: "destructive" | "default"; optional?: boolean; pending: boolean; onConfirm: (reason: string) => void; onCancel: () => void;
 }) {
+  const t = useT();
   const [reason, setReason] = useState("");
   return (
     <div className="flex gap-2">
@@ -89,7 +93,7 @@ export function ReasonBox({ placeholder, action, tone = "destructive", optional 
       <Button variant={tone} className="h-11" disabled={pending || (!optional && reason.trim().length < 3)} onClick={() => onConfirm(reason.trim())}>
         {pending && <Loader2 className="animate-spin" />}{action}
       </Button>
-      <Button variant="ghost" className="h-11" aria-label="Cancel" onClick={onCancel}><X /></Button>
+      <Button variant="ghost" className="h-11" aria-label={t("Cancel")} onClick={onCancel}><X /></Button>
     </div>
   );
 }

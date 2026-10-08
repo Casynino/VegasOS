@@ -4,9 +4,10 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import Image from "next/image";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useT } from "@/i18n/client";
 import { useBackClose, useSheetBehaviour } from "./ui";
 
-/** A photo to look at full screen: the picture, what it shows (for screen readers) and a short word under it. */
+/** A photo to look at full screen: the picture, what it shows (for screen readers) and a short word under it (shown with t()). */
 export type ViewPhoto = { src: string; alt: string; label?: string | null };
 type Open = (photos: ViewPhoto[], index?: number) => void;
 
@@ -36,6 +37,7 @@ export function PhotoViewerProvider({ children }: { children: React.ReactNode })
 }
 
 function Viewer({ photos, start, onClose }: { photos: ViewPhoto[]; start: number; onClose: () => void }) {
+  const t = useT();
   const box = useRef<HTMLDivElement>(null);
   const track = useRef<HTMLDivElement>(null);
   const [at, setAt] = useState(start);
@@ -64,11 +66,11 @@ function Viewer({ photos, start, onClose }: { photos: ViewPhoto[]; start: number
   const current = photos[Math.min(at, photos.length - 1)] ?? photos[0];
   const arrow = "absolute top-1/2 hidden size-11 -translate-y-1/2 place-items-center rounded-full bg-white/10 text-white ring-1 ring-white/20 backdrop-blur-md transition hover:bg-white/20 disabled:opacity-0 sm:grid";
   return (
-    <div ref={box} role="dialog" aria-modal="true" aria-label="Photos" onKeyDown={onKey}
+    <div ref={box} role="dialog" aria-modal="true" aria-label={t("Photos")} onKeyDown={onKey}
       className="vr fixed inset-0 z-[70] flex flex-col bg-[#0d0a07] text-white motion-safe:animate-[vlh-fade_0.2s_ease-out_both]">
       <div className="flex items-center justify-between gap-3 px-4 pb-2 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-6">
         <p className="text-[12px] font-medium tabular-nums text-white/65" aria-live="polite">{at + 1} / {photos.length}</p>
-        <button type="button" data-close onClick={onClose} aria-label="Close photos"
+        <button type="button" data-close onClick={onClose} aria-label={t("Close photos")}
           className="grid size-10 place-items-center rounded-full bg-white/10 ring-1 ring-white/20 transition hover:bg-white/20"><X className="size-5" /></button>
       </div>
       <div className="relative min-h-0 flex-1">
@@ -82,13 +84,13 @@ function Viewer({ photos, start, onClose }: { photos: ViewPhoto[]; start: number
         </div>
         {photos.length > 1 && (
           <>
-            <button type="button" onClick={() => go(-1)} disabled={at === 0} aria-label="Previous photo" className={cn(arrow, "left-4 lg:left-8")}><ChevronLeft className="size-5" /></button>
-            <button type="button" onClick={() => go(1)} disabled={at >= photos.length - 1} aria-label="Next photo" className={cn(arrow, "right-4 lg:right-8")}><ChevronRight className="size-5" /></button>
+            <button type="button" onClick={() => go(-1)} disabled={at === 0} aria-label={t("Previous photo")} className={cn(arrow, "left-4 lg:left-8")}><ChevronLeft className="size-5" /></button>
+            <button type="button" onClick={() => go(1)} disabled={at >= photos.length - 1} aria-label={t("Next photo")} className={cn(arrow, "right-4 lg:right-8")}><ChevronRight className="size-5" /></button>
           </>
         )}
       </div>
       <div className="px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 text-center sm:px-6">
-        {current.label && <p className="font-display text-[20px] font-semibold leading-tight text-(--vr-gold)">{current.label}</p>}
+        {current.label && <p className="font-display text-[20px] font-semibold leading-tight text-(--vr-gold)">{t(current.label)}</p>}
         {(!current.label || !current.alt.startsWith(current.label)) && <p className="mx-auto mt-0.5 max-w-xl text-[12.5px] leading-snug text-white/60">{current.alt}</p>}
         {photos.length > 1 && photos.length <= 24 && (
           <div aria-hidden className="mx-auto mt-3 flex max-w-xs justify-center gap-1">

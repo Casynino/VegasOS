@@ -1,17 +1,19 @@
 import { cn } from "@/lib/utils";
+import { getT } from "@/i18n/server";
+import { msg } from "@/i18n/msg";
 import { LocalTime } from "../cinema/local-time";
 import { GlassPanel, HOTEL_COORDS, HudLabel } from "../kit/hud";
-
-const TIME = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Africa/Dar_es_Salaam" });
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
 /** "● Dar es Salaam · 19:42 local time" — the hotel's real local time, kept current on the client. */
-export function LocalTimeLabel({ city = "Dar es Salaam", short = false, className }: { city?: string; short?: boolean; className?: string }) {
+export async function LocalTimeLabel({ city = msg("Dar es Salaam"), short = false, className }: { city?: string; short?: boolean; className?: string }) {
+  const t = await getT();
   return (
     <HudLabel live className={className}>
-      {city} · <LocalTime initial={TIME.format(new Date())} />
-      {short ? <span className="sr-only"> local time</span> : " local time"}
+      {/* The city as set in Settings (a place name: its translation when there is one, else as written). */}
+      {t(city)} · <LocalTime initial={t.time(new Date(), "Africa/Dar_es_Salaam")} />
+      {short ? <span className="sr-only"> {t("local time")}</span> : ` ${t("local time")}`}
     </HudLabel>
   );
 }

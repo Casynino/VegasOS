@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { getT } from "@/i18n/server";
 import QRCode from "qrcode";
 import { can, requirePagePermission } from "@/server/auth";
 import { stayingGuests } from "@/server/services/guests";
@@ -11,7 +12,9 @@ import { tableFloor, withoutMoney, type SessionView } from "@/server/services/di
 import { tablesSwitchedOff } from "@/server/services/restaurant-locations";
 import { TablesBoard, type TablePlace } from "./tables-board";
 
-export const metadata: Metadata = { title: "Tables" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getT())("Tables") };
+}
 export const dynamic = "force-dynamic";
 
 const svg = (url: string) => QRCode.toString(url, { type: "svg", margin: 0, errorCorrectionLevel: "H", color: { dark: "#0b1026", light: "#00000000" } });

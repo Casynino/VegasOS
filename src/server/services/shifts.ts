@@ -8,6 +8,9 @@ import { addDays, businessDateOf, eachDate, fromDbDate, isBusinessDate, toDbDate
 import { shiftLabel } from "@/lib/shift-label";
 import { ALL_SOURCES, collectionTotals } from "./collections";
 import { activityArea, friendlyAction } from "@/lib/activity-words";
+import { msg, msgf } from "@/i18n/msg";
+import { getT } from "@/i18n/server";
+import { englishT, type T } from "@/i18n/translate";
 
 /**
  * ShiftService — reception works one rotating shift per hotel business day
@@ -23,9 +26,11 @@ import { activityArea, friendlyAction } from "@/lib/activity-words";
 /** How many receptionists may be on shift at the same time (owner, 2026-10-04) — a third asks one of them to end theirs. */
 export const DESK_LIMIT = 2;
 
-/** "Asha (since 08:02) and Neema (since 13:24)". */
-export const deskNames = (open: { startedAt: Date; user: { fullName: string } }[], timezone = "Africa/Dar_es_Salaam") =>
-  open.map((o) => `${o.user.fullName} (since ${o.startedAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: timezone })})`).join(" and ");
+/** "Asha (since 08:02) and Neema (since 13:24)" — in the words of `t` (English by default). */
+export const deskNames = (open: { startedAt: Date; user: { fullName: string } }[], timezone = "Africa/Dar_es_Salaam", t: T = englishT) => {
+  const names = open.map((o) => t("{name} (since {time})", { name: o.user.fullName, time: o.startedAt.toLocaleTimeString(t.intl, { hour: "2-digit", minute: "2-digit", timeZone: timezone }) }));
+  return names.length ? names.reduce((a, b) => t("{a} and {b}", { a, b })) : "";
+};
 
 export async function getShiftOverview(today: BusinessDate) {
   const [scheduledToday, scheduledTomorrow, openAll, previous] = await Promise.all([
@@ -50,13 +55,14 @@ export async function startShift(actor: AuditActor & { userId: string }, opts: {
       if (open.some((s) => s.userId === actor.userId)) throw new AppError("Your shift is already running.");
       // Two receptionists may work together; never a third, and never taking over: one of them ends theirs — or a manager does, saying why.
       if (open.length >= DESK_LIMIT) {
-        throw new AppError(`Reception already has ${open.length} receptionists on shift: ${deskNames(open, settings.timezone)}. Please contact one of them to end their shift, or contact the Manager if you need authorized access.`, "CONFLICT");
+        const names = deskNames(open, settings.timezone, await getT().catch(() => englishT));
+        throw new AppError(msgf("Reception already has {n} receptionists on shift: {names}. Please contact one of them to end their shift, or contact the Manager if you need authorized access.", { n: open.length, names }), "CONFLICT");
       }
 
       const schedule = await tx.shiftSchedule.findUnique({ where: { businessDate: toDbDate(today) } });
       const isReplacement = !!schedule && schedule.scheduledUserId !== actor.userId;
       if (isReplacement && !opts.replacementReason?.trim()) {
-        throw new AppError("You are not the scheduled receptionist today. Give a reason (e.g. covering for a sick colleague).", "VALIDATION", { replacementReason: "Required" });
+        throw new AppError("You are not the scheduled receptionist today. Give a reason (e.g. covering for a sick colleague).", "VALIDATION", { replacementReason: msg("Required") });
       }
       const shift = await tx.actualShift.create({
         data: {
@@ -133,7 +139,7 @@ export async function endShift(actor: AuditActor & { userId: string; permissions
 export async function closeShiftAsManager(actor: AuditActor & { userId: string; permissions: ReadonlySet<string> }, shiftId: string, reason: string) {
   if (!actor.permissions.has("shifts.manage")) throw new AppError("Only a manager can close someone's shift.", "FORBIDDEN");
   const why = reason.trim();
-  if (why.length < 5) throw new AppError("Say why you close this shift (e.g. the receptionist left without closing).", "VALIDATION", { reason: "Required" });
+  if (why.length < 5) throw new AppError("Say why you close this shift (e.g. the receptionist left without closing).", "VALIDATION", { reason: msg("Required") });
   return db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext('reception-shift'))::text`;
     const shift = await tx.actualShift.findUnique({ where: { id: shiftId } });
@@ -231,7 +237,7 @@ export async function addHandoverNote(
   actor: AuditActor & { userId: string; permissions: ReadonlySet<string> },
   input: { body: string; kind: "SHIFT" | "MANAGER" | "GUEST" | "MAINTENANCE"; isImportant: boolean },
 ) {
-  if (!input.body.trim()) throw new AppError("Write the note first.", "VALIDATION", { body: "Required" });
+  if (!input.body.trim()) throw new AppError("Write the note first.", "VALIDATION", { body: msg("Required") });
   if (input.kind === "MANAGER" && !actor.permissions.has("shifts.manage")) throw new AppError("Only managers can post manager notes.", "FORBIDDEN");
   return db.$transaction(async (tx) => {
     const settings = await getSettingsTx(tx);

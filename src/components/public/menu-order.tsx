@@ -10,6 +10,9 @@ import { phoneLabel, rememberAddress, useWho, useWhoForm, whoForOrder, type Who 
 import { NetworkMarks } from "@/components/payments/networks";
 import { buttonClass } from "./kit/button";
 import { field, typeScale } from "./kit/tokens";
+import { RequestPicker } from "@/components/ordering/request-picker";
+import { useT } from "@/i18n/client";
+import { msg } from "@/i18n/msg";
 
 const n = (v: number) => v.toLocaleString("en-US");
 /** A Tanzanian mobile-money number (0712 345 678, +255 712 345 678…) — the server checks it again. */
@@ -34,8 +37,8 @@ export type OrderLine = { id: string; name: string; price: number; qty: number; 
 /** Eat here, or take out — brought to the address the customer gives. */
 type Kind = "DINE_IN" | "TAKEAWAY";
 const KINDS: { v: Kind; label: string; hint: string; icon: typeof UtensilsCrossed }[] = [
-  { v: "DINE_IN", label: "Eat here", hint: "At the restaurant or bar", icon: UtensilsCrossed },
-  { v: "TAKEAWAY", label: "Take out", hint: "We deliver it to you", icon: ShoppingBag },
+  { v: "DINE_IN", label: msg("Eat here"), hint: msg("At the restaurant or bar"), icon: UtensilsCrossed },
+  { v: "TAKEAWAY", label: msg("Take out"), hint: msg("We deliver it to you"), icon: ShoppingBag },
 ];
 
 /** One side of a two-way choice (Eat here / Take out, Pay after / Pay now): a hairline tile, gold when chosen. */
@@ -79,23 +82,24 @@ export type MenuOrder = ReturnType<typeof useMenuOrder>;
 
 /** "+ Add" — then "− 2 +" once it is in the order. A quiet outline (gold on hover), never a column of gold pills. */
 export function AddControl({ qty, name, onChange, size = "md", disabled }: { qty: number; name: string; onChange: (qty: number) => void; size?: "sm" | "md"; disabled?: boolean }) {
+  const t = useT();
   const h = size === "sm" ? "h-10" : "h-11";
-  if (disabled) return <span className={cn(typeScale.meta, "shrink-0 px-1 text-pub-muted")}>Not today</span>;
+  if (disabled) return <span className={cn(typeScale.meta, "shrink-0 px-1 text-pub-muted")}>{t("Not today")}</span>;
   return (
     <AnimatePresence mode="popLayout" initial={false}>
       {qty === 0 ? (
         <motion.button key="add" type="button" initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.85 }} whileTap={{ scale: 0.94 }}
-          onClick={(e) => { e.stopPropagation(); onChange(1); }} aria-label={`Add ${name}`}
+          onClick={(e) => { e.stopPropagation(); onChange(1); }} aria-label={t("Add {name}", { name })}
           className={cn(h, typeScale.cta, size === "sm" ? "px-4" : "px-5",
             "inline-flex shrink-0 items-center gap-1.5 rounded-full border border-pub-fg/25 text-pub-fg transition-colors duration-200 hover:border-gold hover:bg-gold/10 hover:text-pub-eyebrow focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none")}>
-          <Plus className="size-3.5" strokeWidth={2.25} aria-hidden="true" />Add
+          <Plus className="size-3.5" strokeWidth={2.25} aria-hidden="true" />{t("Add")}
         </motion.button>
       ) : (
         <motion.span key="qty" initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.85 }}
           className={cn(h, "inline-flex shrink-0 items-center rounded-full bg-pub-fg text-[var(--pub-surface)] shadow-[0_10px_24px_-14px_rgb(0_0_0/0.7)]")} onClick={(e) => e.stopPropagation()}>
-          <button type="button" onClick={() => onChange(qty - 1)} aria-label={`One less ${name}`} className={cn(h, "grid aspect-square place-items-center rounded-full transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold")}>{qty === 1 ? <Trash2 className="size-3.5" aria-hidden="true" /> : <Minus className="size-4" aria-hidden="true" />}</button>
+          <button type="button" onClick={() => onChange(qty - 1)} aria-label={t("One less {name}", { name })} className={cn(h, "grid aspect-square place-items-center rounded-full transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold")}>{qty === 1 ? <Trash2 className="size-3.5" aria-hidden="true" /> : <Minus className="size-4" aria-hidden="true" />}</button>
           <span key={qty} className="w-5 text-center font-display text-[1.0625rem] font-semibold tabular-nums lining-nums motion-safe:animate-[vlh-pop_0.3s_ease-out]">{qty}</span>
-          <button type="button" disabled={qty >= 20} onClick={() => onChange(qty + 1)} aria-label={`One more ${name}`} className={cn(h, "grid aspect-square place-items-center rounded-full text-gold transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold disabled:opacity-40")}><Plus className="size-4" strokeWidth={2.25} aria-hidden="true" /></button>
+          <button type="button" disabled={qty >= 20} onClick={() => onChange(qty + 1)} aria-label={t("One more {name}", { name })} className={cn(h, "grid aspect-square place-items-center rounded-full text-gold transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold disabled:opacity-40")}><Plus className="size-4" strokeWidth={2.25} aria-hidden="true" /></button>
         </motion.span>
       )}
     </AnimatePresence>
@@ -104,6 +108,7 @@ export function AddControl({ qty, name, onChange, size = "md", disabled }: { qty
 
 /** The bar at the bottom once something is in the order — the page's own bottom bar (the footer keeps room for it). */
 export function BasketPill({ order, onOpen }: { order: MenuOrder; onOpen: () => void }) {
+  const t = useT();
   return (
     <AnimatePresence>
       {order.count > 0 && (
@@ -116,8 +121,8 @@ export function BasketPill({ order, onOpen }: { order: MenuOrder; onOpen: () => 
               <span key={order.count} className="absolute -right-1 -top-1 grid size-5 place-items-center rounded-full bg-[#f3ece0] text-[10px] font-bold text-[#16110a] ring-2 ring-[#0f0c09] motion-safe:animate-[vlh-pop_0.3s_ease-out]">{order.count}</span>
             </span>
             <span className="min-w-0 flex-1 text-left leading-tight">
-              <span className={cn(typeScale.cta, "block")}>View your order</span>
-              <span className="mt-1 block truncate text-xs text-white/60">{order.count} item{order.count === 1 ? "" : "s"}<span className="hidden sm:inline"> · send it to the kitchen</span></span>
+              <span className={cn(typeScale.cta, "block")}>{t("View your order")}</span>
+              <span className="mt-1 block truncate text-xs text-white/60">{t.plural(order.count, "{n} item", "{n} items")}<span className="hidden sm:inline"> · {t("send it to the kitchen")}</span></span>
             </span>
             <span className="whitespace-nowrap font-display text-[1.125rem] font-medium tabular-nums lining-nums text-gold"><span className="mr-1 font-sans text-[11px] font-medium tracking-[0.16em] text-gold/80">TZS</span>{n(order.subtotal)}</span>
           </button>
@@ -152,10 +157,12 @@ export function OrderDrawer({ open, order, onClose, online }: { open: boolean; o
   const payPhone = payPhoneIn ?? who?.phone ?? "";
   const payReady = !payNow || (online && payPhoneOk(payPhone));
   const [notes, setNotes] = useState("");
+  const [codes, setCodes] = useState<string[]>([]);
   const [trap, setTrap] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [key, setKey] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const t = useT();
 
   useEffect(() => {
     const d = ref.current;
@@ -168,12 +175,12 @@ export function OrderDrawer({ open, order, onClose, online }: { open: boolean; o
   const submit = () => start(async () => {
     setError(null);
     if (!who) { order.askWho(); return; }
-    if (takeOut && !addressOk) { setError("Please add the delivery address."); return; }
-    if (!payReady) { setError(online ? "Enter your mobile-money number to pay now, e.g. 0712 345 678." : "Take out is paid first by mobile money, which is not available right now — choose Eat here, or call us."); return; }
+    if (takeOut && !addressOk) { setError(t("Please add the delivery address.")); return; }
+    if (!payReady) { setError(online ? t("Enter your mobile-money number to pay now, e.g. 0712 345 678.") : t("Take out is paid first by mobile money, which is not available right now — choose Eat here, or call us.")); return; }
     const clientKey = key ?? (() => { const b = crypto.getRandomValues(new Uint8Array(16)); return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join(""); })();
     setKey(clientKey);
     const res = await placeOnlineOrderAction({
-      clientKey, items: order.lines.map((l) => ({ menuItemId: l.id, quantity: l.qty })), notes: notes.trim() || undefined,
+      clientKey, items: order.lines.map((l) => ({ menuItemId: l.id, quantity: l.qty })), notes: notes.trim() || undefined, noteCodes: codes.length ? codes : undefined,
       ...whoForOrder(who), kind, tableLabel: takeOut ? undefined : table, deliveryAddress: takeOut ? address.trim() : undefined,
       payOnline: payNow ? { phone: payPhone.trim() } : undefined, website: trap,
     });
@@ -190,10 +197,10 @@ export function OrderDrawer({ open, order, onClose, online }: { open: boolean; o
       <div className="flex max-h-[92dvh] flex-col">
         <header className="flex items-center justify-between gap-3 border-b border-pub-line px-5 py-4 sm:px-7 sm:py-5">
           <div className="min-w-0">
-            <p className={cn(typeScale.eyebrow, "text-pub-eyebrow")}>Restaurant & bar</p>
-            <h2 id="order-title" className="mt-2 font-display text-[1.75rem] font-medium leading-none">Your order</h2>
+            <p className={cn(typeScale.eyebrow, "text-pub-eyebrow")}>{t("Restaurant & bar")}</p>
+            <h2 id="order-title" className="mt-2 font-display text-[1.75rem] font-medium leading-none">{t("Your order")}</h2>
           </div>
-          <button type="button" onClick={() => ref.current?.close()} aria-label="Close" className={SHEET_CLOSE}><X className="size-5" strokeWidth={1.6} aria-hidden="true" /></button>
+          <button type="button" onClick={() => ref.current?.close()} aria-label={t("Close")} className={SHEET_CLOSE}><X className="size-5" strokeWidth={1.6} aria-hidden="true" /></button>
         </header>
 
         <div className="space-y-7 overflow-y-auto overscroll-contain px-5 py-5 sm:px-7 sm:py-6">
@@ -208,21 +215,21 @@ export function OrderDrawer({ open, order, onClose, online }: { open: boolean; o
                     : <span className="grid size-12 shrink-0 place-items-center rounded-[0.375rem] bg-pub-fg/[0.05]"><UtensilsCrossed className="size-4 text-pub-faint" aria-hidden="true" /></span>}
                   <span className="min-w-0 flex-1 leading-tight">
                     <span className="line-clamp-2 font-display text-[1.125rem] leading-tight">{l.name}</span>
-                    <span className="mt-0.5 block text-xs tabular-nums text-pub-muted">TZS {n(l.price)} each · TZS {n(l.price * l.qty)}</span>
+                    <span className="mt-0.5 block text-xs tabular-nums text-pub-muted">{t("{price} each · {total}", { price: `TZS ${n(l.price)}`, total: `TZS ${n(l.price * l.qty)}` })}</span>
                   </span>
                   <AddControl qty={l.qty} name={l.name} size="sm" onChange={(q) => order.setQty(l.id, q)} />
                 </li>
               ))}
             </ul>
             <p className="flex items-baseline justify-between pt-4">
-              <span className={cn(typeScale.meta, "text-pub-muted")}>Total</span>
+              <span className={cn(typeScale.meta, "text-pub-muted")}>{t("Total")}</span>
               <span className="font-display text-[1.625rem] font-medium leading-none tabular-nums lining-nums"><span className="mr-1.5 font-sans text-[11px] font-medium tracking-[0.16em] text-pub-muted">TZS</span>{n(order.subtotal)}</span>
             </p>
           </div>
 
           {/* Who — given before the first item went in */}
           <div>
-            <p className={field.label}>Ordering as</p>
+            <p className={field.label}>{t("Ordering as")}</p>
             {who ? (
               <div className="flex items-center gap-3 rounded-[0.75rem] border border-pub-line p-3">
                 <span className="grid size-11 shrink-0 place-items-center rounded-full bg-[#15120e] font-display text-lg text-gold">{who.name.charAt(0).toUpperCase()}</span>
@@ -230,12 +237,12 @@ export function OrderDrawer({ open, order, onClose, online }: { open: boolean; o
                   <span className="block truncate font-medium">{who.name}</span>
                   <span className="text-sm tabular-nums text-pub-muted">{phoneLabel(who.phone)}</span>
                 </span>
-                <button type="button" onClick={order.askWho} className={buttonClass({ variant: "secondary", size: "sm", className: "px-4" })}>Change</button>
+                <button type="button" onClick={order.askWho} className={buttonClass({ variant: "secondary", size: "sm", className: "px-4" })}>{t("Change")}</button>
               </div>
             ) : (
               <button type="button" onClick={order.askWho} className="flex w-full items-center gap-3 rounded-[0.75rem] border border-dashed border-pub-fg/30 p-3 text-left transition-colors duration-200 hover:border-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none">
                 <span className="grid size-11 shrink-0 place-items-center rounded-full bg-[#15120e] text-gold"><UserRound className="size-5" strokeWidth={1.6} aria-hidden="true" /></span>
-                <span className="font-medium">Add your name and number</span>
+                <span className="font-medium">{t("Add your name and number")}</span>
               </button>
             )}
             <input value={trap} onChange={(e) => setTrap(e.target.value)} tabIndex={-1} autoComplete="off" aria-hidden className="hidden" name="website" />
@@ -243,36 +250,36 @@ export function OrderDrawer({ open, order, onClose, online }: { open: boolean; o
 
           {/* How */}
           <div>
-            <p className={field.label}>How would you like it?</p>
+            <p className={field.label}>{t("How would you like it?")}</p>
             <div className="grid grid-cols-2 gap-2.5">
               {KINDS.map((k) => (
                 <button key={k.v} type="button" onClick={() => setKind(k.v)} aria-pressed={kind === k.v} className={choice(kind === k.v)}>
                   <span className="flex items-center gap-2">
                     <k.icon className={cn("size-4", kind === k.v ? "text-pub-eyebrow" : "text-pub-muted")} strokeWidth={1.7} aria-hidden="true" />
-                    <span className="text-[15px] font-medium leading-tight">{k.label}</span>
+                    <span className="text-[15px] font-medium leading-tight">{t(k.label)}</span>
                   </span>
-                  <span className="text-xs leading-tight text-pub-muted">{k.hint}</span>
+                  <span className="text-xs leading-tight text-pub-muted">{t(k.hint)}</span>
                   {kind === k.v && <Check className="absolute right-3 top-3 size-3.5 text-pub-eyebrow" strokeWidth={2.5} aria-hidden="true" />}
                 </button>
               ))}
             </div>
             {takeOut ? (
-              <label className="mt-4 block"><span className={cn(field.label, "flex items-center gap-1.5")}><MapPin className="size-3.5" aria-hidden="true" />Delivery address</span>
+              <label className="mt-4 block"><span className={cn(field.label, "flex items-center gap-1.5")}><MapPin className="size-3.5" aria-hidden="true" />{t("Delivery address")}</span>
                 <textarea value={address} onChange={(e) => setAddress(e.target.value)} maxLength={200} rows={2} autoComplete="street-address"
-                  placeholder="e.g. Mikocheni B, Plot 45, near the pharmacy" className={cn(field.textarea, "min-h-20")} />
-                <span className={cn(field.hint, "block")}>Street, house or building, and a landmark — we bring your order here.</span></label>
+                  placeholder={t("e.g. Mikocheni B, Plot 45, near the pharmacy")} className={cn(field.textarea, "min-h-20")} />
+                <span className={cn(field.hint, "block")}>{t("Street, house or building, and a landmark — we bring your order here.")}</span></label>
             ) : (
-              <label className="mt-4 block"><span className={field.label}>Table <span className="normal-case tracking-normal text-pub-muted">(optional)</span></span>
-                <input value={table} onChange={(e) => setTable(e.target.value)} placeholder="e.g. Table 3 outside" className={field.input} /></label>
+              <label className="mt-4 block"><span className={field.label}>{t("Table")} <span className="normal-case tracking-normal text-pub-muted">{t("(optional)")}</span></span>
+                <input value={table} onChange={(e) => setTable(e.target.value)} placeholder={t("e.g. Table 3 outside")} className={field.input} /></label>
             )}
           </div>
 
           {/* How to pay — Pay now (mobile money) first; take out has only Pay now. */}
           {online ? (
             <div>
-              <p className={field.label}>Payment</p>
+              <p className={field.label}>{t("Payment")}</p>
               <div className={cn("grid gap-2.5", !takeOut && "grid-cols-2")}>
-                {([[true, "Pay now", null], ...(takeOut ? [] : [[false, "Pay after", "When you are done"]])] as [boolean, string, string | null][]).map(([v, l, h]) => {
+                {([[true, t("Pay now"), null], ...(takeOut ? [] : [[false, t("Pay after"), t("When you are done")]])] as [boolean, string, string | null][]).map(([v, l, h]) => {
                   const on = v ? payNow : !payNow;
                   return (
                     <button key={String(v)} type="button" onClick={() => setPayNow(v)} aria-pressed={on} className={choice(on)}>
@@ -287,33 +294,38 @@ export function OrderDrawer({ open, order, onClose, online }: { open: boolean; o
                 })}
               </div>
               {payNow && (
-                <label className="mt-4 block"><span className={field.label}>Mobile-money number</span>
+                <label className="mt-4 block"><span className={field.label}>{t("Mobile-money number")}</span>
                   <input value={payPhone} onChange={(e) => setPayPhone(e.target.value)} type="tel" inputMode="tel" autoComplete="tel" placeholder="0712 345 678"
                     aria-invalid={payPhone !== "" && !payPhoneOk(payPhone)} className={cn(field.input, "tabular-nums")} />
-                  <span className={cn(field.hint, "flex items-start gap-1.5")}><Lock className="mt-0.5 size-3 shrink-0 text-pub-eyebrow" aria-hidden="true" /><span>A payment request comes to this phone — enter your PIN. Secure payment by <span className="font-semibold tracking-wide text-pub-fg">NTZS</span></span></span>
+                  <span className={cn(field.hint, "flex items-start gap-1.5")}><Lock className="mt-0.5 size-3 shrink-0 text-pub-eyebrow" aria-hidden="true" /><span>{t("A payment request comes to this phone — enter your PIN.")} {t.rich("Secure payment by <b>NTZS</b>", { b: (c) => <span className="font-semibold tracking-wide text-pub-fg">{c}</span> })}</span></span>
                 </label>
               )}
             </div>
           ) : takeOut ? (
-            <p role="note" className="rounded-[0.75rem] border border-gold/40 bg-gold/[0.08] px-4 py-3 text-sm leading-relaxed">Take out is paid first by mobile money, which is not available right now — choose Eat here, or call us.</p>
+            <p role="note" className="rounded-[0.75rem] border border-gold/40 bg-gold/[0.08] px-4 py-3 text-sm leading-relaxed">{t("Take out is paid first by mobile money, which is not available right now — choose Eat here, or call us.")}</p>
           ) : null}
 
-          <label className="block"><span className={field.label}>Anything we should know? <span className="normal-case tracking-normal text-pub-muted">(optional)</span></span>
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={300} rows={2} placeholder="No onions, extra ice, bring it at 8 pm…" className={cn(field.textarea, "min-h-20")} /></label>
+          {/* Requests to tick (the kitchen reads them in its own language), then their own words — kept as typed. */}
+          <div>
+            <p className={field.label}>{t("Anything we should know?")} <span className="normal-case tracking-normal text-pub-muted">{t("(optional)")}</span></p>
+            <RequestPicker value={codes} onChange={setCodes} tone="pub" className="mb-3" />
+            <label className="block"><span className="sr-only">{t("Note for the kitchen")}</span>
+              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={300} rows={2} placeholder={t("Anything else? e.g. bring it at 8 pm")} className={cn(field.textarea, "min-h-20")} /></label>
+          </div>
 
           <div className="space-y-2.5 border-t border-pub-line pt-5 text-sm leading-relaxed text-pub-muted">
-            <p className="flex items-start gap-3"><Smartphone className="mt-0.5 size-4 shrink-0 text-pub-eyebrow" strokeWidth={1.6} aria-hidden="true" />{takeOut ? "Paid first by mobile money — once it is paid, your order starts and we bring it to you." : payNow ? "Paid now by mobile money — your order starts as soon as it is paid." : "Pay after your meal. Order more any time."}</p>
-            <p className="flex items-start gap-3"><BedDouble className="mt-0.5 size-4 shrink-0 text-pub-eyebrow" strokeWidth={1.6} aria-hidden="true" />Staying with us? Scan the QR card in your room to order to your room bill.</p>
+            <p className="flex items-start gap-3"><Smartphone className="mt-0.5 size-4 shrink-0 text-pub-eyebrow" strokeWidth={1.6} aria-hidden="true" />{takeOut ? t("Paid first by mobile money — once it is paid, your order starts and we bring it to you.") : payNow ? t("Paid now by mobile money — your order starts as soon as it is paid.") : t("Pay after your meal. Order more any time.")}</p>
+            <p className="flex items-start gap-3"><BedDouble className="mt-0.5 size-4 shrink-0 text-pub-eyebrow" strokeWidth={1.6} aria-hidden="true" />{t("Staying with us? Scan the QR card in your room to order to your room bill.")}</p>
           </div>
-          {error && <p role="alert" className="rounded-[0.75rem] border border-pub-error/30 bg-pub-error/[0.08] px-4 py-3 text-sm text-pub-error">{error} Your order was not sent — please try again.</p>}
+          {error && <p role="alert" className="rounded-[0.75rem] border border-pub-error/30 bg-pub-error/[0.08] px-4 py-3 text-sm text-pub-error">{error} {t("Your order was not sent — please try again.")}</p>}
         </div>
 
         <footer className="border-t border-pub-line px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 sm:px-7">
           <button type="button" disabled={pending || order.count === 0 || !who || (takeOut && !addressOk) || !payReady} onClick={submit}
             className={buttonClass({ variant: "primary", full: true, className: "h-auto min-h-10 whitespace-normal px-5 py-2.5 text-center leading-snug tabular-nums" })}>
-            {pending ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : payNow ? <Lock className="size-4" strokeWidth={2} aria-hidden="true" /> : <Check className="size-4" strokeWidth={2.25} aria-hidden="true" />}{payNow ? `Pay TZS ${n(order.subtotal)} now` : `Send my order · TZS ${n(order.subtotal)}`}
+            {pending ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : payNow ? <Lock className="size-4" strokeWidth={2} aria-hidden="true" /> : <Check className="size-4" strokeWidth={2.25} aria-hidden="true" />}{payNow ? t("Pay {amount} now", { amount: `TZS ${n(order.subtotal)}` }) : t("Send my order · {amount}", { amount: `TZS ${n(order.subtotal)}` })}
           </button>
-          <p className="mt-2.5 text-center text-xs text-pub-muted">{payNow ? "Check your phone for the payment request — then follow your order on the next page." : "It goes straight to our kitchen and bar — you can follow it on the next page."}</p>
+          <p className="mt-2.5 text-center text-xs text-pub-muted">{payNow ? t("Check your phone for the payment request — then follow your order on the next page.") : t("It goes straight to our kitchen and bar — you can follow it on the next page.")}</p>
         </footer>
       </div>
     </dialog>
@@ -342,6 +354,7 @@ export function WhoDialog({ order }: { order: MenuOrder }) {
 }
 
 function WhoForm({ order, onClose }: { order: MenuOrder; onClose: () => void }) {
+  const t = useT();
   const lookup = useCallback(async (phone: string) => {
     const res = await identifyCustomerAction({ phone });
     return res.ok ? res.data.name : null;
@@ -352,14 +365,14 @@ function WhoForm({ order, onClose }: { order: MenuOrder; onClose: () => void }) 
     <form className="max-h-[92dvh] overflow-y-auto px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-5 sm:px-8 sm:pb-8 sm:pt-7" onSubmit={(e) => { e.preventDefault(); if (f.result) order.confirmWho(f.result); }}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className={cn(typeScale.eyebrow, "text-pub-eyebrow")}>Restaurant & bar</p>
-          <h2 id="who-title" className="mt-2 font-display text-[1.75rem] font-medium leading-none">Who is ordering?</h2>
+          <p className={cn(typeScale.eyebrow, "text-pub-eyebrow")}>{t("Restaurant & bar")}</p>
+          <h2 id="who-title" className="mt-2 font-display text-[1.75rem] font-medium leading-none">{t("Who is ordering?")}</h2>
         </div>
-        <button type="button" onClick={onClose} aria-label="Close" className={SHEET_CLOSE}><X className="size-5" strokeWidth={1.6} aria-hidden="true" /></button>
+        <button type="button" onClick={onClose} aria-label={t("Close")} className={SHEET_CLOSE}><X className="size-5" strokeWidth={1.6} aria-hidden="true" /></button>
       </div>
-      <p className="mt-3 text-sm leading-relaxed text-pub-muted">Your number and name — so we know whose order it is, and can tell you when it is ready.</p>
+      <p className="mt-3 text-sm leading-relaxed text-pub-muted">{t("Your number and name — so we know whose order it is, and can tell you when it is ready.")}</p>
 
-      <label className="mt-6 block"><span className={field.label}>Phone (WhatsApp)</span>
+      <label className="mt-6 block"><span className={field.label}>{t("Phone (WhatsApp)")}</span>
         <span className="relative block">
           <Phone className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-pub-faint" aria-hidden="true" />
           <input value={f.phone} onChange={(e) => f.setPhone(e.target.value)} type="tel" inputMode="tel" autoComplete="tel" placeholder="0712 345 678" autoFocus className={cn(field.input, "pl-11 pr-11 tabular-nums")} />
@@ -373,13 +386,13 @@ function WhoForm({ order, onClose }: { order: MenuOrder; onClose: () => void }) 
       {f.step === "known" && (
         <div className="mt-3 flex items-center gap-3 rounded-[0.75rem] border border-pub-line bg-pub-fg/[0.03] p-3">
           <span className="grid size-11 shrink-0 place-items-center rounded-full bg-[#15120e] font-display text-lg text-gold">{f.knownName!.charAt(0).toUpperCase()}</span>
-          <span className="min-w-0 flex-1 leading-tight"><span className="block text-sm text-pub-muted">Welcome back</span><span className="block truncate font-medium">{f.knownName}</span></span>
-          <button type="button" onClick={f.notMe} className="min-h-11 shrink-0 px-1 text-sm font-medium underline decoration-pub-line underline-offset-4 hover:decoration-gold">Not you?</button>
+          <span className="min-w-0 flex-1 leading-tight"><span className="block text-sm text-pub-muted">{t("Welcome back")}</span><span className="block truncate font-medium">{f.knownName}</span></span>
+          <button type="button" onClick={f.notMe} className="min-h-11 shrink-0 px-1 text-sm font-medium underline decoration-pub-line underline-offset-4 hover:decoration-gold">{t("Not you?")}</button>
         </div>
       )}
       {f.step === "new" && (
-        <label className="mt-4 block"><span className={field.label}>Your name</span>
-          <input value={f.name} onChange={(e) => f.setName(e.target.value)} autoComplete="name" autoCapitalize="words" placeholder="e.g. Asha" autoFocus maxLength={80} className={field.input} /></label>
+        <label className="mt-4 block"><span className={field.label}>{t("Your name")}</span>
+          <input value={f.name} onChange={(e) => f.setName(e.target.value)} autoComplete="name" autoCapitalize="words" placeholder={t("e.g. {example}", { example: "Asha" })} autoFocus maxLength={80} className={field.input} /></label>
       )}
 
       {item && (
@@ -388,13 +401,13 @@ function WhoForm({ order, onClose }: { order: MenuOrder; onClose: () => void }) 
             // eslint-disable-next-line @next/next/no-img-element
             ? <img src={item.image} alt="" className="size-10 shrink-0 rounded-[0.375rem] object-cover" />
             : <span className="grid size-10 shrink-0 place-items-center rounded-[0.375rem] bg-pub-fg/[0.05]"><UtensilsCrossed className="size-4 text-pub-faint" aria-hidden="true" /></span>}
-          <span>Then <strong className="font-medium text-pub-fg">{item.name}</strong> goes in your order.</span>
+          <span>{t.rich("Then <b>{name}</b> goes in your order.", { b: (c) => <strong className="font-medium text-pub-fg">{c}</strong> }, { name: item.name })}</span>
         </p>
       )}
       <button type="submit" disabled={!f.result} className={buttonClass({ variant: "primary", full: true, className: "mt-6" })}>
-        {f.step === "checking" ? <><Loader2 className="size-4 animate-spin" aria-hidden="true" />Checking…</> : <>Continue<ArrowRight className="size-4" strokeWidth={1.8} aria-hidden="true" /></>}
+        {f.step === "checking" ? <><Loader2 className="size-4 animate-spin" aria-hidden="true" />{t("Checking…")}</> : <>{t("Continue")}<ArrowRight className="size-4" strokeWidth={1.8} aria-hidden="true" /></>}
       </button>
-      <p className="mt-3 text-center text-xs text-pub-muted">Asked once on this device · used only for your orders and bill</p>
+      <p className="mt-3 text-center text-xs text-pub-muted">{t("Asked once on this device · used only for your orders and bill")}</p>
     </form>
   );
 }

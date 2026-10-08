@@ -7,24 +7,26 @@ import { audit } from "@/server/audit";
 import { authorize, requestMeta } from "@/server/auth";
 import { AppError, runAction, type ActionResult } from "@/server/errors";
 import { parseInput } from "@/server/validation";
-import { normalizePhone, removeCustomer } from "@/server/services/guests";
+import { normalizePhone, removeCustomer, setGuestLanguage } from "@/server/services/guests";
 import { validPhone } from "@/lib/guest-messages";
+import { LOCALES } from "@/i18n/config";
+import { msg, msgf } from "@/i18n/msg";
 
 const opt = (max: number) => z.string().trim().max(max).transform((v) => v || null);
-const phoneOpt = z.string().trim().max(30).refine((v) => !v || validPhone(v), "Enter a phone number like 0712 345 678 or +44…").transform((v) => v || null);
+const phoneOpt = z.string().trim().max(30).refine((v) => !v || validPhone(v), msg("Enter a phone number like 0712 345 678 or +44…")).transform((v) => v || null);
 const GuestSchema = z.object({
   id: z.string().min(1),
-  fullName: z.string().trim().min(2, "Name is required.").max(120),
+  fullName: z.string().trim().min(2, msg("Name is required.")).max(120),
   phone: phoneOpt,
   altPhone: phoneOpt.optional(),
-  email: z.union([z.literal(""), z.string().trim().toLowerCase().email("Enter a valid email.")]).transform((v) => v || null),
+  email: z.union([z.literal(""), z.string().trim().toLowerCase().email(msg("Enter a valid email."))]).transform((v) => v || null),
   idType: opt(40),
   idNumber: opt(60),
   nationality: opt(60),
   address: opt(200),
   notes: opt(1000),
   preferences: opt(1000).optional(),
-  dateOfBirth: z.union([z.literal(""), z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a date.")]).optional(),
+  dateOfBirth: z.union([z.literal(""), z.string().regex(/^\d{4}-\d{2}-\d{2}$/, msg("Choose a date."))]).optional(),
   preferredChannel: z.union([z.literal(""), z.enum(["WHATSAPP", "SMS", "EMAIL", "CALL"])]).optional(),
   marketingConsent: z.string().optional(),
   vip: z.string().optional(),
@@ -66,7 +68,7 @@ export async function updateGuestAction(_prev: unknown, formData: FormData): Pro
     // One number, one customer: the phone finds them everywhere.
     if (changed.phone) {
       const other = await db.guest.findFirst({ where: { id: { not: d.id }, deletedAt: null, phone: changed.phone as string }, select: { fullName: true, reference: true } });
-      if (other) throw new AppError(`This number already belongs to ${other.fullName} (${other.reference}).`, "CONFLICT", { phone: "Taken" });
+      if (other) throw new AppError(msgf("This number already belongs to {name} ({ref}).", { name: other.fullName, ref: other.reference }), "CONFLICT", { phone: msg("Taken") });
     }
     const { ipAddress } = await requestMeta();
     await db.$transaction(async (tx) => {
@@ -79,7 +81,21 @@ export async function updateGuestAction(_prev: unknown, formData: FormData): Pro
     });
     revalidatePath(`/staff/guests/${d.id}`);
     return null;
-  }, "Customer updated.");
+  }, msg("Customer updated."));
+}
+
+const Language = z.object({ id: z.string().min(1), language: z.union([z.enum(LOCALES), z.literal("")]) });
+
+/** The language the hotel writes to this customer in (WhatsApp, their pages) — "" = not set (English). Kept in the history. */
+export async function setGuestLanguageAction(input: z.input<typeof Language>): Promise<ActionResult<{ changed: boolean }>> {
+  return runAction(async () => {
+    const user = await authorize("guests.manage");
+    const d = parseInput(Language, input);
+    const { ipAddress } = await requestMeta();
+    const res = await setGuestLanguage(d.id, d.language || null, { userId: user.id, label: user.fullName, ipAddress });
+    revalidatePath(`/staff/guests/${d.id}`);
+    return res;
+  }, msg("Message language saved."));
 }
 
 const MessageLog = z.object({

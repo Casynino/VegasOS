@@ -4,6 +4,7 @@ import { useId, useRef } from "react";
 import Image from "next/image";
 import { motion, useMotionTemplate, useScroll } from "motion/react";
 import { cn } from "@/lib/utils";
+import { useT } from "@/i18n/client";
 import { blurFor } from "../blur-data";
 import css from "../home/home.module.css";
 import { useRamp } from "./ramp";
@@ -52,6 +53,7 @@ export function BlueprintReveal({
   target?: { x: number; y: number };
   className?: string;
 }) {
+  const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   // One filter per instance; CSS url() needs a plain id.
   const filterId = `vlh-dwg-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
@@ -131,7 +133,7 @@ export function BlueprintReveal({
             {coords}
           </span>
           {/* Dimension labels (words only — no invented measurements) */}
-          <span className={cn(mono, "absolute left-1/2 top-[8.5%] -translate-x-1/2 -translate-y-1/2 bg-[#120f0b] px-2 text-[rgb(240_214_160/0.85)]")}>Elevation</span>
+          <span className={cn(mono, "absolute left-1/2 top-[8.5%] -translate-x-1/2 -translate-y-1/2 bg-[#120f0b] px-2 text-[rgb(240_214_160/0.85)]")}>{t("Elevation")}</span>
           {/* Title block */}
           <div className="absolute bottom-[5%] right-[5%] hidden border border-[rgb(240_214_160/0.35)] bg-[rgb(14_11_8/0.7)] sm:block">
             <p className={cn(mono, "border-b border-[rgb(240_214_160/0.25)] px-3 py-2 text-[rgb(240_214_160/0.95)]")}>{title}</p>
@@ -150,8 +152,8 @@ export function BlueprintReveal({
           style={{ left: scanLeft, opacity: scanOpacity }}
           className={cn(css.scan, "motion-reduce:left-[46%]! motion-reduce:opacity-100!")}
         >
-          <span className={cn(mono, "absolute right-3 top-[14%] whitespace-nowrap text-[rgb(240_214_160)]")}>◂ Drawing</span>
-          <span className={cn(mono, "absolute left-3 top-[14%] whitespace-nowrap rounded-full bg-black/45 px-2 py-1 text-white backdrop-blur-sm")}>Photograph ▸</span>
+          <span className={cn(mono, "absolute right-3 top-[14%] whitespace-nowrap text-[rgb(240_214_160)]")}>◂ {t("Drawing")}</span>
+          <span className={cn(mono, "absolute left-3 top-[14%] whitespace-nowrap rounded-full bg-black/45 px-2 py-1 text-white backdrop-blur-sm")}>{t("Photograph")} ▸</span>
           <span className="absolute left-1/2 top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rotate-45 border border-[rgb(255_236_196)] bg-night" />
         </motion.div>
       </div>

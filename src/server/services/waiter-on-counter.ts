@@ -1,6 +1,7 @@
 import "server-only";
 import { db } from "../db";
 import { AppError } from "../errors";
+import { msg, msgf } from "@/i18n/msg";
 import { isRestaurantDevice, type PermissionCode } from "@/lib/permissions";
 import type { Actor } from "./reservations";
 
@@ -18,11 +19,11 @@ export async function waiterOnCounter(waiterId: string, counter: { id: string; l
   const perms = new Set(u?.role.permissions.map((x) => x.permission.code as PermissionCode) ?? []);
   const waiter = !!u?.isActive && perms.has("restaurant.serve") && !isRestaurantDevice(perms)
     && !(["dashboard.manager", "dashboard.owner", "dashboard.admin"] as const).some((c) => perms.has(c));
-  if (!u || !waiter) throw new AppError("Choose one of the waiters.", "VALIDATION", { pin: "Invalid" });
+  if (!u || !waiter) throw new AppError("Choose one of the waiters.", "VALIDATION", { pin: msg("Invalid") });
   // Only a waiter on shift takes work (they start it on their own phone: "Start my shift"). Handing on work
   // that is still theirs (a transfer) works whether they are on shift or not — the receiver must be.
   if (opts.requireShift !== false && !(await db.actualShift.findFirst({ where: { userId: u.id, endedAt: null, department: "RESTAURANT" }, select: { id: true } }))) {
-    throw new AppError(`${u.fullName.replace(/\s*\(.*\)/, "")} is not on shift — they start their shift first.`, "VALIDATION", { pin: "Off shift" });
+    throw new AppError(msgf("{name} is not on shift — they start their shift first.", { name: u.fullName.replace(/\s*\(.*\)/, "") }), "VALIDATION", { pin: msg("Off shift") });
   }
   return { userId: u.id, label: `${u.fullName} · on ${counter.label}`, role: u.role.name, permissions: perms, deviceUserId: counter.id };
 }

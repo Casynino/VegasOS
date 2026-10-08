@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { getT } from "@/i18n/server";
+import type { T } from "@/i18n/translate";
 import { can, requirePagePermission } from "@/server/auth";
 import { db } from "@/server/db";
 import { businessToday, getSettings } from "@/server/settings";
@@ -10,7 +12,10 @@ import { formatTZS } from "@/lib/format";
 import type { StockEventView, StockReqView, Viewer } from "@/lib/stock-requests";
 import { StockRequests } from "./stock-requests";
 
-export const metadata: Metadata = { title: "Stock requests" };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT();
+  return { title: t("Stock requests") };
+}
 export const dynamic = "force-dynamic";
 
 type Json = Record<string, unknown> | null;
@@ -25,32 +30,33 @@ const eatDay = (d: Date) => new Date(d.getTime() + 3 * 3600_000).toISOString().s
  * What a history step changed, in words — money only for buyers and approvers. Someone who only
  * asks sees the list changes, never prices, totals, suppliers, accounts or the expense.
  */
-function eventView(e: StockRequestRow["events"][number], money: boolean): StockEventView {
+function eventView(e: StockRequestRow["events"][number], money: boolean, t: T): StockEventView {
   const b = obj(e.before), a = obj(e.after);
   const detail: (string | null)[] = [];
   const purchase = e.action.startsWith("PURCHASE_") || e.action === "FINAL_APPROVED";
   if (e.action === "EDITED") {
     const was = strs(b?.items), now = strs(a?.items);
-    if (was.join("|") !== now.join("|")) detail.push(`Was: ${was.join(" · ") || "—"}`, `Now: ${now.join(" · ") || "—"}`);
-    if (b && a && b.urgent !== a.urgent) detail.push(a.urgent ? "Marked urgent" : "No longer urgent");
+    if (was.join("|") !== now.join("|")) detail.push(t("Was: {items}", { items: was.join(" · ") || "—" }), t("Now: {items}", { items: now.join(" · ") || "—" }));
+    if (b && a && b.urgent !== a.urgent) detail.push(a.urgent ? t("Marked urgent") : t("No longer urgent"));
   } else if (money && (e.action === "PURCHASE_SAVED" || e.action === "PURCHASE_SUBMITTED")) {
     const total = n(a?.total);
     detail.push([
-      total != null ? formatTZS(total) : null, s(a?.supplier) ? `from ${s(a?.supplier)}` : null,
-      s(a?.receipt) ? `receipt ${s(a?.receipt)}` : a?.photo ? "receipt photo" : null, s(a?.account) ? `paid from ${s(a?.account)}` : null,
+      total != null ? formatTZS(total) : null, s(a?.supplier) ? t("from {supplier}", { supplier: s(a?.supplier) }) : null,
+      s(a?.receipt) ? t("receipt {number}", { number: s(a?.receipt) }) : a?.photo ? t("receipt photo") : null, s(a?.account) ? t("paid from {account}", { account: t(s(a?.account)!) }) : null,
     ].filter(Boolean).join(" · ") || null);
     const was = n(b?.total);
-    if (was != null && was !== total) detail.push(`Before: ${formatTZS(was)}`);
+    if (was != null && was !== total) detail.push(t("Before: {amount}", { amount: formatTZS(was) }));
   } else if (money && e.action === "PURCHASE_SENT_BACK") {
     const was = n(b?.total);
-    if (was != null) detail.push(`The purchase was ${formatTZS(was)}`);
+    if (was != null) detail.push(t("The purchase was {amount}", { amount: formatTZS(was) }));
   } else if (money && e.action === "FINAL_APPROVED") {
     const amount = n(a?.amount);
-    detail.push([s(a?.expense) ? `Expense ${s(a?.expense)}` : null, amount != null ? formatTZS(amount) : null, s(a?.category)].filter(Boolean).join(" · ") || null);
-    for (const r of strs(a?.received)) detail.push(`In stock: ${r}`);
+    const category = s(a?.category);
+    detail.push([s(a?.expense) ? t("Expense {number}", { number: s(a?.expense) }) : null, amount != null ? formatTZS(amount) : null, category ? t(category) : null].filter(Boolean).join(" · ") || null);
+    for (const r of strs(a?.received)) detail.push(t("In stock: {item}", { item: r }));
     const notInStock = strs(a?.notInStock);
-    if (notInStock.length) detail.push(`Not kept in stock: ${notInStock.join(", ")}`);
-    if (a?.selfApproved) detail.push("Bought and approved by the same person");
+    if (notInStock.length) detail.push(t("Not kept in stock: {items}", { items: notInStock.join(", ") }));
+    if (a?.selfApproved) detail.push(t("Bought and approved by the same person"));
   }
   return {
     id: e.id, action: e.action, from: e.fromStatus, to: e.toStatus, by: e.byLabel, role: e.byRole,
@@ -61,7 +67,7 @@ function eventView(e: StockRequestRow["events"][number], money: boolean): StockE
 }
 
 /** One request for the screen. Without `money` there are no prices, totals, supplier, account, receipt or expense. */
-function view(r: StockRequestRow, money: boolean, deptName: (code: string) => string): StockReqView {
+function view(r: StockRequestRow, money: boolean, deptName: (code: string) => string, t: T): StockReqView {
   return {
     id: r.id, number: r.number, department: r.department, departmentName: r.inventoryDepartment?.name ?? deptName(r.department), departmentId: r.departmentId,
     status: r.status, urgent: r.urgent, neededBy: r.neededBy?.toISOString().slice(0, 10) ?? null, reason: r.reason, note: r.note,
@@ -83,7 +89,7 @@ function view(r: StockRequestRow, money: boolean, deptName: (code: string) => st
       total: r.purchaseTotal, submittedAt: r.submittedAt?.toISOString() ?? null, correctionNote: r.correctionNote,
       expense: r.expense ? { number: r.expense.number, amount: r.expense.amount } : null,
     } : null,
-    events: r.events.map((e) => eventView(e, money)),
+    events: r.events.map((e) => eventView(e, money, t)),
   };
 }
 
@@ -94,6 +100,7 @@ function view(r: StockRequestRow, money: boolean, deptName: (code: string) => st
  */
 export default async function StockRequestsPage() {
   const user = await requirePagePermission("inventory.request", "expenses.approve", "inventory.receive");
+  const t = await getT();
   const reviewer = can(user, "expenses.approve"), buyer = can(user, "inventory.receive"), asker = can(user, "inventory.request");
   const money = reviewer || buyer;
   const today = await businessToday();
@@ -119,7 +126,7 @@ export default async function StockRequestsPage() {
   return (
     <div className="w-full space-y-4">
       <StockRequests
-        open={open.map((r) => view(r, money, deptName))} closed={closed.map((r) => view(r, money, deptName))}
+        open={open.map((r) => view(r, money, deptName, t))} closed={closed.map((r) => view(r, money, deptName, t))}
         me={me} hotel={settings.hotelName} today={today} kitchen={STOCK_CATALOG} drinks={drinks}
         departments={departments} storeItems={storeItems} defaultDepartment={defaultDepartment}
         summary={summary} options={options ? { suppliers: options.suppliers, accounts: options.accounts, items: options.items, categories: options.categories, expenseGroup: options.expenseGroup } : null}

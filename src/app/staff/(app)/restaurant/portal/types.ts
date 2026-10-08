@@ -4,6 +4,8 @@ export type PortalRole = "cook" | "waiter" | "desk" | "manager";
 
 export type PortalItem = {
   id: string; menuItemId: string | null; name: string; quantity: number; type: string; image: string | null; prepared: boolean;
+  /** The dish's name in other languages when it was ordered — show orderItemName(item, t) (the English is `name`). */
+  nameI18n: Record<string, string> | null;
   /** Prices as ordered — null for the cook. */
   unitPrice: number | null; lineTotal: number | null;
   /** 1 = the first order; 2+ = added later (when, by whom — null: the customer). */
@@ -47,7 +49,10 @@ export type PortalOrder = {
   awaitsPayment: boolean;
   /** The customer chose Pay online (nTZS): PAYING — the payment is on its way from their phone; NOT_PAID — take out not paid yet. Not accepted until paid. */
   online: "PAYING" | "NOT_PAID" | null;
+  /** The customer's own words, exactly as typed (never translated). */
   notes: string | null; cancelReason: string | null;
+  /** Requests the customer ticked (ORDER_REQUESTS codes) — each person reads them in their own language. */
+  noteCodes: string[];
   createdAt: string; acceptedAt: string | null; readyAt: string | null; takenAt: string | null; deliveredAt: string | null; doneAt: string | null;
   acceptedBy: string | null; readyBy: string | null; takenBy: string | null; deliveredBy: string | null;
   items: PortalItem[];

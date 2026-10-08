@@ -3,6 +3,7 @@
 import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useT } from "@/i18n/client";
 
 /**
  * Shows the first `show` rows (elements marked `data-row`) of the list or table
@@ -18,6 +19,7 @@ const HIDE_AFTER: Record<number, string> = {
 };
 
 export function ShowRows({ show = 3, total, children, className }: { show?: number; total: number; children: ReactNode; className?: string }) {
+  const t = useT();
   const box = useRef<HTMLDivElement>(null);
   const [max, setMax] = useState<number | null>(null);
   const [foot, setFoot] = useState(0);
@@ -69,7 +71,7 @@ export function ShowRows({ show = 3, total, children, className }: { show?: numb
       </div>
       <button type="button" onClick={step}
         className="flex w-full items-center justify-center gap-1.5 border-t border-border/60 bg-muted/30 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
-        {below ? <><ChevronDown className="size-3.5" />Scroll for {below} more</> : <><ChevronUp className="size-3.5" />Back to the top</>}
+        {below ? <><ChevronDown className="size-3.5" />{t("Scroll for {n} more", { n: below })}</> : <><ChevronUp className="size-3.5" />{t("Back to the top")}</>}
       </button>
     </div>
   );

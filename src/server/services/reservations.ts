@@ -12,7 +12,7 @@ import { recalculateReservation, syncRoomNights, ACTIVE_STATUSES } from "./reser
 import { normalizePhone, resolveGuest, typedDifferences, type GuestInput } from "./guests";
 import { thankYouAfterCheckout } from "./thank-you";
 import { notifyReservationGuestSoon } from "./guest-comms";
-import { setRoomStatusTx } from "./rooms";
+import { readerT, roomStatusWord, setRoomStatusTx } from "./rooms";
 import { postRoomChargesTx, recordPaymentTx, type ChargeLine } from "./payments";
 import { createRestaurantOrderTx } from "./restaurant";
 import { assertCompanyCredit, billCompanyTx, type InvoiceMode } from "./company-billing";
@@ -21,6 +21,10 @@ import { BILLING_GROUP_CODES, companyPays } from "@/lib/billing";
 import { quoteRoom } from "@/lib/pricing";
 import { channelFor, loadPricing, quoteFromPromos, quoteStay } from "./pricing";
 import { CHECK_IN_READY } from "@/lib/room-status";
+import { RESERVATION_STATUS_META } from "@/lib/reservation-status";
+import { msg, msgf } from "@/i18n/msg";
+import { DEFAULT_LOCALE } from "@/i18n/config";
+import type { T } from "@/i18n/translate";
 import {
   addDays, businessDateOf, eachDate, fromDbDate, isBusinessDate, parseTimeToMinutes, toDbDate, zonedInstant, type BusinessDate,
 } from "@/lib/time/business-date";
@@ -122,10 +126,13 @@ function buildStay(req: StayRequest, settings: HotelSettings, now: Date): Stay {
         return meetingStay({ startAt: req.startAt, endAt: req.endAt }, cfg);
     }
   } catch (e) {
-    if (e instanceof StayError) throw new AppError(e.message, "VALIDATION");
+    if (e instanceof StayError) throw new AppError(e.localized ?? e.message, "VALIDATION");
     throw e;
   }
 }
+
+/** A booking's status inside a sentence: the English word as it always was ("checked out", "no show"); in another language, the status's own name. */
+const bookingStatusWord = (t: T, status: ReservationStatus) => (t.locale === DEFAULT_LOCALE ? status.toLowerCase().replace("_", " ") : t(RESERVATION_STATUS_META[status].label));
 
 /** A manual (negotiated) discount must be allowed for this staff member and within the hotel's limit. */
 export function assertManualDiscount(perNight: number, actor: Actor, settings: HotelSettings) {
@@ -181,31 +188,35 @@ export async function createReservationTx(tx: Tx, input: CreateReservationInput,
 
   const meeting = input.stay.kind === "meeting";
   if (input.stay.kind !== "walkIn" && stay.arrivalDate < today) {
-    throw new AppError(meeting ? "The meeting date cannot be in the past." : "Arrival date cannot be in the past.", "VALIDATION", { arrivalDate: "In the past" });
+    throw new AppError(meeting ? msg("The meeting date cannot be in the past.") : msg("Arrival date cannot be in the past."), "VALIDATION", { arrivalDate: msg("In the past") });
   }
-  if (meeting && stay.endAt <= now) throw new AppError("That meeting time has already passed.", "VALIDATION", { startAt: "In the past" });
+  if (meeting && stay.endAt <= now) throw new AppError("That meeting time has already passed.", "VALIDATION", { startAt: msg("In the past") });
   if (checkInNow && stay.arrivalDate !== today) {
     throw new AppError("Only stays starting today can be checked in immediately.");
   }
   if (stay.arrivalDate > addDays(today, settings.maxAdvanceBookingDays)) {
-    throw new AppError(`Bookings can be made up to ${settings.maxAdvanceBookingDays} days ahead.`);
+    throw new AppError(msgf("Bookings can be made up to {days} days ahead.", { days: settings.maxAdvanceBookingDays }));
   }
 
   const typeIds = input.rooms.map((r) => r.roomTypeId);
   const types = await tx.roomType.findMany({ where: { id: { in: typeIds }, isActive: true } });
   const typeById = new Map(types.map((t) => [t.id, t]));
+  // The reader's language, for the room type's name inside a message (the hotel's own content).
+  const tr = await readerT();
   for (const r of input.rooms) {
     const t = typeById.get(r.roomTypeId);
     if (!t) throw new AppError("One of the selected room types is not available.", "UNAVAILABLE");
     // Meeting rooms are booked by time and guest rooms by the night — never the other way round.
     if (meeting !== (t.category === "MEETING_ROOM")) {
-      throw new AppError(meeting ? `${t.name} is a guest room — book it as a stay.` : `${t.name} is booked by time — choose "Meeting room".`, "VALIDATION");
+      throw new AppError(meeting ? msgf("{type} is a guest room — book it as a stay.", { type: tr(t.name) }) : msgf('{type} is booked by time — choose "Meeting room".', { type: tr(t.name) }), "VALIDATION");
     }
     if (meeting && (r.adults < 1 || r.adults > t.maxAdults || r.children !== 0)) {
-      throw new AppError(`${t.name} holds up to ${t.maxAdults} people.`, "VALIDATION", { attendees: "Too many" });
+      throw new AppError(msgf("{type} holds up to {n} people.", { type: tr(t.name), n: t.maxAdults }), "VALIDATION", { attendees: msg("Too many") });
     }
     if (!meeting && (r.adults < 1 || r.adults > t.maxAdults || r.children < 0 || r.children > t.maxChildren)) {
-      throw new AppError(`${t.name} fits up to ${t.maxAdults} adult(s)${t.maxChildren ? ` and ${t.maxChildren} child(ren)` : ""}.`);
+      throw new AppError(t.maxChildren
+        ? msgf("{type} fits up to {adults} adult(s) and {children} child(ren).", { type: tr(t.name), adults: t.maxAdults, children: t.maxChildren })
+        : msgf("{type} fits up to {adults} adult(s).", { type: tr(t.name), adults: t.maxAdults }));
     }
   }
 
@@ -221,20 +232,20 @@ export async function createReservationTx(tx: Tx, input: CreateReservationInput,
     let room;
     if (r.roomId) {
       room = free.find((f) => f.id === r.roomId && f.roomTypeId === r.roomTypeId && !taken.has(f.id));
-      if (!room) throw new AppError(meeting ? `${t.name} is already booked for part of that time. Choose another time.` : `The selected ${t.name} room is no longer available for these dates.`, "UNAVAILABLE");
+      if (!room) throw new AppError(meeting ? msgf("{type} is already booked for part of that time. Choose another time.", { type: tr(t.name) }) : msgf("The selected {type} room is no longer available for these dates.", { type: tr(t.name) }), "UNAVAILABLE");
     } else {
       room = free.find((f) => f.roomTypeId === r.roomTypeId && !taken.has(f.id) && (!checkInNow || CHECK_IN_READY.includes(f.status)));
       if (!room) {
         throw new AppError(
           checkInNow
-            ? `No clean ${t.name} room is ready right now.`
-            : meeting ? `${t.name} is already booked for part of that time. Choose another time.` : `Sorry — ${t.name} is fully booked for these dates.`,
+            ? msgf("No clean {type} room is ready right now.", { type: tr(t.name) })
+            : meeting ? msgf("{type} is already booked for part of that time. Choose another time.", { type: tr(t.name) }) : msgf("Sorry — {type} is fully booked for these dates.", { type: tr(t.name) }),
           "UNAVAILABLE",
         );
       }
     }
     if (checkInNow && !CHECK_IN_READY.includes(room.status)) {
-      throw new AppError(`Room ${room.number} is ${room.status.toLowerCase().replace("_", " ")} — it must be clean before check-in.`);
+      throw new AppError(msgf("Room {room} is {status} — it must be clean before check-in.", { room: room.number, status: roomStatusWord(tr, room.status, room.status.toLowerCase().replace("_", " ")) }));
     }
     taken.add(room.id);
 
@@ -393,7 +404,7 @@ export async function createReservationTx(tx: Tx, input: CreateReservationInput,
       const menu = await tx.menuItem.findMany({ where: { id: { in: menuItems.map((m) => m.menuItemId) } }, include: { category: true } });
       const lines: ChargeLine[] = menuItems.map((w) => {
         const m = menu.find((x) => x.id === w.menuItemId);
-        if (!m || !m.isActive || !m.category.isActive) throw new AppError("An item picked from the menu is no longer on it. Remove it and try again.", "VALIDATION", { menuItems: "Inactive" });
+        if (!m || !m.isActive || !m.category.isActive) throw new AppError("An item picked from the menu is no longer on it. Remove it and try again.", "VALIDATION", { menuItems: msg("Inactive") });
         return { type: m.category.revenueKind === "BAR" ? "BAR" : "RESTAURANT", item: checkInNow ? m.name : `${m.name} (pre-order)`, qty: w.quantity, unitPrice: m.price, menuItemId: m.id };
       });
       await postRoomChargesTx(tx, { reservationId: reservation.id, lines }, actor);
@@ -519,29 +530,31 @@ async function checkInTx(
     for (const rr of notHeld) {
       const stay = { startAt: now < rr.startAt ? now : rr.startAt, endAt: rr.endAt, arrivalDate: fromDbDate(rr.arrivalDate), departureDate: fromDbDate(rr.departureDate), isDayUse: rr.isDayUse };
       if (!(await findAvailableRooms({ stay, roomIds: [rr.roomId] }, tx)).length) {
-        throw new AppError(`Room ${rr.room.number} was taken by a guest who paid first — choose another free room for this guest.`, "UNAVAILABLE");
+        throw new AppError(msgf("Room {room} was taken by a guest who paid first — choose another free room for this guest.", { room: rr.room.number }), "UNAVAILABLE");
       }
     }
 
+    // Warnings are only shown (a toast at the desk): in the reader's language.
+    const t = await readerT();
     const warnings: string[] = [];
     for (const rr of targets) {
       const arrival = fromDbDate(rr.arrivalDate);
       const departure = fromDbDate(rr.departureDate);
       if (today < arrival) {
-        throw new AppError(`Room ${rr.room.number} is booked from ${arrival}. Change the dates first to check in early.`);
+        throw new AppError(msgf("Room {room} is booked from {date}. Change the dates first to check in early.", { room: rr.room.number, date: arrival }));
       }
       if (rr.isDayUse ? today !== arrival : today >= departure) {
-        throw new AppError(`This stay has already ended (${departure}). Mark it as a no-show or change the dates.`);
+        throw new AppError(msgf("This stay has already ended ({date}). Mark it as a no-show or change the dates.", { date: departure }));
       }
-      if (today > arrival) warnings.push(`Room ${rr.room.number}: guest arrived after the booked arrival date — earlier nights remain charged.`);
+      if (today > arrival) warnings.push(t("Room {room}: guest arrived after the booked arrival date — earlier nights remain charged.", { room: rr.room.number }));
       const room = await tx.room.findUniqueOrThrow({ where: { id: rr.roomId } });
       if (!CHECK_IN_READY.includes(room.status)) {
         const overridden = opts.notReadyOverride?.trim() && OVERRIDABLE_NOT_READY.includes(room.status)
           && actor.permissions?.has("reservations.checkin_override");
         if (!overridden) {
-          throw new AppError(`Room ${room.number} is ${room.status.toLowerCase().replace("_", " ")}. Finish housekeeping or choose another room.`, "CONFLICT");
+          throw new AppError(msgf("Room {room} is {status}. Finish housekeeping or choose another room.", { room: room.number, status: roomStatusWord(t, room.status, room.status.toLowerCase().replace("_", " ")) }), "CONFLICT");
         }
-        warnings.push(`Room ${room.number} was ${room.status.toLowerCase()} — checked in by authorised override.`);
+        warnings.push(t("Room {room} was {status} — checked in by authorised override.", { room: room.number, status: roomStatusWord(t, room.status, room.status.toLowerCase()) }));
         await audit(tx, actor, {
           action: "reservation.checkin_not_ready_override", entityType: "Reservation", entityId: r.id,
           after: { room: room.number, roomStatus: room.status, reason: opts.notReadyOverride!.trim() },
@@ -636,6 +649,7 @@ class PreviewRollback extends Error {
  * can never disagree with what checkout will actually charge.
  */
 export async function previewCheckOut(reservationId: string, opts: { chargeOverstay?: boolean; userId?: string } = {}, now = new Date()): Promise<CheckOutPreview> {
+  const t = await readerT();
   const settings = await db.hotelSettings.findUniqueOrThrow({ where: { id: 1 } });
   const today = businessDateOf(now, stayConfig(settings));
   const rooms = await db.reservationRoom.findMany({
@@ -673,7 +687,8 @@ export async function previewCheckOut(reservationId: string, opts: { chargeOvers
   const openOrders = open.map((o) => ({
     id: o.id, number: o.number, amount: o.total,
     customer: people.get(o.guestId ?? "") ?? people.get(o.session?.guestId ?? "") ?? stay.guest.fullName,
-    at: o.type === "ROOM_SERVICE" ? "for room service" : o.type === "TAKEAWAY" ? "for take out" : `at ${o.location?.name ?? o.tableLabel ?? "the restaurant"}`,
+    // English words the check-out screens put in the reader's language.
+    at: o.type === "ROOM_SERVICE" ? msg("for room service") : o.type === "TAKEAWAY" ? msg("for take out") : `at ${o.location?.name ?? o.tableLabel ?? msg("the restaurant")}`,
   }));
   try {
     await db.$transaction(async (tx) => {
@@ -714,7 +729,7 @@ export async function previewCheckOut(reservationId: string, opts: { chargeOvers
         gross: r.grossAmount, discount: r.discountAmount, charges: r.chargesAmount, total: r.netAmount, paid: r.paidAmount, balance: r.balanceAmount,
         company: g ? {
           // A group room: its bill goes on the group's invoice (paid by the group's company or contact).
-          name: `${g.name} (group${c ? ` · ${c.companyName}` : ` · ${g.contactGuest.fullName}`})`, billTo: r.billTo, covers: [], billedNow: r.companyBilledAmount - billedBefore, billedBefore,
+          name: t("{group} (group · {payer})", { group: g.name, payer: c ? c.companyName : g.contactGuest.fullName }), billTo: r.billTo, covers: [], billedNow: r.companyBilledAmount - billedBefore, billedBefore,
           terms: g.paymentTermDays ?? c?.paymentTermDays ?? 0, consolidate: g.billing === "COMBINED",
         } : c && r.billTo !== "GUEST" ? {
           name: c.companyName, billTo: r.billTo, covers: r.companyCovers, billedNow: r.companyBilledAmount - billedBefore, billedBefore,
@@ -826,10 +841,10 @@ async function checkOutTx(tx: Tx, reservationId: string, actor: Actor, opts: Che
       if (!opts.allowBalance || !mayOverride) {
         throw new AppError(
           mayOverride
-            ? `This guest still owes TZS ${after.balanceAmount.toLocaleString("en-TZ")}. Record the payment, or confirm checkout with an unpaid balance.`
+            ? msgf("This guest still owes TZS {amount}. Record the payment, or confirm checkout with an unpaid balance.", { amount: after.balanceAmount.toLocaleString("en-TZ") })
             : after.leaveOwingAt && after.leaveOwingUpTo != null
-              ? `This guest now owes TZS ${after.balanceAmount.toLocaleString("en-TZ")} — more than the TZS ${after.leaveOwingUpTo.toLocaleString("en-TZ")} the manager allowed. Receive a payment, or ask the manager again.`
-              : `This guest still owes TZS ${after.balanceAmount.toLocaleString("en-TZ")}. Receive the payment first — only a manager can let a guest leave owing (they can allow it on the room card).`,
+              ? msgf("This guest now owes TZS {amount} — more than the TZS {allowed} the manager allowed. Receive a payment, or ask the manager again.", { amount: after.balanceAmount.toLocaleString("en-TZ"), allowed: after.leaveOwingUpTo.toLocaleString("en-TZ") })
+              : msgf("This guest still owes TZS {amount}. Receive the payment first — only a manager can let a guest leave owing (they can allow it on the room card).", { amount: after.balanceAmount.toLocaleString("en-TZ") }),
           "CONFLICT",
         );
       }
@@ -942,8 +957,8 @@ export async function reinstateNoShow(reservationId: string, note: string, actor
     if (held.length === 0) {
       const released = r.rooms.some((x) => x.status === "NO_SHOW" && x.releasedAt);
       throw new AppError(released
-        ? "This booking was marked no-show and its room was released. A manager must decide what to do (check which rooms are free and make a new booking)."
-        : "This booking is not a no-show.", "CONFLICT");
+        ? msg("This booking was marked no-show and its room was released. A manager must decide what to do (check which rooms are free and make a new booking).")
+        : msg("This booking is not a no-show."), "CONFLICT");
     }
     const status = r.paidAmount > 0 || r.billTo !== "GUEST" || r.confirmedAt ? "CONFIRMED" : "RESERVED";
     for (const rr of held) {
@@ -1026,9 +1041,9 @@ async function reassignRoomTx(
       isDayUse: rr.isDayUse,
     };
     const free = await findAvailableRooms({ stay: window, roomIds: [newRoom.id], excludeReservationRoomId: rr.id }, tx);
-    if (free.length === 0) throw new AppError(`Room ${newRoom.number} is not free for this stay.`, "UNAVAILABLE");
+    if (free.length === 0) throw new AppError(msgf("Room {room} is not free for this stay.", { room: newRoom.number }), "UNAVAILABLE");
     if (inHouse && !CHECK_IN_READY.includes(newRoom.status)) {
-      throw new AppError(`Room ${newRoom.number} is not ready (${newRoom.status.toLowerCase()}).`);
+      throw new AppError(msgf("Room {room} is not ready ({status}).", { room: newRoom.number, status: roomStatusWord(await readerT(), newRoom.status, newRoom.status.toLowerCase()) }));
     }
 
     // The booked rate is kept on a room move. For an upgrade, staff may charge the difference
@@ -1091,7 +1106,7 @@ export async function assignAndCheckIn(
   await expireHoldsBeforeTaking({ reservationId }, now);
   const res = await run(async (tx) => {
     const r = await loadForUpdate(tx, reservationId);
-    if (!["RESERVED", "CONFIRMED", "INQUIRY"].includes(r.status)) throw new AppError(`This booking is ${r.status.toLowerCase().replace("_", " ")} — nothing to check in.`);
+    if (!["RESERVED", "CONFIRMED", "INQUIRY"].includes(r.status)) throw new AppError(msgf("This booking is {status} — nothing to check in.", { status: bookingStatusWord(await readerT(), r.status) }));
     for (const a of input.assignments ?? []) {
       const rr = r.rooms.find((x) => x.id === a.reservationRoomId);
       if (!rr) throw new AppError("That room is not part of this booking.", "NOT_FOUND");
@@ -1160,17 +1175,17 @@ export async function changeMeeting(reservationId: string, change: MeetingChange
       try {
         stay = meetingStay({ startAt, endAt }, cfg);
       } catch (e) {
-        if (e instanceof StayError) throw new AppError(e.message, "VALIDATION");
+        if (e instanceof StayError) throw new AppError(e.localized ?? e.message, "VALIDATION");
         throw e;
       }
       if (first.status !== "CHECKED_IN" && stay.arrivalDate < businessDateOf(now, cfg)) {
-        throw new AppError("The meeting date cannot be in the past.", "VALIDATION", { date: "In the past" });
+        throw new AppError("The meeting date cannot be in the past.", "VALIDATION", { date: msg("In the past") });
       }
-      if (stay.endAt <= now) throw new AppError("That meeting time has already passed.", "VALIDATION", { endAt: "In the past" });
+      if (stay.endAt <= now) throw new AppError("That meeting time has already passed.", "VALIDATION", { endAt: msg("In the past") });
       await lockRoomTypes(tx, rooms.map((x) => x.roomTypeId));
       for (const rr of rooms) {
         const free = await findAvailableRooms({ stay, roomIds: [rr.roomId], excludeReservationRoomId: rr.id }, tx);
-        if (!free.length) throw new AppError(`Room ${rr.room.number} is booked or blocked for part of that time. Choose another time.`, "UNAVAILABLE");
+        if (!free.length) throw new AppError(msgf("Room {room} is booked or blocked for part of that time. Choose another time.", { room: rr.room.number }), "UNAVAILABLE");
         await tx.reservationRoom.update({
           where: { id: rr.id },
           data: { startAt: stay.startAt, endAt: stay.endAt, arrivalDate: toDbDate(stay.arrivalDate), departureDate: toDbDate(stay.departureDate) },
@@ -1184,7 +1199,7 @@ export async function changeMeeting(reservationId: string, change: MeetingChange
     if (change.attendees != null && change.attendees !== r.adults) {
       const cap = Math.min(...rooms.map((x) => x.roomType.maxAdults));
       if (!Number.isInteger(change.attendees) || change.attendees < 1 || change.attendees > cap) {
-        throw new AppError(`${first.roomType.name} holds up to ${cap} people.`, "VALIDATION", { attendees: "Too many" });
+        throw new AppError(msgf("{type} holds up to {n} people.", { type: (await readerT())(first.roomType.name), n: cap }), "VALIDATION", { attendees: msg("Too many") });
       }
       await tx.reservationRoom.update({ where: { id: first.id }, data: { adults: change.attendees } });
       await tx.reservation.update({ where: { id: r.id }, data: { adults: change.attendees } });
@@ -1267,7 +1282,7 @@ export function dateChangeMoney(input: {
 const nightLine = (n: { businessDate?: Date; date?: string; base?: number; grossAmount?: number; promoDiscount: number; manualDiscount: number; net?: number; netAmount?: number; promotionName?: string | null; priceRuleName?: string | null; promotion?: { name: string } | null; priceRule?: { name: string } | null }): NightLine => {
   const base = n.base ?? n.grossAmount ?? 0;
   const discount = n.promoDiscount + n.manualDiscount;
-  const note = [n.priceRule?.name ?? n.priceRuleName, n.promotion?.name ?? n.promotionName, n.manualDiscount ? "discount" : null].filter(Boolean).join(" · ") || null;
+  const note = [n.priceRule?.name ?? n.priceRuleName, n.promotion?.name ?? n.promotionName, n.manualDiscount ? msg("discount") : null].filter(Boolean).join(" · ") || null;
   return { date: n.date ?? fromDbDate(n.businessDate!), base, discount, net: n.net ?? n.netAmount ?? base - discount, note };
 };
 const nightText = (l: NightLine) => `${l.date}: ${l.base.toLocaleString("en-US")}${l.discount ? ` − ${l.discount.toLocaleString("en-US")}` : ""} = ${l.net.toLocaleString("en-US")}${l.note ? ` (${l.note})` : ""}`;
@@ -1282,7 +1297,7 @@ export async function previewDateChange(reservationRoomId: string, dates: { arri
   });
   if (!rr) throw new AppError("Booking room not found.", "NOT_FOUND");
   let stay: Stay;
-  try { stay = overnightStay(dates, cfg); } catch (e) { if (e instanceof StayError) throw new AppError(e.message); throw e; }
+  try { stay = overnightStay(dates, cfg); } catch (e) { if (e instanceof StayError) throw new AppError(e.localized ?? e.message); throw e; }
   const inHouse = rr.status === "CHECKED_IN";
   // In the hotel: only from now on matters (the nights already slept are history).
   const window = { ...stay, startAt: inHouse ? laterOf(rr.startAt, new Date()) : stay.startAt };
@@ -1349,7 +1364,7 @@ async function changeStayDatesTx(
     try {
       stay = overnightStay(dates, cfg);
     } catch (e) {
-      if (e instanceof StayError) throw new AppError(e.message);
+      if (e instanceof StayError) throw new AppError(e.localized ?? e.message);
       throw e;
     }
     const targetRoom = opts.roomId && opts.roomId !== rr.roomId
@@ -1362,7 +1377,7 @@ async function changeStayDatesTx(
     const roomId = targetRoom?.id ?? rr.roomId;
     const free = await findAvailableRooms({ stay: window, roomIds: [roomId], excludeReservationRoomId: rr.id }, tx);
     if (free.length === 0) {
-      throw new AppError(`Room ${targetRoom?.number ?? rr.room.number} is not available for ${stay.arrivalDate} → ${stay.departureDate}. Choose one of the free rooms.`, "UNAVAILABLE");
+      throw new AppError(msgf("Room {room} is not available for {from} → {to}. Choose one of the free rooms.", { room: targetRoom?.number ?? rr.room.number, from: stay.arrivalDate, to: stay.departureDate }), "UNAVAILABLE");
     }
 
     const before = {
@@ -1387,7 +1402,7 @@ async function changeStayDatesTx(
     const mid = await tx.reservation.findUniqueOrThrow({ where: { id: rr.reservationId } });
     const money = dateChangeMoney({ oldTotal: before.net, newTotal: mid.netAmount, paid: mid.paidAmount, billed: mid.companyBilledAmount, inHouse, billTo: mid.billTo, settings });
     if (money.dueNow > 0) {
-      if (!opts.payment) throw new AppError(`The new dates cost TZS ${money.additional.toLocaleString("en-TZ")} more. Receive the extra payment to change the dates.`, "VALIDATION", { payment: "Required" });
+      if (!opts.payment) throw new AppError(msgf("The new dates cost TZS {amount} more. Receive the extra payment to change the dates.", { amount: money.additional.toLocaleString("en-TZ") }), "VALIDATION", { payment: "Required" });
       await recordPaymentTx(tx, { reservationId: rr.reservationId, amount: money.dueNow, accountId: opts.payment.accountId, methodId: opts.payment.methodId, reference: opts.payment.reference ?? null, notes: "Date change — extra for the new dates" }, actor);
     }
     if (money.kept > 0) {
@@ -1535,7 +1550,7 @@ export async function extendStay(
   if (!rr) throw new AppError("Booking room not found.", "NOT_FOUND");
   const preview = await previewExtension(reservationRoomId, newDeparture);
   if (!preview.currentRoomAvailable && !opts.moveToRoomId) {
-    throw new AppError(`Room ${preview.room} is not available for the requested extension. Choose another room or cancel the extension.`, "UNAVAILABLE");
+    throw new AppError(msgf("Room {room} is not available for the requested extension. Choose another room or cancel the extension.", { room: preview.room }), "UNAVAILABLE");
   }
   // A guest in the hotel whose room is booked next moves with everything (their bill, charges, payments — the same
   // booking) to the free room chosen; the nights already slept stay with the old room, the new ones cost the new room's price.
@@ -1593,7 +1608,7 @@ export async function discountStayBill(reservationId: string, input: { amount?: 
     // A percent is of what is still to pay (like a table's bill).
     const amount = input.percent ? Math.round((fresh.balanceAmount * Math.min(100, input.percent)) / 100) : Math.round(input.amount ?? 0);
     if (amount <= 0) throw new AppError("Enter the discount.", "VALIDATION", { amount: "Required" });
-    if (amount > fresh.balanceAmount) throw new AppError(`The guest only owes TZS ${fresh.balanceAmount.toLocaleString("en-TZ")} — a discount can't be more than what is still to pay.`, "VALIDATION", { amount: "Too much" });
+    if (amount > fresh.balanceAmount) throw new AppError(msgf("The guest only owes TZS {amount} — a discount can't be more than what is still to pay.", { amount: fresh.balanceAmount.toLocaleString("en-TZ") }), "VALIDATION", { amount: msg("Too much") });
 
     // What the bill is made of: each night (room income) and the charges by kind.
     const nights = await tx.roomNight.findMany({ where: { reservationRoom: { reservationId: r.id }, complimentary: false, netAmount: { gt: 0 } } });
@@ -1683,7 +1698,7 @@ export async function extendStayFree(reservationRoomId: string, newDeparture: Bu
   const rr = await db.reservationRoom.findUnique({ where: { id: reservationRoomId } });
   if (!rr) throw new AppError("Booking room not found.", "NOT_FOUND");
   const preview = await previewExtension(reservationRoomId, newDeparture);
-  if (!preview.currentRoomAvailable) throw new AppError(`Room ${preview.room} is booked after the current checkout — free nights can only be given in the same room.`, "UNAVAILABLE");
+  if (!preview.currentRoomAvailable) throw new AppError(msgf("Room {room} is booked after the current checkout — free nights can only be given in the same room.", { room: preview.room }), "UNAVAILABLE");
   await run(async (tx) => {
     await changeStayDatesTx(tx, reservationRoomId, { arrivalDate: fromDbDate(rr.arrivalDate), departureDate: newDeparture }, actor);
     await tx.roomNight.updateMany({
@@ -1716,14 +1731,14 @@ export async function approveLateCheckout(
     } catch {
       throw new AppError("Enter a valid time (HH:MM).", "VALIDATION", { until: "Invalid" });
     }
-    if (until <= rr.endAt) throw new AppError(`Standard checkout is already ${input.until} or later.`);
+    if (until <= rr.endAt) throw new AppError(msgf("Standard checkout is already {time} or later.", { time: input.until }));
     const dayEnd = zonedInstant(addDays(fromDbDate(rr.departureDate), 1), cfg.businessDayStartMinutes, cfg.timezone);
     if (until >= dayEnd) throw new AppError("That is past the end of the hotel day — extend the stay by a night instead.");
     const clash = await findAvailableRooms({
       stay: { startAt: rr.endAt, endAt: until, arrivalDate: fromDbDate(rr.departureDate), departureDate: fromDbDate(rr.departureDate), isDayUse: true },
       roomIds: [rr.roomId], excludeReservationRoomId: rr.id,
     }, tx);
-    if (clash.length === 0) throw new AppError(`Room ${rr.room.number} is booked for another guest from this afternoon. Offer a later time elsewhere or a room change.`, "UNAVAILABLE");
+    if (clash.length === 0) throw new AppError(msgf("Room {room} is booked for another guest from this afternoon. Offer a later time elsewhere or a room change.", { room: rr.room.number }), "UNAVAILABLE");
     const fee = input.fee ?? settings.lateCheckoutFee;
     if (!Number.isInteger(fee) || fee < 0) throw new AppError("Enter a valid fee.");
     await tx.reservationRoom.update({ where: { id: rr.id }, data: { endAt: until, lateCheckoutUntil: until, lateCheckoutNote: input.note?.trim() || null } });

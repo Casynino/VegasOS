@@ -9,8 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect } from "@/components/ui/native-select";
-import { PAYMENT_TERMS } from "@/lib/billing";
+import { PAYMENT_TERMS, termsLabel } from "@/lib/billing";
 import { cn } from "@/lib/utils";
+import { useT } from "@/i18n/client";
 import { saveCorporateAction } from "./actions";
 
 export type CorporateDefaults = {
@@ -27,6 +28,7 @@ export const EMPTY_COMPANY: CorporateDefaults = {
 const chip = (on: boolean) => cn("rounded-full border px-3 py-1 text-xs font-medium transition-colors", on ? "border-foreground bg-foreground text-background" : "border-border hover:bg-muted");
 
 export function CorporateForm({ c, canEdit, onDone }: { c: CorporateDefaults; canEdit: boolean; onDone?: () => void }) {
+  const t = useT();
   const router = useRouter();
   const [terms, setTerms] = useState(c.paymentTermDays);
   const [consolidate, setConsolidate] = useState(c.consolidateInvoices);
@@ -40,44 +42,44 @@ export function CorporateForm({ c, canEdit, onDone }: { c: CorporateDefaults; ca
           {consolidate && <input type="hidden" name="consolidateInvoices" value="on" />}
 
           <section className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1 sm:col-span-2"><Label htmlFor="companyName">Company name</Label><Input id="companyName" name="companyName" defaultValue={c.companyName} placeholder="ABC Company Ltd" /><FieldError message={e?.companyName} /></div>
-            <div className="space-y-1"><Label htmlFor="contactPerson">Contact person</Label><Input id="contactPerson" name="contactPerson" defaultValue={c.contactPerson} /></div>
-            <div className="space-y-1"><Label htmlFor="phone">Phone</Label><Input id="phone" name="phone" defaultValue={c.phone} /></div>
-            <div className="space-y-1"><Label htmlFor="email">Email (invoices go here)</Label><Input id="email" name="email" defaultValue={c.email} /><FieldError message={e?.email} /></div>
-            <div className="space-y-1"><Label htmlFor="address">Address</Label><Input id="address" name="address" defaultValue={c.address} /></div>
-            <div className="space-y-1 sm:col-span-2"><Label htmlFor="billingAddress">Billing address on invoices <span className="font-normal text-muted-foreground">(one line each; empty = use the address)</span></Label>
+            <div className="space-y-1 sm:col-span-2"><Label htmlFor="companyName">{t("Company name")}</Label><Input id="companyName" name="companyName" defaultValue={c.companyName} placeholder="ABC Company Ltd" /><FieldError message={e?.companyName} /></div>
+            <div className="space-y-1"><Label htmlFor="contactPerson">{t("Contact person")}</Label><Input id="contactPerson" name="contactPerson" defaultValue={c.contactPerson} /></div>
+            <div className="space-y-1"><Label htmlFor="phone">{t("Phone")}</Label><Input id="phone" name="phone" defaultValue={c.phone} /></div>
+            <div className="space-y-1"><Label htmlFor="email">{t("Email (invoices go here)")}</Label><Input id="email" name="email" defaultValue={c.email} /><FieldError message={e?.email} /></div>
+            <div className="space-y-1"><Label htmlFor="address">{t("Address")}</Label><Input id="address" name="address" defaultValue={c.address} /></div>
+            <div className="space-y-1 sm:col-span-2"><Label htmlFor="billingAddress">{t("Billing address on invoices")} <span className="font-normal text-muted-foreground">{t("(one line each; empty = use the address)")}</span></Label>
               <Textarea id="billingAddress" name="billingAddress" rows={2} defaultValue={c.billingAddress} placeholder={"P.O. Box 1234\nDar es Salaam"} /></div>
-            <div className="space-y-1"><Label htmlFor="taxId">TIN</Label><Input id="taxId" name="taxId" defaultValue={c.taxId} /></div>
-            <div className="space-y-1"><Label htmlFor="vrn">VRN</Label><Input id="vrn" name="vrn" defaultValue={c.vrn} /></div>
-            <div className="space-y-1"><Label htmlFor="registrationNo">Registration no. <span className="font-normal text-muted-foreground">(BRELA, optional)</span></Label><Input id="registrationNo" name="registrationNo" defaultValue={c.registrationNo} /></div>
+            <div className="space-y-1"><Label htmlFor="taxId">{t("TIN")}</Label><Input id="taxId" name="taxId" defaultValue={c.taxId} /></div>
+            <div className="space-y-1"><Label htmlFor="vrn">{t("VRN")}</Label><Input id="vrn" name="vrn" defaultValue={c.vrn} /></div>
+            <div className="space-y-1"><Label htmlFor="registrationNo">{t("Registration no.")} <span className="font-normal text-muted-foreground">{t("(BRELA, optional)")}</span></Label><Input id="registrationNo" name="registrationNo" defaultValue={c.registrationNo} /></div>
           </section>
 
           <section className="space-y-3 rounded-2xl border border-border/70 p-4">
-            <p className="text-sm font-semibold">How this company is billed</p>
-            <p className="text-[11px] text-muted-foreground">An invoice is always for the whole bill — room, food, drinks and extras.</p>
+            <p className="text-sm font-semibold">{t("How this company is billed")}</p>
+            <p className="text-[11px] text-muted-foreground">{t("An invoice is always for the whole bill — room, food, drinks and extras.")}</p>
             <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Payment terms</Label>
+              <Label className="text-xs text-muted-foreground">{t("Payment terms")}</Label>
               <div className="flex flex-wrap items-center gap-1.5">
-                {PAYMENT_TERMS.map((d) => <button key={d} type="button" className={chip(terms === d)} onClick={() => setTerms(d)}>{d === 0 ? "Due immediately" : `${d} days`}</button>)}
-                <Input aria-label="Other number of days" type="number" min={0} max={180} value={terms} onChange={(ev) => setTerms(Math.max(0, Math.min(180, Number(ev.target.value) || 0)))} className="h-8 w-20 text-xs" />
+                {PAYMENT_TERMS.map((d) => <button key={d} type="button" className={chip(terms === d)} onClick={() => setTerms(d)}>{termsLabel(d, t)}</button>)}
+                <Input aria-label={t("Other number of days")} type="number" min={0} max={180} value={terms} onChange={(ev) => setTerms(Math.max(0, Math.min(180, Number(ev.target.value) || 0)))} className="h-8 w-20 text-xs" />
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Invoices</Label>
+              <Label className="text-xs text-muted-foreground">{t("Invoices")}</Label>
               <div className="flex flex-wrap gap-1.5">
-                <button type="button" className={chip(!consolidate)} onClick={() => setConsolidate(false)}>One invoice per stay</button>
-                <button type="button" className={chip(consolidate)} onClick={() => setConsolidate(true)}>Collect stays on one invoice (e.g. monthly)</button>
+                <button type="button" className={chip(!consolidate)} onClick={() => setConsolidate(false)}>{t("One invoice per stay")}</button>
+                <button type="button" className={chip(consolidate)} onClick={() => setConsolidate(true)}>{t("Collect stays on one invoice (e.g. monthly)")}</button>
               </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1"><Label htmlFor="creditLimit" className="text-xs text-muted-foreground">Credit limit (TZS) — empty = no limit</Label><Input id="creditLimit" name="creditLimit" type="number" min={0} step={100000} defaultValue={c.creditLimit} /></div>
-              <div className="space-y-1"><Label htmlFor="status" className="text-xs text-muted-foreground">Account status</Label>
-                <NativeSelect id="status" name="status" defaultValue={c.status}><option value="ACTIVE">Active</option><option value="ON_HOLD">Suspended — no new invoice bookings</option><option value="INACTIVE">Inactive</option></NativeSelect></div>
+              <div className="space-y-1"><Label htmlFor="creditLimit" className="text-xs text-muted-foreground">{t("Credit limit (TZS) — empty = no limit")}</Label><Input id="creditLimit" name="creditLimit" type="number" min={0} step={100000} defaultValue={c.creditLimit} /></div>
+              <div className="space-y-1"><Label htmlFor="status" className="text-xs text-muted-foreground">{t("Account status")}</Label>
+                <NativeSelect id="status" name="status" defaultValue={c.status}><option value="ACTIVE">{t("Active")}</option><option value="ON_HOLD">{t("Suspended — no new invoice bookings")}</option><option value="INACTIVE">{t("Inactive")}</option></NativeSelect></div>
             </div>
           </section>
 
-          <div className="space-y-1"><Label htmlFor="billingNotes">Notes</Label><Textarea id="billingNotes" name="billingNotes" rows={2} defaultValue={c.billingNotes} placeholder="e.g. Send invoices to accounts@…, LPO number required" /></div>
-          {canEdit && <Button type="submit" disabled={pending}>{pending && <Loader2 className="animate-spin" />}Save company</Button>}
+          <div className="space-y-1"><Label htmlFor="billingNotes">{t("Notes")}</Label><Textarea id="billingNotes" name="billingNotes" rows={2} defaultValue={c.billingNotes} placeholder={t("e.g. Send invoices to accounts@…, LPO number required")} /></div>
+          {canEdit && <Button type="submit" disabled={pending}>{pending && <Loader2 className="animate-spin" />}{t("Save company")}</Button>}
         </fieldset>
       )}
     </ActionForm>

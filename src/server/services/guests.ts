@@ -2,6 +2,10 @@ import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 import { db, type Tx } from "../db";
 import { AppError } from "../errors";
+import { msg, msgf } from "@/i18n/msg";
+import { getT } from "@/i18n/server";
+import { englishT, type T } from "@/i18n/translate";
+import { isLocale, type Locale } from "@/i18n/config";
 import { audit, type AuditActor } from "../audit";
 import { companyPays } from "@/lib/billing";
 import { IN_SERVICE, sessionMoney, sessionNo } from "./dining-core";
@@ -25,6 +29,26 @@ export interface GuestInput {
    * changed from there: what they typed stays on the booking, for reception to check and save.
    */
   selfService?: boolean;
+}
+
+/**
+ * The language the hotel writes to a customer in (WhatsApp, their pages): "en", "zh-CN", or null = not known (English).
+ * Set by staff on the customer's profile — written to the history like any other change. Presentation only.
+ */
+export async function setGuestLanguage(id: string, language: Locale | null, actor: AuditActor) {
+  if (language !== null && !isLocale(language)) throw new AppError("Choose a language.", "VALIDATION");
+  const g = await db.guest.findUnique({ where: { id }, select: { preferredLanguage: true, deletedAt: true } });
+  if (!g) throw new AppError("Customer not found.", "NOT_FOUND");
+  if (g.deletedAt) throw new AppError("This customer was removed.", "CONFLICT");
+  if ((g.preferredLanguage ?? null) === language) return { changed: false };
+  await db.$transaction(async (tx) => {
+    await tx.guest.update({ where: { id }, data: { preferredLanguage: language } });
+    await audit(tx, actor, {
+      action: "guest.updated", entityType: "Guest", entityId: id,
+      before: { preferredLanguage: g.preferredLanguage ?? null }, after: { preferredLanguage: language },
+    });
+  });
+  return { changed: true };
 }
 
 /** Normalise Tanzanian/international numbers: "0710 223 344" → "+255710223344". */
@@ -56,7 +80,7 @@ export async function resolveGuest(tx: Tx, input: GuestInput): Promise<string> {
     address: input.address?.trim() || null,
     notes: input.notes?.trim() || null,
   };
-  if (!clean.fullName) throw new AppError("Guest name is required.", "VALIDATION", { "guest.fullName": "Required" });
+  if (!clean.fullName) throw new AppError("Guest name is required.", "VALIDATION", { "guest.fullName": msg("Required") });
 
   let existing = input.id ? await tx.guest.findUnique({ where: { id: input.id } }) : null;
   if (input.id && !existing) throw new AppError("Guest not found.", "NOT_FOUND");
@@ -129,11 +153,17 @@ export async function activeStaysFor(client: Tx | typeof db, guestIds: (string |
       rooms: { where: { status: "CHECKED_IN" }, orderBy: { room: { number: "asc" } }, select: { room: { select: { number: true } } } },
     },
   });
+  // Who pays the food is shown as it is (a label on screen) — in the reader's language; only looked up when needed.
+  const t = rs.some((r) => companyPays(r.billTo, r.companyCovers, "FOOD")) ? await getT().catch(() => englishT) : englishT;
+  const payer = (r: (typeof rs)[number]) => {
+    if (r.billTo === "GROUP") return r.group ? t("The group {name} pays", { name: r.group.name }) : t("The group pays");
+    const company = r.corporateCustomer?.companyName;
+    return company != null ? t("{company} pays", { company }) : t("The company pays");
+  };
   return rs.map((r) => ({
     id: r.id, reference: r.reference, rooms: r.rooms.map((x) => x.room.number).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).join(", "), guestName: r.guest.fullName,
     guestIds: [r.guestId, ...r.guests.map((g) => g.guestId)],
-    foodPayer: !companyPays(r.billTo, r.companyCovers, "FOOD") ? null
-      : r.billTo === "GROUP" ? `The group${r.group ? ` ${r.group.name}` : ""} pays` : `${r.corporateCustomer?.companyName ?? "The company"} pays`,
+    foodPayer: !companyPays(r.billTo, r.companyCovers, "FOOD") ? null : payer(r),
   }));
 }
 export type ActiveStay = Awaited<ReturnType<typeof activeStaysFor>>[number];
@@ -288,7 +318,7 @@ export async function removeCustomer(id: string, actor: AuditActor & { permissio
     reservations: { where: { status: { in: ["RESERVED", "CONFIRMED", "CHECKED_IN"] } }, select: { reference: true }, take: 1 },
     diningSessions: { where: { openAtId: { not: null } }, select: { id: true }, take: 1 },
   } });
-  if (open?.reservations.length) throw new AppError(`They have a booking that is still open (${open.reservations[0].reference}) — finish or cancel it first.`, "CONFLICT");
+  if (open?.reservations.length) throw new AppError(msgf("They have a booking that is still open ({ref}) — finish or cancel it first.", { ref: open.reservations[0].reference }), "CONFLICT");
   if (open?.diningSessions.length) throw new AppError("They are at a table right now — clear the table first.", "CONFLICT");
   const f = await customerFootprint(id);
   const snapshot = { fullName: g.fullName, phone: g.phone, altPhone: g.altPhone, email: g.email, reference: g.reference };
@@ -317,24 +347,24 @@ export async function removeCustomer(id: string, actor: AuditActor & { permissio
 
 const tzs = (n: number) => `TZS ${n.toLocaleString("en-US")}`;
 
-/** Where an order was served: the table, the room, take out or the counter. */
-const orderPlace = (o: { type: string; roomNumber: string | null; tableLabel: string | null; location: { name: string } | null }) =>
-  o.location?.name ?? o.tableLabel ?? (o.type === "ROOM_SERVICE" && o.roomNumber ? `Room ${o.roomNumber}` : o.type === "TAKEAWAY" ? "Take out" : o.type === "PICKUP" ? "Pick up" : "Counter");
+/** Where an order was served: the table, the room, take out or the counter (the table's own name as it is). */
+const orderPlace = (o: { type: string; roomNumber: string | null; tableLabel: string | null; location: { name: string } | null }, t: T = englishT) =>
+  o.location?.name ?? o.tableLabel ?? (o.type === "ROOM_SERVICE" && o.roomNumber ? t("Room {room}", { room: o.roomNumber }) : o.type === "TAKEAWAY" ? t("Take out") : o.type === "PICKUP" ? t("Pick up") : t("Counter"));
 
 /**
  * Where an order's bill is, in plain words: on a room ("On Room 305's bill"), paid, waiting for
  * reception to confirm the money, or still to pay. `tone` colours it on screen.
  */
-export function orderBilling(o: { type: string; settlement: string; paymentStatus: string; roomNumber: string | null; total: number; paidAmount: number }) {
-  if (o.settlement === "ROOM") return { text: o.roomNumber ? `On Room ${o.roomNumber}'s bill` : "On a room bill", tone: "room" as const };
-  if (o.paymentStatus === "PAID") return { text: o.type === "ROOM_SERVICE" ? "Paid now — not on the room" : "Paid at the restaurant", tone: "paid" as const };
-  if (o.paymentStatus === "PENDING_CONFIRMATION") return { text: "Waiting for reception", tone: "waiting" as const };
-  return { text: `Unpaid · ${tzs(Math.max(0, o.total - o.paidAmount))}`, tone: "due" as const };
+export function orderBilling(o: { type: string; settlement: string; paymentStatus: string; roomNumber: string | null; total: number; paidAmount: number }, t: T = englishT) {
+  if (o.settlement === "ROOM") return { text: o.roomNumber ? t("On Room {room}'s bill", { room: o.roomNumber }) : t("On a room bill"), tone: "room" as const };
+  if (o.paymentStatus === "PAID") return { text: o.type === "ROOM_SERVICE" ? t("Paid now — not on the room") : t("Paid at the restaurant"), tone: "paid" as const };
+  if (o.paymentStatus === "PENDING_CONFIRMATION") return { text: t("Waiting for reception"), tone: "waiting" as const };
+  return { text: t("Unpaid · {amount}", { amount: tzs(Math.max(0, o.total - o.paidAmount)) }), tone: "due" as const };
 }
 export type OrderBilling = ReturnType<typeof orderBilling>;
 
-/** The kinds a customer's room bills are split into — room nights first. */
-export const CHARGE_BUCKETS = ["Room nights", "Restaurant", "Room service", "Transport", "Other"] as const;
+/** The kinds a customer's room bills are split into — room nights first (English keys; the screen shows t(bucket)). */
+export const CHARGE_BUCKETS = [msg("Room nights"), msg("Restaurant"), msg("Room service"), msg("Transport"), msg("Other")] as const;
 export type ChargeBucket = (typeof CHARGE_BUCKETS)[number];
 
 /** Which kind a room-bill line is: food from a table or the counter, room service, transport or other. */
@@ -359,6 +389,9 @@ function chargeBucket(c: { kind: string; category: string | null; restaurantOrde
  */
 export async function customerHistory(guestId: string, opts: { roomMoney?: boolean } = {}) {
   const roomMoney = opts.roomMoney ?? true;
+  // The words this history puts together for the screen (where an order was served, where its bill went) — in the
+  // reader's language; names, references and amounts stay as they are.
+  const t = await getT().catch(() => englishT);
   // Their orders: as the customer, or on a room they booked.
   const theirs = { OR: [{ guestId }, { reservation: { guestId } }] };
   const ordersOf = (roomService: boolean) => db.restaurantOrder.findMany({
@@ -413,10 +446,10 @@ export async function customerHistory(guestId: string, opts: { roomMoney?: boole
   ]);
 
   const orderView = (o: (typeof restaurant)[number]) => ({
-    id: o.id, number: orderNo(o.number), at: o.createdAt, place: orderPlace(o), visit: o.session ? sessionNo(o.session.number) : null,
-    items: o.items.reduce((t, i) => t + i.quantity, 0), total: o.total, cooking: IN_SERVICE.includes(o.status), billing: orderBilling(o),
+    id: o.id, number: orderNo(o.number), at: o.createdAt, place: orderPlace(o, t), visit: o.session ? sessionNo(o.session.number) : null,
+    items: o.items.reduce((n, i) => n + i.quantity, 0), total: o.total, cooking: IN_SERVICE.includes(o.status), billing: orderBilling(o, t),
     // On a room they booked, but ordered by someone else (a friend at the table).
-    forOther: o.guestId && o.guestId !== guestId ? o.customerName ?? "another customer" : null,
+    forOther: o.guestId && o.guestId !== guestId ? o.customerName ?? t("another customer") : null,
   });
 
   // Room bills by kind: room nights from the stay itself, every other line by what it was for.
@@ -433,7 +466,7 @@ export async function customerHistory(guestId: string, opts: { roomMoney?: boole
     if (line) { line.amount += c.amount; continue; }
     lines.set(key, {
       key, at: c.createdAt, bucket, amount: c.amount, stay: c.reservation.reference, stayId: c.reservation.id, orderId: c.restaurantOrderId,
-      label: c.restaurantOrder ? orderHeading(c.restaurantOrder) : c.description,
+      label: c.restaurantOrder ? orderHeading(c.restaurantOrder, "Order ", t) : c.description,
     });
   }
 
@@ -445,7 +478,7 @@ export async function customerHistory(guestId: string, opts: { roomMoney?: boole
       table: open ? {
         name: open.location.name, visit: sessionNo(open.number), since: open.startedAt, withName: open.guestId !== guestId ? open.guest.fullName : null, money: sessionMoney(open.orders),
         // What of this table went on THEIR room(s) — a friend's orders on the friend's own room are not theirs.
-        onTheirRoom: open.orders.filter((o) => o.status !== "CANCELLED" && o.settlement === "ROOM" && active.some((x) => x.id === o.reservationId)).reduce((t, o) => t + o.total, 0),
+        onTheirRoom: open.orders.filter((o) => o.status !== "CANCELLED" && o.settlement === "ROOM" && active.some((x) => x.id === o.reservationId)).reduce((sum, o) => sum + o.total, 0),
       } : null,
     },
     stays: stays.map((r) => ({
@@ -467,7 +500,7 @@ export async function customerHistory(guestId: string, opts: { roomMoney?: boole
       })),
       restaurant: restaurantPayments.map((p) => ({
         id: p.id, at: p.collectedAt, amount: p.amount, reversed: p.status !== "POSTED", why: p.reverseReason, account: p.account.name, reference: p.reference,
-        confirmed: !!p.confirmedAt, order: orderNo(p.order.number), orderId: p.order.id, place: orderPlace(p.order),
+        confirmed: !!p.confirmedAt, order: orderNo(p.order.number), orderId: p.order.id, place: orderPlace(p.order, t),
       })),
     },
     charges: roomMoney ? { buckets, total: Object.values(buckets).reduce((a, b) => a + b, 0), lines: [...lines.values()].slice(0, 15) } : null,

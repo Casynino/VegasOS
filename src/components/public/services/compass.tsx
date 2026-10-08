@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { msg } from "@/i18n/msg";
 import { HOTEL_COORDS } from "../kit/hud";
 import fx from "./fx.module.css";
 
@@ -59,13 +60,17 @@ export function OutlineNumerals({ children, className }: { children: string; cla
   );
 }
 
-/** "The way back · 06°46′S · 39°14′E" between two hairlines (two centred lines on phones). */
-export function WayBack({ className }: { className?: string }) {
+/**
+ * "The way back · 06°46′S · 39°14′E" between two hairlines (two centred lines on phones).
+ * This module also runs in the browser (the error page's LostCompass), so it cannot translate on its own:
+ * a server page passes `label={t("The way back")}`.
+ */
+export function WayBack({ label = msg("The way back"), className }: { label?: React.ReactNode; className?: string }) {
   return (
     <div className={cn("flex items-center justify-center gap-4", className)}>
       <span aria-hidden="true" className="h-px w-8 bg-linear-to-r from-transparent to-pub-line sm:w-16" />
       <p className="flex flex-col items-center gap-1.5 font-mono text-[10px] font-medium uppercase leading-none tracking-[0.2em] text-pub-muted sm:flex-row sm:gap-2 sm:text-[11px]">
-        <span>The way back</span>
+        <span>{label}</span>
         <span aria-hidden="true" className="hidden sm:inline">·</span>
         <span className="text-pub-eyebrow">{HOTEL_COORDS.label}</span>
       </p>

@@ -5,6 +5,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import type { DiningSessionStatus, RestaurantOrderStatus } from "@/generated/prisma/enums";
 import { audit } from "../audit";
 import { AppError } from "../errors";
+import { msgf } from "@/i18n/msg";
 import { getSettingsTx, stayConfig } from "../settings";
 import { businessDateOf, toDbDate } from "@/lib/time/business-date";
 import type { Actor } from "./reservations";
@@ -77,7 +78,22 @@ export async function holdingReservationTx(tx: Tx, locationId: string, now: Date
 }
 
 export const reservedMessage = (name: string, place: string, at: Date, tz: string) =>
-  `${place} is reserved for ${name} at ${at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: tz })}.`;
+  `${place} is reserved for ${name} at ${reservedTime(at, tz)}.`;
+/** A reservation's time of day in hotel time ("19:30" — the same in every language). */
+export const reservedTime = (at: Date, tz: string) => at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: tz });
+
+/** "Table 4 is under maintenance (broken leg) — …": why a blocked table cannot be used, in the reader's language. */
+function blockedTableMessage(l: { name: string; blockedAs: string | null; blockedReason: string | null }) {
+  const vars = { table: l.name, reason: l.blockedReason };
+  if (l.blockedAs === "MAINTENANCE") {
+    return l.blockedReason
+      ? msgf("{table} is under maintenance ({reason}) — choose another table, or a manager reopens it.", vars)
+      : msgf("{table} is under maintenance — choose another table, or a manager reopens it.", vars);
+  }
+  return l.blockedReason
+    ? msgf("{table} is not available ({reason}) — choose another table, or a manager reopens it.", vars)
+    : msgf("{table} is not available — choose another table, or a manager reopens it.", vars);
+}
 
 export type StartSession = {
   locationId: string; guestId: string; guestCount?: number | null; source: SessionSource;
@@ -96,14 +112,14 @@ export async function startSessionTx(tx: Tx, input: StartSession, actor: Actor |
   const l = await tx.restaurantLocation.findUnique({ where: { id: input.locationId }, include: { openSession: { select: { id: true, guest: { select: { fullName: true } } } } } });
   if (!l || !l.isActive) throw new AppError("That table is not in use — choose another.", "VALIDATION", { locationId: "Inactive" });
   if (l.kind !== "TABLE") throw new AppError("Only tables have a customer's session — the counter and the restaurant QR order as before.", "VALIDATION", { locationId: "Not a table" });
-  if (l.blockedAs) throw new AppError(`${l.name} is ${l.blockedAs === "MAINTENANCE" ? "under maintenance" : "not available"}${l.blockedReason ? ` (${l.blockedReason})` : ""} — choose another table, or a manager reopens it.`, "CONFLICT", { locationId: "Blocked" });
-  if (l.openSession) throw new AppError(`${l.name} already has a customer (${l.openSession.guest.fullName}) — choose another table, or add them to that table.`, "CONFLICT", { locationId: "Occupied" });
+  if (l.blockedAs) throw new AppError(blockedTableMessage(l), "CONFLICT", { locationId: "Blocked" });
+  if (l.openSession) throw new AppError(msgf("{table} already has a customer ({name}) — choose another table, or add them to that table.", { table: l.name, name: l.openSession.guest.fullName }), "CONFLICT", { locationId: "Occupied" });
   const count = input.guestCount ?? 1;
   if (!Number.isInteger(count) || count < 1 || count > 60) throw new AppError("How many people? 1 to 60.", "VALIDATION", { guestCount: "Invalid" });
   const settings = await getSettingsTx(tx);
   if (input.source !== "RESERVATION" && !input.override) {
     const held = await holdingReservationTx(tx, l.id, now);
-    if (held) throw new AppError(`${reservedMessage(held.guest.fullName, l.name, held.reservedFor, settings.timezone)} Seat them there, choose another table — or seat anyway.`, "CONFLICT", { locationId: "Reserved" });
+    if (held) throw new AppError(msgf("{table} is reserved for {name} at {time}. Seat them there, choose another table — or seat anyway.", { table: l.name, name: held.guest.fullName, time: reservedTime(held.reservedFor, settings.timezone) }), "CONFLICT", { locationId: "Reserved" });
   }
   const bd = businessDateOf(now, stayConfig(settings));
   // The table's waiter serves them — or, at a table nobody has, the waiter seating them.

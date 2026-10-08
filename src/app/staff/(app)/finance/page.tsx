@@ -1,11 +1,15 @@
 import type { Metadata } from "next";
+import { getT } from "@/i18n/server";
 import { redirect } from "next/navigation";
 import { can, requirePagePermission } from "@/server/auth";
 import { businessToday } from "@/server/settings";
 import { readPeriod } from "@/components/staff/finance/finance-nav";
 import { FinanceOverview } from "./finance-overview";
 
-export const metadata: Metadata = { title: "Finance" };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT();
+  return { title: t("Finance") };
+}
 
 export default async function FinanceOverviewPage({ searchParams }: PageProps<"/staff/finance">) {
   const user = await requirePagePermission("ledger.view", "finance.view");

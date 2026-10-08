@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { ArrowRight, Eye, EyeOff, Loader2 } from "lucide-react";
+import { useT } from "@/i18n/client";
 import { loginAction, type LoginState } from "./actions";
 
 const field =
@@ -10,18 +11,19 @@ const field =
 export function LoginForm() {
   const [state, action, pending] = useActionState<LoginState, FormData>(loginAction, undefined);
   const [show, setShow] = useState(false);
+  const t = useT();
   return (
     <form action={action} className="space-y-3.5 sm:space-y-4">
       <div className="space-y-1.5">
-        <label htmlFor="email" className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/60 sm:text-xs">Email</label>
+        <label htmlFor="email" className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/60 sm:text-xs">{t("Email")}</label>
         <input key={state?.email ?? ""} id="email" name="email" type="email" autoComplete="username" required autoFocus
-          defaultValue={state?.email} placeholder="you@vegashoteltz.com" className={field} />
+          defaultValue={state?.email} placeholder={t("you@vegashoteltz.com")} className={field} />
       </div>
       <div className="space-y-1.5">
-        <label htmlFor="password" className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/60 sm:text-xs">Password</label>
+        <label htmlFor="password" className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/60 sm:text-xs">{t("Password")}</label>
         <div className="relative">
           <input id="password" name="password" type={show ? "text" : "password"} autoComplete="current-password" required className={`${field} pr-12`} />
-          <button type="button" onClick={() => setShow((v) => !v)} aria-label={show ? "Hide password" : "Show password"}
+          <button type="button" onClick={() => setShow((v) => !v)} aria-label={show ? t("Hide password") : t("Show password")}
             className="absolute right-2 top-1/2 grid size-9 -translate-y-1/2 place-items-center rounded-lg text-white/50 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/40">
             {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
           </button>
@@ -33,7 +35,7 @@ export function LoginForm() {
       <button type="submit" disabled={pending}
         className="group mt-1 inline-flex h-11 w-full items-center justify-center gap-2 rounded-full border border-gold/70 bg-gold/[0.08] text-[14px] font-medium text-[#f0d6a0] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition-colors hover:border-gold hover:bg-gold/[0.16] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold disabled:opacity-60">
         {pending ? <Loader2 className="size-4 animate-spin" /> : null}
-        {pending ? "Signing in…" : "Sign in"}
+        {pending ? t("Signing in…") : t("Sign in")}
         {!pending && <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />}
       </button>
     </form>

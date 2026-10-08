@@ -4,6 +4,9 @@ import type { Prisma } from "@/generated/prisma/client";
 import type { DiningSessionStatus } from "@/generated/prisma/enums";
 import { audit } from "../audit";
 import { AppError, isUniqueViolation } from "../errors";
+import { msg, msgf } from "@/i18n/msg";
+import { getT } from "@/i18n/server";
+import { englishT, type T } from "@/i18n/translate";
 import { getSettings } from "../settings";
 import { shortName, validPhone } from "@/lib/guest-messages";
 import { activeStaysFor, normalizePhone, pickedCustomerTx, resolveGuest, type ActiveStay } from "./guests";
@@ -12,7 +15,7 @@ import { activeLocation } from "./restaurant-locations";
 import { awaitingOnlineTx, chargeOrderToRoomTx, CLOSED_STATUSES, markServedOnClearTx, payOrdersTx, type PayInput } from "./restaurant";
 import {
   endSessionTx, holdingReservationTx, HOLD_AFTER_MIN, HOLD_BEFORE_MIN, IN_SERVICE, issueSeatTx, lockLocationTx, lockSessionTx, OPEN_SESSION, refreshSessionTx,
-  reservedMessage, seatOf, sessionEventTx, sessionMoney, sessionNo, startSessionTx,
+  reservedTime, seatOf, sessionEventTx, sessionMoney, sessionNo, startSessionTx,
 } from "./dining-core";
 import type { Actor } from "./reservations";
 
@@ -103,22 +106,32 @@ const orderView = (o: OrderRowLike): SessionOrder => ({
   items: o.items.map((i) => ({ id: i.id, name: i.name, qty: i.quantity, price: i.unitPrice, total: i.lineTotal, made: !!i.preparedAt, paid: !!i.paymentId, round: i.round })),
 });
 
-function sessionView(s: SessionRow, stays: TableStay[] = []): SessionView {
+/** The translator for whoever is looking (English outside a request — jobs, tests). */
+const viewerT = () => getT().catch(() => englishT);
+
+function sessionView(s: SessionRow, stays: TableStay[] = [], t: T = englishT): SessionView {
   const orders = s.orders.map(orderView);
   const live = s.orders.filter((o) => o.status !== "CANCELLED");
   const m = sessionMoney(s.orders);
   const timeline: SessionView["timeline"] = [
     ...s.events.map((e) => ({ at: e.at.toISOString(), kind: e.kind, text: e.note ?? e.kind, by: e.byLabel })),
-    ...s.orders.map((o) => ({
-      at: o.createdAt.toISOString(), kind: o.status === "CANCELLED" ? "ORDER_CANCELLED" : "ORDER",
-      text: `Order ${shortOrder(o.number)} · ${o.items.reduce((t, i) => t + i.quantity, 0)} item(s) · TZS ${o.total.toLocaleString("en-US")}${o.status === "CANCELLED" ? " — cancelled" : ""}`,
-      by: o.createdBy?.fullName ?? o.customerName ?? "Customer",
+    // Composed for the screen in the reader's language (the events above are kept as they were written).
+    ...s.orders.map((o) => {
+      const vars = { order: shortOrder(o.number), n: o.items.reduce((u, i) => u + i.quantity, 0), amount: o.total.toLocaleString("en-US") };
+      return {
+        at: o.createdAt.toISOString(), kind: o.status === "CANCELLED" ? "ORDER_CANCELLED" : "ORDER",
+        text: o.status === "CANCELLED" ? t("Order {order} · {n} item(s) · TZS {amount} — cancelled", vars) : t("Order {order} · {n} item(s) · TZS {amount}", vars),
+        by: o.createdBy?.fullName ?? o.customerName ?? t("Customer"),
+      };
+    }),
+    ...s.orders.flatMap((o) => o.payments.map((p) => {
+      const vars = { amount: p.amount.toLocaleString("en-US"), account: t(p.account.name), order: shortOrder(o.number) };
+      return {
+        at: p.collectedAt.toISOString(), kind: p.status === "POSTED" ? "PAYMENT" : "PAYMENT_REVERSED",
+        text: p.status === "POSTED" ? t("Payment · TZS {amount} · {account} · {order}", vars) : t("Payment (reversed) · TZS {amount} · {account} · {order}", vars),
+        by: p.collectedBy?.fullName ?? null,
+      };
     })),
-    ...s.orders.flatMap((o) => o.payments.map((p) => ({
-      at: p.collectedAt.toISOString(), kind: p.status === "POSTED" ? "PAYMENT" : "PAYMENT_REVERSED",
-      text: `${p.status === "POSTED" ? "Payment" : "Payment (reversed)"} · TZS ${p.amount.toLocaleString("en-US")} · ${p.account.name} · ${shortOrder(o.number)}`,
-      by: p.collectedBy?.fullName ?? null,
-    }))),
   ].sort((a, b) => a.at.localeCompare(b.at));
   return {
     id: s.id, number: s.number, status: s.status, source: s.source, table: s.location.name, locationId: s.locationId,
@@ -162,7 +175,7 @@ export type FloorPlace = {
 /** The restaurant floor for staff: every place, who is at each table now, and its next reservation. */
 export async function tableFloor(opts: { today: string; now?: Date }): Promise<FloorPlace[]> {
   const now = opts.now ?? new Date();
-  const [places, bookings] = await Promise.all([
+  const [places, bookings, t] = await Promise.all([
     db.restaurantLocation.findMany({
       where: { isActive: true }, orderBy: { sortOrder: "asc" },
       include: {
@@ -176,13 +189,14 @@ export async function tableFloor(opts: { today: string; now?: Date }): Promise<F
       where: { status: { in: ["BOOKED", "CONFIRMED"] }, reservedFor: { gte: new Date(now.getTime() - HOLD_AFTER_MIN * 60_000), lte: new Date(now.getTime() + 24 * 3600_000) } },
       orderBy: { reservedFor: "asc" }, include: { guest: { select: { fullName: true, phone: true } } },
     }),
+    viewerT(),
   ]);
   const stays = await activeStaysFor(db, places.flatMap((l) => (l.openSession ? sessionPeople(l.openSession) : [])));
   return places.map((l) => {
     const r = bookings.find((b) => b.locationId === l.id);
     return {
       id: l.id, kind: l.kind, area: l.area, number: l.number, name: l.name, qrToken: l.qrToken, qrActive: l.qrActive, scans: l.scanCount, lastScan: l.lastScannedAt?.toISOString() ?? null,
-      session: l.openSession ? sessionView(l.openSession, staysOf(l.openSession, stays)) : null,
+      session: l.openSession ? sessionView(l.openSession, staysOf(l.openSession, stays), t) : null,
       loose: l.orders.map(orderView),
       next: r ? {
         id: r.id, reference: r.reference, name: r.guest.fullName, phone: r.guest.phone, at: r.reservedFor.toISOString(), guests: r.guestCount, status: r.status,
@@ -219,7 +233,7 @@ export async function sessionById(id: string) {
   const s = await db.diningSession.findUnique({ where: { id }, include: SESSION_INCLUDE });
   if (!s) return null;
   const open = OPEN_SESSION.includes(s.status);
-  return sessionView(s, open ? (await activeStaysFor(db, sessionPeople(s))).map(tableStay) : []);
+  return sessionView(s, open ? (await activeStaysFor(db, sessionPeople(s))).map(tableStay) : [], await viewerT());
 }
 
 /** A table's past customers, newest first. */
@@ -273,7 +287,7 @@ export async function addSessionMember(sessionId: string, input: { name: string;
     const already = await tx.diningSessionMember.findUnique({ where: { sessionId_guestId: { sessionId, guestId } } });
     if (already) throw new AppError("They are already on this table.", "CONFLICT");
     const other = await tx.diningSessionMember.findFirst({ where: { guestId, session: { openAtId: { not: null }, id: { not: sessionId } } }, include: { session: { include: { location: { select: { name: true } } } } } });
-    if (other) throw new AppError(`That number is on ${other.session.location.name} right now.`, "CONFLICT");
+    if (other) throw new AppError(msgf("That number is on {table} right now.", { table: other.session.location.name }), "CONFLICT");
     const m = await tx.diningSessionMember.create({ data: { sessionId, guestId, addedById: actor.userId ?? null, addedAt: now }, include: { guest: { select: { fullName: true } } } });
     await sessionEventTx(tx, sessionId, "MEMBER_ADDED", `${m.guest.fullName} added to ${s.location.name} — they can order from the QR too`, actor, now);
     await audit(tx, actor, { action: "dining_session.member_added", entityType: "DiningSession", entityId: sessionId, after: { guest: guestId, name: m.guest.fullName } });
@@ -324,14 +338,14 @@ export async function moveSession(sessionId: string, toLocationId: string, opts:
       const s = await openSessionTx(tx, sessionId);
       const to = await tx.restaurantLocation.findUnique({ where: { id: toLocationId }, include: { openSession: { select: { id: true, guest: { select: { fullName: true } } } } } });
       if (!to || !to.isActive || to.kind !== "TABLE") throw new AppError("Choose one of the tables.", "VALIDATION", { locationId: "Invalid" });
-      if (to.id === s.locationId) throw new AppError(`They are already at ${to.name}.`, "VALIDATION");
-      if (to.blockedAs) throw new AppError(`${to.name} is ${to.blockedAs === "MAINTENANCE" ? "under maintenance" : "not available"} — choose another table.`, "CONFLICT", { locationId: "Blocked" });
-      if (to.openSession) throw new AppError(`${to.name} has a customer (${to.openSession.guest.fullName}) — choose a free table.`, "CONFLICT", { locationId: "Occupied" });
+      if (to.id === s.locationId) throw new AppError(msgf("They are already at {table}.", { table: to.name }), "VALIDATION");
+      if (to.blockedAs) throw new AppError(to.blockedAs === "MAINTENANCE" ? msgf("{table} is under maintenance — choose another table.", { table: to.name }) : msgf("{table} is not available — choose another table.", { table: to.name }), "CONFLICT", { locationId: "Blocked" });
+      if (to.openSession) throw new AppError(msgf("{table} has a customer ({name}) — choose a free table.", { table: to.name, name: to.openSession.guest.fullName }), "CONFLICT", { locationId: "Occupied" });
       if (!opts.override) {
         const held = await holdingReservationTx(tx, to.id, now);
         if (held) {
           const settings = await getSettings();
-          throw new AppError(`${reservedMessage(held.guest.fullName, to.name, held.reservedFor, settings.timezone)} Choose another table — or move anyway.`, "CONFLICT", { locationId: "Reserved" });
+          throw new AppError(msgf("{table} is reserved for {name} at {time}. Choose another table — or move anyway.", { table: to.name, name: held.guest.fullName, time: reservedTime(held.reservedFor, settings.timezone) }), "CONFLICT", { locationId: "Reserved" });
         }
       }
       const reason = opts.reason?.trim().slice(0, 200) || null;
@@ -366,7 +380,7 @@ export async function takeSessionPayment(sessionId: string, input: PayInput, act
     if (due <= 0) throw new AppError("Nothing is left to pay on this table.", "VALIDATION");
     // An order the customer paid online is never paid again here (its payment is checked on its own).
     const online = await awaitingOnlineTx(tx, orders.filter((o) => o.status !== "CANCELLED" && o.settlement !== "ROOM").map((o) => o.id));
-    if (online.length) throw new AppError(`Order ${shortOrder(online[0].number)} was paid online — confirm or decline its payment first, then take the rest of the bill.`, "CONFLICT");
+    if (online.length) throw new AppError(msgf("Order {order} was paid online — confirm or decline its payment first, then take the rest of the bill.", { order: shortOrder(online[0].number) }), "CONFLICT");
     if (s.status === "ACTIVE") {
       await tx.diningSession.update({ where: { id: sessionId }, data: { status: "AWAITING_PAYMENT", billRequestedAt: s.billRequestedAt ?? now } });
       await sessionEventTx(tx, sessionId, "BILL_REQUESTED", "Bill paid at the table", actor, now);
@@ -390,11 +404,11 @@ export async function chargeSessionToRoom(sessionId: string, reservationId: stri
     const s = await openSessionTx(tx, sessionId);
     const orders = await tx.restaurantOrder.findMany({ where: { sessionId }, orderBy: { id: "asc" }, select: { id: true, number: true, status: true, settlement: true, total: true, paidAmount: true } });
     const part = orders.find((o) => o.status !== "CANCELLED" && o.settlement !== "ROOM" && o.paidAmount > 0 && o.paidAmount < o.total);
-    if (part) throw new AppError(`Order ${shortOrder(part.number)} is already part paid — receive the rest of it as a payment, then put the other orders on the room.`, "VALIDATION");
+    if (part) throw new AppError(msgf("Order {order} is already part paid — receive the rest of it as a payment, then put the other orders on the room.", { order: shortOrder(part.number) }), "VALIDATION");
     const todo = orders.filter((o) => o.status !== "CANCELLED" && o.settlement !== "ROOM" && o.paidAmount === 0);
     if (!todo.length) throw new AppError("Nothing on this table is left to put on a room.", "VALIDATION");
     const online = await awaitingOnlineTx(tx, todo.map((o) => o.id));
-    if (online.length) throw new AppError(`Order ${shortOrder(online[0].number)} was paid online — it cannot go on a room. Confirm or decline its payment first.`, "CONFLICT");
+    if (online.length) throw new AppError(msgf("Order {order} was paid online — it cannot go on a room. Confirm or decline its payment first.", { order: shortOrder(online[0].number) }), "CONFLICT");
     let total = 0, room = "";
     for (const o of todo) {
       const done = await chargeOrderToRoomTx(tx, o.id, reservationId, actor, now, opts);
@@ -426,10 +440,10 @@ export async function closeSession(sessionId: string, opts: { note?: string | nu
     const s = await openSessionTx(tx, sessionId);
     const orders = await tx.restaurantOrder.findMany({ where: { sessionId }, select: { id: true, number: true, status: true, settlement: true, total: true, paidAmount: true } });
     const m = sessionMoney(orders);
-    if (m.due > 0) throw new AppError(`TZS ${m.due.toLocaleString("en-US")} is still to pay — the table can be cleared only when the bill is fully paid.`, "VALIDATION");
+    if (m.due > 0) throw new AppError(msgf("TZS {amount} is still to pay — the table can be cleared only when the bill is fully paid.", { amount: m.due.toLocaleString("en-US") }), "VALIDATION");
     const coming = orders.filter((o) => IN_SERVICE.includes(o.status));
     if (coming.length && !opts.serveRemaining) {
-      throw new AppError(`Order ${shortOrder(coming[0].number)} is not marked served yet — serve it, or clear the table saying they got everything.`, "VALIDATION", { serving: String(coming.length) });
+      throw new AppError(msgf("Order {order} is not marked served yet — serve it, or clear the table saying they got everything.", { order: shortOrder(coming[0].number) }), "VALIDATION", { serving: String(coming.length) });
     }
     // "They got everything" is a waiter's word — reception never marks food served (the restaurant's steps stay the restaurant's).
     if (coming.length && !actor.permissions?.has("restaurant.serve")) throw new AppError("A waiter confirms that orders were served — ask the table's waiter to clear it.", "FORBIDDEN");
@@ -448,7 +462,7 @@ export type GuestTable = {
   state: "free" | "mine" | "in_use" | "reserved";
   mine: null | {
     number: string; name: string; table: string; status: DiningSessionStatus; startedAt: string; billRequested: boolean;
-    orders: { number: string; status: string; total: number; track: string | null; items: { name: string; qty: number; price: number }[] }[];
+    orders: { number: string; status: string; total: number; track: string | null; items: { name: string; nameI18n: unknown; qty: number; price: number }[] }[];
     total: number; paid: number; due: number; serving: number;
     /** Put on their hotel room's bill (paid when they check out), and which room. */
     onRoom: number; room: string | null;
@@ -474,7 +488,7 @@ export async function guestTableState(locationId: string, seatToken: string | nu
       mine: {
         number: sessionNo(s.number), name: seat!.member.guest.fullName.split(/\s+/)[0], table: s.location.name, status: s.status, startedAt: s.startedAt.toISOString(),
         billRequested: s.status !== "ACTIVE",
-        orders: s.orders.map((o) => ({ number: shortOrder(o.number), status: o.status, total: o.total, track: o.trackToken, items: o.items.map((i) => ({ name: i.name, qty: i.quantity, price: i.unitPrice })) })),
+        orders: s.orders.map((o) => ({ number: shortOrder(o.number), status: o.status, total: o.total, track: o.trackToken, items: o.items.map((i) => ({ name: i.name, nameI18n: i.nameI18n, qty: i.quantity, price: i.unitPrice })) })),
         total: m.total, paid: m.paid, due: m.due, serving: m.serving,
         onRoom: m.onRoom, room: s.orders.find((o) => o.settlement === "ROOM")?.roomNumber ?? null,
       },
@@ -560,13 +574,13 @@ export async function seatReservationTx(tx: Prisma.TransactionClient, reservatio
   await tx.$queryRaw`SELECT "id" FROM "table_reservations" WHERE "id" = ${reservationId} FOR UPDATE`;
   const r = await tx.tableReservation.findUnique({ where: { id: reservationId }, include: { location: { select: { name: true } } } });
   if (!r) throw new AppError("Reservation not found.", "NOT_FOUND");
-  if (r.status !== "BOOKED" && r.status !== "CONFIRMED") throw new AppError(r.status === "SEATED" ? "They are already seated." : "This reservation was cancelled or marked no-show.", "CONFLICT");
+  if (r.status !== "BOOKED" && r.status !== "CONFIRMED") throw new AppError(r.status === "SEATED" ? msg("They are already seated.") : msg("This reservation was cancelled or marked no-show."), "CONFLICT");
   const at = opts.locationId ?? r.locationId;
   if (at !== r.locationId) {
     // Seated at another table than booked: another reservation holding that table must be respected.
     if (!opts.override) {
       const held = await holdingReservationTx(tx, at, now, r.id);
-      if (held) throw new AppError(`That table is reserved for ${held.guest.fullName} — choose another, or seat anyway.`, "CONFLICT", { locationId: "Reserved" });
+      if (held) throw new AppError(msgf("That table is reserved for {name} — choose another, or seat anyway.", { name: held.guest.fullName }), "CONFLICT", { locationId: "Reserved" });
     }
     await tx.tableMove.create({ data: { tableReservationId: r.id, fromLocationId: r.locationId, toLocationId: at, reason: "Seated at another table", byId: actor?.userId ?? null, byLabel: actor?.label ?? "Customer", at: now } });
   }

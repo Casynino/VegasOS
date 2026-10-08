@@ -8,9 +8,11 @@ import {
   type DayButton,
   type Locale,
 } from "react-day-picker"
+import { zhCN } from "react-day-picker/locale/zh-CN"
 
 import { Button, buttonVariants } from "@/components/ui/button"
 import { ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon } from "lucide-react"
+import { useT } from "@/i18n/client"
 
 function Calendar({
   className,
@@ -18,7 +20,7 @@ function Calendar({
   showOutsideDays = true,
   captionLayout = "label",
   buttonVariant = "ghost",
-  locale,
+  locale: localeProp,
   formatters,
   components,
   ...props
@@ -26,6 +28,9 @@ function Calendar({
   buttonVariant?: React.ComponentProps<typeof Button>["variant"]
 }) {
   const defaultClassNames = getDefaultClassNames()
+  const t = useT()
+  // The person's language when the caller sets none: month/weekday names and the buttons' labels.
+  const locale = localeProp ?? (t.locale === "zh-CN" ? zhCN : undefined)
 
   return (
     <DayPicker

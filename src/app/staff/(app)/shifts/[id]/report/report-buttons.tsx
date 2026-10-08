@@ -8,16 +8,18 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { makeShiftReportAction, regenerateShiftReportAction, sendShiftReportAction } from "./actions";
+import { useT } from "@/i18n/client";
 
 /** The report is not there yet: make it now (still only once). */
 export function MakeShiftReportButton({ shiftId, className }: { shiftId: string; className?: string }) {
   const router = useRouter();
+  const t = useT();
   const [pending, start] = useTransition();
   return (
     <Button disabled={pending} className={className} onClick={() => start(async () => {
       const r = await makeShiftReportAction({ shiftId });
       if (r.ok) { toast.success(r.message); router.refresh(); } else toast.error(r.error);
-    })}>{pending ? <Loader2 className="animate-spin" /> : <FileText />}Make the report now</Button>
+    })}>{pending ? <Loader2 className="animate-spin" /> : <FileText />}{t("Make the report now")}</Button>
   );
 }
 
@@ -38,21 +40,22 @@ export function RegenerateShiftReportButton({ shiftId, className }: { shiftId: s
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [pending, start] = useTransition();
+  const t = useT();
   const go = () => start(async () => {
     const r = await regenerateShiftReportAction({ shiftId, reason });
     if (r.ok) { toast.success(r.message); setOpen(false); setReason(""); router.refresh(); } else toast.error(r.error);
   });
   return (
     <>
-      <Button variant="outline" className={className} onClick={() => setOpen(true)}><RefreshCw />Regenerate</Button>
+      <Button variant="outline" className={className} onClick={() => setOpen(true)}><RefreshCw />{t("Regenerate")}</Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader icon={<RefreshCw />} eyebrow="Shift report" tone="violet">
-            <DialogTitle>Regenerate this shift report?</DialogTitle>
-            <DialogDescription>It is rebuilt from the records of the shift. The current version stays in the report&apos;s history with who replaced it and why.</DialogDescription>
+          <DialogHeader icon={<RefreshCw />} eyebrow={t("Shift report")} tone="violet">
+            <DialogTitle>{t("Regenerate this shift report?")}</DialogTitle>
+            <DialogDescription>{t("It is rebuilt from the records of the shift. The current version stays in the report's history with who replaced it and why.")}</DialogDescription>
           </DialogHeader>
-          <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} placeholder="Why? e.g. a payment in this shift was corrected" />
-          <Button disabled={pending || reason.trim().length < 5} onClick={go}>{pending && <Loader2 className="animate-spin" />}Make a new version</Button>
+          <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} placeholder={t("Why? e.g. a payment in this shift was corrected")} />
+          <Button disabled={pending || reason.trim().length < 5} onClick={go}>{pending && <Loader2 className="animate-spin" />}{t("Make a new version")}</Button>
         </DialogContent>
       </Dialog>
     </>

@@ -4,6 +4,9 @@ import { db } from "../db";
 import type { Prisma } from "@/generated/prisma/client";
 import { audit } from "../audit";
 import { AppError, isUniqueViolation } from "../errors";
+import { msg, msgf } from "@/i18n/msg";
+import { getT } from "@/i18n/server";
+import { englishT, type T } from "@/i18n/translate";
 import { getSettingsTx, stayConfig } from "../settings";
 import { businessDateOf, toDbDate } from "@/lib/time/business-date";
 import { worksWaiterShift } from "@/lib/permissions";
@@ -30,6 +33,8 @@ const decides = (a: WorkActor) => ["dashboard.manager", "dashboard.owner", "dash
 const isWaiter = (a: WorkActor) => !!a.userId && !!a.permissions && worksWaiterShift(a.permissions);
 const how = (a: WorkActor): AssignVia => (a.deviceUserId ? "PIN" : decides(a) ? "MANAGER" : "SELF");
 const first = (n: string | null | undefined) => n?.replace(/\s*\(.*\)/, "") ?? "";
+/** The translator for whoever is acting (English outside a request — jobs, tests). */
+const actorT = () => getT().catch(() => englishT);
 
 function needReason(reason: string | null | undefined) {
   const why = reason?.trim() ?? "";
@@ -41,10 +46,10 @@ function needReason(reason: string | null | undefined) {
 async function receiverTx(tx: Tx, toUserId: string, actor: WorkActor, fromUserId?: string | null) {
   const w = (await waitersToAssign()).find((x) => x.id === toUserId);
   if (!w) throw new AppError("Choose one of the waiters.", "VALIDATION", { waiter: "Invalid" });
-  if (fromUserId && fromUserId === toUserId) throw new AppError(`It is already ${first(w.name)}'s.`, "VALIDATION", { waiter: "Same" });
+  if (fromUserId && fromUserId === toUserId) throw new AppError(msgf("It is already {name}'s.", { name: first(w.name) }), "VALIDATION", { waiter: "Same" });
   await lockWaiterTx(tx, toUserId, fromUserId);
   if (!decides(actor) && !(await openWaiterShiftTx(tx, toUserId))) {
-    throw new AppError(`${first(w.name)} is not on shift — they start their shift first (or a manager hands it to them).`, "CONFLICT", { waiter: "Off shift" });
+    throw new AppError(msgf("{name} is not on shift — they start their shift first (or a manager hands it to them).", { name: first(w.name) }), "CONFLICT", { waiter: "Off shift" });
   }
   return w;
 }
@@ -96,7 +101,7 @@ export async function transferOrder(orderId: string, toUserId: string, reason: s
   return db.$transaction(async (tx) => {
     const o = await tx.restaurantOrder.findUnique({ where: { id: orderId }, select: { number: true, assignedToId: true } });
     if (!o) throw new AppError("Order not found.", "NOT_FOUND");
-    if (!decides(actor) && o.assignedToId !== actor.userId) throw new AppError(o.assignedToId ? "Only the waiter serving this order (or a manager) can transfer it." : "Nobody is serving this order yet — serve it yourself instead.", "FORBIDDEN");
+    if (!decides(actor) && o.assignedToId !== actor.userId) throw new AppError(o.assignedToId ? msg("Only the waiter serving this order (or a manager) can transfer it.") : msg("Nobody is serving this order yet — serve it yourself instead."), "FORBIDDEN");
     const w = await receiverTx(tx, toUserId, actor, o.assignedToId);
     await setOrderWaiterTx(tx, orderId, toUserId, actor, now, { kind: "TRANSFER", via: how(actor), reason: why, expectFrom: o.assignedToId });
     return { number: o.number, to: w.name };
@@ -110,7 +115,7 @@ export async function transferTable(locationId: string, toUserId: string, reason
     const l = await tx.restaurantLocation.findUnique({ where: { id: locationId }, select: { name: true, waiterId: true, openSession: { select: { waiterId: true, status: true } } } });
     if (!l) throw new AppError("Table not found.", "NOT_FOUND");
     const from = l.openSession && OPEN_SESSION.includes(l.openSession.status) ? l.openSession.waiterId : l.waiterId;
-    if (!decides(actor) && from !== actor.userId) throw new AppError(from ? `Only the waiter serving ${l.name} (or a manager) can transfer it.` : `Nobody is serving ${l.name} yet — serve it yourself instead.`, "FORBIDDEN");
+    if (!decides(actor) && from !== actor.userId) throw new AppError(from ? msgf("Only the waiter serving {table} (or a manager) can transfer it.", { table: l.name }) : msgf("Nobody is serving {table} yet — serve it yourself instead.", { table: l.name }), "FORBIDDEN");
     const w = await receiverTx(tx, toUserId, actor, from);
     const r = await setTableWaiterTx(tx, locationId, toUserId, actor, now, { kind: "TRANSFER", via: how(actor), reason: why, expectFrom: from });
     return { table: r.table, to: w.name, orders: r.orders };
@@ -121,11 +126,11 @@ export async function transferTable(locationId: string, toUserId: string, reason
 export async function transferRoomService(roomNumber: string, toUserId: string, reason: string, actor: WorkActor, now = new Date(), fromUserId?: string | null) {
   const why = needReason(reason);
   const from = decides(actor) ? (fromUserId ?? (await db.room.findUnique({ where: { number: roomNumber }, select: { serviceWaiterId: true } }))?.serviceWaiterId ?? null) : actor.userId;
-  if (!from) throw new AppError(`No waiter has room ${roomNumber}'s room service — hand it to someone instead.`);
+  if (!from) throw new AppError(msgf("No waiter has room {room}'s room service — hand it to someone instead.", { room: roomNumber }));
   return db.$transaction(async (tx) => {
     const w = await receiverTx(tx, toUserId, actor, from);
     const r = await setRoomWaiterTx(tx, roomNumber, from, toUserId, actor, now, { kind: "TRANSFER", via: how(actor), reason: why });
-    if (!r.changed) throw new AppError(`Nothing of room ${roomNumber} is ${from === actor.userId ? "yours" : "theirs"} to transfer.`);
+    if (!r.changed) throw new AppError(from === actor.userId ? msgf("Nothing of room {room} is yours to transfer.", { room: roomNumber }) : msgf("Nothing of room {room} is theirs to transfer.", { room: roomNumber }));
     return { room: roomNumber, to: w.name, orders: r.orders };
   });
 }
@@ -207,12 +212,16 @@ export async function waiterResponsibilities(userId: string) {
 }
 export type WaiterResponsibilities = Awaited<ReturnType<typeof waiterResponsibilities>>;
 
-/** "Transfer or finish first: 2 orders (#12 · Table 4, #15 · Room 204), 1 table (Table 4)". */
-function blockersText(r: Awaited<ReturnType<typeof responsibilitiesTx>>) {
-  const parts: string[] = [];
-  if (r.orders.length) parts.push(`${r.orders.length} order${r.orders.length > 1 ? "s" : ""} (${r.orders.slice(0, 4).map((o) => `${shortOrder(o.number)} · ${o.type === "ROOM_SERVICE" ? `Room ${o.roomNumber ?? "?"}` : o.tableLabel ?? "no table"}`).join(", ")}${r.orders.length > 4 ? ", …" : ""})`);
-  if (r.sessions.length) parts.push(`${r.sessions.length} table${r.sessions.length > 1 ? "s" : ""} with customers (${r.sessions.map((s) => s.location.name).join(", ")})`);
-  return parts.join(" and ");
+/** "Transfer or finish first: 2 orders (#12 · Table 4, #15 · Room 204), 1 table (Table 4)" — in the reader's language. */
+function blockersText(r: Awaited<ReturnType<typeof responsibilitiesTx>>, t: T = englishT) {
+  const where = (o: (typeof r.orders)[number]) => (o.type === "ROOM_SERVICE" ? t("Room {room}", { room: o.roomNumber ?? "?" }) : o.tableLabel != null ? t(o.tableLabel) : t("no table"));
+  const orders = r.orders.length
+    ? t.plural(r.orders.length, "{n} order ({list})", "{n} orders ({list})", { list: `${r.orders.slice(0, 4).map((o) => `${shortOrder(o.number)} · ${where(o)}`).join(", ")}${r.orders.length > 4 ? ", …" : ""}` })
+    : "";
+  const tables = r.sessions.length
+    ? t.plural(r.sessions.length, "{n} table with customers ({list})", "{n} tables with customers ({list})", { list: r.sessions.map((s) => t(s.location.name)).join(", ") })
+    : "";
+  return orders && tables ? t("{orders} and {tables}", { orders, tables }) : orders || tables;
 }
 
 // ─── The waiter's shift ─────────────────────────────────────────────────────
@@ -240,7 +249,7 @@ export async function startWaiterShift(actor: WorkActor, now = new Date()) {
  * Close a waiter's shift (inside the transaction, nothing left with them): their standing tables and rooms
  * are freed. Returns what they served in it — service, not money (the Restaurant Counter records payments).
  */
-async function closeWaiterShiftTx(tx: Tx, shift: { id: string; userId: string; businessDate: Date; startedAt: Date }, actor: WorkActor, now: Date, note: string | null, reason: string | null, batchId: string) {
+async function closeWaiterShiftTx(tx: Tx, shift: { id: string; userId: string; businessDate: Date; startedAt: Date }, actor: WorkActor, now: Date, note: string | null, reason: string | null, batchId: string, t: T = englishT) {
   const release = { kind: "RELEASED" as const, via: "SHIFT_CLOSE" as const, reason: reason ?? "Shift closed", batchId };
   for (const l of await tx.restaurantLocation.findMany({ where: { waiterId: shift.userId }, select: { id: true }, orderBy: { id: "asc" } })) {
     await setTableWaiterTx(tx, l.id, null, actor, now, { ...release, standing: true, fromUserId: shift.userId });
@@ -250,20 +259,21 @@ async function closeWaiterShiftTx(tx: Tx, shift: { id: string; userId: string; b
   }
   await tx.actualShift.update({ where: { id: shift.id }, data: { endedAt: now, closingNote: note, closedById: actor.userId ?? null, closeReason: reason } });
   const served = await tx.restaurantOrder.count({ where: { deliveredById: shift.userId, deliveredAt: { gte: shift.startedAt, lte: now } } });
-  return { served, text: served ? `You served ${served} order${served === 1 ? "" : "s"} this shift.` : "No order served this shift." };
+  return { served, text: served ? t.plural(served, "You served {n} order this shift.", "You served {n} orders this shift.") : t("No order served this shift.") };
 }
 
 /** The waiter closes their own shift — refused while any order or table is still theirs (transfer or finish it first). */
 export async function endWaiterShift(actor: WorkActor, note?: string | null, now = new Date()) {
   if (!actor.userId) throw new AppError("Sign in first.", "FORBIDDEN");
   const me = actor.userId;
+  const t = await actorT();
   return db.$transaction(async (tx) => {
     await lockWaiterTx(tx, me);
     const shift = await openWaiterShiftTx(tx, me);
     if (!shift) throw new AppError("Your shift is not running.");
     const left = await responsibilitiesTx(tx, me);
-    if (left.blocking) throw new AppError(`You still have ${blockersText(left)}. Transfer them to a colleague on shift, or finish them, then close your shift.`, "CONFLICT", { shift: "Work left" });
-    const work = await closeWaiterShiftTx(tx, shift, actor, now, note?.trim().slice(0, 1000) || null, null, randomUUID());
+    if (left.blocking) throw new AppError(msgf("You still have {work}. Transfer them to a colleague on shift, or finish them, then close your shift.", { work: blockersText(left, t) }), "CONFLICT", { shift: "Work left" });
+    const work = await closeWaiterShiftTx(tx, shift, actor, now, note?.trim().slice(0, 1000) || null, null, randomUUID(), t);
     await audit(tx, actor, { action: "shift.ended", entityType: "ActualShift", entityId: shift.id, after: { department: "RESTAURANT", served: work.served, note: note?.trim() || null } });
     // `collected` stays only for endWaiterShiftAction's declared type — waiters no longer record payments (always 0).
     return { served: work.served, text: work.text, collected: 0, shiftId: shift.id };
@@ -278,6 +288,7 @@ export async function closeWaiterShiftAsManager(actor: WorkActor & { userId: str
   if (!actor.permissions.has("shifts.manage")) throw new AppError("Only a manager can close someone's shift.", "FORBIDDEN");
   const why = reason.trim();
   if (why.length < 5) throw new AppError("Say why you close this shift (e.g. the waiter left without closing).", "VALIDATION", { reason: "Required" });
+  const t = await actorT();
   return db.$transaction(async (tx) => {
     const shift = await tx.actualShift.findUnique({ where: { id: shiftId }, include: { user: { select: { fullName: true } } } });
     if (!shift || shift.department !== "RESTAURANT") throw new AppError("Waiter shift not found.", "NOT_FOUND");
@@ -287,7 +298,7 @@ export async function closeWaiterShiftAsManager(actor: WorkActor & { userId: str
     let handed: { tables: number; rooms: number; orders: number; to: string } | null = null;
     const left = await responsibilitiesTx(tx, shift.userId);
     if (left.blocking) {
-      if (!toUserId) throw new AppError(`${first(shift.user.fullName)} still has ${blockersText(left)} — choose the waiter who carries on with them.`, "VALIDATION", { waiter: "Required" });
+      if (!toUserId) throw new AppError(msgf("{name} still has {work} — choose the waiter who carries on with them.", { name: first(shift.user.fullName), work: blockersText(left, t) }), "VALIDATION", { waiter: "Required" });
       const w = (await waitersToAssign()).find((x) => x.id === toUserId);
       if (!w || w.id === shift.userId) throw new AppError("Choose another waiter to carry on with the work.", "VALIDATION", { waiter: "Invalid" });
       handed = { ...(await transferAllTx(tx, shift.userId, toUserId, actor, now, { via: "SHIFT_CLOSE", reason: why, batchId })), to: w.name };

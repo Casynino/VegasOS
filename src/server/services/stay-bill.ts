@@ -1,14 +1,19 @@
 import "server-only";
 import { db } from "../db";
 import { fromDbDate } from "@/lib/time/business-date";
+import { msg } from "@/i18n/msg";
+import { getT } from "@/i18n/server";
+import { englishT, type T } from "@/i18n/translate";
 import { CHARGE_ORDER, chargeItem, orderHeading } from "./stays";
 
 /**
  * A stay's bill (folio) to view, print or download — every room night, everything added
  * to the room (restaurant, bar, room service, extras), every payment and the balance.
  * The totals are the booking's own (kept by the billing engine), never worked out again here.
+ * `t`: the reader's translator for the order headings (else whoever this request is for — the staff member, or the
+ * guest on their own link).
  */
-export async function stayBill(reservationId: string) {
+export async function stayBill(reservationId: string, t?: T) {
   const r = await db.reservation.findUnique({
     where: { id: reservationId },
     include: {
@@ -36,17 +41,19 @@ export async function stayBill(reservationId: string) {
       gross, discount: gross - net, net,
     };
   });
-  const SECTION: Record<string, string> = { RESTAURANT: "Restaurant", BAR: "Bar", ROOM_SERVICE: "Room service" };
+  const SECTION: Record<string, string> = { RESTAURANT: msg("Restaurant"), BAR: msg("Bar"), ROOM_SERVICE: msg("Room service") };
   // A restaurant order's lines sit under the order ("Restaurant — Outside 3 · Order #184"); an
   // order brought to the room goes under Room service. The place comes from the order itself,
-  // so older lines (written before the place was in their words) show it too.
+  // so older lines (written before the place was in their words) show it too. The heading is shown as it is: in the
+  // reader's language (the section stays English — the bill compares it, and translates it where it shows it).
+  const words = t ?? (r.charges.some((c) => c.restaurantOrder) ? await getT().catch(() => englishT) : englishT);
   const charges = r.charges.map((c) => {
     const o = c.restaurantOrder;
     return {
       id: c.id, date: fromDbDate(c.businessDate), description: chargeItem(c.description, o), amount: c.amount,
-      section: o ? (o.type === "ROOM_SERVICE" ? "Room service" : "Restaurant")
-        : c.category === "ROOM_SERVICE" || c.category === "ROOM_SERVICE_FEE" ? "Room service" : SECTION[c.kind] ?? "Services & extras",
-      order: o ? { id: o.id, heading: orderHeading(o) } : null,
+      section: o ? (o.type === "ROOM_SERVICE" ? msg("Room service") : msg("Restaurant"))
+        : c.category === "ROOM_SERVICE" || c.category === "ROOM_SERVICE_FEE" ? msg("Room service") : SECTION[c.kind] ?? msg("Services & extras"),
+      order: o ? { id: o.id, heading: orderHeading(o, "Order ", words) } : null,
     };
   });
   const payments = r.payments.map((p) => ({ id: p.id, at: p.receivedAt, account: p.account?.name ?? p.method.name, reference: p.reference, amount: p.amount, refund: p.kind === "REFUND" }));

@@ -4,6 +4,8 @@ import type { Prisma } from "@/generated/prisma/client";
 import type { MoneyAccountKind } from "@/generated/prisma/enums";
 import { AppError } from "../errors";
 import { audit } from "../audit";
+import { getT } from "@/i18n/server";
+import { msg, msgf } from "@/i18n/msg";
 
 /**
  * Payment accounts — the hotel's official places money is received (Cash, Lipa,
@@ -17,7 +19,7 @@ export const METHOD_FOR_KIND: Record<MoneyAccountKind, string> = {
   CASH: "CASH", PETTY_CASH: "CASH", BANK: "BANK", MOBILE_MONEY: "MOBILE_MONEY", CARD: "CARD", OTHER: "OTHER",
 };
 export const KIND_LABEL: Record<MoneyAccountKind, string> = {
-  CASH: "Cash", PETTY_CASH: "Cash", BANK: "Bank", MOBILE_MONEY: "Mobile Money", CARD: "Card", OTHER: "Other",
+  CASH: msg("Cash"), PETTY_CASH: msg("Cash"), BANK: msg("Bank"), MOBILE_MONEY: msg("Mobile Money"), CARD: msg("Card"), OTHER: msg("Other"),
 };
 
 type Client = Prisma.TransactionClient | typeof db;
@@ -37,9 +39,9 @@ export async function resolveAccountTx(
   const field = "accountId";
   if (input.accountId) {
     const account = await tx.moneyAccount.findUnique({ where: { id: input.accountId } });
-    if (!account || !account.isActive) throw new AppError("That account is not active. Choose where the money went.", "VALIDATION", { [field]: "Inactive" });
-    if (use === "payments" && !account.acceptsPayments) throw new AppError(`${account.name} does not receive payments. Choose another account.`, "VALIDATION", { [field]: "Not allowed" });
-    if (use === "expenses" && !account.acceptsExpenses) throw new AppError(`${account.name} is not used to pay expenses. Choose another account.`, "VALIDATION", { [field]: "Not allowed" });
+    if (!account || !account.isActive) throw new AppError("That account is not active. Choose where the money went.", "VALIDATION", { [field]: msg("Inactive") });
+    if (use === "payments" && !account.acceptsPayments) throw new AppError(msgf("{account} does not receive payments. Choose another account.", { account: account.name }), "VALIDATION", { [field]: msg("Not allowed") });
+    if (use === "expenses" && !account.acceptsExpenses) throw new AppError(msgf("{account} is not used to pay expenses. Choose another account.", { account: account.name }), "VALIDATION", { [field]: msg("Not allowed") });
     const chosen = input.methodId ? await tx.paymentMethod.findUnique({ where: { id: input.methodId } }) : null;
     const method = chosen?.isActive ? chosen
       : (await tx.paymentMethod.findFirst({ where: { code: METHOD_FOR_KIND[account.kind], isActive: true } }))
@@ -49,12 +51,12 @@ export async function resolveAccountTx(
   }
   if (input.methodId) {
     const method = await tx.paymentMethod.findUnique({ where: { id: input.methodId }, include: { account: true } });
-    if (!method || !method.isActive) throw new AppError("Choose where the money went.", "VALIDATION", { [field]: "Required" });
-    if (!method.account || !method.account.isActive) throw new AppError("Choose where the money went.", "VALIDATION", { [field]: "Required" });
-    if (method.account.code === "NTZS" && !opts.internal) throw new AppError("The nTZS account moves only when nTZS confirms a payment — choose another account.", "VALIDATION", { [field]: "Not allowed" });
+    if (!method || !method.isActive) throw new AppError("Choose where the money went.", "VALIDATION", { [field]: msg("Required") });
+    if (!method.account || !method.account.isActive) throw new AppError("Choose where the money went.", "VALIDATION", { [field]: msg("Required") });
+    if (method.account.code === "NTZS" && !opts.internal) throw new AppError("The nTZS account moves only when nTZS confirms a payment — choose another account.", "VALIDATION", { [field]: msg("Not allowed") });
     return { account: method.account, method };
   }
-  throw new AppError(use === "payments" ? "Choose where the money was received." : "Choose where the money was paid from.", "VALIDATION", { [field]: "Required" });
+  throw new AppError(use === "payments" ? msg("Choose where the money was received.") : msg("Choose where the money was paid from."), "VALIDATION", { [field]: msg("Required") });
 }
 
 export type AccountOption = { id: string; name: string; kind: MoneyAccountKind; number: string | null; holder: string | null };
@@ -77,9 +79,9 @@ export async function customerPayAccounts() {
 
 export type ActivityType = "ROOM" | "COMPANY" | "MEETING" | "RESTAURANT" | "BAR" | "SALE" | "OTHER_PAYMENT" | "REFUND" | "REVERSAL" | "EXPENSE" | "TRANSFER" | "OWNER" | "ADJUSTMENT" | "OTHER_INCOME";
 export const ACTIVITY_LABEL: Record<ActivityType, string> = {
-  ROOM: "Room payment", COMPANY: "Company invoice", MEETING: "Meeting room", RESTAURANT: "Restaurant", BAR: "Bar", SALE: "Other sale",
-  OTHER_PAYMENT: "Payment", REFUND: "Refund", REVERSAL: "Reversal", EXPENSE: "Expense", TRANSFER: "Transfer", OWNER: "Owner money",
-  ADJUSTMENT: "Correction", OTHER_INCOME: "Other income",
+  ROOM: msg("Room payment"), COMPANY: msg("Company invoice"), MEETING: msg("Meeting room"), RESTAURANT: msg("Restaurant"), BAR: msg("Bar"), SALE: msg("Other sale"),
+  OTHER_PAYMENT: msg("Payment"), REFUND: msg("Refund"), REVERSAL: msg("Reversal"), EXPENSE: msg("Expense"), TRANSFER: msg("Transfer"), OWNER: msg("Owner money"),
+  ADJUSTMENT: msg("Correction"), OTHER_INCOME: msg("Other income"),
 };
 
 export interface ActivityRow {
@@ -102,6 +104,9 @@ const day = (d: Date) => d.toISOString().slice(0, 10);
 
 /** Everything that moved money into or out of one account, in a hotel-day range, newest first. */
 export async function accountActivity(accountId: string, from: string, to: string): Promise<ActivityRow[]> {
+  // Descriptions, tags and one-off notes in the reader's words; a payment's "Reversed later…" note stays English
+  // (the account page reads it) and is translated where it is shown, like the labels.
+  const t = await getT();
   const bd = { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${to}T00:00:00Z`) };
   const [payments, reversals, sales, expenses, entries] = await Promise.all([
     db.payment.findMany({
@@ -127,20 +132,20 @@ export async function accountActivity(accountId: string, from: string, to: strin
     const party = p.reservation?.companyName ?? p.reservation?.guest.fullName ?? p.corporateCustomer?.companyName ?? null;
     rows.push({
       id: `p-${p.id}`, at: p.receivedAt.toISOString(), businessDate: day(p.businessDate), type,
-      description: refund ? `Refund to ${party ?? "customer"}` : `${ACTIVITY_LABEL[type]}${party ? ` — ${party}` : ""}`,
+      description: refund ? t("Refund to {who}", { who: party ?? t("customer") }) : `${t.ctx("money", ACTIVITY_LABEL[type])}${party ? ` — ${party}` : ""}`,
       party, reference: [p.reservation?.reference, p.invoice?.number, p.reference].filter(Boolean).join(" · ") || null,
       room: p.reservation?.rooms.map((r) => r.room.number).join(", ") || null,
       amount: refund ? -p.amount : p.amount, by: p.recordedBy.fullName, byId: p.recordedBy.id,
       href: p.reservation ? `/staff/reservations/${p.reservation.id}` : p.invoice ? `/staff/invoices/${p.invoice.id}` : null,
       related: p.reservation?.reference ?? p.invoice?.number ?? null, proof: null,
-      counted: true, note: p.status === "REVERSED" ? "Reversed later — see the reversal line" : null,
+      counted: true, note: p.status === "REVERSED" ? msg("Reversed later — see the reversal line") : null,
     });
   }
   for (const p of reversals) {
     const party = p.reservation?.guest.fullName ?? p.corporateCustomer?.companyName ?? null;
     rows.push({
       id: `r-${p.id}`, at: (p.reversedAt ?? p.receivedAt).toISOString(), businessDate: day(p.reversalBusinessDate!), type: "REVERSAL",
-      description: `Reversal of ${p.kind === "REFUND" ? "refund to" : "payment by"} ${party ?? "customer"}`, party, reference: p.reservation?.reference ?? p.reference, room: null,
+      description: p.kind === "REFUND" ? t("Reversal of refund to {who}", { who: party ?? t("customer") }) : t("Reversal of payment by {who}", { who: party ?? t("customer") }), party, reference: p.reservation?.reference ?? p.reference, room: null,
       amount: p.kind === "REFUND" ? p.amount : -p.amount, by: p.reversedBy?.fullName ?? "—", byId: p.reversedBy?.id ?? "",
       href: p.reservation ? `/staff/reservations/${p.reservation.id}` : null, related: p.reservation?.reference ?? null, proof: null, counted: true, note: p.reversalReason,
     });
@@ -149,8 +154,8 @@ export async function accountActivity(accountId: string, from: string, to: strin
     const type: ActivityType = s.kind === "RESTAURANT" ? "RESTAURANT" : s.kind === "BAR" ? "BAR" : "SALE";
     rows.push({
       id: `s-${s.id}`, at: s.occurredAt.toISOString(), businessDate: day(s.businessDate), type,
-      description: `${s.category.name}${s.description ? ` — ${s.description}` : ""}`, party: null, reference: null, room: null,
-      amount: s.amount, by: s.recordedBy.fullName, byId: s.recordedBy.id, href: "/staff/sales", related: null, proof: null, counted: !s.isVoided, note: s.isVoided ? `Cancelled: ${s.voidReason ?? ""}` : null,
+      description: `${t(s.category.name)}${s.description ? ` — ${s.description}` : ""}`, party: null, reference: null, room: null,
+      amount: s.amount, by: s.recordedBy.fullName, byId: s.recordedBy.id, href: "/staff/sales", related: null, proof: null, counted: !s.isVoided, note: s.isVoided ? t("Cancelled: {reason}", { reason: s.voidReason ?? "" }) : null,
     });
   }
   for (const e of expenses) {
@@ -159,10 +164,10 @@ export async function accountActivity(accountId: string, from: string, to: strin
     const sr = e.stockRequest;
     rows.push({
       id: `e-${e.id}`, at: e.spentAt.toISOString(), businessDate: day(e.businessDate), type: "EXPENSE",
-      description: e.item?.name ?? e.description, party: e.payee, reference: sr ? [e.number, sr.purchaseNumber, sr.number].filter(Boolean).join(" · ") : e.number, room: null,
+      description: e.item ? t(e.item.name) : e.description, party: e.payee, reference: sr ? [e.number, sr.purchaseNumber, sr.number].filter(Boolean).join(" · ") : e.number, room: null,
       amount: -e.amount, by: e.createdBy.fullName, byId: e.createdBy.id, href: sr ? "/staff/stock-requests" : "/staff/expenses", related: e.number, proof: e.receiptUrl, counted,
-      tag: sr ? `Purchase ${sr.purchaseNumber ?? sr.number}` : null,
-      note: e.status === "VOIDED" ? `Cancelled: ${e.voidReason ?? ""}` : e.status === "PENDING_APPROVAL" ? "Waiting for approval — not counted yet" : e.status === "REJECTED" ? "Rejected" : e.status === "CORRECTION_REQUESTED" ? "Needs correction" : e.category.name,
+      tag: sr ? t("Purchase {number}", { number: sr.purchaseNumber ?? sr.number }) : null,
+      note: e.status === "VOIDED" ? t("Cancelled: {reason}", { reason: e.voidReason ?? "" }) : e.status === "PENDING_APPROVAL" ? msg("Waiting for approval — not counted yet") : e.status === "REJECTED" ? msg("Rejected") : e.status === "CORRECTION_REQUESTED" ? msg("Needs correction") : e.category.name,
     });
   }
   for (const m of entries) {
@@ -170,9 +175,9 @@ export async function accountActivity(accountId: string, from: string, to: strin
     const type: ActivityType = m.kind === "TRANSFER" ? "TRANSFER" : m.kind.startsWith("OWNER") ? "OWNER" : m.kind === "OTHER_INCOME" ? "OTHER_INCOME" : "ADJUSTMENT";
     rows.push({
       id: `m-${m.id}`, at: m.occurredAt.toISOString(), businessDate: day(m.businessDate), type,
-      description: m.kind === "TRANSFER" ? `${m.description} (${m.account.name} → ${m.toAccount?.name ?? "?"})` : m.description,
+      description: m.kind === "TRANSFER" ? `${m.description} (${t(m.account.name)} → ${m.toAccount ? t(m.toAccount.name) : "?"})` : m.description,
       party: null, reference: m.reference ?? m.number, room: null, amount: incoming ? m.amount : -m.amount, by: m.createdBy.fullName, byId: m.createdBy.id,
-      href: null, related: m.number, proof: m.attachmentFileId ? `/api/files/${m.attachmentFileId}` : null, counted: m.status === "POSTED", note: m.status === "REVERSED" ? `Reversed: ${m.reversalReason ?? ""}` : null,
+      href: null, related: m.number, proof: m.attachmentFileId ? `/api/files/${m.attachmentFileId}` : null, counted: m.status === "POSTED", note: m.status === "REVERSED" ? t("Reversed: {reason}", { reason: m.reversalReason ?? "" }) : null,
     });
   }
   return rows.sort((a, b) => b.businessDate.localeCompare(a.businessDate) || b.at.localeCompare(a.at));
@@ -236,14 +241,14 @@ export interface AccountInput {
  */
 export async function savePaymentAccount(input: AccountInput, actor: { userId: string; label?: string; ipAddress?: string | null }) {
   const name = input.name.trim();
-  if (name.length < 2) throw new AppError("Give the account a name.", "VALIDATION", { name: "Required" });
+  if (name.length < 2) throw new AppError("Give the account a name.", "VALIDATION", { name: msg("Required") });
   const data = {
     name, kind: input.kind, accountNumber: input.accountNumber?.trim() || null, holderName: input.holderName?.trim() || null,
     acceptsPayments: input.acceptsPayments, acceptsExpenses: input.acceptsExpenses, isActive: input.isActive,
   };
   return db.$transaction(async (tx) => {
     const clash = await tx.moneyAccount.findFirst({ where: { name: { equals: name, mode: "insensitive" }, ...(input.id ? { id: { not: input.id } } : {}) } });
-    if (clash) throw new AppError(`There is already an account called ${clash.name}.`, "VALIDATION", { name: "Duplicate" });
+    if (clash) throw new AppError(msgf("There is already an account called {name}.", { name: clash.name }), "VALIDATION", { name: msg("Duplicate") });
     if (input.id) {
       const before = await tx.moneyAccount.findUnique({ where: { id: input.id } });
       if (!before) throw new AppError("Account not found.", "NOT_FOUND");

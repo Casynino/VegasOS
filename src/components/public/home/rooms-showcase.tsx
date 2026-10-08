@@ -1,6 +1,8 @@
 import { ViewTransition } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { getT } from "@/i18n/server";
+import type { T } from "@/i18n/translate";
 import { GlassPanel, HudLabel, InfoList, LinkButton, MediaFrame, PriceTag, Rail, TextLink, typeScale } from "../kit";
 import { RoomCard, roomFacts, type RoomCardData } from "../room-card";
 import css from "./home.module.css";
@@ -11,13 +13,13 @@ export interface ShowcaseRoom extends RoomCardData {
 }
 
 /** "Available tonight" / "2 left tonight" — live, and only when there is something to say. */
-function tonightLabel(free: number | null) {
+function tonightLabel(free: number | null, t: T) {
   if (!free) return null;
-  return free <= 3 ? `${free} left tonight` : "Available tonight";
+  return free <= 3 ? t("{n} left tonight", { n: free }) : t("Available tonight");
 }
 
-function Tonight({ free, className }: { free: number | null; className?: string }) {
-  const label = tonightLabel(free);
+function Tonight({ free, t, className }: { free: number | null; t: T; className?: string }) {
+  const label = tonightLabel(free, t);
   if (!label) return null;
   return (
     <p className={cn(typeScale.meta, "flex items-center gap-2 text-pub-muted", className)}>
@@ -25,6 +27,15 @@ function Tonight({ free, className }: { free: number | null; className?: string 
       {label}
     </p>
   );
+}
+
+/** The pricing engine's promotion label ("10% off", "TZS 20,000 off") in the visitor's words; anything else as given. */
+function promoText(label: string, t: T) {
+  const pct = /^(\d+(?:\.\d+)?)% off$/.exec(label);
+  if (pct) return t("{value}% off", { value: pct[1] });
+  const tzs = /^TZS ([\d,]+) off$/.exec(label);
+  if (tzs) return t("TZS {amount} off", { amount: tzs[1] });
+  return t(label);
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -40,29 +51,33 @@ const nameLink =
  * room. The lead photo and each tile share the `room-{slug}` view transition with the room page,
  * so every slug appears once here.
  */
-export function RoomsShowcase({ rooms }: { rooms: ShowcaseRoom[] }) {
+export async function RoomsShowcase({ rooms }: { rooms: ShowcaseRoom[] }) {
   const [featured, ...others] = rooms;
   if (!featured) return null;
+  const t = await getT();
+  const name = t(featured.name);
+  const shortDescription = featured.shortDescription ? t(featured.shortDescription) : null;
   const href = `/rooms/${featured.slug}`;
   const discounted = featured.net < featured.baseRate;
-  const index = `Room type ${pad(1)} / ${pad(rooms.length)}`;
-  const tonight = tonightLabel(featured.tonightFree);
+  const index = t("Room type {n} / {total}", { n: pad(1), total: pad(rooms.length) });
+  const tonight = tonightLabel(featured.tonightFree, t);
   const price = (size: "md" | "lg") => (
     <PriceTag
       amount={featured.net}
       from
       size={size}
       was={discounted ? featured.baseRate : null}
-      note={discounted && featured.promo ? <span className="text-pub-eyebrow">{featured.promo}</span> : undefined}
+      note={discounted && featured.promo ? <span className="text-pub-eyebrow">{promoText(featured.promo, t)}</span> : undefined}
     />
   );
   const actions = (
     <div className="flex flex-wrap items-center gap-x-7 gap-y-3">
       <LinkButton href={`/book?type=${featured.slug}`} icon="arrow">
-        Book this room
+        {t("Book this room")}
       </LinkButton>
       <TextLink href={href}>
-        Explore room<span className="sr-only">: {featured.name}</span>
+        {t("Explore room")}
+        <span className="sr-only">{t(": {name}", { name })}</span>
       </TextLink>
     </div>
   );
@@ -77,7 +92,7 @@ export function RoomsShowcase({ rooms }: { rooms: ShowcaseRoom[] }) {
               <ViewTransition name={`room-${featured.slug}`} share="vlh-morph" default="none">
                 <MediaFrame
                   src={featured.image}
-                  alt={`${featured.name} at Vegas Luxury Hotel`}
+                  alt={t("{name} at Vegas Luxury Hotel", { name })}
                   ratio="1/1"
                   ratioSm="3/2"
                   ratioLg="16/9"
@@ -97,7 +112,7 @@ export function RoomsShowcase({ rooms }: { rooms: ShowcaseRoom[] }) {
             <HudLabel className="text-white/75">{index}</HudLabel>
             <h3 className={cn(typeScale.feature, "pointer-events-auto mt-3")}>
               <Link href={href} className={nameLink}>
-                {featured.name}
+                {name}
               </Link>
             </h3>
             <div className="mt-3">{price("md")}</div>
@@ -119,11 +134,11 @@ export function RoomsShowcase({ rooms }: { rooms: ShowcaseRoom[] }) {
             </div>
             <h3 className={cn(typeScale.feature, "mt-5")}>
               <Link href={href} className={nameLink}>
-                {featured.name}
+                {name}
               </Link>
             </h3>
-            {featured.shortDescription && <p className={cn(typeScale.small, "mt-3 line-clamp-2 text-pub-muted")}>{featured.shortDescription}</p>}
-            <InfoList items={roomFacts(featured)} className="mt-4" />
+            {shortDescription && <p className={cn(typeScale.small, "mt-3 line-clamp-2 text-pub-muted")}>{shortDescription}</p>}
+            <InfoList items={roomFacts(featured, t)} className="mt-4" />
             <div className="mt-5 border-t border-pub-line pt-5">{price("lg")}</div>
             <div className="mt-6">{actions}</div>
           </GlassPanel>
@@ -138,8 +153,8 @@ export function RoomsShowcase({ rooms }: { rooms: ShowcaseRoom[] }) {
               {tonight}
             </HudLabel>
           )}
-          {featured.shortDescription && <p className={cn(typeScale.body, "mt-3 line-clamp-3 max-w-[34rem] text-pub-muted")}>{featured.shortDescription}</p>}
-          <InfoList items={roomFacts(featured)} className="mt-3" />
+          {shortDescription && <p className={cn(typeScale.body, "mt-3 line-clamp-3 max-w-[34rem] text-pub-muted")}>{shortDescription}</p>}
+          <InfoList items={roomFacts(featured, t)} className="mt-3" />
           <div className="mt-6">{actions}</div>
         </div>
       </div>
@@ -147,14 +162,14 @@ export function RoomsShowcase({ rooms }: { rooms: ShowcaseRoom[] }) {
       {others.length > 0 && (
         <div className="mt-14 sm:mt-16 lg:mt-24">
           <div className="mb-6 flex items-center gap-4 sm:mb-8">
-            <p className={cn(typeScale.eyebrow, "shrink-0 text-pub-eyebrow")}>More ways to stay</p>
+            <p className={cn(typeScale.eyebrow, "shrink-0 text-pub-eyebrow")}>{t("More ways to stay")}</p>
             <span aria-hidden="true" className="h-px flex-1 bg-linear-to-r from-pub-line to-transparent" />
           </div>
-          <Rail label="Room types" size="md" desktop={others.length <= 4 ? "grid" : "rail"} cols={others.length >= 4 ? 4 : 3}>
+          <Rail label={t("Room types")} size="md" desktop={others.length <= 4 ? "grid" : "rail"} cols={others.length >= 4 ? 4 : 3}>
             {others.map((r) => (
               <div key={r.slug} className="flex h-full flex-col">
-                <RoomCard room={r} />
-                <Tonight free={r.tonightFree} className="mt-3" />
+                <RoomCard room={r} t={t} />
+                <Tonight free={r.tonightFree} t={t} className="mt-3" />
               </div>
             ))}
           </Rail>

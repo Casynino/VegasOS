@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, LoaderCircle, Lock, Smartphone } from "lucide-react";
 import type { ActionResult } from "@/server/errors";
+import { useT } from "@/i18n/client";
 import { formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Button, HudLabel, field, toneAttr } from "./kit";
@@ -31,6 +32,7 @@ export function PayOnlineCard({ due, phone, live, held, action, tone = "night", 
   flush?: boolean;
   className?: string;
 }) {
+  const t = useT();
   const router = useRouter();
   const [number, setNumber] = useState(phone);
   const [error, setError] = useState<string | null>(null);
@@ -57,11 +59,11 @@ export function PayOnlineCard({ due, phone, live, held, action, tone = "night", 
       >
         <LoaderCircle className="size-5 shrink-0 text-pub-eyebrow motion-safe:animate-spin" aria-hidden="true" />
         <span className="min-w-0 flex-1 leading-tight">
-          <span className="block text-[15px] font-medium">Your payment is on its way</span>
-          <span className="mt-0.5 block text-[13px] text-pub-muted">Approve it on your phone — tap to follow it</span>
+          <span className="block text-[15px] font-medium">{t("Your payment is on its way")}</span>
+          <span className="mt-0.5 block text-[13px] text-pub-muted">{t("Approve it on your phone — tap to follow it")}</span>
         </span>
         <span className="inline-flex shrink-0 items-center gap-1 text-[13px] font-medium text-pub-eyebrow">
-          Open
+          {t("Open")}
           <ArrowRight className="size-3.5 transition-transform duration-300 ease-pub group-hover:translate-x-0.5 motion-reduce:transition-none" strokeWidth={1.8} aria-hidden="true" />
         </span>
       </Link>
@@ -70,7 +72,7 @@ export function PayOnlineCard({ due, phone, live, held, action, tone = "night", 
 
   const pay = () => start(async () => {
     setError(null);
-    if (!phoneOk(number)) { setError("Enter your mobile-money number, e.g. 0712 345 678."); return; }
+    if (!phoneOk(number)) { setError(t("Enter your mobile-money number, e.g. 0712 345 678.")); return; }
     key.current ||= newKey();
     const r = await action({ phone: number.trim(), clientKey: key.current });
     if (!r.ok) { setError(r.error); key.current = ""; return; }
@@ -82,21 +84,21 @@ export function PayOnlineCard({ due, phone, live, held, action, tone = "night", 
       <div>
         <div className="flex items-center justify-between gap-3">
           <p className="flex items-center gap-2 text-[15px] font-medium">
-            <Smartphone className="size-4 text-pub-eyebrow" strokeWidth={1.6} aria-hidden="true" />Pay now
+            <Smartphone className="size-4 text-pub-eyebrow" strokeWidth={1.6} aria-hidden="true" />{t("Pay now")}
           </p>
-          <HudLabel tick={false}>Mobile money</HudLabel>
+          <HudLabel tick={false}>{t("Mobile money")}</HudLabel>
         </div>
-        {held && <p className="mt-1.5 text-[13px] leading-relaxed text-pub-muted">We hold your room until {held} — pay now to confirm it.</p>}
+        {held && <p className="mt-1.5 text-[13px] leading-relaxed text-pub-muted">{t("We hold your room until {time} — pay now to confirm it.", { time: held })}</p>}
       </div>
       <label className="block">
-        <span className={field.label}>Mobile-money number</span>
+        <span className={field.label}>{t("Mobile-money number")}</span>
         <input
           value={number}
           onChange={(e) => setNumber(e.target.value)}
           type="tel"
           inputMode="tel"
           autoComplete="tel"
-          placeholder="e.g. 0712 345 678"
+          placeholder={t("e.g. 0712 345 678")}
           aria-invalid={number !== "" && !phoneOk(number)}
           className={cn(field.input, "tabular-nums")}
         />
@@ -109,16 +111,16 @@ export function PayOnlineCard({ due, phone, live, held, action, tone = "night", 
       <Button onClick={pay} disabled={pending} full>
         <span className="inline-flex items-center gap-2 tabular-nums">
           {pending ? <LoaderCircle className="size-4 shrink-0 motion-safe:animate-spin" aria-hidden="true" /> : <Smartphone className="size-4 shrink-0" aria-hidden="true" />}
-          Pay {formatTZS(due)}
+          {t("Pay {amount}", { amount: formatTZS(due) })}
         </span>
       </Button>
-      <p className="text-[13px] leading-relaxed text-pub-muted">You will get a payment request on your phone — enter your PIN to pay.</p>
+      <p className="text-[13px] leading-relaxed text-pub-muted">{t("You will get a payment request on your phone — enter your PIN to pay.")}</p>
       <div className="flex min-w-0 items-center gap-2">
-        <span className="shrink-0 text-[10.5px] font-medium text-pub-muted">Works with</span>
+        <span className="shrink-0 text-[10.5px] font-medium text-pub-muted">{t("Works with")}</span>
         <NetworkMarks label={null} className="min-w-0 flex-1" />
       </div>
       <p className="flex items-center gap-1.5 text-[11px] font-medium text-pub-muted">
-        <Lock className="size-3 shrink-0 text-pub-eyebrow" aria-hidden="true" />Secure payment by <span className="font-semibold tracking-wide text-pub-fg">NTZS</span>
+        <Lock className="size-3 shrink-0 text-pub-eyebrow" aria-hidden="true" />{t.rich("Secure payment by <b>NTZS</b>", { b: (c) => <span className="font-semibold tracking-wide text-pub-fg">{c}</span> })}
       </p>
     </div>
   );

@@ -15,71 +15,79 @@ import type { QrConfirmation } from "@/server/services/hotel-qr";
 import { qrBookingStatusAction, qrPayNowAction } from "@/app/b/[token]/actions";
 import { useWho } from "@/components/restaurant/who";
 import { BrandMark, card, darkButton, goldButton, input, lightButton } from "./ui";
+import { useT } from "@/i18n/client";
+import { msg } from "@/i18n/msg";
+import type { T } from "@/i18n/translate";
 
 /** A plain row (an icon, the words, a chevron) — the quiet way to list what can be done next. */
 const rowLink = "flex w-full items-center gap-3 py-3.5 text-left text-[14px] font-medium transition hover:text-(--vr-gold-ink)";
 import { dayLong, flowUrl, guestsText, hotelClock, hotelInstant, newKey, nightsText, payPhoneOk, telHref, tzs, waHref } from "./lib";
 
 type Tone = "ok" | "wait" | "warn" | "off";
-const OFFLINE = "No connection — please check your internet and try again.";
+const OFFLINE = msg("No connection — please check your internet and try again.");
 
 /** The big line at the top — from the booking's real state ("paid" only once nTZS confirmed the money). */
-function headline(b: QrConfirmation): { tone: Tone; title: string; line: string } {
-  const hold = b.holdUntil ? hotelClock(b.holdUntil, b.timezone) : null;
-  const thanks = b.guestFirstName ? `Thank you, ${b.guestFirstName}. ` : "";
+function headline(b: QrConfirmation, t: T): { tone: Tone; title: string; line: string } {
+  const hold = b.holdUntil ? hotelClock(b.holdUntil, b.timezone, t) : null;
+  /** "Thank you, Asha. " before the line (when the guest's first name is known). */
+  const thanks = (line: string) => (b.guestFirstName ? t("Thank you, {name}. {line}", { name: b.guestFirstName, line }) : line);
   if (b.status === "CANCELLED") {
-    return { tone: "off", title: "Booking cancelled", line: b.payWay === "ONLINE" && b.paid === 0 ? "The payment did not come in, so the room was released. You are welcome to book again." : "This booking is cancelled. Questions? Call us." };
+    return { tone: "off", title: t("Booking cancelled"), line: b.payWay === "ONLINE" && b.paid === 0 ? t("The payment did not come in, so the room was released. You are welcome to book again.") : t("This booking is cancelled. Questions? Call us.") };
   }
-  if (b.status === "NO_SHOW") return { tone: "off", title: "Booking closed", line: "This booking was closed after the arrival day. Questions? Call us." };
-  if (b.status === "CHECKED_IN") return { tone: "ok", title: "You are checked in", line: `Welcome to ${b.hotel.name} — enjoy your stay.` };
-  if (b.status === "CHECKED_OUT") return { tone: "ok", title: "Thank you for staying", line: "We hope to welcome you again soon." };
+  if (b.status === "NO_SHOW") return { tone: "off", title: t("Booking closed"), line: t("This booking was closed after the arrival day. Questions? Call us.") };
+  if (b.status === "CHECKED_IN") return { tone: "ok", title: t("You are checked in"), line: t("Welcome to {hotel} — enjoy your stay.", { hotel: b.hotel.name }) };
+  if (b.status === "CHECKED_OUT") return { tone: "ok", title: t("Thank you for staying"), line: t("We hope to welcome you again soon.") };
   // Booked to pay later (or a payment that never started): saved, but nothing is held until it is paid (whoever pays
   // first gets the room).
   if (b.status === "INQUIRY" && b.paymentStatus !== "PAYMENT_PENDING") {
     const tried = b.paymentStatus === "PAYMENT_FAILED" || b.paymentStatus === "PAYMENT_EXPIRED";
-    return { tone: "warn", title: tried ? "Payment not completed" : "Booked — not paid yet", line: `${tried ? "" : thanks}Your room is not reserved until it is paid. Pay now to secure it.` };
+    const line = t("Your room is not reserved until it is paid. Pay now to secure it.");
+    return { tone: "warn", title: tried ? t("Payment not completed") : t("Booked — not paid yet"), line: tried ? line : thanks(line) };
   }
   // Booked to pay later and kept only while it is paid (Pay now pressed — the room checked again): not reserved yet.
   if (b.payWay === "HOTEL" && b.status === "RESERVED" && b.paid === 0 && hold && (b.paymentStatus === "PAYMENT_FAILED" || b.paymentStatus === "PAYMENT_EXPIRED")) {
-    return { tone: "warn", title: "Room kept while you pay", line: `Pay now by ${hold} to confirm it — after that the room is not held.` };
+    return { tone: "warn", title: t("Room kept while you pay"), line: t("Pay now by {time} to confirm it — after that the room is not held.", { time: hold }) };
   }
   switch (b.paymentStatus) {
-    case "PAID": return { tone: "ok", title: "Booking confirmed", line: `${thanks}We look forward to welcoming you to ${b.hotel.name}.` };
-    case "PARTIALLY_PAID": return { tone: "ok", title: "Booking confirmed", line: `${thanks}Part paid — ${tzs(b.balance)} still to pay.` };
-    case "PAYMENT_PENDING": return { tone: "wait", title: "Waiting for your payment", line: "Approve the payment request on your phone. This page updates by itself." };
+    case "PAID": return { tone: "ok", title: t("Booking confirmed"), line: thanks(t("We look forward to welcoming you to {hotel}.", { hotel: b.hotel.name })) };
+    case "PARTIALLY_PAID": return { tone: "ok", title: t("Booking confirmed"), line: thanks(t("Part paid — {amount} still to pay.", { amount: tzs(b.balance) })) };
+    case "PAYMENT_PENDING": return { tone: "wait", title: t("Waiting for your payment"), line: t("Approve the payment request on your phone. This page updates by itself.") };
     case "PAYMENT_FAILED":
-    case "PAYMENT_EXPIRED": return { tone: "warn", title: "Payment not completed", line: hold ? `Your room is held until ${hold}. Pay now to confirm it.` : "Pay now to confirm your booking." };
-    case "REFUNDED": return { tone: "off", title: "Payment refunded", line: "Your payment was refunded. Questions? Call us." };
+    case "PAYMENT_EXPIRED": return { tone: "warn", title: t("Payment not completed"), line: hold ? t("Your room is held until {time}. Pay now to confirm it.", { time: hold }) : t("Pay now to confirm your booking.") };
+    case "REFUNDED": return { tone: "off", title: t("Payment refunded"), line: t("Your payment was refunded. Questions? Call us.") };
     default:
-      if (b.confirmed) return { tone: "ok", title: "Booking confirmed", line: `${thanks}Pay at reception when you arrive.` };
-      return { tone: "ok", title: "Room reserved", line: hold ? `${thanks}We hold your room until ${hold} — pay now by mobile money before then.` : `${thanks}Pay at reception when you arrive.` };
+      if (b.confirmed) return { tone: "ok", title: t("Booking confirmed"), line: thanks(t("Pay at reception when you arrive.")) };
+      return { tone: "ok", title: t("Room reserved"), line: thanks(hold ? t("We hold your room until {time} — pay now by mobile money before then.", { time: hold }) : t("Pay at reception when you arrive.")) };
   }
 }
 
 const PAYMENT_WORD: Record<QrConfirmation["paymentStatus"], string> = {
-  PAID: "Paid", PARTIALLY_PAID: "Part paid", PAY_AT_HOTEL: "Not paid yet", PAYMENT_PENDING: "Waiting for your payment",
-  PAYMENT_FAILED: "Not completed", PAYMENT_EXPIRED: "Not completed — time ran out", REFUNDED: "Refunded",
+  PAID: msg("Paid"), PARTIALLY_PAID: msg("Part paid"), PAY_AT_HOTEL: msg("Not paid yet"), PAYMENT_PENDING: msg("Waiting for your payment"),
+  PAYMENT_FAILED: msg("Not completed"), PAYMENT_EXPIRED: msg("Not completed — time ran out"), REFUNDED: msg("Refunded"),
 };
-const paymentWord = (b: QrConfirmation) => (b.paymentStatus === "PAID" && b.ntzsReference ? "Paid online"
-  : !b.roomHeld && b.paymentStatus === "PAY_AT_HOTEL" ? "Not paid — room not held" : PAYMENT_WORD[b.paymentStatus]);
+/** The payment in words (English — shown with t()). */
+const paymentWord = (b: QrConfirmation) => (b.paymentStatus === "PAID" && b.ntzsReference ? msg("Paid online")
+  : !b.roomHeld && b.paymentStatus === "PAY_AT_HOTEL" ? msg("Not paid — room not held") : PAYMENT_WORD[b.paymentStatus]);
 
 /** The booking as a calendar event (made on the phone, nothing sent anywhere): check-in to check-out, at the hotel's time. */
-function calendarFile(b: QrConfirmation, origin: string) {
+function calendarFile(b: QrConfirmation, origin: string, t: T) {
   // Exact instants (UTC) of the hotel's check-in and check-out times — right on a phone in any time zone.
   const at = (d: string, t: string) => hotelInstant(d, t, b.timezone).toISOString().replace(/[-:]/g, "").replace(/\.\d+/, "");
   const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/[,;]/g, (m) => `\\${m}`);
   // Lines longer than 75 characters are folded, as calendar files require.
   const fold = (l: string) => l.length <= 74 ? l : l.match(/.{1,73}/g)!.join("\r\n ");
-  const rooms = b.rooms.map((r) => `Room ${r.number} (${r.typeName})`).join(", ");
+  const rooms = b.rooms.map((r) => t("Room {number} ({type})", { number: r.number, type: t(r.typeName) })).join(", ");
   const stamp = b.createdAt.replace(/[-:]/g, "").replace(/\.\d+/, "");
   return [
     "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Vegas Luxury Hotel//Hotel QR//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
     "BEGIN:VEVENT",
     `UID:${b.reference}@hotel-qr`, `DTSTAMP:${stamp}`,
     `DTSTART:${at(b.checkIn, b.checkInTime)}`, `DTEND:${at(b.checkOut, b.checkoutTime)}`,
-    `SUMMARY:${esc(`Stay at ${b.hotel.name} — ${b.reference}`)}`,
+    `SUMMARY:${esc(t("Stay at {hotel} — {reference}", { hotel: b.hotel.name, reference: b.reference }))}`,
     `LOCATION:${esc(b.hotel.name)}`,
-    `DESCRIPTION:${esc(`Booking ${b.reference} · ${rooms} · ${guestsText(b.adults, b.children)}. Check-in from ${b.checkInTime}, check-out by ${b.checkoutTime}.${b.hotel.phone ? ` Reception: ${b.hotel.phone}.` : ""}`)}`,
+    `DESCRIPTION:${esc(`${t("Booking {reference} · {rooms} · {guests}. Check-in from {checkIn}, check-out by {checkOut}.", {
+      reference: b.reference, rooms, guests: guestsText(b.adults, b.children, t), checkIn: b.checkInTime, checkOut: b.checkoutTime,
+    })}${b.hotel.phone ? t(" Reception: {phone}.", { phone: b.hotel.phone }) : ""}`)}`,
     `URL:${origin}${b.bookingLink}`,
     "END:VEVENT", "END:VCALENDAR",
   ].map(fold).join("\r\n");
@@ -92,6 +100,7 @@ function calendarFile(b: QrConfirmation, origin: string) {
  * calendar. While a payment is on its way the page asks the server now and then (gently), and changes by itself.
  */
 export function QrConfirmationView({ token, link, initial }: { token: string; link: { ref: string; key: string }; initial: QrConfirmation }) {
+  const t = useT();
   const [b, setB] = useState(initial);
   const reduce = useReducedMotion();
   const [checking, startChecking] = useTransition();
@@ -107,7 +116,7 @@ export function QrConfirmationView({ token, link, initial }: { token: string; li
       if (r?.ok && r.data.state === "moved") { window.location.replace(r.data.href); return; }
       if (r?.ok && r.data.state === "ok" && (r.data.booking.paymentStatus !== b.paymentStatus || r.data.booking.status !== b.status)) {
         setB(r.data.booking);
-        if (r.data.booking.paymentStatus === "PAID") toast.success("Payment received — your booking is confirmed.");
+        if (r.data.booking.paymentStatus === "PAID") toast.success(t("Payment received — your booking is confirmed."));
         return;
       }
       const age = Date.now() - since;
@@ -116,7 +125,7 @@ export function QrConfirmationView({ token, link, initial }: { token: string; li
     };
     timer = setTimeout(tick, 4_000);
     return () => { stopped = true; if (timer) clearTimeout(timer); };
-  }, [b.paymentStatus, b.status, token, link]);
+  }, [b.paymentStatus, b.status, token, link, t]);
 
   /** The booking again from the server (after Pay now changed it: another room, another price). */
   const reload = async () => {
@@ -125,26 +134,26 @@ export function QrConfirmationView({ token, link, initial }: { token: string; li
   };
   const checkNow = () => startChecking(async () => {
     const r = await qrBookingStatusAction(token, link).catch(() => null);
-    if (!r) { toast.error(OFFLINE); return; }
-    if (!r.ok) { toast.error(r.error); return; }
+    if (!r) { toast.error(t(OFFLINE)); return; }
+    if (!r.ok) { toast.error(t(r.error)); return; }
     if (r.data.state === "moved") { window.location.replace(r.data.href); return; }
     if (r.data.state === "ok") {
       setB(r.data.booking);
-      if (r.data.booking.paymentStatus === "PAYMENT_PENDING") toast("Not received yet — it shows here by itself once it comes in.");
+      if (r.data.booking.paymentStatus === "PAYMENT_PENDING") toast(t("Not received yet — it shows here by itself once it comes in."));
     }
   });
 
-  const h = headline(b);
-  const copy = () => navigator.clipboard?.writeText(b.reference).then(() => toast.success("Reference copied"), () => null);
+  const h = headline(b, t);
+  const copy = () => navigator.clipboard?.writeText(b.reference).then(() => toast.success(t("Reference copied")), () => null);
   const addToCalendar = () => {
-    const blob = new Blob([calendarFile(b, window.location.origin)], { type: "text/calendar;charset=utf-8" });
+    const blob = new Blob([calendarFile(b, window.location.origin, t)], { type: "text/calendar;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url; a.download = `${b.reference}.ics`;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
   };
-  const roomsLine = b.rooms.map((r) => `${r.number} — ${r.typeName}`).join(", ");
+  const roomsLine = b.rooms.map((r) => `${r.number} — ${t(r.typeName)}`).join(", ");
   const Icon = h.tone === "ok" ? Check : h.tone === "wait" ? Smartphone : h.tone === "warn" ? Hourglass : X;
   // Something to do about the money now: a payment on its way, or Pay now.
   const toDo = !!b.livePayment || b.paymentStatus === "PAYMENT_PENDING" || b.canPayNow;
@@ -161,11 +170,11 @@ export function QrConfirmationView({ token, link, initial }: { token: string; li
                 <BrandMark />
                 <span className="min-w-0 leading-none">
                   <span className="block truncate font-display text-[17px] font-semibold tracking-wide">{b.hotel.name}</span>
-                  <span className="mt-1 block truncate text-[10px] uppercase tracking-[0.22em] text-white/55">Your booking</span>
+                  <span className="mt-1 block truncate text-[10px] uppercase tracking-[0.22em] text-white/55">{t("Your booking")}</span>
                 </span>
               </span>
               <Link href={`/b/${token}`} className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium text-white/80 ring-1 ring-white/15 transition hover:bg-white/10">
-                <Plus className="size-4 text-(--vr-gold)" />Book another
+                <Plus className="size-4 text-(--vr-gold)" />{t("Book another")}
               </Link>
             </header>
             <div className="mt-7 text-center lg:mt-10">
@@ -177,14 +186,14 @@ export function QrConfirmationView({ token, link, initial }: { token: string; li
               <h1 className="mt-4 font-display text-[34px] font-semibold leading-[1.05] sm:text-[42px]">{h.title}</h1>
               <p className="mx-auto mt-2 max-w-md text-[14px] leading-relaxed text-white/70">{h.line}</p>
               {b.paymentStatus === "PAYMENT_PENDING" && (
-                <p className="mt-3 inline-flex items-center gap-2 text-[12.5px] text-white/60"><Loader2 className="size-3.5 animate-spin" />Checking with NTZS…</p>
+                <p className="mt-3 inline-flex items-center gap-2 text-[12.5px] text-white/60"><Loader2 className="size-3.5 animate-spin" />{t("Checking with NTZS…")}</p>
               )}
               <div className="mx-auto mt-6 flex max-w-xs items-center justify-center gap-3 rounded-2xl bg-white/[0.06] py-3 pl-5 pr-3 ring-1 ring-white/10">
                 <span className="min-w-0 text-left leading-tight">
-                  <span className="block text-[10px] font-semibold uppercase tracking-[0.22em] text-white/50">Booking reference</span>
+                  <span className="block text-[10px] font-semibold uppercase tracking-[0.22em] text-white/50">{t("Booking reference")}</span>
                   <span className="mt-1 block font-display text-[30px] font-semibold tracking-wide text-(--vr-gold)">{b.reference}</span>
                 </span>
-                <button type="button" onClick={copy} aria-label="Copy the reference" className="grid size-10 shrink-0 place-items-center rounded-full bg-white/[0.08] transition hover:bg-white/15"><Copy className="size-4" /></button>
+                <button type="button" onClick={copy} aria-label={t("Copy the reference")} className="grid size-10 shrink-0 place-items-center rounded-full bg-white/[0.08] transition hover:bg-white/15"><Copy className="size-4" /></button>
               </div>
             </div>
           </div>
@@ -198,15 +207,15 @@ export function QrConfirmationView({ token, link, initial }: { token: string; li
                 <Link href={`/pay/${b.livePayment}`} className="flex items-center gap-3 rounded-3xl bg-(--vr-dark) p-4 text-white">
                   <span className="grid size-10 shrink-0 place-items-center rounded-full bg-(--vr-gold) text-(--vr-ink)"><Loader2 className="size-5 animate-spin" /></span>
                   <span className="min-w-0 flex-1 leading-tight">
-                    <span className="block text-[15px] font-semibold">Your payment is on its way</span>
-                    <span className="text-[12px] text-white/70">Approve it on your phone — tap to follow it</span>
+                    <span className="block text-[15px] font-semibold">{t("Your payment is on its way")}</span>
+                    <span className="text-[12px] text-white/70">{t("Approve it on your phone — tap to follow it")}</span>
                   </span>
-                  <span className="text-[12.5px] font-semibold text-(--vr-gold)">Open</span>
+                  <span className="text-[12.5px] font-semibold text-(--vr-gold)">{t("Open")}</span>
                 </Link>
               )}
               {b.paymentStatus === "PAYMENT_PENDING" && !b.livePayment && (
                 <button type="button" onClick={checkNow} disabled={checking} className={cn(lightButton, "h-11 w-full text-[13.5px]")}>
-                  {checking ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4 text-(--vr-gold-ink)" />}I have paid — check again
+                  {checking ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4 text-(--vr-gold-ink)" />}{t("I have paid — check again")}
                 </button>
               )}
               {b.canPayNow && <PayNow token={token} link={link} amount={b.balance > 0 ? b.balance : b.total} guestPhone={b.guestPhone} again={againUrl(token, b)} onChanged={reload} />}
@@ -214,41 +223,41 @@ export function QrConfirmationView({ token, link, initial }: { token: string; li
           )}
 
           {/* ── The booking ── */}
-          <section aria-label="Your booking" className={cn(card, "overflow-hidden lg:col-start-1 lg:row-span-2 lg:row-start-1")}>
+          <section aria-label={t("Your booking")} className={cn(card, "overflow-hidden lg:col-start-1 lg:row-span-2 lg:row-start-1")}>
             <dl className="divide-y divide-(--vr-line)">
-              <Row k={b.rooms.length > 1 ? "Rooms" : "Room"} v={roomsLine} strong sub={b.roomHeld || ["CANCELLED", "NO_SHOW", "CHECKED_OUT"].includes(b.status) ? undefined : "Not held until paid"} />
-              <Row k="Check-in" v={dayLong(b.checkIn)} sub={`from ${b.checkInTime}`} />
-              <Row k="Check-out" v={dayLong(b.checkOut)} sub={`by ${b.checkoutTime}`} />
-              <Row k="Stay" v={`${nightsText(b.nights)} · ${guestsText(b.adults, b.children)}`} />
-              {b.paid > 0 && <Row k="Amount paid" v={tzs(b.paid)} strong />}
-              {(b.paid === 0 || b.balance > 0) && <Row k={b.paid > 0 ? "Total" : "Amount"} v={tzs(b.total)} strong={b.paid === 0} />}
-              {b.paid > 0 && b.balance > 0 && <Row k="Still to pay" v={tzs(b.balance)} />}
-              <Row k="Payment" v={paymentWord(b)} badge={b.paymentStatus === "PAID" ? "ok" : b.paymentStatus === "PAYMENT_PENDING" ? "wait" : b.paymentStatus === "PAYMENT_FAILED" || b.paymentStatus === "PAYMENT_EXPIRED" || !b.roomHeld ? "warn" : undefined} />
-              {b.ntzsReference && <Row k="Payment reference" v={b.ntzsReference} mono />}
-              {b.holdUntil && b.paid === 0 && <Row k="Room held until" v={hotelClock(b.holdUntil, b.timezone)} />}
-              {b.arrivalTime && <Row k="Arriving around" v={b.arrivalTime} />}
-              {b.pickup && <Row k="Airport pickup" v={`${hotelClock(b.pickup.at, b.timezone)}${b.pickup.flightNumber ? ` · flight ${b.pickup.flightNumber}` : ""}`} sub={b.pickup.place} />}
-              {b.specialRequest && <Row k="Your request" v={b.specialRequest} />}
+              <Row k={b.rooms.length > 1 ? t("Rooms") : t("Room")} v={roomsLine} strong sub={b.roomHeld || ["CANCELLED", "NO_SHOW", "CHECKED_OUT"].includes(b.status) ? undefined : t("Not held until paid")} />
+              <Row k={t("Check-in")} v={dayLong(b.checkIn, t)} sub={t("from {time}", { time: b.checkInTime })} />
+              <Row k={t("Check-out")} v={dayLong(b.checkOut, t)} sub={t("by {time}", { time: b.checkoutTime })} />
+              <Row k={t("Stay")} v={`${nightsText(b.nights, t)} · ${guestsText(b.adults, b.children, t)}`} />
+              {b.paid > 0 && <Row k={t("Amount paid")} v={tzs(b.paid)} strong />}
+              {(b.paid === 0 || b.balance > 0) && <Row k={b.paid > 0 ? t("Total") : t("Amount")} v={tzs(b.total)} strong={b.paid === 0} />}
+              {b.paid > 0 && b.balance > 0 && <Row k={t("Still to pay")} v={tzs(b.balance)} />}
+              <Row k={t("Payment")} v={t(paymentWord(b))} badge={b.paymentStatus === "PAID" ? "ok" : b.paymentStatus === "PAYMENT_PENDING" ? "wait" : b.paymentStatus === "PAYMENT_FAILED" || b.paymentStatus === "PAYMENT_EXPIRED" || !b.roomHeld ? "warn" : undefined} />
+              {b.ntzsReference && <Row k={t("Payment reference")} v={b.ntzsReference} mono />}
+              {b.holdUntil && b.paid === 0 && <Row k={t("Room held until")} v={hotelClock(b.holdUntil, b.timezone, t)} />}
+              {b.arrivalTime && <Row k={t("Arriving around")} v={b.arrivalTime} />}
+              {b.pickup && <Row k={t("Airport pickup")} v={`${hotelClock(b.pickup.at, b.timezone, t)}${b.pickup.flightNumber ? ` · ${t("flight {number}", { number: b.pickup.flightNumber })}` : ""}`} sub={t(b.pickup.place)} />}
+              {b.specialRequest && <Row k={t("Your request")} v={b.specialRequest} />}
             </dl>
           </section>
 
           {/* ── What to do next ── */}
           <aside className={cn("space-y-3 lg:col-start-2", toDo ? "lg:row-start-2" : "lg:row-span-2 lg:row-start-1")}>
             <div className={cn(card, "p-3")}>
-              <Link href={b.bookingLink} className={cn(darkButton, "h-12 w-full text-[14.5px]")}><BedDouble className="size-4 text-(--vr-gold)" />View booking</Link>
+              <Link href={b.bookingLink} className={cn(darkButton, "h-12 w-full text-[14.5px]")}><BedDouble className="size-4 text-(--vr-gold)" />{t("View booking")}</Link>
               <div className="mt-1.5 divide-y divide-(--vr-line) px-1">
-                <button type="button" onClick={() => window.print()} className={rowLink}><Download className="size-[18px] shrink-0 text-(--vr-gold-ink)" /><span className="flex-1">Download confirmation</span><ChevronRight className="size-4 text-(--vr-muted)" /></button>
-                <button type="button" onClick={addToCalendar} className={rowLink}><CalendarPlus className="size-[18px] shrink-0 text-(--vr-gold-ink)" /><span className="flex-1">Add to calendar</span><ChevronRight className="size-4 text-(--vr-muted)" /></button>
-                {b.stayLink && <Link href={b.stayLink} className={rowLink}><UtensilsCrossed className="size-[18px] shrink-0 text-(--vr-gold-ink)" /><span className="flex-1">Your stay page — menu, requests, bill</span><ChevronRight className="size-4 text-(--vr-muted)" /></Link>}
-                {b.hotel.phone && <a href={telHref(b.hotel.phone)} className={rowLink}><Phone className="size-[18px] shrink-0 text-(--vr-gold-ink)" /><span className="flex-1">Call us <span className="tabular-nums text-(--vr-muted)">{b.hotel.phone}</span></span><ChevronRight className="size-4 text-(--vr-muted)" /></a>}
-                {b.hotel.whatsapp && <a href={waHref(b.hotel.whatsapp, `Hello, this is about my booking ${b.reference}.`)} target="_blank" rel="noopener" className={rowLink}><MessageCircle className="size-[18px] shrink-0 text-(--vr-gold-ink)" /><span className="flex-1">WhatsApp us</span><ChevronRight className="size-4 text-(--vr-muted)" /></a>}
+                <button type="button" onClick={() => window.print()} className={rowLink}><Download className="size-[18px] shrink-0 text-(--vr-gold-ink)" /><span className="flex-1">{t("Download confirmation")}</span><ChevronRight className="size-4 text-(--vr-muted)" /></button>
+                <button type="button" onClick={addToCalendar} className={rowLink}><CalendarPlus className="size-[18px] shrink-0 text-(--vr-gold-ink)" /><span className="flex-1">{t("Add to calendar")}</span><ChevronRight className="size-4 text-(--vr-muted)" /></button>
+                {b.stayLink && <Link href={b.stayLink} className={rowLink}><UtensilsCrossed className="size-[18px] shrink-0 text-(--vr-gold-ink)" /><span className="flex-1">{t("Your stay page — menu, requests, bill")}</span><ChevronRight className="size-4 text-(--vr-muted)" /></Link>}
+                {b.hotel.phone && <a href={telHref(b.hotel.phone)} className={rowLink}><Phone className="size-[18px] shrink-0 text-(--vr-gold-ink)" /><span className="flex-1">{t.rich("Call us <b>{phone}</b>", { b: (c) => <span className="tabular-nums text-(--vr-muted)">{c}</span> }, { phone: b.hotel.phone })}</span><ChevronRight className="size-4 text-(--vr-muted)" /></a>}
+                {b.hotel.whatsapp && <a href={waHref(b.hotel.whatsapp, `Hello, this is about my booking ${b.reference}.`)} target="_blank" rel="noopener" className={rowLink}><MessageCircle className="size-[18px] shrink-0 text-(--vr-gold-ink)" /><span className="flex-1">{t("WhatsApp us")}</span><ChevronRight className="size-4 text-(--vr-muted)" /></a>}
               </div>
             </div>
           </aside>
         </div>
       </div>
 
-      <PrintSheet b={b} title={h.title} payment={paymentWord(b)} />
+      <PrintSheet b={b} title={h.title} payment={t(paymentWord(b))} />
     </main>
   );
 }
@@ -280,6 +289,7 @@ function Row({ k, v, sub, strong, mono, badge }: { k: string; v: string; sub?: s
 function PayNow({ token, link, amount, guestPhone, again, onChanged }: {
   token: string; link: { ref: string; key: string }; amount: number; guestPhone: string | null; again: string; onChanged: () => Promise<void>;
 }) {
+  const t = useT();
   const router = useRouter();
   const [who] = useWho();
   const [typed, setTyped] = useState<string | null>(null);
@@ -290,12 +300,12 @@ function PayNow({ token, link, amount, guestPhone, again, onChanged }: {
   const key = useRef<string | null>(null);
   const pay = () => start(async () => {
     setError(null);
-    if (!payPhoneOk(phone)) { setError("Enter your mobile-money number, e.g. 0712 345 678."); return; }
+    if (!payPhoneOk(phone)) { setError(t("Enter your mobile-money number, e.g. 0712 345 678.")); return; }
     key.current ??= newKey();
     const r = await qrPayNowAction(token, link, { phone: phone.trim(), clientKey: key.current }).catch(() => null);
-    if (!r) { toast.error(OFFLINE); return; }
+    if (!r) { toast.error(t(OFFLINE)); return; }
     if (!r.ok) {
-      key.current = null; setError(r.error); toast.error(r.error);
+      key.current = null; setError(t(r.error)); toast.error(t(r.error));
       setTaken(r.code === "UNAVAILABLE");
       if (r.code === "CONFLICT" || r.code === "UNAVAILABLE") await onChanged();
       return;
@@ -307,24 +317,24 @@ function PayNow({ token, link, amount, guestPhone, again, onChanged }: {
     <section aria-labelledby="pay-now" className={cn(card, "space-y-3 p-4")}>
       <div className="flex items-start justify-between gap-3">
         <div className="leading-tight">
-          <h2 id="pay-now" className="flex items-center gap-2 font-display text-[22px] font-semibold"><Smartphone className="size-5 text-(--vr-gold-ink)" />Pay now</h2>
-          <p className="mt-1 text-[12.5px] text-(--vr-muted)">Secure your booking now</p>
+          <h2 id="pay-now" className="flex items-center gap-2 font-display text-[22px] font-semibold"><Smartphone className="size-5 text-(--vr-gold-ink)" />{t("Pay now")}</h2>
+          <p className="mt-1 text-[12.5px] text-(--vr-muted)">{t("Secure your booking now")}</p>
         </div>
         <p className="shrink-0 text-[17px] font-semibold tabular-nums">{tzs(amount)}</p>
       </div>
       <NetworkMarks label={null} />
       <label className="block">
-        <span className="text-[12px] font-medium text-(--vr-ink)/75">Mobile-money number</span>
+        <span className="text-[12px] font-medium text-(--vr-ink)/75">{t("Mobile-money number")}</span>
         <input value={phone} onChange={(e) => { setTyped(e.target.value); setError(null); }} type="tel" inputMode="tel" autoComplete="tel" placeholder="0712 345 678"
           aria-invalid={!!error} className={cn(input, "mt-1 font-medium tabular-nums")} />
         {error && <span role="alert" className="mt-1 block text-[12px] font-medium text-rose-700">{error}</span>}
       </label>
-      {taken && <Link href={again} className={cn(lightButton, "h-11 w-full text-[13.5px]")}><RotateCcw className="size-4 text-(--vr-gold-ink)" />Choose another room</Link>}
+      {taken && <Link href={again} className={cn(lightButton, "h-11 w-full text-[13.5px]")}><RotateCcw className="size-4 text-(--vr-gold-ink)" />{t("Choose another room")}</Link>}
       <button type="button" onClick={pay} disabled={pending} className={cn(goldButton, "h-[52px] w-full text-[15px]")}>
-        {pending ? <Loader2 className="size-4 animate-spin" /> : <Lock className="size-4" />}Pay {tzs(amount)} now
+        {pending ? <Loader2 className="size-4 animate-spin" /> : <Lock className="size-4" />}{t("Pay {amount} now", { amount: tzs(amount) })}
       </button>
       <p className="flex items-center justify-center gap-1.5 text-[11px] font-medium text-(--vr-muted)">
-        <Lock className="size-3 text-(--vr-gold-ink)" />Secure payment by <span className="font-semibold tracking-wide text-(--vr-ink)/80">NTZS</span>
+        <Lock className="size-3 text-(--vr-gold-ink)" />{t.rich("Secure payment by <b>NTZS</b>", { b: (c) => <span className="font-semibold tracking-wide text-(--vr-ink)/80">{c}</span> })}
       </p>
     </section>
   );
@@ -340,19 +350,20 @@ function againUrl(token: string, b: QrConfirmation) {
 
 /** The confirmation on paper (Download → print or save as PDF): plain, black on white, every detail on one page. */
 function PrintSheet({ b, title, payment }: { b: QrConfirmation; title: string; payment: string }) {
+  const t = useT();
   const rows: [string, string][] = [
-    ["Booking reference", b.reference],
-    [b.rooms.length > 1 ? "Rooms" : "Room", b.rooms.map((r) => `${r.number} — ${r.typeName}`).join(", ")],
-    ["Check-in", `${dayLong(b.checkIn)}, from ${b.checkInTime}`],
-    ["Check-out", `${dayLong(b.checkOut)}, by ${b.checkoutTime}`],
-    ["Stay", `${nightsText(b.nights)} · ${guestsText(b.adults, b.children)}`],
-    ["Total", tzs(b.total)],
-    ...(b.paid > 0 ? [["Amount paid", tzs(b.paid)] as [string, string]] : []),
-    ...(b.balance > 0 && b.paid > 0 ? [["Still to pay", tzs(b.balance)] as [string, string]] : []),
-    ["Payment", payment],
-    ...(b.ntzsReference ? [["Payment reference", b.ntzsReference] as [string, string]] : []),
-    ...(b.pickup ? [["Airport pickup", `${hotelClock(b.pickup.at, b.timezone)}${b.pickup.flightNumber ? ` · flight ${b.pickup.flightNumber}` : ""}`] as [string, string]] : []),
-    ...(b.specialRequest ? [["Your request", b.specialRequest] as [string, string]] : []),
+    [t("Booking reference"), b.reference],
+    [b.rooms.length > 1 ? t("Rooms") : t("Room"), b.rooms.map((r) => `${r.number} — ${t(r.typeName)}`).join(", ")],
+    [t("Check-in"), t("{date}, from {time}", { date: dayLong(b.checkIn, t), time: b.checkInTime })],
+    [t("Check-out"), t("{date}, by {time}", { date: dayLong(b.checkOut, t), time: b.checkoutTime })],
+    [t("Stay"), `${nightsText(b.nights, t)} · ${guestsText(b.adults, b.children, t)}`],
+    [t("Total"), tzs(b.total)],
+    ...(b.paid > 0 ? [[t("Amount paid"), tzs(b.paid)] as [string, string]] : []),
+    ...(b.balance > 0 && b.paid > 0 ? [[t("Still to pay"), tzs(b.balance)] as [string, string]] : []),
+    [t("Payment"), payment],
+    ...(b.ntzsReference ? [[t("Payment reference"), b.ntzsReference] as [string, string]] : []),
+    ...(b.pickup ? [[t("Airport pickup"), `${hotelClock(b.pickup.at, b.timezone, t)}${b.pickup.flightNumber ? ` · ${t("flight {number}", { number: b.pickup.flightNumber })}` : ""}`] as [string, string]] : []),
+    ...(b.specialRequest ? [[t("Your request"), b.specialRequest] as [string, string]] : []),
   ];
   return (
     <article className="hidden font-sans text-[#1b1611] [print-color-adjust:exact] print:block">
@@ -362,7 +373,7 @@ function PrintSheet({ b, title, payment }: { b: QrConfirmation; title: string; p
           <img src="/brand/logo-192.png" alt="" className="size-12 rounded-full bg-[#1d1712]" />
           <div>
             <p className="font-display text-[24px] font-semibold leading-none">{b.hotel.name}</p>
-            <p className="mt-1 text-[11px] uppercase tracking-[0.2em] text-[#6f6457]">Booking confirmation</p>
+            <p className="mt-1 text-[11px] uppercase tracking-[0.2em] text-[#6f6457]">{t("Booking confirmation")}</p>
           </div>
         </div>
         <p className="text-right text-[12px] text-[#6f6457]">{b.hotel.phone}<br />{b.hotel.whatsapp && b.hotel.whatsapp !== b.hotel.phone ? `WhatsApp ${b.hotel.whatsapp}` : ""}</p>
@@ -378,7 +389,7 @@ function PrintSheet({ b, title, payment }: { b: QrConfirmation; title: string; p
           ))}
         </tbody>
       </table>
-      <p className="mt-6 text-[12px] text-[#6f6457]">Please show this booking reference at reception when you arrive. We look forward to welcoming you.</p>
+      <p className="mt-6 text-[12px] text-[#6f6457]">{t("Please show this booking reference at reception when you arrive. We look forward to welcoming you.")}</p>
     </article>
   );
 }

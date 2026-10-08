@@ -1,5 +1,10 @@
+"use client";
+
+// A client component (no state): it is rendered by server pages and by client components alike, and its
+// Illustrative tag speaks the visitor's language (useT). Everything it takes is plain data or React nodes.
 import Image from "next/image";
 import { cn } from "@/lib/utils";
+import { useT } from "@/i18n/client";
 import { blurFor } from "../blur-data";
 import { MaskReveal } from "../reveal";
 import { ParallaxLayer } from "./parallax";
@@ -7,6 +12,7 @@ import { motionCls, typeScale } from "./tokens";
 
 /** The honest label every stock photo carries (never present stock as the hotel). */
 export function IllustrativeTag({ className }: { className?: string }) {
+  const t = useT();
   return (
     <span
       className={cn(
@@ -14,7 +20,7 @@ export function IllustrativeTag({ className }: { className?: string }) {
         className,
       )}
     >
-      Illustrative
+      {t("Illustrative")}
     </span>
   );
 }

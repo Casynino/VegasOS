@@ -1,8 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-
-const FORMAT = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Africa/Dar_es_Salaam" });
+import { useT } from "@/i18n/client";
 
 function subscribe(onTick: () => void) {
   const t = window.setInterval(onTick, 20_000);
@@ -11,6 +10,8 @@ function subscribe(onTick: () => void) {
 
 /** The hotel's local time (Dar es Salaam), kept current. `initial` is the server-rendered time. */
 export function LocalTime({ initial, className }: { initial: string; className?: string }) {
-  const time = useSyncExternalStore(subscribe, () => FORMAT.format(new Date()), () => initial);
+  const t = useT();
+  // "09:02" (24 h) in the hotel's time zone, in the visitor's language.
+  const time = useSyncExternalStore(subscribe, () => t.time(new Date(), "Africa/Dar_es_Salaam"), () => initial);
   return <time className={className}>{time}</time>;
 }

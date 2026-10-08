@@ -8,6 +8,7 @@ import { Rail } from "../kit/rail";
 import { motionCls, typeScale } from "../kit/tokens";
 import { useLightbox, type LightboxImage } from "../lightbox";
 import { cn } from "@/lib/utils";
+import { useT } from "@/i18n/client";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -18,6 +19,7 @@ const pad = (n: number) => String(n).padStart(2, "0");
  * visible, so touch visitors see it too.
  */
 export function GalleryRail({ images, label }: { images: LightboxImage[]; label: string }) {
+  const t = useT();
   const { open, element } = useLightbox(images);
   return (
     <>
@@ -55,7 +57,7 @@ export function GalleryRail({ images, label }: { images: LightboxImage[]; label:
             </span>
             {/* The caption names the button (the photo itself is decorative here). */}
             <span className={cn(typeScale.small, "mt-3 line-clamp-2 block text-pub-muted")}>{img.alt}</span>
-            <span className="sr-only">, open full screen</span>
+            <span className="sr-only">{t(", open full screen")}</span>
           </button>
         ))}
       </Rail>

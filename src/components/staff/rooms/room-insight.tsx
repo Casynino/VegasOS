@@ -11,10 +11,18 @@ import { meetingInsightAction, roomInsightAction } from "@/app/staff/(app)/rooms
 import type { ActionResult } from "@/server/errors";
 import type { MeetingInsight, RoomInsight } from "@/server/services/room-insight";
 import type { RoomBoardRoom } from "@/server/services/rooms";
+import { useT } from "@/i18n/client";
+import type { T } from "@/i18n/translate";
 
 const n = (v: number) => v.toLocaleString("en-US");
-const day = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
-const weekday = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", timeZone: "UTC" }).slice(0, 2);
+const day = (d: string, intl: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString(intl, { day: "numeric", month: "short", timeZone: "UTC" });
+const weekday = (d: string, intl: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString(intl, { weekday: "short", timeZone: "UTC" }).slice(0, 2);
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+/** The insight's month ("October", made on the server in English) in the reader's language. */
+const monthName = (label: string, t: T) => {
+  const i = MONTHS.indexOf(label);
+  return i < 0 ? label : new Intl.DateTimeFormat(t.intl, { month: "long", timeZone: "UTC" }).format(Date.UTC(2026, i, 1));
+};
 
 /** Loads a card's performance when a manager or the MD opens it. */
 function useInsight<T>(load: (input: { roomId: string }) => Promise<ActionResult<T>>, roomId: string, enabled: boolean) {
@@ -35,10 +43,11 @@ export const useMeetingInsight = (roomId: string, enabled: boolean) => useInsigh
 function Head({ number, title, dot, status, subtitle, glow, minis }: {
   number: string; title: string; dot: string; status: string; subtitle: string; glow: string; minis: { label: string; value: string; strong?: boolean }[];
 }) {
+  const t = useT();
   return (
     <div className="relative overflow-hidden bg-[#15110c] px-5 py-5 text-white">
       <div aria-hidden className={cn("absolute -right-16 -top-20 size-56 rounded-full blur-3xl", glow)} />
-      <DialogClose render={<button type="button" aria-label="Close" className="absolute right-3 top-3 z-10 grid size-8 place-items-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20" />}>
+      <DialogClose render={<button type="button" aria-label={t("Close")} className="absolute right-3 top-3 z-10 grid size-8 place-items-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20" />}>
         <span aria-hidden className="text-lg leading-none">×</span>
       </DialogClose>
       <div className="relative flex items-center gap-4 pr-8">
@@ -77,6 +86,7 @@ function Rows({ rows, bar, barClass }: { rows: { icon: LucideIcon; label: string
 }
 
 function Bars({ title, total, points, color, empty }: { title: string; total: string; points: { d: string; value: number; label: string }[]; color: string; empty: string }) {
+  const t = useT();
   const max = Math.max(1, ...points.map((p) => p.value));
   const any = points.some((p) => p.value > 0);
   return (
@@ -88,9 +98,9 @@ function Bars({ title, total, points, color, empty }: { title: string; total: st
       {!any ? <p className="rounded-2xl bg-muted/50 px-3 py-3 text-center text-xs text-muted-foreground">{empty}</p> : (
         <div className="grid h-20 items-end gap-1" style={{ gridTemplateColumns: `repeat(${points.length}, minmax(0, 1fr))` }}>
           {points.map((p, i) => (
-            <div key={p.d} className="flex h-full flex-col items-center justify-end gap-1" title={`${day(p.d)} · ${p.label}`}>
+            <div key={p.d} className="flex h-full flex-col items-center justify-end gap-1" title={`${day(p.d, t.intl)} · ${p.label}`}>
               <span className={cn("w-full rounded-[4px]", p.value ? color : "bg-muted", p.value && i !== points.length - 1 && "opacity-50")} style={{ height: p.value ? `${Math.max(12, (p.value / max) * 100)}%` : "6%" }} />
-              <span className={cn("text-[9px] text-muted-foreground", i === points.length - 1 && "font-semibold text-foreground")}>{weekday(p.d)}</span>
+              <span className={cn("text-[9px] text-muted-foreground", i === points.length - 1 && "font-semibold text-foreground")}>{weekday(p.d, t.intl)}</span>
             </div>
           ))}
         </div>
@@ -100,6 +110,7 @@ function Bars({ title, total, points, color, empty }: { title: string; total: st
 }
 
 function Latest({ title, empty, items }: { title: string; empty: string; items: { id: string; href: string; title: string; now?: boolean; sub: string; amount: number }[] }) {
+  const t = useT();
   return (
     <div>
       <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground"><Clock className="size-3.5" />{title}</p>
@@ -109,7 +120,7 @@ function Latest({ title, empty, items }: { title: string; empty: string; items: 
             <li key={s.id}>
               <Link href={s.href} className="flex items-center gap-3 px-3.5 py-2.5 text-sm transition-colors hover:bg-muted/40">
                 <span className="min-w-0 flex-1 leading-tight">
-                  <span className="block truncate font-medium">{s.title}{s.now && <span className="ml-1.5 rounded-full bg-sky-500/15 px-1.5 text-[10px] font-semibold text-sky-600 dark:text-sky-300">now</span>}</span>
+                  <span className="block truncate font-medium">{s.title}{s.now && <span className="ml-1.5 rounded-full bg-sky-500/15 px-1.5 text-[10px] font-semibold text-sky-600 dark:text-sky-300">{t("now")}</span>}</span>
                   <span className="block truncate text-xs text-muted-foreground">{s.sub}</span>
                 </span>
                 <span className="shrink-0 font-semibold tabular-nums">{n(s.amount)}</span>
@@ -123,10 +134,11 @@ function Latest({ title, empty, items }: { title: string; empty: string; items: 
 }
 
 function Links({ roomId }: { roomId: string }) {
+  const t = useT();
   return (
     <div className="flex flex-wrap gap-2">
-      <Link href={`/staff/rooms/${roomId}`} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border px-3 text-sm font-medium hover:bg-muted"><BedDouble className="size-3.5" />Room page<ArrowUpRight className="size-3.5" /></Link>
-      <Link href="/staff/finance/rooms" className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border px-3 text-sm font-medium hover:bg-muted"><Trophy className="size-3.5" />All rooms&apos; performance</Link>
+      <Link href={`/staff/rooms/${roomId}`} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border px-3 text-sm font-medium hover:bg-muted"><BedDouble className="size-3.5" />{t("Room page")}<ArrowUpRight className="size-3.5" /></Link>
+      <Link href="/staff/finance/rooms" className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border px-3 text-sm font-medium hover:bg-muted"><Trophy className="size-3.5" />{t("All rooms' performance")}</Link>
     </div>
   );
 }
@@ -137,44 +149,47 @@ const Loading = () => <div className="h-24 animate-pulse rounded-2xl bg-muted/50
 
 /** The card's dark head, like the table card: number, type, status, rate — and this month in three figures. */
 export function InsightHeader({ room, overdue, data }: { room: RoomBoardRoom; overdue: boolean; data: RoomInsight | null }) {
+  const t = useT();
   const meta = ROOM_STATUS_META[room.displayStatus];
   return (
-    <Head number={room.number} title={`Room ${room.number}`} dot={overdue ? "bg-rose-500" : meta.dot} status={overdue ? "Checkout overdue" : meta.label}
-      subtitle={`${room.roomType.name} · TZS ${n(room.roomType.baseRate)} a night`} glow="bg-violet-500/20"
+    <Head number={room.number} title={t("Room {room}", { room: room.number })} dot={overdue ? "bg-rose-500" : meta.dot} status={overdue ? t("Checkout overdue") : t(meta.label)}
+      subtitle={`${t(room.roomType.name)} · ${t("TZS {amount} a night", { amount: n(room.roomType.baseRate) })}`} glow="bg-violet-500/20"
       minis={[
-        { label: `Earned · ${data?.month.label ?? "this month"}`, value: data ? (data.month.earned ? n(data.month.earned) : "—") : "…", strong: true },
-        { label: "Nights sold", value: data ? `${data.month.nights}${data.month.dayUse ? ` + ${data.month.dayUse}` : ""}` : "…" },
-        { label: "Occupancy", value: data ? `${data.month.occupancy}%` : "…" },
+        { label: t("Earned · {month}", { month: data ? monthName(data.month.label, t) : t("this month") }), value: data ? (data.month.earned ? n(data.month.earned) : "—") : "…", strong: true },
+        { label: t("Nights sold"), value: data ? `${data.month.nights}${data.month.dayUse ? ` + ${data.month.dayUse}` : ""}` : "…" },
+        { label: t("Occupancy"), value: data ? `${data.month.occupancy}%` : "…" },
       ]} />
   );
 }
 
 /** How the room is doing against the others (under the head). */
 export function InsightRows({ data }: { data: RoomInsight | null }) {
+  const t = useT();
   if (!data) return <Loading />;
   const m = data.month;
   const vsBest = m.best ? Math.round((m.earned / m.best) * 100) : 0;
   return (
     <Rows barClass="bg-linear-to-r from-violet-500 to-sky-400" bar={vsBest} rows={[
-      { icon: Tag, label: "Average rate", value: m.averageRate ? `TZS ${n(m.averageRate)}` : "—" },
-      { icon: Users, label: "Guests this month", value: `${m.guests}${m.discount ? ` · TZS ${n(m.discount)} discounts` : ""}` },
-      { icon: Trophy, label: "Rank among the rooms", value: m.rank && m.earned ? `#${m.rank} of ${m.rooms} · ${vsBest}% of the best` : "not sold yet this month" },
+      { icon: Tag, label: t("Average rate"), value: m.averageRate ? `TZS ${n(m.averageRate)}` : "—" },
+      { icon: Users, label: t("Guests this month"), value: `${m.guests}${m.discount ? ` · ${t("TZS {amount} discounts", { amount: n(m.discount) })}` : ""}` },
+      { icon: Trophy, label: t("Rank among the rooms"), value: m.rank && m.earned ? t("#{rank} of {rooms} · {pct}% of the best", { rank: m.rank, rooms: m.rooms, pct: vsBest }) : t("not sold yet this month") },
     ]} />
   );
 }
 
 /** The last 14 nights (sold or empty) and the latest guests. */
 export function InsightHistory({ data, room }: { data: RoomInsight | null; room: RoomBoardRoom }) {
+  const t = useT();
   if (!data) return null;
   const sold = data.last14.filter((d) => d.sold).length;
   return (
     <>
-      <Bars title={`Last 14 nights · ${sold} sold`} total={`TZS ${n(data.last14.reduce((t, d) => t + d.amount, 0))}`} color="bg-violet-500"
-        empty="No night sold in the last 14 days." points={data.last14.map((d) => ({ d: d.d, value: d.amount, label: d.sold ? `TZS ${n(d.amount)}` : "empty" }))} />
-      <Latest title="Latest guests" empty="No guest has stayed in this room yet."
+      <Bars title={t("Last 14 nights · {n} sold", { n: sold })} total={`TZS ${n(data.last14.reduce((sum, d) => sum + d.amount, 0))}`} color="bg-violet-500"
+        empty={t("No night sold in the last 14 days.")} points={data.last14.map((d) => ({ d: d.d, value: d.amount, label: d.sold ? `TZS ${n(d.amount)}` : t("empty") }))} />
+      <Latest title={t("Latest guests")} empty={t("No guest has stayed in this room yet.")}
         items={data.stays.map((s) => ({
           id: s.id, href: `/staff/reservations/${s.reservationId}`, title: s.guest, now: s.status === "CHECKED_IN", amount: s.amount,
-          sub: `${day(s.from)}${s.to !== s.from ? ` → ${day(s.to)}` : ""} · ${s.dayUse ? "short time" : `${s.nights} night${s.nights === 1 ? "" : "s"}`} · ${s.reference}`,
+          sub: `${day(s.from, t.intl)}${s.to !== s.from ? ` → ${day(s.to, t.intl)}` : ""} · ${s.dayUse ? t("short time") : t.plural(s.nights, "{n} night", "{n} nights")} · ${s.reference}`,
         }))} />
       <Links roomId={room.id} />
     </>
@@ -185,36 +200,38 @@ export function InsightHistory({ data, room }: { data: RoomInsight | null; room:
 
 /** The meeting room's dark head: this month's income, bookings and how much of the open hours were used. */
 export function MeetingInsightHeader({ room, status, data }: { room: RoomBoardRoom; status: string; data: MeetingInsight | null }) {
+  const t = useT();
   return (
-    <Head number={room.number} title={room.roomType.name} dot={ROOM_STATUS_META[status as keyof typeof ROOM_STATUS_META]?.dot ?? "bg-emerald-500"} status={MEETING_ROOM_STATUS_LABEL[status] ?? status}
-      subtitle={`TZS ${n(room.roomType.baseRate)} per booking · by time`} glow="bg-emerald-500/20"
+    <Head number={room.number} title={t(room.roomType.name)} dot={ROOM_STATUS_META[status as keyof typeof ROOM_STATUS_META]?.dot ?? "bg-emerald-500"} status={t(MEETING_ROOM_STATUS_LABEL[status] ?? status)}
+      subtitle={t("TZS {amount} per booking · by time", { amount: n(room.roomType.baseRate) })} glow="bg-emerald-500/20"
       minis={[
-        { label: `Income · ${data?.month.label ?? "this month"}`, value: data ? (data.month.income ? n(data.month.income) : "—") : "…", strong: true },
-        { label: "Bookings", value: data ? String(data.month.bookings) : "…" },
-        { label: "Used", value: data ? `${data.month.utilisation}%` : "…" },
+        { label: t("Income · {month}", { month: data ? monthName(data.month.label, t) : t("this month") }), value: data ? (data.month.income ? n(data.month.income) : "—") : "…", strong: true },
+        { label: t("Bookings"), value: data ? String(data.month.bookings) : "…" },
+        { label: t("Used"), value: data ? `${data.month.utilisation}%` : "…" },
       ]} />
   );
 }
 
 /** Hours used, cancellations, the last 14 days and the latest meetings. */
 export function MeetingInsightBody({ data, room }: { data: MeetingInsight | null; room: RoomBoardRoom }) {
+  const t = useT();
   if (!data) return <Loading />;
   const m = data.month;
-  const total = data.last14.reduce((t, d) => t + d.hours, 0);
+  const total = data.last14.reduce((sum, d) => sum + d.hours, 0);
   return (
     <>
       <Rows barClass="bg-linear-to-r from-emerald-500 to-teal-400" bar={m.utilisation} rows={[
-        { icon: Hourglass, label: "Hours booked", value: `${m.hours} of ${m.openHours} open hours` },
-        { icon: Tag, label: "Average per booking", value: m.perBooking ? `TZS ${n(m.perBooking)}` : "—" },
-        { icon: Presentation, label: "Completed", value: `${m.completed} of ${m.bookings}` },
-        { icon: CalendarX, label: "Cancelled · no-shows", value: `${m.cancelled} · ${m.noShows}` },
+        { icon: Hourglass, label: t("Hours booked"), value: t("{hours} of {open} open hours", { hours: m.hours, open: m.openHours }) },
+        { icon: Tag, label: t("Average per booking"), value: m.perBooking ? `TZS ${n(m.perBooking)}` : "—" },
+        { icon: Presentation, label: t("Completed"), value: t("{done} of {total}", { done: m.completed, total: m.bookings }) },
+        { icon: CalendarX, label: t("Cancelled · no-shows"), value: `${m.cancelled} · ${m.noShows}` },
       ]} />
-      <Bars title="Last 14 days · hours booked" total={`${Math.round(total * 10) / 10} h`} color="bg-emerald-500" empty="No meeting in the last 14 days."
-        points={data.last14.map((d) => ({ d: d.d, value: d.hours, label: d.hours ? `${d.hours} h` : "free" }))} />
-      <Latest title="Latest meetings" empty="No meeting yet."
+      <Bars title={t("Last 14 days · hours booked")} total={t("{n} h", { n: Math.round(total * 10) / 10 })} color="bg-emerald-500" empty={t("No meeting in the last 14 days.")}
+        points={data.last14.map((d) => ({ d: d.d, value: d.hours, label: d.hours ? t("{n} h", { n: d.hours }) : t("free") }))} />
+      <Latest title={t("Latest meetings")} empty={t("No meeting yet.")}
         items={data.latest.map((b) => ({
           id: b.id, href: `/staff/reservations/${b.reservationId}`, title: b.who, now: b.status === "CHECKED_IN", amount: b.amount,
-          sub: `${day(b.date)} · ${timeRange(b.startAt, b.endAt)} · ${b.reference}${b.status === "NO_SHOW" ? " · no-show" : ""}`,
+          sub: `${day(b.date, t.intl)} · ${timeRange(b.startAt, b.endAt)} · ${b.reference}${b.status === "NO_SHOW" ? ` · ${t("no-show")}` : ""}`,
         }))} />
       <Links roomId={room.id} />
     </>

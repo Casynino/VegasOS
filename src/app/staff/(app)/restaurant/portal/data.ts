@@ -11,6 +11,18 @@ import { inHouseGuestIds, isHotelOrder } from "@/server/desk";
 import { isRestaurantDevice } from "@/lib/permissions";
 import { ORDER_EVENT_TYPE, orderEventFor, orderMessageText, orderFacts } from "@/lib/order-messages";
 import type { PortalOrder, PortalPerms, PortalRole, PortalStay } from "./types";
+import { getTFor } from "@/i18n/server";
+import { toLocale, type Locale } from "@/i18n/config";
+import { englishT, type T } from "@/i18n/translate";
+
+/** Translators for customers' languages (their WhatsApp update text) — load once per page: `guestT: await customerTranslators()`. */
+export async function customerTranslators(): Promise<Partial<Record<Locale, T>>> {
+  return { "zh-CN": await getTFor("zh-CN") };
+}
+
+/** A dish name kept on an order line, for a client screen (JSON in the database → a plain map). */
+const namesOf = (v: unknown): Record<string, string> | null =>
+  v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v as Record<string, unknown>).filter((e): e is [string, string] => typeof e[1] === "string")) : null;
 
 /**
  * Reception works for the HOTEL (owner, 2026-10-04): it follows only the hotel's orders — from the rooms (room
@@ -54,13 +66,21 @@ export function portalAccess(user: CurrentUser): { perms: PortalPerms; role: Por
 }
 
 /** Orders as the portal cards show them (money left out for the cook; the customer's update text for waiters). */
-export function toPortalOrders(orders: BoardOrder[], ctx: { seesMoney: boolean; waiter: boolean; settings: Awaited<ReturnType<typeof getSettings>>; origin: string; sent?: Set<string>; stays?: Map<string, PortalStay[]>; online?: Map<string, OnlinePayState> }): PortalOrder[] {
+export function toPortalOrders(orders: BoardOrder[], ctx: {
+  seesMoney: boolean; waiter: boolean; settings: Awaited<ReturnType<typeof getSettings>>; origin: string; sent?: Set<string>; stays?: Map<string, PortalStay[]>; online?: Map<string, OnlinePayState>;
+  /** The customer's update is written in THEIR language (from customerTranslators()); without it, English. */
+  guestT?: Partial<Record<Locale, T>>;
+}): PortalOrder[] {
   const { seesMoney, settings, origin } = ctx;
   const hotelPhone = prettyPhone(settings.whatsapp || settings.phone);
   return orders.map((o) => {
     // The room guest's phone only when they are the order's own customer (never another guest's number).
     const phone = o.customerPhone ?? (o.reservation && o.guestId === o.reservation.guestId ? o.reservation.guest.phone : null);
     const event = orderEventFor(o.status, o.type, !!o.deliveryAddress);
+    // The customer's own language (their saved choice) for their update — the dishes named as they ordered them.
+    const lang = toLocale(o.guest?.preferredLanguage);
+    const gt = (lang && ctx.guestT?.[lang]) || englishT;
+    const zh = gt.locale === "zh-CN" ? "?lang=zh" : "";
     return {
       id: o.id, number: o.number, type: o.type, status: o.status, settlement: o.settlement, source: o.source,
       customer: o.customerName ?? o.reservation?.guest.fullName ?? null, phone: seesMoney ? phone : null, room: o.roomNumber, table: o.tableLabel, place: deliveryPlace(o), address: o.deliveryAddress,
@@ -70,11 +90,11 @@ export function toPortalOrders(orders: BoardOrder[], ctx: { seesMoney: boolean; 
       } : null,
       awaitsPayment: awaitsOnlinePayment(o, o.payments.some((p) => p.online)),
       online: ctx.online?.get(o.id) ?? null,
-      notes: o.notes, cancelReason: o.cancelReason,
+      notes: o.notes, cancelReason: o.cancelReason, noteCodes: o.noteCodes,
       createdAt: o.createdAt.toISOString(), acceptedAt: o.acceptedAt?.toISOString() ?? null, readyAt: o.readyAt?.toISOString() ?? null,
       takenAt: o.takenAt?.toISOString() ?? null, deliveredAt: o.deliveredAt?.toISOString() ?? null, doneAt: (o.completedAt ?? o.cancelledAt ?? o.deliveredAt)?.toISOString() ?? null,
       acceptedBy: o.acceptedBy?.fullName ?? null, readyBy: o.readyBy?.fullName ?? null, takenBy: o.takenBy?.fullName ?? null, deliveredBy: o.deliveredBy?.fullName ?? null,
-      items: o.items.map((i) => ({ id: i.id, menuItemId: i.menuItemId, name: i.name, quantity: i.quantity, type: i.type, image: i.menuItem?.image?.isActive ? mediaUrl(i.menuItem.image) : null, prepared: !!i.preparedAt,
+      items: o.items.map((i) => ({ id: i.id, menuItemId: i.menuItemId, name: i.name, nameI18n: namesOf(i.nameI18n), quantity: i.quantity, type: i.type, image: i.menuItem?.image?.isActive ? mediaUrl(i.menuItem.image) : null, prepared: !!i.preparedAt,
         unitPrice: seesMoney ? i.unitPrice : null, lineTotal: seesMoney ? i.lineTotal : null,
         round: i.round, addedAt: i.addedAt.toISOString(), addedBy: i.addedBy?.fullName ?? null, paid: !!i.paymentId })),
       total: seesMoney ? o.total : null, serviceFee: seesMoney ? o.serviceFee : null, paidTo: seesMoney ? o.account?.name ?? null : null,
@@ -100,9 +120,9 @@ export function toPortalOrders(orders: BoardOrder[], ctx: { seesMoney: boolean; 
         to: phone, type: ORDER_EVENT_TYPE[event],
         text: orderMessageText(event, {
           name: o.customerName, hotel: settings.hotelName, number: o.number, type: o.type, room: o.roomNumber, delivery: !!o.deliveryAddress,
-          track: o.trackToken ? `${origin}/order/${o.trackToken}` : null, menu: `${origin}/order`, prepMinutes: settings.orderPrepMinutes, phone: hotelPhone,
+          track: o.trackToken ? `${origin}/order/${o.trackToken}${zh}` : null, menu: `${origin}/order${zh}`, prepMinutes: settings.orderPrepMinutes, phone: hotelPhone,
           place: deliveryPlace(o), details: orderFacts(o, deliveryPlace(o), settings.timezone),
-        }),
+        }, gt),
       } : null,
       told: !!event && !!ctx.sent?.has(`${o.id}:${ORDER_EVENT_TYPE[event]}`),
       stays: seesMoney ? ctx.stays?.get(o.id) ?? [] : [],

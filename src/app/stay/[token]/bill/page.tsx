@@ -5,12 +5,18 @@ import { guestStayBill } from "@/server/services/stay-bill";
 import { GuestBillPage } from "@/components/ordering/guest-bill-page";
 import { stayBillPayOnline } from "@/server/services/online-pay";
 import { payStayBillOnlineAction } from "@/app/stay/[token]/actions";
+import { getT, guestLocale } from "@/i18n/server";
 
-export const metadata: Metadata = { title: "Your bill", robots: { index: false, follow: false }, referrer: "no-referrer" };
+export async function generateMetadata(): Promise<Metadata> {
+  await guestLocale();
+  const t = await getT();
+  return { title: t("Your bill"), robots: { index: false, follow: false }, referrer: "no-referrer" };
+}
 export const dynamic = "force-dynamic";
 
 /** The guest's room bill — print it or keep it as a PDF / picture. */
 export default async function GuestStayBillPage({ params }: PageProps<"/stay/[token]/bill">) {
+  await guestLocale();
   const { token } = await params;
   const [bill, settings, online] = await Promise.all([guestStayBill({ guestToken: token }), getSettings(), stayBillPayOnline({ guestToken: token })]);
   if (!bill) notFound();

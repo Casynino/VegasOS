@@ -1,5 +1,6 @@
 import { SHORT_TIME_MAX_HOURS } from "../short-time";
 import { MEETING_MAX_HOURS, MEETING_MIN_MINUTES } from "../meeting";
+import { msg, msgf, type Localized } from "@/i18n/msg";
 /**
  * StayCalculationService — the single place that turns requested dates/times
  * into a stay: business dates, occupancy window, nights, day-use and
@@ -57,7 +58,17 @@ export interface Stay {
   nightDates: BusinessDate[];
 }
 
-export class StayError extends Error {}
+/**
+ * A stay that cannot be. Its message is English (the key); one with values in it also keeps them (`localized`), so
+ * whoever shows it can translate it with its values: `new AppError(e.localized ?? e.message)`.
+ */
+export class StayError extends Error {
+  readonly localized?: Localized;
+  constructor(message: string | Localized) {
+    super(typeof message === "string" ? message : message.text);
+    if (typeof message !== "string") this.localized = message;
+  }
+}
 
 /**
  * Overnight stay from business-date arrival to business-date departure.
@@ -70,11 +81,11 @@ export function overnightStay(
 ): Stay {
   const { arrivalDate, departureDate } = input;
   if (!isBusinessDate(arrivalDate) || !isBusinessDate(departureDate)) {
-    throw new StayError("Invalid arrival or departure date.");
+    throw new StayError(msg("Invalid arrival or departure date."));
   }
   const nights = diffDays(arrivalDate, departureDate);
-  if (nights < 1) throw new StayError("Check-out must be after check-in.");
-  if (nights > MAX_NIGHTS) throw new StayError(`Stays are limited to ${MAX_NIGHTS} nights.`);
+  if (nights < 1) throw new StayError(msg("Check-out must be after check-in."));
+  if (nights > MAX_NIGHTS) throw new StayError(msgf("Stays are limited to {max} nights.", { max: MAX_NIGHTS }));
 
   let startAt = zonedInstant(arrivalDate, config.standardCheckInMinutes, config.timezone);
   let isLateArrival = false;
@@ -82,7 +93,7 @@ export function overnightStay(
   if (input.arrivalInstant) {
     const arrivalBusinessDate = businessDateOf(input.arrivalInstant, config);
     if (arrivalBusinessDate !== arrivalDate) {
-      throw new StayError("Arrival time does not fall on the arrival business date.");
+      throw new StayError(msg("Arrival time does not fall on the arrival business date."));
     }
     startAt = input.arrivalInstant;
     isLateArrival = isLateArrivalInstant(input.arrivalInstant, config);
@@ -91,7 +102,7 @@ export function overnightStay(
   // Checkout happens on the calendar morning after the last night, which is
   // the departure business date (checkout time is after the day rollover).
   const endAt = zonedInstant(departureDate, config.checkoutMinutes, config.timezone);
-  if (endAt <= startAt) throw new StayError("Check-out time must be after check-in time.");
+  if (endAt <= startAt) throw new StayError(msg("Check-out time must be after check-in time."));
 
   const nightDates: BusinessDate[] = [];
   for (let i = 0; i < nights; i++) nightDates.push(addDays(arrivalDate, i));
@@ -115,9 +126,9 @@ export function dayUseStay(
   config: StayConfig = DEFAULT_STAY_CONFIG,
 ): Stay {
   const { startAt, endAt } = input;
-  if (!(endAt > startAt)) throw new StayError("Short time must end after it starts.");
+  if (!(endAt > startAt)) throw new StayError(msg("Short time must end after it starts."));
   if (endAt.getTime() - startAt.getTime() > SHORT_TIME_MAX_HOURS * 3_600_000) {
-    throw new StayError(`Short time is at most ${SHORT_TIME_MAX_HOURS} hours.`);
+    throw new StayError(msgf("Short time is at most {hours} hours.", { hours: SHORT_TIME_MAX_HOURS }));
   }
   // Short time may run past midnight or 04:00; it belongs to the hotel day it starts in.
   const date = businessDateOf(startAt, config);
@@ -145,11 +156,11 @@ export function meetingStay(
   config: StayConfig = DEFAULT_STAY_CONFIG,
 ): Stay {
   const { startAt, endAt } = input;
-  if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime())) throw new StayError("Choose the meeting date, start and end time.");
-  if (!(endAt > startAt)) throw new StayError("The meeting must end after it starts.");
+  if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime())) throw new StayError(msg("Choose the meeting date, start and end time."));
+  if (!(endAt > startAt)) throw new StayError(msg("The meeting must end after it starts."));
   const minutes = (endAt.getTime() - startAt.getTime()) / 60_000;
-  if (minutes < MEETING_MIN_MINUTES) throw new StayError(`A meeting booking is at least ${MEETING_MIN_MINUTES} minutes.`);
-  if (minutes > MEETING_MAX_HOURS * 60) throw new StayError(`A meeting booking is at most ${MEETING_MAX_HOURS} hours — book each day separately.`);
+  if (minutes < MEETING_MIN_MINUTES) throw new StayError(msgf("A meeting booking is at least {minutes} minutes.", { minutes: MEETING_MIN_MINUTES }));
+  if (minutes > MEETING_MAX_HOURS * 60) throw new StayError(msgf("A meeting booking is at most {hours} hours — book each day separately.", { hours: MEETING_MAX_HOURS }));
   const date = businessDateOf(startAt, config);
   return { arrivalDate: date, departureDate: date, startAt, endAt, nights: 0, billableUnits: 1, isDayUse: true, isLateArrival: false, nightDates: [] };
 }
@@ -164,7 +175,7 @@ export function walkInStay(
   config: StayConfig = DEFAULT_STAY_CONFIG,
 ): Stay {
   if (!Number.isInteger(input.nights) || input.nights < 1) {
-    throw new StayError("A walk-in stay needs at least one night.");
+    throw new StayError(msg("A walk-in stay needs at least one night."));
   }
   const arrivalDate = businessDateOf(input.now, config);
   return overnightStay(

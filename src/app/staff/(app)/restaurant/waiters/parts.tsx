@@ -1,7 +1,10 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { formatTime, formatTZS } from "@/lib/format";
+import { formatTZS } from "@/lib/format";
 import type { MoneyCount, PayState } from "@/server/services/waiter-performance";
+import { getT } from "@/i18n/server";
+import { msg } from "@/i18n/msg";
+import { englishT, type T } from "@/i18n/translate";
 
 /** What the Waiters page's parts share. */
 
@@ -9,15 +12,15 @@ export const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`
 export const shortNo = (n: string) => `#${n.replace(/^ORD-\d{4}-0*/, "")}`;
 export const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map((x) => x[0]?.toUpperCase()).join("") || "?";
 
-/** 0.4 → "under 1 min", 7.6 → "8 min", 95 → "1 h 35 min"; nothing timed → "—". */
-export function mins(m: number | null | undefined) {
+/** 0.4 → "under 1 min", 7.6 → "8 min", 95 → "1 h 35 min"; nothing timed → "—". In the reader's language when their `t` is given. */
+export function mins(m: number | null | undefined, t: T = englishT) {
   if (m == null) return "—";
-  if (m < 1) return "under 1 min";
+  if (m < 1) return t("under 1 min");
   const r = Math.round(m);
-  return r < 60 ? `${r} min` : `${Math.floor(r / 60)} h${r % 60 ? ` ${r % 60} min` : ""}`;
+  return r < 60 ? t("{n} min", { n: r }) : `${t("{n} h", { n: Math.floor(r / 60) })}${r % 60 ? ` ${t("{n} min", { n: r % 60 })}` : ""}`;
 }
 /** Minutes on shift → "7 h 30 min", none → "—". */
-export const hours = (m: number) => (m <= 0 ? "—" : mins(m));
+export const hours = (m: number, t: T = englishT) => (m <= 0 ? "—" : mins(m, t));
 
 /** The colours used for the facts — calm, never a verdict. */
 export const TONE = {
@@ -35,10 +38,11 @@ export function Pill({ tone, children, className }: { tone: keyof typeof TONE; c
 }
 
 /** On shift now (since when) — or not. */
-export function ShiftPill({ since }: { since: Date | null }) {
+export async function ShiftPill({ since }: { since: Date | null }) {
+  const t = await getT();
   return since
-    ? <Pill tone="emerald"><span className="size-1.5 rounded-full bg-emerald-500" />On shift · since {formatTime(since)}</Pill>
-    : <Pill tone="muted">Off shift</Pill>;
+    ? <Pill tone="emerald"><span className="size-1.5 rounded-full bg-emerald-500" />{t("On shift · since {time}", { time: t.time(since) })}</Pill>
+    : <Pill tone="muted">{t("Off shift")}</Pill>;
 }
 
 /** A small figure: label, value, an optional line under it. */
@@ -54,16 +58,17 @@ export function Fact({ label, value, sub, tone }: { label: string; value: ReactN
 
 type Settle = { paid: MoneyCount; toConfirm: MoneyCount; onRoom: MoneyCount; unpaid: MoneyCount };
 const SETTLE_PARTS = [
-  { key: "paid", label: "Paid", bar: "bg-emerald-500/70", tone: "text-emerald-700 dark:text-emerald-300" },
-  { key: "toConfirm", label: "Paid · to confirm", bar: "bg-amber-400/80", tone: "text-amber-800 dark:text-amber-300" },
-  { key: "onRoom", label: "On room bills", bar: "bg-violet-500/60", tone: "text-violet-700 dark:text-violet-300" },
-  { key: "unpaid", label: "Still to pay", bar: "bg-rose-500/60", tone: "text-rose-700 dark:text-rose-300" },
+  { key: "paid", label: msg("Paid"), bar: "bg-emerald-500/70", tone: "text-emerald-700 dark:text-emerald-300" },
+  { key: "toConfirm", label: msg("Paid · to confirm"), bar: "bg-amber-400/80", tone: "text-amber-800 dark:text-amber-300" },
+  { key: "onRoom", label: msg("On room bills"), bar: "bg-violet-500/60", tone: "text-violet-700 dark:text-violet-300" },
+  { key: "unpaid", label: msg("Still to pay"), bar: "bg-rose-500/60", tone: "text-rose-700 dark:text-rose-300" },
 ] as const;
 
 /** How the served orders were settled: a thin bar (by number of orders) and the counts and values. */
-export function SettleBar({ s, compact }: { s: Settle; compact?: boolean }) {
+export async function SettleBar({ s, compact }: { s: Settle; compact?: boolean }) {
+  const t = await getT();
   const n = s.paid.count + s.toConfirm.count + s.onRoom.count + s.unpaid.count;
-  if (!n) return <p className="text-[11px] text-muted-foreground">No served orders to settle.</p>;
+  if (!n) return <p className="text-[11px] text-muted-foreground">{t("No served orders to settle.")}</p>;
   return (
     <div className="space-y-1.5">
       <div className="flex h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden>
@@ -72,7 +77,7 @@ export function SettleBar({ s, compact }: { s: Settle; compact?: boolean }) {
       <p className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
         {SETTLE_PARTS.filter((p) => s[p.key].count > 0).map((p) => (
           <span key={p.key} className="tabular-nums">
-            <span className={cn("font-semibold", p.tone)}>{p.label}</span> {s[p.key].count}{compact ? "" : ` · ${formatTZS(s[p.key].value)}`}
+            <span className={cn("font-semibold", p.tone)}>{t(p.label)}</span> {s[p.key].count}{compact ? "" : ` · ${formatTZS(s[p.key].value)}`}
           </span>
         ))}
       </p>
@@ -80,15 +85,15 @@ export function SettleBar({ s, compact }: { s: Settle; compact?: boolean }) {
   );
 }
 
-/** An order's payment state, in plain words. */
-export function payLabel(p: PayState | null, o: { due: number; served: boolean }): { label: string; tone: keyof typeof TONE } {
+/** An order's payment state, in plain words (the reader's language when their `t` is given). */
+export function payLabel(p: PayState | null, o: { due: number; served: boolean }, t: T = englishT): { label: string; tone: keyof typeof TONE } {
   switch (p) {
-    case "PAID": return { label: "Paid", tone: "emerald" };
-    case "TO_CONFIRM": return { label: "Paid · to confirm", tone: "amber" };
-    case "ROOM": return { label: "On the room bill", tone: "violet" };
-    case "PART": return { label: `Part paid · ${formatTZS(o.due)} due`, tone: "amber" };
-    case "REFUNDED": return { label: "Refunded", tone: "muted" };
-    case "UNPAID": return o.served ? { label: `Not paid · ${formatTZS(o.due)}`, tone: "rose" } : { label: "Not paid yet", tone: "muted" };
+    case "PAID": return { label: t("Paid"), tone: "emerald" };
+    case "TO_CONFIRM": return { label: t("Paid · to confirm"), tone: "amber" };
+    case "ROOM": return { label: t("On the room bill"), tone: "violet" };
+    case "PART": return { label: t("Part paid · {amount} due", { amount: formatTZS(o.due) }), tone: "amber" };
+    case "REFUNDED": return { label: t("Refunded"), tone: "muted" };
+    case "UNPAID": return o.served ? { label: t("Not paid · {amount}", { amount: formatTZS(o.due) }), tone: "rose" } : { label: t("Not paid yet"), tone: "muted" };
     default: return { label: "—", tone: "muted" };
   }
 }

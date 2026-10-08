@@ -3,8 +3,11 @@ import { db } from "../db";
 import { businessDayBounds, localMinutesOfDay, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import { businessDayConfig, getSettings } from "../settings";
 import { formatQty } from "@/lib/inventory";
-import { formatDateTime } from "@/lib/format";
 import { inventoryAlerts } from "./inventory";
+import { spotName } from "@/components/restaurant/shell";
+import { getT } from "@/i18n/server";
+import { msg } from "@/i18n/msg";
+import { englishT, type T } from "@/i18n/translate";
 
 /**
  * The manager's and the MD's command centre — one place to see the hotel's condition:
@@ -21,17 +24,17 @@ export type Tone = "rose" | "amber" | "sky" | "gold" | "slate";
 export type Decision = { id: string; area: Area; tone: Tone; title: string; detail: string; minutes: number | null; href: string; act: string };
 
 const mins = (from: Date | null | undefined, now: Date) => (from ? Math.max(0, Math.round((now.getTime() - from.getTime()) / 60000)) : 0);
-export const ago = (m: number) => (m < 60 ? `${m} min` : m < 1440 ? `${Math.floor(m / 60)} h ${m % 60 ? `${m % 60} min` : ""}`.trim() : `${Math.floor(m / 1440)} d`);
-const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
-const REQUEST_WORD: Record<string, string> = { TOWELS: "Towels", CLEANING: "Cleaning", MAINTENANCE: "Repair", RESTAURANT: "Food", TRANSPORT: "Transport", GENERAL: "Help", OTHER: "Request" };
+/** 12 → "12 min", 125 → "2 h 5 min", 3000 → "2 d" — in the reader's language. */
+export const ago = (m: number, t: T = englishT) => (m < 60 ? t("{n} min", { n: m }) : m < 1440 ? (m % 60 ? t("{h} h {m} min", { h: Math.floor(m / 60), m: m % 60 }) : t("{h} h", { h: Math.floor(m / 60) })) : t("{n} d", { n: Math.floor(m / 1440) }));
+const REQUEST_WORD: Record<string, string> = { TOWELS: msg("Towels"), CLEANING: msg("Cleaning"), MAINTENANCE: msg("Repair"), RESTAURANT: msg("Food"), TRANSPORT: msg("Transport"), GENERAL: msg("Help"), OTHER: msg("Request") };
 
 /** How long an order may sit in each stage before it is "late". */
 export const ORDER_LIMITS: Record<string, { label: string; limit: number }> = {
-  PENDING: { label: "waiting to be accepted", limit: 5 },
-  ACCEPTED: { label: "accepted, not started", limit: 10 },
-  PREPARING: { label: "preparing", limit: 25 },
-  READY: { label: "ready, not served yet", limit: 10 },
-  OUT_FOR_DELIVERY: { label: "being served", limit: 15 },
+  PENDING: { label: msg("waiting to be accepted"), limit: 5 },
+  ACCEPTED: { label: msg("accepted, not started"), limit: 10 },
+  PREPARING: { label: msg("preparing"), limit: 25 },
+  READY: { label: msg("ready, not served yet"), limit: 10 },
+  OUT_FOR_DELIVERY: { label: msg("being served"), limit: 15 },
 };
 /** Housekeeping: a dirty room should be started, a room being cleaned finished. */
 const CLEAN_LIMIT = { DIRTY: 45, CLEANING: 40 };
@@ -54,6 +57,9 @@ export interface CommandInput {
 export async function commandCenter(input: CommandInput) {
   const { today, now } = input;
   const day = toDbDate(today);
+  // What needs a decision is written for the person looking (their language); the home shows it as it is.
+  const t = await getT();
+  const tzs = (v: number) => `TZS ${v.toLocaleString("en-US")}`;
   const [rooms, arrivals, inHouse, orders, toConfirm, requests, stores, assetsDown, activity, openShifts] = await Promise.all([
     db.room.findMany({ where: { isActive: true, roomType: { category: "GUEST_ROOM" } }, select: { id: true, number: true, status: true, statusNote: true, statusChangedAt: true } }),
     db.reservationRoom.findMany({
@@ -72,7 +78,7 @@ export async function commandCenter(input: CommandInput) {
     db.bookingRequest.findMany({ where: { status: "NEW" }, orderBy: { createdAt: "asc" }, take: 20, select: { id: true, fullName: true, companyName: true, createdAt: true } }),
     inventoryAlerts(today),
     db.asset.findMany({ where: { status: { in: ["UNDER_REPAIR", "OUT_OF_ORDER"] } }, select: { id: true, code: true, name: true, location: true, status: true, updatedAt: true } }),
-    staffActivity(today),
+    staffActivity(today, t),
     // The reception shift open now: to link its person and to see one left open too long.
     db.actualShift.findMany({ where: { endedAt: null, department: "RECEPTION" }, orderBy: { startedAt: "asc" }, select: { id: true, startedAt: true, user: { select: { fullName: true } } } }),
   ]);
@@ -124,73 +130,80 @@ export async function commandCenter(input: CommandInput) {
   // ── Guests & front desk ──
   const overdue = inHouse.filter((r) => r.endAt <= now);
   for (const r of overdue.slice(0, 4)) {
-    push({ id: `over-${r.id}`, area: "Guests", tone: "rose", title: `Room ${r.room.number} — checkout overdue`, detail: `${r.reservation.guest.fullName}${r.reservation.balanceAmount > 0 ? ` · owes TZS ${r.reservation.balanceAmount.toLocaleString("en-US")}` : ""}`, minutes: mins(r.endAt, now), href: `/staff/reservations/${r.reservation.id}`, act: "Extend or have reception check out" });
+    push({ id: `over-${r.id}`, area: "Guests", tone: "rose", title: t("Room {room} — checkout overdue", { room: r.room.number }), detail: `${r.reservation.guest.fullName}${r.reservation.balanceAmount > 0 ? ` · ${t("owes {amount}", { amount: tzs(r.reservation.balanceAmount) })}` : ""}`, minutes: mins(r.endAt, now), href: `/staff/reservations/${r.reservation.id}`, act: t("Extend or have reception check out") });
   }
-  if (overdue.length > 4) push({ id: "over-more", area: "Guests", tone: "rose", title: `${overdue.length - 4} more overdue checkouts`, detail: "Past checkout time", minutes: null, href: "/staff/reservations?view=departures", act: "See all" });
+  if (overdue.length > 4) push({ id: "over-more", area: "Guests", tone: "rose", title: t("{n} more overdue checkouts", { n: overdue.length - 4 }), detail: t("Past checkout time"), minutes: null, href: "/staff/reservations?view=departures", act: t("See all") });
   const leavingOwing = inHouse.filter((r) => r.endAt > now && r.departureDate.getTime() <= day.getTime() && r.reservation.balanceAmount > 0);
   if (leavingOwing.length) {
     const total = [...new Map(leavingOwing.map((r) => [r.reservation.id, r.reservation.balanceAmount])).values()].reduce((a, b) => a + b, 0);
-    push({ id: "leaving-owing", area: "Guests", tone: "amber", title: `${plural(leavingOwing.length, "guest")} leaving today still owe`, detail: `TZS ${total.toLocaleString("en-US")} to collect · ${leavingOwing.map((r) => r.room.number).join(", ")}`, minutes: null, href: "/staff/reservations?view=departures", act: "Follow up" });
+    push({ id: "leaving-owing", area: "Guests", tone: "amber", title: t.plural(leavingOwing.length, "{n} guest leaving today still owe", "{n} guests leaving today still owe"), detail: t("{amount} to collect · {rooms}", { amount: tzs(total), rooms: leavingOwing.map((r) => r.room.number).join(", ") }), minutes: null, href: "/staff/reservations?view=departures", act: t("Follow up") });
   }
   // Arriving today to a room that is not ready — the most annoying thing for a guest.
   const notReady = arrivals.filter((a) => ["DIRTY", "CLEANING", "MAINTENANCE", "OUT_OF_SERVICE", "OCCUPIED"].includes(a.room.status));
   for (const a of notReady.slice(0, 4)) {
-    const why = a.room.status === "OCCUPIED" ? "someone is still in it" : a.room.status === "MAINTENANCE" || a.room.status === "OUT_OF_SERVICE" ? "under maintenance" : "not cleaned yet";
-    push({ id: `arr-${a.id}`, area: "Rooms", tone: a.room.status === "MAINTENANCE" || a.room.status === "OUT_OF_SERVICE" ? "rose" : "amber", title: `Arrival for room ${a.room.number} — room ${why}`, detail: `${a.reservation.guest.fullName}${a.reservation.eta ? ` · expected ${a.reservation.eta}` : ""}`, minutes: null, href: `/staff/reservations/${a.reservation.id}`, act: a.room.status === "MAINTENANCE" || a.room.status === "OUT_OF_SERVICE" ? "Move to another room" : "Hurry housekeeping" });
+    const why = a.room.status === "OCCUPIED" ? t("someone is still in it") : a.room.status === "MAINTENANCE" || a.room.status === "OUT_OF_SERVICE" ? t("under maintenance") : t("not cleaned yet");
+    push({ id: `arr-${a.id}`, area: "Rooms", tone: a.room.status === "MAINTENANCE" || a.room.status === "OUT_OF_SERVICE" ? "rose" : "amber", title: t("Arrival for room {room} — room {why}", { room: a.room.number, why }), detail: `${a.reservation.guest.fullName}${a.reservation.eta ? ` · ${t("expected {time}", { time: a.reservation.eta })}` : ""}`, minutes: null, href: `/staff/reservations/${a.reservation.id}`, act: a.room.status === "MAINTENANCE" || a.room.status === "OUT_OF_SERVICE" ? t("Move to another room") : t("Hurry housekeeping") });
   }
   // Arriving today but the booking is not confirmed (nothing paid, no company) — it may not hold.
   const unconfirmed = arrivals.filter((a) => a.status === "RESERVED");
-  if (unconfirmed.length) push({ id: "unconfirmed", area: "Bookings", tone: "amber", title: `${plural(unconfirmed.length, "arrival")} today not confirmed`, detail: unconfirmed.slice(0, 3).map((a) => `${a.reservation.guest.fullName.split(" ")[0]} · room ${a.room.number}`).join(" · "), minutes: null, href: "/staff/reservations?view=arrivals", act: "Reception should call and confirm" });
+  if (unconfirmed.length) push({ id: "unconfirmed", area: "Bookings", tone: "amber", title: t.plural(unconfirmed.length, "{n} arrival today not confirmed", "{n} arrivals today not confirmed"), detail: unconfirmed.slice(0, 3).map((a) => t("{name} · room {room}", { name: a.reservation.guest.fullName.split(" ")[0], room: a.room.number })).join(" · "), minutes: null, href: "/staff/reservations?view=arrivals", act: t("Reception should call and confirm") });
   // Guests waiting for help.
   for (const q of waitingHelp.slice(0, 3)) {
     const m = mins(q.createdAt, now);
-    push({ id: `req-${q.id}`, area: "Guests", tone: m >= 60 ? "rose" : "amber", title: `${q.room ? `Room ${q.room.number}` : "A guest"} waiting for help for ${ago(m)}`, detail: `${REQUEST_WORD[q.type] ?? "Request"}: ${q.description}${q.assignedTo ? ` · with ${q.assignedTo.fullName.replace(/\s*\(.*\)/, "")}` : " · nobody on it"}`, minutes: m, href: "/staff/requests", act: q.assignedTo ? "Check it is being done" : "Give it to someone" });
+    push({
+      id: `req-${q.id}`, area: "Guests", tone: m >= 60 ? "rose" : "amber",
+      title: q.room ? t("Room {room} waiting for help for {time}", { room: q.room.number, time: ago(m, t) }) : t("A guest waiting for help for {time}", { time: ago(m, t) }),
+      detail: q.assignedTo
+        ? t("{type}: {description} · with {name}", { type: t(REQUEST_WORD[q.type] ?? "Request"), description: t(q.description), name: q.assignedTo.fullName.replace(/\s*\(.*\)/, "") })
+        : t("{type}: {description} · nobody on it", { type: t(REQUEST_WORD[q.type] ?? "Request"), description: t(q.description) }),
+      minutes: m, href: "/staff/requests", act: q.assignedTo ? t("Check it is being done") : t("Give it to someone"),
+    });
   }
-  if (waitingHelp.length > 3) push({ id: "req-more", area: "Guests", tone: "amber", title: `${waitingHelp.length - 3} more guest requests waiting`, detail: "Open the requests", minutes: null, href: "/staff/requests", act: "See all" });
+  if (waitingHelp.length > 3) push({ id: "req-more", area: "Guests", tone: "amber", title: t("{n} more guest requests waiting", { n: waitingHelp.length - 3 }), detail: t("Open the requests"), minutes: null, href: "/staff/requests", act: t("See all") });
 
   // Expected earlier and still not here.
   const nowMin = localMinutesOfDay(now, (await getSettings()).timezone);
   const late = arrivals.filter((a) => a.reservation.eta && /^\d{2}:\d{2}$/.test(a.reservation.eta) && nowMin - (Number(a.reservation.eta.slice(0, 2)) * 60 + Number(a.reservation.eta.slice(3))) > 60);
-  if (late.length) push({ id: "late-arr", area: "Guests", tone: "sky", title: `${plural(late.length, "guest")} expected over an hour ago`, detail: late.map((a) => `${a.reservation.guest.fullName.split(" ")[0]} (${a.reservation.eta})`).join(" · "), minutes: null, href: "/staff/reservations?view=arrivals", act: "Reception can call them" });
+  if (late.length) push({ id: "late-arr", area: "Guests", tone: "sky", title: t.plural(late.length, "{n} guest expected over an hour ago", "{n} guests expected over an hour ago"), detail: late.map((a) => `${a.reservation.guest.fullName.split(" ")[0]} (${a.reservation.eta})`).join(" · "), minutes: null, href: "/staff/reservations?view=arrivals", act: t("Reception can call them") });
 
   // Customer complaints still open — a manager's to handle.
   for (const c of complaints) {
-    const where = c.order ? `${c.order.number.replace(/^ORD-\d{4}-0*/, "#")}${c.order.tableLabel ? ` · ${c.order.tableLabel}` : ""}` : c.room ? `Room ${c.room.number}` : c.guest?.fullName ?? "";
-    push({ id: `cmp-${c.id}`, area: "Guests", tone: c.priority === "NORMAL" || c.priority === "LOW" ? "amber" : "rose", title: `Complaint: ${c.description.length > 60 ? `${c.description.slice(0, 57)}…` : c.description}`, detail: where || "Customer complaint", minutes: mins(c.createdAt, now), href: "/staff/requests", act: "Handle it and write what was done" });
+    const where = c.order ? `${c.order.number.replace(/^ORD-\d{4}-0*/, "#")}${c.order.tableLabel ? ` · ${spotName(c.order.tableLabel, t)}` : ""}` : c.room ? t("Room {room}", { room: c.room.number }) : c.guest?.fullName ?? "";
+    push({ id: `cmp-${c.id}`, area: "Guests", tone: c.priority === "NORMAL" || c.priority === "LOW" ? "amber" : "rose", title: t("Complaint: {text}", { text: c.description.length > 60 ? `${c.description.slice(0, 57)}…` : c.description }), detail: where || t("Customer complaint"), minutes: mins(c.createdAt, now), href: "/staff/requests", act: t("Handle it and write what was done") });
   }
 
   // ── Rooms: housekeeping and maintenance, timed ──
   for (const r of rooms.filter((x) => x.status === "DIRTY" || x.status === "CLEANING")) {
     const m = mins(r.statusChangedAt, now);
     const limit = CLEAN_LIMIT[r.status as "DIRTY" | "CLEANING"];
-    if (m >= limit) push({ id: `hk-${r.id}`, area: "Rooms", tone: m >= limit * 2 ? "rose" : "amber", title: `Room ${r.number} ${r.status === "CLEANING" ? "cleaning" : "waiting for cleaning"} for ${ago(m)}`, detail: r.status === "CLEANING" ? "Housekeeping started but has not finished" : "Nobody has started it yet", minutes: m, href: `/staff/rooms/${r.id}`, act: "Check with housekeeping" });
+    if (m >= limit) push({ id: `hk-${r.id}`, area: "Rooms", tone: m >= limit * 2 ? "rose" : "amber", title: r.status === "CLEANING" ? t("Room {room} cleaning for {time}", { room: r.number, time: ago(m, t) }) : t("Room {room} waiting for cleaning for {time}", { room: r.number, time: ago(m, t) }), detail: r.status === "CLEANING" ? t("Housekeeping started but has not finished") : t("Nobody has started it yet"), minutes: m, href: `/staff/rooms/${r.id}`, act: t("Check with housekeeping") });
   }
   for (const r of rooms.filter((x) => x.status === "MAINTENANCE" || x.status === "OUT_OF_SERVICE")) {
-    push({ id: `mt-${r.id}`, area: "Maintenance", tone: "slate", title: `Room ${r.number} ${r.status === "OUT_OF_SERVICE" ? "out of service" : "under maintenance"}`, detail: r.statusNote || "No reason written", minutes: mins(r.statusChangedAt, now), href: `/staff/rooms/${r.id}`, act: "Mark fixed when done" });
+    push({ id: `mt-${r.id}`, area: "Maintenance", tone: "slate", title: r.status === "OUT_OF_SERVICE" ? t("Room {room} out of service", { room: r.number }) : t("Room {room} under maintenance", { room: r.number }), detail: r.statusNote || t("No reason written"), minutes: mins(r.statusChangedAt, now), href: `/staff/rooms/${r.id}`, act: t("Mark fixed when done") });
   }
   for (const a of assetsDown.slice(0, 5)) {
-    push({ id: `as-${a.id}`, area: "Maintenance", tone: a.status === "OUT_OF_ORDER" ? "rose" : "slate", title: `${a.name} ${a.status === "OUT_OF_ORDER" ? "out of order" : "under repair"}`, detail: `${a.code}${a.location ? ` · ${a.location}` : ""}`, minutes: mins(a.updatedAt, now), href: "/staff/assets", act: "Follow the repair" });
+    push({ id: `as-${a.id}`, area: "Maintenance", tone: a.status === "OUT_OF_ORDER" ? "rose" : "slate", title: a.status === "OUT_OF_ORDER" ? t("{name} out of order", { name: a.name }) : t("{name} under repair", { name: a.name }), detail: `${a.code}${a.location ? ` · ${a.location}` : ""}`, minutes: mins(a.updatedAt, now), href: "/staff/assets", act: t("Follow the repair") });
   }
 
   // ── Restaurant: every stage has a clock ──
   const started = (o: (typeof orders)[number]) => ({ PENDING: o.createdAt, ACCEPTED: o.acceptedAt, PREPARING: o.preparingAt ?? o.acceptedAt, READY: o.readyAt, OUT_FOR_DELIVERY: o.takenAt } as Record<string, Date | null>)[o.status] ?? o.createdAt;
   const timed = orders.map((o) => ({ o, m: mins(started(o), now), lim: ORDER_LIMITS[o.status] })).filter((x) => x.lim && x.m >= x.lim.limit).sort((a, b) => b.m / b.lim.limit - a.m / a.lim.limit);
   for (const { o, m, lim } of timed.slice(0, 6)) {
-    const where = o.tableLabel ?? (o.roomNumber ? `Room ${o.roomNumber}` : o.type === "TAKEAWAY" ? "Takeaway" : o.customerName ?? "Counter");
-    push({ id: `ord-${o.id}`, area: "Restaurant", tone: m >= lim.limit * 2 ? "rose" : "amber", title: `${o.number.replace(/^ORD-\d{4}-0*/, "#")} ${lim.label} for ${ago(m)}`, detail: `${where} · TZS ${o.total.toLocaleString("en-US")}`, minutes: m, href: "/staff/restaurant", act: o.status === "READY" ? "Get a waiter to take it" : o.status === "PENDING" ? "Kitchen should accept it" : "Ask the kitchen" });
+    const where = o.tableLabel != null ? spotName(o.tableLabel, t) : o.roomNumber ? t("Room {room}", { room: o.roomNumber }) : o.type === "TAKEAWAY" ? t("Takeaway") : o.customerName ?? t("Counter");
+    push({ id: `ord-${o.id}`, area: "Restaurant", tone: m >= lim.limit * 2 ? "rose" : "amber", title: t("{no} {state} for {time}", { no: o.number.replace(/^ORD-\d{4}-0*/, "#"), state: t(lim.label), time: ago(m, t) }), detail: `${where} · ${tzs(o.total)}`, minutes: m, href: "/staff/restaurant", act: o.status === "READY" ? t("Get a waiter to take it") : o.status === "PENDING" ? t("Kitchen should accept it") : t("Ask the kitchen") });
   }
-  if (timed.length > 6) push({ id: "ord-more", area: "Restaurant", tone: "amber", title: `${timed.length - 6} more orders running late`, detail: "Open the live board", minutes: null, href: "/staff/restaurant", act: "See all" });
+  if (timed.length > 6) push({ id: "ord-more", area: "Restaurant", tone: "amber", title: t("{n} more orders running late", { n: timed.length - 6 }), detail: t("Open the live board"), minutes: null, href: "/staff/restaurant", act: t("See all") });
 
   // ── Tables ──
-  for (const t of input.tablesWaiting.slice(0, 4)) {
-    push({ id: `tb-${t.id}`, area: "Tables", tone: t.minutes >= 30 ? "rose" : "amber", title: `${t.name} waiting to pay for ${ago(t.minutes)}`, detail: t.due ? `TZS ${t.due.toLocaleString("en-US")} on the bill` : "Bill asked", minutes: t.minutes, href: `/staff/restaurant/tables?table=${t.id}`, act: "Send a waiter" });
+  for (const w of input.tablesWaiting.slice(0, 4)) {
+    push({ id: `tb-${w.id}`, area: "Tables", tone: w.minutes >= 30 ? "rose" : "amber", title: t("{table} waiting to pay for {time}", { table: spotName(w.name, t), time: ago(w.minutes, t) }), detail: w.due ? t("{amount} on the bill", { amount: tzs(w.due) }) : t("Bill asked"), minutes: w.minutes, href: `/staff/restaurant/tables?table=${w.id}`, act: t("Send a waiter") });
   }
 
   // ── Payments ──
   if (toConfirm.length) {
     const total = toConfirm.reduce((t, p) => t + p.amount, 0);
     const oldest = mins(toConfirm[0].collectedAt, now);
-    push({ id: "pay-confirm", area: "Payments", tone: oldest >= 60 ? "rose" : "amber", title: `${plural(toConfirm.length, "waiter payment")} waiting for reception`, detail: `TZS ${total.toLocaleString("en-US")} collected · oldest by ${toConfirm[0].collectedBy?.fullName ?? "a waiter"}`, minutes: oldest, href: "/staff/restaurant", act: "Reception confirms the money" });
+    push({ id: "pay-confirm", area: "Payments", tone: oldest >= 60 ? "rose" : "amber", title: t.plural(toConfirm.length, "{n} waiter payment waiting for reception", "{n} waiter payments waiting for reception"), detail: t("{amount} collected · oldest by {name}", { amount: tzs(total), name: toConfirm[0].collectedBy?.fullName ?? t("a waiter") }), minutes: oldest, href: "/staff/restaurant", act: t("Reception confirms the money") });
   }
   for (const o of otherRoom.slice(0, 4)) {
     const log = billedBy.find((l) => l.entityId === o.id);
@@ -199,44 +212,52 @@ export async function commandCenter(input: CommandInput) {
     const by = log?.user?.fullName.replace(/\s*\(.*\)/, "") ?? log?.actorLabel ?? null;
     const place = o.location?.name ?? o.tableLabel;
     push({
-      id: `room-other-${o.id}`, area: "Payments", tone: "amber", title: `Order ${o.number.replace(/^ORD-\d{4}-0*/, "#")} on Room ${o.roomNumber ?? "—"} for another customer — check who pays`,
-      detail: [`${o.customerName ?? "A customer"}${place ? ` at ${place}` : ""}`, `TZS ${o.total.toLocaleString("en-US")}`, o.reservation ? `${o.reservation.guest.fullName}'s room` : null, by ? `by ${by}` : null, reason ? `“${reason}”` : "no reason written"].filter(Boolean).join(" · "),
-      minutes: null, href: `/staff/restaurant/orders/${o.id}`, act: "Change who pays if it is wrong",
+      id: `room-other-${o.id}`, area: "Payments", tone: "amber", title: t("Order {no} on Room {room} for another customer — check who pays", { no: o.number.replace(/^ORD-\d{4}-0*/, "#"), room: o.roomNumber ?? "—" }),
+      detail: [
+        place ? t("{customer} at {place}", { customer: o.customerName ?? t("A customer"), place: spotName(place, t) }) : o.customerName ?? t("A customer"), tzs(o.total),
+        o.reservation ? t("{name}'s room", { name: o.reservation.guest.fullName }) : null, by ? t("by {name}", { name: by }) : null, reason ? `“${reason}”` : t("no reason written"),
+      ].filter(Boolean).join(" · "),
+      minutes: null, href: `/staff/restaurant/orders/${o.id}`, act: t("Change who pays if it is wrong"),
     });
   }
-  if (otherRoom.length > 4) push({ id: "room-other-more", area: "Payments", tone: "amber", title: `${otherRoom.length - 4} more orders on another customer's room today`, detail: "Each order's page shows who pays", minutes: null, href: "/staff/restaurant", act: "Check who pays" });
-  if (input.expensesPending.count) push({ id: "exp", area: "Payments", tone: "amber", title: `${plural(input.expensesPending.count, "expense")} to approve`, detail: `TZS ${input.expensesPending.amount.toLocaleString("en-US")}`, minutes: null, href: "/staff/expenses?status=PENDING_APPROVAL", act: "Approve or reject" });
+  if (otherRoom.length > 4) push({ id: "room-other-more", area: "Payments", tone: "amber", title: t("{n} more orders on another customer's room today", { n: otherRoom.length - 4 }), detail: t("Each order's page shows who pays"), minutes: null, href: "/staff/restaurant", act: t("Check who pays") });
+  if (input.expensesPending.count) push({ id: "exp", area: "Payments", tone: "amber", title: t.plural(input.expensesPending.count, "{n} expense to approve", "{n} expenses to approve"), detail: tzs(input.expensesPending.amount), minutes: null, href: "/staff/expenses?status=PENDING_APPROVAL", act: t("Approve or reject") });
 
   // ── Bookings ──
   if (requests.length) {
     const oldest = mins(requests[0].createdAt, now);
-    push({ id: "req", area: "Bookings", tone: oldest >= 60 ? "rose" : "gold", title: `${plural(requests.length, "online booking request")} not answered`, detail: requests.slice(0, 3).map((r) => r.companyName ?? r.fullName).join(" · "), minutes: oldest, href: "/staff/booking-requests", act: "Reception should call back" });
+    push({ id: "req", area: "Bookings", tone: oldest >= 60 ? "rose" : "gold", title: t.plural(requests.length, "{n} online booking request not answered", "{n} online booking requests not answered"), detail: requests.slice(0, 3).map((r) => r.companyName ?? r.fullName).join(" · "), minutes: oldest, href: "/staff/booking-requests", act: t("Reception should call back") });
   }
 
   // ── Stores ──
   const toReview = stock.filter((r) => r.status === "SUBMITTED");
   if (toReview.length) {
     const depts = [...new Set(toReview.map((r) => r.inventoryDepartment?.name ?? r.department))];
-    push({ id: "sr-review", area: "Stores", tone: toReview.some((r) => r.urgent) ? "rose" : "amber", title: `${plural(toReview.length, "stock request")} to review${toReview.some((r) => r.urgent) ? " · urgent" : ""}`, detail: depts.join(" · "), minutes: mins(toReview[0].createdAt, now), href: "/staff/stock-requests", act: "Approve, send back or reject" });
+    push({ id: "sr-review", area: "Stores", tone: toReview.some((r) => r.urgent) ? "rose" : "amber", title: `${t.plural(toReview.length, "{n} stock request to review", "{n} stock requests to review")}${toReview.some((r) => r.urgent) ? ` · ${t("urgent")}` : ""}`, detail: depts.map((x) => t(x)).join(" · "), minutes: mins(toReview[0].createdAt, now), href: "/staff/stock-requests", act: t("Approve, send back or reject") });
   }
   const toBuy = stock.filter((r) => r.status === "APPROVED" && r.decidedAt && now.getTime() - r.decidedAt.getTime() > 24 * 3600_000);
-  if (toBuy.length) push({ id: "sr-buy", area: "Stores", tone: "amber", title: `${plural(toBuy.length, "approved request")} not bought yet`, detail: toBuy.slice(0, 4).map((r) => r.number).join(" · "), minutes: mins(toBuy[0].decidedAt!, now), href: "/staff/stock-requests", act: "Buy it, or reject it" });
+  if (toBuy.length) push({ id: "sr-buy", area: "Stores", tone: "amber", title: t.plural(toBuy.length, "{n} approved request not bought yet", "{n} approved requests not bought yet"), detail: toBuy.slice(0, 4).map((r) => r.number).join(" · "), minutes: mins(toBuy[0].decidedAt!, now), href: "/staff/stock-requests", act: t("Buy it, or reject it") });
   const toApprove = stock.filter((r) => r.status === "PENDING_APPROVAL");
-  if (toApprove.length) push({ id: "sr-approve", area: "Payments", tone: "amber", title: `${plural(toApprove.length, "purchase")} waiting for final approval`, detail: `TZS ${toApprove.reduce((t, r) => t + (r.purchaseTotal ?? 0), 0).toLocaleString("en-US")} bought · not an expense until approved`, minutes: toApprove[0].submittedAt ? mins(toApprove[0].submittedAt, now) : null, href: "/staff/stock-requests", act: "Check the receipt and approve" });
-  if (stores.out.length) push({ id: "st-out", area: "Stores", tone: "rose", title: `${plural(stores.out.length, "item")} out of stock`, detail: stores.out.slice(0, 4).map((i) => i.name).join(" · "), minutes: null, href: "/staff/inventory?v=overview", act: "Buy or receive stock" });
-  if (stores.low.length) push({ id: "st-low", area: "Stores", tone: "amber", title: `${plural(stores.low.length, "item")} below minimum`, detail: stores.low.slice(0, 3).map((i) => `${i.name} ${formatQty(i.quantity, i.unit)}`).join(" · "), minutes: null, href: "/staff/inventory?v=overview", act: "Plan a purchase" });
-  if (stores.pendingWaste) push({ id: "st-waste", area: "Stores", tone: "amber", title: `${plural(stores.pendingWaste, "waste report")} to approve`, detail: "The stock drops when you approve", minutes: null, href: "/staff/inventory?v=waste", act: "Approve or reject" });
-  if (stores.expiring.length) push({ id: "st-exp", area: "Stores", tone: stores.expiring.some((e) => e.expired) ? "rose" : "amber", title: `${plural(stores.expiring.length, "delivery")} expiring`, detail: stores.expiring.slice(0, 3).map((e) => e.item.name).join(" · "), minutes: null, href: "/staff/inventory?v=overview", act: "Use first or record waste" });
+  if (toApprove.length) push({ id: "sr-approve", area: "Payments", tone: "amber", title: t.plural(toApprove.length, "{n} purchase waiting for final approval", "{n} purchases waiting for final approval"), detail: t("{amount} bought · not an expense until approved", { amount: tzs(toApprove.reduce((sum, r) => sum + (r.purchaseTotal ?? 0), 0)) }), minutes: toApprove[0].submittedAt ? mins(toApprove[0].submittedAt, now) : null, href: "/staff/stock-requests", act: t("Check the receipt and approve") });
+  if (stores.out.length) push({ id: "st-out", area: "Stores", tone: "rose", title: t.plural(stores.out.length, "{n} item out of stock", "{n} items out of stock"), detail: stores.out.slice(0, 4).map((i) => t(i.name)).join(" · "), minutes: null, href: "/staff/inventory?v=overview", act: t("Buy or receive stock") });
+  if (stores.low.length) push({ id: "st-low", area: "Stores", tone: "amber", title: t.plural(stores.low.length, "{n} item below minimum", "{n} items below minimum"), detail: stores.low.slice(0, 3).map((i) => `${t(i.name)} ${formatQty(i.quantity, i.unit, t)}`).join(" · "), minutes: null, href: "/staff/inventory?v=overview", act: t("Plan a purchase") });
+  if (stores.pendingWaste) push({ id: "st-waste", area: "Stores", tone: "amber", title: t.plural(stores.pendingWaste, "{n} waste report to approve", "{n} waste reports to approve"), detail: t("The stock drops when you approve"), minutes: null, href: "/staff/inventory?v=waste", act: t("Approve or reject") });
+  if (stores.expiring.length) push({ id: "st-exp", area: "Stores", tone: stores.expiring.some((e) => e.expired) ? "rose" : "amber", title: t.plural(stores.expiring.length, "{n} delivery expiring", "{n} deliverys expiring"), detail: stores.expiring.slice(0, 3).map((e) => t(e.item.name)).join(" · "), minutes: null, href: "/staff/inventory?v=overview", act: t("Use first or record waste") });
 
   // ── Staff & reports ──
-  if (!input.shiftOpen) push({ id: "shift", area: "Staff", tone: "amber", title: "Nobody on the front desk", detail: "No reception shift has been started", minutes: null, href: "/staff/shifts", act: "Call reception" });
+  if (!input.shiftOpen) push({ id: "shift", area: "Staff", tone: "amber", title: t("Nobody on the front desk"), detail: t("No reception shift has been started"), minutes: null, href: "/staff/shifts", act: t("Call reception") });
   // A shift still open after 14 hours: the receptionist forgot to close it, and nobody else can start.
   for (const openShift of openShifts) {
     const shiftMinutes = mins(openShift.startedAt, now);
     if (shiftMinutes <= SHIFT_LIMIT) continue;
-    push({ id: `shift-long-${openShift.id}`, area: "Staff", tone: "rose", title: `${openShift.user.fullName.replace(/\s*\(.*\)/, "")}'s shift has been open ${Math.floor(shiftMinutes / 60)} h — close it`, detail: `Started ${formatDateTime(openShift.startedAt, (await getSettings()).timezone)} · it holds one of the two reception places until it is closed`, minutes: shiftMinutes, href: `/staff/shifts/${openShift.id}`, act: "Close the shift (with the reason)" });
+    push({
+      id: `shift-long-${openShift.id}`, area: "Staff", tone: "rose",
+      title: t("{name}'s shift has been open {h} h — close it", { name: openShift.user.fullName.replace(/\s*\(.*\)/, ""), h: Math.floor(shiftMinutes / 60) }),
+      detail: t("Started {time} · it holds one of the two reception places until it is closed", { time: t.dateTime(openShift.startedAt, (await getSettings()).timezone) }),
+      minutes: shiftMinutes, href: `/staff/shifts/${openShift.id}`, act: t("Close the shift (with the reason)"),
+    });
   }
-  if (input.reportFailedId) push({ id: "report", area: "Staff", tone: "rose", title: "The daily report did not reach the Boss", detail: "The report is saved — send it again", minutes: null, href: `/staff/reports/daily/${input.reportFailedId}`, act: "Retry send" });
+  if (input.reportFailedId) push({ id: "report", area: "Staff", tone: "rose", title: t("The daily report did not reach the Boss"), detail: t("The report is saved — send it again"), minutes: null, href: `/staff/reports/daily/${input.reportFailedId}`, act: t("Retry send") });
 
   d.push(...(input.extra ?? []));
   const rank: Record<Tone, number> = { rose: 0, amber: 1, gold: 2, sky: 3, slate: 4 };
@@ -263,23 +284,22 @@ export async function commandCenter(input: CommandInput) {
 }
 export type CommandCenterData = Awaited<ReturnType<typeof commandCenter>>;
 
-const many = (n: number, one: string, more = `${one}s`) => `${n} ${n === 1 ? one : more}`;
-/** The words for each kind of work, in the order they are shown. */
-const SAY: [string, (n: number) => string][] = [
-  ["checkin", (n) => `Checked in ${many(n, "guest")}`], ["checkout", (n) => `Checked out ${many(n, "guest")}`],
-  ["booking", (n) => `Created ${many(n, "reservation")}`], ["payment", (n) => `Recorded ${many(n, "payment")}`],
-  ["confirmed", (n) => `Confirmed ${many(n, "waiter payment")}`], ["handled", (n) => `Handled ${many(n, "order")}`],
-  ["prepared", (n) => `Prepared ${many(n, "order")}`], ["served", (n) => `Served ${many(n, "order")}`], ["taken", (n) => `Took ${many(n, "payment")}`],
-  ["cleaned", (n) => `Cleaned ${many(n, "room")}`], ["moved", (n) => `Moved ${many(n, "guest")} to another room`],
-  ["extended", (n) => `Extended ${many(n, "stay")}`], ["freeNights", (n) => `Gave free nights ${n === 1 ? "once" : `${n} times`}`],
-  ["discount", (n) => `Gave ${many(n, "discount")}`], ["cancelled", (n) => `Cancelled ${many(n, "order")}`], ["roomStatus", (n) => `Changed ${many(n, "room status", "room statuses")}`],
-  ["delivery", (n) => `Received ${many(n, "delivery", "deliveries")}`], ["stockUsed", (n) => `Took stock out ${n === 1 ? "once" : `${n} times`}`],
-  ["wasteReported", (n) => `Reported ${many(n, "waste")}`], ["wasteApproved", (n) => `Approved ${many(n, "waste report")}`], ["counted", (n) => `Counted ${many(n, "item")}`],
-  ["expense", (n) => `Recorded ${many(n, "expense")}`], ["expenseApproved", (n) => `Approved ${many(n, "expense")}`],
+/** The words for each kind of work, in the order they are shown — in the reader's language. */
+const SAY: [string, (n: number, t: T) => string][] = [
+  ["checkin", (n, t) => t.plural(n, "Checked in {n} guest", "Checked in {n} guests")], ["checkout", (n, t) => t.plural(n, "Checked out {n} guest", "Checked out {n} guests")],
+  ["booking", (n, t) => t.plural(n, "Created {n} reservation", "Created {n} reservations")], ["payment", (n, t) => t.plural(n, "Recorded {n} payment", "Recorded {n} payments")],
+  ["confirmed", (n, t) => t.plural(n, "Confirmed {n} waiter payment", "Confirmed {n} waiter payments")], ["handled", (n, t) => t.plural(n, "Handled {n} order", "Handled {n} orders")],
+  ["prepared", (n, t) => t.plural(n, "Prepared {n} order", "Prepared {n} orders")], ["served", (n, t) => t.plural(n, "Served {n} order", "Served {n} orders")], ["taken", (n, t) => t.plural(n, "Took {n} payment", "Took {n} payments")],
+  ["cleaned", (n, t) => t.plural(n, "Cleaned {n} room", "Cleaned {n} rooms")], ["moved", (n, t) => t.plural(n, "Moved {n} guest to another room", "Moved {n} guests to another room")],
+  ["extended", (n, t) => t.plural(n, "Extended {n} stay", "Extended {n} stays")], ["freeNights", (n, t) => t.plural(n, "Gave free nights once", "Gave free nights {n} times")],
+  ["discount", (n, t) => t.plural(n, "Gave {n} discount", "Gave {n} discounts")], ["cancelled", (n, t) => t.plural(n, "Cancelled {n} order", "Cancelled {n} orders")], ["roomStatus", (n, t) => t.plural(n, "Changed {n} room status", "Changed {n} room statuses")],
+  ["delivery", (n, t) => t.plural(n, "Received {n} delivery", "Received {n} deliveries")], ["stockUsed", (n, t) => t.plural(n, "Took stock out once", "Took stock out {n} times")],
+  ["wasteReported", (n, t) => t.plural(n, "Reported {n} waste", "Reported {n} wastes")], ["wasteApproved", (n, t) => t.plural(n, "Approved {n} waste report", "Approved {n} waste reports")], ["counted", (n, t) => t.plural(n, "Counted {n} item", "Counted {n} items")],
+  ["expense", (n, t) => t.plural(n, "Recorded {n} expense", "Recorded {n} expenses")], ["expenseApproved", (n, t) => t.plural(n, "Approved {n} expense", "Approved {n} expenses")],
 ];
 
 /** What each person did today, by department — activity only, never a score. */
-async function staffActivity(today: BusinessDate) {
+async function staffActivity(today: BusinessDate, t: T = englishT) {
   const day = toDbDate(today);
   const { start, end } = businessDayBounds(today, businessDayConfig(await getSettings()));
   const [audit, events, touched, collected, cleaned, users] = await Promise.all([
@@ -329,7 +349,8 @@ async function staffActivity(today: BusinessDate) {
   for (const c of collected) { const p = who(c.collectedById!); if (p) { p.money += c._sum.amount ?? 0; add(p, "taken", c._count); } }
   for (const c of cleaned) add(who(c.changedById!), "cleaned", c._count, c._max.changedAt);
 
-  const dept = (code: string) => (["RECEPTIONIST"].includes(code) ? "Reception" : code === "RESTAURANT" ? "Waiters" : code === "KITCHEN" ? "Kitchen" : ["MANAGER", "ADMIN", "OWNER"].includes(code) ? "Management" : "Other staff");
+  // The department names stay English (the home shows them with t()).
+  const dept = (code: string) => (["RECEPTIONIST"].includes(code) ? msg("Reception") : code === "RESTAURANT" ? msg("Waiters") : code === "KITCHEN" ? msg("Kitchen") : ["MANAGER", "ADMIN", "OWNER"].includes(code) ? msg("Management") : msg("Other staff"));
   const groups = new Map<string, P[]>();
   for (const p of people.values()) if (Object.keys(p.things).length) groups.set(dept(p.roleCode), [...(groups.get(dept(p.roleCode)) ?? []), p]);
   const order = ["Reception", "Waiters", "Kitchen", "Other staff", "Management"];
@@ -338,7 +359,7 @@ async function staffActivity(today: BusinessDate) {
     people: groups.get(g)!.sort((a, b) => (b.last?.getTime() ?? 0) - (a.last?.getTime() ?? 0)).map((p) => ({
       name: p.name, role: p.role, money: p.money, last: p.last?.toISOString() ?? null,
       id: p.id,
-      things: SAY.filter(([k]) => p.things[k]).map(([k, say]) => say(p.things[k])),
+      things: SAY.filter(([k]) => p.things[k]).map(([k, say]) => say(p.things[k], t)),
     })),
   }));
 }

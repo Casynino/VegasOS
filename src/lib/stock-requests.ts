@@ -5,19 +5,21 @@
  */
 import { formatDateTime } from "@/lib/format";
 import { unitOf } from "@/lib/inventory";
+import { msg } from "@/i18n/msg";
+import { englishT, type T } from "@/i18n/translate";
 
 export type StockStatus = "SUBMITTED" | "SENT_BACK" | "APPROVED" | "PURCHASING" | "PENDING_APPROVAL" | "COMPLETED" | "REJECTED" | "CANCELLED";
 
 /** Each step, in plain words, with its colour. */
 export const STATUS_META: Record<string, { label: string; tone: string }> = {
-  SUBMITTED: { label: "Waiting for review", tone: "bg-sky-500/12 text-sky-700 dark:text-sky-300" },
-  SENT_BACK: { label: "Sent back to change", tone: "bg-orange-500/15 text-orange-700 dark:text-orange-300" },
-  APPROVED: { label: "Approved — to buy", tone: "bg-amber-500/15 text-amber-800 dark:text-amber-300" },
-  PURCHASING: { label: "Being bought", tone: "bg-violet-500/12 text-violet-700 dark:text-violet-300" },
-  PENDING_APPROVAL: { label: "Bought — waiting for approval", tone: "bg-fuchsia-500/12 text-fuchsia-700 dark:text-fuchsia-300" },
-  COMPLETED: { label: "Done — in stock", tone: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300" },
-  REJECTED: { label: "Rejected", tone: "bg-rose-500/12 text-rose-700 dark:text-rose-300" },
-  CANCELLED: { label: "Cancelled", tone: "bg-muted text-muted-foreground" },
+  SUBMITTED: { label: msg("Waiting for review"), tone: "bg-sky-500/12 text-sky-700 dark:text-sky-300" },
+  SENT_BACK: { label: msg("Sent back to change"), tone: "bg-orange-500/15 text-orange-700 dark:text-orange-300" },
+  APPROVED: { label: msg("Approved — to buy"), tone: "bg-amber-500/15 text-amber-800 dark:text-amber-300" },
+  PURCHASING: { label: msg("Being bought"), tone: "bg-violet-500/12 text-violet-700 dark:text-violet-300" },
+  PENDING_APPROVAL: { label: msg("Bought — waiting for approval"), tone: "bg-fuchsia-500/12 text-fuchsia-700 dark:text-fuchsia-300" },
+  COMPLETED: { label: msg("Done — in stock"), tone: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300" },
+  REJECTED: { label: msg("Rejected"), tone: "bg-rose-500/12 text-rose-700 dark:text-rose-300" },
+  CANCELLED: { label: msg("Cancelled"), tone: "bg-muted text-muted-foreground" },
 };
 export const statusMeta = (s: string) => STATUS_META[s] ?? { label: s.toLowerCase().replace(/_/g, " "), tone: "bg-muted text-muted-foreground" };
 
@@ -138,8 +140,8 @@ export type Viewer = { id: string; name: string; asker: boolean; reviewer: boole
 export const num = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(2).replace(/0+$/, "").replace(/\.$/, ""));
 /** "Nino (Manager)" → "Nino". */
 export const person = (n: string) => n.replace(/\s*\(.*\)/, "");
-/** "30 Sept, 10:15" in hotel time. */
-export const when = (iso: string) => formatDateTime(iso);
+/** "30 Sept, 10:15" in hotel time (in the reader's wording when their `t` is given). */
+export const when = (iso: string, t?: T) => (t ? t.dateTime(iso) : formatDateTime(iso));
 
 /** A request word for a stock unit: KG → kg, PIECE → pcs, L → litres, BOTTLE → bottles. */
 export function unitWord(code: string) {
@@ -147,28 +149,28 @@ export function unitWord(code: string) {
   return map[code] ?? unitOf(code).plural;
 }
 
-/** "9.5 kg Beef" — in the stock item's unit when it is one, else as asked. */
-export function boughtQty(l: Pick<StockLineView, "purchasedQty" | "unit" | "stockItem">) {
+/** "9.5 kg Beef" — in the stock item's unit when it is one, else as asked (the unit in the reader's language when their `t` is given). */
+export function boughtQty(l: Pick<StockLineView, "purchasedQty" | "unit" | "stockItem">, t: T = englishT) {
   const q = l.purchasedQty ?? 0;
-  return l.stockItem ? `${num(q)} ${unitOf(l.stockItem.unit).plural}` : `${num(q)} ${l.unit}`;
+  return l.stockItem ? `${num(q)} ${t(unitOf(l.stockItem.unit).plural)}` : `${num(q)} ${t(l.unit)}`;
 }
 
 /** What a line is to buy: the approved amount, or what was asked. */
 export const toBuyQty = (l: Pick<StockLineView, "approvedQty" | "quantity">) => l.approvedQty ?? l.quantity;
 
-/** A history step in words: "approved for purchase", "sent the purchase for final approval". */
+/** A history step in words: "approved for purchase", "sent the purchase for final approval" (English — shown with t(…)). */
 export function eventVerb(e: Pick<StockEventView, "action" | "from">) {
   switch (e.action) {
-    case "SUBMITTED": return e.from === "SENT_BACK" ? "changed it and sent it again" : "asked for it";
-    case "EDITED": return "changed the list";
-    case "APPROVED": return "approved for purchase";
-    case "SENT_BACK": return "sent it back to change";
-    case "REJECTED": return "rejected it";
-    case "CANCELLED": return "cancelled it";
-    case "PURCHASE_SAVED": return "saved the purchase";
-    case "PURCHASE_SUBMITTED": return "sent the purchase for final approval";
-    case "PURCHASE_SENT_BACK": return "sent the purchase back for correction";
-    case "FINAL_APPROVED": return "gave the final approval — stock in, expense recorded";
+    case "SUBMITTED": return e.from === "SENT_BACK" ? msg("changed it and sent it again") : msg("asked for it");
+    case "EDITED": return msg("changed the list");
+    case "APPROVED": return msg("approved for purchase");
+    case "SENT_BACK": return msg("sent it back to change");
+    case "REJECTED": return msg("rejected it");
+    case "CANCELLED": return msg("cancelled it");
+    case "PURCHASE_SAVED": return msg("saved the purchase");
+    case "PURCHASE_SUBMITTED": return msg("sent the purchase for final approval");
+    case "PURCHASE_SENT_BACK": return msg("sent the purchase back for correction");
+    case "FINAL_APPROVED": return msg("gave the final approval — stock in, expense recorded");
     default: return e.action.toLowerCase().replace(/_/g, " ");
   }
 }

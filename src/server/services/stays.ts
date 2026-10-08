@@ -4,6 +4,8 @@ import { getSettings, stayConfig } from "../settings";
 import { fromDbDate, type BusinessDate } from "@/lib/time/business-date";
 import { CHARGE_LABELS } from "@/lib/charge-types";
 import { mediaUrl } from "./media";
+import { msg } from "@/i18n/msg";
+import type { T } from "@/i18n/translate";
 
 /** A room-bill line's restaurant order (when it came from one): its number and where it was eaten. */
 export const CHARGE_ORDER = { select: { id: true, number: true, type: true, tableLabel: true, location: { select: { name: true } } } } as const;
@@ -13,9 +15,17 @@ export type ChargeOrder = { id: string; number: string; type: string; tableLabel
 export const orderNo = (n: string) => `#${n.replace(/^ORD-\d{4}-0*/, "")}`;
 /** Where an order was eaten: its table ("Outside 3"), or null (brought to the room, or no table saved). */
 export const orderTable = (o: ChargeOrder) => (o.type === "ROOM_SERVICE" ? null : o.location?.name ?? o.tableLabel ?? null);
-/** One order on the room bill: "Restaurant — Outside 3 · Order #184" (room service: "Room service · Order #12"). */
-export function orderHeading(o: ChargeOrder, word = "Order ") {
+/**
+ * One order on the room bill: "Restaurant — Outside 3 · Order #184" (room service: "Room service · Order #12").
+ * With `t` (the reader's translator, to show it): the same heading in their language.
+ */
+export function orderHeading(o: ChargeOrder, word = "Order ", t?: T) {
   const table = orderTable(o);
+  if (t && word === "Order ") {
+    const number = orderNo(o.number);
+    return o.type === "ROOM_SERVICE" ? t("Room service · Order {number}", { number })
+      : table ? t("Restaurant — {table} · Order {number}", { table: t(table), number }) : t("Restaurant · Order {number}", { number });
+  }
   return o.type === "ROOM_SERVICE" ? `Room service · ${word}${orderNo(o.number)}` : `Restaurant${table ? ` — ${table}` : ""} · ${word}${orderNo(o.number)}`;
 }
 /**
@@ -37,11 +47,12 @@ export function chargeItem(description: string, o: ChargeOrder | null) {
  * (bar, laundry, transport, late checkout…). Always adds up to the stay's charges.
  */
 export function folioLines(charges: { amount: number; category: string | null; restaurantOrder?: { type: string } | null }[]) {
-  const groups = new Map<string, number>([["Restaurant", 0], ["Room service", 0]]);
+  // Labels shown by the screens in the reader's language (t(label)); kept in English here.
+  const groups = new Map<string, number>([[msg("Restaurant"), 0], [msg("Room service"), 0]]);
   for (const c of charges) {
-    const key = c.category === "BILL_DISCOUNT" ? "Discount on the bill"
-      : c.restaurantOrder ? (c.restaurantOrder.type === "ROOM_SERVICE" ? "Room service" : "Restaurant")
-      : c.category === "ROOM_SERVICE_FEE" ? "Room service" : CHARGE_LABELS[c.category ?? ""] ?? "Other";
+    const key = c.category === "BILL_DISCOUNT" ? msg("Discount on the bill")
+      : c.restaurantOrder ? (c.restaurantOrder.type === "ROOM_SERVICE" ? msg("Room service") : msg("Restaurant"))
+      : c.category === "ROOM_SERVICE_FEE" ? msg("Room service") : CHARGE_LABELS[c.category ?? ""] ?? msg("Other");
     groups.set(key, (groups.get(key) ?? 0) + c.amount);
   }
   return [...groups.entries()].filter(([, amount]) => amount !== 0).map(([label, amount]) => ({ label, amount }));

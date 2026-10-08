@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { Wallet } from "lucide-react";
-import { formatBusinessDate, formatDateTime, formatTZS } from "@/lib/format";
+import { formatTZS } from "@/lib/format";
 import { PAYMENT_STATUS_META } from "@/lib/payment-status";
 import { cn } from "@/lib/utils";
 import type { InHouseBalances } from "@/server/services/guest-balances";
 import { ShowRows } from "@/components/dashboard/show-rows";
 import type { PayAccount } from "@/lib/pay-account";
 import { CollectButton } from "./collect-dialog";
+import { getT } from "@/i18n/server";
 
 /**
  * GUESTS WITH OUTSTANDING BALANCE — everyone staying who still owes money:
@@ -15,16 +16,17 @@ import { CollectButton } from "./collect-dialog";
  * With `show`, only that many guests are in view and the rest are a scroll away. With `methods`, Collect takes the
  * payment right here (a small window); without, it opens the guest's checkout.
  */
-export function GuestsOwing({ b, canPay, compact, show, methods }: { b: InHouseBalances; canPay: boolean; compact?: boolean; show?: number; methods?: PayAccount[] }) {
+export async function GuestsOwing({ b, canPay, compact, show, methods }: { b: InHouseBalances; canPay: boolean; compact?: boolean; show?: number; methods?: PayAccount[] }) {
+  const t = await getT();
   const s = b.summary;
   return (
-    <section aria-label="Guests owing" className="overflow-hidden rounded-3xl border border-border/70 bg-card">
+    <section aria-label={t("Guests owing")} className="overflow-hidden rounded-3xl border border-border/70 bg-card">
       <div className="grid grid-cols-2 gap-px bg-border/60 sm:grid-cols-4">
         {[
-          ["Guests staying", `${s.guestsCheckedIn}`, `${s.occupiedRooms} room${s.occupiedRooms === 1 ? "" : "s"}`],
-          ["Fully paid", `${s.fullyPaid}`, "nothing to collect"],
-          ["Still owing", `${s.owingCount}`, s.owingCount ? "collect before checkout" : "all settled"],
-          ["To collect", formatTZS(s.totalOutstanding), `${formatTZS(s.totalOwedSoFar)} for nights so far`],
+          [t("Guests staying"), `${s.guestsCheckedIn}`, t.plural(s.occupiedRooms, "{n} room", "{n} rooms")],
+          [t("Fully paid"), `${s.fullyPaid}`, t("nothing to collect")],
+          [t("Still owing"), `${s.owingCount}`, s.owingCount ? t("collect before checkout") : t("all settled")],
+          [t("To collect"), formatTZS(s.totalOutstanding), t("{amount} for nights so far", { amount: formatTZS(s.totalOwedSoFar) })],
         ].map(([k, v, h], i) => (
           <div key={k} className={cn("bg-card px-4 py-3", i === 3 && s.totalOutstanding > 0 && "bg-rose-500/[0.06]")}>
             <p className="text-[11px] text-muted-foreground">{k}</p>
@@ -34,18 +36,18 @@ export function GuestsOwing({ b, canPay, compact, show, methods }: { b: InHouseB
         ))}
       </div>
       {b.owing.length === 0 ? (
-        <p className="p-5 text-sm text-muted-foreground">Nobody staying owes money. Collected payments are in the ledger.</p>
+        <p className="p-5 text-sm text-muted-foreground">{t("Nobody staying owes money. Collected payments are in the ledger.")}</p>
       ) : (
         <ShowRows show={show ?? b.owing.length} total={b.owing.length} className="overflow-x-auto">
           <table data-stack className="w-full min-w-[760px] text-sm">
             <thead data-head className="text-left text-[11px] uppercase tracking-wider text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-card">
               <tr className="border-y border-border/70">
-                <th className="px-4 py-2 font-medium">Room</th><th className="px-2 py-2 font-medium">Guest</th>
-                {!compact && <><th className="px-2 py-2 font-medium">Check-in</th><th className="px-2 py-2 font-medium">Check-out</th></>}
-                <th className="px-2 py-2 text-right font-medium">Total</th><th className="px-2 py-2 text-right font-medium">Paid</th>
-                <th className="px-2 py-2 text-right font-medium">Outstanding</th>
-                {!compact && <><th className="px-2 py-2 text-right font-medium">Nights so far</th><th className="px-2 py-2 font-medium">Last payment</th></>}
-                <th className="px-4 py-2 text-right font-medium">Action</th>
+                <th className="px-4 py-2 font-medium">{t("Room")}</th><th className="px-2 py-2 font-medium">{t("Guest")}</th>
+                {!compact && <><th className="px-2 py-2 font-medium">{t("Check-in")}</th><th className="px-2 py-2 font-medium">{t("Check-out")}</th></>}
+                <th className="px-2 py-2 text-right font-medium">{t("Total")}</th><th className="px-2 py-2 text-right font-medium">{t("Paid")}</th>
+                <th className="px-2 py-2 text-right font-medium">{t("Outstanding")}</th>
+                {!compact && <><th className="px-2 py-2 text-right font-medium">{t("Nights so far")}</th><th className="px-2 py-2 font-medium">{t("Last payment")}</th></>}
+                <th className="px-4 py-2 text-right font-medium">{t("Action")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50">
@@ -54,27 +56,27 @@ export function GuestsOwing({ b, canPay, compact, show, methods }: { b: InHouseB
                   <td className="px-4 py-2.5 font-semibold tabular-nums">{x.rooms.join(", ")}</td>
                   <td className="px-2 py-2.5">
                     <Link href={`/staff/reservations/${x.reservationId}`} className="font-medium hover:underline">{x.guest}</Link>
-                    <span className={cn("ml-2 rounded-full px-2 py-px text-[10px] font-semibold", PAYMENT_STATUS_META[x.status].className)}>{PAYMENT_STATUS_META[x.status].label}</span>
+                    <span className={cn("ml-2 rounded-full px-2 py-px text-[10px] font-semibold", PAYMENT_STATUS_META[x.status].className)}>{t(PAYMENT_STATUS_META[x.status].label)}</span>
                   </td>
-                  {!compact && <><td className="px-2 py-2.5 text-xs">{formatBusinessDate(x.arrival)}</td><td className="px-2 py-2.5 text-xs">{formatBusinessDate(x.departure)}</td></>}
+                  {!compact && <><td className="px-2 py-2.5 text-xs">{t.date(x.arrival)}</td><td className="px-2 py-2.5 text-xs">{t.date(x.departure)}</td></>}
                   <td className="px-2 py-2.5 text-right tabular-nums">{x.total.toLocaleString("en-US")}</td>
                   <td className="px-2 py-2.5 text-right tabular-nums">{x.paid.toLocaleString("en-US")}</td>
                   <td className="px-2 py-2.5 text-right font-semibold tabular-nums text-rose-600 dark:text-rose-400">{x.outstanding.toLocaleString("en-US")}
-                    {x.owedSoFar !== x.outstanding && <span className="block text-[10px] font-normal text-muted-foreground">{x.owedSoFar.toLocaleString("en-US")} so far</span>}
+                    {x.owedSoFar !== x.outstanding && <span className="block text-[10px] font-normal text-muted-foreground">{t("{amount} so far", { amount: x.owedSoFar.toLocaleString("en-US") })}</span>}
                   </td>
-                  {!compact && <><td className="px-2 py-2.5 text-right tabular-nums">{x.daysStaying}</td><td className="px-2 py-2.5 text-xs text-muted-foreground">{x.lastPayment ? formatDateTime(x.lastPayment) : "none yet"}</td></>}
+                  {!compact && <><td className="px-2 py-2.5 text-right tabular-nums">{x.daysStaying}</td><td className="px-2 py-2.5 text-xs text-muted-foreground">{x.lastPayment ? t.dateTime(x.lastPayment) : t("none yet")}</td></>}
                   <td className="px-4 py-2.5 text-right">
                     <span className="inline-flex gap-1.5">
                       {canPay && (methods && !x.companyPays
                         ? <CollectButton reservationId={x.reservationId} guest={x.guest} rooms={x.rooms.join(", ")} outstanding={x.outstanding} owedSoFar={x.owedSoFar} methods={methods} phone={x.phone} />
-                        : <Link href={`/staff/check-out?id=${x.reservationId}#workspace`} className="inline-flex items-center gap-1 rounded-lg bg-foreground px-2.5 py-1 text-xs font-semibold text-background hover:opacity-90"><Wallet className="size-3.5" />Collect</Link>)}
-                      <Link href={`/staff/reservations/${x.reservationId}`} className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted">View</Link>
+                        : <Link href={`/staff/check-out?id=${x.reservationId}#workspace`} className="inline-flex items-center gap-1 rounded-lg bg-foreground px-2.5 py-1 text-xs font-semibold text-background hover:opacity-90"><Wallet className="size-3.5" />{t("Collect")}</Link>)}
+                      <Link href={`/staff/reservations/${x.reservationId}`} className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted">{t("View")}</Link>
                     </span>
                   </td>
                 </tr>
               ))}
             </tbody>
-            <tfoot data-foot className="[&_td]:sticky [&_td]:bottom-0 [&_td]:bg-card [&_td]:shadow-[inset_0_1px_0_var(--border)]"><tr className="border-t border-border/70 font-semibold"><td className="px-4 py-2" colSpan={compact ? 4 : 6}>Total outstanding</td><td className="px-2 py-2 text-right tabular-nums text-rose-600 dark:text-rose-400">{s.totalOutstanding.toLocaleString("en-US")}</td><td colSpan={compact ? 1 : 3} /></tr></tfoot>
+            <tfoot data-foot className="[&_td]:sticky [&_td]:bottom-0 [&_td]:bg-card [&_td]:shadow-[inset_0_1px_0_var(--border)]"><tr className="border-t border-border/70 font-semibold"><td className="px-4 py-2" colSpan={compact ? 4 : 6}>{t("Total outstanding")}</td><td className="px-2 py-2 text-right tabular-nums text-rose-600 dark:text-rose-400">{s.totalOutstanding.toLocaleString("en-US")}</td><td colSpan={compact ? 1 : 3} /></tr></tfoot>
           </table>
         </ShowRows>
       )}

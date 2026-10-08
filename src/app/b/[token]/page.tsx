@@ -11,8 +11,16 @@ import { contentVars } from "@/components/public/contact";
 import { fill } from "@/components/public/content";
 import { HotelQrApp } from "@/components/hotel-qr/app";
 import { QrMessage } from "@/components/hotel-qr/inactive";
+import { getT, guestLocale } from "@/i18n/server";
 
-export const metadata: Metadata = { title: "Book your stay", robots: { index: false, follow: false }, referrer: "no-referrer", ...shareCard("book", "Book your stay — Vegas Luxury Hotel", "Pick your dates and pay by mobile money — your room at Mlimani City, Dar es Salaam in a minute.") };
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await guestLocale();
+  const t = await getT();
+  return {
+    title: t("Book your stay"), robots: { index: false, follow: false }, referrer: "no-referrer",
+    ...shareCard("book", t("Book your stay — Vegas Luxury Hotel"), t("Pick your dates and pay by mobile money — your room at Mlimani City, Dar es Salaam in a minute."), locale === "zh-CN" ? "zh_CN" : undefined),
+  };
+}
 export const viewport: Viewport = { themeColor: "#1d1712" };
 export const dynamic = "force-dynamic";
 
@@ -23,10 +31,12 @@ export const dynamic = "force-dynamic";
  * shows the hotel's phone and the website instead.
  */
 export default async function HotelQrPage({ params }: PageProps<"/b/[token]">) {
+  await guestLocale();
+  const t = await getT();
   const { token } = await params;
   const landing = await qrLanding(token);
   if (!landing.active) {
-    return <QrMessage hotel={landing.hotel} title="This QR code is no longer active" message={landing.message} />;
+    return <QrMessage hotel={landing.hotel} title={t("This QR code is no longer active")} message={t(landing.message)} />;
   }
   const [explore, settings, c, stats, weather] = await Promise.all([qrExplore(), getSettings(), getSiteContent(), publicStats(), getHotelWeather()]);
   // The opening is the website's own (owner, 2026-10-05: "the same look as our landing page"): its photos and words.
@@ -36,10 +46,12 @@ export default async function HotelQrPage({ params }: PageProps<"/b/[token]">) {
     eyebrow: c.facts.locationLine,
     title: f(c.home.hero.title),
     accent: f(c.home.hero.titleAccent),
-    place: settings.city ?? "Dar es Salaam",
-    initialTime: new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Africa/Dar_es_Salaam" }).format(new Date()),
+    // The city as set in Settings — a place name, shown in the visitor's language when there is a translation (as on the website).
+    place: t(settings.city ?? "Dar es Salaam"),
+    initialTime: new Intl.DateTimeFormat(t.intl, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Africa/Dar_es_Salaam" }).format(new Date()),
     temp: weather ? `${weather.temp}°C` : null,
-    weather: weather ? `${weather.temp}°C · ${weather.label}` : null,
+    weather: weather ? `${weather.temp}°C · ${t(weather.label)}` : null,
+    languages: settings.enabledLanguages,
   };
   // The gallery is only needed for room types with no photos of their own yet (the hotel's room photos stand in).
   const photos = landing.hotel.photos.filter((p) => p.category === "rooms").slice(0, 6);

@@ -1,10 +1,14 @@
+"use client";
+
 import { Check } from "lucide-react";
+import { useT } from "@/i18n/client";
+import { msg } from "@/i18n/msg";
 import { cn } from "@/lib/utils";
 import { typeScale } from "../kit/tokens";
 import fx from "../room-fx.module.css";
 
 /** Few steps (owner, 2026-10-05: "booking as easy as getting food from us"): dates, a room, then book & pay on one screen. */
-export const BOOKING_STEPS = ["Dates & guests", "Choose room", "Book & pay", "Booked"] as const;
+export const BOOKING_STEPS = [msg("Dates & guests"), msg("Choose room"), msg("Book & pay"), msg("Booked")] as const;
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
 
@@ -13,18 +17,20 @@ const pad2 = (n: number) => String(n).padStart(2, "0");
  * to the current step (its connector draws in once); the current node is ringed, with a softly
  * pinging dot. Phones read "Step 02 / 05 · Choose room" above the nodes; desktop names every step
  * under its node. `current` is 1-based. `last` renames the final step (a booking that is made,
- * not just requested, ends on "Booked"). Follows the surrounding tone.
+ * not just requested, ends on "Booked"). Follows the surrounding tone. A client component, so it speaks the visitor's
+ * language wherever it is placed (step names and `last` are English keys).
  */
 export function BookingProgress({ current, last, className }: { current: 1 | 2 | 3 | 4; last?: string; className?: string }) {
+  const t = useT();
   const steps: readonly string[] = last ? [...BOOKING_STEPS.slice(0, -1), last] : BOOKING_STEPS;
   return (
-    <nav aria-label="Booking progress" className={className}>
+    <nav aria-label={t("Booking progress")} className={className}>
       <p className={cn(typeScale.meta, "flex items-center gap-2.5 text-pub-muted lg:sr-only")}>
         <span className="font-mono text-pub-eyebrow">
-          Step {pad2(current)} / {pad2(steps.length)}
+          {t("Step {n} / {total}", { n: pad2(current), total: pad2(steps.length) })}
         </span>
         <span aria-hidden="true" className="h-px w-4 bg-pub-line" />
-        <span className="text-pub-fg">{steps[current - 1]}</span>
+        <span className="text-pub-fg">{t(steps[current - 1])}</span>
       </p>
       <ol className="mt-4 grid grid-cols-[repeat(3,minmax(0,1fr))_auto] lg:mt-0">
         {steps.map((label, i) => {
@@ -59,11 +65,14 @@ export function BookingProgress({ current, last, className }: { current: 1 | 2 |
                 aria-hidden="true"
                 className={cn(typeScale.meta, "mt-3 hidden truncate pr-3 lg:block", active ? "text-pub-fg" : done ? "text-pub-eyebrow" : "text-pub-muted")}
               >
-                {label}
+                {t(label)}
               </span>
               <span className="sr-only">
-                {n}. {label}
-                {done ? " (completed)" : active ? " (current step)" : ""}
+                {done
+                  ? t("{n}. {step} (completed)", { n, step: t(label) })
+                  : active
+                    ? t("{n}. {step} (current step)", { n, step: t(label) })
+                    : t("{n}. {step}", { n, step: t(label) })}
               </span>
             </li>
           );

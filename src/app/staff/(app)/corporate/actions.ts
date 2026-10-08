@@ -10,14 +10,15 @@ import { AppError, runAction, type ActionResult } from "@/server/errors";
 import { parseInput } from "@/server/validation";
 import { normalizePhone } from "@/server/services/guests";
 import { BILLING_GROUP_CODES } from "@/lib/billing";
+import { msg, msgf } from "@/i18n/msg";
 
 const opt = (n: number) => z.string().trim().max(n).transform((v) => v || null);
 const Schema = z.object({
   id: z.string().optional(),
-  companyName: z.string().trim().min(2, "Company name is required.").max(150),
+  companyName: z.string().trim().min(2, msg("Company name is required.")).max(150),
   contactPerson: opt(100),
   phone: opt(30),
-  email: z.union([z.literal(""), z.string().trim().toLowerCase().email("Enter a valid email.")]).transform((v) => v || null),
+  email: z.union([z.literal(""), z.string().trim().toLowerCase().email(msg("Enter a valid email."))]).transform((v) => v || null),
   address: opt(250),
   taxId: opt(40),
   vrn: opt(40),
@@ -54,7 +55,7 @@ export async function saveCorporateAction(_prev: unknown, formData: FormData): P
       await audit(tx, actor, { action: "corporate.created", entityType: "CorporateCustomer", entityId: c.id, after: { companyName: c.companyName } });
       return { id: c.id };
     });
-  }, "Corporate account saved.");
+  }, msg("Corporate account saved."));
   revalidatePath("/staff/corporate", "layout");
   if (res.ok && !formData.get("id")) redirect(`/staff/corporate/${res.data.id}`);
   return res;
@@ -65,7 +66,7 @@ export async function saveCorporateAction(_prev: unknown, formData: FormData): P
 const Employee = z.object({
   fullName: z.string().trim().max(120),
   phone: z.string().trim().max(30).optional(),
-  email: z.union([z.literal(""), z.string().trim().toLowerCase().email("Enter a valid email.")]).optional(),
+  email: z.union([z.literal(""), z.string().trim().toLowerCase().email(msg("Enter a valid email."))]).optional(),
   idType: z.string().trim().max(40).optional(),
   idNumber: z.string().trim().max(60).optional(),
 });
@@ -88,10 +89,10 @@ async function addEmployeeTx(tx: Parameters<Parameters<typeof db.$transaction>[0
 }
 
 const QuickCompany = z.object({
-  companyName: z.string().trim().min(2, "Company name is required.").max(150),
+  companyName: z.string().trim().min(2, msg("Company name is required.")).max(150),
   contactPerson: z.string().trim().max(100).optional(),
   phone: z.string().trim().max(30).optional(),
-  email: z.union([z.literal(""), z.string().trim().toLowerCase().email("Enter a valid email.")]).optional(),
+  email: z.union([z.literal(""), z.string().trim().toLowerCase().email(msg("Enter a valid email."))]).optional(),
   taxId: z.string().trim().max(40).optional(),
   vrn: z.string().trim().max(40).optional(),
   registrationNo: z.string().trim().max(60).optional(),
@@ -112,7 +113,7 @@ export async function quickAddCompanyAction(input: z.input<typeof QuickCompany>)
     const { ipAddress } = await requestMeta();
     const actor = { userId: user.id, label: user.fullName, ipAddress };
     const dup = await db.corporateCustomer.findFirst({ where: { companyName: { equals: d.companyName, mode: "insensitive" } }, select: { id: true } });
-    if (dup) throw new AppError(`${d.companyName} is already an account.`, "CONFLICT", { companyName: "Exists" });
+    if (dup) throw new AppError(msgf("{company} is already an account.", { company: d.companyName }), "CONFLICT", { companyName: msg("Exists") });
     return db.$transaction(async (tx) => {
       const c = await tx.corporateCustomer.create({
         data: {
@@ -128,7 +129,7 @@ export async function quickAddCompanyAction(input: z.input<typeof QuickCompany>)
       await audit(tx, actor, { action: "corporate.created", entityType: "CorporateCustomer", entityId: c.id, after: { companyName: c.companyName, employees: staff.map((e) => e.fullName) } });
       return { id: c.id, companyName: c.companyName, terms: c.paymentTermDays, available: null, staff, contact: { name: c.contactPerson, phone: c.phone, email: c.email }, kind: c.kind };
     });
-  }, "Company added.");
+  }, msg("Company added."));
   if (res.ok) revalidatePath("/staff/corporate", "layout");
   return res;
 }
@@ -136,7 +137,7 @@ export async function quickAddCompanyAction(input: z.input<typeof QuickCompany>)
 export async function addEmployeeAction(input: { companyId: string } & z.input<typeof Employee>) {
   return runAction(async () => {
     const user = await authorize("corporate.manage", "reservations.create", "guests.manage");
-    const e = parseInput(Employee.extend({ fullName: z.string().trim().min(2, "Enter the employee's name.").max(120) }), input);
+    const e = parseInput(Employee.extend({ fullName: z.string().trim().min(2, msg("Enter the employee's name.")).max(120) }), input);
     const { ipAddress } = await requestMeta();
     const g = await db.$transaction(async (tx) => {
       const c = await tx.corporateCustomer.findUnique({ where: { id: input.companyId } });
@@ -147,7 +148,7 @@ export async function addEmployeeAction(input: { companyId: string } & z.input<t
     });
     revalidatePath(`/staff/corporate/${input.companyId}`);
     return { id: g.id, fullName: g.fullName, phone: g.phone, idType: g.idType, idNumber: g.idNumber };
-  }, "Employee added.");
+  }, msg("Employee added."));
 }
 
 export async function removeEmployeeAction(input: { companyId: string; guestId: string }) {
@@ -162,5 +163,5 @@ export async function removeEmployeeAction(input: { companyId: string; guestId: 
     });
     revalidatePath(`/staff/corporate/${input.companyId}`);
     return null;
-  }, "Removed from the company (the guest's history is kept).");
+  }, msg("Removed from the company (the guest's history is kept)."));
 }

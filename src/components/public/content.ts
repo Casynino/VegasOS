@@ -2,8 +2,10 @@
  * PUBLIC SITE CONTENT — the single source of every piece of public copy and
  * every image path/alt on the website. Pages read only from `getSiteContent()`.
  *
- * These are the verified defaults. Managers override individual fields in
- * Staff → Website; `getSiteContent()` (server) merges the overrides.
+ * These are the verified defaults (English). The Chinese defaults are in
+ * content.zh-CN.ts (same structure, only the text). Managers override individual
+ * fields, in either language, in Staff → Website; `getSiteContent()` (server)
+ * merges the overrides for the visitor's language.
  *
  * Text may contain placeholders filled from hotel settings at render time:
  *   {hotelName} {address} {city} {checkIn} {checkOut} {airportKm}

@@ -1,21 +1,25 @@
 import { ViewTransition } from "react";
 import Link from "next/link";
+import { getT } from "@/i18n/server";
+import { msg } from "@/i18n/msg";
+import { englishT, type T } from "@/i18n/translate";
 import { cn } from "@/lib/utils";
 import { GlassPanel, HudFrame, HudLabel, LinkButton, MediaFrame, PriceTag, Section, TextLink, typeScale } from "./kit";
-import type { RoomCardData } from "./room-card";
+import { promoText, type RoomCardData } from "./room-card";
 import fx from "./room-fx.module.css";
 
 export const pad2 = (n: number) => String(n).padStart(2, "0");
 
-/** "Up to 2 adults · 1 child" — from the database only. */
-export function guestsLine(room: Pick<RoomCardData, "maxAdults" | "maxChildren">) {
-  return `Up to ${room.maxAdults} adult${room.maxAdults === 1 ? "" : "s"}${room.maxChildren > 0 ? ` · ${room.maxChildren} child${room.maxChildren === 1 ? "" : "ren"}` : ""}`;
+/** "Up to 2 adults · 1 child" — from the database only. Pass the person's translator (English without one). */
+export function guestsLine(room: Pick<RoomCardData, "maxAdults" | "maxChildren">, t: T = englishT) {
+  const adults = t.plural(room.maxAdults, "Up to {n} adult", "Up to {n} adults");
+  return room.maxChildren > 0 ? `${adults} · ${t.plural(room.maxChildren, "{n} child", "{n} children")}` : adults;
 }
 
 /** "Breakfast · Wi-Fi" when the room type has them. */
-export function includesLine(amenities: { code: string }[]) {
+export function includesLine(amenities: { code: string }[], t: T = englishT) {
   const codes = new Set(amenities.map((a) => a.code));
-  return [codes.has("BREAKFAST") && "Breakfast", codes.has("WIFI") && "Wi-Fi"].filter(Boolean).join(" · ");
+  return [codes.has("BREAKFAST") && t("Breakfast"), codes.has("WIFI") && "Wi-Fi"].filter(Boolean).join(" · ");
 }
 
 /**
@@ -25,7 +29,7 @@ export function includesLine(amenities: { code: string }[]) {
  * Chapters alternate tone and side; render them as siblings so the bands dissolve into each
  * other. The photo carries the ViewTransition `room-{slug}` (it morphs into the room page hero).
  */
-export function RoomChapter({
+export async function RoomChapter({
   room,
   index,
   total,
@@ -39,16 +43,19 @@ export function RoomChapter({
   tone: "night" | "paper";
   reverse?: boolean;
 }) {
+  const t = await getT();
   const href = `/rooms/${room.slug}`;
   const titleId = `${room.slug}-title`;
   const discounted = room.net < room.baseRate;
-  const includes = includesLine(room.amenities);
-  const spec = [
-    { term: "Guests", value: guestsLine(room) },
-    room.bedType ? { term: "Bed", value: room.bedType } : null,
-    room.sizeSqm ? { term: "Size", value: `${room.sizeSqm} m²` } : null,
-    includes ? { term: "Includes", value: includes } : null,
-  ].filter((s): s is { term: string; value: string } => s !== null);
+  const name = t(room.name);
+  const includes = includesLine(room.amenities, t);
+  const facts: ({ term: string; value: string } | null)[] = [
+    { term: msg("Guests"), value: guestsLine(room, t) },
+    room.bedType ? { term: msg("Bed"), value: t(room.bedType) } : null,
+    room.sizeSqm ? { term: msg("Size"), value: `${room.sizeSqm} m²` } : null,
+    includes ? { term: msg("Includes"), value: includes } : null,
+  ];
+  const spec = facts.filter((s): s is { term: string; value: string } => s !== null);
 
   return (
     <Section id={`type-${room.slug}`} tone={tone} space="md" width="wide" labelledBy={titleId} beam={index % 2 === 1} className="py-12 sm:py-20 lg:py-28">
@@ -64,7 +71,7 @@ export function RoomChapter({
             {pad2(index)}
           </span>
           <HudLabel className="pb-1.5 lg:mt-7 lg:pb-0">
-            Room type {pad2(index)} / {pad2(total)}
+            {t("Room type {n} / {total}", { n: pad2(index), total: pad2(total) })}
           </HudLabel>
         </div>
 
@@ -76,7 +83,7 @@ export function RoomChapter({
                 <ViewTransition name={`room-${room.slug}`} share="vlh-morph" default="none">
                   <MediaFrame
                     src={room.image}
-                    alt={`${room.name} at Vegas Luxury Hotel`}
+                    alt={t("{name} at Vegas Luxury Hotel", { name })}
                     ratio="4/3"
                     ratioSm="3/2"
                     ratioLg="3/2"
@@ -101,7 +108,7 @@ export function RoomChapter({
             )}
           >
             <div className="flex items-center justify-between gap-4">
-              <HudLabel>Specification</HudLabel>
+              <HudLabel>{t("Specification")}</HudLabel>
               <span aria-hidden="true" className="font-mono text-[10px] tracking-[0.2em] text-pub-muted sm:text-[11px]">
                 {pad2(index)}/{pad2(total)}
               </span>
@@ -109,7 +116,7 @@ export function RoomChapter({
             <dl className="mt-3.5 space-y-2 text-[13px] leading-snug sm:text-[13.5px]">
               {spec.map((s) => (
                 <div key={s.term} className="flex min-w-0 items-baseline gap-3">
-                  <dt className="shrink-0 text-[10.5px] font-medium uppercase tracking-[0.16em] text-pub-muted">{s.term}</dt>
+                  <dt className="shrink-0 text-[10.5px] font-medium uppercase tracking-[0.16em] text-pub-muted">{t(s.term)}</dt>
                   <span aria-hidden="true" className="min-w-3 flex-1 translate-y-[-3px] border-b border-dotted border-pub-line" />
                   <dd className="min-w-0 text-right text-pub-fg">{s.value}</dd>
                 </div>
@@ -120,7 +127,7 @@ export function RoomChapter({
                 amount={room.net}
                 from
                 was={discounted ? room.baseRate : null}
-                note={discounted && room.promo ? <span className="text-pub-eyebrow">{room.promo} · website rate</span> : undefined}
+                note={discounted && room.promo ? <span className="text-pub-eyebrow">{t("{promo} · website rate", { promo: promoText(room.promo, t) })}</span> : undefined}
               />
             </div>
           </GlassPanel>
@@ -133,16 +140,16 @@ export function RoomChapter({
               href={href}
               className="rounded-sm transition-colors duration-200 hover:text-pub-eyebrow focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-gold motion-reduce:transition-none"
             >
-              {room.name}
+              {name}
             </Link>
           </h2>
-          {room.shortDescription && <p className={cn(typeScale.body, "mt-3 max-w-[30rem] text-pub-muted sm:mt-4")}>{room.shortDescription}</p>}
+          {room.shortDescription && <p className={cn(typeScale.body, "mt-3 max-w-[30rem] text-pub-muted sm:mt-4")}>{t(room.shortDescription)}</p>}
           <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-3 sm:mt-7 sm:gap-x-7">
             <LinkButton href={`/book?type=${room.slug}`} variant="secondary" size="sm">
-              Book this room<span className="sr-only">: {room.name}</span>
+              {t("Book this room")}<span className="sr-only">{t(": {name}", { name })}</span>
             </LinkButton>
             <TextLink href={href}>
-              Explore room<span className="sr-only">: {room.name}</span>
+              {t("Explore room")}<span className="sr-only">{t(": {name}", { name })}</span>
             </TextLink>
           </div>
         </div>

@@ -6,6 +6,9 @@ import { REQUEST_TYPE_LABEL } from "@/lib/request-meta";
 import { HOTEL_QR_SOURCE, QR_PAY_ONLINE_NOTE } from "./booking-qr";
 import { PAY_LATER_WHERE } from "./booking-holds";
 import { guestNotifyConnected } from "./guest-notify";
+import { spotName } from "@/components/restaurant/shell";
+import { getT } from "@/i18n/server";
+import type { T } from "@/i18n/translate";
 
 /**
  * What is waiting for this staff member right now — by what they do (their permissions):
@@ -15,12 +18,14 @@ import { guestNotifyConnected } from "./guest-notify";
  * appears (and keeps ringing, when the manager chose "repeat", until handled).
  */
 export type StaffAlertKind = "booking" | "request" | "payment" | "bill" | "order_new" | "order_ready" | "stock";
+/** `text` is written in the person's own language; the bell drops the words before the first "— " (keep it in every language). */
 export type StaffAlert = { id: string; kind: StaffAlertKind; text: string; href: string; at: string };
 
-const place = (o: { tableLabel: string | null; roomNumber: string | null; type: string }) =>
-  o.tableLabel ?? (o.roomNumber ? `Room ${o.roomNumber}` : o.type === "TAKEAWAY" ? "Takeaway" : o.type === "PICKUP" ? "Pickup" : "Restaurant");
+const place = (o: { tableLabel: string | null; roomNumber: string | null; type: string }, t: T) =>
+  o.tableLabel != null ? spotName(o.tableLabel, t) : o.roomNumber ? t("Room {room}", { room: o.roomNumber }) : o.type === "TAKEAWAY" ? t("Takeaway") : o.type === "PICKUP" ? t("Pickup") : t("Restaurant");
 const no = (n: string) => `#${n.replace(/^ORD-\d{4}-0*/, "")}`;
-const day = (d: Date) => d.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+const day = (d: Date, t: T) => d.toLocaleDateString(t.intl, { day: "numeric", month: "short", timeZone: "UTC" });
+const tzs = (v: number) => `TZS ${v.toLocaleString("en-US")}`;
 
 /**
  * Online bookings reception should know about (owner, 2026-10-05) — made straight into the reservations, so nothing
@@ -28,7 +33,7 @@ const day = (d: Date) => d.toLocaleDateString("en-GB", { day: "numeric", month: 
  * first gets it), for a day after it was made; one from the QR paid online, for half an hour after nTZS confirmed it.
  * Each rings once (its id never changes) and leaves the list by itself.
  */
-async function hotelQrBookings(now: Date) {
+async function hotelQrBookings(now: Date, t: T) {
   const rows = await db.reservation.findMany({
     where: {
       OR: [
@@ -54,18 +59,26 @@ async function hotelQrBookings(now: Date) {
     const unsent = !r.guestMessages.length && (!guestNotifyConnected() || now.getTime() - r.createdAt.getTime() > 2 * 60_000);
     return {
       id: `hotelqr:${r.id}:${paid ? "paid" : later ? "later" : "hotel"}`, kind: "booking" as const, href: `/staff/reservations/${r.id}`, at: (paid ? r.confirmedAt ?? r.createdAt : r.createdAt).toISOString(),
-      text: `${r.source.code === HOTEL_QR_SOURCE ? "Hotel QR" : "Website"} booking — ${r.guest.fullName}${rooms ? ` · Room ${rooms}` : ""} · ${day(r.arrivalDate)} → ${day(r.departureDate)} · ${paid ? "paid online" : later ? "not paid · room not held" : "pay at hotel"}${unsent ? " · booking details not sent yet" : ""}`,
+      text: [
+        r.source.code === HOTEL_QR_SOURCE ? t("Hotel QR booking — {name}", { name: r.guest.fullName }) : t("Website booking — {name}", { name: r.guest.fullName }),
+        ...(rooms ? [t("Room {room}", { room: rooms })] : []),
+        `${day(r.arrivalDate, t)} → ${day(r.departureDate, t)}`,
+        paid ? t("paid online") : later ? t("not paid · room not held") : t("pay at hotel"),
+        ...(unsent ? [t("booking details not sent yet")] : []),
+      ].join(" · "),
     };
   });
 }
 
 export async function staffAlerts(perms: ReadonlySet<string>, userId: string | null = null): Promise<StaffAlert[]> {
   const has = (p: string) => perms.has(p);
+  // Written in this person's language (English without a request — jobs and tests).
+  const t = await getT();
   // A waiter hears their own orders and tables (and the ones nobody has yet); everyone else (the restaurant screen, managers) hears all.
   const mine = !!userId && worksWaiterShift(perms);
   const [bookings, qrBookings, requests, payments, bills, fresh, ready, stock] = await Promise.all([
     has("booking_requests.view") ? db.bookingRequest.findMany({ where: { status: "NEW" }, orderBy: { createdAt: "asc" }, take: 20, select: { id: true, fullName: true, checkInDate: true, checkOutDate: true, createdAt: true } }) : [],
-    has("reservations.view") ? hotelQrBookings(new Date()) : [],
+    has("reservations.view") ? hotelQrBookings(new Date(), t) : [],
     // New requests ring for everyone who handles them; one given to a person rings for them until they accept it.
     has("requests.view") || has("requests.manage") ? db.serviceRequest.findMany({
       where: { OR: [{ status: "NEW" }, ...(userId ? [{ status: "ASSIGNED" as const, assignedToId: userId }] : [])] }, orderBy: { createdAt: "asc" }, take: 20,
@@ -97,24 +110,24 @@ export async function staffAlerts(perms: ReadonlySet<string>, userId: string | n
   const hotelBills = inHouse ? bills.filter((s) => [s.guestId, ...s.members.map((m) => m.guestId)].some((g) => !!g && inHouse.has(g))) : bills;
   const hotelPayments = inHouse ? payments.filter((p) => isHotelOrder(p.order, inHouse)) : payments;
   return [
-    ...bookings.map((b) => ({ id: `booking:${b.id}`, kind: "booking" as const, text: `New booking request — ${b.fullName} · ${day(b.checkInDate)} → ${day(b.checkOutDate)}`, href: "/staff/booking-requests", at: b.createdAt.toISOString() })),
+    ...bookings.map((b) => ({ id: `booking:${b.id}`, kind: "booking" as const, text: t("New booking request — {name} · {from} → {to}", { name: b.fullName, from: day(b.checkInDate, t), to: day(b.checkOutDate, t) }), href: "/staff/booking-requests", at: b.createdAt.toISOString() })),
     ...qrBookings,
     ...requests.map((r) => ({
       // The time it last came back to waiting is in the id: a request put back to New (a shift ended) rings again.
       id: `request:${r.id}:${r.status}:${r.updatedAt.getTime()}`, kind: "request" as const, href: "/staff/requests", at: (r.status === "ASSIGNED" ? r.updatedAt : r.createdAt).toISOString(),
-      text: `${r.status === "ASSIGNED" ? "Given to you" : r.source === "STAFF" ? "Guest request" : "The guest asks"} — ${REQUEST_TYPE_LABEL[r.type] ?? "Request"}${r.room ? ` · Room ${r.room.number}` : ""}`,
+      text: `${(r.status === "ASSIGNED" ? t("Given to you — {type}", { type: t(REQUEST_TYPE_LABEL[r.type] ?? "Request") }) : r.source === "STAFF" ? t("Guest request — {type}", { type: t(REQUEST_TYPE_LABEL[r.type] ?? "Request") }) : t("The guest asks — {type}", { type: t(REQUEST_TYPE_LABEL[r.type] ?? "Request") }))}${r.room ? ` · ${t("Room {room}", { room: r.room.number })}` : ""}`,
     })),
-    ...hotelPayments.map((p) => ({ id: `payment:${p.id}`, kind: "payment" as const, text: `Payment to confirm — ${no(p.order.number)} · ${place(p.order)} · TZS ${p.amount.toLocaleString("en-US")}`, href: "/staff/restaurant", at: p.collectedAt.toISOString() })),
-    ...hotelBills.map((s) => ({ id: `bill:${s.id}:${s.billRequestedAt?.getTime() ?? 0}`, kind: "bill" as const, text: `${s.location.name} asked for the bill — ${s.guest.fullName}`, href: "/staff/restaurant/tables", at: (s.billRequestedAt ?? s.startedAt).toISOString() })),
-    ...fresh.map((o) => ({ id: `order_new:${o.id}`, kind: "order_new" as const, text: `New order ${no(o.number)} · ${place(o)}`, href: "/staff/restaurant", at: o.createdAt.toISOString() })),
-    ...ready.map((o) => ({ id: `order_ready:${o.id}`, kind: "order_ready" as const, text: `Order ready ${no(o.number)} · ${place(o)}${o.assignedToId ? "" : " · no waiter yet"}`, href: "/staff/restaurant", at: (o.readyAt ?? o.createdAt).toISOString() })),
+    ...hotelPayments.map((p) => ({ id: `payment:${p.id}`, kind: "payment" as const, text: t("Payment to confirm — {no} · {place} · {amount}", { no: no(p.order.number), place: place(p.order, t), amount: tzs(p.amount) }), href: "/staff/restaurant", at: p.collectedAt.toISOString() })),
+    ...hotelBills.map((s) => ({ id: `bill:${s.id}:${s.billRequestedAt?.getTime() ?? 0}`, kind: "bill" as const, text: t("{table} asked for the bill — {name}", { table: spotName(s.location.name, t), name: s.guest.fullName }), href: "/staff/restaurant/tables", at: (s.billRequestedAt ?? s.startedAt).toISOString() })),
+    ...fresh.map((o) => ({ id: `order_new:${o.id}`, kind: "order_new" as const, text: t("New order {no} · {place}", { no: no(o.number), place: place(o, t) }), href: "/staff/restaurant", at: o.createdAt.toISOString() })),
+    ...ready.map((o) => ({ id: `order_ready:${o.id}`, kind: "order_ready" as const, text: `${t("Order ready {no} · {place}", { no: no(o.number), place: place(o, t) })}${o.assignedToId ? "" : ` · ${t("no waiter yet")}`}`, href: "/staff/restaurant", at: (o.readyAt ?? o.createdAt).toISOString() })),
     ...stock.map((r) => {
       const at = r.events[0]?.at ?? r.createdAt;
       const dept = r.inventoryDepartment?.name ?? r.department;
       // The bell's list drops the words before "—", so what to do (review / approve) comes after it.
       const text = r.status === "PENDING_APPROVAL"
-        ? `Stock request — approve purchase ${r.purchaseNumber ?? r.number} · ${dept}${r.purchaseTotal ? ` · TZS ${r.purchaseTotal.toLocaleString("en-US")}` : ""}`
-        : `Stock request — review ${r.number} · ${dept} · ${r._count.items} item${r._count.items === 1 ? "" : "s"}${r.urgent ? " · urgent" : ""}`;
+        ? `${t("Stock request — approve purchase {number} · {department}", { number: r.purchaseNumber ?? r.number, department: t(dept) })}${r.purchaseTotal ? ` · ${tzs(r.purchaseTotal)}` : ""}`
+        : `${t("Stock request — review {number} · {department} · {items}", { number: r.number, department: t(dept), items: t.plural(r._count.items, "{n} item", "{n} items") })}${r.urgent ? ` · ${t("urgent")}` : ""}`;
       return { id: `stock:${r.id}:${r.status}:${at.getTime()}`, kind: "stock" as const, text, href: "/staff/stock-requests", at: at.toISOString() };
     }),
   ];

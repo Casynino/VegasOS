@@ -1,6 +1,7 @@
 import "server-only";
 import { type Tx } from "../db";
 import { AppError } from "../errors";
+import { msg, msgf } from "@/i18n/msg";
 import { fromDbDate } from "@/lib/time/business-date";
 import { findConflicts, WEEKDAYS } from "@/lib/pricing";
 
@@ -32,8 +33,8 @@ export async function assertNoPromotionConflict(tx: Tx, c: Candidate) {
   const clash = findConflicts(c, others, await roomTypeOf(tx));
   if (clash.length) {
     throw new AppError(
-      `Pricing conflict: “${clash[0].name}” (${when(clash[0])}) has the same priority (${c.priority}) and covers the same rooms on some of the same nights. Give one a higher priority, or change the dates or rooms.`,
-      "CONFLICT", { priority: "Conflict" },
+      msgf("Pricing conflict: “{name}” ({when}) has the same priority ({priority}) and covers the same rooms on some of the same nights. Give one a higher priority, or change the dates or rooms.", { name: clash[0].name, when: when(clash[0]), priority: c.priority }),
+      "CONFLICT", { priority: msg("Conflict") },
     );
   }
 }
@@ -46,8 +47,8 @@ export async function assertNoPriceRuleConflict(tx: Tx, c: Candidate) {
   const clash = findConflicts(c, others, await roomTypeOf(tx));
   if (clash.length) {
     throw new AppError(
-      `Pricing conflict: date price “${clash[0].name}” (${when(clash[0])}) has the same priority (${c.priority}) for the same rooms and nights. Give one a higher priority, or change the dates or rooms.`,
-      "CONFLICT", { priority: "Conflict" },
+      msgf("Pricing conflict: date price “{name}” ({when}) has the same priority ({priority}) for the same rooms and nights. Give one a higher priority, or change the dates or rooms.", { name: clash[0].name, when: when(clash[0]), priority: c.priority }),
+      "CONFLICT", { priority: msg("Conflict") },
     );
   }
 }

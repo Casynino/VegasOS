@@ -4,6 +4,8 @@ import { startTransition, useActionState, useCallback, useEffect, useRef, useSta
 import Link from "next/link";
 import { BellRing, Check, ChevronDown, ChevronLeft, KeyRound, LoaderCircle, Lock, Phone, Plane, Send, Smartphone, Wallet } from "lucide-react";
 import type { ActionResult } from "@/server/errors";
+import { useT } from "@/i18n/client";
+import { msg } from "@/i18n/msg";
 import { formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Button } from "../kit/button";
@@ -32,7 +34,6 @@ const newKey = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (x) 
 const payPhoneOk = (p: string) => /^(?:\+?255|0)?[67]\d{8}$/.test(p.replace(/[\s-]/g, ""));
 // Native date/time pickers follow the page: light on paper, dark in the dark theme.
 const scheme = "[color-scheme:light] pub-dark:[color-scheme:dark]";
-const optional = <span className="normal-case tracking-normal text-pub-muted">(optional)</span>;
 /** The fields folded under "Add more (optional)" — an error in one opens the fold. */
 const EXTRA_FIELDS = ["email", "nationality", "expectedArrivalTime", "specialRequests", "flightNumber", "pickupDate", "pickupTime", "airport", "passengers", "pickupNotes"];
 
@@ -71,6 +72,8 @@ export function GuestStep({
   /** The dates and guests, changeable right here (StayEditor). */
   stayEditor?: React.ReactNode;
 }) {
+  const t = useT();
+  const optional = <span className="normal-case tracking-normal text-pub-muted">{t("(optional)")}</span>;
   // ── Who: the number first (this device's last number is filled in) ──
   const [device, setDevice] = useWho();
   const [phoneIn, setPhone] = useState<string | null>(null);
@@ -138,15 +141,15 @@ export function GuestStep({
       <BookingProgress current={3} />
       {summary && <div className="mt-6 lg:hidden">{summary}</div>}
       <section aria-labelledby="details-title" className="mt-8 lg:mt-10">
-        <h2 id="details-title" className={typeScale.subheading}>Book &amp; pay</h2>
-        <p className={cn(typeScale.small, "mt-2 max-w-[34rem] text-pub-muted")}>Your number first — if you have stayed or ordered with us before, we already know you.</p>
+        <h2 id="details-title" className={typeScale.subheading}>{t("Book & pay")}</h2>
+        <p className={cn(typeScale.small, "mt-2 max-w-[34rem] text-pub-muted")}>{t("Your number first — if you have stayed or ordered with us before, we already know you.")}</p>
 
         {stayEditor && <div className="mt-6">{stayEditor}</div>}
 
         {failed && (
-          <Notice className="mt-6" title={unavailable ? "This room was just taken." : payState && !payState.ok && payingNow ? "We couldn’t start your payment." : "We couldn’t make your booking."}>
+          <Notice className="mt-6" title={unavailable ? t("This room was just taken.") : payState && !payState.ok && payingNow ? t("We couldn’t start your payment.") : t("We couldn’t make your booking.")}>
             <p>{failed.error}</p>
-            {unavailable && <Link href={backToRoomsHref} className="mt-2 inline-block font-medium text-pub-fg underline underline-offset-4">See rooms still free</Link>}
+            {unavailable && <Link href={backToRoomsHref} className="mt-2 inline-block font-medium text-pub-fg underline underline-offset-4">{t("See rooms still free")}</Link>}
           </Notice>
         )}
 
@@ -157,7 +160,7 @@ export function GuestStep({
           <div className={cn(fx.card, "relative grid gap-x-4 gap-y-5 p-5 sm:grid-cols-2 sm:p-7")}>
             {/* The number */}
             <div className="sm:col-span-2">
-              <label htmlFor="phone" className={field.label}>Phone / WhatsApp <span aria-hidden="true">*</span></label>
+              <label htmlFor="phone" className={field.label}>{t("Phone / WhatsApp")} <span aria-hidden="true">*</span></label>
               <span className="relative block">
                 <Phone className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-pub-faint" aria-hidden="true" />
                 <input id="phone" name="phone" type="tel" required autoComplete="tel" inputMode="tel" placeholder="0712 345 678" value={phone}
@@ -167,7 +170,7 @@ export function GuestStep({
                     : ready ? <span className="grid size-5 place-items-center rounded-full bg-gold text-[#16110a]"><Check className="size-3" strokeWidth={3} aria-hidden="true" /></span> : null}
                 </span>
               </span>
-              {guest.step === "phone" && <p className={field.hint}>e.g. 0712 345 678, or +44 7700 900123 from abroad.</p>}
+              {guest.step === "phone" && <p className={field.hint}>{t("e.g. 0712 345 678, or +44 7700 900123 from abroad.")}</p>}
               {errorOf("phone")}
             </div>
 
@@ -175,12 +178,12 @@ export function GuestStep({
             {known ? (
               <div role="status" className="flex items-center gap-3 rounded-[0.75rem] border border-pub-line bg-pub-fg/[0.03] p-3 sm:col-span-2">
                 <span className="grid size-11 shrink-0 place-items-center rounded-full bg-[#15120e] font-display text-lg text-gold">{guest.knownName!.charAt(0).toUpperCase()}</span>
-                <span className="min-w-0 flex-1 leading-tight"><span className="block text-sm text-pub-muted">Welcome back</span><span className="block truncate font-medium">{guest.knownName}</span></span>
-                <button type="button" onClick={guest.notMe} className="min-h-11 shrink-0 px-1 text-sm font-medium underline decoration-pub-line underline-offset-4 hover:decoration-gold">Not you?</button>
+                <span className="min-w-0 flex-1 leading-tight"><span className="block text-sm text-pub-muted">{t("Welcome back")}</span><span className="block truncate font-medium">{guest.knownName}</span></span>
+                <button type="button" onClick={guest.notMe} className="min-h-11 shrink-0 px-1 text-sm font-medium underline decoration-pub-line underline-offset-4 hover:decoration-gold">{t("Not you?")}</button>
               </div>
             ) : guest.step === "new" ? (
               <div className="sm:col-span-2">
-                <label htmlFor="fullName" className={field.label}>Full name <span aria-hidden="true">*</span></label>
+                <label htmlFor="fullName" className={field.label}>{t("Full name")} <span aria-hidden="true">*</span></label>
                 <input id="fullName" name="fullName" required autoComplete="name" autoCapitalize="words"
                   defaultValue={device && !device.known && device.phone === phone ? device.name : ""} {...invalid("fullName")} className={field.input} />
                 {errorOf("fullName")}
@@ -192,50 +195,50 @@ export function GuestStep({
               <div className="border-t border-pub-line pt-1 sm:col-span-2">
                 <button type="button" onClick={() => setMoreOpen((o) => !o)} aria-expanded={moreShown} aria-controls="more-fields"
                   className="flex min-h-11 w-full items-center justify-between gap-3 text-left text-[14px] font-medium text-pub-fg">
-                  <span>Add email, arrival time, a request or airport pickup <span className="font-normal text-pub-muted">(optional)</span></span>
+                  <span>{t("Add email, arrival time, a request or airport pickup")} <span className="font-normal text-pub-muted">{t("(optional)")}</span></span>
                   <ChevronDown className={cn("size-4 shrink-0 text-pub-muted transition-transform duration-200", moreShown && "rotate-180")} aria-hidden="true" />
                 </button>
                 <div id="more-fields" hidden={!moreShown} className="mt-4 grid gap-x-4 gap-y-5 sm:grid-cols-2">
                   <div>
-                    <label htmlFor="email" className={field.label}>Email {optional}</label>
+                    <label htmlFor="email" className={field.label}>{t("Email")} {optional}</label>
                     <input id="email" name="email" type="email" autoComplete="email" defaultValue={device?.phone === phone ? device.email ?? "" : ""} {...invalid("email")} className={field.input} />
                     {errorOf("email")}
                   </div>
                   <div>
-                    <label htmlFor="expectedArrivalTime" className={field.label}>Arrival time {optional}</label>
+                    <label htmlFor="expectedArrivalTime" className={field.label}>{t("Arrival time")} {optional}</label>
                     <input id="expectedArrivalTime" name="expectedArrivalTime" type="time" {...invalid("expectedArrivalTime")} className={cn(field.input, scheme)} />
-                    <p className={field.hint}>Check-in is from {price.checkInTime}. Late arrivals are welcome.</p>
+                    <p className={field.hint}>{t("Check-in is from {time}. Late arrivals are welcome.", { time: price.checkInTime })}</p>
                     {errorOf("expectedArrivalTime")}
                   </div>
                   {!known && (
                     <div className="sm:col-span-2">
-                      <label htmlFor="nationality" className={field.label}>Nationality {optional}</label>
+                      <label htmlFor="nationality" className={field.label}>{t("Nationality")} {optional}</label>
                       <input id="nationality" name="nationality" autoComplete="country-name" {...invalid("nationality")} className={field.input} />
                       {errorOf("nationality")}
                     </div>
                   )}
                   <div className="sm:col-span-2">
-                    <label htmlFor="specialRequests" className={field.label}>A request {optional}</label>
-                    <textarea id="specialRequests" name="specialRequests" rows={2} maxLength={1000} placeholder="Extra bed, quiet room, late check-in…" {...invalid("specialRequests")} className={field.textarea} />
+                    <label htmlFor="specialRequests" className={field.label}>{t("A request")} {optional}</label>
+                    <textarea id="specialRequests" name="specialRequests" rows={2} maxLength={1000} placeholder={t("Extra bed, quiet room, late check-in…")} {...invalid("specialRequests")} className={field.textarea} />
                     {errorOf("specialRequests")}
                   </div>
 
                   <fieldset className="border-t border-pub-line pt-5 sm:col-span-2">
-                    <legend className="sr-only">Airport pickup</legend>
+                    <legend className="sr-only">{t("Airport pickup")}</legend>
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
                       <div className="flex gap-3.5">
                         <Plane className="mt-0.5 size-[18px] shrink-0 text-pub-eyebrow" strokeWidth={1.4} aria-hidden="true" />
                         <div>
-                          <p className="text-[15px] font-medium leading-tight" id="pickup-q">Airport pickup?</p>
+                          <p className="text-[15px] font-medium leading-tight" id="pickup-q">{t("Airport pickup?")}</p>
                           <p className="mt-1 text-[13px] leading-relaxed text-pub-muted">{arrival.note}</p>
                         </div>
                       </div>
                       <div role="radiogroup" aria-labelledby="pickup-q" className="inline-flex shrink-0 self-start rounded-full border border-pub-line p-1 sm:self-auto">
-                        {[{ v: false, l: "No thanks" }, { v: true, l: "Yes please" }].map((o) => (
+                        {[{ v: false, l: msg("No thanks") }, { v: true, l: msg("Yes please") }].map((o) => (
                           <button key={o.l} type="button" role="radio" aria-checked={wantPickup === o.v} onClick={() => setWantPickup(o.v)}
                             className={cn("inline-flex h-10 items-center rounded-full px-4 text-[13px] font-medium transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none",
                               wantPickup === o.v ? "bg-pub-fg text-[var(--pub-surface)]" : "text-pub-muted hover:text-pub-fg")}>
-                            {o.l}
+                            {t(o.l)}
                           </button>
                         ))}
                       </div>
@@ -243,33 +246,33 @@ export function GuestStep({
                     {wantPickup && (
                       <div className="mt-5 grid gap-x-4 gap-y-5 sm:grid-cols-2">
                         <div>
-                          <label htmlFor="flightNumber" className={field.label}>Flight number <span aria-hidden="true">*</span></label>
-                          <input id="flightNumber" name="flightNumber" autoComplete="off" placeholder="e.g. KQ484" {...invalid("flightNumber")} className={cn(field.input, "uppercase")} />
+                          <label htmlFor="flightNumber" className={field.label}>{t("Flight number")} <span aria-hidden="true">*</span></label>
+                          <input id="flightNumber" name="flightNumber" autoComplete="off" placeholder={t("e.g. KQ484")} {...invalid("flightNumber")} className={cn(field.input, "uppercase")} />
                           {errorOf("flightNumber")}
                         </div>
                         <div>
-                          <label htmlFor="passengers" className={field.label}>Passengers</label>
+                          <label htmlFor="passengers" className={field.label}>{t("Passengers")}</label>
                           <input id="passengers" name="passengers" type="number" min={1} max={20} inputMode="numeric" defaultValue={String(selection.adults + selection.children)} {...invalid("passengers")} className={field.input} />
                           {errorOf("passengers")}
                         </div>
                         <div className="min-w-0">
-                          <label htmlFor="pickupDate" className={field.label}>Landing date <span aria-hidden="true">*</span></label>
+                          <label htmlFor="pickupDate" className={field.label}>{t("Landing date")} <span aria-hidden="true">*</span></label>
                           <input id="pickupDate" name="pickupDate" type="date" defaultValue={selection.checkIn} {...invalid("pickupDate")} className={cn(field.input, "min-w-0", scheme)} />
                           {errorOf("pickupDate")}
                         </div>
                         <div className="min-w-0">
-                          <label htmlFor="pickupTime" className={field.label}>Landing time (local) <span aria-hidden="true">*</span></label>
+                          <label htmlFor="pickupTime" className={field.label}>{t("Landing time (local)")} <span aria-hidden="true">*</span></label>
                           <input id="pickupTime" name="pickupTime" type="time" {...invalid("pickupTime")} className={cn(field.input, "min-w-0", scheme)} />
                           {errorOf("pickupTime")}
                         </div>
                         <div className="sm:col-span-2">
-                          <label htmlFor="airport" className={field.label}>Airport</label>
+                          <label htmlFor="airport" className={field.label}>{t("Airport")}</label>
                           <input id="airport" name="airport" defaultValue={arrival.defaultAirport} {...invalid("airport")} className={field.input} />
                           {errorOf("airport")}
                         </div>
                         <div className="sm:col-span-2">
-                          <label htmlFor="pickupNotes" className={field.label}>For the driver {optional}</label>
-                          <textarea id="pickupNotes" name="pickupNotes" rows={2} maxLength={500} placeholder="Luggage, meeting point…" {...invalid("pickupNotes")} className={field.textarea} />
+                          <label htmlFor="pickupNotes" className={field.label}>{t("For the driver")} {optional}</label>
+                          <textarea id="pickupNotes" name="pickupNotes" rows={2} maxLength={500} placeholder={t("Luggage, meeting point…")} {...invalid("pickupNotes")} className={field.textarea} />
                           {errorOf("pickupNotes")}
                         </div>
                       </div>
@@ -288,46 +291,46 @@ export function GuestStep({
             <span aria-hidden="true" className="pub-hud-corners" style={{ "--hud-o": "-0.625rem", "--hud-l": "0.875rem" } as React.CSSProperties} />
             <dl className="space-y-3 text-[14px]">
               <div className="flex justify-between gap-4">
-                <dt className="text-pub-muted">{formatTZS(price.ratePerNight)} × {price.nights} night{price.nights === 1 ? "" : "s"}{price.rooms > 1 ? ` × ${price.rooms} rooms` : ""}</dt>
+                <dt className="text-pub-muted">{formatTZS(price.ratePerNight)} × {t.plural(price.nights, "{n} night", "{n} nights")}{price.rooms > 1 ? ` × ${t.plural(price.rooms, "{n} room", "{n} rooms")}` : ""}</dt>
                 <dd className="tabular-nums">{formatTZS(price.gross)}</dd>
               </div>
               {price.discount > 0 && (
                 <div className="flex justify-between gap-4 text-gold">
-                  <dt>Website discount</dt>
+                  <dt>{t("Website discount")}</dt>
                   <dd className="shrink-0 tabular-nums">− {formatTZS(price.discount)}</dd>
                 </div>
               )}
               <div className="flex items-baseline justify-between gap-4 border-t border-pub-line pt-4">
-                <dt className={cn(typeScale.meta, "text-pub-muted")}>Total</dt>
+                <dt className={cn(typeScale.meta, "text-pub-muted")}>{t("Total")}</dt>
                 <dd className="font-display text-[clamp(1.75rem,1.4rem+1.2vw,2.25rem)] leading-none text-gold lining-nums tabular-nums">{formatTZS(price.total)}</dd>
               </div>
             </dl>
-            <p className="mt-3 text-[12.5px] leading-relaxed text-pub-muted">Breakfast and Wi-Fi included. No card needed.</p>
+            <p className="mt-3 text-[12.5px] leading-relaxed text-pub-muted">{t("Breakfast and Wi-Fi included. No card needed.")}</p>
 
             {online && (
               <div className="mt-6">
-                <p id="pay-way" className={cn(typeScale.eyebrow, "text-gold")}>How would you like to pay?</p>
+                <p id="pay-way" className={cn(typeScale.eyebrow, "text-gold")}>{t("How would you like to pay?")}</p>
                 <div role="radiogroup" aria-labelledby="pay-way" className="mt-3 overflow-hidden rounded-[0.875rem] border border-pub-line">
                   <WayRow on={way === "now"} onSelect={() => setWay("now")} icon={<Smartphone className="size-[18px]" strokeWidth={1.6} aria-hidden="true" />}
-                    title="Pay now" sub={<NetworkMarks label={null} compact dark />}>
+                    title={t("Pay now")} sub={<NetworkMarks label={null} compact dark />}>
                     <div className="space-y-4">
                       <label className="block">
-                        <span className={field.label}>Mobile-money number</span>
-                        <input value={number} onChange={(e) => setPayPhone(e.target.value)} type="tel" inputMode="tel" autoComplete="tel" placeholder="e.g. 0712 345 678"
+                        <span className={field.label}>{t("Mobile-money number")}</span>
+                        <input value={number} onChange={(e) => setPayPhone(e.target.value)} type="tel" inputMode="tel" autoComplete="tel" placeholder={t("e.g. 0712 345 678")}
                           aria-invalid={number !== "" && !payPhoneOk(number)} className={cn(field.input, "tracking-wide tabular-nums [color-scheme:dark] aria-invalid:border-amber-400/80")} />
                       </label>
                       <ol className="grid grid-cols-3 gap-2 text-center">
-                        {[{ t: "Check your phone", i: BellRing }, { t: "Enter your PIN", i: KeyRound }, { t: "Room confirmed", i: Check }].map(({ t, i: Icon }) => (
-                          <li key={t} className="min-w-0">
+                        {[{ label: msg("Check your phone"), i: BellRing }, { label: msg("Enter your PIN"), i: KeyRound }, { label: msg("Room confirmed"), i: Check }].map(({ label, i: Icon }) => (
+                          <li key={label} className="min-w-0">
                             <span className="mx-auto grid size-8 place-items-center rounded-full border border-gold/40 text-gold"><Icon className="size-3.5" strokeWidth={1.8} aria-hidden="true" /></span>
-                            <span className="mt-1.5 block text-[11px] leading-tight text-pub-muted">{t}</span>
+                            <span className="mt-1.5 block text-[11px] leading-tight text-pub-muted">{t(label)}</span>
                           </li>
                         ))}
                       </ol>
                     </div>
                   </WayRow>
                   <WayRow on={way === "later"} onSelect={() => setWay("later")} icon={<Wallet className="size-[18px]" strokeWidth={1.6} aria-hidden="true" />}
-                    title="Pay later" sub="Not reserved until paid — pay any time from your booking" />
+                    title={t("Pay later")} sub={t("Not reserved until paid — pay any time from your booking")} />
                 </div>
               </div>
             )}
@@ -335,19 +338,19 @@ export function GuestStep({
             <div className="mt-6">
               <Button type="submit" disabled={!canSend} full className="h-auto min-h-11 whitespace-normal py-2.5 text-center"
                 icon={busy ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : payingNow ? <Lock className="size-4" strokeWidth={1.8} aria-hidden="true" /> : <Send className="size-4" strokeWidth={1.6} aria-hidden="true" />}>
-                {busy ? (payingNow ? "Booking your room…" : "Booking…") : payingNow ? `Pay ${formatTZS(price.total)} now` : online ? "Book — pay later" : "Book now"}
+                {busy ? (payingNow ? t("Booking your room…") : t("Booking…")) : payingNow ? t("Pay {amount} now", { amount: formatTZS(price.total) }) : online ? t("Book — pay later") : t("Book now")}
               </Button>
               <p className="mt-3 text-center text-[11.5px] leading-relaxed text-pub-muted">
-                {!ready ? "Enter your number to continue."
-                  : payingNow ? <span className="inline-flex items-center gap-1.5"><Lock className="size-3 text-gold" strokeWidth={1.8} aria-hidden="true" />Secure payment by <span className="font-semibold tracking-wide text-pub-fg/85">NTZS</span></span>
-                    : online ? "The room is not reserved until it is paid." : "Nothing is charged online — the room is not reserved until it is paid."}
+                {!ready ? t("Enter your number to continue.")
+                  : payingNow ? <span className="inline-flex items-center gap-1.5"><Lock className="size-3 text-gold" strokeWidth={1.8} aria-hidden="true" />{t.rich("Secure payment by <b>NTZS</b>", { b: (c) => <span className="font-semibold tracking-wide text-pub-fg/85">{c}</span> })}</span>
+                    : online ? t("The room is not reserved until it is paid.") : t("Nothing is charged online — the room is not reserved until it is paid.")}
               </p>
             </div>
           </div>
 
           <Link href={backToRoomsHref}
             className={cn(typeScale.cta, "inline-flex min-h-11 items-center gap-1.5 rounded-sm text-pub-muted transition-colors duration-200 hover:text-pub-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none")}>
-            <ChevronLeft className="size-4" strokeWidth={1.6} aria-hidden="true" /> Back to rooms
+            <ChevronLeft className="size-4" strokeWidth={1.6} aria-hidden="true" /> {t("Back to rooms")}
           </Link>
         </form>
       </section>

@@ -1,6 +1,7 @@
 "use client";
 
 import { Expand } from "lucide-react";
+import { useT } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 import { HudFrame, HudLabel } from "./kit/hud";
 import { MediaFrame } from "./kit/media-frame";
@@ -19,6 +20,7 @@ const pad2 = (n: number) => String(n).padStart(2, "0");
  * hero) — the viewer still holds them all. Place it directly inside a page container.
  */
 export function RoomGallery({ images, roomName, from = 0 }: { images: LightboxImage[]; roomName: string; from?: number }) {
+  const t = useT();
   const { open, element } = useLightbox(images);
   const strip = images.slice(from);
   if (strip.length === 0) return null;
@@ -32,7 +34,7 @@ export function RoomGallery({ images, roomName, from = 0 }: { images: LightboxIm
       onClick={() => open(i + from)}
       className={cn(fx.lensHost, "group relative block overflow-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold", className)}
     >
-      <MediaFrame src={img.src} alt={img.alt} ratio="fill" zoom sizes={sizes} />
+      <MediaFrame src={img.src} alt={t(img.alt)} ratio="fill" zoom sizes={sizes} />
       <span aria-hidden="true" className={fx.lens} />
       <span
         aria-hidden="true"
@@ -42,7 +44,7 @@ export function RoomGallery({ images, roomName, from = 0 }: { images: LightboxIm
       </span>
       {extra}
       <span className="sr-only">
-        Open photo {i + from + 1} of {images.length}
+        {t("Open photo {n} of {total}", { n: i + from + 1, total: images.length })}
       </span>
     </button>
   );
@@ -51,7 +53,7 @@ export function RoomGallery({ images, roomName, from = 0 }: { images: LightboxIm
     <div>
       {/* Phones and tablets: the filmstrip. */}
       <div className="lg:hidden">
-        <Rail label={`Photos of the ${roomName}`} itemClassName="w-auto sm:w-auto lg:w-auto">
+        <Rail label={t("Photos of the {room}", { room: t(roomName) })} itemClassName="w-auto sm:w-auto lg:w-auto">
           {strip.map((img, i) => (
             <div key={img.src} style={{ aspectRatio: `${img.width} / ${img.height}` }} className="relative h-[17.5rem] max-w-[82vw] sm:h-[21rem] sm:max-w-none">
               {tile(img, i, "absolute inset-0", "(min-width: 640px) 50vw, 82vw")}
@@ -61,7 +63,7 @@ export function RoomGallery({ images, roomName, from = 0 }: { images: LightboxIm
       </div>
 
       {/* Desktop: the mosaic in a HUD frame. */}
-      <HudFrame className="hidden lg:block" label="Select a photo to enlarge" labelEnd={<>{pad2(images.length)} photos</>}>
+      <HudFrame className="hidden lg:block" label={t("Select a photo to enlarge")} labelEnd={<>{t("{n} photos", { n: pad2(images.length) })}</>}>
         <div
           className={cn(
             "grid gap-3",
@@ -81,7 +83,7 @@ export function RoomGallery({ images, roomName, from = 0 }: { images: LightboxIm
                   aria-hidden="true"
                   className="pointer-events-none absolute inset-0 z-[2] grid place-items-center bg-[rgb(12_10_7/0.45)] transition-colors duration-500 group-hover:bg-[rgb(12_10_7/0.3)] motion-reduce:transition-none"
                 >
-                  <span className="pub-glass rounded-full px-4 py-2 text-[13px] font-medium text-white">+ {more} more</span>
+                  <span className="pub-glass rounded-full px-4 py-2 text-[13px] font-medium text-white">{t("+ {n} more", { n: more })}</span>
                 </span>
               ) : undefined,
             ),
@@ -98,10 +100,10 @@ export function RoomGallery({ images, roomName, from = 0 }: { images: LightboxIm
             "inline-flex min-h-11 items-center gap-2 rounded-sm text-pub-muted transition-colors duration-200 hover:text-pub-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none",
           )}
         >
-          <Expand className="size-4" strokeWidth={1.6} aria-hidden="true" /> View all {images.length} photos
+          <Expand className="size-4" strokeWidth={1.6} aria-hidden="true" /> {t("View all {n} photos", { n: images.length })}
         </button>
         <HudLabel tick={false} className="lg:hidden">
-          {pad2(images.length)} photos
+          {t("{n} photos", { n: pad2(images.length) })}
         </HudLabel>
       </div>
       {element}

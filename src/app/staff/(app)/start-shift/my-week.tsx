@@ -2,6 +2,8 @@ import { CalendarCheck, ConciergeBell, Clock, DoorOpen, Trophy } from "lucide-re
 import { db } from "@/server/db";
 import { addDays, businessDateOf, businessDayBounds, eachDate, toDbDate, type BusinessDate, type BusinessDayConfig } from "@/lib/time/business-date";
 import { cn } from "@/lib/utils";
+import { getT } from "@/i18n/server";
+import type { T } from "@/i18n/translate";
 
 const CHECK_INS = ["reservation.checked_in", "reservation.walk_in"];
 
@@ -33,17 +35,17 @@ export async function myWeek(userId: string, today: BusinessDate, cfg: BusinessD
 }
 type Week = Awaited<ReturnType<typeof myWeek>>;
 
-const dur = (m: number) => `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`;
-const wd = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", timeZone: "UTC" });
-const hours = (m: number) => (m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ""}` : `${m}m`);
+const dur = (m: number, t: T) => t("{h}h {m}m", { h: Math.floor(m / 60), m: String(m % 60).padStart(2, "0") });
+const wd = (d: string, t: T) => new Date(`${d}T12:00:00Z`).toLocaleDateString(t.intl, { weekday: "short", timeZone: "UTC" });
+const hours = (m: number, t: T) => (m >= 60 ? (m % 60 ? t("{h}h {m}m", { h: Math.floor(m / 60), m: m % 60 }) : t("{h}h", { h: Math.floor(m / 60) })) : t("{m}m", { m }));
 
 /** One small bar chart: a bar per day, today marked, the value on hover (and above the best day). */
-function Bars({ rows, value, today, fmt, tone, label, empty }: { rows: Week["rows"]; value: (r: Week["rows"][number]) => number; today: string; fmt: (n: number) => string; tone: string; label: string; empty: string }) {
+function Bars({ rows, value, today, fmt, tone, label, empty, t }: { rows: Week["rows"]; value: (r: Week["rows"][number]) => number; today: string; fmt: (n: number) => string; tone: string; label: string; empty: string; t: T }) {
   const max = Math.max(1, ...rows.map(value));
   if (!rows.some(value)) return <p className="grid h-36 place-items-center rounded-2xl border border-dashed border-border/80 px-4 text-center text-xs text-muted-foreground">{empty}</p>;
   const best = rows.reduce((b, r) => (value(r) > value(b) ? r : b), rows[0]);
   return (
-    <div role="img" aria-label={`${label}: ${rows.map((r) => `${wd(r.day)} ${fmt(value(r))}`).join(", ")}`} className="flex h-40 items-end gap-1.5 pt-6">
+    <div role="img" aria-label={`${label}: ${rows.map((r) => `${wd(r.day, t)} ${fmt(value(r))}`).join(", ")}`} className="flex h-40 items-end gap-1.5 pt-6">
       {rows.map((r) => {
         const v = value(r);
         const h = v ? Math.max(6, Math.round((v / max) * 100)) : 0;
@@ -58,7 +60,7 @@ function Bars({ rows, value, today, fmt, tone, label, empty }: { rows: Week["row
               </div>
             </div>
             <span className={cn("h-px w-full", "bg-border")} />
-            <span className={cn("text-[10.5px] font-medium", r.day === today ? "font-semibold text-[oklch(0.55_0.11_75)] dark:text-[#f0cf86]" : "text-muted-foreground")}>{r.day === today ? "Today" : wd(r.day)}</span>
+            <span className={cn("text-[10.5px] font-medium", r.day === today ? "font-semibold text-[oklch(0.55_0.11_75)] dark:text-[#f0cf86]" : "text-muted-foreground")}>{r.day === today ? t("Today") : wd(r.day, t)}</span>
           </div>
         );
       })}
@@ -67,29 +69,30 @@ function Bars({ rows, value, today, fmt, tone, label, empty }: { rows: Week["row
 }
 
 /** YOUR WEEK — her own last 7 days: what she recorded and who she welcomed, with a few plain facts. */
-export function MyWeek({ week }: { week: Week }) {
+export async function MyWeek({ week }: { week: Week }) {
+  const t = await getT();
   const { rows, totals, today } = week;
   const guests = (r: Week["rows"][number]) => r.checkIns + r.checkOuts;
   const busiest = rows.reduce((b, r) => (guests(r) > guests(b) ? r : b), rows[0]);
   const longest = rows.reduce((b, r) => (r.minutes > b.minutes ? r : b), rows[0]);
   const worked = rows.filter((r) => r.minutes > 0).length;
   const facts = [
-    { icon: Clock, tone: "bg-sky-500/12 text-sky-600 dark:text-sky-300", label: "On shift", value: dur(totals.minutes), sub: `${worked} of 7 days` },
-    { icon: DoorOpen, tone: "bg-emerald-500/12 text-emerald-600 dark:text-emerald-300", label: "Guests checked in", value: String(totals.checkIns), sub: `${totals.checkOuts} checked out` },
-    { icon: ConciergeBell, tone: "bg-violet-500/12 text-violet-600 dark:text-violet-300", label: "Guest requests", value: String(totals.requests), sub: "you took care of" },
+    { icon: Clock, tone: "bg-sky-500/12 text-sky-600 dark:text-sky-300", label: t("On shift"), value: dur(totals.minutes, t), sub: t("{n} of 7 days", { n: worked }) },
+    { icon: DoorOpen, tone: "bg-emerald-500/12 text-emerald-600 dark:text-emerald-300", label: t("Guests checked in"), value: String(totals.checkIns), sub: t("{n} checked out", { n: totals.checkOuts }) },
+    { icon: ConciergeBell, tone: "bg-violet-500/12 text-violet-600 dark:text-violet-300", label: t("Guest requests"), value: String(totals.requests), sub: t("you took care of") },
   ];
   const highlights = [
-    guests(busiest) > 0 && `Your busiest day: ${wd(busiest.day)} — ${busiest.checkIns} in, ${busiest.checkOuts} out`,
-    longest.minutes > 0 && `Your longest day: ${wd(longest.day)} — ${hours(longest.minutes)} on shift`,
-    worked >= 5 && `You worked ${worked} of the last 7 days`,
+    guests(busiest) > 0 && t("Your busiest day: {day} — {in} in, {out} out", { day: wd(busiest.day, t), in: busiest.checkIns, out: busiest.checkOuts }),
+    longest.minutes > 0 && t("Your longest day: {day} — {hours} on shift", { day: wd(longest.day, t), hours: hours(longest.minutes, t) }),
+    worked >= 5 && t("You worked {n} of the last 7 days", { n: worked }),
   ].filter((x): x is string => !!x);
 
   return (
     <section className="rounded-3xl border border-border/70 bg-card p-4 sm:p-5">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h2 className="flex items-center gap-2 text-base font-semibold"><CalendarCheck className="size-4 text-[oklch(0.62_0.11_78)]" />Your week</h2>
-          <p className="text-xs text-muted-foreground">Your own work over the last 7 hotel days — from your records.</p>
+          <h2 className="flex items-center gap-2 text-base font-semibold"><CalendarCheck className="size-4 text-[oklch(0.62_0.11_78)]" />{t("Your week")}</h2>
+          <p className="text-xs text-muted-foreground">{t("Your own work over the last 7 hotel days — from your records.")}</p>
         </div>
       </div>
       <div className="mt-4 grid gap-2.5 sm:grid-cols-3">
@@ -106,12 +109,12 @@ export function MyWeek({ week }: { week: Week }) {
       </div>
       <div className="mt-5 grid gap-6 md:grid-cols-2">
         <div>
-          <p className="mb-2 text-xs font-semibold">Hours on shift <span className="font-normal text-muted-foreground">· per day</span></p>
-          <Bars rows={rows} value={(r) => r.minutes} today={today} fmt={hours} tone="bg-[oklch(0.72_0.12_80)]" label="Hours on shift" empty="Your shifts show here, day by day." />
+          <p className="mb-2 text-xs font-semibold">{t("Hours on shift")} <span className="font-normal text-muted-foreground">· {t("per day")}</span></p>
+          <Bars rows={rows} value={(r) => r.minutes} today={today} fmt={(m) => hours(m, t)} tone="bg-[oklch(0.72_0.12_80)]" label={t("Hours on shift")} empty={t("Your shifts show here, day by day.")} t={t} />
         </div>
         <div>
-          <p className="mb-2 text-xs font-semibold">Guests you checked in & out <span className="font-normal text-muted-foreground">· per day</span></p>
-          <Bars rows={rows} value={guests} today={today} fmt={String} tone="bg-emerald-500" label="Guests checked in and out" empty="Guests you check in and out show here, day by day." />
+          <p className="mb-2 text-xs font-semibold">{t("Guests you checked in & out")} <span className="font-normal text-muted-foreground">· {t("per day")}</span></p>
+          <Bars rows={rows} value={guests} today={today} fmt={String} tone="bg-emerald-500" label={t("Guests checked in and out")} empty={t("Guests you check in and out show here, day by day.")} t={t} />
         </div>
       </div>
       {highlights.length > 0 && (

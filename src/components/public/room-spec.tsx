@@ -1,4 +1,5 @@
 import { Check } from "lucide-react";
+import { getT } from "@/i18n/server";
 import { cn } from "@/lib/utils";
 import { NamedIcon } from "./icon";
 import { HudLabel } from "./kit/hud";
@@ -14,9 +15,10 @@ function lastSpan(total: number) {
 /**
  * A room type's technical spec sheet: a header line, the facts as a measured grid (guests,
  * children, bed, size, check-in, check-out, reception — only what the database has), then the
- * amenities as numbered rows with dotted leaders. Follows the band's tone. Server-safe.
+ * amenities as numbered rows with dotted leaders. Follows the band's tone. A server component; `facts` come in the
+ * visitor's language (terms may also be English keys).
  */
-export function RoomSpecSheet({
+export async function RoomSpecSheet({
   name,
   index,
   total,
@@ -34,17 +36,18 @@ export function RoomSpecSheet({
   included: Set<string>;
   className?: string;
 }) {
+  const t = await getT();
   return (
     <section aria-labelledby="spec-title" className={cn("min-w-0", className)}>
       <div className="flex items-center justify-between gap-4 border-b border-pub-line pb-3">
         <h2 id="spec-title" className="min-w-0 leading-none">
           <HudLabel as="span">
-            Specification<span className="hidden sm:inline"> · {name}</span>
+            {t("Specification")}<span className="hidden sm:inline"> · {t(name)}</span>
           </HudLabel>
         </h2>
         {index > 0 && (
           <span aria-hidden="true" className="shrink-0 font-mono text-[10px] uppercase tracking-[0.2em] text-pub-muted sm:text-[11px]">
-            Type {pad2(index)}/{pad2(total)}
+            {t("Type {n}/{total}", { n: pad2(index), total: pad2(total) })}
           </span>
         )}
       </div>
@@ -54,7 +57,7 @@ export function RoomSpecSheet({
           <div key={f.term} className={cn("relative min-w-0 border-b border-pub-line py-5 pr-4", i === facts.length - 1 && lastSpan(facts.length))}>
             {/* A tick at the cell's corner, like a drawing's measure mark. */}
             <span aria-hidden="true" className="absolute left-0 top-0 h-2 w-px bg-pub-eyebrow/60" />
-            <dt className="pl-3 font-mono text-[10px] uppercase tracking-[0.2em] text-pub-muted sm:text-[11px]">{f.term}</dt>
+            <dt className="pl-3 font-mono text-[10px] uppercase tracking-[0.2em] text-pub-muted sm:text-[11px]">{t(f.term)}</dt>
             <dd className="mt-2 pl-3 font-display text-[1.375rem] font-medium leading-tight text-pub-fg lining-nums sm:text-[1.5rem]">{f.value}</dd>
           </div>
         ))}
@@ -63,18 +66,18 @@ export function RoomSpecSheet({
       {amenities.length > 0 && (
         <div className="mt-10 sm:mt-12">
           <div className="flex items-baseline justify-between gap-4">
-            <h3 className={typeScale.subheading} id="amenities-title">In the room</h3>
-            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-pub-muted sm:text-[11px]">{pad2(amenities.length)} items</span>
+            <h3 className={typeScale.subheading} id="amenities-title">{t("In the room")}</h3>
+            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-pub-muted sm:text-[11px]">{t("{n} items", { n: pad2(amenities.length) })}</span>
           </div>
           <ul aria-labelledby="amenities-title" className="mt-4 border-t border-pub-line">
             {amenities.map((a, i) => (
               <li key={a.code} className="flex min-h-14 min-w-0 items-center gap-3 border-b border-pub-line py-3 sm:gap-4">
                 <span aria-hidden="true" className="w-6 shrink-0 font-mono text-[10px] tracking-[0.18em] text-pub-eyebrow sm:text-[11px]">{pad2(i + 1)}</span>
                 <NamedIcon name={a.icon} className="size-[18px] shrink-0 text-pub-eyebrow" />
-                <span className="min-w-0 text-[15px] leading-snug text-pub-fg">{a.name}</span>
+                <span className="min-w-0 text-[15px] leading-snug text-pub-fg">{t(a.name)}</span>
                 <span aria-hidden="true" className="min-w-4 flex-1 translate-y-1 border-b border-dotted border-pub-line" />
                 {included.has(a.code) ? (
-                  <span className={cn(typeScale.meta, "shrink-0 text-pub-eyebrow")}>Included</span>
+                  <span className={cn(typeScale.meta, "shrink-0 text-pub-eyebrow")}>{t("Included")}</span>
                 ) : (
                   <Check aria-hidden="true" className="size-4 shrink-0 text-pub-eyebrow/80" strokeWidth={1.8} />
                 )}

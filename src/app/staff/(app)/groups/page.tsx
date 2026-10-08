@@ -4,17 +4,21 @@ import { Plus, Search, Users } from "lucide-react";
 import { can, requirePagePermission } from "@/server/auth";
 import { listGroups } from "@/server/services/groups";
 import { businessToday } from "@/server/settings";
-import { formatBusinessDate, formatTZS } from "@/lib/format";
+import { formatTZS } from "@/lib/format";
 import { GROUP_STATUS, GROUP_TYPE } from "@/lib/group-types";
 import { cn } from "@/lib/utils";
 import { PageHeader, EmptyState } from "@/components/staff/page-header";
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { msg } from "@/i18n/msg";
+import { getT } from "@/i18n/server";
 
-export const metadata: Metadata = { title: "Group bookings" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getT())("Group bookings") };
+}
 
 const VIEWS = [
-  { key: "today", label: "Arriving today" }, { key: "inhouse", label: "In the hotel" }, { key: "upcoming", label: "Coming" }, { key: "all", label: "All" },
+  { key: "today", label: msg("Arriving today") }, { key: "inhouse", label: msg("In the hotel") }, { key: "upcoming", label: msg("Coming") }, { key: "all", label: msg("All") },
 ] as const;
 
 /** Every group: a company's staff, a family, an event — rooms, who is in, who pays, what is owed. */
@@ -22,26 +26,27 @@ export default async function GroupsPage({ searchParams }: PageProps<"/staff/gro
   const user = await requirePagePermission("reservations.view");
   const sp = await searchParams;
   const today = await businessToday();
+  const t = await getT();
   const q = typeof sp.q === "string" ? sp.q.trim() : "";
   const view = VIEWS.find((v) => v.key === sp.view)?.key ?? "today";
   const groups = await listGroups({ q, view, today });
   return (
     <div className="w-full space-y-5">
-      <PageHeader title="Group bookings" description="Several rooms that belong together — each room its own booking, the group pays one bill (or one per room)."
-        actions={can(user, "reservations.create") && <Link href="/staff/groups/new" className={buttonVariants()}><Plus />New group booking</Link>} />
+      <PageHeader title={t("Group bookings")} description={t("Several rooms that belong together — each room its own booking, the group pays one bill (or one per room).")}
+        actions={can(user, "reservations.create") && <Link href="/staff/groups/new" className={buttonVariants()}><Plus />{t("New group booking")}</Link>} />
       <div className="flex flex-wrap items-center gap-2">
         {VIEWS.map((v) => (
           <Link key={v.key} href={`?view=${v.key}`} aria-current={!q && view === v.key ? "page" : undefined}
-            className={cn("rounded-full border px-3 py-1 text-xs font-medium", !q && view === v.key ? "border-foreground bg-foreground text-background" : "border-border bg-card hover:bg-muted")}>{v.label}</Link>
+            className={cn("rounded-full border px-3 py-1 text-xs font-medium", !q && view === v.key ? "border-foreground bg-foreground text-background" : "border-border bg-card hover:bg-muted")}>{t(v.label)}</Link>
         ))}
         <form className="relative ml-auto w-full sm:w-80">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input name="q" defaultValue={q} placeholder="Group, company, family, guest, room, phone, invoice…" className="h-10 rounded-2xl bg-card pl-9" aria-label="Search groups" />
+          <Input name="q" defaultValue={q} placeholder={t("Group, company, family, guest, room, phone, invoice…")} className="h-10 rounded-2xl bg-card pl-9" aria-label={t("Search groups")} />
         </form>
       </div>
       {groups.length === 0 ? (
-        <EmptyState icon={<Users />} title={q ? `No group matches "${q}"` : view === "today" ? "No group arrives today" : "No groups here"}
-          description="A company, family or event booking several rooms goes here." action={can(user, "reservations.create") ? <Link href="/staff/groups/new" className={buttonVariants()}>New group booking</Link> : undefined} />
+        <EmptyState icon={<Users />} title={q ? t("No group matches \"{q}\"", { q }) : view === "today" ? t("No group arrives today") : t("No groups here")}
+          description={t("A company, family or event booking several rooms goes here.")} action={can(user, "reservations.create") ? <Link href="/staff/groups/new" className={buttonVariants()}>{t("New group booking")}</Link> : undefined} />
       ) : (
         <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {groups.map((g) => {
@@ -59,17 +64,17 @@ export default async function GroupsPage({ searchParams }: PageProps<"/staff/gro
                     {(() => {
                       const st = GROUP_STATUS[g.status === "CANCELLED" ? "CANCELLED" : g.finalized ? (g.outstanding > 0 ? "FINAL_INVOICE_GENERATED" : "CLOSED")
                         : g.status === "COMPLETED" ? "READY_FOR_FINAL_INVOICE" : g.checkedOut > 0 ? "PARTIALLY_CHECKED_OUT" : g.checkedIn > 0 ? "ACTIVE" : "UPCOMING"];
-                      return <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase", st.cls)}>{st.label}</span>;
+                      return <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase", st.cls)}>{t(st.label)}</span>;
                     })()}
                   </div>
-                  <p className="text-sm">{formatBusinessDate(g.arrival)} → {formatBusinessDate(g.departure)} · <strong>{g.rooms}</strong> room{g.rooms === 1 ? "" : "s"} · {g.guests} guest{g.guests === 1 ? "" : "s"}</p>
+                  <p className="text-sm">{t.date(g.arrival)} → {t.date(g.departure)} · {g.rooms === 1 ? t.rich("<b>{n}</b> room", { b: (c) => <strong>{c}</strong> }, { n: g.rooms }) : t.rich("<b>{n}</b> rooms", { b: (c) => <strong>{c}</strong> }, { n: g.rooms })} · {t.plural(g.guests, "{n} guest", "{n} guests")}</p>
                   <div>
-                    <div className="flex justify-between text-[11px] text-muted-foreground"><span>{g.checkedIn} in · {g.checkedOut} left · {g.pending} to come</span><span>{done}/{g.rooms}</span></div>
+                    <div className="flex justify-between text-[11px] text-muted-foreground"><span>{t("{in} in · {out} left · {pending} to come", { in: g.checkedIn, out: g.checkedOut, pending: g.pending })}</span><span>{done}/{g.rooms}</span></div>
                     <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-emerald-500" style={{ width: `${g.rooms ? Math.round((done / g.rooms) * 100) : 0}%` }} /></div>
                   </div>
                   <div className="mt-auto flex items-end justify-between gap-2 border-t border-dashed border-border pt-2.5 text-xs">
-                    <span className="text-muted-foreground">Pays: <strong className="text-foreground">{g.payer}</strong></span>
-                    <span className="text-right tabular-nums">{formatTZS(g.total)}{g.outstanding > 0 && <span className="block font-semibold text-rose-600 dark:text-rose-400">owes {formatTZS(g.outstanding)}</span>}</span>
+                    <span className="text-muted-foreground">{t.rich("Pays: <b>{payer}</b>", { b: (c) => <strong className="text-foreground">{c}</strong> }, { payer: g.payer })}</span>
+                    <span className="text-right tabular-nums">{formatTZS(g.total)}{g.outstanding > 0 && <span className="block font-semibold text-rose-600 dark:text-rose-400">{t("owes {amount}", { amount: formatTZS(g.outstanding) })}</span>}</span>
                   </div>
                 </Link>
               </li>

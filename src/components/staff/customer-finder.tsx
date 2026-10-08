@@ -6,6 +6,8 @@ import { prettyPhone } from "@/lib/guest-messages";
 import { cn } from "@/lib/utils";
 import type { CustomerHit } from "@/server/services/guests";
 import { findCustomersAction } from "./customer-actions";
+import { useT } from "@/i18n/client";
+import { msg } from "@/i18n/msg";
 
 /** Two letters of a name or three digits of a number — the same rule as the server. */
 const searchable = (q: string) => q.replace(/[\d\s+().-]/g, "").length >= 2 || q.replace(/\D/g, "").replace(/^(?:00)?255|^0/, "").length >= 3;
@@ -20,7 +22,7 @@ export function CustomerFinderAccess({ allowed, children }: { allowed: boolean; 
  * Find a customer we already have — by part of the name or the phone number — and tap them:
  * their phone and name are filled in. A new customer is still typed in the fields below.
  */
-export function CustomerFinder({ onPick, className, placeholder = "Find a customer — name or phone", inline }: {
+export function CustomerFinder({ onPick, className, placeholder = msg("Find a customer — name or phone"), inline }: {
   /** `id` is that very customer (send it on, so the right person is used even when a number is shared); `phone` is "" when none is saved — keep what was typed. */
   onPick: (c: { id: string; name: string; phone: string }) => void;
   className?: string;
@@ -28,6 +30,7 @@ export function CustomerFinder({ onPick, className, placeholder = "Find a custom
   /** In a short dialog: the results push the fields down instead of floating over them (nothing is cut off). */
   inline?: boolean;
 }) {
+  const t = useT();
   const allowed = useContext(Access);
   const listId = useId();
   const [q, setQ] = useState("");
@@ -40,13 +43,13 @@ export function CustomerFinder({ onPick, className, placeholder = "Find a custom
     if (!can || !allowed) return;
     let stop = false;
     const term = q;
-    const t = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       const r = await findCustomersAction(term).catch(() => null);
       if (stop) return;
       setRes({ q: term, hits: r?.ok ? r.data : [], failed: !r?.ok });
       setActive(0);
     }, 250);
-    return () => { stop = true; clearTimeout(t); };
+    return () => { stop = true; clearTimeout(timer); };
   }, [q, can, allowed]);
 
   const ready = can && res?.q === q;
@@ -61,10 +64,10 @@ export function CustomerFinder({ onPick, className, placeholder = "Find a custom
   return (
     <div className={cn("relative", className)}>
       <label className="relative block">
-        <span className="sr-only">Find a customer</span>
+        <span className="sr-only">{t("Find a customer")}</span>
         <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <input
-          value={q} placeholder={placeholder} autoComplete="off" maxLength={60} type="search" enterKeyHint="search"
+          value={q} placeholder={t(placeholder)} autoComplete="off" maxLength={60} type="search" enterKeyHint="search"
           role="combobox" aria-expanded={show} aria-controls={listId} aria-autocomplete="list"
           aria-activedescendant={show && hits[active] ? `${listId}-${hits[active].id}` : undefined}
           onChange={(e) => { setQ(e.target.value); setOpen(true); }}
@@ -80,7 +83,7 @@ export function CustomerFinder({ onPick, className, placeholder = "Find a custom
           className="h-11 w-full rounded-xl border border-border/80 bg-background pl-10 pr-9 text-sm outline-none transition placeholder:text-muted-foreground focus:border-[oklch(0.75_0.12_80)] focus:ring-2 focus:ring-[oklch(0.75_0.12_80/0.25)] [&::-webkit-search-cancel-button]:hidden"
         />
         {q && (
-          <button type="button" aria-label="Clear the search" onMouseDown={(e) => e.preventDefault()} onClick={() => setQ("")}
+          <button type="button" aria-label={t("Clear the search")} onMouseDown={(e) => e.preventDefault()} onClick={() => setQ("")}
             className="absolute right-2 top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground">
             <X className="size-3.5" />
           </button>
@@ -92,13 +95,13 @@ export function CustomerFinder({ onPick, className, placeholder = "Find a custom
         <div onMouseDown={(e) => e.preventDefault()}
           className={cn("mt-1.5 overflow-hidden rounded-2xl", inline ? "relative" : "absolute inset-x-0 top-full z-40", "border border-border/80 bg-popover text-popover-foreground shadow-[0_18px_40px_-16px_rgba(0,0,0,0.55)]")}>
           {!ready ? (
-            <p className="flex items-center gap-2 px-3.5 py-3 text-xs text-muted-foreground"><Loader2 className="size-3.5 animate-spin" />Searching…</p>
+            <p className="flex items-center gap-2 px-3.5 py-3 text-xs text-muted-foreground"><Loader2 className="size-3.5 animate-spin" />{t("Searching…")}</p>
           ) : res.failed ? (
-            <p className="px-3.5 py-3 text-xs text-muted-foreground">The search did not work — type the phone and name below.</p>
+            <p className="px-3.5 py-3 text-xs text-muted-foreground">{t("The search did not work — type the phone and name below.")}</p>
           ) : !hits.length ? (
-            <p className="px-3.5 py-3 text-xs text-muted-foreground">No customer found — a new one is saved with the phone below.</p>
+            <p className="px-3.5 py-3 text-xs text-muted-foreground">{t("No customer found — a new one is saved with the phone below.")}</p>
           ) : (
-            <ul id={listId} role="listbox" aria-label="Customers" className="max-h-72 overflow-y-auto p-1">
+            <ul id={listId} role="listbox" aria-label={t("Customers")} className="max-h-72 overflow-y-auto p-1">
               {hits.map((c, i) => (
                 <li key={c.id} id={`${listId}-${c.id}`} role="option" aria-selected={i === active}
                   onClick={() => pick(c)} onMouseEnter={() => setActive(i)}
@@ -112,11 +115,11 @@ export function CustomerFinder({ onPick, className, placeholder = "Find a custom
                       <span className="truncate">{c.name}</span>
                       {c.vip && <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-[oklch(0.75_0.13_80)]/20 px-1.5 text-[9px] font-bold text-[oklch(0.5_0.12_75)] dark:text-[#f0cf86]"><Crown className="size-2.5" />VIP</span>}
                     </span>
-                    <span className="block truncate text-[11px] tabular-nums text-muted-foreground">{c.phone ? prettyPhone(c.phone) : "No phone saved"}</span>
+                    <span className="block truncate text-[11px] tabular-nums text-muted-foreground">{c.phone ? prettyPhone(c.phone) : t("No phone saved")}</span>
                   </span>
                   {(c.room || c.table) && (
                     <span className="flex shrink-0 flex-col items-end gap-0.5 text-[10.5px] font-medium">
-                      {c.room && <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/12 px-1.5 py-0.5 text-violet-600 dark:text-violet-300"><BedDouble className="size-3" />Room {c.room}</span>}
+                      {c.room && <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/12 px-1.5 py-0.5 text-violet-600 dark:text-violet-300"><BedDouble className="size-3" />{t("Room {room}", { room: c.room })}</span>}
                       {c.table && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/12 px-1.5 py-0.5 text-emerald-700 dark:text-emerald-300"><Armchair className="size-3" />{c.table}</span>}
                     </span>
                   )}

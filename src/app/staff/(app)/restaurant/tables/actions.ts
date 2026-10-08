@@ -5,6 +5,7 @@ import { z } from "zod";
 import { authorize, requestMeta, type CurrentUser } from "@/server/auth";
 import { AppError, runAction, type ActionResult } from "@/server/errors";
 import { parseInput } from "@/server/validation";
+import { msg } from "@/i18n/msg";
 import { validPhone } from "@/lib/guest-messages";
 import { inHouseGuests } from "@/server/services/restaurant";
 import { deskOnlyHotelTable, deskOnlyStayingGuest, isDeskUser } from "@/server/desk";
@@ -25,11 +26,11 @@ function refresh() {
   revalidatePath("/staff/payments");
 }
 const Id = z.string().min(1).max(40);
-const Phone = z.string().trim().max(30).refine(validPhone, "Enter a phone number like 0712 345 678.");
-const Guests = z.coerce.number().int().min(1, "At least 1 person.").max(60);
+const Phone = z.string().trim().max(30).refine(validPhone, msg("Enter a phone number like 0712 345 678."));
+const Guests = z.coerce.number().int().min(1, msg("At least 1 person.")).max(60);
 
 const Seat = z.object({
-  locationId: Id, name: z.string().trim().min(2, "Enter the customer's name.").max(80), phone: Phone, guestCount: Guests,
+  locationId: Id, name: z.string().trim().min(2, msg("Enter the customer's name.")).max(80), phone: Phone, guestCount: Guests,
   notes: z.string().trim().max(300).optional(), override: z.boolean().optional(),
   /** On the shared restaurant screen: the waiter seating them (the table is theirs). */
   pin: WaiterPin.nullable().optional(),
@@ -42,25 +43,25 @@ export async function seatCustomerAction(input: z.input<typeof Seat>): Promise<A
     const user = await authorize("restaurant.orders", "restaurant.serve");
     const { pin, ...d } = parseInput(Seat, input);
     if (isDeskUser(user)) await deskOnlyStayingGuest(user, d.guestId ?? (await customerByPhone(d.phone))?.id);
-    const s = await seatCustomer(d, await actingWaiter(user, pin, "seating a customer"));
+    const s = await seatCustomer(d, await actingWaiter(user, pin, msg("seating a customer")));
     refresh();
     return { id: s.id };
-  }, "Seated — the table is theirs.");
+  }, msg("Seated — the table is theirs."));
 }
 
 /** The reserved customer came: seat them (at their table or the one chosen). */
 export async function seatReservationAction(input: { id: string; locationId?: string | null; guestCount?: number; override?: boolean; pin?: z.input<typeof WaiterPin> | null }): Promise<ActionResult<{ id: string }>> {
   return runAction(async () => {
     const user = await authorize("restaurant.orders", "restaurant.serve");
-    const by = await actingWaiter(user, input.pin, "seating a customer");
+    const by = await actingWaiter(user, input.pin, msg("seating a customer"));
     if (isDeskUser(user)) await deskOnlyStayingGuest(user, (await db.tableReservation.findUnique({ where: { id: Id.parse(input.id) }, select: { guestId: true } }))?.guestId);
     const s = await seatReservation(Id.parse(input.id), { locationId: input.locationId ? Id.parse(input.locationId) : null, guestCount: input.guestCount ? Guests.parse(input.guestCount) : null, override: !!input.override }, by);
     refresh();
     return { id: s.id };
-  }, "Seated — their reservation is now their table.");
+  }, msg("Seated — their reservation is now their table."));
 }
 
-const Member = z.object({ sessionId: Id, name: z.string().trim().min(2, "Enter their name.").max(80), phone: Phone, guestId: z.string().max(40).nullable().optional() });
+const Member = z.object({ sessionId: Id, name: z.string().trim().min(2, msg("Enter their name.")).max(80), phone: Phone, guestId: z.string().max(40).nullable().optional() });
 /** Add someone at the table (they can order from the table's QR too). */
 export async function addMemberAction(input: z.input<typeof Member>): Promise<ActionResult<null>> {
   return runAction(async () => {
@@ -70,7 +71,7 @@ export async function addMemberAction(input: z.input<typeof Member>): Promise<Ac
     await addSessionMember(d.sessionId, d, await actor(user));
     refresh();
     return null;
-  }, "Added to the table.");
+  }, msg("Added to the table."));
 }
 
 export async function setGuestsAction(input: { sessionId: string; guestCount: number }): Promise<ActionResult<null>> {
@@ -80,7 +81,7 @@ export async function setGuestsAction(input: { sessionId: string; guestCount: nu
     await setSessionGuests(Id.parse(input.sessionId), Guests.parse(input.guestCount), await actor(user));
     refresh();
     return null;
-  }, "Saved.");
+  }, msg("Saved."));
 }
 
 /** The customer is finished: waiting for the payment. */
@@ -91,7 +92,7 @@ export async function requestBillAction(input: { sessionId: string }): Promise<A
     await requestSessionBill(Id.parse(input.sessionId), await actor(user));
     refresh();
     return null;
-  }, "Marked — waiting for the payment.");
+  }, msg("Marked — waiting for the payment."));
 }
 
 /** Move the customer (their whole session) to another table. */
@@ -105,7 +106,7 @@ export async function moveSessionAction(input: { sessionId: string; locationId: 
   });
 }
 
-const Pay = z.object({ sessionId: Id, accountId: z.string().min(1, "Choose where the money was received.").max(40), reference: z.string().trim().max(80).optional(), handedOverById: Id.nullable().optional() });
+const Pay = z.object({ sessionId: Id, accountId: z.string().min(1, msg("Choose where the money was received.")).max(40), reference: z.string().trim().max(80).optional(), handedOverById: Id.nullable().optional() });
 /** The whole table's bill paid into one account — the table is freed once everything is served. */
 export async function takeSessionPaymentAction(input: z.input<typeof Pay>): Promise<ActionResult<{ amount: number; status: string }>> {
   return runAction(async () => {
@@ -153,7 +154,7 @@ export async function closeSessionAction(input: { sessionId: string; note?: stri
     await closeSession(Id.parse(input.sessionId), { note: z.string().trim().max(200).optional().parse(input.note), serveRemaining: input.serveRemaining === true }, await actor(user));
     refresh();
     return null;
-  }, "The table is free.");
+  }, msg("The table is free."));
 }
 
 /** A table's past customers (for its History). */

@@ -10,6 +10,7 @@ import { addDays, businessDateOf, fromDbDate, toDbDate, zonedInstant, type Busin
 import type { InvoiceStatus } from "@/generated/prisma/enums";
 import { recalculateReservation } from "./reservation-financials";
 import type { Actor } from "./reservations";
+import { msg, msgf } from "@/i18n/msg";
 
 /**
  * InvoiceService.
@@ -214,7 +215,7 @@ export async function issueInvoiceTx(tx: Tx, invoiceId: string, actor: Actor, du
 }
 
 export async function cancelInvoice(invoiceId: string, reason: string, actor: Actor) {
-  if (!reason.trim()) throw new AppError("Give a reason.", "VALIDATION", { reason: "Required" });
+  if (!reason.trim()) throw new AppError("Give a reason.", "VALIDATION", { reason: msg("Required") });
   return db.$transaction(async (tx) => {
     const inv = await tx.invoice.findUnique({ where: { id: invoiceId }, include: { payments: { where: { status: "POSTED" } } } });
     if (!inv) throw new AppError("Invoice not found.", "NOT_FOUND");
@@ -234,7 +235,7 @@ export async function cancelInvoice(invoiceId: string, reason: string, actor: Ac
  */
 export async function voidInvoice(invoiceId: string, reason: string, actor: Actor) {
   if (!actor.permissions?.has("invoices.manage")) throw new AppError("Only a manager can void invoices.", "FORBIDDEN");
-  if (!reason.trim()) throw new AppError("Give a reason.", "VALIDATION", { reason: "Required" });
+  if (!reason.trim()) throw new AppError("Give a reason.", "VALIDATION", { reason: msg("Required") });
   return db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT "id" FROM "invoices" WHERE "id" = ${invoiceId} FOR UPDATE`;
     const inv = await tx.invoice.findUnique({ where: { id: invoiceId }, include: { payments: { where: { status: "POSTED" } } } });
@@ -258,7 +259,7 @@ export async function recordInvoicePayment(
   actor: Actor,
 ) {
   if (!actor.userId) throw new AppError("Sign in required.", "UNAUTHENTICATED");
-  if (!Number.isInteger(input.amount) || input.amount <= 0) throw new AppError("Enter a positive whole amount.", "VALIDATION", { amount: "Invalid" });
+  if (!Number.isInteger(input.amount) || input.amount <= 0) throw new AppError("Enter a positive whole amount.", "VALIDATION", { amount: msg("Invalid") });
   return db.$transaction((tx) => recordInvoicePaymentTx(tx, input, actor));
 }
 
@@ -274,12 +275,12 @@ export async function recordInvoicePaymentTx(
   if (!inv) throw new AppError("Invoice not found.", "NOT_FOUND");
   if (inv.reservationId) throw new AppError("Record this payment on the reservation — the invoice follows it automatically.");
   if (!["ISSUED", "PARTIALLY_PAID", "OVERDUE"].includes(inv.status)) throw new AppError("Only issued invoices can receive payments.");
-  if (input.amount > inv.balanceAmount) throw new AppError(`Amount exceeds the balance of TZS ${inv.balanceAmount.toLocaleString("en-TZ")}.`, "VALIDATION", { amount: "Too much" });
+  if (input.amount > inv.balanceAmount) throw new AppError(msgf("Amount exceeds the balance of TZS {amount}.", { amount: inv.balanceAmount.toLocaleString("en-TZ") }), "VALIDATION", { amount: msg("Too much") });
   const { account, method } = await resolveAccountTx(tx, input, "payments", { internal: opts.internal });
   const settings = await getSettingsTx(tx);
   const now = new Date();
   const today = businessDateOf(now, stayConfig(settings));
-  if (input.receivedOn && input.receivedOn > today) throw new AppError("The payment date cannot be in the future.", "VALIDATION", { receivedOn: "Future" });
+  if (input.receivedOn && input.receivedOn > today) throw new AppError("The payment date cannot be in the future.", "VALIDATION", { receivedOn: msg("Future") });
   const day = input.receivedOn ?? today;
   const p = await tx.payment.create({
     data: {

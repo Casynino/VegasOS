@@ -4,6 +4,8 @@ import Link from "next/link";
 import { Armchair, Banknote, BedDouble, Globe, HandCoins, Hotel, ReceiptText, ShoppingBag, Smartphone, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { MoneySummary, PortalOrder } from "./types";
+import { useT } from "@/i18n/client";
+import { msg } from "@/i18n/msg";
 
 /** The Restaurant Counter's own figures (the shared account) — loaded on the server only for it (main-screen-data.ts). */
 export type MainScreenData = {
@@ -25,7 +27,6 @@ export type MainScreenData = {
 type OrderPlace = "tables" | "rooms" | "online" | "counter";
 
 const tzs = (v: number) => `TZS ${v.toLocaleString("en-US")}`;
-const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
 type Cell = { label: string; icon: React.ReactNode; tone: string; value: string; unit?: string; sub: React.ReactNode; href?: string };
 
@@ -36,8 +37,9 @@ type Cell = { label: string; icon: React.ReactNode; tone: string; value: string;
  * customers and the waiters on shift. Each figure from the real records.
  */
 export function MainScreenStrip({ data, money }: { data: MainScreenData; money: MoneySummary | null }) {
+  const t = useT();
   const c = data.collected;
-  const t = data.tables;
+  const tb = data.tables;
   const on = data.online ?? { count: 0, amount: 0 };
   const po = data.paidOnline ?? { count: 0, amount: 0, notReceived: 0 };
   // Still to collect leaves the online-paid ones out — they are confirmed, not collected again.
@@ -45,37 +47,37 @@ export function MainScreenStrip({ data, money }: { data: MainScreenData; money: 
   const toCollectOrders = Math.max(0, (money?.toCollectOrders ?? 0) - on.count);
   const cells: Cell[] = [
     {
-      label: "Collected today", icon: <Banknote />, tone: "bg-emerald-500/15 text-emerald-300", value: tzs(c.total), href: "/staff/collections?period=today",
+      label: t("Collected today"), icon: <Banknote />, tone: "bg-emerald-500/15 text-emerald-300", value: tzs(c.total), href: "/staff/collections?period=today",
       sub: c.payments
-        ? <>{plural(c.payments, "payment")}{c.byKind.length ? ` · ${c.byKind.map((k) => `${k.name} ${k.amount.toLocaleString("en-US")}`).join(" · ")}` : ""}</>
-        : "No payment received yet today",
+        ? <>{t.plural(c.payments, "{n} payment", "{n} payments")}{c.byKind.length ? ` · ${c.byKind.map((k) => `${t(k.name)} ${k.amount.toLocaleString("en-US")}`).join(" · ")}` : ""}</>
+        : t("No payment received yet today"),
     },
     {
       // Paid online (LIPA): counted automatically — nothing to confirm; "Not received" on the order or in Collections if the money is missing.
-      label: "Paid by phone today", icon: <Smartphone />, tone: "bg-sky-500/15 text-sky-300", value: tzs(po.amount), href: "/staff/collections?period=today",
+      label: t("Paid by phone today"), icon: <Smartphone />, tone: "bg-sky-500/15 text-sky-300", value: tzs(po.amount), href: "/staff/collections?period=today",
       sub: po.count || po.notReceived
-        ? <>{plural(po.count, "order")} · counted automatically{po.notReceived ? <span className="font-medium text-rose-300"> · {po.notReceived} not received</span> : ""}</>
-        : "None yet today",
+        ? <>{t.plural(po.count, "{n} order", "{n} orders")} · {t("counted automatically")}{po.notReceived ? <span className="font-medium text-rose-300"> · {t("{n} not received", { n: po.notReceived })}</span> : ""}</>
+        : t("None yet today"),
     },
     {
-      label: "Still to collect", icon: <HandCoins />, tone: "bg-rose-500/15 text-rose-300", value: tzs(toCollect),
-      sub: toCollectOrders ? `${plural(toCollectOrders, "order")} not paid yet` : "All paid",
+      label: t("Still to collect"), icon: <HandCoins />, tone: "bg-rose-500/15 text-rose-300", value: tzs(toCollect),
+      sub: toCollectOrders ? t.plural(toCollectOrders, "{n} order not paid yet", "{n} orders not paid yet") : t("All paid"),
     },
     {
-      label: "On room bills", icon: <Hotel />, tone: "bg-violet-500/15 text-violet-300", value: tzs(money?.onRooms ?? 0),
-      sub: money?.rooms ? `${plural(money.rooms, "room")} · paid at check-out` : "None today",
+      label: t("On room bills"), icon: <Hotel />, tone: "bg-violet-500/15 text-violet-300", value: tzs(money?.onRooms ?? 0),
+      sub: money?.rooms ? t.plural(money.rooms, "{n} room · paid at check-out", "{n} rooms · paid at check-out") : t("None today"),
     },
     {
-      label: "Tables", icon: <Armchair />, tone: "bg-[oklch(0.72_0.12_80/0.18)] text-[oklch(0.84_0.11_82)]", value: `${t.busy} of ${t.total}`, unit: "with customers", href: "/staff/restaurant/tables",
-      sub: t.billAsked ? <span className="font-medium text-amber-300">{plural(t.billAsked, "table")} asked for the bill</span> : `${Math.max(0, t.total - t.busy)} free`,
+      label: t("Tables"), icon: <Armchair />, tone: "bg-[oklch(0.72_0.12_80/0.18)] text-[oklch(0.84_0.11_82)]", value: t("{busy} of {total}", { busy: tb.busy, total: tb.total }), unit: t("with customers"), href: "/staff/restaurant/tables",
+      sub: tb.billAsked ? <span className="font-medium text-amber-300">{t.plural(tb.billAsked, "{n} table asked for the bill", "{n} tables asked for the bill")}</span> : t("{n} free", { n: Math.max(0, tb.total - tb.busy) }),
     },
     {
-      label: "Waiters on shift", icon: <Users />, tone: "bg-sky-500/15 text-sky-300", value: String(data.onShift.length), unit: data.onShift.length === 1 ? "waiter" : "waiters",
-      sub: data.onShift.length ? `${data.onShift.slice(0, 3).join(", ")}${data.onShift.length > 3 ? ` +${data.onShift.length - 3}` : ""}` : "Nobody on shift yet",
+      label: t("Waiters on shift"), icon: <Users />, tone: "bg-sky-500/15 text-sky-300", value: String(data.onShift.length), unit: data.onShift.length === 1 ? t("waiter") : t("waiters"),
+      sub: data.onShift.length ? `${data.onShift.slice(0, 3).join(", ")}${data.onShift.length > 3 ? ` +${data.onShift.length - 3}` : ""}` : t("Nobody on shift yet"),
     },
   ];
   return (
-    <section aria-label="The restaurant today" className="grid grid-cols-2 gap-px overflow-hidden rounded-3xl border border-border/70 bg-border/60 sm:grid-cols-3 2xl:grid-cols-6">
+    <section aria-label={t("The restaurant today")} className="grid grid-cols-2 gap-px overflow-hidden rounded-3xl border border-border/70 bg-border/60 sm:grid-cols-3 2xl:grid-cols-6">
       {cells.map((x) => {
         const body = (
           <>
@@ -99,10 +101,10 @@ export function MainScreenStrip({ data, money }: { data: MainScreenData; money: 
 }
 
 const PLACE: Record<OrderPlace, { label: string; short?: string; icon: React.ReactNode; tone: string; bar: string }> = {
-  tables: { label: "Tables", icon: <Armchair />, tone: "bg-[oklch(0.72_0.12_80/0.18)] text-[oklch(0.84_0.11_82)]", bar: "bg-[oklch(0.78_0.12_80)]" },
-  rooms: { label: "Rooms", icon: <BedDouble />, tone: "bg-violet-500/15 text-violet-300", bar: "bg-violet-400" },
-  online: { label: "Online", icon: <Globe />, tone: "bg-sky-500/15 text-sky-300", bar: "bg-sky-400" },
-  counter: { label: "Counter & take away", short: "Counter", icon: <ShoppingBag />, tone: "bg-rose-500/15 text-rose-300", bar: "bg-rose-400" },
+  tables: { label: msg("Tables"), icon: <Armchair />, tone: "bg-[oklch(0.72_0.12_80/0.18)] text-[oklch(0.84_0.11_82)]", bar: "bg-[oklch(0.78_0.12_80)]" },
+  rooms: { label: msg("Rooms"), icon: <BedDouble />, tone: "bg-violet-500/15 text-violet-300", bar: "bg-violet-400" },
+  online: { label: msg("Online"), icon: <Globe />, tone: "bg-sky-500/15 text-sky-300", bar: "bg-sky-400" },
+  counter: { label: msg("Counter & take away"), short: msg("Counter"), icon: <ShoppingBag />, tone: "bg-rose-500/15 text-rose-300", bar: "bg-rose-400" },
 };
 
 const ONLINE = ["WEBSITE", "PUBLIC_QR"];
@@ -115,19 +117,20 @@ const placeOf = (o: PortalOrder): OrderPlace =>
  * away; each with its count, its value and a thin line for its share.
  */
 export function OrdersBar({ orders }: { orders: PortalOrder[] }) {
+  const t = useT();
   const live = orders.filter((o) => o.status !== "CANCELLED");
   const sources = (["tables", "rooms", "online", "counter"] as OrderPlace[]).map((key) => {
     const mine = live.filter((o) => placeOf(o) === key);
-    return { key, orders: mine.length, value: mine.reduce((t, o) => t + (o.total ?? 0), 0) };
+    return { key, orders: mine.length, value: mine.reduce((sum, o) => sum + (o.total ?? 0), 0) };
   });
   const all = live.length;
-  const value = sources.reduce((t, s) => t + s.value, 0);
+  const value = sources.reduce((sum, s) => sum + s.value, 0);
   return (
-    <section aria-label="Orders by place" className="grid grid-cols-2 overflow-hidden rounded-2xl border border-border/70 bg-card sm:grid-cols-[auto_repeat(4,minmax(0,1fr))]">
+    <section aria-label={t("Orders by place")} className="grid grid-cols-2 overflow-hidden rounded-2xl border border-border/70 bg-card sm:grid-cols-[auto_repeat(4,minmax(0,1fr))]">
       <div className="col-span-2 flex items-center gap-2.5 border-b border-border/60 px-4 py-2.5 sm:col-span-1 sm:border-b-0 sm:pr-5">
         <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-emerald-500/15 text-emerald-300 [&_svg]:size-3.5"><ReceiptText /></span>
         <div className="leading-tight">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Orders</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t("Orders")}</p>
           <p className="flex items-baseline gap-1.5 whitespace-nowrap"><span className="text-base font-semibold tabular-nums">{all}</span><span className="text-[11px] tabular-nums text-muted-foreground">TZS {value.toLocaleString("en-US")}</span></p>
         </div>
       </div>
@@ -135,12 +138,12 @@ export function OrdersBar({ orders }: { orders: PortalOrder[] }) {
         const p = PLACE[s.key];
         const share = all ? Math.round((s.orders / all) * 100) : 0;
         return (
-          <div key={s.key} title={`${p.label}: ${s.orders} order${s.orders === 1 ? "" : "s"} · TZS ${s.value.toLocaleString("en-US")} · ${share}%`}
+          <div key={s.key} title={`${t(p.label)}: ${t.plural(s.orders, "{n} order", "{n} orders")} · TZS ${s.value.toLocaleString("en-US")} · ${share}%`}
             className={cn("relative flex min-w-0 items-center gap-2.5 px-4 py-2.5 sm:border-l sm:border-border/60 sm:px-3 xl:px-4", i % 2 === 1 && "border-l border-border/60", i >= 2 && "border-t border-border/60 sm:border-t-0", !s.orders && "opacity-60")}>
             {/* Narrower screens (an iPad): no icon, a short name — the numbers keep their room. */}
             <span className={cn("grid size-7 shrink-0 place-items-center rounded-lg sm:hidden xl:grid [&_svg]:size-3.5", p.tone)}>{p.icon}</span>
             <div className="min-w-0 leading-tight">
-              <p className="truncate text-[11px] text-muted-foreground">{p.short ? <><span className="xl:hidden">{p.short}</span><span className="hidden xl:inline">{p.label}</span></> : p.label}</p>
+              <p className="truncate text-[11px] text-muted-foreground">{p.short ? <><span className="xl:hidden">{t(p.short)}</span><span className="hidden xl:inline">{t(p.label)}</span></> : t(p.label)}</p>
               <p className="flex items-baseline gap-1.5 whitespace-nowrap"><span className="text-base font-semibold tabular-nums">{s.orders}</span><span className="truncate text-[11px] tabular-nums text-muted-foreground">TZS {s.value.toLocaleString("en-US")}</span></p>
             </div>
             <span aria-hidden className="absolute inset-x-4 bottom-0 h-0.5 sm:inset-x-3 xl:inset-x-4 overflow-hidden rounded-full bg-muted"><span className={cn("block h-full rounded-full", p.bar)} style={{ width: `${share}%` }} /></span>

@@ -5,19 +5,21 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Check, Loader2, PlugZap, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useT } from "@/i18n/client";
 import { checkAllOnlinePaymentsAction, checkOnlinePaymentAction, saveOnlinePaySettingsAction, testNtzsConnectionAction } from "./actions";
 
 /** "Test connection": asks nTZS with the hotel's key — no money moves. */
 export function TestConnection() {
+  const t = useT();
   const [pending, start] = useTransition();
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   return (
     <div className="flex flex-wrap items-center gap-2">
       <button type="button" disabled={pending} onClick={() => start(async () => {
         const r = await testNtzsConnectionAction();
-        setResult(r.ok ? { ok: true, text: `Connected · ${r.data.live ? "live" : "test"} key accepted` } : { ok: false, text: r.error });
+        setResult(r.ok ? { ok: true, text: r.data.live ? t("Connected · live key accepted") : t("Connected · test key accepted") } : { ok: false, text: r.error });
       })} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border px-3 text-sm font-medium hover:bg-muted disabled:opacity-60">
-        {pending ? <Loader2 className="size-4 animate-spin" /> : <PlugZap className="size-4" />}Test connection
+        {pending ? <Loader2 className="size-4 animate-spin" /> : <PlugZap className="size-4" />}{t("Test connection")}
       </button>
       {result && <span className={cn("text-xs font-medium", result.ok ? "text-emerald-700 dark:text-emerald-300" : "text-rose-700 dark:text-rose-300")}>{result.text}</span>}
     </div>
@@ -28,6 +30,7 @@ type Service = { key: string; label: string; hint: string; on: boolean };
 
 /** On / off — for everything, and service by service. Only those who manage settings can change it. */
 export function OnlinePaySwitches({ enabled, services, canManage, connected }: { enabled: boolean; services: Service[]; canManage: boolean; connected: boolean }) {
+  const t = useT();
   const router = useRouter();
   const [all, setAll] = useState(enabled);
   const [each, setEach] = useState<Record<string, boolean>>(() => Object.fromEntries(services.map((s) => [s.key, s.on])));
@@ -35,21 +38,21 @@ export function OnlinePaySwitches({ enabled, services, canManage, connected }: {
   const dirty = all !== enabled || services.some((s) => each[s.key] !== s.on);
   const save = () => start(async () => {
     const r = await saveOnlinePaySettingsAction({ enabled: all, services: each });
-    if (r.ok) { toast.success(all ? "Online payment settings saved." : "Online payments are off — customers see only the other ways to pay."); router.refresh(); } else toast.error(r.error);
+    if (r.ok) { toast.success(all ? t("Online payment settings saved.") : t("Online payments are off — customers see only the other ways to pay.")); router.refresh(); } else toast.error(r.error);
   });
   return (
     <div className="space-y-3">
-      <Toggle label="Online payments" hint={connected ? "Customers can pay online (nTZS) wherever a service below is on." : "Add the nTZS key on the server first."} on={all} onChange={setAll} disabled={!canManage} strong />
+      <Toggle label={t("Online payments")} hint={connected ? t("Customers can pay online (nTZS) wherever a service below is on.") : t("Add the nTZS key on the server first.")} on={all} onChange={setAll} disabled={!canManage} strong />
       <ul className={cn("divide-y divide-border/70 rounded-2xl border border-border/70", !all && "opacity-55")}>
         {services.map((s) => (
-          <li key={s.key} className="px-3 py-2.5"><Toggle label={s.label} hint={s.hint} on={each[s.key]} onChange={(v) => setEach((x) => ({ ...x, [s.key]: v }))} disabled={!canManage || !all} /></li>
+          <li key={s.key} className="px-3 py-2.5"><Toggle label={t(s.label)} hint={t(s.hint)} on={each[s.key]} onChange={(v) => setEach((x) => ({ ...x, [s.key]: v }))} disabled={!canManage || !all} /></li>
         ))}
       </ul>
       {canManage ? (
         <button type="button" onClick={save} disabled={!dirty || pending} className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-foreground px-4 text-sm font-semibold text-background disabled:opacity-40">
-          {pending ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}Save
+          {pending ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}{t("Save")}
         </button>
-      ) : <p className="text-xs text-muted-foreground">Only the MD or admin changes these.</p>}
+      ) : <p className="text-xs text-muted-foreground">{t("Only the MD or admin changes these.")}</p>}
     </div>
   );
 }
@@ -71,32 +74,34 @@ function Toggle({ label, hint, on, onChange, disabled, strong }: { label: string
 
 /** "Check with nTZS" on one payment not recorded: money nTZS has is recorded at once. */
 export function CheckPayment({ id }: { id: string }) {
+  const t = useT();
   const router = useRouter();
   const [pending, start] = useTransition();
   return (
     <button type="button" disabled={pending} onClick={() => start(async () => {
       const r = await checkOnlinePaymentAction({ id });
       if (!r.ok) { toast.error(r.error); return; }
-      if (r.data.status === "COMPLETED") toast.success("nTZS has the money — the payment is recorded."); else toast.info(`nTZS says: ${r.data.text}.`);
+      if (r.data.status === "COMPLETED") toast.success(t("nTZS has the money — the payment is recorded.")); else toast.info(t("nTZS says: {text}.", { text: r.data.text }));
       router.refresh();
     })} className="mt-1 inline-flex h-7 items-center gap-1 rounded-lg border border-border px-2 text-[11px] font-medium hover:bg-muted disabled:opacity-60">
-      {pending ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}Check with nTZS
+      {pending ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}{t("Check with nTZS")}
     </button>
   );
 }
 
 /** "Check all with nTZS": every payment of the last two days not recorded yet. */
 export function CheckAllPayments() {
+  const t = useT();
   const router = useRouter();
   const [pending, start] = useTransition();
   return (
     <button type="button" disabled={pending} onClick={() => start(async () => {
       const r = await checkAllOnlinePaymentsAction();
       if (!r.ok) { toast.error(r.error); return; }
-      toast.success(r.data.checked ? `Checked ${r.data.checked} payment${r.data.checked === 1 ? "" : "s"} with nTZS.` : "Nothing waiting to check.");
+      toast.success(r.data.checked ? t.plural(r.data.checked, "Checked {n} payment with nTZS.", "Checked {n} payments with nTZS.") : t("Nothing waiting to check."));
       router.refresh();
     })} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border px-3 text-sm font-medium hover:bg-muted disabled:opacity-60">
-      {pending ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}Check unrecorded with nTZS
+      {pending ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}{t("Check unrecorded with nTZS")}
     </button>
   );
 }

@@ -6,6 +6,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { hash, verify } from "@node-rs/argon2";
 import { db } from "./db";
 import { AppError } from "./errors";
+import { msg } from "@/i18n/msg";
 import { isRestaurantDevice, needsOwnShift, SHIFT_FREE_CODES, type PermissionCode } from "@/lib/permissions";
 
 export const STAFF_HINT_COOKIE = "vlh_staff";
@@ -32,10 +33,11 @@ export async function verifyPassword(passwordHash: string, password: string): Pr
   }
 }
 
+/** What is wrong with a new password (English — translated where it is shown), or null. */
 export function validatePasswordStrength(password: string): string | null {
-  if (password.length < 10) return "Password must be at least 10 characters.";
+  if (password.length < 10) return msg("Password must be at least 10 characters.");
   if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) {
-    return "Password must contain letters and numbers.";
+    return msg("Password must contain letters and numbers.");
   }
   return null;
 }
@@ -104,6 +106,8 @@ export interface CurrentUser {
   id: string;
   email: string;
   fullName: string;
+  /** Their own interface language (User.preferredLanguage) — presentation only, never used for access. */
+  locale: string;
   roleCode: string;
   roleName: string;
   mustChangePassword: boolean;
@@ -141,6 +145,7 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
     id: user.id,
     email: user.email,
     fullName: user.fullName,
+    locale: user.preferredLanguage,
     roleCode: user.role.code,
     roleName: user.role.name,
     mustChangePassword: user.mustChangePassword,

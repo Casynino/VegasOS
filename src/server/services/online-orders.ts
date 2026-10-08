@@ -2,6 +2,7 @@ import "server-only";
 import { pickedTableTx, sitAtPickedTableTx } from "./restaurant-locations";
 import { db, type Tx } from "../db";
 import { AppError, isUniqueViolation } from "../errors";
+import { msg, msgf } from "@/i18n/msg";
 import { getSettings } from "../settings";
 import { siteOrigin } from "../site-origin";
 import { guestEventOn, prettyPhone, shortName, validPhone } from "@/lib/guest-messages";
@@ -10,6 +11,7 @@ import { normalizePhone, resolveGuest } from "./guests";
 import { createRestaurantOrderTx, deliveryPlace, publicMenu } from "./restaurant";
 import { mediaUrl } from "./media";
 import { guestNotifyConnected, sendGuestText } from "./guest-notify";
+import { getTFor } from "@/i18n/server";
 
 
 /**
@@ -36,7 +38,7 @@ export async function knownCustomerName(phone: string): Promise<string | null> {
  * greeted by name — first name and initials only ("Asha M."), never their full details.
  */
 export async function identifyCustomer(phone: string) {
-  if (!validPhone(phone)) throw new AppError("Please enter a phone number we can reach you on (e.g. 0712 345 678).", "VALIDATION", { phone: "Invalid" });
+  if (!validPhone(phone)) throw new AppError("Please enter a phone number we can reach you on (e.g. 0712 345 678).", "VALIDATION", { phone: msg("Invalid") });
   const name = await knownCustomerName(phone);
   return { name: name ? shortName(name) : null };
 }
@@ -47,7 +49,7 @@ export async function identifyCustomer(phone: string) {
  */
 export async function orderCustomerName(typed: string | null | undefined, phone: string, opts: { field?: string; max?: number } = {}) {
   const name = typed?.trim() || (await knownCustomerName(phone)) || "";
-  if (name.length < 2) throw new AppError("Please enter your name.", "VALIDATION", { [opts.field ?? "name"]: "Required" });
+  if (name.length < 2) throw new AppError("Please enter your name.", "VALIDATION", { [opts.field ?? "name"]: msg("Required") });
   return name.slice(0, opts.max ?? 80);
 }
 
@@ -58,9 +60,9 @@ const PROOF_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "ima
 
 /** The customer's screenshot of their payment (take out is paid first) — kept in the database, shown to staff only. */
 export async function storePaymentProof(file: File) {
-  if (!file || file.size === 0) throw new AppError("Add a screenshot of your payment.", "VALIDATION", { proof: "Required" });
-  if (file.size > PROOF_MAX_BYTES) throw new AppError("That picture is too big — please add a screenshot instead.", "VALIDATION", { proof: "Too large" });
-  if (!PROOF_TYPES.includes(file.type)) throw new AppError("Please add a photo or screenshot (JPG or PNG).", "VALIDATION", { proof: "Wrong type" });
+  if (!file || file.size === 0) throw new AppError("Add a screenshot of your payment.", "VALIDATION", { proof: msg("Required") });
+  if (file.size > PROOF_MAX_BYTES) throw new AppError("That picture is too big — please add a screenshot instead.", "VALIDATION", { proof: msg("Too large") });
+  if (!PROOF_TYPES.includes(file.type)) throw new AppError("Please add a photo or screenshot (JPG or PNG).", "VALIDATION", { proof: msg("Wrong type") });
   const f = await db.storedFile.create({
     data: { purpose: "PAYMENT_PROOF", fileName: file.name.slice(0, 120) || "payment", contentType: file.type, size: file.size, data: new Uint8Array(await file.arrayBuffer()) },
     select: { id: true },
@@ -76,16 +78,16 @@ export type PaidFirst = { proofId: string; accountId: string; reference?: string
  * account one customers pay into (never cash). What the order keeps — staff check it and record the payment.
  */
 export async function paidFirstTx(tx: Tx, p: PaidFirst | null | undefined, now: Date) {
-  if (!p?.proofId) throw new AppError("Take out is paid first by mobile money — choose Pay now.", "VALIDATION", { proof: "Required" });
+  if (!p?.proofId) throw new AppError("Take out is paid first by mobile money — choose Pay now.", "VALIDATION", { proof: msg("Required") });
   const [file, account] = await Promise.all([
     tx.storedFile.findUnique({ where: { id: p.proofId }, select: { purpose: true, createdAt: true, restaurantOrder: { select: { id: true } } } }),
     tx.moneyAccount.findUnique({ where: { id: p.accountId }, select: { isActive: true, acceptsPayments: true, kind: true, accountNumber: true } }),
   ]);
   if (!file || file.purpose !== "PAYMENT_PROOF" || file.restaurantOrder || now.getTime() - file.createdAt.getTime() > 6 * 3600_000) {
-    throw new AppError("Please add the screenshot of your payment again.", "VALIDATION", { proof: "Invalid" });
+    throw new AppError("Please add the screenshot of your payment again.", "VALIDATION", { proof: msg("Invalid") });
   }
   if (!account || !account.isActive || !account.acceptsPayments || account.kind === "CASH" || !account.accountNumber) {
-    throw new AppError("Choose the account you paid to.", "VALIDATION", { accountId: "Invalid" });
+    throw new AppError("Choose the account you paid to.", "VALIDATION", { accountId: msg("Invalid") });
   }
   return { paymentProofFileId: p.proofId, customerPaidToId: p.accountId, customerPayRef: p.reference?.trim().slice(0, 60) || null, customerPaidAt: now, expectedTotal: p.expectedTotal ?? null };
 }
@@ -96,6 +98,8 @@ export interface OnlineOrderInput {
   clientKey: string;
   items: { menuItemId: string; quantity: number }[];
   notes?: string | null;
+  /** Common requests the customer ticked (ORDER_REQUESTS codes). */
+  noteCodes?: string[] | null;
   /** Blank for a returning customer: the name we have for their phone is used. */
   name?: string | null;
   phone: string;
@@ -121,13 +125,13 @@ export interface OnlineOrderInput {
  */
 export async function placeOnlineOrder(input: OnlineOrderInput, now = new Date()) {
   const settings = await getSettings();
-  if (!settings.publicOrderingEnabled) throw new AppError(`Online ordering is closed right now — please call us${settings.phone ? ` on ${prettyPhone(settings.phone)}` : ""}.`);
-  if (!input.name?.trim() && !validPhone(input.phone)) throw new AppError("Please enter your name.", "VALIDATION", { name: "Required" });
-  if (!validPhone(input.phone)) throw new AppError("Please enter a phone number we can reach you on (e.g. 0712 345 678).", "VALIDATION", { phone: "Invalid" });
+  if (!settings.publicOrderingEnabled) throw new AppError(settings.phone ? msgf("Online ordering is closed right now — please call us on {phone}.", { phone: prettyPhone(settings.phone) }) : msg("Online ordering is closed right now — please call us."));
+  if (!input.name?.trim() && !validPhone(input.phone)) throw new AppError("Please enter your name.", "VALIDATION", { name: msg("Required") });
+  if (!validPhone(input.phone)) throw new AppError("Please enter a phone number we can reach you on (e.g. 0712 345 678).", "VALIDATION", { phone: msg("Invalid") });
   const name = await orderCustomerName(input.name, input.phone);
   if (!["DINE_IN", "TAKEAWAY", "PICKUP"].includes(input.kind)) throw new AppError("Choose to eat here or take out.", "VALIDATION");
   const address = input.kind === "TAKEAWAY" ? input.deliveryAddress?.trim().slice(0, 200) ?? "" : "";
-  if (input.kind === "TAKEAWAY" && address.length < 5) throw new AppError("Please add the delivery address — street, house or building, and a landmark.", "VALIDATION", { deliveryAddress: "Required" });
+  if (input.kind === "TAKEAWAY" && address.length < 5) throw new AppError("Please add the delivery address — street, house or building, and a landmark.", "VALIDATION", { deliveryAddress: msg("Required") });
   if (!input.items.length || input.items.length > 30) throw new AppError("Add something from the menu.", "VALIDATION");
   const same = await db.restaurantOrder.findUnique({ where: { clientKey: input.clientKey } });
   if (same) return Object.assign(same, { seat: null as string | null }); // the same tap sent twice
@@ -147,7 +151,7 @@ export async function placeOnlineOrder(input: OnlineOrderInput, now = new Date()
       const sat = picked ? await sitAtPickedTableTx(tx, picked.id, guestId, now) : null;
       seat = sat?.seat ?? null;
       return createRestaurantOrderTx(tx, {
-        type: input.kind, settlement: "UNPAID", items: input.items, notes: input.notes?.trim().slice(0, 300) || null, customerName: name,
+        type: input.kind, settlement: "UNPAID", items: input.items, notes: input.notes?.trim().slice(0, 300) || null, noteCodes: input.noteCodes, customerName: name,
         locationId: picked?.id ?? null,
         tableLabel: input.kind === "DINE_IN" && !picked ? input.tableLabel?.trim().slice(0, 40) || null : null, deliveryAddress: address || null,
       }, { userId: null, label: `${name} (online)` }, now, {
@@ -174,9 +178,9 @@ export async function orderByTrackToken(token: string) {
     where: { trackToken: token },
     select: {
       source: true, payOnlineAt: true,
-      number: true, type: true, status: true, settlement: true, paymentStatus: true, paidAmount: true, round: true, roomNumber: true, customerName: true, tableLabel: true, deliveryAddress: true, customerPaidAt: true, notes: true,
+      number: true, type: true, status: true, settlement: true, paymentStatus: true, paidAmount: true, round: true, roomNumber: true, customerName: true, tableLabel: true, deliveryAddress: true, customerPaidAt: true, notes: true, noteCodes: true,
       total: true, serviceFee: true, createdAt: true, acceptedAt: true, readyAt: true, takenAt: true, deliveredAt: true, completedAt: true, cancelledAt: true, statusChangedAt: true,
-      items: { select: { name: true, quantity: true, lineTotal: true, round: true }, orderBy: { id: "asc" } },
+      items: { select: { name: true, nameI18n: true, quantity: true, lineTotal: true, round: true }, orderBy: { id: "asc" } },
       session: { select: { openAtId: true, location: { select: { qrToken: true, qrActive: true } } } },
     },
   });
@@ -201,7 +205,9 @@ export async function orderUpdate(orderId: string, origin?: string | null, forEv
         number: true, type: true, status: true, roomNumber: true, tableLabel: true, customerName: true, customerPhone: true, trackToken: true, guestId: true, deliveryAddress: true,
         serviceFee: true, total: true, settlement: true, paymentStatus: true, payOnlineAt: true, createdAt: true,
         location: { select: { name: true, kind: true } },
-        items: { orderBy: { id: "asc" }, select: { name: true, quantity: true, lineTotal: true } },
+        // The customer's language: their update is written in it, with the dishes named as they ordered them.
+        guest: { select: { preferredLanguage: true } },
+        items: { orderBy: { id: "asc" }, select: { name: true, nameI18n: true, quantity: true, lineTotal: true } },
         payments: { where: { status: "POSTED", account: { code: "NTZS" } }, orderBy: { collectedAt: "desc" }, take: 1, select: { amount: true, reference: true } },
       },
     }),
@@ -213,15 +219,18 @@ export async function orderUpdate(orderId: string, origin?: string | null, forEv
   const base = origin ?? null;
   const place = deliveryPlace(o);
   const paid = o.payments[0];
+  const t = await getTFor(o.guest?.preferredLanguage);
+  // Their links open in their language too.
+  const lang = t.locale === "zh-CN" ? "?lang=zh" : "";
   return {
     event, to: o.customerPhone, guestId: o.guestId,
     text: orderMessageText(event, {
       name: o.customerName, hotel: s.hotelName, number: o.number, type: o.type, room: o.roomNumber, delivery: !!o.deliveryAddress,
-      track: base && o.trackToken ? `${base}/order/${o.trackToken}` : null, menu: base ? `${base}/order` : null,
+      track: base && o.trackToken ? `${base}/order/${o.trackToken}${lang}` : null, menu: base ? `${base}/order${lang}` : null,
       prepMinutes: s.orderPrepMinutes, phone: prettyPhone(s.whatsapp || s.phone), place,
-      details: orderFacts(o, place, s.timezone),
+      details: orderFacts(o, place, s.timezone), // the lines keep nameI18n: the message names each dish as they ordered it
       paid: event === "PAID" && paid ? { amount: paid.amount, reference: paid.reference?.replace(/^nTZS\s+/, "") ?? null } : null,
-    }),
+    }, t),
   };
 }
 

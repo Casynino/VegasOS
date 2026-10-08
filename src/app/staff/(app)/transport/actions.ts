@@ -12,6 +12,9 @@ import { tripMessage } from "@/server/services/guest-message-data";
 import {
   adjustTripPrice, chargeTripToRoom, confirmTrip, createTransportRequest, payTripDirect, recordDriver, saveTransportService, setTripStatus, transportServices,
 } from "@/server/services/transport";
+import { saveTranslation, translationForms, type TranslationForm } from "@/server/services/translations";
+import { msg } from "@/i18n/msg";
+import { getT } from "@/i18n/server";
 
 async function actor(user: CurrentUser) {
   const { ipAddress } = await requestMeta();
@@ -27,18 +30,18 @@ function refresh(reservationId?: string | null) {
 const tripReservation = async (id: string) => (await db.transportTrip.findUnique({ where: { id }, select: { reservationId: true } }))?.reservationId ?? null;
 
 const RequestSchema = z.object({
-  serviceId: z.string().min(1, "Choose a service."),
+  serviceId: z.string().min(1, msg("Choose a service.")),
   optionId: z.string().optional(),
-  passengerName: z.string().trim().min(2, "Enter the guest's name.").max(120),
-  passengerPhone: z.string().trim().min(7, "A phone number is needed.").max(30),
-  passengerEmail: z.string().trim().email("Enter a valid email.").max(120).optional().or(z.literal("")),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a date."),
-  time: z.string().regex(/^\d{2}:\d{2}$/, "Choose a time."),
+  passengerName: z.string().trim().min(2, msg("Enter the guest's name.")).max(120),
+  passengerPhone: z.string().trim().min(7, msg("A phone number is needed.")).max(30),
+  passengerEmail: z.string().trim().email(msg("Enter a valid email.")).max(120).optional().or(z.literal("")),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, msg("Choose a date.")),
+  time: z.string().regex(/^\d{2}:\d{2}$/, msg("Choose a time.")),
   airport: z.string().trim().max(120).optional(),
   pickupLocation: z.string().trim().max(200).optional(),
   destination: z.string().trim().max(200).optional(),
   flightNumber: z.string().trim().max(20).optional(),
-  passengers: z.coerce.number().int().min(1, "At least 1 guest.").max(40),
+  passengers: z.coerce.number().int().min(1, msg("At least 1 guest.")).max(40),
   bags: z.coerce.number().int().min(0).max(60).optional(),
   reservationId: z.string().optional(),
   reservationRef: z.string().trim().max(40).optional(),
@@ -65,7 +68,7 @@ export async function confirmTripAction(input: { tripId: string }) {
     await confirmTrip(input.tripId, await actor(user));
     refresh(await tripReservation(input.tripId));
     return null;
-  }, "Transport confirmed.");
+  }, msg("Transport confirmed."));
 }
 
 export async function recordDriverAction(input: { tripId: string; driverId?: string; driverName?: string; driverPhone?: string; vehicleId?: string; vehicleName?: string; vehiclePlate?: string }) {
@@ -77,7 +80,7 @@ export async function recordDriverAction(input: { tripId: string; driverId?: str
     }, await actor(user));
     refresh();
     return null;
-  }, "Driver saved.");
+  }, msg("Driver saved."));
 }
 
 export async function tripStatusAction(input: { tripId: string; status: "CONFIRMED" | "EN_ROUTE" | "PICKED_UP" | "COMPLETED" | "CANCELLED" | "NO_SHOW"; reason?: string }) {
@@ -86,7 +89,7 @@ export async function tripStatusAction(input: { tripId: string; status: "CONFIRM
     await setTripStatus(input.tripId, input.status, await actor(user), input.reason);
     refresh(await tripReservation(input.tripId));
     return null;
-  }, "Trip updated.");
+  }, msg("Trip updated."));
 }
 
 export async function adjustTripPriceAction(input: { tripId: string; price: number; reason: string }) {
@@ -95,7 +98,7 @@ export async function adjustTripPriceAction(input: { tripId: string; price: numb
     await adjustTripPrice(input.tripId, Math.round(Number(input.price)), input.reason ?? "", await actor(user));
     refresh();
     return null;
-  }, "Price changed.");
+  }, msg("Price changed."));
 }
 
 export async function chargeTripToRoomAction(input: { tripId: string; reservationId?: string }) {
@@ -113,7 +116,7 @@ export async function payTripDirectAction(input: { tripId: string; accountId: st
     await payTripDirect(input.tripId, { accountId: input.accountId, reference: input.reference }, await actor(user));
     refresh();
     return null;
-  }, "Payment recorded.");
+  }, msg("Payment recorded."));
 }
 
 /** A trip's history (who did what, when) for its detail card. */
@@ -144,12 +147,47 @@ export async function saveTransportServiceAction(input: {
     refresh();
     revalidatePath("/transport");
     return null;
-  }, "Price saved.");
+  }, msg("Price saved."));
+}
+
+/** A transport service's Chinese and its packages' (saved + the default as hints), for the service editor. */
+export async function transportChineseAction(input: { serviceId: string }): Promise<ActionResult<{ service: TranslationForm; options: Record<string, TranslationForm> }>> {
+  return runAction(async () => {
+    await authorize("transport.manage", "settings.manage");
+    const s = await db.transportService.findUnique({ where: { id: String(input.serviceId) }, include: { options: true } });
+    if (!s) throw new AppError("Service not found.", "NOT_FOUND");
+    const [service, options] = await Promise.all([translationForms("transportService", [s]), translationForms("transportServiceOption", s.options)]);
+    return { service: service[s.id], options };
+  });
+}
+
+const ZhText = z.object({ name: z.string().trim().max(120).optional(), description: z.string().trim().max(600).optional() });
+const TransportZh = z.object({
+  serviceId: z.string().min(1).max(40),
+  service: ZhText,
+  options: z.array(ZhText.extend({ id: z.string().min(1).max(40) })).max(40).default([]),
+});
+
+/** Save a transport service's Chinese and its packages' (empty = the default Chinese, else the English). Audited per record. */
+export async function saveTransportChineseAction(input: z.input<typeof TransportZh>): Promise<ActionResult<null>> {
+  return runAction(async () => {
+    const user = await authorize("transport.manage", "settings.manage");
+    const d = parseInput(TransportZh, input);
+    const s = await db.transportService.findUnique({ where: { id: d.serviceId }, select: { id: true, options: { select: { id: true } } } });
+    if (!s) throw new AppError("Service not found.", "NOT_FOUND");
+    const own = new Set(s.options.map((o) => o.id));
+    const who = await actor(user);
+    await saveTranslation("transportService", s.id, "zh-CN", d.service, who);
+    for (const o of d.options) if (own.has(o.id)) await saveTranslation("transportServiceOption", o.id, "zh-CN", { name: o.name, description: o.description }, who);
+    refresh();
+    revalidatePath("/transport");
+    return null;
+  }, msg("Chinese saved."));
 }
 
 const VehicleSchema = z.object({
   id: z.string().optional(),
-  name: z.string().trim().min(2, "Vehicle name is required.").max(60),
+  name: z.string().trim().min(2, msg("Vehicle name is required.")).max(60),
   plateNumber: z.string().trim().max(20).transform((v) => v.toUpperCase() || null),
   capacity: z.coerce.number().int().min(1).max(60),
   isActive: z.preprocess((v) => v === undefined ? true : v === "on", z.boolean()),
@@ -163,12 +201,12 @@ export async function saveVehicleAction(_prev: unknown, formData: FormData): Pro
       const v = id ? await db.vehicle.update({ where: { id }, data: d }) : await db.vehicle.create({ data: d });
       await audit(db, { userId: user.id, label: user.fullName }, { action: id ? "vehicle.updated" : "vehicle.created", entityType: "Vehicle", entityId: v.id, after: d });
     } catch (e) {
-      if (isUniqueViolation(e)) throw new AppError("A vehicle with this plate already exists.", "CONFLICT", { plateNumber: "Duplicate" });
+      if (isUniqueViolation(e)) throw new AppError("A vehicle with this plate already exists.", "CONFLICT", { plateNumber: msg("Duplicate") });
       throw e;
     }
     refresh();
     return null;
-  }, "Vehicle saved.");
+  }, msg("Vehicle saved."));
 }
 
 /** What the transport request form needs for one guest — opened right from the room card. */
@@ -181,12 +219,13 @@ export async function transportFormAction(input: { reservationId: string }) {
     ]);
     if (!r) throw new AppError("Booking not found.", "NOT_FOUND");
     const staying = r.status === "CHECKED_IN";
+    const t = await getT();
     return {
       services: services.map((s) => ({
         id: s.id, name: s.name, description: s.description, type: s.type, price: s.price, isActive: s.isActive, isPublic: s.isPublic,
         options: s.options.map((o) => ({ id: o.id, name: o.name, description: o.description, price: o.price, isActive: o.isActive })),
       })),
-      booking: { id: r.id, name: r.guest.fullName, phone: r.guest.phone, email: r.guest.email, label: `Room ${r.rooms.map((x) => x.room.number).join(", ")} · ${staying ? "in the hotel" : r.reference}`, staying },
+      booking: { id: r.id, name: r.guest.fullName, phone: r.guest.phone, email: r.guest.email, label: `${t("Room {number}", { number: r.rooms.map((x) => x.room.number).join(", ") })} · ${staying ? t("in the hotel") : r.reference}`, staying },
     };
   });
 }

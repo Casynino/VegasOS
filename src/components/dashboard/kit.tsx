@@ -2,12 +2,17 @@ import Image from "next/image";
 import Link from "next/link";
 import { TrendingDown, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { englishT, type T } from "@/i18n/translate";
 import { AttentionList, type AttentionRow } from "./attention-list";
 
 /**
  * Soft, light dashboard kit shared by every staff dashboard (admin, manager,
  * reception): pastel stat tiles with sparklines, rounded panels, status pills
  * and a month calendar. Pure server components — no client JS.
+ *
+ * Language: these render on the server AND inside client components, so they take the reader's translator as an
+ * optional `t` prop (`await getT()` on the server, `useT()` in the browser) for the words they add themselves —
+ * English without it. Labels passed in are shown as given (callers translate them).
  */
 
 export type Tone = "gold" | "violet" | "emerald" | "sky" | "rose" | "amber" | "slate";
@@ -35,8 +40,8 @@ export function Sparkline({ values, tone = "gold", className }: { values: number
   );
 }
 
-export function Delta({ value, unit = "%", invert, label }: { value: number | null; unit?: string; invert?: boolean; label?: string }) {
-  if (value === null || !Number.isFinite(value) || Math.abs(value) < 0.05) return <span className="text-xs text-muted-foreground">{label ? `Same as ${label}` : "No change"}</span>;
+export function Delta({ value, unit = "%", invert, label, t = englishT }: { value: number | null; unit?: string; invert?: boolean; label?: string; t?: T }) {
+  if (value === null || !Number.isFinite(value) || Math.abs(value) < 0.05) return <span className="text-xs text-muted-foreground">{label ? t("Same as {label}", { label }) : t("No change")}</span>;
   const up = value > 0, good = invert ? !up : up;
   const I = up ? TrendingUp : TrendingDown;
   return (
@@ -44,7 +49,7 @@ export function Delta({ value, unit = "%", invert, label }: { value: number | nu
       <span className={cn("inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 font-semibold", good ? "bg-emerald-500/12 text-emerald-700" : "bg-rose-500/12 text-rose-700")}>
         <I className="size-3" />{Math.abs(value).toFixed(1)}{unit}
       </span>
-      {label && <span>vs {label}</span>}
+      {label && <span>{t("vs {label}", { label })}</span>}
     </span>
   );
 }
@@ -90,8 +95,8 @@ export function Panel({ title, subtitle, action, children, className, bodyClassN
   );
 }
 
-export function PanelLink({ href, children = "View all" }: { href: string; children?: React.ReactNode }) {
-  return <Link href={href} className="shrink-0 rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-border hover:bg-muted">{children}</Link>;
+export function PanelLink({ href, children, t = englishT }: { href: string; children?: React.ReactNode; t?: T }) {
+  return <Link href={href} className="shrink-0 rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-border hover:bg-muted">{children ?? t("View all")}</Link>;
 }
 
 const PILL: Record<string, string> = {
@@ -110,8 +115,8 @@ export function Initials({ name, className }: { name: string; className?: string
 }
 
 /** Month calendar: arrivals (dot + count) per day, today highlighted. */
-export function MonthCalendar({ month, today, arrivals, departures, href }: {
-  month: string; today: string; arrivals: Record<string, number>; departures: Record<string, number>; href?: (date: string) => string;
+export function MonthCalendar({ month, today, arrivals, departures, href, t = englishT }: {
+  month: string; today: string; arrivals: Record<string, number>; departures: Record<string, number>; href?: (date: string) => string; t?: T;
 }) {
   const [y, m] = month.split("-").map(Number);
   const first = new Date(Date.UTC(y, m - 1, 1));
@@ -119,12 +124,12 @@ export function MonthCalendar({ month, today, arrivals, departures, href }: {
   const lead = (first.getUTCDay() + 6) % 7; // Monday first
   const cells: (string | null)[] = [...Array(lead).fill(null), ...Array.from({ length: daysIn }, (_, i) => `${month}-${String(i + 1).padStart(2, "0")}`)];
   while (cells.length % 7) cells.push(null);
-  const title = first.toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
+  const title = first.toLocaleDateString(t.intl, { month: "long", year: "numeric", timeZone: "UTC" });
   return (
     <div>
       <p className="mb-3 text-sm font-semibold text-foreground">{title}</p>
       <div className="grid grid-cols-7 gap-1 text-center text-[11px] text-muted-foreground">
-        {["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map((d) => <span key={d} className="pb-1">{d}</span>)}
+        {[t("Mo"), t("Tu"), t("We"), t("Th"), t("Fr"), t("Sa"), t("Su")].map((d, i) => <span key={i} className="pb-1">{d}</span>)}
         {cells.map((d, i) => {
           if (!d) return <span key={i} />;
           const a = arrivals[d] ?? 0, dep = departures[d] ?? 0, isToday = d === today, past = d < today;
@@ -138,15 +143,16 @@ export function MonthCalendar({ month, today, arrivals, departures, href }: {
                   {dep > 0 && <span className={cn("size-1 rounded-full", isToday ? "bg-white/70" : "bg-rose-400")} />}
                 </span>
               )}
-              <span className="sr-only">{a} arrivals, {dep} departures</span>
+              <span className="sr-only">{t("{a} arrivals, {dep} departures", { a, dep })}</span>
             </span>
           );
-          return href && !past ? <Link key={d} href={href(d)} title={`${a} arriving · ${dep} leaving`}>{inner}</Link> : <span key={d} title={`${a} arriving · ${dep} leaving`}>{inner}</span>;
+          const tip = t("{a} arriving · {dep} leaving", { a, dep });
+          return href && !past ? <Link key={d} href={href(d)} title={tip}>{inner}</Link> : <span key={d} title={tip}>{inner}</span>;
         })}
       </div>
       <div className="mt-3 flex gap-4 text-[11px] text-muted-foreground">
-        <span className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-emerald-500" />Arrivals</span>
-        <span className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-rose-400" />Departures</span>
+        <span className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-emerald-500" />{t("Arrivals")}</span>
+        <span className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-rose-400" />{t("Departures")}</span>
       </div>
     </div>
   );
@@ -227,11 +233,11 @@ export type QuickTone = keyof typeof QA_TINT;
  * booking) first, then every other everyday job with a small tinted icon and a
  * live count where it helps. Scrolls sideways on a phone instead of stacking.
  */
-export function QuickActions({ items }: { items: { href: string; label: string; hint?: string; icon: React.ReactNode; tone: QuickTone; badge?: number }[] }) {
+export function QuickActions({ items, t = englishT }: { items: { href: string; label: string; hint?: string; icon: React.ReactNode; tone: QuickTone; badge?: number }[]; t?: T }) {
   const primary = items.find((a) => a.tone === "gold");
   const rest = items.filter((a) => a !== primary);
   return (
-    <nav aria-label="Quick actions" className="flex items-center gap-2 overflow-x-auto py-1 [scrollbar-width:none] md:flex-wrap md:overflow-visible">
+    <nav aria-label={t("Quick actions")} className="flex items-center gap-2 overflow-x-auto py-1 [scrollbar-width:none] md:flex-wrap md:overflow-visible">
       {primary && (
         <Link href={primary.href} title={primary.hint}
           className="inline-flex h-10 shrink-0 items-center gap-2 rounded-full bg-linear-to-b from-[oklch(0.87_0.085_86)] to-[oklch(0.7_0.12_76)] pl-2 pr-4 text-sm font-semibold text-[oklch(0.2_0.03_60)] shadow-[0_8px_22px_-12px_oklch(0.7_0.12_80)] ring-1 ring-inset ring-white/30 transition-all hover:brightness-105 hover:shadow-[0_10px_26px_-10px_oklch(0.7_0.12_80)]">
@@ -252,25 +258,25 @@ export function QuickActions({ items }: { items: { href: string; label: string; 
 }
 
 /** Small uppercase section label with an optional "All →" link. */
-export function SectionLabel({ title, href, linkLabel = "View all", count }: { title: string; href?: string; linkLabel?: string; count?: number }) {
+export function SectionLabel({ title, href, linkLabel, count, t = englishT }: { title: string; href?: string; linkLabel?: string; count?: number; t?: T }) {
   return (
     <div className="mb-3 flex items-center justify-between gap-3">
       <h2 className="flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">{title}
         {count !== undefined && <span className={cn("rounded-full px-2 py-0.5 text-[11px] tracking-normal", count > 0 ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-700")}>{count}</span>}
       </h2>
-      {href && <Link href={href} className="text-xs font-semibold text-[oklch(0.55_0.11_75)] hover:underline">{linkLabel} →</Link>}
+      {href && <Link href={href} className="text-xs font-semibold text-[oklch(0.55_0.11_75)] hover:underline">{linkLabel ?? t("View all")} →</Link>}
     </div>
   );
 }
 
 export type AttentionItem = AttentionRow;
 /** Things that need someone: one card with area chips and slim rows (three in view, the rest scroll). */
-export function AttentionCards({ items, emptyTitle = "All good — nothing needs you", emptyDetail = "No unpaid departures, no waiting requests, nothing blocked." }: { items: AttentionItem[]; emptyTitle?: string; emptyDetail?: string }) {
+export function AttentionCards({ items, emptyTitle, emptyDetail, t = englishT }: { items: AttentionItem[]; emptyTitle?: string; emptyDetail?: string; t?: T }) {
   if (items.length === 0) {
     return (
       <div className="flex items-center gap-3 rounded-2xl border border-emerald-100 bg-linear-to-br from-emerald-50 to-card p-4 dark:border-emerald-500/20 dark:from-emerald-500/10">
         <span className="grid size-10 place-items-center rounded-xl bg-emerald-500 text-white shadow-[0_8px_18px_-8px_var(--color-emerald-500)]">✓</span>
-        <span><span className="block text-sm font-semibold text-foreground">{emptyTitle}</span><span className="text-xs text-muted-foreground">{emptyDetail}</span></span>
+        <span><span className="block text-sm font-semibold text-foreground">{emptyTitle ?? t("All good — nothing needs you")}</span><span className="text-xs text-muted-foreground">{emptyDetail ?? t("No unpaid departures, no waiting requests, nothing blocked.")}</span></span>
       </div>
     );
   }
@@ -281,19 +287,20 @@ export function AttentionCards({ items, emptyTitle = "All good — nothing needs
  * Rooms at a glance (dark card): a ring split by status around the total,
  * with the counts beside it — fills its space on every screen size.
  */
-export function RoomsGlance({ total, parts, footer, href, title = "Rooms tonight", unit = "rooms", center }: {
+export function RoomsGlance({ total, parts, footer, href, title, unit, center, t = englishT }: {
   total: number; parts: { label: string; value: number; color: string }[]; footer?: React.ReactNode; href?: string;
   /** The heading and the word under the number (the tables use it too). */
   title?: string; unit?: string;
   /** What the middle of the ring says (e.g. "35%" / "full tonight") — instead of the total everyone knows. */
   center?: { value: string; label: string; sub?: string };
+  t?: T;
 }) {
   const r = 46, c = 2 * Math.PI * r;
   const lens = parts.map((p) => (p.value / Math.max(1, total)) * c);
   const offsets = lens.map((_, i) => lens.slice(0, i).reduce((a, b) => a + b, 0));
   const body = (
     <div className="flex h-full flex-col gap-5 rounded-3xl bg-linear-to-br from-[#1d2233] via-[#232842] to-[#2e2a4a] p-5 text-white shadow-[0_18px_40px_-22px_rgba(15,23,42,0.8)] transition-transform hover:-translate-y-0.5 sm:p-6">
-      <p className="text-sm font-medium text-white/70">{title}</p>
+      <p className="text-sm font-medium text-white/70">{title ?? t("Rooms tonight")}</p>
       <div className="flex items-center gap-5">
         <div className="relative size-32 shrink-0">
           <svg viewBox="0 0 110 110" className="size-full -rotate-90" role="img" aria-label={parts.map((p) => `${p.label}: ${p.value}`).join(", ")}>
@@ -302,7 +309,7 @@ export function RoomsGlance({ total, parts, footer, href, title = "Rooms tonight
               <circle key={p.label} cx="55" cy="55" r={r} fill="none" stroke={p.color} strokeWidth="11" strokeDasharray={`${Math.max(0, lens[i] - 2)} ${c}`} strokeDashoffset={-offsets[i]} />
             ))}
           </svg>
-          <div className="absolute inset-0 grid place-items-center text-center"><div><p className={cn("font-bold tabular-nums leading-none tracking-tight", center ? "text-[1.6rem]" : "text-3xl")}>{center?.value ?? total}</p><p className="mt-1 text-[9px] font-medium uppercase leading-none tracking-[0.14em] text-white/55">{center?.label ?? unit}</p>{center?.sub && <p className="mt-1 text-[10px] leading-none tabular-nums text-white/40">{center.sub}</p>}</div></div>
+          <div className="absolute inset-0 grid place-items-center text-center"><div><p className={cn("font-bold tabular-nums leading-none tracking-tight", center ? "text-[1.6rem]" : "text-3xl")}>{center?.value ?? total}</p><p className="mt-1 text-[9px] font-medium uppercase leading-none tracking-[0.14em] text-white/55">{center?.label ?? unit ?? t("rooms")}</p>{center?.sub && <p className="mt-1 text-[10px] leading-none tabular-nums text-white/40">{center.sub}</p>}</div></div>
         </div>
         <ul className="min-w-0 flex-1 space-y-2 text-sm">
           {parts.map((p) => (

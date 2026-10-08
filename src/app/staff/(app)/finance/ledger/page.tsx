@@ -1,18 +1,24 @@
 import type { Metadata } from "next";
+import { getT } from "@/i18n/server";
+import { msg } from "@/i18n/msg";
 import Link from "next/link";
 import { Download, Paperclip, Search } from "lucide-react";
 import { can, requirePagePermission } from "@/server/auth";
 import { db } from "@/server/db";
 import { businessToday } from "@/server/settings";
 import { balanceBefore, getLedger, type LedgerRow } from "@/server/services/finance";
-import { formatBusinessDate, formatTime, formatTZS } from "@/lib/format";
+import { formatTZS } from "@/lib/format";
+import type { T } from "@/i18n/translate";
 import { FinanceTabs, periodLabel, readPeriod } from "@/components/staff/finance/finance-nav";
 import { AutoSelect } from "@/components/staff/finance/auto-select";
 import { CancelButton, ExpenseEditButton, PaymentEditButton, ReinstateButton, type EditablePayment, type PaymentAccountOption } from "@/components/staff/finance/fix-buttons";
 import { PurchaseChip } from "@/app/staff/(app)/expenses/expense-dialogs";
 import { cn } from "@/lib/utils";
 
-export const metadata: Metadata = { title: "General ledger" };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT();
+  return { title: t("General ledger") };
+}
 const LIMIT = 400;
 
 const TYPE_TONE: Record<string, string> = {
@@ -31,6 +37,7 @@ const money = (v: number) => `TZS ${v.toLocaleString("en-US")}`;
  */
 export default async function LedgerPage({ searchParams }: PageProps<"/staff/finance/ledger">) {
   const user = await requirePagePermission("ledger.view", "finance.view");
+  const t = await getT();
   const sp = await searchParams;
   const str = (v: unknown) => (typeof v === "string" ? v : "");
   const today = await businessToday();
@@ -86,8 +93,8 @@ export default async function LedgerPage({ searchParams }: PageProps<"/staff/fin
     include: { method: true, recordedBy: { select: { fullName: true } }, reservation: { select: { reference: true, guest: { select: { fullName: true } } } }, invoice: { select: { number: true } }, corporateCustomer: { select: { companyName: true } } },
   })).map((x): [string, EditablePayment] => [x.id, {
     id: x.id, reservationId: x.reservationId, amount: x.amount, refund: x.kind === "REFUND", accountId: x.accountId, method: x.method.name, reference: x.reference ?? "",
-    who: x.reservation?.guest.fullName ?? x.corporateCustomer?.companyName ?? "Customer", booking: x.reservation?.reference ?? null, invoice: x.invoice?.number ?? null,
-    paidOn: formatBusinessDate(x.businessDate.toISOString().slice(0, 10)), recordedBy: x.recordedBy.fullName,
+    who: x.reservation?.guest.fullName ?? x.corporateCustomer?.companyName ?? t("Customer"), booking: x.reservation?.reference ?? null, invoice: x.invoice?.number ?? null,
+    paidOn: t.date(x.businessDate.toISOString().slice(0, 10)), recordedBy: x.recordedBy.fullName,
   }]));
   const receiving: PaymentAccountOption[] = active.filter((a) => a.acceptsPayments).map((a) => ({ id: a.id, name: a.name, number: a.accountNumber, holder: a.holderName }));
   const methodAccount = new Map(methods.map((m) => [m.id, m.accountId]));
@@ -103,110 +110,110 @@ export default async function LedgerPage({ searchParams }: PageProps<"/staff/fin
   return (
     <div className="w-full space-y-5">
       <FinanceTabs active="/staff/finance/ledger" limited={!can(user, "finance.view")}
-        actions={<a href={csv} className="inline-flex h-9 items-center gap-2 rounded-xl border border-border px-3 text-sm font-medium hover:bg-muted"><Download className="size-4" />Export CSV</a>} />
+        actions={<a href={csv} className="inline-flex h-9 items-center gap-2 rounded-xl border border-border px-3 text-sm font-medium hover:bg-muted"><Download className="size-4" />{t("Export CSV")}</a>} />
 
       <form className="space-y-3 rounded-3xl border border-border/70 bg-card p-4">
         {Object.entries(keep).filter(([k]) => !["q", "view", "dir", "account", "category", "user", "period"].includes(k)).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
         <div className="relative">
           <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <input name="q" defaultValue={q} placeholder="Guest, room, reference, M-Pesa code, supplier, account, person…" className="h-12 w-full rounded-2xl border border-border bg-background pl-11 pr-3 text-sm" />
+          <input name="q" defaultValue={q} placeholder={t("Guest, room, reference, M-Pesa code, supplier, account, person…")} className="h-12 w-full rounded-2xl border border-border bg-background pl-11 pr-3 text-sm" />
         </div>
         <div className="flex flex-wrap gap-2">
-          <AutoSelect name="view" value={view} label="Type" options={[{ value: "all", label: "Everything" }, { value: "money", label: "Money in & out (payments)" }, { value: "income", label: "Income only" }, { value: "discounts", label: "Discounts given" }, { value: "expense", label: "Expenses only" }]} />
-          <AutoSelect name="dir" value={dir} label="Direction" options={[{ value: "", label: "In & out" }, { value: "in", label: "Money in" }, { value: "out", label: "Money out" }]} />
-          <AutoSelect name="account" value={accountId ?? ""} label="Account" options={[{ value: "", label: "All accounts" }, ...accounts.map((a) => ({ value: a.id, label: `${a.name}${a.isActive ? "" : " (inactive)"}` }))]} />
-          <AutoSelect name="category" value={category} label="Category" options={[{ value: "", label: "All categories" }, ...catOptions.map((c) => ({ value: c, label: c }))]} />
-          <AutoSelect name="user" value={userId ?? ""} label="Recorded by" options={[{ value: "", label: "Anyone" }, ...users.map((u) => ({ value: u.id, label: u.fullName }))]} />
-          <AutoSelect name="period" value={p.key === "custom" ? "" : p.key} label="Date" options={[
-            ...(p.key === "custom" ? [{ value: "", label: periodLabel(p) }] : []),
-            { value: "today", label: "Today" }, { value: "yesterday", label: "Yesterday" }, { value: "week", label: "This week" }, { value: "month", label: "This month" }, { value: "year", label: "This year" },
+          <AutoSelect name="view" value={view} label={t("Type")} options={[{ value: "all", label: t("Everything") }, { value: "money", label: t("Money in & out (payments)") }, { value: "income", label: t("Income only") }, { value: "discounts", label: t("Discounts given") }, { value: "expense", label: t("Expenses only") }]} />
+          <AutoSelect name="dir" value={dir} label={t("Direction")} options={[{ value: "", label: t("In & out") }, { value: "in", label: t("Money in") }, { value: "out", label: t("Money out") }]} />
+          <AutoSelect name="account" value={accountId ?? ""} label={t("Account")} options={[{ value: "", label: t("All accounts") }, ...accounts.map((a) => ({ value: a.id, label: a.isActive ? t(a.name) : t("{name} (inactive)", { name: t(a.name) }) }))]} />
+          <AutoSelect name="category" value={category} label={t("Category")} options={[{ value: "", label: t("All categories") }, ...catOptions.map((c) => ({ value: c, label: t.ctx("money", c) }))]} />
+          <AutoSelect name="user" value={userId ?? ""} label={t("Recorded by")} options={[{ value: "", label: t("Anyone") }, ...users.map((u) => ({ value: u.id, label: u.fullName }))]} />
+          <AutoSelect name="period" value={p.key === "custom" ? "" : p.key} label={t("Date")} options={[
+            ...(p.key === "custom" ? [{ value: "", label: periodLabel(p, t) }] : []),
+            { value: "today", label: t("Today") }, { value: "yesterday", label: t("Yesterday") }, { value: "week", label: t("This week") }, { value: "month", label: t("This month") }, { value: "year", label: t("This year") },
           ]} />
         </div>
       </form>
 
       <div className="grid overflow-hidden rounded-3xl border border-border/70 sm:grid-cols-3">
         <div className="bg-linear-to-br from-emerald-500/[0.12] to-transparent p-5">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Money in</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{t("Money in")}</p>
           <p className="mt-1 text-2xl font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">{formatTZS(moneyIn)}</p>
-          <p className="mt-1 text-xs text-muted-foreground">Guest payments, dining & bar sales, owner money</p>
+          <p className="mt-1 text-xs text-muted-foreground">{t("Guest payments, dining & bar sales, owner money")}</p>
         </div>
         <div className="border-t border-border/70 bg-linear-to-br from-rose-500/[0.12] to-transparent p-5 sm:border-l sm:border-t-0">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Money out</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{t("Money out")}</p>
           <p className="mt-1 text-2xl font-semibold tabular-nums text-rose-600 dark:text-rose-400">{formatTZS(moneyOut)}</p>
-          <p className="mt-1 text-xs text-muted-foreground">Costs paid, refunds, owner withdrawals</p>
+          <p className="mt-1 text-xs text-muted-foreground">{t("Costs paid, refunds, owner withdrawals")}</p>
         </div>
         <div className="border-t border-border/70 bg-linear-to-br from-sky-500/[0.1] to-transparent p-5 sm:border-l sm:border-t-0">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Net</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{t("Net")}</p>
           <p className="mt-1 text-2xl font-semibold tabular-nums">{formatTZS(moneyIn - moneyOut)}</p>
-          <p className="mt-1 text-xs text-muted-foreground">{posted.length} movements{cancelled ? ` · ${cancelled} cancelled, not counted` : ""} · earned {formatTZS(earned)} · spent {formatTZS(spent)}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{t("{n} movements", { n: posted.length })}{cancelled ? ` · ${t("{n} cancelled, not counted", { n: cancelled })}` : ""} · {t("earned {amount}", { amount: formatTZS(earned) })} · {t("spent {amount}", { amount: formatTZS(spent) })}</p>
         </div>
       </div>
 
       <section className="overflow-hidden rounded-3xl border border-border/70 bg-card">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/70 px-4 py-3 text-sm">
-          <span className="font-semibold">{periodLabel(p)}</span>
-          <span className="text-muted-foreground">Opening balance{accountId ? ` · ${accounts.find((a) => a.id === accountId)?.name}` : " · all accounts"} <strong className="tabular-nums text-foreground">{formatTZS(opening)}</strong> → closing <strong className="tabular-nums text-foreground">{formatTZS(bal)}</strong></span>
+          <span className="font-semibold">{periodLabel(p, t)}</span>
+          <span className="text-muted-foreground">{t.rich("Opening balance · {account} <b>{opening}</b> → closing <b>{closing}</b>", { b: (c) => <strong className="tabular-nums text-foreground">{c}</strong> }, { account: accountId ? t(accounts.find((a) => a.id === accountId)?.name ?? "") : t("all accounts"), opening: formatTZS(opening), closing: formatTZS(bal) })}</span>
         </div>
-        {shown.length === 0 ? <p className="p-10 text-center text-sm text-muted-foreground">Nothing recorded in this period.</p> : (
+        {shown.length === 0 ? <p className="p-10 text-center text-sm text-muted-foreground">{t("Nothing recorded in this period.")}</p> : (
           <div className="overflow-x-auto">
             <table data-stack className="w-full min-w-[1180px] text-sm">
               <thead className="text-left text-[11px] uppercase tracking-wider text-muted-foreground">
                 <tr className="border-b border-border/70">
-                  <th className="px-4 py-3 font-medium">Date</th><th className="px-3 py-3 font-medium">Description</th><th className="px-3 py-3 font-medium">Type</th>
-                  <th className="px-3 py-3 font-medium">Account</th><th className="px-3 py-3 font-medium">By</th>
-                  <th className="px-3 py-3 text-right font-medium">Debit</th><th className="px-3 py-3 text-right font-medium">Credit (in)</th>
-                  <th className="px-3 py-3 text-right font-medium">Balance</th><th className="px-3 py-3 text-center font-medium">Proof</th><th className="px-4 py-3 text-right font-medium">Fix</th>
+                  <th className="px-4 py-3 font-medium">{t("Date")}</th><th className="px-3 py-3 font-medium">{t("Description")}</th><th className="px-3 py-3 font-medium">{t("Type")}</th>
+                  <th className="px-3 py-3 font-medium">{t("Account")}</th><th className="px-3 py-3 font-medium">{t("By")}</th>
+                  <th className="px-3 py-3 text-right font-medium">{t("Debit")}</th><th className="px-3 py-3 text-right font-medium">{t("Credit (in)")}</th>
+                  <th className="px-3 py-3 text-right font-medium">{t("Balance")}</th><th className="px-3 py-3 text-center font-medium">{t("Proof")}</th><th className="px-4 py-3 text-right font-medium">{t("Fix")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/50">
-                {shown.map((r) => <Row key={r.id} r={{ ...r, attachment: proofOf(r) }} balance={balance.get(r.id)!} accountNumber={accountNumber.get(r.accountId ?? "") ?? null}
+                {shown.map((r) => <Row key={r.id} t={t} r={{ ...r, attachment: proofOf(r) }} balance={balance.get(r.id)!} accountNumber={accountNumber.get(r.accountId ?? "") ?? null}
                   fix={<Fix r={r} perms={perms} exp={r.source === "EXPENSE" ? expenses.get(r.id.slice(2)) : undefined} pay={payments.get(r.id.slice(2))} receiving={receiving} categories={categories} accounts={accountOptions} methodAccount={methodAccount} />} />)}
               </tbody>
             </table>
           </div>
         )}
-        {rows.length > LIMIT && <p className="border-t border-border/70 px-4 py-2 text-xs text-muted-foreground">Showing the latest {LIMIT} of {rows.length}. Narrow the dates or export CSV for everything.</p>}
+        {rows.length > LIMIT && <p className="border-t border-border/70 px-4 py-2 text-xs text-muted-foreground">{t("Showing the latest {n} of {total}. Narrow the dates or export CSV for everything.", { n: LIMIT, total: rows.length })}</p>}
       </section>
     </div>
   );
 }
 
-function Row({ r, balance, accountNumber, fix }: { r: LedgerRow; balance: number; accountNumber: string | null; fix: React.ReactNode }) {
+function Row({ r, balance, accountNumber, fix, t }: { r: LedgerRow; balance: number; accountNumber: string | null; fix: React.ReactNode; t: T }) {
   const off = r.status !== "POSTED";
   // The owner taking money out (or putting it in) is special: it must never blend in with costs.
   const owner = r.source === "MOVEMENT" && r.category === "Owner";
   const earnedOnly = r.moneyIn === 0 && r.moneyOut === 0 && (r.income !== 0 || r.expense !== 0) && !off;
   return (
     <tr className={cn("align-middle hover:bg-muted/25", off && "text-muted-foreground", owner && !off && "bg-amber-500/[0.07] shadow-[inset_4px_0_0_0_var(--color-amber-500)] hover:bg-amber-500/[0.1]")}>
-      <td className="whitespace-nowrap px-4 py-3 text-xs">{formatBusinessDate(r.businessDate)}<span className="block text-[10px] text-muted-foreground">{r.source === "ROOM" && r.via === "Night of the stay" ? "night" : formatTime(r.at)}</span></td>
+      <td className="whitespace-nowrap px-4 py-3 text-xs">{t.date(r.businessDate)}<span className="block text-[10px] text-muted-foreground">{r.source === "ROOM" && r.via === "Night of the stay" ? t("night") : t.time(r.at)}</span></td>
       <td className="max-w-[24rem] px-3 py-3">
         <p className="flex flex-wrap items-center gap-1.5">
-          {off && <span className="rounded bg-muted px-1.5 py-px text-[10px] font-semibold uppercase">{r.status === "PENDING" ? "Waiting" : "Cancelled"}</span>}
+          {off && <span className="rounded bg-muted px-1.5 py-px text-[10px] font-semibold uppercase">{r.status === "PENDING" ? t("Waiting") : t("Cancelled")}</span>}
           {r.href ? <Link href={r.href} className={cn("font-medium hover:underline", off && r.status !== "PENDING" && "line-through")}>{r.description}</Link> : <span className={cn("font-medium", off && "line-through")}>{r.description}</span>}
-          {earnedOnly && <span className="rounded-full bg-emerald-500/12 px-2 py-px text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">Earned {r.income.toLocaleString("en-US")}</span>}
+          {earnedOnly && <span className="rounded-full bg-emerald-500/12 px-2 py-px text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">{t("Earned {amount}", { amount: r.income.toLocaleString("en-US") })}</span>}
           {r.tag && <span className={cn("rounded-full px-2 py-px text-[10px] font-semibold", r.tag.startsWith("Account") ? "bg-violet-500/12 text-violet-700 dark:text-violet-300"
-            : r.tag.startsWith("Purchase") ? "bg-[oklch(0.75_0.12_80)]/15 text-[oklch(0.55_0.11_75)] dark:text-[oklch(0.82_0.1_82)]" : "bg-rose-500/12 text-rose-700 dark:text-rose-300")}>{r.tag}</span>}
+            : r.tag.startsWith("Purchase") ? "bg-[oklch(0.75_0.12_80)]/15 text-[oklch(0.55_0.11_75)] dark:text-[oklch(0.82_0.1_82)]" : "bg-rose-500/12 text-rose-700 dark:text-rose-300")}>{t(r.tag)}</span>}
         </p>
         {r.gross != null && (r.discount ?? 0) > 0 ? (
           <p className="mt-1 flex flex-wrap items-center gap-1 text-[11px]">
-            <span className="rounded-md bg-muted px-1.5 py-px tabular-nums">Price {r.gross.toLocaleString("en-US")}</span>
+            <span className="rounded-md bg-muted px-1.5 py-px tabular-nums">{t("Price {amount}", { amount: r.gross.toLocaleString("en-US") })}</span>
             <span className="rounded-md bg-emerald-500/12 px-1.5 py-px tabular-nums text-emerald-700 dark:text-emerald-300">− {r.discount!.toLocaleString("en-US")}</span>
             <span className="rounded-md bg-foreground/[0.07] px-1.5 py-px font-semibold tabular-nums">= {r.income.toLocaleString("en-US")}</span>
             <span className="truncate text-muted-foreground">{r.note?.split(" = ")[0].replace(/^[\d,]+ − /, "")}</span>
           </p>
         ) : null}
-        <p className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">{[r.reference, r.gross != null && (r.discount ?? 0) > 0 ? null : r.note].filter(Boolean).join(" · ")}</p>
+        <p className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">{[r.reference, r.gross != null && (r.discount ?? 0) > 0 ? null : r.note && t(r.note)].filter(Boolean).join(" · ")}</p>
       </td>
       <td className={cn("px-3 py-3 text-xs font-medium", TYPE_TONE[r.source])}>
-        {owner ? <span className="inline-flex whitespace-nowrap rounded-full bg-amber-500 px-2.5 py-0.5 text-[11px] font-semibold text-black">{r.moneyOut > 0 || r.type.includes("out") ? "Owner withdrawal" : "Owner money in"}</span> : r.category}
-        <span className="block text-[10px] font-normal text-muted-foreground">{r.type}</span>
+        {owner ? <span className="inline-flex whitespace-nowrap rounded-full bg-amber-500 px-2.5 py-0.5 text-[11px] font-semibold text-black">{r.moneyOut > 0 || r.type.includes("out") ? t("Owner withdrawal") : t("Owner money in")}</span> : t.ctx("money", r.category)}
+        <span className="block text-[10px] font-normal text-muted-foreground">{t(r.type)}</span>
       </td>
-      <td className="px-3 py-3 text-xs">{r.account ?? "—"}{r.account && accountNumber && <span className="block font-mono text-[10px] text-muted-foreground">{accountNumber}</span>}</td>
-      <td className="px-3 py-3 text-xs">{r.by ?? "—"}{r.via && <span className="block text-[10px] text-muted-foreground">via {r.via}</span>}</td>
+      <td className="px-3 py-3 text-xs">{r.account ? t(r.account) : "—"}{r.account && accountNumber && <span className="block font-mono text-[10px] text-muted-foreground">{accountNumber}</span>}</td>
+      <td className="px-3 py-3 text-xs">{r.by ?? "—"}{r.via && <span className="block text-[10px] text-muted-foreground">{t("via {how}", { how: t(r.via) })}</span>}</td>
       <td className="px-3 py-3 text-right font-mono text-[13px] tabular-nums text-rose-600 dark:text-rose-400">{r.moneyOut ? <span className={cn(off && "line-through")}>{money(r.moneyOut)}</span> : off && r.source === "EXPENSE" ? <s>{money(r.expense || Number(r.note?.match(/[\d,]+/)?.[0]?.replace(/,/g, "")) || 0)}</s> : "—"}</td>
       <td className="px-3 py-3 text-right font-mono text-[13px] tabular-nums text-emerald-600 dark:text-emerald-400">{r.moneyIn ? money(r.moneyIn) : "—"}</td>
       <td className="px-3 py-3 text-right font-mono text-[13px] font-semibold tabular-nums">{money(balance)}</td>
-      <td className="px-3 py-3 text-center">{r.attachment ? <a href={r.attachment} target="_blank" rel="noreferrer" title="Open the proof" className="inline-grid size-8 place-items-center rounded-lg hover:bg-muted"><Paperclip className="size-3.5" /></a> : <span className="text-muted-foreground">—</span>}</td>
+      <td className="px-3 py-3 text-center">{r.attachment ? <a href={r.attachment} target="_blank" rel="noreferrer" title={t("Open the proof")} className="inline-grid size-8 place-items-center rounded-lg hover:bg-muted"><Paperclip className="size-3.5" /></a> : <span className="text-muted-foreground">—</span>}</td>
       <td className="px-4 py-3"><div className="flex justify-end gap-1.5">{fix}</div></td>
     </tr>
   );
@@ -236,7 +243,7 @@ function Fix({ r, perms, exp, pay, receiving, categories, accounts, methodAccoun
       <>
         <ExpenseEditButton manager={perms.expense} categories={categories} accounts={accounts}
           expense={{ id: exp.id, number: exp.number, categoryId: exp.categoryId, amount: exp.amount, description: exp.description, payee: exp.payee ?? "", reference: exp.reference ?? "", notes: exp.notes ?? "", date: exp.businessDate.toISOString().slice(0, 10), accountId: exp.accountId ?? (exp.paymentMethodId ? methodAccount.get(exp.paymentMethodId) ?? "" : ""), paymentMethodId: exp.paymentMethodId ?? "", status: exp.status }} />
-        <CancelButton kind="expense" id={exp.id} label={exp.number ?? "this expense"} />
+        <CancelButton kind="expense" id={exp.id} label={exp.number ?? msg("this expense")} />
       </>
     );
   }
@@ -245,12 +252,12 @@ function Fix({ r, perms, exp, pay, receiving, categories, accounts, methodAccoun
     return (
       <>
         {pay && perms.correct && <PaymentEditButton payment={pay} accounts={receiving} canReference={perms.payment} />}
-        {perms.payment && reservationId && <CancelButton kind="payment" id={id} reservationId={reservationId} label="this payment" />}
+        {perms.payment && reservationId && <CancelButton kind="payment" id={id} reservationId={reservationId} label={msg("this payment")} />}
       </>
     );
   }
-  if (r.source === "CHARGE" && perms.payment && reservationId) return <CancelButton kind="charge" id={id} reservationId={reservationId} label="this room-bill item" />;
-  if (r.source === "SALE" && perms.sale) return <CancelButton kind="sale" id={id} label="this sale" />;
-  if (r.source === "MOVEMENT" && perms.movement) return <CancelButton kind="movement" id={id} label={r.reference ?? "this movement"} />;
+  if (r.source === "CHARGE" && perms.payment && reservationId) return <CancelButton kind="charge" id={id} reservationId={reservationId} label={msg("this room-bill item")} />;
+  if (r.source === "SALE" && perms.sale) return <CancelButton kind="sale" id={id} label={msg("this sale")} />;
+  if (r.source === "MOVEMENT" && perms.movement) return <CancelButton kind="movement" id={id} label={r.reference ?? msg("this movement")} />;
   return null;
 }

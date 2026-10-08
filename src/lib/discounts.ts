@@ -1,3 +1,5 @@
+import { msgf, type Localized } from "@/i18n/msg";
+
 /**
  * Manual discounts: a discount a staff member gives one guest, per room per
  * night, on top of the price the pricing engine calculates. Admin decides
@@ -28,6 +30,7 @@ export function discountLimit(permissions?: ReadonlySet<string>, rules: Discount
   return 0;
 }
 
-export function discountTooBigMessage(limit: number = DEFAULT_DISCOUNT_RULES.manualDiscountMax): string {
-  return `The most off a room is TZS ${limit.toLocaleString("en-US")} per night.`;
+/** For `new AppError(…)`: the English text with the amount, translated for whoever sees it. */
+export function discountTooBigMessage(limit: number = DEFAULT_DISCOUNT_RULES.manualDiscountMax): Localized {
+  return msgf("The most off a room is TZS {amount} per night.", { amount: limit.toLocaleString("en-US") });
 }

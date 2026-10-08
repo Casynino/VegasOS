@@ -1,4 +1,10 @@
+"use client";
+
+// A client component (no state): it is rendered by server pages and by client components alike, and speaks the
+// visitor's language (useT). Everything it takes is plain data or React nodes.
 import { formatNumber } from "@/lib/format";
+import { msg } from "@/i18n/msg";
+import { useT } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 import { typeScale } from "./tokens";
 
@@ -7,6 +13,16 @@ const SIZE = {
   md: "text-[1.75rem]",
   lg: "text-[clamp(2rem,1.6rem+1.2vw,2.5rem)]",
 } as const;
+
+/** The units in use, each with its own words ("/ night" → "/ 晚"); any other unit shows as "/ {unit}". */
+const UNITS: Record<string, string> = {
+  night: msg("/ night"),
+  day: msg("/ day"),
+  trip: msg("/ trip"),
+  person: msg("/ person"),
+  booking: msg("/ booking"),
+  pickup: msg("/ pickup"),
+};
 
 /**
  * "TZS 80,000 / night" — the amount in the display serif, currency and unit small.
@@ -34,15 +50,16 @@ export function PriceTag({
   note?: React.ReactNode;
   className?: string;
 }) {
+  const t = useT();
   return (
     <p className={cn("flex flex-wrap items-baseline gap-x-1.5 gap-y-1 text-pub-fg", className)}>
-      {from && <span className={cn(typeScale.meta, "mr-0.5 text-pub-muted")}>From</span>}
+      {from && <span className={cn(typeScale.meta, "mr-0.5 text-pub-muted")}>{t("From")}</span>}
       <span className={cn(typeScale.meta, "text-pub-muted")}>{currency}</span>
       <span className={cn(typeScale.price, SIZE[size], "leading-none")}>{formatNumber(amount)}</span>
-      {unit && <span className="text-[13px] text-pub-muted">/ {unit}</span>}
+      {unit && <span className="text-[13px] text-pub-muted">{Object.prototype.hasOwnProperty.call(UNITS, unit) ? t(UNITS[unit]) : t("/ {unit}", { unit: t(unit) })}</span>}
       {was != null && was > amount && (
         <s className="ml-1 text-[13px] text-pub-muted">
-          <span className="sr-only">instead of </span>
+          <span className="sr-only">{t("instead of")} </span>
           {currency} {formatNumber(was)}
         </s>
       )}

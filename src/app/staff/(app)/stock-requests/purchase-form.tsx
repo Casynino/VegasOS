@@ -11,6 +11,7 @@ import { formatTZS } from "@/lib/format";
 import { unitOf } from "@/lib/inventory";
 import { num, toBuyQty, unitWord, type PurchaseOptionsView, type StockLineView, type StockReqView } from "@/lib/stock-requests";
 import { savePurchaseAction } from "./actions";
+import { useT } from "@/i18n/client";
 
 type PL = {
   id: string; name: string; asked: number; approved: number; unit: string;
@@ -52,6 +53,7 @@ function totalOf(p: PL) {
 export function PurchaseForm({ r, options, today, onDone, onCancel }: {
   r: StockReqView; options: PurchaseOptionsView; today: string; onDone: () => void; onCancel: () => void;
 }) {
+  const t = useT();
   const p = r.purchase;
   const [lines, setLines] = useState<PL[]>(() => { const active = new Set(options.items.map((i) => i.id)); return r.lines.map((l) => initLine(l, active)); });
   const [supplier, setSupplier] = useState(p?.supplierId ?? (p?.supplierName ? OTHER : ""));
@@ -72,7 +74,7 @@ export function PurchaseForm({ r, options, today, onDone, onCancel }: {
   const rest = options.items.filter((i) => i.departmentId !== r.departmentId);
   const set = (id: string, patch: Partial<PL>) => setLines((ls) => ls.map((l) => (l.id === id ? { ...l, ...patch } : l)));
 
-  const total = lines.reduce((t, l) => t + totalOf(l), 0);
+  const total = lines.reduce((sum, l) => sum + totalOf(l), 0);
   const bought = lines.filter((l) => (Number(l.qty) || 0) > 0).length;
   // What the approved list would cost at the last prices paid — only where the units match.
   const est = lines.map((l) => {
@@ -80,12 +82,12 @@ export function PurchaseForm({ r, options, today, onDone, onCancel }: {
     return it && it.costPerUnit > 0 && unitWord(it.unit) === l.unit ? it.costPerUnit * l.approved : null;
   });
   const estKnown = est.filter((x): x is number => x != null);
-  const estimate = estKnown.reduce((t, x) => t + x, 0);
+  const estimate = estKnown.reduce((sum, x) => sum + x, 0);
 
   const pick = (f: File | null) => {
     if (!f) { setFile(null); return; }
-    if (!RECEIPT_TYPES.includes(f.type)) { toast.error("The receipt must be a photo (JPG, PNG, WebP, HEIC) or a PDF."); return; }
-    if (f.size > 5 * 1024 * 1024) { toast.error("The receipt is larger than 5 MB — take a smaller photo."); return; }
+    if (!RECEIPT_TYPES.includes(f.type)) { toast.error(t("The receipt must be a photo (JPG, PNG, WebP, HEIC) or a PDF.")); return; }
+    if (f.size > 5 * 1024 * 1024) { toast.error(t("The receipt is larger than 5 MB — take a smaller photo.")); return; }
     setFile(f); setNoReceipt(false);
   };
 
@@ -108,8 +110,8 @@ export function PurchaseForm({ r, options, today, onDone, onCancel }: {
     setSending(null);
     if (!res.ok) { toast.error(res.error); return; }
     toast.success(submit
-      ? `${res.data.purchaseNumber} sent for final approval · ${formatTZS(res.data.total)}`
-      : `${res.data.purchaseNumber} saved — finish it when you have the receipt.`);
+      ? t("{number} sent for final approval · {amount}", { number: res.data.purchaseNumber, amount: formatTZS(res.data.total) })
+      : t("{number} saved — finish it when you have the receipt.", { number: res.data.purchaseNumber }));
     onDone();
   });
 
@@ -118,14 +120,14 @@ export function PurchaseForm({ r, options, today, onDone, onCancel }: {
       {p?.correctionNote && (
         <div className="flex gap-3 rounded-2xl border border-rose-500/40 bg-rose-500/[0.08] px-4 py-3">
           <CornerUpLeft className="mt-0.5 size-4 shrink-0 text-rose-500" />
-          <p className="text-sm"><span className="font-semibold text-rose-600 dark:text-rose-300">Sent back for correction:</span> {p.correctionNote}</p>
+          <p className="text-sm"><span className="font-semibold text-rose-600 dark:text-rose-300">{t("Sent back for correction:")}</span> {p.correctionNote}</p>
         </div>
       )}
 
       {/* ── What was bought, line by line ── */}
       <section className="space-y-2">
-        <h3 className="text-sm font-semibold">What was bought</h3>
-        <p className="-mt-1 text-xs text-muted-foreground">Enter what the receipt says. Put 0 for anything not bought.</p>
+        <h3 className="text-sm font-semibold">{t("What was bought")}</h3>
+        <p className="-mt-1 text-xs text-muted-foreground">{t("Enter what the receipt says. Put 0 for anything not bought.")}</p>
         <ul className="space-y-2">
           {lines.map((l) => {
             const it = l.itemId ? itemById.get(l.itemId) : null;
@@ -136,41 +138,41 @@ export function PurchaseForm({ r, options, today, onDone, onCancel }: {
             return (
               <li key={l.id} className={cn("rounded-2xl border p-3", none ? "border-dashed border-border bg-muted/20" : "border-border/70 bg-background/40")}>
                 <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-                  <p className="text-sm font-semibold">{l.name}</p>
+                  <p className="text-sm font-semibold">{t(l.name)}</p>
                   <p className="text-xs text-muted-foreground">
-                    Asked {num(l.asked)} {l.unit}{l.approved !== l.asked && <> · <span className="font-medium text-foreground">approved {num(l.approved)} {l.unit}</span></>}
+                    {t("Asked {qty} {unit}", { qty: num(l.asked), unit: t(l.unit) })}{l.approved !== l.asked && <> · <span className="font-medium text-foreground">{t("approved {qty} {unit}", { qty: num(l.approved), unit: t(l.unit) })}</span></>}
                   </p>
                 </div>
                 <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,0.8fr)_minmax(0,0.9fr)_minmax(0,1fr)]">
                   <label className="col-span-2 space-y-1 sm:col-span-1">
-                    <span className="text-[11px] font-medium text-muted-foreground">Stock item</span>
+                    <span className="text-[11px] font-medium text-muted-foreground">{t("Stock item")}</span>
                     <NativeSelect value={l.itemId} className="h-10" onChange={(e) => {
                       const next = e.target.value ? itemById.get(e.target.value) : null;
                       // A prefilled approved amount in another unit is not what goes into stock: ask again.
                       set(l.id, { itemId: e.target.value, offName: null, ...(l.qty === num(l.approved) && !sameUnit(next?.unit, l.unit) ? { qty: "" } : {}) });
                     }}>
-                      <option value="">Not kept in stock</option>
-                      {l.offName && <option value={l.itemId} disabled>{l.offName} (switched off — choose another)</option>}
-                      {own.length > 0 && <optgroup label={`${r.departmentName} stores`}>{own.map((i) => <option key={i.id} value={i.id}>{i.name} ({unitOf(i.unit).label})</option>)}</optgroup>}
-                      {rest.length > 0 && <optgroup label="Other stores">{rest.map((i) => <option key={i.id} value={i.id}>{i.name} ({unitOf(i.unit).label})</option>)}</optgroup>}
+                      <option value="">{t("Not kept in stock")}</option>
+                      {l.offName && <option value={l.itemId} disabled>{t("{name} (switched off — choose another)", { name: t(l.offName) })}</option>}
+                      {own.length > 0 && <optgroup label={t("{department} stores", { department: t(r.departmentName) })}>{own.map((i) => <option key={i.id} value={i.id}>{t(i.name)} ({t(unitOf(i.unit).label)})</option>)}</optgroup>}
+                      {rest.length > 0 && <optgroup label={t("Other stores")}>{rest.map((i) => <option key={i.id} value={i.id}>{t(i.name)} ({t(unitOf(i.unit).label)})</option>)}</optgroup>}
                     </NativeSelect>
                   </label>
                   <label className="space-y-1">
-                    <span className="text-[11px] font-medium text-muted-foreground">Bought ({unit})</span>
+                    <span className="text-[11px] font-medium text-muted-foreground">{t("Bought ({unit})", { unit: t(unit) })}</span>
                     <Input value={l.qty} onChange={(e) => set(l.id, { qty: decimal(e.target.value) })} inputMode="decimal" className="h-10 tabular-nums"
-                      placeholder={it && !sameUnit(it.unit, l.unit) ? `asked ${num(l.approved)} ${l.unit}` : "0"} />
-                    {it && !sameUnit(it.unit, l.unit) && <span className="block text-[10.5px] text-amber-600 dark:text-amber-300">Asked in {l.unit} — enter how many {unitOf(it.unit).plural}</span>}
+                      placeholder={it && !sameUnit(it.unit, l.unit) ? t("asked {qty} {unit}", { qty: num(l.approved), unit: t(l.unit) }) : "0"} />
+                    {it && !sameUnit(it.unit, l.unit) && <span className="block text-[10.5px] text-amber-600 dark:text-amber-300">{t("Asked in {unit} — enter how many {stockUnit}", { unit: t(l.unit), stockUnit: t(unitOf(it.unit).plural) })}</span>}
                   </label>
                   <label className="space-y-1">
-                    <span className="text-[11px] font-medium text-muted-foreground">Price per {it ? unitOf(it.unit).label : "unit"} (TZS)</span>
+                    <span className="text-[11px] font-medium text-muted-foreground">{it ? t("Price per {unit} (TZS)", { unit: t(unitOf(it.unit).label) }) : t("Price per unit (TZS)")}</span>
                     <Input value={l.price} onChange={(e) => set(l.id, { price: digits(e.target.value) })} inputMode="numeric" disabled={none}
-                      placeholder={it?.costPerUnit ? `last ${it.costPerUnit.toLocaleString("en-US")}` : "0"} className="h-10 tabular-nums" />
+                      placeholder={it?.costPerUnit ? t("last {price}", { price: it.costPerUnit.toLocaleString("en-US") }) : "0"} className="h-10 tabular-nums" />
                   </label>
                   <div className="col-span-2 space-y-1 sm:col-span-1">
                     <span className="flex items-center justify-between gap-2 text-[11px] font-medium text-muted-foreground">
-                      <label htmlFor={`total-${l.id}`}>Line total (TZS)</label>
+                      <label htmlFor={`total-${l.id}`}>{t("Line total (TZS)")}</label>
                       {l.touched && lineTotal !== auto && !none && (
-                        <button type="button" onClick={() => set(l.id, { touched: false, total: "" })} className="font-semibold text-amber-600 hover:underline dark:text-amber-300">= qty × price</button>
+                        <button type="button" onClick={() => set(l.id, { touched: false, total: "" })} className="font-semibold text-amber-600 hover:underline dark:text-amber-300">{t("= qty × price")}</button>
                       )}
                     </span>
                     <Input id={`total-${l.id}`} value={none ? "0" : l.touched ? l.total : String(auto)} disabled={none} inputMode="numeric"
@@ -178,7 +180,7 @@ export function PurchaseForm({ r, options, today, onDone, onCancel }: {
                   </div>
                   {it?.tracksExpiry && !none && (
                     <label className="col-span-2 space-y-1 sm:col-span-4 sm:flex sm:items-center sm:gap-3 sm:space-y-0">
-                      <span className="text-[11px] font-medium text-muted-foreground">Expiry date on the pack</span>
+                      <span className="text-[11px] font-medium text-muted-foreground">{t("Expiry date on the pack")}</span>
                       <Input type="date" value={l.expiresOn} min={on} onChange={(e) => set(l.id, { expiresOn: e.target.value })} className="h-10 sm:w-48" />
                     </label>
                   )}
@@ -192,60 +194,60 @@ export function PurchaseForm({ r, options, today, onDone, onCancel }: {
       {/* ── Where, the receipt, the day and the account ── */}
       <section className="grid gap-3 rounded-2xl border border-border/70 bg-background/40 p-3 sm:grid-cols-2">
         <label className="space-y-1">
-          <span className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground"><Store className="size-3.5" />Bought from</span>
+          <span className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground"><Store className="size-3.5" />{t("Bought from")}</span>
           <NativeSelect value={supplier} onChange={(e) => setSupplier(e.target.value)} className="h-10">
-            <option value="">Choose the supplier…</option>
+            <option value="">{t("Choose the supplier…")}</option>
             {options.suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            <option value={OTHER}>Someone else — type the name</option>
+            <option value={OTHER}>{t("Someone else — type the name")}</option>
           </NativeSelect>
-          {supplier === OTHER && <Input value={supplierName} onChange={(e) => setSupplierName(e.target.value)} maxLength={120} placeholder="e.g. Mama Asha, Kariakoo market" className="mt-1.5 h-10" autoFocus />}
+          {supplier === OTHER && <Input value={supplierName} onChange={(e) => setSupplierName(e.target.value)} maxLength={120} placeholder={t("e.g. Mama Asha, Kariakoo market")} className="mt-1.5 h-10" autoFocus />}
         </label>
         <label className="space-y-1">
-          <span className="text-[11px] font-medium text-muted-foreground">Receipt number</span>
-          <Input value={receiptNumber} onChange={(e) => setReceiptNumber(e.target.value)} maxLength={60} placeholder="As printed on the receipt" className="h-10" />
+          <span className="text-[11px] font-medium text-muted-foreground">{t("Receipt number")}</span>
+          <Input value={receiptNumber} onChange={(e) => setReceiptNumber(e.target.value)} maxLength={60} placeholder={t("As printed on the receipt")} className="h-10" />
         </label>
         <div className="space-y-1 sm:col-span-2">
-          <span className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground"><Paperclip className="size-3.5" />Receipt photo or PDF</span>
+          <span className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground"><Paperclip className="size-3.5" />{t("Receipt photo or PDF")}</span>
           <div className="flex flex-wrap items-center gap-2">
             <input ref={fileRef} type="file" accept={RECEIPT_TYPES.join(",")} className="hidden" onChange={(e) => pick(e.target.files?.[0] ?? null)} />
-            <Button type="button" variant="outline" className="h-10" onClick={() => fileRef.current?.click()}><Paperclip />{file ? "Change the file" : p?.receiptFileId ? "Replace the receipt" : "Add the receipt"}</Button>
+            <Button type="button" variant="outline" className="h-10" onClick={() => fileRef.current?.click()}><Paperclip />{file ? t("Change the file") : p?.receiptFileId ? t("Replace the receipt") : t("Add the receipt")}</Button>
             {file && (
               <span className="inline-flex min-w-0 items-center gap-1.5 rounded-lg bg-emerald-500/10 px-2.5 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
                 <span className="truncate">{file.name}</span>
-                <button type="button" aria-label="Remove the file" onClick={() => { setFile(null); if (fileRef.current) fileRef.current.value = ""; }}><X className="size-3.5" /></button>
+                <button type="button" aria-label={t("Remove the file")} onClick={() => { setFile(null); if (fileRef.current) fileRef.current.value = ""; }}><X className="size-3.5" /></button>
               </span>
             )}
             {!file && p?.receiptFileId && (
               <a href={`/api/files/${p.receiptFileId}`} target="_blank" rel="noopener" className="inline-flex items-center gap-1 text-xs font-semibold text-amber-600 hover:underline dark:text-amber-300">
-                <ExternalLink className="size-3.5" />Open the receipt on file
+                <ExternalLink className="size-3.5" />{t("Open the receipt on file")}
               </a>
             )}
             {!file && !p?.receiptFileId && (
               <button type="button" onClick={() => setNoReceipt((v) => !v)} aria-pressed={noReceipt}
                 className={cn("text-xs font-medium hover:underline", noReceipt ? "text-foreground" : "text-muted-foreground")}>
-                {noReceipt ? "I have a receipt after all" : "There is no receipt"}
+                {noReceipt ? t("I have a receipt after all") : t("There is no receipt")}
               </button>
             )}
           </div>
           {noReceipt && !file && !p?.receiptFileId && (
             <Input value={noReceiptReason} onChange={(e) => setNoReceiptReason(e.target.value)} maxLength={200} autoFocus
-              placeholder="No receipt because… e.g. market seller gives no receipts" className="mt-1.5 h-10" />
+              placeholder={t("No receipt because… e.g. market seller gives no receipts")} className="mt-1.5 h-10" />
           )}
         </div>
         <label className="space-y-1">
-          <span className="text-[11px] font-medium text-muted-foreground">Bought on</span>
+          <span className="text-[11px] font-medium text-muted-foreground">{t("Bought on")}</span>
           <Input type="date" value={on} max={today} onChange={(e) => setOn(e.target.value)} className="h-10" />
         </label>
         <label className="space-y-1">
-          <span className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground"><Wallet className="size-3.5" />Paid from</span>
+          <span className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground"><Wallet className="size-3.5" />{t("Paid from")}</span>
           <NativeSelect value={accountId} onChange={(e) => setAccountId(e.target.value)} className="h-10">
-            <option value="">Which company account paid?</option>
-            {options.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+            <option value="">{t("Which company account paid?")}</option>
+            {options.accounts.map((a) => <option key={a.id} value={a.id}>{t(a.name)}</option>)}
           </NativeSelect>
         </label>
         <label className="space-y-1 sm:col-span-2">
-          <span className="text-[11px] font-medium text-muted-foreground">Notes (optional)</span>
-          <Input value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} placeholder="e.g. Tomatoes were cheaper at the market" className="h-10" />
+          <span className="text-[11px] font-medium text-muted-foreground">{t("Notes (optional)")}</span>
+          <Input value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} placeholder={t("e.g. Tomatoes were cheaper at the market")} className="h-10" />
         </label>
       </section>
 
@@ -253,22 +255,22 @@ export function PurchaseForm({ r, options, today, onDone, onCancel }: {
       <div className="sticky bottom-0 -mx-5 space-y-3 border-t border-border/70 bg-popover/95 px-5 pb-1 pt-3 backdrop-blur">
         <div className="flex flex-wrap items-end justify-between gap-2">
           <div className="leading-tight">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Actually paid</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">{t("Actually paid")}</p>
             <p className="text-[22px] font-semibold tabular-nums">{formatTZS(total)}</p>
           </div>
           <p className="text-right text-xs text-muted-foreground">
-            {bought} of {lines.length} item{lines.length === 1 ? "" : "s"} bought
+            {t.plural(lines.length, "{bought} of {n} item bought", "{bought} of {n} items bought", { bought })}
             {estKnown.length > 0 && (
               <span className="block">
-                At the last prices, what was approved ≈ {formatTZS(estimate)}{estKnown.length < lines.length ? ` (${estKnown.length} of ${lines.length} items)` : ""}
+                {t("At the last prices, what was approved ≈ {amount}", { amount: formatTZS(estimate) })}{estKnown.length < lines.length ? ` ${t("({known} of {total} items)", { known: estKnown.length, total: lines.length })}` : ""}
               </span>
             )}
           </p>
         </div>
         <div className="grid grid-cols-[auto_auto_1fr] gap-2">
-          <Button variant="ghost" className="h-11" onClick={onCancel} disabled={pending}>Cancel</Button>
-          <Button variant="outline" className="h-11" onClick={() => send(false)} disabled={pending}>{sending === "save" ? <Loader2 className="animate-spin" /> : <Save />}Save</Button>
-          <Button className="h-11" onClick={() => send(true)} disabled={pending || bought === 0}>{sending === "submit" ? <Loader2 className="animate-spin" /> : <Send />}Send for final approval</Button>
+          <Button variant="ghost" className="h-11" onClick={onCancel} disabled={pending}>{t("Cancel")}</Button>
+          <Button variant="outline" className="h-11" onClick={() => send(false)} disabled={pending}>{sending === "save" ? <Loader2 className="animate-spin" /> : <Save />}{t("Save")}</Button>
+          <Button className="h-11" onClick={() => send(true)} disabled={pending || bought === 0}>{sending === "submit" ? <Loader2 className="animate-spin" /> : <Send />}{t("Send for final approval")}</Button>
         </div>
       </div>
     </div>

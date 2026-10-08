@@ -13,11 +13,16 @@ import { RoomGrid } from "@/components/staff/rooms/room-grid";
 import { roomGridPerms, roomQrInfo, watchesRooms } from "./room-page-data";
 import { RoomDialog } from "./manage/dialogs";
 import { db } from "@/server/db";
+import { getT } from "@/i18n/server";
 
-export const metadata: Metadata = { title: "Rooms" };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT();
+  return { title: t("Rooms") };
+}
 
 export default async function RoomsPage() {
   const user = await requirePagePermission("rooms.view");
+  const t = await getT();
   const today = await businessToday();
   const canOrder = can(user, "restaurant.orders");
   const canAdd = can(user, "rooms.manage");
@@ -32,24 +37,24 @@ export default async function RoomsPage() {
   return (
     <div className="w-full">
       <PageHeader
-        title="Rooms"
+        title={t("Rooms")}
         description={watchesRooms(user)
-          ? "Every room at a glance — tap one to see who is in it, the bill and its history. Your decisions are on each room: move a guest, close or open a room, release a no-show's room. Reception runs the rest."
-          : "Every room at a glance. Click a room to check in or out, open the stay, or update housekeeping."}
+          ? t("Every room at a glance — tap one to see who is in it, the bill and its history. Your decisions are on each room: move a guest, close or open a room, release a no-show's room. Reception runs the rest.")
+          : t("Every room at a glance. Click a room to check in or out, open the stay, or update housekeeping.")}
         actions={(
           <div className="flex flex-wrap gap-2">
-            <Link href="/staff/rooms/qr" className={buttonVariants({ variant: "outline" })}><QrCode /> Room QR codes</Link>
+            <Link href="/staff/rooms/qr" className={buttonVariants({ variant: "outline" })}><QrCode /> {t("Room QR codes")}</Link>
             {canAdd && (
               <Link href="/staff/rooms/manage" className={buttonVariants({ variant: "outline" })}>
-                <Settings2 /> Room types & inventory
+                <Settings2 /> {t("Room types & inventory")}
               </Link>
             )}
             {can(user, "pricing.manage") && (
               <Link href="/staff/settings/pricing" className={buttonVariants({ variant: "outline" })}>
-                <Tags /> Room pricing
+                <Tags /> {t("Room pricing")}
               </Link>
             )}
-            {canAdd && <RoomDialog types={types} />}
+            {canAdd && <RoomDialog types={types.map((rt) => ({ id: rt.id, name: t(rt.name) }))} />}
           </div>
         )}
       />

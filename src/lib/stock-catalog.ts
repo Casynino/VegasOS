@@ -2,8 +2,10 @@
  * What the kitchen and bar ask the manager for — the ingredients behind the menu's dishes and
  * the supplies they use every day, each with a picture so it is clear at a glance. Drinks come
  * from the live menu with their own photos (see the stock page). Anything missing can still be
- * typed ("Something else").
+ * typed ("Something else"). Names and units are English (what is kept on a request) — shown with t(…).
  */
+import { msg } from "@/i18n/msg";
+
 export type StockItem = { name: string; unit: string; emoji: string; image?: string | null };
 export type StockGroup = { key: string; name: string; emoji: string; items: StockItem[] };
 
@@ -11,46 +13,46 @@ const g = (key: string, name: string, emoji: string, items: [string, string, str
   ({ key, name, emoji, items: items.map(([n, unit, e]) => ({ name: n, unit, emoji: e })) });
 
 export const STOCK_CATALOG: StockGroup[] = [
-  g("meat", "Meat & fish", "🥩", [
-    ["Beef", "kg", "🥩"], ["Beef steak", "kg", "🥩"], ["Beef mince", "kg", "🥩"], ["Goat meat", "kg", "🍖"], ["Whole chicken", "pcs", "🐔"],
-    ["Chicken wings", "kg", "🍗"], ["Chicken breast", "kg", "🍗"], ["Sausages", "packs", "🌭"], ["Bacon", "packs", "🥓"],
-    ["Whole fish (tilapia)", "pcs", "🐟"], ["Fish fillet", "kg", "🐟"], ["Dagaa", "kg", "🐠"],
+  g("meat", msg("Meat & fish"), "🥩", [
+    [msg("Beef"), "kg", "🥩"], [msg("Beef steak"), "kg", "🥩"], [msg("Beef mince"), "kg", "🥩"], [msg("Goat meat"), "kg", "🍖"], [msg("Whole chicken"), "pcs", "🐔"],
+    [msg("Chicken wings"), "kg", "🍗"], [msg("Chicken breast"), "kg", "🍗"], [msg("Sausages"), "packs", "🌭"], [msg("Bacon"), "packs", "🥓"],
+    [msg("Whole fish (tilapia)"), "pcs", "🐟"], [msg("Fish fillet"), "kg", "🐟"], [msg("Dagaa"), "kg", "🐠"],
   ]),
-  g("veg", "Vegetables & fruit", "🥬", [
-    ["Onions", "kg", "🧅"], ["Tomatoes", "kg", "🍅"], ["Potatoes", "kg", "🥔"], ["Carrots", "kg", "🥕"], ["Green pepper", "kg", "🫑"],
-    ["Cabbage", "pcs", "🥬"], ["Sukuma wiki", "bunches", "🥬"], ["Spinach", "bunches", "🥬"], ["Lettuce", "pcs", "🥗"], ["Cucumber", "kg", "🥒"],
-    ["Mushrooms", "kg", "🍄"], ["Garlic", "kg", "🧄"], ["Ginger", "kg", "🫚"], ["Pili-pili (chilli)", "kg", "🌶️"], ["Coriander (dhania)", "bunches", "🌿"],
-    ["Green bananas (ndizi)", "bunches", "🍌"], ["Lemons", "kg", "🍋"], ["Limes", "kg", "🍋"], ["Mangoes", "kg", "🥭"], ["Passion fruit", "kg", "🍈"],
-    ["Pineapples", "pcs", "🍍"], ["Watermelons", "pcs", "🍉"], ["Bananas", "bunches", "🍌"], ["Avocados", "pcs", "🥑"], ["Mint leaves", "bunches", "🌿"],
+  g("veg", msg("Vegetables & fruit"), "🥬", [
+    [msg("Onions"), "kg", "🧅"], [msg("Tomatoes"), "kg", "🍅"], [msg("Potatoes"), "kg", "🥔"], [msg("Carrots"), "kg", "🥕"], [msg("Green pepper"), "kg", "🫑"],
+    [msg("Cabbage"), "pcs", "🥬"], [msg("Sukuma wiki"), "bunches", "🥬"], [msg("Spinach"), "bunches", "🥬"], [msg("Lettuce"), "pcs", "🥗"], [msg("Cucumber"), "kg", "🥒"],
+    [msg("Mushrooms"), "kg", "🍄"], [msg("Garlic"), "kg", "🧄"], [msg("Ginger"), "kg", "🫚"], [msg("Pili-pili (chilli)"), "kg", "🌶️"], [msg("Coriander (dhania)"), "bunches", "🌿"],
+    [msg("Green bananas (ndizi)"), "bunches", "🍌"], [msg("Lemons"), "kg", "🍋"], [msg("Limes"), "kg", "🍋"], [msg("Mangoes"), "kg", "🥭"], [msg("Passion fruit"), "kg", "🍈"],
+    [msg("Pineapples"), "pcs", "🍍"], [msg("Watermelons"), "pcs", "🍉"], [msg("Bananas"), "bunches", "🍌"], [msg("Avocados"), "pcs", "🥑"], [msg("Mint leaves"), "bunches", "🌿"],
   ]),
-  g("dry", "Rice, flour & dry food", "🍚", [
-    ["Rice", "kg", "🍚"], ["Basmati rice", "kg", "🍚"], ["Maize flour (sembe)", "kg", "🌽"], ["Wheat flour", "kg", "🌾"], ["Spaghetti", "packs", "🍝"],
-    ["Beans", "kg", "🫘"], ["Sugar", "kg", "🍬"], ["Salt", "kg", "🧂"], ["Bread (toast loaf)", "pcs", "🍞"], ["Burger buns", "packs", "🍔"],
-    ["Spring roll pastry", "packs", "🥟"], ["Coconut milk", "tins", "🥥"], ["Tomato paste", "tins", "🥫"], ["Baked beans", "tins", "🥫"],
+  g("dry", msg("Rice, flour & dry food"), "🍚", [
+    [msg("Rice"), "kg", "🍚"], [msg("Basmati rice"), "kg", "🍚"], [msg("Maize flour (sembe)"), "kg", "🌽"], [msg("Wheat flour"), "kg", "🌾"], [msg("Spaghetti"), "packs", "🍝"],
+    [msg("Beans"), "kg", "🫘"], [msg("Sugar"), "kg", "🍬"], [msg("Salt"), "kg", "🧂"], [msg("Bread (toast loaf)"), "pcs", "🍞"], [msg("Burger buns"), "packs", "🍔"],
+    [msg("Spring roll pastry"), "packs", "🥟"], [msg("Coconut milk"), "tins", "🥥"], [msg("Tomato paste"), "tins", "🥫"], [msg("Baked beans"), "tins", "🥫"],
   ]),
-  g("dairy", "Dairy & eggs", "🥚", [
-    ["Eggs", "trays", "🥚"], ["Milk", "litres", "🥛"], ["Butter", "kg", "🧈"], ["Cheese", "kg", "🧀"], ["Cooking cream", "litres", "🥛"], ["Yoghurt", "litres", "🥛"],
+  g("dairy", msg("Dairy & eggs"), "🥚", [
+    [msg("Eggs"), "trays", "🥚"], [msg("Milk"), "litres", "🥛"], [msg("Butter"), "kg", "🧈"], [msg("Cheese"), "kg", "🧀"], [msg("Cooking cream"), "litres", "🥛"], [msg("Yoghurt"), "litres", "🥛"],
   ]),
-  g("spice", "Oil, spices & sauces", "🫒", [
-    ["Cooking oil", "litres", "🫒"], ["Pilau masala", "packs", "🧂"], ["Curry powder", "packs", "🍛"], ["Biryani spice", "packs", "🍛"], ["Black pepper", "packs", "🧂"],
-    ["Mixed spices", "packs", "🧂"], ["Stock cubes", "packs", "🍲"], ["BBQ sauce", "bottles", "🥫"], ["Tomato sauce (ketchup)", "bottles", "🍅"],
-    ["Chilli sauce", "bottles", "🌶️"], ["Mayonnaise", "jars", "🫙"], ["Vinegar", "bottles", "🍶"], ["Soy sauce", "bottles", "🍶"],
+  g("spice", msg("Oil, spices & sauces"), "🫒", [
+    [msg("Cooking oil"), "litres", "🫒"], [msg("Pilau masala"), "packs", "🧂"], [msg("Curry powder"), "packs", "🍛"], [msg("Biryani spice"), "packs", "🍛"], [msg("Black pepper"), "packs", "🧂"],
+    [msg("Mixed spices"), "packs", "🧂"], [msg("Stock cubes"), "packs", "🍲"], [msg("BBQ sauce"), "bottles", "🥫"], [msg("Tomato sauce (ketchup)"), "bottles", "🍅"],
+    [msg("Chilli sauce"), "bottles", "🌶️"], [msg("Mayonnaise"), "jars", "🫙"], [msg("Vinegar"), "bottles", "🍶"], [msg("Soy sauce"), "bottles", "🍶"],
   ]),
-  g("hot", "Tea & coffee", "☕", [
-    ["Tea leaves", "packs", "🍃"], ["Tea bags", "boxes", "🍵"], ["Coffee", "packs", "☕"], ["Drinking chocolate", "packs", "🍫"],
+  g("hot", msg("Tea & coffee"), "☕", [
+    [msg("Tea leaves"), "packs", "🍃"], [msg("Tea bags"), "boxes", "🍵"], [msg("Coffee"), "packs", "☕"], [msg("Drinking chocolate"), "packs", "🍫"],
   ]),
-  g("supplies", "Supplies", "📦", [
-    ["Cooking gas", "cylinders", "🔥"], ["Charcoal", "bags", "🪵"], ["Ice", "bags", "🧊"], ["Takeaway boxes", "packs", "🥡"], ["Takeaway cups", "packs", "🥤"],
-    ["Straws", "packs", "🥤"], ["Serviettes", "packs", "🧻"], ["Kitchen foil", "rolls", "🧻"], ["Cling film", "rolls", "🧻"], ["Dish soap", "litres", "🧴"],
-    ["Sponges", "packs", "🧽"], ["Rubbish bags", "packs", "🗑️"], ["Gloves", "boxes", "🧤"],
+  g("supplies", msg("Supplies"), "📦", [
+    [msg("Cooking gas"), "cylinders", "🔥"], [msg("Charcoal"), "bags", "🪵"], [msg("Ice"), "bags", "🧊"], [msg("Takeaway boxes"), "packs", "🥡"], [msg("Takeaway cups"), "packs", "🥤"],
+    [msg("Straws"), "packs", "🥤"], [msg("Serviettes"), "packs", "🧻"], [msg("Kitchen foil"), "rolls", "🧻"], [msg("Cling film"), "rolls", "🧻"], [msg("Dish soap"), "litres", "🧴"],
+    [msg("Sponges"), "packs", "🧽"], [msg("Rubbish bags"), "packs", "🗑️"], [msg("Gloves"), "boxes", "🧤"],
   ]),
 ];
 
 /** A drink's usual unit when the bar orders it: beer and soda by the crate, water by the pack, the rest by the bottle. */
 export function drinkUnit(section: string, name: string) {
-  if (/water/i.test(name)) return "packs";
-  if (/beer|lager|soda|soft/i.test(`${section} ${name}`)) return "crates";
-  return "bottles";
+  if (/water/i.test(name)) return msg("packs");
+  if (/beer|lager|soda|soft/i.test(`${section} ${name}`)) return msg("crates");
+  return msg("bottles");
 }
 /** A picture for a drink without a photo. */
 export function drinkEmoji(section: string, name: string) {
@@ -58,4 +60,4 @@ export function drinkEmoji(section: string, name: string) {
   return /water/i.test(name) ? "💧" : /soda|soft/i.test(s) ? "🥤" : /beer|lager/i.test(s) ? "🍺" : /wine|champ/i.test(s) ? "🍷" : /whisk/i.test(s) ? "🥃" : "🍸";
 }
 
-export const STOCK_UNITS = ["kg", "g", "pcs", "litres", "bottles", "crates", "packs", "trays", "bags", "boxes", "bunches", "tins", "jars", "rolls", "cylinders"];
+export const STOCK_UNITS = ["kg", "g", msg("pcs"), msg("litres"), msg("bottles"), msg("crates"), msg("packs"), msg("trays"), msg("bags"), msg("boxes"), msg("bunches"), msg("tins"), msg("jars"), msg("rolls"), msg("cylinders")];

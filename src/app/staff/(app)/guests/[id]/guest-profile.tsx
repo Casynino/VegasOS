@@ -17,21 +17,39 @@ import { REQUEST_TYPE_LABEL } from "@/lib/request-meta";
 import { TRIP_STATUS_META, TRIP_TYPE_LABEL } from "@/lib/transport-meta";
 import { GUEST_MESSAGE_TYPES, internationalPhone, type GuestMessageType } from "@/lib/guest-messages";
 import { buttonVariants } from "@/components/ui/button";
+import { getT } from "@/i18n/server";
+import { msg } from "@/i18n/msg";
+import { DEFAULT_LOCALE } from "@/i18n/config";
+import type { T } from "@/i18n/translate";
 import { cn } from "@/lib/utils";
 import { GuestMessenger, type GuestMessageOption } from "@/components/staff/reception/guest-messenger";
+import { said } from "@/app/staff/(app)/collections/collection-lines";
 import { GuestDetails, type DetailRow } from "./guest-details";
-import { EverythingWithUs } from "./everything-with-us";
+import { EverythingWithUs, shownName } from "./everything-with-us";
 
 const OPEN_ORDER = ["PENDING", "ACCEPTED", "PREPARING", "READY", "OUT_FOR_DELIVERY"] as const;
 const ORDER_STATUS: Record<string, string> = {
-  PENDING: "New", ACCEPTED: "Accepted", PREPARING: "Preparing", READY: "Ready to serve", OUT_FOR_DELIVERY: "Serving", DELIVERED: "Served", COMPLETED: "Done", COLLECTED: "Collected",
+  PENDING: msg("New"), ACCEPTED: msg("Accepted"), PREPARING: msg("Preparing"), READY: msg("Ready to serve"), OUT_FOR_DELIVERY: msg("Serving"),
+  DELIVERED: msg("Served"), COMPLETED: msg("Done"), COLLECTED: msg("Collected"),
 };
 
-const CHANNEL: Record<string, string> = { WHATSAPP: "WhatsApp", SMS: "SMS", EMAIL: "Email", COPY: "Copied", CALL: "Call" };
-const ID_WORD: Record<string, string> = { PASSPORT: "Passport", NATIONAL_ID: "National ID", DRIVING_LICENCE: "Driving licence", VOTER_ID: "Voter ID", OTHER: "ID" };
+const CHANNEL: Record<string, string> = { WHATSAPP: "WhatsApp", SMS: msg("SMS"), EMAIL: msg("Email"), COPY: msg("Copied"), CALL: msg("Call") };
+const ID_WORD: Record<string, string> = { PASSPORT: msg("Passport"), NATIONAL_ID: msg("National ID"), DRIVING_LICENCE: msg("Driving licence"), VOTER_ID: msg("Voter ID"), OTHER: msg("ID") };
 const shortNo = (n: string) => `#${n.replace(/^ORD-\d{4}-0*/, "")}`;
-const day = (d: Date) => formatBusinessDate(fromDbDate(d)).replace(/^\w+,?\s*/, "");
-const dayMonth = (d: Date) => day(d).replace(/\s\d{4}$/, "");
+/** Dates the reader's way: "5 Oct 2026" / "2026年10月5日" (and without the year). */
+const dates = (t: T) => {
+  const en = t.locale === DEFAULT_LOCALE;
+  const full = new Intl.DateTimeFormat(t.intl, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+  const short = new Intl.DateTimeFormat(t.intl, { day: "numeric", month: "short", timeZone: "UTC" });
+  const day = (d: Date) => (en ? formatBusinessDate(fromDbDate(d)).replace(/^\w+,?\s*/, "") : full.format(d));
+  return {
+    day,
+    dayMonth: (d: Date) => (en ? day(d).replace(/\s\d{4}$/, "") : short.format(d)),
+    dateTime: (d: Date) => (en ? formatDateTime(d) : t.dateTime(d)),
+    time: (d: Date) => (en ? formatTime(d) : t.time(d)),
+    business: (d: string) => (en ? formatBusinessDate(d) : t.date(d)),
+  };
+};
 
 /**
  * One customer, everything in its place: who they are and one-tap contact at the top, their
@@ -42,6 +60,8 @@ const dayMonth = (d: Date) => day(d).replace(/\s\d{4}$/, "");
  * (balances, room payments, charges) only for reception and managers — never for a waiter.
  */
 export async function GuestProfile({ id, user }: { id: string; user: CurrentUser }) {
+  const t = await getT();
+  const { day, dayMonth, dateTime, time, business } = dates(t);
   const [g, today] = await Promise.all([
     db.guest.findUnique({
       where: { id },
@@ -91,9 +111,9 @@ export async function GuestProfile({ id, user }: { id: string; user: CurrentUser
   const live = rs.filter((r) => r.status !== "CANCELLED" && r.status !== "NO_SHOW");
   const completed = rs.filter((r) => r.status === "CHECKED_OUT");
   const nightsOf = (r: (typeof rs)[number]) => r.rooms.reduce((m, x) => Math.max(m, x.isDayUse ? 0 : x.nights), 0);
-  const nights = completed.reduce((t, r) => t + nightsOf(r), 0);
-  const spent = completed.reduce((t, r) => t + r.netAmount, 0);
-  const owed = live.filter((r) => r.billTo === "GUEST").reduce((t, r) => t + Math.max(0, r.balanceAmount), 0);
+  const nights = completed.reduce((n, r) => n + nightsOf(r), 0);
+  const spent = completed.reduce((n, r) => n + r.netAmount, 0);
+  const owed = live.filter((r) => r.billTo === "GUEST").reduce((n, r) => n + Math.max(0, r.balanceAmount), 0);
   const foodPaid = orderMoney._sum.paidAmount ?? 0;
   const foodDue = Math.max(0, (orderMoney._sum.total ?? 0) - foodPaid);
   const lastVisit = [...completed.map((r) => fromDbDate(r.departureDate)), ...(orders[0] ? [orders[0].createdAt.toISOString().slice(0, 10)] : [])].sort().at(-1) ?? null;
@@ -105,9 +125,9 @@ export async function GuestProfile({ id, user }: { id: string; user: CurrentUser
   const shared = current ? null : h.now.stays.find((x) => x.guestIds[0] !== g.id) ?? null;
   // In a room and at a table at once: "Room 305 · at Outside 3 now · TZS 45,000 on the room · TZS 20,000 to pay at the table".
   const both = h.now.stays.length && h.now.table ? [
-    `Room ${h.now.stays.map((x) => x.rooms).filter(Boolean).join(", ") || "—"}`, `at ${h.now.table.name} now`,
-    h.now.table.onTheirRoom ? `${formatTZS(h.now.table.onTheirRoom)} on the room` : null,
-    h.now.table.money.due ? `${formatTZS(h.now.table.money.due)} to pay at the table` : h.now.table.money.orders ? "nothing to pay at the table" : null,
+    t("Room {room}", { room: h.now.stays.map((x) => x.rooms).filter(Boolean).join(", ") || "—" }), t("at {place} now", { place: t(h.now.table.name) }),
+    h.now.table.onTheirRoom ? t("{amount} on the room", { amount: formatTZS(h.now.table.onTheirRoom) }) : null,
+    h.now.table.money.due ? t("{amount} to pay at the table", { amount: formatTZS(h.now.table.money.due) }) : h.now.table.money.orders ? t("nothing to pay at the table") : null,
     h.now.stays.find((x) => x.foodPayer)?.foodPayer ?? null,
   ].filter(Boolean).join(" · ") : null;
 
@@ -121,8 +141,8 @@ export async function GuestProfile({ id, user }: { id: string; user: CurrentUser
     link = `${origin}/stay/${await ensureGuestToken(db, focus.id)}`;
     const [b, w] = await Promise.all([guestMessage(focus.id, "BOOKING_CREATED", origin), focus.status === "CHECKED_IN" ? guestMessage(focus.id, "WELCOME", origin) : null]);
     options = [
-      { type: "BOOKING_CREATED", label: "Booking details", text: b.text, subject: b.subject },
-      ...(w ? [{ type: "WELCOME" as const, label: "Welcome & menu", text: w.text, subject: w.subject }] : []),
+      { type: "BOOKING_CREATED", label: msg("Booking details"), text: b.text, subject: b.subject },
+      ...(w ? [{ type: "WELCOME" as const, label: msg("Welcome & menu"), text: w.text, subject: w.subject }] : []),
     ];
   }
 
@@ -131,28 +151,28 @@ export async function GuestProfile({ id, user }: { id: string; user: CurrentUser
   const canEdit = can(user, "guests.manage");
   const rooms = (r: (typeof rs)[number]) => r.rooms.map((x) => x.room.number).join(", ");
   const details: DetailRow[] = [
-    { label: "Customer ID", value: g.reference, mono: true },
-    { label: "Phone", value: g.phone, warn: !g.phone },
-    { label: "Other phone", value: g.altPhone },
-    { label: "Email", value: g.email },
-    { label: "ID", value: g.idNumber ? `${ID_WORD[g.idType ?? ""] ?? "ID"} · ${g.idNumber}` : "No ID on file", warn: !g.idNumber },
-    { label: "Nationality", value: g.nationality },
-    { label: "Birthday", value: g.dateOfBirth ? day(g.dateOfBirth) : null },
-    { label: "Address", value: g.address },
-    { label: "Best way to reach", value: g.preferredChannel ? CHANNEL[g.preferredChannel] ?? g.preferredChannel : null },
-    { label: "Offers", value: g.marketingConsent ? "Agrees to offers" : "No offers" },
-    ...(g.tags.length ? [{ label: "Tags", value: g.tags.join(", ") }] : []),
-    ...(g.preferences ? [{ label: "Preferences", value: g.preferences, long: true }] : []),
-    ...(g.notes ? [{ label: "Staff notes", value: g.notes, long: true }] : []),
+    { label: t("Customer ID"), value: g.reference, mono: true },
+    { label: t("Phone"), value: g.phone, warn: !g.phone },
+    { label: t("Other phone"), value: g.altPhone },
+    { label: t("Email"), value: g.email },
+    { label: t("ID"), value: g.idNumber ? `${t(ID_WORD[g.idType ?? ""] ?? "ID")} · ${g.idNumber}` : t("No ID on file"), warn: !g.idNumber },
+    { label: t("Nationality"), value: g.nationality },
+    { label: t("Birthday"), value: g.dateOfBirth ? day(g.dateOfBirth) : null },
+    { label: t("Address"), value: g.address },
+    { label: t("Best way to reach"), value: g.preferredChannel ? t(CHANNEL[g.preferredChannel] ?? g.preferredChannel) : null },
+    { label: t("Offers"), value: g.marketingConsent ? t("Agrees to offers") : t("No offers") },
+    ...(g.tags.length ? [{ label: t("Tags"), value: g.tags.join(", ") }] : []),
+    ...(g.preferences ? [{ label: t("Preferences"), value: g.preferences, long: true }] : []),
+    ...(g.notes ? [{ label: t("Staff notes"), value: g.notes, long: true }] : []),
   ];
 
   return (
     <div className="w-full space-y-4">
-      <Link href="/staff/guests" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" />Customers</Link>
+      <Link href="/staff/guests" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" />{t("Customers")}</Link>
 
       {g.deletedAt && (
         <p className="flex items-center gap-2 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-200">
-          <UserX className="size-4 shrink-0" />This customer was removed on {formatDateTime(g.deletedAt)}. Their stays and orders stay in the books; their details were wiped.
+          <UserX className="size-4 shrink-0" />{t("This customer was removed on {date}. Their stays and orders stay in the books; their details were wiped.", { date: dateTime(g.deletedAt) })}
         </p>
       )}
 
@@ -160,11 +180,11 @@ export async function GuestProfile({ id, user }: { id: string; user: CurrentUser
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-[clamp(1.5rem,2.4vw,2rem)] font-semibold tracking-tight">{g.fullName}</h1>
+            <h1 className="text-[clamp(1.5rem,2.4vw,2rem)] font-semibold tracking-tight">{shownName(t, g.fullName)}</h1>
             {g.vip && <span className="inline-flex items-center gap-1 rounded-full bg-[oklch(0.75_0.13_80)]/20 px-2 py-0.5 text-[11px] font-bold text-[oklch(0.5_0.12_75)] dark:text-[#f0cf86]"><Crown className="size-3" />VIP</span>}
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            <span className="font-mono">{g.reference}</span> · customer since {g.createdAt.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+            <span className="font-mono">{g.reference}</span> · {t("customer since {date}", { date: g.createdAt.toLocaleDateString(t.intl, { day: "numeric", month: "short", year: "numeric" }) })}
             {g.corporateCustomer && <> · <Link href={`/staff/corporate/${g.corporateCustomer.id}`} className="hover:text-foreground hover:underline">{g.corporateCustomer.companyName}</Link></>}
           </p>
         </div>
@@ -172,33 +192,33 @@ export async function GuestProfile({ id, user }: { id: string; user: CurrentUser
           <div className="flex flex-wrap gap-2">
             {g.phone && <a href={`tel:${phone ?? g.phone}`} className={buttonVariants({ variant: "outline" })}><Phone />{g.phone}</a>}
             {wa && <a href={wa} target="_blank" rel="noopener" className={buttonVariants({ variant: "outline" })}><MessageCircle className="text-emerald-500" />WhatsApp</a>}
-            {can(user, "reservations.create") && !can(user, "dashboard.manager") && !can(user, "dashboard.owner") && !can(user, "dashboard.admin") && <Link href={`/staff/reservations/new?guest=${g.id}`} className={buttonVariants()}><CalendarPlus />New booking</Link>}
+            {can(user, "reservations.create") && !can(user, "dashboard.manager") && !can(user, "dashboard.owner") && !can(user, "dashboard.admin") && <Link href={`/staff/reservations/new?guest=${g.id}`} className={buttonVariants()}><CalendarPlus />{t("New booking")}</Link>}
           </div>
         )}
       </header>
 
       {/* ── Numbers ── */}
       <section className="grid grid-cols-2 overflow-hidden rounded-2xl border border-border/70 bg-card sm:grid-cols-5 [&>div]:border-border/70 [&>div]:p-4 max-sm:[&>div:nth-child(odd)]:border-r max-sm:[&>div:nth-child(n+3)]:border-t sm:[&>div:not(:last-child)]:border-r">
-        <Figure label="Stays" value={String(live.length)} sub={nights ? `${nights} night${nights === 1 ? "" : "s"}` : completed.length ? undefined : "none yet"} />
-        <Figure label="Orders" value={String(orderCount)} sub={openOrders.length ? `${openOrders.length} on the way` : undefined} />
+        <Figure label={t("Stays")} value={String(live.length)} sub={nights ? t.plural(nights, "{n} night", "{n} nights") : completed.length ? undefined : t("none yet")} />
+        <Figure label={t("Orders")} value={String(orderCount)} sub={openOrders.length ? t("{n} on the way", { n: openOrders.length }) : undefined} />
         {roomMoney ? (
           <>
-            <Figure label="Owes" value={formatTZS(owed + foodDue)} tone={owed + foodDue > 0 ? "bad" : "good"} sub={owed && foodDue ? `rooms ${formatTZS(owed)} · food ${formatTZS(foodDue)}` : undefined} />
-            <Figure label="Spent" value={formatTZS(spent + foodPaid)} sub={spent && foodPaid ? `rooms ${formatTZS(spent)} · food ${formatTZS(foodPaid)}` : undefined} />
+            <Figure label={t("Owes")} value={formatTZS(owed + foodDue)} tone={owed + foodDue > 0 ? "bad" : "good"} sub={owed && foodDue ? t("rooms {rooms} · food {food}", { rooms: formatTZS(owed), food: formatTZS(foodDue) }) : undefined} />
+            <Figure label={t("Spent")} value={formatTZS(spent + foodPaid)} sub={spent && foodPaid ? t("rooms {rooms} · food {food}", { rooms: formatTZS(spent), food: formatTZS(foodPaid) }) : undefined} />
           </>
         ) : (
           <>
-            <Figure label="Owes" value={formatTZS(foodDue)} tone={foodDue > 0 ? "bad" : "good"} sub="at the restaurant" />
-            <Figure label="Spent" value={formatTZS(foodPaid)} sub="at the restaurant" />
+            <Figure label={t("Owes")} value={formatTZS(foodDue)} tone={foodDue > 0 ? "bad" : "good"} sub={t("at the restaurant")} />
+            <Figure label={t("Spent")} value={formatTZS(foodPaid)} sub={t("at the restaurant")} />
           </>
         )}
-        <Figure label="Last visit" value={current || shared || table || openOrders.length ? "Now" : lastVisit ? day(new Date(`${lastVisit}T00:00:00Z`)) : "—"} className="max-sm:col-span-2" />
+        <Figure label={t("Last visit")} value={current || shared || table || openOrders.length ? t("Now") : lastVisit ? day(new Date(`${lastVisit}T00:00:00Z`)) : "—"} className="max-sm:col-span-2" />
       </section>
 
       {/* ── Right now ── */}
       {(current || shared || table || openOrders.length > 0 || next || tableBookings.length > 0) ? (
         <section className="overflow-hidden rounded-2xl border border-border/70 bg-card">
-          <h2 className="px-4 pt-3 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Right now</h2>
+          <h2 className="px-4 pt-3 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{t("Right now")}</h2>
           {both && (
             <p className="mx-4 mb-1 mt-2 flex items-center gap-2 rounded-xl bg-violet-500/10 px-3 py-2 text-sm font-medium text-violet-800 dark:text-violet-200">
               <BedDouble className="size-4 shrink-0" />{both}
@@ -206,49 +226,60 @@ export async function GuestProfile({ id, user }: { id: string; user: CurrentUser
           )}
           <ul className="divide-y divide-border/50 text-sm">
             {current && (
-              <NowRow icon={BedDouble} tone="text-emerald-500" title={`In the hotel · room ${rooms(current) || "—"}`} sub={`Since ${day(current.arrivalDate)} · leaves ${day(current.departureDate)}`}
-                action={canStays ? <Link href={`/staff/reservations/${current.id}#money`} className={buttonVariants({ variant: "outline", size: "sm" })}><Receipt />Current bill</Link> : undefined} />
+              <NowRow icon={BedDouble} tone="text-emerald-500" title={t("In the hotel · room {room}", { room: rooms(current) || "—" })}
+                sub={t("Since {from} · leaves {to}", { from: day(current.arrivalDate), to: day(current.departureDate) })}
+                action={canStays ? <Link href={`/staff/reservations/${current.id}#money`} className={buttonVariants({ variant: "outline", size: "sm" })}><Receipt />{t("Current bill")}</Link> : undefined} />
             )}
             {shared && (
-              <NowRow icon={BedDouble} tone="text-emerald-500" title={`In the hotel · room ${shared.rooms || "—"}`} sub={`Sharing — booked by ${shared.guestName} · ${shared.reference}`}
-                action={canStays ? <Link href={`/staff/reservations/${shared.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>Open</Link> : undefined} />
+              <NowRow icon={BedDouble} tone="text-emerald-500" title={t("In the hotel · room {room}", { room: shared.rooms || "—" })}
+                sub={t("Sharing — booked by {name} · {ref}", { name: shownName(t, shared.guestName), ref: shared.reference })}
+                action={canStays ? <Link href={`/staff/reservations/${shared.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>{t("Open")}</Link> : undefined} />
             )}
             {table && (
-              <NowRow icon={Armchair} tone="text-amber-500" title={`At ${table.location.name}${table.guestId !== g.id ? ` with ${table.guest.fullName}` : ""}`}
-                sub={[`Since ${formatTime(table.startedAt)}`, `${table.guestCount} ${table.guestCount === 1 ? "person" : "people"}`, table.orders.length ? `${table.orders.length} order${table.orders.length === 1 ? "" : "s"} · ${formatTZS(table.orders.reduce((t, o) => t + o.total, 0))}` : "no orders yet", table.billRequestedAt ? "asked for the bill" : null].filter(Boolean).join(" · ")}
-                action={<Link href="/staff/restaurant/tables" className={buttonVariants({ variant: "outline", size: "sm" })}>Tables</Link>} />
+              <NowRow icon={Armchair} tone="text-amber-500"
+                title={table.guestId !== g.id ? t("At {place} with {name}", { place: t(table.location.name), name: shownName(t, table.guest.fullName) }) : t("At {place}", { place: t(table.location.name) })}
+                sub={[
+                  t("Since {time}", { time: time(table.startedAt) }), t.plural(table.guestCount, "{n} person", "{n} people"),
+                  table.orders.length ? `${t.plural(table.orders.length, "{n} order", "{n} orders")} · ${formatTZS(table.orders.reduce((n, o) => n + o.total, 0))}` : t("no orders yet"),
+                  table.billRequestedAt ? t("asked for the bill") : null,
+                ].filter(Boolean).join(" · ")}
+                action={<Link href="/staff/restaurant/tables" className={buttonVariants({ variant: "outline", size: "sm" })}>{t("Tables")}</Link>} />
             )}
             {openOrders.map((o) => (
-              <NowRow key={o.id} icon={ChefHat} tone="text-rose-500" title={`Order ${shortNo(o.number)} · ${ORDER_STATUS[o.status] ?? o.status}`}
-                sub={`${formatTime(o.createdAt)} · ${o.items.reduce((t, x) => t + x.quantity, 0)} items · ${o.location?.name ?? o.tableLabel ?? (o.roomNumber ? `room ${o.roomNumber}` : o.type === "TAKEAWAY" ? "delivery" : "take out")} · ${formatTZS(o.total)}`}
-                action={<Link href={`/staff/restaurant/orders/${o.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>Open</Link>} />
+              <NowRow key={o.id} icon={ChefHat} tone="text-rose-500" title={t("Order {no} · {status}", { no: shortNo(o.number), status: t(ORDER_STATUS[o.status] ?? o.status) })}
+                sub={[
+                  time(o.createdAt), t.plural(o.items.reduce((n, x) => n + x.quantity, 0), "{n} item", "{n} items"),
+                  o.location?.name ? t(o.location.name) : o.tableLabel ?? (o.roomNumber ? t("room {room}", { room: o.roomNumber }) : o.type === "TAKEAWAY" ? t("delivery") : t("take out")),
+                  formatTZS(o.total),
+                ].join(" · ")}
+                action={<Link href={`/staff/restaurant/orders/${o.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>{t("Open")}</Link>} />
             ))}
             {!current && next && (
-              <NowRow icon={CalendarClock} tone="text-violet-500" title={`Coming ${fromDbDate(next.arrivalDate) === today ? "today" : day(next.arrivalDate)}`}
-                sub={`${nightsOf(next) || 1} night${nightsOf(next) === 1 ? "" : "s"}${rooms(next) ? ` · room ${rooms(next)}` : ""} · ${next.reference}`}
-                action={canStays ? <Link href={`/staff/reservations/${next.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>Open</Link> : undefined} />
+              <NowRow icon={CalendarClock} tone="text-violet-500" title={fromDbDate(next.arrivalDate) === today ? t("Coming today") : t("Coming {date}", { date: day(next.arrivalDate) })}
+                sub={[t.plural(nightsOf(next) || 1, "{n} night", "{n} nights"), rooms(next) ? t("room {room}", { room: rooms(next) }) : null, next.reference].filter(Boolean).join(" · ")}
+                action={canStays ? <Link href={`/staff/reservations/${next.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>{t("Open")}</Link> : undefined} />
             )}
-            {tableBookings.map((t) => (
-              <NowRow key={t.id} icon={CalendarClock} tone="text-sky-500" title={`Table booked · ${t.location.name}`}
-                sub={`${formatDateTime(t.reservedFor)} · ${t.guestCount} ${t.guestCount === 1 ? "person" : "people"} · ${t.reference}`}
-                action={<Link href="/staff/restaurant/reservations" className={buttonVariants({ variant: "outline", size: "sm" })}>Bookings</Link>} />
+            {tableBookings.map((b) => (
+              <NowRow key={b.id} icon={CalendarClock} tone="text-sky-500" title={t("Table booked · {place}", { place: t(b.location.name) })}
+                sub={`${dateTime(b.reservedFor)} · ${t.plural(b.guestCount, "{n} person", "{n} people")} · ${b.reference}`}
+                action={<Link href="/staff/restaurant/reservations" className={buttonVariants({ variant: "outline", size: "sm" })}>{t("Bookings")}</Link>} />
             ))}
           </ul>
         </section>
       ) : (
         <p className="rounded-2xl border border-border/70 bg-card px-4 py-3 text-sm text-muted-foreground">
-          <b className="font-semibold text-foreground">Nothing right now</b> — {lastVisit ? `last seen ${formatBusinessDate(lastVisit)}.` : "they have not visited yet."}
+          <b className="font-semibold text-foreground">{t("Nothing right now")}</b> — {lastVisit ? t("last seen {date}.", { date: business(lastVisit) }) : t("they have not visited yet.")}
         </p>
       )}
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="min-w-0 space-y-4">
           {/* Stays */}
-          <Card title="Stays" count={rs.length}>
-            {rs.length === 0 ? <Empty>No bookings yet.</Empty> : (
+          <Card title={t("Stays")} count={rs.length}>
+            {rs.length === 0 ? <Empty>{t("No bookings yet.")}</Empty> : (
               <>
                 <div className="hidden grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_minmax(0,1fr)_auto_minmax(0,0.9fr)] gap-3 border-y border-border/70 bg-muted/30 px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground md:grid">
-                  <span>Booking</span><span>Dates</span><span>Room</span><span>Status</span><span className="text-right">{roomMoney ? "Amount" : ""}</span>
+                  <span>{t("Booking")}</span><span>{t("Dates")}</span><span>{t("Room")}</span><span>{t("Status")}</span><span className="text-right">{roomMoney ? t("Amount") : ""}</span>
                 </div>
                 <ul className="divide-y divide-border/60 border-t border-border/70 md:border-t-0">
                   {rs.map((r) => {
@@ -259,19 +290,19 @@ export async function GuestProfile({ id, user }: { id: string; user: CurrentUser
                       <li key={r.id} className="relative grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 px-4 py-3 transition-colors hover:bg-muted/40 md:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_minmax(0,1fr)_auto_minmax(0,0.9fr)] md:items-center">
                         <div className="min-w-0 leading-tight">
                           {canStays ? <Link href={`/staff/reservations/${r.id}`} className="font-mono text-[13px] font-semibold after:absolute after:inset-0 after:content-['']">{r.reference}</Link> : <span className="font-mono text-[13px] font-semibold">{r.reference}</span>}
-                          <p className="truncate text-xs text-muted-foreground">{[r.source.name, r.group ? `Group ${r.group.name}` : null].filter(Boolean).join(" · ")}</p>
+                          <p className="truncate text-xs text-muted-foreground">{[t(r.source.name), r.group ? t("Group {name}", { name: r.group.name }) : null].filter(Boolean).join(" · ")}</p>
                         </div>
                         <div className="min-w-0 leading-tight max-md:order-3 max-md:col-span-2">
                           <p className="truncate text-sm">{dayMonth(r.arrivalDate)} → {dayMonth(r.departureDate)}</p>
-                          <p className="text-xs text-muted-foreground">{[n ? `${n} night${n === 1 ? "" : "s"}` : r.kind === "MEETING" ? "Meeting" : "Short stay", fromDbDate(r.arrivalDate).slice(0, 4)].join(" · ")}</p>
+                          <p className="text-xs text-muted-foreground">{[n ? t.plural(n, "{n} night", "{n} nights") : r.kind === "MEETING" ? t("Meeting") : t("Short stay"), fromDbDate(r.arrivalDate).slice(0, 4)].join(" · ")}</p>
                         </div>
-                        <p className="min-w-0 truncate text-sm text-muted-foreground max-md:hidden">{r.rooms.map((x) => `${x.room.number} · ${x.roomType.name}`).join(", ") || "—"}</p>
-                        <span className={cn("w-fit shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold max-md:row-start-1 max-md:col-start-2 max-md:justify-self-end", meta.className)}>{meta.label}</span>
+                        <p className="min-w-0 truncate text-sm text-muted-foreground max-md:hidden">{r.rooms.map((x) => `${x.room.number} · ${t(x.roomType.name)}`).join(", ") || "—"}</p>
+                        <span className={cn("w-fit shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold max-md:row-start-1 max-md:col-start-2 max-md:justify-self-end", meta.className)}>{t(meta.label)}</span>
                         <div className="text-right leading-tight max-md:order-4 max-md:col-span-2 max-md:text-left">
                           {roomMoney && <p className={cn("text-sm font-medium tabular-nums", done && "text-muted-foreground line-through")}>{formatTZS(r.netAmount)}</p>}
-                          {roomMoney && !done && (r.billTo !== "GUEST" ? <p className="text-xs text-muted-foreground">{r.billTo === "GROUP" ? "Group pays" : "Company pays"}</p>
-                            : r.balanceAmount > 0 ? <p className="text-xs font-medium text-rose-600 dark:text-rose-400">owes {formatTZS(r.balanceAmount)}</p>
-                            : r.netAmount > 0 ? <p className="text-xs text-emerald-600 dark:text-emerald-400">paid</p> : null)}
+                          {roomMoney && !done && (r.billTo !== "GUEST" ? <p className="text-xs text-muted-foreground">{r.billTo === "GROUP" ? t("Group pays") : t("Company pays")}</p>
+                            : r.balanceAmount > 0 ? <p className="text-xs font-medium text-rose-600 dark:text-rose-400">{t("owes {amount}", { amount: formatTZS(r.balanceAmount) })}</p>
+                            : r.netAmount > 0 ? <p className="text-xs text-emerald-600 dark:text-emerald-400">{t("paid")}</p> : null)}
                         </div>
                       </li>
                     );
@@ -286,18 +317,18 @@ export async function GuestProfile({ id, user }: { id: string; user: CurrentUser
 
           {/* Online payments (nTZS) — what they paid online, and attempts that did not go through */}
           {online.length > 0 && (
-            <Card title="Online payments" count={online.length} sub="Paid by mobile money through NTZS — paid online by the customer, or a payment request sent by staff.">
+            <Card title={t("Online payments")} count={online.length} sub={t("Paid by mobile money through NTZS — paid online by the customer, or a payment request sent by staff.")}>
               <ul className="divide-y divide-border/60">
                 {online.map((m) => (
                   <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">
                     <span className="min-w-0 leading-tight">
-                      {m.href ? <Link href={m.href} className="font-medium underline-offset-2 hover:underline">{m.what}</Link> : <span className="font-medium">{m.what}</span>}
-                      <span className="block text-xs text-muted-foreground">{formatDateTime(m.at)} · {m.online ? "paid online" : "sent by staff"}{m.reference ? ` · ref ${m.reference}` : ""}</span>
+                      {m.href ? <Link href={m.href} className="font-medium underline-offset-2 hover:underline">{said(t, m.what)}</Link> : <span className="font-medium">{said(t, m.what)}</span>}
+                      <span className="block text-xs text-muted-foreground">{dateTime(m.at)} · {m.online ? t("paid online") : t("sent by staff")}{m.reference ? ` · ${t("ref {reference}", { reference: m.reference })}` : ""}</span>
                     </span>
                     <span className="text-right">
                       <span className="block font-semibold tabular-nums">{formatTZS(m.amount)}</span>
                       <span className={cn("text-[11px] font-semibold", m.status === "COMPLETED" ? "text-emerald-700 dark:text-emerald-300" : m.status === "PENDING" ? "text-sky-700 dark:text-sky-300" : "text-muted-foreground")}>
-                        {m.status === "COMPLETED" ? "Paid" : m.status === "PENDING" ? "Waiting" : m.status === "FAILED" ? "Failed" : m.status === "EXPIRED" ? "Timed out" : "Cancelled"}
+                        {m.status === "COMPLETED" ? t("Paid") : m.status === "PENDING" ? t("Waiting") : m.status === "FAILED" ? t("Failed") : m.status === "EXPIRED" ? t("Timed out") : t("Cancelled")}
                       </span>
                     </span>
                   </li>
@@ -307,16 +338,16 @@ export async function GuestProfile({ id, user }: { id: string; user: CurrentUser
           )}
 
           {/* History */}
-          <Card title="History" sub="Everything that happened with this customer, newest first.">
-            {events.length === 0 ? <Empty>Nothing yet.</Empty> : (
+          <Card title={t("History")} sub={t("Everything that happened with this customer, newest first.")}>
+            {events.length === 0 ? <Empty>{t("Nothing yet.")}</Empty> : (
               <ol className="relative ml-7 space-y-3.5 border-l border-border/70 py-4 pl-5 pr-4">
                 {events.slice(0, 25).map((e, i) => {
                   const Icon = EVENT_ICON[e.kind];
                   const body = (
                     <>
                       <span className={cn("absolute -left-[2.05rem] top-0 grid size-6 place-items-center rounded-full ring-4 ring-card", EVENT_TONE[e.kind])}><Icon className="size-3" /></span>
-                      <p className="text-sm font-medium">{e.title}</p>
-                      <p className="text-xs text-muted-foreground">{formatDateTime(e.at)}{e.detail ? ` · ${e.detail}` : ""}</p>
+                      <p className="text-sm font-medium">{t(e.title)}</p>
+                      <p className="text-xs text-muted-foreground">{dateTime(e.at)}{e.detail ? ` · ${e.detail}` : ""}</p>
                     </>
                   );
                   return <li key={i} className="relative">{e.href ? <Link href={e.href} className="block hover:opacity-80">{body}</Link> : body}</li>;
@@ -325,18 +356,22 @@ export async function GuestProfile({ id, user }: { id: string; user: CurrentUser
             )}
           </Card>
 
-          <Card title="Requests & trips" icon={ConciergeBell}>
-            {requests.length + trips.length === 0 ? <Empty>Nothing asked yet.</Empty> : (
+          <Card title={t("Requests & trips")} icon={ConciergeBell}>
+            {requests.length + trips.length === 0 ? <Empty>{t("Nothing asked yet.")}</Empty> : (
               <ul className="divide-y divide-border/60 border-t border-border/70">
                 {[
-                  ...requests.map((x) => ({ key: x.id, at: x.createdAt, icon: ConciergeBell, title: REQUEST_TYPE_LABEL[x.type] ?? x.type, sub: x.description, status: x.status === "COMPLETED" ? "Done" : x.status === "CANCELLED" ? "Cancelled" : "Open", tone: x.status === "COMPLETED" ? "text-emerald-600 dark:text-emerald-400" : x.status === "CANCELLED" ? "text-muted-foreground" : "text-amber-600 dark:text-amber-400" })),
-                  ...trips.map((t) => ({ key: t.id, at: t.pickupAt, icon: Car, title: TRIP_TYPE_LABEL[t.type], sub: `${t.reference} · to ${t.destination}`, status: TRIP_STATUS_META[t.status].label, tone: "text-muted-foreground" })),
+                  ...requests.map((x) => ({
+                    key: x.id, at: x.createdAt, icon: ConciergeBell, title: t(REQUEST_TYPE_LABEL[x.type] ?? x.type), sub: x.description,
+                    status: x.status === "COMPLETED" ? t("Done") : x.status === "CANCELLED" ? t("Cancelled") : t.ctx("request", "Open"),
+                    tone: x.status === "COMPLETED" ? "text-emerald-600 dark:text-emerald-400" : x.status === "CANCELLED" ? "text-muted-foreground" : "text-amber-600 dark:text-amber-400",
+                  })),
+                  ...trips.map((x) => ({ key: x.id, at: x.pickupAt, icon: Car, title: t(TRIP_TYPE_LABEL[x.type]), sub: t("{ref} · to {place}", { ref: x.reference, place: x.destination }), status: t(TRIP_STATUS_META[x.status].label), tone: "text-muted-foreground" })),
                 ].sort((a, b) => +b.at - +a.at).slice(0, 6).map((x) => (
                   <li key={x.key} className="flex items-center gap-3 px-4 py-2.5 text-sm">
                     <x.icon className="size-4 shrink-0 text-muted-foreground" />
                     <span className="min-w-0 flex-1 leading-tight">
                       <span className="block font-medium">{x.title}</span>
-                      <span className="block truncate text-xs text-muted-foreground">{formatDateTime(x.at)} · {x.sub}</span>
+                      <span className="block truncate text-xs text-muted-foreground">{dateTime(x.at)} · {x.sub}</span>
                     </span>
                     <span className={cn("shrink-0 text-xs font-medium", x.tone)}>{x.status}</span>
                   </li>
@@ -347,32 +382,32 @@ export async function GuestProfile({ id, user }: { id: string; user: CurrentUser
         </div>
 
         <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
-          <GuestDetails rows={details} canEdit={canEdit && !g.deletedAt} canVip={can(user, "reports.view")} canIdentity={canRemove} footprint={footprint} guest={{
+          <GuestDetails rows={details} canEdit={canEdit && !g.deletedAt} canVip={can(user, "reports.view")} canIdentity={canRemove} footprint={footprint} language={g.preferredLanguage} guest={{
             id: g.id, fullName: g.fullName, phone: g.phone ?? "", email: g.email ?? "", idType: g.idType ?? "",
             idNumber: g.idNumber ?? "", nationality: g.nationality ?? "", address: g.address ?? "", notes: g.notes ?? "",
             altPhone: g.altPhone ?? "", dateOfBirth: g.dateOfBirth ? fromDbDate(g.dateOfBirth) : "", preferredChannel: g.preferredChannel ?? "",
             marketingConsent: g.marketingConsent, vip: g.vip, tags: g.tags, preferences: g.preferences ?? "",
           }} />
 
-          {!g.deletedAt && <Card title="Contact this customer" sub={focus ? `About booking ${focus.reference}` : undefined}>
+          {!g.deletedAt && <Card title={t("Contact this customer")} sub={focus ? t("About booking {ref}", { ref: focus.reference }) : undefined}>
             <div className="border-t border-border/70 p-4">
               {options.length > 0 && focus ? (
-                <GuestMessenger reservationId={focus.id} guest={{ name: g.fullName, phone: g.phone, email: g.email }} options={options} link={link}
+                <GuestMessenger reservationId={focus.id} guest={{ name: g.fullName, phone: g.phone, email: g.email }} options={options} link={link} language={g.preferredLanguage}
                   sent={messages.filter((m) => m.reservationId === focus.id).map((m) => ({ type: m.type, channel: m.channel, at: m.createdAt.toISOString(), by: m.sentBy?.fullName ?? null }))} />
               ) : (
                 <div className="flex flex-wrap gap-2">
-                  {g.phone && <a href={`tel:${phone ?? g.phone}`} className={buttonVariants({ variant: "outline", size: "sm" })}><Phone />Call</a>}
+                  {g.phone && <a href={`tel:${phone ?? g.phone}`} className={buttonVariants({ variant: "outline", size: "sm" })}><Phone />{t("Call")}</a>}
                   {wa && <a href={wa} target="_blank" rel="noopener" className={buttonVariants({ variant: "outline", size: "sm" })}><MessageCircle />WhatsApp</a>}
-                  {phone && <a href={`sms:${phone}`} className={buttonVariants({ variant: "outline", size: "sm" })}><Smartphone />SMS</a>}
-                  {g.email && <a href={`mailto:${g.email}`} className={buttonVariants({ variant: "outline", size: "sm" })}><Mail />Email</a>}
-                  {!g.phone && !g.email && <p className="text-sm text-muted-foreground">No phone or email yet — add one with Edit.</p>}
+                  {phone && <a href={`sms:${phone}`} className={buttonVariants({ variant: "outline", size: "sm" })}><Smartphone />{t("SMS")}</a>}
+                  {g.email && <a href={`mailto:${g.email}`} className={buttonVariants({ variant: "outline", size: "sm" })}><Mail />{t("Email")}</a>}
+                  {!g.phone && !g.email && <p className="text-sm text-muted-foreground">{t("No phone or email yet — add one with Edit.")}</p>}
                 </div>
               )}
             </div>
           </Card>}
 
-          <Card title="Messages sent" count={messages.length}>
-            {messages.length === 0 ? <Empty>No messages yet.</Empty> : (
+          <Card title={t("Messages sent")} count={messages.length}>
+            {messages.length === 0 ? <Empty>{t("No messages yet.")}</Empty> : (
               <ul className="divide-y divide-border/60 border-t border-border/70">
                 {messages.slice(0, 12).map((m) => (
                   <li key={m.id}>
@@ -382,8 +417,8 @@ export async function GuestProfile({ id, user }: { id: string; user: CurrentUser
                           {m.channel === "EMAIL" ? <Mail className="size-3.5" /> : m.channel === "SMS" ? <Smartphone className="size-3.5" /> : <MessageCircle className="size-3.5" />}
                         </span>
                         <span className="min-w-0 flex-1 leading-tight">
-                          <span className="block text-sm font-medium">{GUEST_MESSAGE_TYPES[m.type as GuestMessageType] ?? m.type}</span>
-                          <span className="block truncate text-xs text-muted-foreground">{CHANNEL[m.channel] ?? m.channel} · {formatDateTime(m.createdAt)}{m.sentBy ? ` · ${m.sentBy.fullName}` : ""}</span>
+                          <span className="block text-sm font-medium">{t(GUEST_MESSAGE_TYPES[m.type as GuestMessageType] ?? m.type)}</span>
+                          <span className="block truncate text-xs text-muted-foreground">{t(CHANNEL[m.channel] ?? m.channel)} · {dateTime(m.createdAt)}{m.sentBy ? ` · ${m.sentBy.fullName}` : ""}</span>
                         </span>
                       </summary>
                       <p className="mt-2 whitespace-pre-line border-t border-dashed border-border pt-2 text-xs text-muted-foreground">{m.body}</p>

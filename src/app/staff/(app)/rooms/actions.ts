@@ -10,6 +10,8 @@ import { parseInput } from "@/server/validation";
 import { changeRoomStatus } from "@/server/services/rooms";
 import { meetingInsight, roomInsight, type MeetingInsight, type RoomInsight } from "@/server/services/room-insight";
 import { businessToday } from "@/server/settings";
+import { msg, msgf } from "@/i18n/msg";
+import { saveTranslation, translationFromForm } from "@/server/services/translations";
 
 const STATUSES = ["AVAILABLE", "READY", "DIRTY", "CLEANING", "MAINTENANCE", "OUT_OF_SERVICE"] as const;
 
@@ -32,7 +34,7 @@ export async function changeRoomStatusAction(input: z.input<typeof StatusSchema>
     revalidatePath("/staff/rooms");
     revalidatePath("/staff");
     return result;
-  }, "Room status updated.");
+  }, msg("Room status updated."));
 }
 
 // ─────────── Room types & rates ───────────
@@ -40,7 +42,7 @@ export async function changeRoomStatusAction(input: z.input<typeof StatusSchema>
 const RoomTypeSchema = z.object({
   id: z.string().min(1),
   name: z.string().trim().min(2).max(60),
-  baseRate: z.coerce.number().int("Whole shillings only.").min(1000, "Rate looks too low."),
+  baseRate: z.coerce.number().int(msg("Whole shillings only.")).min(1000, msg("Rate looks too low.")),
   displayRateUsd: z.union([z.literal(""), z.coerce.number().int().min(0)]).transform((v) => (v === "" ? null : v)),
   maxAdults: z.coerce.number().int().min(1).max(10),
   maxChildren: z.coerce.number().int().min(0).max(10),
@@ -60,7 +62,7 @@ export async function updateRoomTypeAction(_prev: unknown, formData: FormData): 
     const input = parseInput(RoomTypeSchema, formData);
     const images = input.images.split("\n").map((s) => s.trim()).filter(Boolean);
     if (images.some((i) => !i.startsWith("/images/") && !i.startsWith("https://"))) {
-      throw new AppError("Image paths must start with /images/ or https://", "VALIDATION", { images: "Invalid path" });
+      throw new AppError("Image paths must start with /images/ or https://", "VALIDATION", { images: msg("Invalid path") });
     }
     const { ipAddress } = await requestMeta();
     await db.$transaction(async (tx) => {
@@ -68,7 +70,7 @@ export async function updateRoomTypeAction(_prev: unknown, formData: FormData): 
       if (!before) throw new AppError("Room type not found.", "NOT_FOUND");
       // Room prices belong to Admin (Settings → Room pricing).
       if (before.baseRate !== input.baseRate && !user.permissions.has("pricing.manage")) {
-        throw new AppError("Only Admin can change room prices (Settings → Room pricing).", "FORBIDDEN", { baseRate: "Admin only" });
+        throw new AppError("Only Admin can change room prices (Settings → Room pricing).", "FORBIDDEN", { baseRate: msg("Admin only") });
       }
       const { id, amenityIds, ...fields } = input;
       await tx.roomType.update({ where: { id }, data: { ...fields, images } });
@@ -89,18 +91,37 @@ export async function updateRoomTypeAction(_prev: unknown, formData: FormData): 
         after: { name: input.name, maxAdults: input.maxAdults, isPublic: input.isPublic, isActive: input.isActive },
       });
     });
+    // Its Chinese, saved beside it (the same record — nothing duplicated).
+    const zh = translationFromForm("roomType", formData);
+    if (zh) await saveTranslation("roomType", input.id, "zh-CN", zh, { userId: user.id, label: user.fullName, ipAddress });
     revalidatePath("/staff/rooms", "layout");
     revalidatePath("/", "layout");
     return null;
-  }, "Room type saved. New rates apply to new bookings only.");
+  }, msg("Room type saved. New rates apply to new bookings only."));
+}
+
+// ─────────── Amenities (their Chinese) ───────────
+
+/** An amenity's Chinese name (empty = the default Chinese, else the English). Audited in saveTranslation. */
+export async function saveAmenityChineseAction(input: { id: string; name: string }): Promise<ActionResult<null>> {
+  return runAction(async () => {
+    const user = await authorize("rooms.manage");
+    const { id, name } = parseInput(z.object({ id: z.string().min(1).max(40), name: z.string().trim().max(120) }), input);
+    if (!(await db.amenity.findUnique({ where: { id }, select: { id: true } }))) throw new AppError("Amenity not found.", "NOT_FOUND");
+    const { ipAddress } = await requestMeta();
+    await saveTranslation("amenity", id, "zh-CN", { name }, { userId: user.id, label: user.fullName, ipAddress });
+    revalidatePath("/staff/rooms/manage");
+    revalidatePath("/", "layout");
+    return null;
+  }, msg("Chinese saved."));
 }
 
 // ─────────── Rooms (inventory) ───────────
 
 const RoomSchema = z.object({
   id: z.string().optional(),
-  number: z.string().trim().regex(/^[A-Za-z0-9-]{1,10}$/, "Use letters/numbers, up to 10 characters."),
-  roomTypeId: z.string().min(1, "Choose a room type."),
+  number: z.string().trim().regex(/^[A-Za-z0-9-]{1,10}$/, msg("Use letters/numbers, up to 10 characters.")),
+  roomTypeId: z.string().min(1, msg("Choose a room type.")),
   floor: z.union([z.literal(""), z.coerce.number().int().min(-2).max(50)]).transform((v) => (v === "" ? null : v)),
   notes: z.string().trim().max(300).transform((v) => v || null),
   isActive: z.preprocess((v) => v === undefined ? true : v === "on", z.boolean()),
@@ -129,13 +150,13 @@ export async function saveRoomAction(_prev: unknown, formData: FormData): Promis
           const future = await tx.reservationRoom.count({
             where: { roomId: before.id, status: { in: ["RESERVED", "CONFIRMED", "CHECKED_IN"] }, endAt: { gt: new Date() } },
           });
-          if (future > 0) throw new AppError(`Room ${before.number} has ${future} current/upcoming booking(s). Reassign them first.`, "CONFLICT");
+          if (future > 0) throw new AppError(msgf("Room {room} has {count} current/upcoming booking(s). Reassign them first.", { room: before.number, count: future }), "CONFLICT");
         }
         if (before.roomTypeId !== type.id) {
           const future = await tx.reservationRoom.count({
             where: { roomId: before.id, status: { in: ["RESERVED", "CONFIRMED", "CHECKED_IN"] }, endAt: { gt: new Date() } },
           });
-          if (future > 0) throw new AppError(`Room ${before.number} has upcoming bookings; change its type after they finish or reassign them.`, "CONFLICT");
+          if (future > 0) throw new AppError(msgf("Room {room} has upcoming bookings; change its type after they finish or reassign them.", { room: before.number }), "CONFLICT");
         }
         await tx.room.update({
           where: { id: before.id },
@@ -148,13 +169,13 @@ export async function saveRoomAction(_prev: unknown, formData: FormData): Promis
         });
       });
     } catch (e) {
-      if (isUniqueViolation(e)) throw new AppError(`Room number ${input.number} already exists.`, "CONFLICT", { number: "Already exists" });
+      if (isUniqueViolation(e)) throw new AppError(msgf("Room number {number} already exists.", { number: input.number }), "CONFLICT", { number: msg("Already exists") });
       throw e;
     }
     revalidatePath("/staff/rooms", "layout");
     revalidatePath("/staff");
     return null;
-  }, formData.get("id") ? "Room updated." : "Room added to inventory.");
+  }, formData.get("id") ? msg("Room updated.") : msg("Room added to inventory."));
 }
 
 /** The room's recent bookings and status changes — shown right in the room card. */

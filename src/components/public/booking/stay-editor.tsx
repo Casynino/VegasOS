@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarDays, LoaderCircle } from "lucide-react";
 import { addDays, isBusinessDate } from "@/lib/time/business-date";
+import { useT } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 import { field } from "../kit/tokens";
 import fx from "../room-fx.module.css";
@@ -25,6 +26,7 @@ export function StayEditor({ stay, type, rooms, minDate, maxDate, maxNights, max
   maxAdults: number; maxChildren: number;
   className?: string;
 }) {
+  const t = useT();
   const router = useRouter();
   const [pending, start] = useTransition();
   const [v, setV] = useState(stay);
@@ -51,31 +53,31 @@ export function StayEditor({ stay, type, rooms, minDate, maxDate, maxNights, max
   return (
     <div className={cn(fx.card, "relative p-5 sm:p-6", className)} aria-busy={pending || undefined}>
       <div className="mb-4 flex items-center justify-between gap-3">
-        <p className="flex items-center gap-2 text-[15px] font-medium"><CalendarDays className="size-4 text-pub-eyebrow" strokeWidth={1.6} aria-hidden="true" />Your stay</p>
+        <p className="flex items-center gap-2 text-[15px] font-medium"><CalendarDays className="size-4 text-pub-eyebrow" strokeWidth={1.6} aria-hidden="true" />{t("Your stay")}</p>
         <span className="flex items-center gap-2 text-[13px] text-pub-muted" aria-live="polite">
           {pending && <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" />}
-          {pending ? "Updating the price…" : nights > 0 ? `${nights} night${nights === 1 ? "" : "s"}` : "Choose the dates"}
+          {pending ? t("Updating the price…") : nights > 0 ? t.plural(nights, "{n} night", "{n} nights") : t("Choose the dates")}
         </span>
       </div>
       <div className="grid grid-cols-2 gap-x-3 gap-y-4 sm:grid-cols-4 sm:gap-x-4">
         <label className="min-w-0">
-          <span className={label}>Check-in</span>
+          <span className={label}>{t("Check-in")}</span>
           <input type="date" value={v.checkIn} min={minDate} max={maxDate} onChange={(e) => onCheckIn(e.target.value)} className={input} />
         </label>
         <label className="min-w-0">
-          <span className={label}>Check-out</span>
+          <span className={label}>{t("Check-out")}</span>
           <input type="date" value={v.checkOut} min={isBusinessDate(v.checkIn) ? addDays(v.checkIn, 1) : addDays(minDate, 1)}
             max={isBusinessDate(v.checkIn) ? addDays(v.checkIn, maxNights) : undefined}
             onChange={(e) => go({ ...v, checkOut: e.target.value })} className={input} />
         </label>
         <label className="min-w-0">
-          <span className={label}>Adults</span>
+          <span className={label}>{t("Adults")}</span>
           <select value={v.adults} onChange={(e) => go({ ...v, adults: Number(e.target.value) })} className={cn(input, "appearance-auto pr-2")}>
             {Array.from({ length: adultsMax }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}</option>)}
           </select>
         </label>
         <label className="min-w-0">
-          <span className={label}>Children</span>
+          <span className={label}>{t("Children")}</span>
           <select value={v.children} disabled={childrenMax === 0} onChange={(e) => go({ ...v, children: Number(e.target.value) })} className={cn(input, "appearance-auto pr-2 disabled:opacity-60")}>
             {Array.from({ length: childrenMax + 1 }, (_, i) => i).map((n) => <option key={n} value={n}>{n}</option>)}
           </select>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getT } from "@/i18n/server";
 
 export type MoneySplit = { label: string; value: number; color: string };
 export type MoneyCell = { label: string; value: string; sub?: string; tone?: "good" | "bad" | "warn"; bar?: number; href?: string; icon?: React.ReactNode; tint?: string };
@@ -18,13 +19,14 @@ function Amount({ value, unit = "text-[0.55em]" }: { value: string; unit?: strin
  * where it came from as one split bar, then six small figures in a grid — no stack of tiles
  * repeating the ring. Reads well on a phone (two columns) and a computer (three).
  */
-export function MoneyCard({ title, href, linkLabel, headline, split, cells }: {
+export async function MoneyCard({ title, href, linkLabel, headline, split, cells }: {
   title: string; href?: string; linkLabel?: string;
   headline: { value: string; label: string; delta?: number | null; deltaLabel?: string };
   split: MoneySplit[];
   cells: MoneyCell[];
 }) {
-  const total = split.reduce((t, s) => t + s.value, 0);
+  const t = await getT();
+  const total = split.reduce((sum, s) => sum + s.value, 0);
   const d = headline.delta;
   return (
     <section className="relative flex h-full min-w-0 flex-col overflow-hidden rounded-3xl border border-border/70 bg-card p-4 sm:p-5">
@@ -41,7 +43,7 @@ export function MoneyCard({ title, href, linkLabel, headline, split, cells }: {
         <p className="text-[clamp(1.75rem,7vw,2.25rem)] font-semibold leading-none tracking-tight tabular-nums"><Amount value={headline.value} unit="text-[0.45em]" /></p>
         {d != null && (
           <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums", d >= 0 ? "bg-emerald-500/12 text-emerald-600 dark:text-emerald-400" : "bg-rose-500/12 text-rose-600 dark:text-rose-400")}>
-            {d >= 0 ? "▲" : "▼"} {Math.abs(Math.round(d))}% {headline.deltaLabel ?? "vs yesterday"}
+            {d >= 0 ? "▲" : "▼"} {Math.abs(Math.round(d))}% {headline.deltaLabel ?? t("vs yesterday")}
           </span>
         )}
       </div>

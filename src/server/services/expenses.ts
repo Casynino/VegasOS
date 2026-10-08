@@ -6,6 +6,7 @@ import { resolveAccountTx } from "./payment-accounts";
 import { getSettingsTx, stayConfig } from "../settings";
 import { businessDateOf, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import type { ExpenseStatus } from "@/generated/prisma/enums";
+import { msg, msgf } from "@/i18n/msg";
 
 /**
  * ExpenseService — quick recording at the desk, optional manager approval
@@ -47,7 +48,7 @@ async function resolveItem(tx: Tx, input: ExpenseInput, userId: string) {
   if (input.newItem?.name.trim()) {
     const name = input.newItem.name.trim().replace(/\s+/g, " ").slice(0, 80);
     const cat = await tx.expenseCategory.findUnique({ where: { id: input.newItem.categoryId } });
-    if (!cat || !cat.isActive) throw new AppError("Choose the group for the new expense type.", "VALIDATION", { categoryId: "Required" });
+    if (!cat || !cat.isActive) throw new AppError("Choose the group for the new expense type.", "VALIDATION", { categoryId: msg("Required") });
     const existing = await tx.expenseItem.findFirst({ where: { categoryId: cat.id, name: { equals: name, mode: "insensitive" } } });
     if (existing) return existing.isActive ? existing : tx.expenseItem.update({ where: { id: existing.id }, data: { isActive: true } });
     const frequency = ["DAILY", "MONTHLY", "OCCASIONAL"].includes(input.newItem.frequency ?? "") ? input.newItem.frequency! : "OCCASIONAL";
@@ -55,7 +56,7 @@ async function resolveItem(tx: Tx, input: ExpenseInput, userId: string) {
   }
   if (input.itemId) {
     const item = await tx.expenseItem.findUnique({ where: { id: input.itemId } });
-    if (!item) throw new AppError("That expense type no longer exists.", "VALIDATION", { itemId: "Invalid" });
+    if (!item) throw new AppError("That expense type no longer exists.", "VALIDATION", { itemId: msg("Invalid") });
     return item;
   }
   return null;
@@ -72,8 +73,8 @@ async function nextExpenseNumber(tx: Tx, year: string) {
 }
 
 export async function storeReceipt(tx: Parameters<Parameters<typeof db.$transaction>[0]>[0], file: File, userId: string, purpose: "EXPENSE_RECEIPT" | "PURCHASE_RECEIPT" = "EXPENSE_RECEIPT") {
-  if (file.size > RECEIPT_MAX_BYTES) throw new AppError("Receipt file is larger than 5 MB.", "VALIDATION", { receipt: "Too large" });
-  if (!RECEIPT_TYPES.includes(file.type)) throw new AppError("Receipt must be a photo (JPG/PNG/WebP/HEIC) or PDF.", "VALIDATION", { receipt: "Wrong type" });
+  if (file.size > RECEIPT_MAX_BYTES) throw new AppError("Receipt file is larger than 5 MB.", "VALIDATION", { receipt: msg("Too large") });
+  if (!RECEIPT_TYPES.includes(file.type)) throw new AppError("Receipt must be a photo (JPG/PNG/WebP/HEIC) or PDF.", "VALIDATION", { receipt: msg("Wrong type") });
   const stored = await tx.storedFile.create({
     data: {
       purpose, fileName: file.name.slice(0, 120) || "receipt", contentType: file.type,
@@ -84,14 +85,14 @@ export async function storeReceipt(tx: Parameters<Parameters<typeof db.$transact
 }
 
 function validate(input: ExpenseInput) {
-  if (!Number.isInteger(input.amount) || input.amount <= 0) throw new AppError("Enter a positive whole amount.", "VALIDATION", { amount: "Invalid" });
-  if (!input.description.trim() && !input.itemId && !input.newItem?.name.trim()) throw new AppError("Say what the money was for.", "VALIDATION", { description: "Required" });
+  if (!Number.isInteger(input.amount) || input.amount <= 0) throw new AppError("Enter a positive whole amount.", "VALIDATION", { amount: msg("Invalid") });
+  if (!input.description.trim() && !input.itemId && !input.newItem?.name.trim()) throw new AppError("Say what the money was for.", "VALIDATION", { description: msg("Required") });
 }
 
 /** An expense made by a stock purchase changes only from the purchase (the stock and the money stay together). */
 async function assertNotPurchaseTx(tx: Tx, expenseId: string) {
   const p = await tx.stockRequest.findUnique({ where: { expenseId }, select: { number: true, purchaseNumber: true } });
-  if (p) throw new AppError(`This expense comes from purchase ${p.purchaseNumber ?? p.number} (${p.number}) — the stock was received with it, so it changes only from the purchase.`, "CONFLICT");
+  if (p) throw new AppError(msgf("This expense comes from purchase {purchase} ({number}) — the stock was received with it, so it changes only from the purchase.", { purchase: p.purchaseNumber ?? p.number, number: p.number }), "CONFLICT");
 }
 
 /** The same supplier receipt already on a stock purchase: it becomes an expense by itself — never typed in again. */
@@ -102,7 +103,12 @@ async function assertNotPurchasedTx(tx: Tx, reference: string | null | undefined
     where: { receiptNumber: { equals: ref, mode: "insensitive" }, status: { in: ["PURCHASING", "PENDING_APPROVAL", "COMPLETED"] } },
     select: { number: true, purchaseNumber: true, status: true },
   });
-  if (p) throw new AppError(`Receipt ${ref} is already on stock purchase ${p.purchaseNumber ?? p.number} — ${p.status === "COMPLETED" ? "its expense is already recorded" : "it becomes an expense when the purchase is approved"}. Don't record it twice.`, "CONFLICT", { reference: "Duplicate" });
+  if (p) {
+    const vars = { ref, purchase: p.purchaseNumber ?? p.number };
+    throw new AppError(p.status === "COMPLETED"
+      ? msgf("Receipt {ref} is already on stock purchase {purchase} — its expense is already recorded. Don't record it twice.", vars)
+      : msgf("Receipt {ref} is already on stock purchase {purchase} — it becomes an expense when the purchase is approved. Don't record it twice.", vars), "CONFLICT", { reference: msg("Duplicate") });
+  }
 }
 
 export async function recordExpense(input: ExpenseInput, actor: Actor) {
@@ -112,7 +118,7 @@ export async function recordExpense(input: ExpenseInput, actor: Actor) {
     const settings = await getSettingsTx(tx);
     const item = await resolveItem(tx, input, actor.userId);
     const category = await tx.expenseCategory.findUnique({ where: { id: item?.categoryId ?? input.categoryId } });
-    if (!category || (!category.isActive && !item)) throw new AppError("Choose what the money was for.", "VALIDATION", { categoryId: "Required" });
+    if (!category || (!category.isActive && !item)) throw new AppError("Choose what the money was for.", "VALIDATION", { categoryId: msg("Required") });
     const spentAt = input.spentAt ?? new Date();
     if (spentAt.getTime() > Date.now() + 5 * 60_000) throw new AppError("The expense time cannot be in the future.");
     const needsApproval = settings.expenseApprovalThreshold > 0 && input.amount >= settings.expenseApprovalThreshold;
@@ -153,7 +159,7 @@ export async function recordExpense(input: ExpenseInput, actor: Actor) {
 export async function correctExpense(expenseId: string, input: ExpenseInput, actor: Actor, reason = "") {
   validate(input);
   // Never silently: every edit says why, and the old values stay in the edit history.
-  if (!reason.trim()) throw new AppError("Say why you are changing this expense.", "VALIDATION", { reason: "Required" });
+  if (!reason.trim()) throw new AppError("Say why you are changing this expense.", "VALIDATION", { reason: msg("Required") });
   return db.$transaction(async (tx) => {
     const settings = await getSettingsTx(tx);
     const before = await tx.expense.findUnique({ where: { id: expenseId }, include: { category: true } });
@@ -198,7 +204,7 @@ export async function reviewExpense(
   actor: Actor,
 ) {
   if (!actor.permissions.has("expenses.approve")) throw new AppError("Only a manager can review expenses.", "FORBIDDEN");
-  if (decision !== "APPROVED" && !note.trim()) throw new AppError("Explain why, so the staff member knows what to fix.", "VALIDATION", { note: "Required" });
+  if (decision !== "APPROVED" && !note.trim()) throw new AppError("Explain why, so the staff member knows what to fix.", "VALIDATION", { note: msg("Required") });
   return db.$transaction(async (tx) => {
     const e = await tx.expense.findUnique({ where: { id: expenseId } });
     if (!e) throw new AppError("Expense not found.", "NOT_FOUND");
@@ -219,7 +225,7 @@ export async function reviewExpense(
  * A manager may cancel any; staff may cancel their own on the hotel day they recorded it.
  */
 export async function voidExpense(expenseId: string, reason: string, actor: Actor) {
-  if (!reason.trim()) throw new AppError("Give a reason.", "VALIDATION", { reason: "Required" });
+  if (!reason.trim()) throw new AppError("Give a reason.", "VALIDATION", { reason: msg("Required") });
   return db.$transaction(async (tx) => {
     const e = await tx.expense.findUnique({ where: { id: expenseId } });
     if (!e || e.status === "VOIDED") throw new AppError("Expense not found or already voided.");
@@ -239,7 +245,7 @@ export async function voidExpense(expenseId: string, reason: string, actor: Acto
 export async function repostCorrectedExpense(expenseId: string, input: ExpenseInput, reason: string, actor: Actor) {
   validate(input);
   if (!actor.permissions.has("expenses.record")) throw new AppError("You cannot correct expenses.", "FORBIDDEN");
-  if (!reason.trim()) throw new AppError("Say what was wrong with the record.", "VALIDATION", { reason: "Required" });
+  if (!reason.trim()) throw new AppError("Say what was wrong with the record.", "VALIDATION", { reason: msg("Required") });
   return db.$transaction(async (tx) => {
     const settings = await getSettingsTx(tx);
     const old = await tx.expense.findUnique({ where: { id: expenseId }, include: { category: true, receiptFile: true } });
@@ -247,7 +253,7 @@ export async function repostCorrectedExpense(expenseId: string, input: ExpenseIn
     if (old.status === "VOIDED" || old.status === "REJECTED") throw new AppError("This expense is cancelled — reinstate it first.");
     await assertNotPurchaseTx(tx, old.id);
     const category = await tx.expenseCategory.findUnique({ where: { id: input.categoryId } });
-    if (!category) throw new AppError("Choose a category.", "VALIDATION", { categoryId: "Required" });
+    if (!category) throw new AppError("Choose a category.", "VALIDATION", { categoryId: msg("Required") });
     const spentAt = input.spentAt ?? old.spentAt;
     if (spentAt.getTime() > Date.now() + 5 * 60_000) throw new AppError("The expense date cannot be in the future.");
 
@@ -291,7 +297,11 @@ export async function reinstateExpense(expenseId: string, actor: Actor) {
     if (!e || e.status !== "VOIDED") throw new AppError("Only a cancelled expense can be reinstated.");
     await assertNotPurchaseTx(tx, e.id);
     const replacement = await tx.expense.findFirst({ where: { correctsId: e.id, status: { not: "VOIDED" } } });
-    if (replacement) throw new AppError(`This expense was corrected by ${replacement.number ?? "a newer line"} — cancel that one first.`);
+    if (replacement) {
+      throw new AppError(replacement.number != null
+        ? msgf("This expense was corrected by {number} — cancel that one first.", { number: replacement.number })
+        : msg("This expense was corrected by a newer line — cancel that one first."));
+    }
     const status: ExpenseStatus = e.approvals.some((a) => a.action === "APPROVED") ? "APPROVED" : "RECORDED";
     await tx.expense.update({ where: { id: e.id }, data: { status, voidedAt: null, voidReason: null } });
     await tx.expenseApproval.create({ data: { expenseId: e.id, action: "RESUBMITTED", note: "Reinstated", actorId: actor.userId } });
@@ -377,7 +387,7 @@ export async function spendByType(from: BusinessDate, to: BusinessDate) {
   ]);
   const groups = cats.sort((a, b) => a.sortOrder - b.sortOrder).map((c) => {
     const lines = rows.filter((r) => r.categoryId === c.id).map((r) => ({
-      name: r.itemId ? items.find((i) => i.id === r.itemId)?.name ?? "—" : "Other (no type picked)", amount: r._sum.amount ?? 0, count: r._count,
+      name: r.itemId ? items.find((i) => i.id === r.itemId)?.name ?? "—" : msg("Other (no type picked)"), amount: r._sum.amount ?? 0, count: r._count,
     })).sort((a, b) => b.amount - a.amount);
     return { id: c.id, name: c.name, total: lines.reduce((s, l) => s + l.amount, 0), lines };
   });

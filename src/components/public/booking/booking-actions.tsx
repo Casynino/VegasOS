@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import { Check, Link2, Printer } from "lucide-react";
+import { useT } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 import { buttonClass } from "../kit/button";
 
 /** Save helpers on the confirmation page (copy private link, print). Follow the surrounding tone. */
 export function BookingActions() {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   async function copy() {
     try {
@@ -22,10 +24,10 @@ export function BookingActions() {
     <div className="flex flex-wrap gap-3">
       <button type="button" onClick={copy} className={cls}>
         {copied ? <Check className="size-4 text-pub-eyebrow" strokeWidth={1.8} aria-hidden="true" /> : <Link2 className="size-4" strokeWidth={1.6} aria-hidden="true" />}
-        <span aria-live="polite">{copied ? "Link copied" : "Copy link"}</span>
+        <span aria-live="polite">{copied ? t("Link copied") : t("Copy link")}</span>
       </button>
       <button type="button" onClick={() => window.print()} className={cls}>
-        <Printer className="size-4" strokeWidth={1.6} aria-hidden="true" /> Print
+        <Printer className="size-4" strokeWidth={1.6} aria-hidden="true" /> {t("Print")}
       </button>
     </div>
   );

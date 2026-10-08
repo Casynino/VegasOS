@@ -5,6 +5,7 @@ import type { ReservationStatus } from "@/generated/prisma/enums";
 import { syncInvoice } from "./invoices";
 import { channelFor, quoteStay } from "./pricing";
 import { AppError } from "../errors";
+import { msgf } from "@/i18n/msg";
 
 /** Stay statuses that hold a room and earn room revenue. */
 export const REVENUE_STATUSES: ReservationStatus[] = ["RESERVED", "CONFIRMED", "CHECKED_IN", "CHECKED_OUT"];
@@ -181,7 +182,7 @@ export async function recalculateReservation(tx: Tx, reservationId: string): Pro
 export async function assertGroupBillOpen(tx: Tx, reservationId: string, actor: { permissions?: ReadonlySet<string> }) {
   const r = await tx.reservation.findUnique({ where: { id: reservationId }, select: { billTo: true, group: { select: { name: true, finalizedAt: true } } } });
   if (r?.billTo === "GROUP" && r.group?.finalizedAt && !actor.permissions?.has("invoices.manage")) {
-    throw new AppError(`${r.group.name}'s final invoice is already made — only a manager can change this room's bill, and the change goes on an adjustment invoice.`, "FORBIDDEN");
+    throw new AppError(msgf("{group}'s final invoice is already made — only a manager can change this room's bill, and the change goes on an adjustment invoice.", { group: r.group.name }), "FORBIDDEN");
   }
 }
 

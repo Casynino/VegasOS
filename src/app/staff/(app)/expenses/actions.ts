@@ -8,6 +8,7 @@ import { db } from "@/server/db";
 import { audit } from "@/server/audit";
 import { parseInput } from "@/server/validation";
 import { businessToday } from "@/server/settings";
+import { msg, msgf } from "@/i18n/msg";
 import { correctExpense, recordExpense, reinstateExpense, repostCorrectedExpense, reviewExpense, voidExpense } from "@/server/services/expenses";
 
 async function actor(user: CurrentUser) {
@@ -23,7 +24,7 @@ const ExpenseSchema = z.object({
   newItemName: z.string().trim().max(80).optional(),
   newItemCategoryId: z.string().optional(),
   newItemFrequency: z.enum(["DAILY", "MONTHLY", "OCCASIONAL"]).optional(),
-  amount: z.coerce.number().int("Whole shillings only.").positive("Enter an amount."),
+  amount: z.coerce.number().int(msg("Whole shillings only.")).positive(msg("Enter an amount.")),
   paymentMethodId: z.string().optional(),
   description: z.string().trim().max(200).default(""),
   payee: z.string().trim().max(120).optional(),
@@ -63,7 +64,7 @@ export async function saveExpenseAction(_prev: unknown, formData: FormData): Pro
     revalidatePath("/staff/expenses");
     revalidatePath("/staff");
     return null;
-  }, "Expense saved.");
+  }, msg("Expense saved."));
 }
 
 export async function reviewExpenseAction(input: { expenseId: string; decision: "APPROVED" | "REJECTED" | "CORRECTION_REQUESTED"; note: string }) {
@@ -73,7 +74,7 @@ export async function reviewExpenseAction(input: { expenseId: string; decision: 
     revalidatePath("/staff/expenses");
     revalidatePath("/staff");
     return null;
-  }, input.decision === "APPROVED" ? "Expense approved." : input.decision === "REJECTED" ? "Expense rejected." : "Correction requested.");
+  }, input.decision === "APPROVED" ? msg("Expense approved.") : input.decision === "REJECTED" ? msg("Expense rejected.") : msg("Correction requested."));
 }
 
 export async function voidExpenseAction(input: { expenseId: string; reason: string }) {
@@ -83,7 +84,7 @@ export async function voidExpenseAction(input: { expenseId: string; reason: stri
     revalidatePath("/staff/expenses");
     revalidatePath("/staff/finance", "layout");
     return null;
-  }, "Expense voided.");
+  }, msg("Expense voided."));
 }
 
 export async function reinstateExpenseAction(input: { expenseId: string }) {
@@ -93,15 +94,15 @@ export async function reinstateExpenseAction(input: { expenseId: string }) {
     revalidatePath("/staff/expenses");
     revalidatePath("/staff/finance", "layout");
     return null;
-  }, "Expense reinstated.");
+  }, msg("Expense reinstated."));
 }
 
 // ───────────────────────── Expense types (Settings) ─────────────────────────
 
 const ItemSchema = z.object({
   id: z.string().optional(),
-  name: z.string().trim().min(2, "Give the expense type a name.").max(80),
-  categoryId: z.string().min(1, "Choose a group."),
+  name: z.string().trim().min(2, msg("Give the expense type a name.")).max(80),
+  categoryId: z.string().min(1, msg("Choose a group.")),
   frequency: z.enum(["DAILY", "MONTHLY", "OCCASIONAL"]),
   defaultPayee: z.string().trim().max(120).optional(),
   defaultAmount: z.union([z.literal(""), z.coerce.number().int().min(0)]).optional(),
@@ -116,7 +117,7 @@ export async function saveExpenseItemAction(input: z.input<typeof ItemSchema>) {
     const a = await actor(user);
     await db.$transaction(async (tx) => {
       const clash = await tx.expenseItem.findFirst({ where: { categoryId: d.categoryId, name: { equals: d.name, mode: "insensitive" }, ...(d.id ? { id: { not: d.id } } : {}) } });
-      if (clash) throw new AppError(`“${clash.name}” already exists in this group.`, "VALIDATION", { name: "Exists" });
+      if (clash) throw new AppError(msgf("“{name}” already exists in this group.", { name: clash.name }), "VALIDATION", { name: msg("Exists") });
       const data = {
         name: d.name, categoryId: d.categoryId, frequency: d.frequency, defaultPayee: d.defaultPayee || null,
         defaultAmount: d.defaultAmount === "" || d.defaultAmount === undefined ? null : d.defaultAmount, isActive: d.isActive,
@@ -133,5 +134,5 @@ export async function saveExpenseItemAction(input: z.input<typeof ItemSchema>) {
     revalidatePath("/staff/settings/expenses");
     revalidatePath("/staff/expenses");
     return null;
-  }, "Expense type saved.");
+  }, msg("Expense type saved."));
 }

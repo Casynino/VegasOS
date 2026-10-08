@@ -10,6 +10,9 @@ import { resolveAccountTx } from "./payment-accounts";
 import { TRIP_TYPE_LABEL } from "@/lib/transport-meta";
 import type { Prisma } from "@/generated/prisma/client";
 import type { TripStatus } from "@/generated/prisma/enums";
+import { msg, msgf } from "@/i18n/msg";
+import { getT } from "@/i18n/server";
+import { englishT } from "@/i18n/translate";
 
 /**
  * Guest transport — airport pickups & drop-offs, meeting and custom trips.
@@ -41,6 +44,11 @@ const TRANSITIONS: Record<TripStatus, TripStatus[]> = {
 const DRIVER_STEPS: TripStatus[] = ["EN_ROUTE", "PICKED_UP", "COMPLETED"];
 const can = (a: Actor, ...p: string[]) => p.some((x) => a.permissions?.has(x));
 const digits = (v: string | null | undefined) => (v ?? "").replace(/\D/g, "");
+/** A trip's status inside a sentence, in the words of whoever asks: "en route" in English (as it always was). */
+async function tripWord(word: string) {
+  const t = await getT().catch(() => englishT);
+  return t.ctx("trip", word);
+}
 
 /** TRN-2026-00001 — one sequence per year. */
 async function nextTripRef(tx: Tx, year: string) {
@@ -67,12 +75,12 @@ export interface ServiceOptionInput { id?: string | null; name: string; descript
  */
 export async function saveTransportService(input: { id: string; name: string; description?: string | null; price: number; isActive: boolean; isPublic: boolean; options?: ServiceOptionInput[] | null }, actor: Actor) {
   if (!can(actor, "transport.manage", "settings.manage")) throw new AppError("Only a manager or admin can change transport prices.", "FORBIDDEN");
-  if (!input.name.trim()) throw new AppError("Give the service a name.", "VALIDATION", { name: "Required" });
+  if (!input.name.trim()) throw new AppError("Give the service a name.", "VALIDATION", { name: msg("Required") });
   const opts = (input.options ?? []).map((o) => ({ ...o, name: o.name.trim() }));
   for (const p of [input.price, ...opts.map((o) => o.price)]) {
-    if (!Number.isInteger(p) || p < 0) throw new AppError("Enter prices in whole shillings.", "VALIDATION", { price: "Invalid" });
+    if (!Number.isInteger(p) || p < 0) throw new AppError("Enter prices in whole shillings.", "VALIDATION", { price: msg("Invalid") });
   }
-  if (opts.some((o) => !o.name)) throw new AppError("Give every package a name.", "VALIDATION", { options: "Name" });
+  if (opts.some((o) => !o.name)) throw new AppError("Give every package a name.", "VALIDATION", { options: msg("Name") });
   return db.$transaction(async (tx) => {
     const before = await tx.transportService.findUnique({ where: { id: input.id }, include: { options: true } });
     if (!before) throw new AppError("Service not found.", "NOT_FOUND");
@@ -133,34 +141,34 @@ export async function createTransportRequest(input: TransportRequestInput, via: 
   const staff = via.source === "STAFF" ? via.actor : null;
   if (staff && !can(staff, "transport.request", "transport.manage")) throw new AppError("You cannot create transport requests.", "FORBIDDEN");
   const name = input.passengerName.trim();
-  if (name.length < 2) throw new AppError("Enter the guest's full name.", "VALIDATION", { passengerName: "Required" });
-  if (digits(input.passengerPhone).length < 7) throw new AppError("A phone number is needed so we can confirm the trip.", "VALIDATION", { passengerPhone: "Required" });
-  if (!Number.isInteger(input.passengers) || input.passengers < 1 || input.passengers > 40) throw new AppError("Enter the number of guests.", "VALIDATION", { passengers: "Invalid" });
+  if (name.length < 2) throw new AppError("Enter the guest's full name.", "VALIDATION", { passengerName: msg("Required") });
+  if (digits(input.passengerPhone).length < 7) throw new AppError("A phone number is needed so we can confirm the trip.", "VALIDATION", { passengerPhone: msg("Required") });
+  if (!Number.isInteger(input.passengers) || input.passengers < 1 || input.passengers > 40) throw new AppError("Enter the number of guests.", "VALIDATION", { passengers: msg("Invalid") });
   const bags = input.bags ?? 0;
-  if (!Number.isInteger(bags) || bags < 0 || bags > 60) throw new AppError("Enter the number of bags.", "VALIDATION", { bags: "Invalid" });
+  if (!Number.isInteger(bags) || bags < 0 || bags > 60) throw new AppError("Enter the number of bags.", "VALIDATION", { bags: msg("Invalid") });
 
   return db.$transaction(async (tx) => {
     const settings = await getSettingsTx(tx);
     const service = await tx.transportService.findUnique({ where: { id: input.serviceId }, include: { options: { where: { isActive: true } } } });
-    if (!service || !service.isActive || (!staff && !service.isPublic)) throw new AppError("Choose a transport service.", "VALIDATION", { serviceId: "Required" });
+    if (!service || !service.isActive || (!staff && !service.isPublic)) throw new AppError("Choose a transport service.", "VALIDATION", { serviceId: msg("Required") });
     const option = service.options.length ? service.options.find((o) => o.id === input.optionId) : null;
-    if (service.options.length && !option) throw new AppError("Choose a package.", "VALIDATION", { optionId: "Required" });
+    if (service.options.length && !option) throw new AppError("Choose a package.", "VALIDATION", { optionId: msg("Required") });
     const price = option?.price ?? service.price;
 
     let pickupAt: Date;
     try { pickupAt = zonedInstant(input.date, parseTimeToMinutes(input.time), settings.timezone); }
-    catch { throw new AppError("Enter a valid date and time.", "VALIDATION", { time: "Invalid" }); }
-    if (!staff && pickupAt.getTime() < now.getTime() - 60 * 60_000) throw new AppError("That date and time has already passed.", "VALIDATION", { date: "Past" });
+    catch { throw new AppError("Enter a valid date and time.", "VALIDATION", { time: msg("Invalid") }); }
+    if (!staff && pickupAt.getTime() < now.getTime() - 60 * 60_000) throw new AppError("That date and time has already passed.", "VALIDATION", { date: msg("Past") });
 
     const hotel = settings.hotelName;
     const airport = input.airport?.trim() || null;
     const pickup = service.type === "AIRPORT_PICKUP";
     const dropoff = service.type === "AIRPORT_DROPOFF";
-    if (pickup && !airport) throw new AppError("Which airport are you arriving at?", "VALIDATION", { airport: "Required" });
-    if (pickup && !input.flightNumber?.trim()) throw new AppError("Enter your flight number.", "VALIDATION", { flightNumber: "Required" });
-    if (pickup && input.bags == null) throw new AppError("How many bags?", "VALIDATION", { bags: "Required" });
-    if (dropoff && !airport) throw new AppError("Which airport are you going to?", "VALIDATION", { airport: "Required" });
-    if (!pickup && !dropoff && !input.destination?.trim()) throw new AppError("Where are you going?", "VALIDATION", { destination: "Required" });
+    if (pickup && !airport) throw new AppError("Which airport are you arriving at?", "VALIDATION", { airport: msg("Required") });
+    if (pickup && !input.flightNumber?.trim()) throw new AppError("Enter your flight number.", "VALIDATION", { flightNumber: msg("Required") });
+    if (pickup && input.bags == null) throw new AppError("How many bags?", "VALIDATION", { bags: msg("Required") });
+    if (dropoff && !airport) throw new AppError("Which airport are you going to?", "VALIDATION", { airport: msg("Required") });
+    if (!pickup && !dropoff && !input.destination?.trim()) throw new AppError("Where are you going?", "VALIDATION", { destination: msg("Required") });
 
     // The booking: staff pick it; a website guest's booking number is linked only when the phone matches that booking.
     let reservation: { id: string; guestId: string; reference: string } | null = null;
@@ -212,7 +220,7 @@ export async function requestTransportForReservation(input: {
   const settings = await getSettings();
   let pickupAt: Date;
   try { pickupAt = zonedInstant(input.arrivalDate, parseTimeToMinutes(input.arrivalTime), settings.timezone); }
-  catch { throw new AppError("Enter a valid arrival date and time.", "VALIDATION", { arrivalTime: "Invalid" }); }
+  catch { throw new AppError("Enter a valid arrival date and time.", "VALIDATION", { arrivalTime: msg("Invalid") }); }
   return db.$transaction(async (tx) => {
     const trip = await tx.transportTrip.create({
       data: {
@@ -260,7 +268,7 @@ export async function recordDriver(tripId: string, input: { driverId?: string | 
   if (!can(actor, "transport.request", "transport.manage")) throw new AppError("You cannot arrange drivers.", "FORBIDDEN");
   return db.$transaction(async (tx) => {
     const t = await load(tx, tripId);
-    if (!["CONFIRMED", "ASSIGNED", "EN_ROUTE", "PICKED_UP"].includes(t.status)) throw new AppError(t.status === "REQUESTED" ? "Confirm the request first." : "This trip is closed.");
+    if (!["CONFIRMED", "ASSIGNED", "EN_ROUTE", "PICKED_UP"].includes(t.status)) throw new AppError(t.status === "REQUESTED" ? msg("Confirm the request first.") : msg("This trip is closed."));
     const hasDriver = !!(t.driverId || t.driverName);
     if (hasDriver && !can(actor, "transport.manage")) throw new AppError("Only a manager can change the driver.", "FORBIDDEN");
     let driverName = input.driverName?.trim() || null, driverPhone = input.driverPhone?.trim() || null;
@@ -269,12 +277,12 @@ export async function recordDriver(tripId: string, input: { driverId?: string | 
       if (!d || !d.isActive || !d.role.permissions.some((p) => p.permission.code === "transport.driver")) throw new AppError("Choose an active driver.");
       driverName ??= d.fullName; driverPhone ??= d.phone;
     }
-    if (!driverName) throw new AppError("Enter the driver's name.", "VALIDATION", { driverName: "Required" });
+    if (!driverName) throw new AppError("Enter the driver's name.", "VALIDATION", { driverName: msg("Required") });
     let vehicleName = input.vehicleName?.trim() || null, vehiclePlate = input.vehiclePlate?.trim().toUpperCase() || null;
     if (input.vehicleId) {
       const v = await tx.vehicle.findUnique({ where: { id: input.vehicleId } });
       if (!v || !v.isActive) throw new AppError("Choose an active vehicle.");
-      if (t.passengers > v.capacity) throw new AppError(`${v.name} seats ${v.capacity}; this trip has ${t.passengers} passengers.`);
+      if (t.passengers > v.capacity) throw new AppError(msgf("{vehicle} seats {seats}; this trip has {n} passengers.", { vehicle: v.name, seats: v.capacity, n: t.passengers }));
       vehicleName ??= v.name; vehiclePlate ??= v.plateNumber;
     }
     const status: TripStatus = t.status === "CONFIRMED" ? "ASSIGNED" : t.status;
@@ -295,10 +303,13 @@ export async function setTripStatus(tripId: string, status: TripStatus, actor: A
     const ownDriver = can(actor, "transport.driver") && !!t.driverId && t.driverId === actor.userId;
     if (!staff && !(ownDriver && DRIVER_STEPS.includes(status))) throw new AppError("You cannot change this trip.", "FORBIDDEN");
     if (status === "CONFIRMED" && t.status === "REQUESTED") throw new AppError("Use Confirm.");
-    if (!TRANSITIONS[t.status].includes(status)) throw new AppError(`A ${t.status === "REQUESTED" ? "pending" : t.status.toLowerCase().replace("_", " ")} trip cannot become ${status.toLowerCase().replace("_", " ")}.`);
+    if (!TRANSITIONS[t.status].includes(status)) {
+      const from = await tripWord(t.status === "REQUESTED" ? "pending" : t.status.toLowerCase().replace("_", " "));
+      throw new AppError(msgf("A {from} trip cannot become {to}.", { from, to: await tripWord(status.toLowerCase().replace("_", " ")) }));
+    }
     if (status === "CANCELLED") {
       if (!can(actor, "transport.manage")) throw new AppError("Only a manager can cancel a transport request.", "FORBIDDEN");
-      if (!reason?.trim()) throw new AppError("Give a reason for cancelling.", "VALIDATION", { reason: "Required" });
+      if (!reason?.trim()) throw new AppError("Give a reason for cancelling.", "VALIDATION", { reason: msg("Required") });
     }
     if ((status === "CANCELLED" || status === "NO_SHOW") && billed(t)) throw new AppError("This trip is already on a bill or paid.");
     await tx.transportTrip.update({
@@ -318,8 +329,8 @@ export async function setTripStatus(tripId: string, status: TripStatus, actor: A
 /** A special price (manager): the standard price is kept, with who, when and why. */
 export async function adjustTripPrice(tripId: string, price: number, reason: string, actor: Actor) {
   if (!can(actor, "transport.manage")) throw new AppError("Only a manager can change a trip's price.", "FORBIDDEN");
-  if (!Number.isInteger(price) || price < 0) throw new AppError("Enter the price in whole shillings.", "VALIDATION", { price: "Invalid" });
-  if (!reason.trim()) throw new AppError("Say why the price is different.", "VALIDATION", { reason: "Required" });
+  if (!Number.isInteger(price) || price < 0) throw new AppError("Enter the price in whole shillings.", "VALIDATION", { price: msg("Invalid") });
+  if (!reason.trim()) throw new AppError("Say why the price is different.", "VALIDATION", { reason: msg("Required") });
   return db.$transaction(async (tx) => {
     const t = await load(tx, tripId);
     if (billed(t)) throw new AppError("The trip is already on a bill or paid — the price cannot change now.");

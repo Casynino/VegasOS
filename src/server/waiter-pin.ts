@@ -3,6 +3,8 @@ import { z } from "zod";
 import { isRestaurantDevice } from "@/lib/permissions";
 import { requestMeta, type CurrentUser } from "./auth";
 import { AppError } from "./errors";
+import { getT } from "@/i18n/server";
+import { msg, msgf } from "@/i18n/msg";
 import { waiterOnCounter } from "./services/waiter-on-counter";
 
 /** The waiter chosen on the shared Restaurant Counter ("who serves it?"), sent with an action (the field is called `pin`). */
@@ -20,9 +22,13 @@ export async function actingWaiter(user: CurrentUser, pin: WaiterPinInput | null
   if (!isRestaurantDevice(user.permissions)) {
     return { userId: user.id, label: user.fullName, role: user.roleName, ipAddress, permissions: user.permissions as ReadonlySet<string>, deviceUserId: null as string | null };
   }
-  if (!pin) throw new AppError(`On the Restaurant Counter, ${what} needs the waiter who serves it — choose them from the list.`, "VALIDATION", { pin: "Required" });
+  if (!pin) {
+    // `what` is the caller's English ("making an order") — shown in the reader's language inside the sentence.
+    const t = await getT().catch(() => null);
+    throw new AppError(msgf("On the Restaurant Counter, {what} needs the waiter who serves it — choose them from the list.", { what: t ? t(what) : what }), "VALIDATION", { pin: msg("Required") });
+  }
   const p = WaiterPin.safeParse(pin);
-  if (!p.success) throw new AppError("Choose the waiter from the list.", "VALIDATION", { pin: "Invalid" });
+  if (!p.success) throw new AppError("Choose the waiter from the list.", "VALIDATION", { pin: msg("Invalid") });
   const w = await waiterOnCounter(p.data.waiterId, { id: user.id, label: user.fullName }, opts);
   return { ...w, ipAddress } as typeof w & { ipAddress: string | null; deviceUserId: string | null };
 }

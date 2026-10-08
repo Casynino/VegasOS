@@ -10,6 +10,8 @@ import type { QrExplore } from "@/server/services/hotel-qr-explore";
 import { qrBookAction, qrQuoteAction, qrSearchAction, recordQrEventAction } from "@/app/b/[token]/actions";
 import { usePhoneLookup, useWho } from "@/components/restaurant/who";
 import { identifyCustomerAction } from "@/app/order/actions";
+import { useT } from "@/i18n/client";
+import { msg } from "@/i18n/msg";
 import { StaySummary, useBackClose } from "./ui";
 import { DatesSheet } from "./dates-sheet";
 import { Landing } from "./landing";
@@ -27,7 +29,9 @@ import {
 } from "./lib";
 
 const noSubscribe = () => () => {};
-const OFFLINE: Extract<ActionResult, { ok: false }> = { ok: false, error: "No connection — please check your internet and try again." };
+const OFFLINE: Extract<ActionResult, { ok: false }> = { ok: false, error: msg("No connection — please check your internet and try again.") };
+/** The server's "your booking is being made" answer (any language): pressing again must find that same booking. */
+const BEING_MADE = msg("Your booking is being made — please wait a moment, then check your booking.");
 /** Server field names that belong to the details step, and where each one is on the screen. */
 const FIELD_ID: Record<string, string> = {
   fullName: "qr-name", phone: "qr-phone", email: "qr-email", arrivalTime: "qr-arrival", transportTime: "qr-landing", flightNumber: "qr-flight", payPhone: "qr-pay-phone",
@@ -52,6 +56,7 @@ export function HotelQrApp({ token, landing, explore, hero }: { token: string; l
 }
 
 function QrFlow({ token, landing, explore, hero }: { token: string; landing: QrLanding; explore: QrExplore; hero: QrHero }) {
+  const t = useT();
   const base = `/b/${token}`;
   const router = useRouter();
   const sp = useSearchParams();
@@ -61,7 +66,7 @@ function QrFlow({ token, landing, explore, hero }: { token: string; landing: QrL
 
   // Rooms with no photos yet show the hotel's own room photos.
   const roomPhotos = useMemo(() => hotel.photos.filter((p) => p.category === "rooms").map((p) => p.src).slice(0, 6), [hotel.photos]);
-  const imagesOf = useCallback((t: { images: string[] }) => (t.images.length ? t.images : roomPhotos.length ? roomPhotos : [hotel.hero.src]), [roomPhotos, hotel.hero.src]);
+  const imagesOf = useCallback((x: { images: string[] }) => (x.images.length ? x.images : roomPhotos.length ? roomPhotos : [hotel.hero.src]), [roomPhotos, hotel.hero.src]);
 
   // ── Moving between steps (the address is the state; each entry knows how deep in the app it is) ──
   const sheetPushed = useRef(false);
@@ -122,10 +127,10 @@ function QrFlow({ token, landing, explore, hero }: { token: string; landing: QrL
     qrSearchAction(token, { ...flow.stay, roomType: flow.roomType, visitor: visitorId() }).catch(() => OFFLINE).then((res) => {
       if (!live) return;
       setSearch({ key: sKey, res });
-      if (!res.ok) { toast.error(res.error); if (res.code === "NOT_FOUND") router.refresh(); }
+      if (!res.ok) { toast.error(t(res.error)); if (res.code === "NOT_FOUND") router.refresh(); }
     });
     return () => { live = false; };
-  }, [wantSearch, sKey, flow.stay, flow.roomType, token, router]);
+  }, [wantSearch, sKey, flow.stay, flow.roomType, token, router, t]);
   const searched = search?.key === sKey ? search.res : null;
   const result = searched?.ok ? searched.data : null;
 
@@ -142,10 +147,10 @@ function QrFlow({ token, landing, explore, hero }: { token: string; landing: QrL
     qrQuoteAction(token, { ...flow.stay, roomNumber: flow.room, visitor: visitorId() }).catch(() => OFFLINE).then((res) => {
       if (!live) return;
       setQuote({ key: qKey, res });
-      if (!res.ok) { toast.error(res.error); if (res.code === "NOT_FOUND") router.refresh(); }
+      if (!res.ok) { toast.error(t(res.error)); if (res.code === "NOT_FOUND") router.refresh(); }
     });
     return () => { live = false; };
-  }, [wantQuote, qKey, flow.stay, flow.room, token, router]);
+  }, [wantQuote, qKey, flow.stay, flow.room, token, router, t]);
   const quoted = quote?.key === qKey ? quote.res : null;
   const q = quoted?.ok ? quoted.data : null;
   const offer = result?.types.flatMap((g) => g.rooms).find((o) => o.number === flow.room) ?? null;
@@ -171,7 +176,7 @@ function QrFlow({ token, landing, explore, hero }: { token: string; landing: QrL
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [extrasOpen, setExtrasOpen] = useState(false);
   const change = (patch: Partial<Details>) => {
-    setTyped((t) => ({ ...t, ...patch }));
+    setTyped((x) => ({ ...x, ...patch }));
     setErrors((e) => {
       const n = { ...e };
       for (const k of Object.keys(patch)) delete n[k];
@@ -179,16 +184,16 @@ function QrFlow({ token, landing, explore, hero }: { token: string; landing: QrL
       return n;
     });
   };
-  const forget = () => { saveGuest(null); setTyped((t) => ({ ...t, fullName: "", phone: "" })); };
+  const forget = () => { saveGuest(null); setTyped((x) => ({ ...x, fullName: "", phone: "" })); };
   /** "Not you?" on the greeting: a new guest on this number — and this phone forgets the last one. */
-  const notMe = () => { guest.notMe(); saveGuest(null); setTyped((t) => ({ ...t, fullName: "" })); };
+  const notMe = () => { guest.notMe(); saveGuest(null); setTyped((x) => ({ ...x, fullName: "" })); };
   /** Show the guest what to fix: open the extras when it is there, and bring the first field into view. */
   const showErrors = (e: Record<string, string>) => {
     setErrors(e);
     const first = Object.keys(e)[0];
     if (!first) return;
     if (Object.keys(e).some((k) => EXTRA_FIELDS.includes(k))) setExtrasOpen(true);
-    toast.error(e[first]);
+    toast.error(t(e[first]));
     requestAnimationFrame(() => {
       const el = document.getElementById(FIELD_ID[first] ?? "");
       el?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
@@ -214,9 +219,9 @@ function QrFlow({ token, landing, explore, hero }: { token: string; landing: QrL
     const e = checkDetails(d, { known });
     if (Object.keys(e).length) { showErrors(e); return; }
     if (payWay === "ONLINE" && !payPhoneOk(payNumber)) {
-      setPayError("Enter your mobile-money number, e.g. 0712 345 678.");
+      setPayError(msg("Enter your mobile-money number, e.g. 0712 345 678."));
       if (payPhone === null) setPayPhone(d.phone);
-      showErrors({ payPhone: "Enter your mobile-money number, e.g. 0712 345 678." });
+      showErrors({ payPhone: msg("Enter your mobile-money number, e.g. 0712 345 678.") });
       return;
     }
     setPayError(null);
@@ -232,15 +237,15 @@ function QrFlow({ token, landing, explore, hero }: { token: string; landing: QrL
       pay: payWay, payPhone: payWay === "ONLINE" ? payNumber.trim() : null,
       clientKey: key.current.key, visitor: visitorId(), website: trap,
     }).catch(() => null);
-    if (!res) { toast.error(OFFLINE.error); return; }
+    if (!res) { toast.error(t(OFFLINE.error)); return; }
     if (!res.ok) {
       // "Being made" keeps the key: pressing again returns that booking. Any other answer: a new key next time.
-      if (!(res.code === "CONFLICT" && /being made/i.test(res.error))) key.current = null;
+      if (!(res.code === "CONFLICT" && (/being made/i.test(res.error) || res.error === t(BEING_MADE)))) key.current = null;
       const fe = res.fieldErrors ?? {};
       const mine = Object.keys(fe).filter((k) => DETAIL_FIELDS.includes(k));
       if (fe.payPhone) { setPayError(res.error); if (payPhone === null) setPayPhone(d.phone); showErrors({ payPhone: res.error }); return; }
       if (mine.length) { showErrors(Object.fromEntries(mine.map((k) => [k, res.error]))); return; }
-      toast.error(res.error);
+      toast.error(t(res.error));
       if (res.code === "UNAVAILABLE" || (res.code === "VALIDATION" && Object.keys(fe).some((k) => ["checkIn", "checkOut", "adults", "children", "roomNumber"].includes(k)))) {
         setSearch(null); setQuote(null); go({ view: "results", room: null });
       } else if (res.code === "NOT_FOUND" || res.code === "FORBIDDEN") router.refresh();
@@ -258,7 +263,7 @@ function QrFlow({ token, landing, explore, hero }: { token: string; landing: QrL
     window.history.replaceState({ vqr: historyDepth() }, "", flowUrl(base, { view: "booked", type: null, stay: null, roomType: null, room: null, sheet: false }));
     if (b.payUrl) router.push(b.payUrl);
     else {
-      if (b.payWay === "ONLINE" && b.payError) toast.error(b.payError);
+      if (b.payWay === "ONLINE" && b.payError) toast.error(t(b.payError));
       router.push(b.confirmUrl);
     }
   });
@@ -289,28 +294,28 @@ function QrFlow({ token, landing, explore, hero }: { token: string; landing: QrL
     : needsRoom && justBooked ? "booked"
     : needsRoom && (!flow.stay || !flow.room) ? (flow.stay ? "results" : "home")
     : step;
-  const closed = booking.open ? null : booking.message ?? "Booking here is not available right now — please ask reception or call us.";
+  const closed = booking.open ? null : booking.message ?? msg("Booking here is not available right now — please ask reception or call us.");
   const photo = roomType ? imagesOf(roomType)[0] ?? null : hotel.hero.src;
   const stay = flow.stay;
   const shell: Shell = {
     hotel: hotel.name, phone: hotel.phone, times: { checkIn: hotel.checkInTime, checkOut: hotel.checkoutTime },
     aside: (
       <StaySummary photo={needsRoom ? photo : explore.opening[0]?.wide.src ?? hotel.hero.src}
-        title={needsRoom ? roomType?.name ?? "Your room" : hotel.name}
-        sub={needsRoom && flow.room ? `Room ${flow.room}` : null}
+        title={needsRoom ? (roomType ? t(roomType.name) : t("Your room")) : hotel.name}
+        sub={needsRoom && flow.room ? t("Room {number}", { number: flow.room }) : null}
         rows={stay ? [
-          { label: "Check-in", value: `${dayWeek(stay.checkIn)} · ${hotel.checkInTime}` },
-          { label: "Check-out", value: `${dayWeek(stay.checkOut)} · ${hotel.checkoutTime}` },
-          { label: "Stay", value: `${nightsText(nightsOf(stay))} · ${guestsText(stay.adults, stay.children)}` },
+          { label: t("Check-in"), value: `${dayWeek(stay.checkIn, t)} · ${hotel.checkInTime}` },
+          { label: t("Check-out"), value: `${dayWeek(stay.checkOut, t)} · ${hotel.checkoutTime}` },
+          { label: t("Stay"), value: `${nightsText(nightsOf(stay), t)} · ${guestsText(stay.adults, stay.children, t)}` },
         ] : []}
-        total={needsRoom && q ? { label: "Total", value: tzs(q.total) } : null} />
+        total={needsRoom && q ? { label: t("Total"), value: tzs(q.total) } : null} />
     ),
   };
-  const typeName = (s: string | null) => (s ? roomTypes.find((t) => t.slug === s)?.name ?? null : null);
+  const typeName = (s: string | null) => (s ? roomTypes.find((x) => x.slug === s)?.name ?? null : null);
 
   let content: React.ReactNode;
   if (view === "results") {
-    content = <ResultsView shell={shell} stay={stay} typeFilter={flow.roomType ? { slug: flow.roomType, name: typeName(flow.roomType) ?? "This room type" } : null}
+    content = <ResultsView shell={shell} stay={stay} typeFilter={flow.roomType ? { slug: flow.roomType, name: typeName(flow.roomType) ?? t("This room type") } : null}
       state={{ loading: wantSearch, result, error: searched && !searched.ok ? searched.error : null }} imagesOf={imagesOf}
       onBack={() => back({ view: "home", stay: null, roomType: null })} onEdit={openSheet} onClearType={() => go({ roomType: null }, "replace")}
       onBook={(o) => bookRoom(o)} onDetails={(g: TypeGroup) => openType(g.type.slug, "results")} onRetry={() => setSearch(null)} />;
@@ -329,11 +334,11 @@ function QrFlow({ token, landing, explore, hero }: { token: string; landing: QrL
   } else {
     content = <Landing landing={landing} explore={explore} hero={hero} imagesOf={imagesOf} last={last} stay={barStay}
       onDates={openSheet} onSee={() => go({ view: "results", stay: barStay, roomType: null, room: null })}
-      onBookType={(t) => bookType(t)} onTypeDetails={(t) => openType(t.slug, "home")} />;
+      onBookType={(x) => bookType(x)} onTypeDetails={(x) => openType(x.slug, "home")} />;
   }
 
   // The room type in the sheet: tonight's price on the hotel page; the stay's price (its best room) on step 2.
-  const sheetType = typeSheet?.where === "home" ? roomTypes.find((t) => t.slug === typeSheet.slug) ?? null : null;
+  const sheetType = typeSheet?.where === "home" ? roomTypes.find((x) => x.slug === typeSheet.slug) ?? null : null;
   const sheetGroup = typeSheet?.where === "results" ? result?.types.find((g) => g.type.slug === typeSheet.slug) ?? null : null;
   const sheetBest = sheetGroup ? bestOffer(sheetGroup.rooms) : null;
 
@@ -345,7 +350,7 @@ function QrFlow({ token, landing, explore, hero }: { token: string; landing: QrL
           {content}
         </motion.div>
       </AnimatePresence>
-      <DatesSheet open={flow.sheet} onClose={closeSheet} window={w} types={roomTypes.map((t) => ({ slug: t.slug, name: t.name, maxAdults: t.maxAdults, maxChildren: t.maxChildren }))}
+      <DatesSheet open={flow.sheet} onClose={closeSheet} window={w} types={roomTypes.map((x) => ({ slug: x.slug, name: x.name, maxAdults: x.maxAdults, maxChildren: x.maxChildren }))}
         initial={{ stay: stay ?? barStay, roomType: flow.roomType }} closed={closed} phone={hotel.phone}
         onSubmit={(next: StayQuery, rt: string | null) => {
           sheetPushed.current = false;
@@ -356,9 +361,9 @@ function QrFlow({ token, landing, explore, hero }: { token: string; landing: QrL
       <TypeSheet key={typeSheet ? `${typeSheet.where}-${typeSheet.slug}` : "none"} open={!!typeSheet?.open && !!(sheetType || sheetGroup)} onClose={closeType}
         t={sheetType ?? sheetGroup?.type ?? null} images={sheetType ? imagesOf(sheetType) : sheetGroup ? imagesOf(sheetGroup.type) : []}
         price={sheetType ? { perNight: sheetType.fromPerNight, base: sheetType.baseRate, offer: sheetType.fromPerNight < sheetType.baseRate ? sheetType.promoLabel ?? sheetType.promotion : null, from: true }
-          : sheetBest ? { perNight: sheetBest.perNight, base: sheetBest.ratePerNight, offer: sheetBest.discount > 0 ? sheetBest.promotion ?? "Offer" : null, total: sheetBest.total, nights: result?.stay.nights ?? null } : null}
-        free={sheetType ? (sheetType.freeTonight > 0 ? `${sheetType.freeTonight} free tonight` : "Full tonight — other nights may be free") : sheetGroup ? `${sheetGroup.available} free for your dates` : null}
-        cta={closed ? null : sheetType ? { label: "Book", onClick: () => bookType(sheetType, "sheet") } : sheetBest ? { label: "Book", onClick: () => bookRoom(sheetBest, "sheet") } : null} />
+          : sheetBest ? { perNight: sheetBest.perNight, base: sheetBest.ratePerNight, offer: sheetBest.discount > 0 ? sheetBest.promotion ?? t("Offer") : null, total: sheetBest.total, nights: result?.stay.nights ?? null } : null}
+        free={sheetType ? (sheetType.freeTonight > 0 ? t("{n} free tonight", { n: sheetType.freeTonight }) : t("Full tonight — other nights may be free")) : sheetGroup ? t("{n} free for your dates", { n: sheetGroup.available }) : null}
+        cta={closed ? null : sheetType ? { label: t("Book"), onClick: () => bookType(sheetType, "sheet") } : sheetBest ? { label: t("Book"), onClick: () => bookRoom(sheetBest, "sheet") } : null} />
     </main>
   );
 }

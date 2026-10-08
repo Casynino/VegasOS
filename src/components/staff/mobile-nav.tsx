@@ -6,12 +6,14 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { Button } from "@/components/ui/button";
 import { StaffNav } from "./staff-nav";
 import type { NavSection } from "./nav-config";
+import { useT } from "@/i18n/client";
 
 export function MobileNav({ sections }: { sections: NavSection[] }) {
   const [open, setOpen] = useState(false);
+  const t = useT();
   return (
     <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger render={<Button variant="ghost" size="icon" className="lg:hidden" aria-label="Open menu" />}>
+      <SheetTrigger render={<Button variant="ghost" size="icon" className="lg:hidden" aria-label={t("Open menu")} />}>
         <Menu />
       </SheetTrigger>
       <SheetContent side="left" className="w-72 bg-sidebar p-4 text-sidebar-foreground">

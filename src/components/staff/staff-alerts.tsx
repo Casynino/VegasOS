@@ -8,18 +8,21 @@ import { Bell, BellOff, CalendarCheck, ChefHat, ClipboardList, ConciergeBell, Ha
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import type { StaffAlert, StaffAlertKind } from "@/server/services/staff-alerts";
+import { useT } from "@/i18n/client";
+import { msg } from "@/i18n/msg";
 import { claimRing, isMuted, muteStamp, ringAlert, setMuted, syncMuted, unlockAudio, useAudioReady, useMuted } from "./sounds";
 
 export type AlertSound = { enabled: boolean; volume: number; newSound: string; readySound: string };
 
+/** Titles are shown with t.ctx("alert", title) — "alert::New booking" is a booking that arrived, not "make a booking". */
 const KIND: Record<StaffAlertKind, { icon: LucideIcon; tone: string; title: string }> = {
-  booking: { icon: CalendarCheck, tone: "bg-sky-500/15 text-sky-300", title: "New booking" },
-  request: { icon: ConciergeBell, tone: "bg-violet-500/15 text-violet-300", title: "Guest request" },
-  payment: { icon: Wallet, tone: "bg-emerald-500/15 text-emerald-300", title: "Payment to confirm" },
-  bill: { icon: Receipt, tone: "bg-amber-500/15 text-amber-300", title: "Bill asked" },
-  order_new: { icon: ChefHat, tone: "bg-rose-500/15 text-rose-300", title: "New order" },
-  order_ready: { icon: HandPlatter, tone: "bg-teal-500/15 text-teal-300", title: "Order ready" },
-  stock: { icon: ClipboardList, tone: "bg-orange-500/15 text-orange-300", title: "Stock request" },
+  booking: { icon: CalendarCheck, tone: "bg-sky-500/15 text-sky-300", title: msg("New booking") },
+  request: { icon: ConciergeBell, tone: "bg-violet-500/15 text-violet-300", title: msg("Guest request") },
+  payment: { icon: Wallet, tone: "bg-emerald-500/15 text-emerald-300", title: msg("Payment to confirm") },
+  bill: { icon: Receipt, tone: "bg-amber-500/15 text-amber-300", title: msg("Bill asked") },
+  order_new: { icon: ChefHat, tone: "bg-rose-500/15 text-rose-300", title: msg("New order") },
+  order_ready: { icon: HandPlatter, tone: "bg-teal-500/15 text-teal-300", title: msg("Order ready") },
+  stock: { icon: ClipboardList, tone: "bg-orange-500/15 text-orange-300", title: msg("Stock request") },
 };
 /** Ready orders and bills are for the waiter: the "ready" sound; everything new: the "new" sound. */
 const soundFor = (k: StaffAlertKind, s: AlertSound) => (k === "order_ready" || k === "bill" ? s.readySound : s.newSound);
@@ -48,6 +51,10 @@ export function StaffAlerts({ sound, soundOff }: { sound: AlertSound; soundOff: 
   const last = useRef<string | null>(null);
   const soundRef = useRef(sound);
   useEffect(() => { soundRef.current = sound; });
+  const t = useT();
+  // The words for pop-ups made inside the polling loop (switching language must not restart it).
+  const tRef = useRef(t);
+  useEffect(() => { tRef.current = t; });
   // The restaurant portal rings for its own orders (with its own highlights) — the bell does the rest there.
   const onPortal = pathname === "/staff/restaurant";
   const mine = useCallback((xs: StaffAlert[]) => (onPortal ? xs.filter((x) => !x.kind.startsWith("order_")) : xs), [onPortal]);
@@ -87,12 +94,13 @@ export function StaffAlerts({ sound, soundOff }: { sound: AlertSound; soundOff: 
         all.forEach((x) => seen.current!.add(x.id));
         if (!arrived.length) return;
         const s = soundRef.current;
+        const tr = tRef.current;
         // Rings for each new notification — once per browser, even with several tabs open.
         if (s.enabled && claimRing(arrived.map((a) => a.id)).length) ringAlert(soundFor(arrived[0].kind, s), s.volume);
-        for (const a of arrived.slice(0, 3)) toast(KIND[a.kind].title, { description: a.text, action: { label: "Open", onClick: () => router.push(a.href) }, duration: 10_000 });
+        for (const a of arrived.slice(0, 3)) toast(tr.ctx("alert", KIND[a.kind].title), { description: a.text, action: { label: tr("Open"), onClick: () => router.push(a.href) }, duration: 10_000 });
         // A browser pop-up plays the computer's own sound — so none while the bell is off.
         if (document.hidden && !isMuted() && typeof Notification !== "undefined" && Notification.permission === "granted") {
-          try { new Notification(KIND[arrived[0].kind].title, { body: arrived.map((a) => a.text).join("\n"), tag: "vegas-staff" }); } catch { /* ignored */ }
+          try { new Notification(tr.ctx("alert", KIND[arrived[0].kind].title), { body: arrived.map((a) => a.text).join("\n"), tag: "vegas-staff" }); } catch { /* ignored */ }
         }
       } catch { if (!stop) setOnline(false); }
     };
@@ -109,24 +117,24 @@ export function StaffAlerts({ sound, soundOff }: { sound: AlertSound; soundOff: 
   const on = sound.enabled && !muted;
   const tone: DotTone = !on ? "off" : audio && online ? "on" : "wait";
   const toggle = async () => {
-    if (!sound.enabled) { toast("Sounds are switched off in the manager's sound settings."); return; }
+    if (!sound.enabled) { toast(t("Sounds are switched off in the manager's sound settings.")); return; }
     if (on) {
-      toast("Sound off — no ringing on any of your screens.");
-      if (!(await setMuted(true))) toast.error("Could not save that — check the connection, then tap the bell again.");
+      toast(t("Sound off — no ringing on any of your screens."));
+      if (!(await setMuted(true))) toast.error(t("Could not save that — check the connection, then tap the bell again."));
       return;
     }
     const unlocked = unlockAudio(); // inside the tap, so the browser allows it
     const saved = setMuted(false);
     // No test ring: sound comes only with a new notification.
-    toast(await unlocked ? "Sound on — each new notification rings twice." : "Sound on — tap anywhere on the page once so the browser lets it ring.");
-    if (!(await saved)) toast.error("Could not save that — check the connection, then tap the bell again.");
+    toast(await unlocked ? t("Sound on — each new notification rings twice.") : t("Sound on — tap anywhere on the page once so the browser lets it ring."));
+    if (!(await saved)) toast.error(t("Could not save that — check the connection, then tap the bell again."));
     if (typeof Notification !== "undefined" && Notification.permission === "default") { try { await Notification.requestPermission(); } catch { /* ignored */ } }
   };
-  const status = !sound.enabled ? "Sounds are off (manager's setting)"
-    : !on ? "Sound off — tap to turn on"
-    : !online ? "Sound on · reconnecting… — tap to turn off"
-    : !audio ? "Sound on — tap anywhere on the page so the browser lets it ring · tap the bell to turn off"
-    : "Sound on — tap to turn off";
+  const status = !sound.enabled ? t("Sounds are off (manager's setting)")
+    : !on ? t("Sound off — tap to turn on")
+    : !online ? t("Sound on · reconnecting… — tap to turn off")
+    : !audio ? t("Sound on — tap anywhere on the page so the browser lets it ring · tap the bell to turn off")
+    : t("Sound on — tap to turn off");
 
   return (
     <div className="relative shrink-0">
@@ -137,12 +145,12 @@ export function StaffAlerts({ sound, soundOff }: { sound: AlertSound; soundOff: 
       </button>
       {waiting.length > 0 && (
         <Popover>
-          <PopoverTrigger render={<button type="button" aria-label={`${waiting.length} waiting for you — see them`} title="What is waiting for you"
+          <PopoverTrigger render={<button type="button" aria-label={t("{n} waiting for you — see them", { n: waiting.length })} title={t("What is waiting for you")}
             className="absolute -right-1.5 -top-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white ring-2 ring-card transition hover:scale-110" />}>
             {waiting.length > 99 ? "99+" : waiting.length}
           </PopoverTrigger>
           <PopoverContent align="end" className="w-80 gap-0 rounded-2xl p-0">
-            <p className="border-b border-border/70 px-3.5 py-2.5 text-xs font-semibold">Waiting for you · {waiting.length}</p>
+            <p className="border-b border-border/70 px-3.5 py-2.5 text-xs font-semibold">{t("Waiting for you · {n}", { n: waiting.length })}</p>
             <ul className="max-h-80 divide-y divide-border/50 overflow-y-auto">
               {waiting.slice(0, 12).map((x) => {
                 const k = KIND[x.kind];
@@ -151,7 +159,7 @@ export function StaffAlerts({ sound, soundOff }: { sound: AlertSound; soundOff: 
                     <Link href={x.href} className="flex items-center gap-2.5 px-3.5 py-2.5 transition-colors hover:bg-muted/60">
                       <span className={cn("grid size-8 shrink-0 place-items-center rounded-full", k.tone)}><k.icon className="size-4" /></span>
                       <span className="min-w-0 flex-1 leading-tight">
-                        <span className="block text-[11px] font-semibold text-muted-foreground">{k.title}</span>
+                        <span className="block text-[11px] font-semibold text-muted-foreground">{t.ctx("alert", k.title)}</span>
                         <span className="block truncate text-[13px]">{x.text.replace(/^[^—]+— /, "")}</span>
                       </span>
                     </Link>

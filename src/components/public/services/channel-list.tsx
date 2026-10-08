@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
 import { ArrowUpRight, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getT } from "@/i18n/server";
 import { typeScale } from "../kit/tokens";
 
 export type Channel = {
@@ -20,8 +21,9 @@ export type Channel = {
  * stacks on phones and sits side by side from 640px; "stack" is always one column (a narrow
  * column beside a form). Each row is a full 44px+ target; only real settings appear.
  */
-export function ChannelList({ channels, layout = "spread", className }: { channels: Channel[]; layout?: "spread" | "stack"; className?: string }) {
+export async function ChannelList({ channels, layout = "spread", className }: { channels: Channel[]; layout?: "spread" | "stack"; className?: string }) {
   if (channels.length === 0) return null;
+  const t = await getT();
   const spread = layout === "spread";
   return (
     <ul
@@ -52,7 +54,7 @@ export function ChannelList({ channels, layout = "spread", className }: { channe
               strokeWidth={1.6}
               aria-hidden="true"
             />
-            {c.external && <span className="sr-only"> (opens in a new tab)</span>}
+            {c.external && <span className="sr-only"> {t("(opens in a new tab)")}</span>}
           </a>
         </li>
       ))}

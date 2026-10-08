@@ -11,7 +11,12 @@ import { placeRoomQrOrderAction } from "@/app/r/[token]/actions";
 import { placeStayOrderAction } from "@/app/stay/[token]/actions";
 import type { CartLine } from "./restaurant-app";
 import { phoneLabel, rememberAddress, whoForOrder, type Who } from "./who";
+import { spotName } from "./shell";
 import type { FreeTable } from "@/server/services/restaurant-locations";
+import { RequestPicker } from "@/components/ordering/request-picker";
+import { useT } from "@/i18n/client";
+import { msg } from "@/i18n/msg";
+import type { T } from "@/i18n/translate";
 
 /**
  * How this place sends its order — the existing order actions. `online`: paying now (nTZS — the prompt on the
@@ -35,16 +40,16 @@ const heading = "text-[11px] font-semibold uppercase tracking-[0.16em] text-(--v
 /** Eat here, or take out — brought to the address the customer gives. */
 type Kind = "DINE_IN" | "TAKEAWAY";
 const KINDS: { v: Kind; label: string; icon: typeof UtensilsCrossed }[] = [
-  { v: "DINE_IN", label: "Eat here", icon: UtensilsCrossed },
-  { v: "TAKEAWAY", label: "Take out", icon: ShoppingBag },
+  { v: "DINE_IN", label: msg("Eat here"), icon: UtensilsCrossed },
+  { v: "TAKEAWAY", label: msg("Take out"), icon: ShoppingBag },
 ];
 const addressOk = (a: string) => a.trim().length >= 5;
 
 /** On the bill (table / room — paid later) or paid now (mobile money through nTZS). */
 type PayWay = "BILL" | "NOW";
 /** Take out is always paid first — by mobile money; while that is off, it cannot be ordered here. */
-const TAKE_OUT_OFF = "Take out is paid first by mobile money, which is not available right now — choose Eat here, or call us.";
-const PAY_PHONE_MISSING = "Enter your mobile-money number to pay now.";
+const TAKE_OUT_OFF = msg("Take out is paid first by mobile money, which is not available right now — choose Eat here, or call us.");
+const PAY_PHONE_MISSING = msg("Enter your mobile-money number to pay now.");
 /** A Tanzanian mobile-money number (0712 345 678, +255 712 345 678…) — the server checks it again. */
 const payPhoneOk = (p: string) => /^(?:\+?255|0)?[67]\d{8}$/.test(p.replace(/[\s-]/g, ""));
 
@@ -68,17 +73,18 @@ function PaymentChoice({ way, setWay, later, online, phone, setPhone, after }: {
   /** The third step — what happens once it is paid. */
   after: { text: string; icon: typeof Receipt };
 }) {
-  if (!online && !later) return <p role="note" className="rounded-xl bg-(--vr-gold-soft) px-3.5 py-2.5 text-[12.5px] leading-snug text-(--vr-gold-ink)">{TAKE_OUT_OFF}</p>;
+  const t = useT();
+  if (!online && !later) return <p role="note" className="rounded-xl bg-(--vr-gold-soft) px-3.5 py-2.5 text-[12.5px] leading-snug text-(--vr-gold-ink)">{t(TAKE_OUT_OFF)}</p>;
   return (
     <section aria-labelledby="pay-way">
-      <p id="pay-way" className={heading}>Payment</p>
+      <p id="pay-way" className={heading}>{t("Payment")}</p>
       <div role="radiogroup" aria-labelledby="pay-way" className="mt-2 overflow-hidden rounded-[22px] bg-(--vr-card) shadow-[0_18px_40px_-34px_rgba(29,23,18,0.85)] ring-1 ring-(--vr-line)">
         {online && (
-          <WayRow on={way === "NOW"} onSelect={() => setWay("NOW")} icon={Smartphone} title="Pay now" sub={<NetworkMarks label={null} compact />}>
+          <WayRow on={way === "NOW"} onSelect={() => setWay("NOW")} icon={Smartphone} title={t("Pay now")} sub={<NetworkMarks label={null} compact />}>
             <PayNowDetails phone={phone} setPhone={setPhone} after={after} />
           </WayRow>
         )}
-        {later && <WayRow on={way === "BILL"} onSelect={() => setWay("BILL")} icon={later.icon ?? Receipt} title={later.label} sub={<span>{later.hint}</span>} />}
+        {later && <WayRow on={way === "BILL"} onSelect={() => setWay("BILL")} icon={later.icon ?? Receipt} title={t(later.label)} sub={<span>{t(later.hint)}</span>} />}
       </div>
     </section>
   );
@@ -106,32 +112,33 @@ function WayRow({ on, onSelect, icon: Icon, title, sub, children }: {
 
 /** "Pay now" opened: the number, three small steps, and who carries the payment — few words. */
 function PayNowDetails({ phone, setPhone, after }: { phone: string; setPhone: (v: string) => void; after: { text: string; icon: typeof Receipt } }) {
+  const t = useT();
   const ok = payPhoneOk(phone);
-  const steps: { text: string; icon: typeof Receipt }[] = [{ text: "Check your phone", icon: BellRing }, { text: "Enter your PIN", icon: KeyRound }, after];
+  const steps: { text: string; icon: typeof Receipt }[] = [{ text: msg("Check your phone"), icon: BellRing }, { text: msg("Enter your PIN"), icon: KeyRound }, after];
   return (
     <div className="space-y-4 rounded-2xl bg-(--vr-card) p-3.5 shadow-[0_10px_28px_-22px_rgba(29,23,18,0.9)] ring-1 ring-(--vr-line)">
       <label className="block">
-        <span className="text-[12px] font-medium text-(--vr-ink)/75">Enter your number</span>
+        <span className="text-[12px] font-medium text-(--vr-ink)/75">{t("Enter your number")}</span>
         <span className="relative mt-1 block">
           <Phone className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-(--vr-muted)" />
-          <input value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" inputMode="tel" autoComplete="tel" placeholder="0712 345 678" aria-label="Your mobile-money number" aria-invalid={!!phone && !ok}
+          <input value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" inputMode="tel" autoComplete="tel" placeholder="0712 345 678" aria-label={t("Your mobile-money number")} aria-invalid={!!phone && !ok}
             className={cn("block h-12 w-full rounded-xl border bg-white pl-10 pr-10 text-[16px] font-medium tracking-wide tabular-nums outline-none transition placeholder:font-normal placeholder:text-(--vr-muted)/60 focus:ring-4 focus:ring-(--vr-gold)/15 sm:text-[15px]",
               phone && !ok ? "border-amber-400" : "border-(--vr-line) focus:border-(--vr-gold)")} />
           {ok && <CircleCheck className="pointer-events-none absolute right-3.5 top-1/2 size-[18px] -translate-y-1/2 text-emerald-600" />}
         </span>
-        {phone && !ok && <span className="mt-1 block text-[11.5px] text-amber-700">e.g. 0712 345 678</span>}
+        {phone && !ok && <span className="mt-1 block text-[11.5px] text-amber-700">{t("e.g. {example}", { example: "0712 345 678" })}</span>}
       </label>
       <ol className="relative grid grid-cols-3">
         <span aria-hidden className="absolute left-[16.7%] right-[16.7%] top-[15px] h-px bg-linear-to-r from-(--vr-gold)/70 via-(--vr-gold)/35 to-(--vr-gold)/70" />
         {steps.map(({ text, icon: Icon }) => (
           <li key={text} className="relative text-center">
             <span className="mx-auto grid size-[30px] place-items-center rounded-full bg-(--vr-dark) text-(--vr-gold) ring-4 ring-(--vr-card)"><Icon className="size-[14px]" /></span>
-            <span className="mt-1.5 block text-[10.5px] font-medium leading-tight text-(--vr-ink)/70">{text}</span>
+            <span className="mt-1.5 block text-[10.5px] font-medium leading-tight text-(--vr-ink)/70">{t(text)}</span>
           </li>
         ))}
       </ol>
       <p className="flex items-center justify-center gap-1.5 text-[11px] font-medium text-(--vr-muted)">
-        <Lock className="size-3 shrink-0 text-(--vr-gold-ink)" />Secure payment by <span className="font-semibold tracking-wide text-(--vr-ink)/80">NTZS</span>
+        <Lock className="size-3 shrink-0 text-(--vr-gold-ink)" />{t.rich("Secure payment by <b>NTZS</b>", { b: (c) => <span className="font-semibold tracking-wide text-(--vr-ink)/80">{c}</span> })}
       </p>
     </div>
   );
@@ -140,23 +147,24 @@ function PayNowDetails({ phone, setPhone, after }: { phone: string; setPhone: (v
 /** Eating here: pick a free table (or "Not sure yet") — the order goes to that table. */
 function TablePicker({ tables, value, onChange }: { tables: FreeTable[]; value: string | null; onChange: (id: string | null) => void }) {
   const areas = (["INSIDE", "OUTSIDE", null] as const).map((a) => ({ a, list: tables.filter((t) => t.area === a) })).filter((x) => x.list.length);
+  const t = useT();
   const short = (name: string) => name.split(" — ")[0].replace(/^table\s*/i, "");
   return (
     <section aria-labelledby="pick-table">
-      <p id="pick-table" className={heading}>Your table</p>
+      <p id="pick-table" className={heading}>{t("Your table")}</p>
       {tables.length === 0 ? (
-        <p className="mt-2 rounded-2xl bg-(--vr-bg) px-3.5 py-3 text-[12.5px] text-(--vr-muted) ring-1 ring-(--vr-line)">All tables are taken right now — a waiter will seat you.</p>
+        <p className="mt-2 rounded-2xl bg-(--vr-bg) px-3.5 py-3 text-[12.5px] text-(--vr-muted) ring-1 ring-(--vr-line)">{t("All tables are taken right now — a waiter will seat you.")}</p>
       ) : (
         <div className="mt-2 space-y-2.5 rounded-[22px] bg-(--vr-card) p-3.5 ring-1 ring-(--vr-line)">
           {areas.map(({ a, list }) => (
             <div key={a ?? "other"} className="flex items-start gap-3">
-              <span className="w-[52px] shrink-0 pt-2 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-(--vr-muted)">{a === "INSIDE" ? "Inside" : a === "OUTSIDE" ? "Outside" : "Tables"}</span>
-              <div role="radiogroup" aria-label={a === "OUTSIDE" ? "Outside tables" : "Tables"} className="flex flex-1 flex-wrap gap-1.5">
-                {list.map((t) => (
-                  <button key={t.id} type="button" role="radio" aria-checked={value === t.id} aria-label={t.name} onClick={() => onChange(value === t.id ? null : t.id)}
+              <span className="w-[52px] shrink-0 pt-2 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-(--vr-muted)">{a === "INSIDE" ? t("Inside") : a === "OUTSIDE" ? t("Outside") : t("Tables")}</span>
+              <div role="radiogroup" aria-label={a === "OUTSIDE" ? t("Outside tables") : t("Tables")} className="flex flex-1 flex-wrap gap-1.5">
+                {list.map((tb) => (
+                  <button key={tb.id} type="button" role="radio" aria-checked={value === tb.id} aria-label={spotName(tb.name, t)} onClick={() => onChange(value === tb.id ? null : tb.id)}
                     className={cn("grid h-9 min-w-9 place-items-center rounded-full px-2.5 text-[13px] font-semibold tabular-nums ring-1 transition",
-                      value === t.id ? "bg-(--vr-dark) text-(--vr-gold) ring-(--vr-dark)" : "bg-(--vr-bg) text-(--vr-ink)/80 ring-(--vr-line) hover:ring-(--vr-gold)")}>
-                    {short(t.name)}
+                      value === tb.id ? "bg-(--vr-dark) text-(--vr-gold) ring-(--vr-dark)" : "bg-(--vr-bg) text-(--vr-ink)/80 ring-(--vr-line) hover:ring-(--vr-gold)")}>
+                    {short(tb.name)}
                   </button>
                 ))}
               </div>
@@ -164,7 +172,7 @@ function TablePicker({ tables, value, onChange }: { tables: FreeTable[]; value: 
           ))}
           <button type="button" role="radio" aria-checked={!value} onClick={() => onChange(null)}
             className={cn("flex h-9 w-full items-center justify-center gap-1.5 rounded-full text-[12.5px] font-medium ring-1 transition", !value ? "bg-(--vr-gold-soft) text-(--vr-gold-ink) ring-(--vr-gold)/40" : "text-(--vr-muted) ring-(--vr-line)")}>
-            {!value && <Check className="size-3.5" strokeWidth={3} />}Not sure yet — a waiter will find me
+            {!value && <Check className="size-3.5" strokeWidth={3} />}{t("Not sure yet — a waiter will find me")}
           </button>
         </div>
       )}
@@ -174,12 +182,13 @@ function TablePicker({ tables, value, onChange }: { tables: FreeTable[]; value: 
 
 /** Who is ordering — given before the first item went in; "Change" asks again. */
 function WhoCard({ who, sub, onChange }: { who: Who | null; sub?: string; onChange?: () => void }) {
+  const t = useT();
   if (!who) {
     return (
       <button type="button" onClick={onChange} className="flex w-full items-center gap-3 rounded-2xl bg-(--vr-gold-soft) p-3 text-left ring-1 ring-(--vr-gold)/40">
         <span className="grid size-10 shrink-0 place-items-center rounded-full bg-(--vr-dark) text-(--vr-gold)"><UserRound className="size-4" /></span>
-        <span className="min-w-0 flex-1 text-[13.5px] font-semibold">Add your name and number</span>
-        <span className="text-[12px] font-semibold text-(--vr-gold-ink)">Add</span>
+        <span className="min-w-0 flex-1 text-[13.5px] font-semibold">{t("Add your name and number")}</span>
+        <span className="text-[12px] font-semibold text-(--vr-gold-ink)">{t("Add")}</span>
       </button>
     );
   }
@@ -190,29 +199,36 @@ function WhoCard({ who, sub, onChange }: { who: Who | null; sub?: string; onChan
         <span className="block truncate text-[14px] font-semibold">{who.name}</span>
         <span className="mt-0.5 block truncate text-[12.5px] tabular-nums text-(--vr-muted)">{sub ?? phoneLabel(who.phone)}</span>
       </span>
-      {onChange && <button type="button" onClick={onChange} className="h-8 shrink-0 rounded-full bg-(--vr-card) px-3 text-[12px] font-medium ring-1 ring-(--vr-line) transition hover:ring-(--vr-gold)">Change</button>}
+      {onChange && <button type="button" onClick={onChange} className="h-8 shrink-0 rounded-full bg-(--vr-card) px-3 text-[12px] font-medium ring-1 ring-(--vr-line) transition hover:ring-(--vr-gold)">{t("Change")}</button>}
     </div>
   );
 }
 
-function Notes({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+/** Requests to tick (each person reads them in their own language), then the customer's own words — kept as typed. */
+function Notes({ value, onChange, codes, onCodes }: { value: string; onChange: (v: string) => void; codes: string[]; onCodes: (c: string[]) => void }) {
+  const t = useT();
   return (
-    <label className={label}>Note for the kitchen <span className="font-normal text-(--vr-muted)">· optional</span>
-      <textarea value={value} onChange={(e) => onChange(e.target.value)} maxLength={300} rows={2} placeholder="No onions, extra ice…"
-        className="mt-1 block w-full resize-none rounded-xl border border-(--vr-line) bg-white px-3.5 py-2.5 text-[16px] outline-none sm:text-[14px] transition placeholder:text-(--vr-muted)/70 focus:border-(--vr-gold) focus:ring-4 focus:ring-(--vr-gold)/15" />
-    </label>
+    <div className="space-y-2">
+      <p className={label}>{t("Any requests?")} <span className="font-normal text-(--vr-muted)">· {t("optional")}</span></p>
+      <RequestPicker value={codes} onChange={onCodes} />
+      <label className={label}><span className="sr-only">{t("Note for the kitchen")}</span>
+        <textarea value={value} onChange={(e) => onChange(e.target.value)} maxLength={300} rows={2} placeholder={t("Anything else for the kitchen? Write it here.")}
+          className="mt-1 block w-full resize-none rounded-xl border border-(--vr-line) bg-white px-3.5 py-2.5 text-[16px] outline-none sm:text-[14px] transition placeholder:text-(--vr-muted)/70 focus:border-(--vr-gold) focus:ring-4 focus:ring-(--vr-gold)/15" />
+      </label>
+    </div>
   );
 }
 
 function KindPicker({ kind, setKind }: { kind: Kind; setKind: (k: Kind) => void }) {
+  const t = useT();
   return (
     <div>
-      <p className={heading}>How would you like it?</p>
+      <p className={heading}>{t("How would you like it?")}</p>
       <div className="mt-2 grid grid-cols-2 gap-1 rounded-full bg-(--vr-bg) p-1">
         {KINDS.map((k) => (
           <button key={k.v} type="button" onClick={() => setKind(k.v)} aria-pressed={kind === k.v}
             className={cn("flex h-9 items-center justify-center gap-1.5 rounded-full text-[13px] font-medium transition", kind === k.v ? "bg-(--vr-dark) text-white" : "text-(--vr-ink)/70 hover:text-(--vr-ink)")}>
-            <k.icon className={cn("size-3.5", kind === k.v ? "text-(--vr-gold)" : "")} />{k.label}
+            <k.icon className={cn("size-3.5", kind === k.v ? "text-(--vr-gold)" : "")} />{t(k.label)}
           </button>
         ))}
       </div>
@@ -222,14 +238,15 @@ function KindPicker({ kind, setKind }: { kind: Kind; setKind: (k: Kind) => void 
 
 /** Take out: where to bring it. */
 function DeliveryAddress({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const t = useT();
   return (
     <label className={label}>
-      <span className="flex items-center gap-1.5"><MapPin className="size-3.5 text-(--vr-gold-ink)" />Delivery address</span>
+      <span className="flex items-center gap-1.5"><MapPin className="size-3.5 text-(--vr-gold-ink)" />{t("Delivery address")}</span>
       <textarea value={value} onChange={(e) => onChange(e.target.value)} maxLength={200} rows={2} autoComplete="street-address"
-        placeholder="e.g. Mikocheni B, Plot 45, near the pharmacy"
+        placeholder={t("e.g. Mikocheni B, Plot 45, near the pharmacy")}
         className={cn("mt-1 block w-full resize-none rounded-xl border bg-white px-3.5 py-2.5 text-[16px] outline-none transition placeholder:text-(--vr-muted)/70 focus:ring-4 focus:ring-(--vr-gold)/15 sm:text-[14px]",
           value && !addressOk(value) ? "border-amber-400" : "border-(--vr-line) focus:border-(--vr-gold)")} />
-      <span className="mt-1 block text-[11.5px] font-normal text-(--vr-muted)">Street, house or building, and a landmark — we bring your order here.</span>
+      <span className="mt-1 block text-[11.5px] font-normal text-(--vr-muted)">{t("Street, house or building, and a landmark — we bring your order here.")}</span>
     </label>
   );
 }
@@ -255,8 +272,12 @@ function Footer({ error, children, hint }: { error: string | null; children: Rea
 }
 
 function Problem({ error }: { error: string | null }) {
-  return error ? <p role="alert" className="rounded-xl bg-rose-50 px-3.5 py-2.5 text-[13px] text-rose-800 ring-1 ring-rose-200">{error} Your order was not sent — please try again.</p> : null;
+  const t = useT();
+  return error ? <p role="alert" className="rounded-xl bg-rose-50 px-3.5 py-2.5 text-[13px] text-rose-800 ring-1 ring-rose-200">{error} {t("Your order was not sent — please try again.")}</p> : null;
 }
+
+/** "Pay TZS 12,000 now" / "Place order · TZS 12,000" — the button under every checkout. */
+const sendLabel = (t: T, payNow: boolean, total: number) => (payNow ? t("Pay {amount} now", { amount: tzs(total) }) : t("Place order · {amount}", { amount: tzs(total) }));
 
 /** The details this place needs, and "Place order" — then the order's own page (status, bill). */
 export function Checkout({ config, lines, total, who, onWho, onDone, seated }: {
@@ -285,7 +306,9 @@ function SpotCheckout({ config, items, total, who, onWho, onDone, seated }: {
   seated?: { name: string; table: string } | null;
 }) {
   const router = useRouter();
+  const t = useT();
   const [notes, setNotes] = useState("");
+  const [codes, setCodes] = useState<string[]>([]);
   const [kind, setKind] = useState<Kind>("DINE_IN");
   // Pay now first (where online payment is on); the bill is one tap away.
   const [way, setWay] = useState<PayWay>(config.online ? "NOW" : "BILL");
@@ -329,10 +352,10 @@ function SpotCheckout({ config, items, total, who, onWho, onDone, seated }: {
       return;
     }
     const clientKey = key ?? newKey(); setKey(clientKey);
-    if (takeOut && !addressOk(address)) { setError("Please add the delivery address."); return; }
-    if (!payReady) { setError(online ? PAY_PHONE_MISSING : TAKE_OUT_OFF); return; }
+    if (takeOut && !addressOk(address)) { setError(t("Please add the delivery address.")); return; }
+    if (!payReady) { setError(t(online ? PAY_PHONE_MISSING : TAKE_OUT_OFF)); return; }
     const res = await placeTableOrderAction({
-      token: config.token, clientKey, items, notes: notes.trim() || undefined, ...(who && !atTable ? whoForOrder(who) : {}),
+      token: config.token, clientKey, items, notes: notes.trim() || undefined, noteCodes: codes.length ? codes : undefined, ...(who && !atTable ? whoForOrder(who) : {}),
       kind: takeOut ? "TAKEAWAY" : "DINE_IN", tableId: main && !takeOut && tableId ? tableId : undefined, deliveryAddress: takeOut ? address.trim() : undefined,
       payOnline: payNow && online ? { phone: payPhone.trim() } : undefined, website: trap,
     });
@@ -349,31 +372,31 @@ function SpotCheckout({ config, items, total, who, onWho, onDone, seated }: {
   return (
     <div className="mt-4 space-y-3.5">
       {atTable
-        ? seated ? <WhoCard who={{ name: seated.name, phone: "" }} sub={`${seated.table} · your table · one bill`} /> : <WhoCard who={null} onChange={onWho} />
+        ? seated ? <WhoCard who={{ name: seated.name, phone: "" }} sub={t("{table} · your table · one bill", { table: seated.table })} /> : <WhoCard who={null} onChange={onWho} />
         : <WhoCard who={who} onChange={onWho} />}
       {main && <KindPicker kind={kind} setKind={setKind} />}
       {main && !takeOut && config.tables && <TablePicker tables={config.tables} value={tableId} onChange={setTableId} />}
       {takeOut && <DeliveryAddress value={address} onChange={setAddress} />}
       <PaymentChoice way={takeOut ? "NOW" : way} setWay={setWay} online={online} phone={payPhone} setPhone={setPayPhone}
-        later={takeOut ? null : { label: main ? "Pay after" : "Add to my bill", hint: "Cash, card or mobile money" }}
-        after={takeOut ? { text: "We bring it to you", icon: Bike } : { text: "Kitchen starts", icon: ChefHat }} />
+        later={takeOut ? null : { label: main ? msg("Pay after") : msg("Add to my bill"), hint: msg("Cash, card or mobile money") }}
+        after={takeOut ? { text: msg("We bring it to you"), icon: Bike } : { text: msg("Kitchen starts"), icon: ChefHat }} />
       {open && !payNow && (
         <div className="space-y-1.5 rounded-2xl bg-(--vr-gold-soft) p-3">
-          <p className="text-[12.5px] font-semibold text-(--vr-gold-ink)">You have an open order here — #{shortNo(open.number)} · {tzs(open.total)}</p>
-          {[[true, `Add these to order #${shortNo(open.number)}`, "Same order, same bill"], [false, "Start a new order", "A separate order and bill"]].map(([v, t, s]) => (
+          <p className="text-[12.5px] font-semibold text-(--vr-gold-ink)">{t("You have an open order here — #{number} · {amount}", { number: shortNo(open.number), amount: tzs(open.total) })}</p>
+          {[[true, t("Add these to order #{number}", { number: shortNo(open.number) }), t("Same order, same bill")], [false, t("Start a new order"), t("A separate order and bill")]].map(([v, title, s]) => (
             <button key={String(v)} type="button" onClick={() => setJoinOpen(v as boolean)} aria-pressed={joinOpen === v}
               className={cn("flex w-full items-center gap-3 rounded-xl bg-white px-3 py-2.5 text-left ring-1 transition", joinOpen === v ? "ring-2 ring-(--vr-dark)" : "ring-(--vr-line)")}>
               <span className={cn("grid size-5 shrink-0 place-items-center rounded-full border-2", joinOpen === v ? "border-(--vr-dark) bg-(--vr-dark) text-white" : "border-(--vr-line)")}>{joinOpen === v && <Check className="size-3" strokeWidth={3} />}</span>
-              <span className="leading-tight"><span className="block text-[13px] font-semibold">{t as string}</span><span className="text-[11.5px] text-(--vr-muted)">{s as string}</span></span>
+              <span className="leading-tight"><span className="block text-[13px] font-semibold">{title as string}</span><span className="text-[11.5px] text-(--vr-muted)">{s as string}</span></span>
             </button>
           ))}
         </div>
       )}
 
-      {!joining && <Notes value={notes} onChange={setNotes} />}
+      {!joining && <Notes value={notes} onChange={setNotes} codes={codes} onCodes={setCodes} />}
       <input value={trap} onChange={(e) => setTrap(e.target.value)} tabIndex={-1} autoComplete="off" aria-hidden className="hidden" name="website" />
       <Footer error={error}>
-        <Submit pending={pending} disabled={!ready} onClick={send} paying={payNow && online && !joining}>{joining ? `Add to order #${shortNo(open?.number ?? "")} · ${tzs(total)}` : payNow && online ? `Pay ${tzs(total)} now` : `Place order · ${tzs(total)}`}</Submit>
+        <Submit pending={pending} disabled={!ready} onClick={send} paying={payNow && online && !joining}>{joining ? t("Add to order #{number} · {amount}", { number: shortNo(open?.number ?? ""), amount: tzs(total) }) : sendLabel(t, payNow && online, total)}</Submit>
       </Footer>
     </div>
   );
@@ -396,7 +419,9 @@ function PublicCheckout({ config, items, total, who, onWho, onDone }: {
   const online = !!config.online;
   const payReady = !payNow || (online && payPhoneOk(payPhone));
   const ready = !!who && (!takeOut || addressOk(address)) && payReady;
+  const t = useT();
   const [notes, setNotes] = useState("");
+  const [codes, setCodes] = useState<string[]>([]);
   const [trap, setTrap] = useState("");
   const [key, setKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -405,10 +430,10 @@ function PublicCheckout({ config, items, total, who, onWho, onDone }: {
     setError(null);
     if (!who) { onWho(); return; }
     const clientKey = key ?? newKey(); setKey(clientKey);
-    if (takeOut && !addressOk(address)) { setError("Please add the delivery address."); return; }
-    if (!payReady) { setError(online ? PAY_PHONE_MISSING : TAKE_OUT_OFF); return; }
+    if (takeOut && !addressOk(address)) { setError(t("Please add the delivery address.")); return; }
+    if (!payReady) { setError(t(online ? PAY_PHONE_MISSING : TAKE_OUT_OFF)); return; }
     const res = await placeOnlineOrderAction({
-      clientKey, items, notes: notes.trim() || undefined, ...whoForOrder(who),
+      clientKey, items, notes: notes.trim() || undefined, noteCodes: codes.length ? codes : undefined, ...whoForOrder(who),
       kind, tableLabel: takeOut || tableId ? undefined : table || undefined, tableId: takeOut ? undefined : tableId ?? undefined, deliveryAddress: takeOut ? address.trim() : undefined,
       payOnline: payNow && online ? { phone: payPhone.trim() } : undefined, fromQr: config.fromQr, website: trap,
     });
@@ -424,13 +449,13 @@ function PublicCheckout({ config, items, total, who, onWho, onDone }: {
         ? <DeliveryAddress value={address} onChange={setAddress} />
         : config.tables ? <TablePicker tables={config.tables} value={tableId} onChange={setTableId} /> : null}
       <PaymentChoice way={takeOut ? "NOW" : way} setWay={setWay} online={online} phone={payPhone} setPhone={setPayPhone}
-        later={takeOut ? null : { label: "Pay after", hint: "Cash, card or mobile money" }}
-        after={takeOut ? { text: "We bring it to you", icon: Bike } : { text: "Kitchen starts", icon: ChefHat }} />
-      <Notes value={notes} onChange={setNotes} />
+        later={takeOut ? null : { label: msg("Pay after"), hint: msg("Cash, card or mobile money") }}
+        after={takeOut ? { text: msg("We bring it to you"), icon: Bike } : { text: msg("Kitchen starts"), icon: ChefHat }} />
+      <Notes value={notes} onChange={setNotes} codes={codes} onCodes={setCodes} />
       <input value={trap} onChange={(e) => setTrap(e.target.value)} tabIndex={-1} autoComplete="off" aria-hidden className="hidden" name="website" />
-      <p className="flex items-start gap-2 text-[12px] text-(--vr-muted)"><BedDouble className="mt-px size-3.5 shrink-0" />Staying with us? Scan the QR card in your room to order to your room bill.</p>
+      <p className="flex items-start gap-2 text-[12px] text-(--vr-muted)"><BedDouble className="mt-px size-3.5 shrink-0" />{t("Staying with us? Scan the QR card in your room to order to your room bill.")}</p>
       <Footer error={error}>
-        <Submit pending={pending} disabled={!ready} onClick={send} paying={payNow && online}>{payNow && online ? `Pay ${tzs(total)} now` : `Place order · ${tzs(total)}`}</Submit>
+        <Submit pending={pending} disabled={!ready} onClick={send} paying={payNow && online}>{sendLabel(t, payNow && online, total)}</Submit>
       </Footer>
     </div>
   );
@@ -439,7 +464,9 @@ function PublicCheckout({ config, items, total, who, onWho, onDone }: {
 /** A room (its QR, or the guest's stay link): the stay is known — on the room bill, or paid now; never take out. */
 function RoomCheckout({ config, items, total, onDone }: { config: Extract<CheckoutConfig, { kind: "room" }>; items: Items; total: number; onDone: () => void }) {
   const router = useRouter();
+  const t = useT();
   const [notes, setNotes] = useState("");
+  const [codes, setCodes] = useState<string[]>([]);
   // Pay now first (where online payment is on); the room bill is one tap away.
   const [way, setWay] = useState<PayWay>(config.online ? "NOW" : "BILL");
   const [payPhone, setPayPhone] = useState("");
@@ -451,10 +478,10 @@ function RoomCheckout({ config, items, total, onDone }: { config: Extract<Checko
   const payReady = !payNow || (online && payPhoneOk(payPhone));
   const send = () => start(async () => {
     setError(null);
-    if (!payReady) { setError(online ? PAY_PHONE_MISSING : TAKE_OUT_OFF); return; }
+    if (!payReady) { setError(t(online ? PAY_PHONE_MISSING : TAKE_OUT_OFF)); return; }
     const clientKey = key ?? newKey(); setKey(clientKey);
     const body = {
-      token: config.target.token, items, notes: notes.trim() || undefined, clientKey,
+      token: config.target.token, items, notes: notes.trim() || undefined, noteCodes: codes.length ? codes : undefined, clientKey,
       payOnline: payNow && online ? { phone: payPhone.trim() } : undefined,
     };
     const res = config.target.kind === "room" ? await placeRoomQrOrderAction(body) : await placeStayOrderAction(body);
@@ -463,18 +490,21 @@ function RoomCheckout({ config, items, total, onDone }: { config: Extract<Checko
     const next = afterOrder(res.data);
     if (next) router.push(next); else router.refresh();
   });
+  // "Room 204" / "the meeting room", in the customer's language.
+  const roomNo = /^Room (.+)$/.exec(config.where)?.[1];
+  const where = roomNo ? t("Room {room}", { room: roomNo }) : t(config.where);
   return (
     <div className="mt-4 space-y-3.5">
-      {config.guest && <WhoCard who={{ name: config.guest, phone: "" }} sub={config.where.replace(/^the /, "The ")} />}
+      {config.guest && <WhoCard who={{ name: config.guest, phone: "" }} sub={roomNo ? where : t("The meeting room")} />}
       <PaymentChoice way={way} setWay={setWay} online={online} phone={payPhone} setPhone={setPayPhone}
-        later={{ label: "Bill to my room", hint: "Settle at check-out", icon: BedDouble }}
-        after={{ text: /meeting/i.test(config.where) ? "Brought to your meeting" : "Sent to your room", icon: BedDouble }} />
+        later={{ label: msg("Bill to my room"), hint: msg("Settle at check-out"), icon: BedDouble }}
+        after={{ text: /meeting/i.test(config.where) ? msg("Brought to your meeting") : msg("Sent to your room"), icon: BedDouble }} />
       <p className="flex items-start gap-2 rounded-xl bg-(--vr-gold-soft) px-3 py-2.5 text-[12.5px] text-(--vr-gold-ink)"><BedDouble className="mt-0.5 size-4 shrink-0" />
-        {payNow ? `Delivered to ${config.where} — paid now, so it is not added to your room bill.` : `Delivered to ${config.where} and added to your room bill — you settle everything at check-out.`}
+        {payNow ? t("Delivered to {where} — paid now, so it is not added to your room bill.", { where }) : t("Delivered to {where} and added to your room bill — you settle everything at check-out.", { where })}
       </p>
-      <Notes value={notes} onChange={setNotes} />
+      <Notes value={notes} onChange={setNotes} codes={codes} onCodes={setCodes} />
       <Footer error={error}>
-        <Submit pending={pending} disabled={!payReady} onClick={send} paying={payNow && online}>{payNow && online ? `Pay ${tzs(total)} now` : `Place order · ${tzs(total)}`}</Submit>
+        <Submit pending={pending} disabled={!payReady} onClick={send} paying={payNow && online}>{sendLabel(t, payNow && online, total)}</Submit>
       </Footer>
     </div>
   );
@@ -483,6 +513,7 @@ function RoomCheckout({ config, items, total, onDone }: { config: Extract<Checko
 /** "Order more": the new items join the customer's open order. */
 function MoreCheckout({ config, items, total, onDone }: { config: Extract<CheckoutConfig, { kind: "more" }>; items: Items; total: number; onDone: () => void }) {
   const router = useRouter();
+  const t = useT();
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const send = () => start(async () => {
@@ -493,9 +524,9 @@ function MoreCheckout({ config, items, total, onDone }: { config: Extract<Checko
   });
   return (
     <div className="mt-4 space-y-3.5">
-      <p className="flex items-start gap-2 rounded-xl bg-(--vr-gold-soft) px-3 py-2.5 text-[12.5px] text-(--vr-gold-ink)"><Plus className="mt-0.5 size-4 shrink-0" />These join order #{shortNo(config.number)} — the same order and the same bill.</p>
+      <p className="flex items-start gap-2 rounded-xl bg-(--vr-gold-soft) px-3 py-2.5 text-[12.5px] text-(--vr-gold-ink)"><Plus className="mt-0.5 size-4 shrink-0" />{t("These join order #{number} — the same order and the same bill.", { number: shortNo(config.number) })}</p>
       <Footer error={error}>
-        <Submit pending={pending} onClick={send}>Add to order #{shortNo(config.number)} · {tzs(total)}</Submit>
+        <Submit pending={pending} onClick={send}>{t("Add to order #{number} · {amount}", { number: shortNo(config.number), amount: tzs(total) })}</Submit>
       </Footer>
     </div>
   );

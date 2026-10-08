@@ -6,6 +6,7 @@ import { AnimatePresence, motion, useDragControls, useReducedMotion } from "moti
 import { ChevronLeft, ChevronRight, MapPin, MessageCircle, Phone, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { lightButton, Photo, useSheetBehaviour } from "@/components/hotel-qr/ui";
+import { useT } from "@/i18n/client";
 
 /**
  * YOUR ROOM — the guest's page from the room's QR card or their stay link, in the Hotel QR app's calm look: a quiet
@@ -27,13 +28,14 @@ export const goldDot = "grid size-7 shrink-0 place-items-center rounded-full bg-
  * right (three on computers), never words over a photo. Tap a photo to see them all.
  */
 export function RoomCard({ photos, title, onPhotos, children }: { photos: string[]; title: string; onPhotos: (i: number) => void; children: React.ReactNode }) {
+  const t = useT();
   const three = photos.slice(0, 3);
   return (
     <section aria-label={title} className="relative mt-3 overflow-hidden rounded-3xl bg-(--vr-dark) text-white shadow-[0_24px_50px_-34px_rgba(29,23,18,0.9)] sm:mt-4">
       <div aria-hidden className="pointer-events-none absolute -left-10 -top-16 size-52 rounded-full bg-(--vr-gold)/10 blur-3xl" />
       <div aria-hidden className="pointer-events-none absolute -bottom-24 right-1/4 hidden size-72 rounded-full bg-(--vr-gold)/[0.07] blur-3xl lg:block" />
       {photos[0] && (
-        <button type="button" onClick={() => onPhotos(0)} aria-label={`${title} — see the photos`}
+        <button type="button" onClick={() => onPhotos(0)} aria-label={t("{title} — see the photos", { title })}
           className={cn("absolute -right-8 top-1/2 size-[150px] -translate-y-1/2 overflow-hidden rounded-full shadow-[0_18px_40px_-12px_rgba(0,0,0,0.8)] ring-4 ring-white/10 transition hover:ring-(--vr-gold)/50 sm:right-8 sm:size-[190px]", three.length >= 3 && "lg:hidden")}>
           <Photo src={photos[0]} alt={title} eager sizes="190px" />
         </button>
@@ -42,7 +44,7 @@ export function RoomCard({ photos, title, onPhotos, children }: { photos: string
       {three.length >= 3 && (
         <div className="absolute right-10 top-1/2 hidden -translate-y-1/2 items-center lg:flex xl:right-14">
           {three.map((src, i) => (
-            <button key={src} type="button" onClick={() => onPhotos(i)} aria-label={`${title} — photo ${i + 1}`}
+            <button key={src} type="button" onClick={() => onPhotos(i)} aria-label={t("{title} — photo {n}", { title, n: i + 1 })}
               className={cn("relative shrink-0 overflow-hidden rounded-full shadow-[0_18px_40px_-12px_rgba(0,0,0,0.85)] ring-4 ring-(--vr-dark) transition hover:ring-(--vr-gold)/50",
                 i === 1 ? "z-10 -mx-7 size-[200px] xl:size-[220px]" : "size-[150px] opacity-90 xl:size-[165px]")}>
               <Photo src={src} alt="" eager={i === 1} sizes="220px" />
@@ -67,8 +69,9 @@ export function QuickLink({ icon: Icon, label, onClick, href, external }: {
 
 /** The row of quiet actions right under the banner: one light strip, hairlines between. */
 export function QuickRow({ children }: { children: React.ReactNode }) {
+  const t = useT();
   return (
-    <nav aria-label="Quick links" className="mt-2.5 grid grid-flow-col auto-cols-fr divide-x divide-(--vr-line) rounded-2xl bg-(--vr-card) ring-1 ring-(--vr-line) lg:max-w-xl">
+    <nav aria-label={t("Quick links")} className="mt-2.5 grid grid-flow-col auto-cols-fr divide-x divide-(--vr-line) rounded-2xl bg-(--vr-card) ring-1 ring-(--vr-line) lg:max-w-xl">
       {children}
     </nav>
   );
@@ -79,6 +82,7 @@ export function QuickRow({ children }: { children: React.ReactNode }) {
  * or Escape to close; the page behind stays still and the keyboard stays inside.
  */
 export function BottomSheet({ open, onClose, label, children }: { open: boolean; onClose: () => void; label: string; children: React.ReactNode }) {
+  const t = useT();
   const reduce = useReducedMotion();
   const drag = useDragControls();
   const panel = useRef<HTMLDivElement>(null);
@@ -97,7 +101,7 @@ export function BottomSheet({ open, onClose, label, children }: { open: boolean;
             <div onPointerDown={(e) => drag.start(e)} className="flex cursor-grab touch-none justify-center pb-1 pt-2.5 sm:hidden" aria-hidden>
               <span className="h-1.5 w-10 rounded-full bg-(--vr-line)" />
             </div>
-            <button type="button" onClick={onClose} aria-label="Close" className="absolute right-3 top-3 z-10 grid size-10 place-items-center rounded-full bg-(--vr-bg) transition hover:bg-(--vr-line) sm:right-4 sm:top-4">
+            <button type="button" onClick={onClose} aria-label={t("Close")} className="absolute right-3 top-3 z-10 grid size-10 place-items-center rounded-full bg-(--vr-bg) transition hover:bg-(--vr-line) sm:right-4 sm:top-4">
               <X className="size-4" />
             </button>
             <div className="px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 sm:px-7 sm:pb-7 sm:pt-7">{children}</div>
@@ -119,17 +123,19 @@ export function SheetHead({ title, text }: { title: string; text?: React.ReactNo
 }
 
 export type HotelInfo = {
-  hours: { label: string; value: string }[];
+  /** English labels and values (shown translated); `i18n`: a value with words in it ("from 14:00"), to translate with its values. */
+  hours: { label: string; value: string; i18n?: { key: string; vars: Record<string, string> } }[];
   address: string | null; mapHref: string | null;
   callHref: string | null; waHref: string | null; phoneLabel: string | null;
 };
 
 /** Call and WhatsApp, side by side. */
 export function ContactButtons({ info, className }: { info: Pick<HotelInfo, "callHref" | "waHref">; className?: string }) {
+  const t = useT();
   if (!info.callHref && !info.waHref) return null;
   return (
     <div className={cn("grid grid-cols-2 gap-2", className)}>
-      {info.callHref && <a href={info.callHref} className={cn(lightButton, "h-12 text-[14px]")}><Phone className="size-4 text-(--vr-gold-ink)" />Call</a>}
+      {info.callHref && <a href={info.callHref} className={cn(lightButton, "h-12 text-[14px]")}><Phone className="size-4 text-(--vr-gold-ink)" />{t("Call")}</a>}
       {info.waHref && <a href={info.waHref} target="_blank" rel="noopener" className={cn(lightButton, "h-12 text-[14px]")}><MessageCircle className="size-4 text-(--vr-gold-ink)" />WhatsApp</a>}
     </div>
   );
@@ -137,13 +143,14 @@ export function ContactButtons({ info, className }: { info: Pick<HotelInfo, "cal
 
 /** Hours as hairline rows: "Restaurant ……… 07:00–22:00". */
 export function HoursList({ hours, className }: { hours: HotelInfo["hours"]; className?: string }) {
+  const t = useT();
   if (!hours.length) return null;
   return (
     <dl className={cn("divide-y divide-(--vr-line)", className)}>
       {hours.map((h) => (
         <div key={h.label} className="flex items-baseline justify-between gap-3 py-2.5">
-          <dt className="text-[13px] text-(--vr-muted)">{h.label}</dt>
-          <dd className="text-right text-[13.5px] font-semibold">{h.value}</dd>
+          <dt className="text-[13px] text-(--vr-muted)">{t(h.label)}</dt>
+          <dd className="text-right text-[13.5px] font-semibold">{h.i18n ? t(h.i18n.key, h.i18n.vars) : t(h.value)}</dd>
         </div>
       ))}
     </dl>
@@ -152,21 +159,22 @@ export function HoursList({ hours, className }: { hours: HotelInfo["hours"]; cla
 
 /** The hotel, compact, at the very bottom: the hours, reception, the address. */
 export function HotelFooter({ info, note }: { info: HotelInfo; note: string }) {
+  const t = useT();
   return (
     <div className="mt-12 lg:mt-16">
       <section aria-labelledby="hotel-title" className={cn(card, "grid gap-x-10 p-5 sm:p-6 lg:grid-cols-2")}>
         <div>
-          <h2 id="hotel-title" className="font-display text-[22px] font-semibold leading-none">Good to know</h2>
+          <h2 id="hotel-title" className="font-display text-[22px] font-semibold leading-none">{t("Good to know")}</h2>
           <HoursList hours={info.hours} className="mt-2" />
         </div>
         <div className="mt-5 border-t border-(--vr-line) pt-5 lg:mt-0 lg:border-l lg:border-t-0 lg:pl-10 lg:pt-0">
-          <h2 className="font-display text-[22px] font-semibold leading-none">Reception</h2>
-          <p className="mt-1.5 text-[13px] text-(--vr-muted)">Here for you, day and night.{info.phoneLabel && <> <span className="whitespace-nowrap font-medium text-(--vr-ink)">{info.phoneLabel}</span></>}</p>
+          <h2 className="font-display text-[22px] font-semibold leading-none">{t("Reception")}</h2>
+          <p className="mt-1.5 text-[13px] text-(--vr-muted)">{t("Here for you, day and night.")}{info.phoneLabel && <> <span className="whitespace-nowrap font-medium text-(--vr-ink)">{info.phoneLabel}</span></>}</p>
           <ContactButtons info={info} className="mt-3.5" />
           {info.address && (
             <p className="mt-3.5 flex items-start gap-2 text-[13px] text-(--vr-muted)">
               <MapPin className="mt-0.5 size-4 shrink-0 text-(--vr-gold-ink)" />
-              <span>{info.address}{info.mapHref && <> · <a href={info.mapHref} target="_blank" rel="noopener" className="font-semibold text-(--vr-gold-ink) hover:underline">Directions</a></>}</span>
+              <span>{info.address}{info.mapHref && <> · <a href={info.mapHref} target="_blank" rel="noopener" className="font-semibold text-(--vr-gold-ink) hover:underline">{t("Directions")}</a></>}</span>
             </p>
           )}
         </div>
@@ -185,6 +193,7 @@ export function PhotoViewer({ photos, start, title, onClose }: { photos: string[
   );
 }
 function Viewer({ photos, start, title, onClose }: { photos: string[]; start: number; title: string; onClose: () => void }) {
+  const t = useT();
   const [i, setI] = useState(start);
   const reduce = useReducedMotion();
   const touch = useRef<number | null>(null);
@@ -197,30 +206,30 @@ function Viewer({ photos, start, title, onClose }: { photos: string[]; start: nu
     return () => window.removeEventListener("keydown", k);
   }, [photos.length]);
   return (
-    <motion.div ref={box} role="dialog" aria-modal="true" aria-label={`${title} — photos`} className="fixed inset-0 z-[70] flex flex-col bg-[#0c0a08] text-white"
+    <motion.div ref={box} role="dialog" aria-modal="true" aria-label={t("{title} — photos", { title })} className="fixed inset-0 z-[70] flex flex-col bg-[#0c0a08] text-white"
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
       <div className="flex items-center justify-between gap-3 px-4 pb-2 pt-[max(0.9rem,env(safe-area-inset-top))] sm:px-6">
         <p className="min-w-0 truncate font-display text-[20px] lining-nums">{title} <span className="ml-2 font-sans text-[12px] text-white/55">{i + 1} / {photos.length}</span></p>
-        <button type="button" onClick={onClose} aria-label="Close" className="grid size-11 shrink-0 place-items-center rounded-full bg-white/10 hover:bg-white/20"><X className="size-5" /></button>
+        <button type="button" onClick={onClose} aria-label={t("Close")} className="grid size-11 shrink-0 place-items-center rounded-full bg-white/10 hover:bg-white/20"><X className="size-5" /></button>
       </div>
       <div className="relative min-h-0 flex-1" onTouchStart={(e) => { touch.current = e.touches[0].clientX; }}
         onTouchEnd={(e) => { if (touch.current === null) return; const dx = e.changedTouches[0].clientX - touch.current; if (Math.abs(dx) > 40) go(dx < 0 ? 1 : -1); touch.current = null; }}>
         <AnimatePresence initial={false} mode="popLayout">
           <motion.div key={photos[i]} className="absolute inset-0 mx-auto max-w-6xl px-2 sm:px-16" initial={{ opacity: 0, scale: reduce ? 1 : 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} transition={{ duration: reduce ? 0 : 0.25 }}>
-            <div className="relative size-full"><Image src={photos[i]} alt={`${title} — photo ${i + 1}`} fill sizes="100vw" className="object-contain" priority /></div>
+            <div className="relative size-full"><Image src={photos[i]} alt={t("{title} — photo {n}", { title, n: i + 1 })} fill sizes="100vw" className="object-contain" priority /></div>
           </motion.div>
         </AnimatePresence>
         {photos.length > 1 && (
           <>
-            <button type="button" onClick={() => go(-1)} aria-label="Previous photo" className="absolute left-3 top-1/2 hidden size-11 -translate-y-1/2 place-items-center rounded-full bg-white/10 hover:bg-white/20 sm:grid"><ChevronLeft className="size-5" /></button>
-            <button type="button" onClick={() => go(1)} aria-label="Next photo" className="absolute right-3 top-1/2 hidden size-11 -translate-y-1/2 place-items-center rounded-full bg-white/10 hover:bg-white/20 sm:grid"><ChevronRight className="size-5" /></button>
+            <button type="button" onClick={() => go(-1)} aria-label={t("Previous photo")} className="absolute left-3 top-1/2 hidden size-11 -translate-y-1/2 place-items-center rounded-full bg-white/10 hover:bg-white/20 sm:grid"><ChevronLeft className="size-5" /></button>
+            <button type="button" onClick={() => go(1)} aria-label={t("Next photo")} className="absolute right-3 top-1/2 hidden size-11 -translate-y-1/2 place-items-center rounded-full bg-white/10 hover:bg-white/20 sm:grid"><ChevronRight className="size-5" /></button>
           </>
         )}
       </div>
       {photos.length > 1 && (
         <div className="flex justify-center gap-2 overflow-x-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 [scrollbar-width:none]">
           {photos.map((src, k) => (
-            <button key={`${src}-${k}`} type="button" onClick={() => setI(k)} aria-label={`Photo ${k + 1}`} aria-current={k === i || undefined}
+            <button key={`${src}-${k}`} type="button" onClick={() => setI(k)} aria-label={t("Photo {n}", { n: k + 1 })} aria-current={k === i || undefined}
               className={cn("relative h-14 w-20 shrink-0 overflow-hidden rounded-lg ring-2 transition", k === i ? "ring-(--vr-gold)" : "opacity-55 ring-transparent hover:opacity-90")}>
               <Image src={src} alt="" fill sizes="80px" className="object-cover" />
             </button>

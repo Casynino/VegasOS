@@ -6,6 +6,7 @@ import { authorize, requestMeta } from "@/server/auth";
 import { runAction, type ActionResult } from "@/server/errors";
 import { parseInput } from "@/server/validation";
 import { acceptServiceRequest, createServiceRequest, updateServiceRequest } from "@/server/services/requests";
+import { msg } from "@/i18n/msg";
 
 function refresh(reservationId?: string | null) {
   revalidatePath("/staff/requests");
@@ -21,14 +22,14 @@ export async function createRequestAction(_prev: unknown, formData: FormData): P
       roomId: z.string().optional(),
       type: z.enum(["TOWELS", "CLEANING", "MAINTENANCE", "RESTAURANT", "TRANSPORT", "GENERAL", "OTHER", "COMPLAINT"]),
       priority: z.enum(["LOW", "NORMAL", "HIGH", "URGENT"]).default("NORMAL"),
-      description: z.string().trim().min(2, "Describe the request.").max(500),
+      description: z.string().trim().min(2, msg("Describe the request.")).max(500),
       assignedToId: z.string().optional(),
     }), formData);
     const { ipAddress } = await requestMeta();
     await createServiceRequest({ ...d, reservationId: d.reservationId || null, roomId: d.roomId || null, assignedToId: d.assignedToId || null }, { userId: user.id, label: user.fullName, ipAddress });
     refresh(d.reservationId);
     return null;
-  }, "Request logged.");
+  }, msg("Request logged."));
 }
 
 export async function updateRequestAction(input: { id: string; status?: "ASSIGNED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED"; assignedToId?: string | null; reservationId?: string | null; resolution?: string | null }) {
@@ -38,7 +39,7 @@ export async function updateRequestAction(input: { id: string; status?: "ASSIGNE
     await updateServiceRequest(input.id, { status: input.status, assignedToId: input.assignedToId, resolution: input.resolution?.slice(0, 500) ?? null }, { userId: user.id, label: user.fullName, ipAddress });
     refresh(input.reservationId);
     return null;
-  }, "Request updated.");
+  }, msg("Request updated."));
 }
 
 /** "I'm on it": the request becomes the person's own, in progress. */
@@ -49,5 +50,5 @@ export async function acceptRequestAction(input: { id: string; reservationId?: s
     await acceptServiceRequest(input.id, { userId: user.id, label: user.fullName, ipAddress });
     refresh(input.reservationId);
     return null;
-  }, "Accepted — it's yours.");
+  }, msg("Accepted — it's yours."));
 }

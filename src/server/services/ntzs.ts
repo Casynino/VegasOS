@@ -1,5 +1,6 @@
 import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { msg, msgf, type Localized } from "@/i18n/msg";
 
 /**
  * nTZS (https://www.ntzs.co.tz/developers) — mobile-money COLLECTIONS. The hotel asks for a payment; the customer gets
@@ -43,7 +44,7 @@ type Result<T> = { ok: true; data: T } | { ok: false; error: string; status?: nu
 
 async function call<T>(method: "GET" | "POST", path: string, body?: unknown, extraHeaders: Record<string, string> = {}): Promise<Result<T>> {
   const key = process.env.NTZS_API_KEY;
-  if (!key) return { ok: false, error: "nTZS is not set up — add NTZS_API_KEY in the server settings." };
+  if (!key) return { ok: false, error: msg("nTZS is not set up — add NTZS_API_KEY in the server settings.") };
   try {
     const res = await fetch(`${BASE}${path}`, {
       method, cache: "no-store", signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -63,7 +64,7 @@ async function call<T>(method: "GET" | "POST", path: string, body?: unknown, ext
     }
     return { ok: true, data: json as T };
   } catch (e) {
-    return { ok: false, error: `nTZS did not answer (${(e as Error).name === "TimeoutError" ? "timed out" : (e as Error).message}) — try again.` };
+    return { ok: false, error: msgf("nTZS did not answer ({reason}) — try again.", { reason: (e as Error).name === "TimeoutError" ? msg("timed out") : String((e as Error).message) }).text };
   }
 }
 
@@ -71,21 +72,35 @@ async function call<T>(method: "GET" | "POST", path: string, body?: unknown, ext
  * nTZS's answer in plain words for staff (customers get a shorter line — see friendlyForCustomer). Each refusal says
  * its own reason: a 403 is usually NOT the key (2026-10-05: a TZS 160,000 request was refused with `kyb_required` —
  * until nTZS approves the business, it collects at most TZS 100,000 — and the screen wrongly said "check the key").
+ * The words stay English here (they are kept on the payment and read again); msg() marks those translated where shown.
  */
 function friendly(code: string | undefined, message: string | undefined, status: number) {
   switch (code) {
-    case "invalid_phone": return "That phone number is not a Tanzanian mobile-money number.";
-    case "invalid_amount": return `The amount must be at least TZS ${NTZS_MIN_TZS.toLocaleString("en-US")}.`;
-    case "rate_limited": return "nTZS is busy — wait a few seconds and try again.";
-    case "kyb_required": return "nTZS has not yet approved the hotel's business account (KYB). Until it does, mobile-money collections are limited to TZS 100,000 in total — ask nTZS to finish the approval, or use another payment method for now.";
-    case "capability_required": return "The hotel's nTZS account is not allowed to collect payments yet — ask nTZS to switch collections on.";
-    case "wallet_frozen": return "The hotel's nTZS wallet is frozen — contact nTZS.";
-    case "ip_not_allowed": return "nTZS blocks this server (its IP allowlist) — switch the allowlist off in the nTZS dashboard.";
-    case "user_not_found": return "nTZS does not know the hotel's wallet (NTZS_USER_ID) — check it in Vercel.";
+    case "invalid_phone": return msg("That phone number is not a Tanzanian mobile-money number.");
+    case "invalid_amount": return msgf("The amount must be at least TZS {amount}.", { amount: NTZS_MIN_TZS.toLocaleString("en-US") }).text;
+    case "rate_limited": return msg("nTZS is busy — wait a few seconds and try again.");
+    case "kyb_required": return msg("nTZS has not yet approved the hotel's business account (KYB). Until it does, mobile-money collections are limited to TZS 100,000 in total — ask nTZS to finish the approval, or use another payment method for now.");
+    case "capability_required": return msg("The hotel's nTZS account is not allowed to collect payments yet — ask nTZS to switch collections on.");
+    case "wallet_frozen": return msg("The hotel's nTZS wallet is frozen — contact nTZS.");
+    case "ip_not_allowed": return msg("nTZS blocks this server (its IP allowlist) — switch the allowlist off in the nTZS dashboard.");
+    case "user_not_found": return msg("nTZS does not know the hotel's wallet (NTZS_USER_ID) — check it in Vercel.");
   }
-  if (status === 401) return "nTZS did not accept the hotel's API key — check NTZS_API_KEY in Vercel (it may have been changed in the nTZS dashboard).";
-  if (status === 403) return `nTZS refused this request (${code ?? "403"})${message ? ` — ${message.slice(0, 160)}` : ""}.`;
+  if (status === 401) return msg("nTZS did not accept the hotel's API key — check NTZS_API_KEY in Vercel (it may have been changed in the nTZS dashboard).");
+  if (status === 403) return message ? msgf("nTZS refused this request ({code}) — {message}.", { code: code ?? "403", message: message.slice(0, 160) }).text : msgf("nTZS refused this request ({code}).", { code: code ?? "403" }).text;
   return `nTZS: ${message || `error ${status}`}`;
+}
+
+/**
+ * A refusal as friendly() wrote it, kept translatable for the staff member who sees it (an AppError's message): the
+ * English is exactly the same; the sentences with values in them are said again with those values.
+ */
+export function ntzsSaid(error: string): string | Localized {
+  let m: RegExpExecArray | null;
+  if ((m = /^The amount must be at least TZS ([\d,]+)\.$/.exec(error))) return msgf("The amount must be at least TZS {amount}.", { amount: m[1] });
+  if ((m = /^nTZS refused this request \(([^)]*)\) — ([\s\S]*)\.$/.exec(error))) return msgf("nTZS refused this request ({code}) — {message}.", { code: m[1], message: m[2] });
+  if ((m = /^nTZS refused this request \(([^)]*)\)\.$/.exec(error))) return msgf("nTZS refused this request ({code}).", { code: m[1] });
+  if ((m = /^nTZS did not answer \(([\s\S]*)\) — try again\.$/.exec(error))) return msgf("nTZS did not answer ({reason}) — try again.", { reason: m[1] });
+  return error;
 }
 
 /**
@@ -104,7 +119,7 @@ export async function createNtzsDeposit(input: { amountTzs: number; phone: strin
   }, { "Idempotency-Key": input.reference }); // one request per attempt, even if it reaches nTZS twice
   if (!res.ok) return res;
   const d = readDeposit(res.data);
-  if (!d.id) return { ok: false, error: "nTZS did not return the payment's id — try again." };
+  if (!d.id) return { ok: false, error: msg("nTZS did not return the payment's id — try again.") };
   const raw = (res.data ?? {}) as { instructions?: unknown; data?: { instructions?: unknown } };
   const instructions = typeof raw.instructions === "string" ? raw.instructions : typeof raw.data?.instructions === "string" ? raw.data.instructions : undefined;
   return { ok: true, data: { ...d, instructions } };

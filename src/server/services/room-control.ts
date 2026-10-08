@@ -2,6 +2,9 @@ import "server-only";
 import { db } from "../db";
 import { getSettings } from "../settings";
 import { fromDbDate, type BusinessDate } from "@/lib/time/business-date";
+import { msg } from "@/i18n/msg";
+import { getT } from "@/i18n/server";
+import { englishT } from "@/i18n/translate";
 
 /**
  * The room control page: one physical room's situation right now — its type and price
@@ -12,18 +15,18 @@ import { fromDbDate, type BusinessDate } from "@/lib/time/business-date";
  */
 
 const AUDIT_WORDS: Record<string, string> = {
-  "reservation.extended": "Stay extended",
-  "reservation.dates_changed": "Dates changed",
-  "reservation.discount_changed": "Discount changed",
-  "reservation.billing_changed": "Who pays changed",
-  "reservation.room_changed": "Room changed",
-  "reservation.late_checkout": "Late checkout agreed",
-  "reservation.checkin_not_ready_override": "Checked in before the room was ready (override)",
-  "reservation.occupant_added": "Guest added to the room",
-  "reservation.occupant_removed": "Guest removed from the room",
-  "payment.reversed": "Payment reversed",
-  "payment.method_corrected": "Payment account corrected",
-  "reservation.charge_voided": "Charge removed",
+  "reservation.extended": msg("Stay extended"),
+  "reservation.dates_changed": msg("Dates changed"),
+  "reservation.discount_changed": msg("Discount changed"),
+  "reservation.billing_changed": msg("Who pays changed"),
+  "reservation.room_changed": msg("Room changed"),
+  "reservation.late_checkout": msg("Late checkout agreed"),
+  "reservation.checkin_not_ready_override": msg("Checked in before the room was ready (override)"),
+  "reservation.occupant_added": msg("Guest added to the room"),
+  "reservation.occupant_removed": msg("Guest removed from the room"),
+  "payment.reversed": msg("Payment reversed"),
+  "payment.method_corrected": msg("Payment account corrected"),
+  "reservation.charge_voided": msg("Charge removed"),
 };
 
 export type RoomEvent = {
@@ -32,7 +35,8 @@ export type RoomEvent = {
 };
 
 export async function roomControl(roomId: string, today: BusinessDate, now = new Date()) {
-  const s = await getSettings();
+  // The timeline's titles are put together here — in the reader's language (names, numbers and notes as written).
+  const [s, t] = await Promise.all([getSettings(), getT().catch(() => englishT)]);
   const room = await db.room.findUnique({
     where: { id: roomId },
     select: {
@@ -69,17 +73,18 @@ export async function roomControl(roomId: string, today: BusinessDate, now = new
   const staff = r ? new Map((await db.user.findMany({ where: { id: { in: r.charges.map((c) => c.createdById).filter((x): x is string => !!x) } }, select: { id: true, fullName: true } })).map((u) => [u.id, u.fullName])) : new Map();
 
   // The bill, grouped the way the guest reads it.
-  const group = (k: string) => (k === "RESTAURANT" ? "Restaurant" : k === "BAR" ? "Bar" : k === "ROOM_SERVICE" ? "Room service" : "Services & extras");
+  // Words shown on the room page (it translates them): kept in English here, compared by name below.
+  const group = (k: string) => (k === "RESTAURANT" ? msg("Restaurant") : k === "BAR" ? msg("Bar") : k === "ROOM_SERVICE" ? msg("Room service") : msg("Services & extras"));
   const bill = r ? {
     accommodation: { nights: focusRR!.isDayUse ? 0 : focusRR!.nights, rate: focusRR!.ratePerNight, gross: r.grossAmount, dayUse: focusRR!.isDayUse },
-    sections: ["Restaurant", "Bar", "Room service", "Services & extras"].map((name) => ({
+    sections: [msg("Restaurant"), msg("Bar"), msg("Room service"), msg("Services & extras")].map((name) => ({
       name, lines: r.charges.filter((c) => group(c.kind) === name).map((c) => ({ id: c.id, description: c.description, amount: c.amount, at: c.createdAt.toISOString(), by: c.createdById ? staff.get(c.createdById) ?? null : null })),
     })).map((sec) => ({ ...sec, total: sec.lines.reduce((t, l) => t + l.amount, 0) })).filter((sec) => sec.lines.length),
     discount: r.discountAmount,
     total: r.netAmount,
     payments: r.payments.map((p) => ({ id: p.id, amount: p.amount, refund: p.kind === "REFUND", reversed: p.status === "REVERSED", at: p.receivedAt.toISOString(), how: `${p.method.name} · ${p.account.name}`, by: p.recordedBy.fullName })),
     paid: r.paidAmount, balance: r.balanceAmount,
-    payer: r.billTo === "GROUP" ? r.group?.name ?? "the group" : r.billTo !== "GUEST" ? r.corporateCustomer?.companyName ?? r.companyName ?? "the company" : null,
+    payer: r.billTo === "GROUP" ? r.group?.name ?? msg("the group") : r.billTo !== "GUEST" ? r.corporateCustomer?.companyName ?? r.companyName ?? msg("the company") : null,
   } : null;
 
   // What happened in this room, newest first.
@@ -96,19 +101,19 @@ export async function roomControl(roomId: string, today: BusinessDate, now = new
     r ? db.auditLog.findMany({ where: { entityType: "Reservation", entityId: r.id, action: { in: Object.keys(AUDIT_WORDS) } }, orderBy: { createdAt: "desc" }, take: 20, include: { user: { select: { fullName: true } } } }) : Promise.resolve([]),
   ]);
   const ev: RoomEvent[] = [];
-  const status = (x: string) => ({ AVAILABLE: "Available", READY: "Clean & ready", RESERVED: "Reserved", OCCUPIED: "Occupied", DIRTY: "Needs cleaning", CLEANING: "Cleaning", MAINTENANCE: "Maintenance", OUT_OF_SERVICE: "Out of service" } as Record<string, string>)[x] ?? x;
-  for (const h of statuses) ev.push({ at: h.changedAt.toISOString(), kind: "status", title: `${status(h.fromStatus)} → ${status(h.toStatus)}`, detail: h.note, by: h.changedBy?.fullName ?? "System" });
+  const status = (x: string) => ({ AVAILABLE: msg("Available"), READY: msg("Clean & ready"), RESERVED: msg("Reserved"), OCCUPIED: msg("Occupied"), DIRTY: msg("Needs cleaning"), CLEANING: msg("Cleaning"), MAINTENANCE: msg("Maintenance"), OUT_OF_SERVICE: msg("Out of service") } as Record<string, string>)[x] ?? x;
+  for (const h of statuses) ev.push({ at: h.changedAt.toISOString(), kind: "status", title: `${t(status(h.fromStatus))} → ${t(status(h.toStatus))}`, detail: h.note, by: h.changedBy?.fullName ?? t("System") });
   for (const st of stays) {
     const who = st.reservation.guest.fullName, href = `/staff/reservations/${st.reservation.id}`;
-    if (st.checkedInAt) ev.push({ at: st.checkedInAt.toISOString(), kind: "in", title: `${who} checked in`, detail: st.reservation.reference, by: st.checkedInBy?.fullName, href });
-    if (st.checkedOutAt) ev.push({ at: st.checkedOutAt.toISOString(), kind: "out", title: `${who} checked out`, detail: st.reservation.reference, by: st.checkedOutBy?.fullName, href });
+    if (st.checkedInAt) ev.push({ at: st.checkedInAt.toISOString(), kind: "in", title: t("{name} checked in", { name: who }), detail: st.reservation.reference, by: st.checkedInBy?.fullName, href });
+    if (st.checkedOutAt) ev.push({ at: st.checkedOutAt.toISOString(), kind: "out", title: t("{name} checked out", { name: who }), detail: st.reservation.reference, by: st.checkedOutBy?.fullName, href });
   }
-  for (const m of moves) ev.push({ at: m.changedAt.toISOString(), kind: "move", title: `Guest moved ${m.fromRoom.number} → ${m.toRoom.number}`, detail: m.reason, by: m.changedBy?.fullName, amount: m.charged || null });
+  for (const m of moves) ev.push({ at: m.changedAt.toISOString(), kind: "move", title: t("Guest moved {from} → {to}", { from: m.fromRoom.number, to: m.toRoom.number }), detail: m.reason, by: m.changedBy?.fullName, amount: m.charged || null });
   if (r) {
-    for (const c of r.charges) ev.push({ at: c.createdAt.toISOString(), kind: "charge", title: `${group(c.kind)} · ${c.description}`, by: c.createdById ? staff.get(c.createdById) : "Guest (online)", amount: c.amount });
-    for (const p of r.payments) ev.push({ at: p.receivedAt.toISOString(), kind: "payment", title: p.kind === "REFUND" ? "Refund given" : p.status === "REVERSED" ? "Payment (reversed)" : "Payment received", detail: `${p.method.name} · ${p.account.name}`, by: p.recordedBy.fullName, amount: p.kind === "REFUND" ? -p.amount : p.amount });
-    for (const o of r.restaurantOrders) ev.push({ at: o.createdAt.toISOString(), kind: "order", title: `Order ${o.number}`, detail: o.items.map((i) => `${i.quantity} × ${i.name}`).join(", "), amount: o.total });
-    for (const a of audits) ev.push({ at: a.createdAt.toISOString(), kind: "change", title: AUDIT_WORDS[a.action] ?? a.action, by: a.user?.fullName ?? a.actorLabel });
+    for (const c of r.charges) ev.push({ at: c.createdAt.toISOString(), kind: "charge", title: `${t(group(c.kind))} · ${c.description}`, by: c.createdById ? staff.get(c.createdById) : t("Guest (online)"), amount: c.amount });
+    for (const p of r.payments) ev.push({ at: p.receivedAt.toISOString(), kind: "payment", title: t(p.kind === "REFUND" ? msg("Refund given") : p.status === "REVERSED" ? msg("Payment (reversed)") : msg("Payment received")), detail: `${p.method.name} · ${p.account.name}`, by: p.recordedBy.fullName, amount: p.kind === "REFUND" ? -p.amount : p.amount });
+    for (const o of r.restaurantOrders) ev.push({ at: o.createdAt.toISOString(), kind: "order", title: t("Order {number}", { number: o.number }), detail: o.items.map((i) => `${i.quantity} × ${i.name}`).join(", "), amount: o.total });
+    for (const a of audits) ev.push({ at: a.createdAt.toISOString(), kind: "change", title: AUDIT_WORDS[a.action] ? t(AUDIT_WORDS[a.action]) : a.action, by: a.user?.fullName ?? a.actorLabel });
   }
 
   // The live status staff read at a glance.

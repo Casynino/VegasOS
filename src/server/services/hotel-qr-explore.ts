@@ -7,6 +7,9 @@ import { mediaUrl } from "./media";
 import { restaurantMenu } from "./online-orders";
 import { publicMeetingRoom } from "./booking-requests";
 import { parseImages } from "./public-booking";
+import { msg } from "@/i18n/msg";
+import { getT } from "@/i18n/server";
+import { englishT } from "@/i18n/translate";
 
 /**
  * WHAT THE HOTEL QR SHOWS TO EXPLORE (/b/<token>) — read only, nothing here books or prices anything: the photos for
@@ -40,14 +43,14 @@ export type QrExplore = {
   mapHref: string;
 };
 
-/** The opening's places, in order, and the word under each. */
+/** The opening's places, in order, and the word under each (English: the page finds places by it and shows t(label)). */
 const OPENING: { category: "EXTERIOR" | "ROOMS" | "BATHROOMS" | "RECEPTION" | "MEETING_ROOM"; label: string }[] = [
-  { category: "EXTERIOR", label: "The hotel" },
-  { category: "ROOMS", label: "Your room" },
-  { category: "BATHROOMS", label: "The bathroom" },
-  { category: "RECEPTION", label: "Reception" },
-  { category: "MEETING_ROOM", label: "Meeting room" },
-  { category: "EXTERIOR", label: "Outside" },
+  { category: "EXTERIOR", label: msg("The hotel") },
+  { category: "ROOMS", label: msg("Your room") },
+  { category: "BATHROOMS", label: msg("The bathroom") },
+  { category: "RECEPTION", label: msg("Reception") },
+  { category: "MEETING_ROOM", label: msg("Meeting room") },
+  { category: "EXTERIOR", label: msg("Outside") },
 ];
 
 export async function qrExplore(): Promise<QrExplore> {
@@ -82,8 +85,8 @@ export async function qrExplore(): Promise<QrExplore> {
   const group = (category: string, label: string, max: number, only?: (m: (typeof media)[number]) => boolean) =>
     media.filter((m) => m.category === category && (!only || only(m))).slice(0, max).map((m) => photo(m, label));
   const hotelPhotos = [
-    ...group("EXTERIOR", "Outside", 8), ...group("RECEPTION", "Reception", 6), ...group("FACILITIES", "Details", 6),
-    ...group("ROOMS", "Rooms", 8, (m) => !m.roomTypeId), ...group("BATHROOMS", "Bathrooms", 6),
+    ...group("EXTERIOR", msg("Outside"), 8), ...group("RECEPTION", msg("Reception"), 6), ...group("FACILITIES", msg("Details"), 6),
+    ...group("ROOMS", msg("Rooms"), 8, (m) => !m.roomTypeId), ...group("BATHROOMS", msg("Bathrooms"), 6),
   ];
 
   // Dishes: the restaurant app's "Recommended" first, then dishes with a photo from each food section in turn.
@@ -110,9 +113,11 @@ export async function qrExplore(): Promise<QrExplore> {
   // The meeting room: its own photo (the media library first, then the room type's list) — never a stock one here.
   const meetingMedia = media.find((m) => m.category === "MEETING_ROOM");
   const meetingSrc = meetingMedia ? null : meetingRoom ? parseImages(meetingRoom.images)[0] ?? null : null;
+  // The photo's description, in the visitor's language.
+  const t = await getT().catch(() => englishT);
   const meeting = meetingRoom ? {
     name: meetingRoom.name, capacity: meetingRoom.maxAdults, about: meetingRoom.shortDescription || null,
-    photo: meetingMedia ? photo(meetingMedia, meetingRoom.name) : meetingSrc ? { src: meetingSrc, alt: `${meetingRoom.name} at ${settings.hotelName}`, label: meetingRoom.name, width: 1600, height: 1067 } : null,
+    photo: meetingMedia ? photo(meetingMedia, meetingRoom.name) : meetingSrc ? { src: meetingSrc, alt: t("{name} at {hotel}", { name: t(meetingRoom.name), hotel: settings.hotelName }), label: meetingRoom.name, width: 1600, height: 1067 } : null,
     href: "/meeting-room",
   } : null;
 
@@ -121,7 +126,7 @@ export async function qrExplore(): Promise<QrExplore> {
     hotel: hotelPhotos,
     food: {
       dishes, credits,
-      note: menu.recommendedBy === "featured" ? "Picked by our kitchen" : menu.recommendedBy === "popular" ? "Most ordered" : "A taste of the menu",
+      note: menu.recommendedBy === "featured" ? msg("Picked by our kitchen") : menu.recommendedBy === "popular" ? msg("Most ordered") : msg("A taste of the menu"),
       restaurantHours: settings.restaurantHours?.trim() || null, barHours: settings.barHours?.trim() || null,
       menuHref: "/order",
     },

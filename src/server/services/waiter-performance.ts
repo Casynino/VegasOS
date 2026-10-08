@@ -6,6 +6,9 @@ import { businessDayConfig, getSettings } from "../settings";
 import { businessRangeBounds, fromDbDate, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import { deliveryPlace } from "@/lib/delivery-place";
 import { waitersToAssign } from "./restaurant";
+import { msg } from "@/i18n/msg";
+import { spotName } from "@/components/restaurant/shell";
+import { getT } from "@/i18n/server";
 
 /**
  * WAITER PERFORMANCE — what each waiter served over a period, for managers, the MD and the owner.
@@ -44,14 +47,14 @@ const byLabel = (a: string, b: string) => a.localeCompare(b, undefined, { numeri
 export type PlaceKind = "TABLE" | "ROOM" | "COUNTER" | "OTHER";
 const KIND_ORDER: PlaceKind[] = ["TABLE", "ROOM", "COUNTER", "OTHER"];
 
-/** One place per order (a room-service order for "305, 306" is one place: "Room 305, 306"). */
+/** One place per order (a room-service order for "305, 306" is one place: "Room 305, 306"). Labels are English values (keys, matching); screens show them with t(). */
 function placeOf(o: PeriodOrder): { key: string; label: string; kind: PlaceKind; sort: number } {
   if (o.type === "ROOM_SERVICE") return { key: `room:${o.roomNumber ?? ""}`, label: deliveryPlace(o), kind: "ROOM", sort: 0 };
   if (o.location) return { key: `loc:${o.location.id}`, label: o.location.name, kind: o.location.kind === "TABLE" ? "TABLE" : "COUNTER", sort: o.location.sortOrder };
   if (o.type === "DINE_IN" && o.tableLabel) return { key: `label:${deliveryPlace(o).trim().toLowerCase()}`, label: deliveryPlace(o), kind: /^counter/i.test(o.tableLabel) ? "COUNTER" : "TABLE", sort: 0 };
-  if (o.type === "TAKEAWAY") return { key: "takeout", label: "Take out", kind: "OTHER", sort: 0 };
-  if (o.type === "PICKUP") return { key: "pickup", label: "Pickup", kind: "OTHER", sort: 0 };
-  return { key: "restaurant", label: "Restaurant", kind: "OTHER", sort: 0 };
+  if (o.type === "TAKEAWAY") return { key: "takeout", label: msg("Take out"), kind: "OTHER", sort: 0 };
+  if (o.type === "PICKUP") return { key: "pickup", label: msg("Pickup"), kind: "OTHER", sort: 0 };
+  return { key: "restaurant", label: msg("Restaurant"), kind: "OTHER", sort: 0 };
 }
 /** The rooms of a room-service order, one by one ("305, 306" → 305 and 306). */
 const roomsOf = (o: PeriodOrder) => (o.type === "ROOM_SERVICE" ? (o.roomNumber ?? "").split(",").map((x) => x.trim()).filter(Boolean) : []);
@@ -209,7 +212,7 @@ export async function placesServed(from: BusinessDate, to: BusinessDate) {
     if (o.createdAt > row.last) row.last = o.createdAt;
     if (o.status === "CANCELLED") { row.cancelled++; continue; }
     const k = o.assignedToId ?? "—";
-    const who = row.by.get(k) ?? { id: o.assignedToId, name: o.assignedTo ? clean(o.assignedTo.fullName) : "No waiter", orders: 0, served: 0, value: 0 };
+    const who = row.by.get(k) ?? { id: o.assignedToId, name: o.assignedTo ? clean(o.assignedTo.fullName) : msg("No waiter"), orders: 0, served: 0, value: 0 };
     row.by.set(k, who);
     row.orders++; who.orders++;
     row.customers.add(customerKey(o));
@@ -259,8 +262,10 @@ export async function waiterOrders(waiterId: string, from: BusinessDate, to: Bus
     db.actualShift.findFirst({ where: { userId: waiterId, department: "RESTAURANT", endedAt: null }, orderBy: { startedAt: "desc" }, select: { startedAt: true } }),
   ]);
   if (!user) return null;
+  // What a hand-over was about, written for the person looking.
+  const t = await getT();
   // The tables behind the hand-overs (a table hand-over names its table).
-  const locIds = [...new Set(transfers.map((t) => (t.scope === "TABLE" ? t.locationId : null)).filter((x): x is string => !!x))];
+  const locIds = [...new Set(transfers.map((h) => (h.scope === "TABLE" ? h.locationId : null)).filter((x): x is string => !!x))];
   const locations = locIds.length ? await db.restaurantLocation.findMany({ where: { id: { in: locIds } }, select: { id: true, name: true } }) : [];
   const tableName = new Map(locations.map((l) => [l.id, l.name]));
 
@@ -284,7 +289,8 @@ export async function waiterOrders(waiterId: string, from: BusinessDate, to: Bus
         /** How the money came in: the account, where it was recorded, and the waiter who brought it (when noted). */
         payments: posted.map((p) => ({
           amount: p.amount, account: p.account.name, at: p.collectedAt, confirmed: !!p.confirmedAt,
-          by: p.atCounter ? "Restaurant Counter" : clean(p.collectedBy?.fullName) || null,
+          // An English value (the screen shows it with t(); a name stays as it is).
+          by: p.atCounter ? msg("Restaurant Counter") : clean(p.collectedBy?.fullName) || null,
           broughtBy: clean(p.handedOverBy?.fullName) || null,
         })),
         reservation: o.settlement === "ROOM" ? o.reservation?.reference ?? null : null,
@@ -293,12 +299,12 @@ export async function waiterOrders(waiterId: string, from: BusinessDate, to: Bus
         deliveredAt: o.deliveredAt,
       };
     }),
-    handOvers: transfers.map((t) => ({
-      id: t.id, at: t.at, scope: t.scope as "ORDER" | "TABLE" | "ROOM", reason: t.reason,
-      direction: t.toUserId === waiterId ? ("IN" as const) : ("OUT" as const),
-      from: clean(t.fromUser?.fullName) || "—", to: clean(t.toUser?.fullName) || "—",
-      what: t.scope === "ORDER" ? `#${(t.order?.number ?? "").replace(/^ORD-\d{4}-0*/, "")}` : t.scope === "ROOM" ? `Room ${t.roomNumber ?? ""}`.trim() : (t.locationId && tableName.get(t.locationId)) || "A table",
-      orderId: t.order?.id ?? null,
+    handOvers: transfers.map((h) => ({
+      id: h.id, at: h.at, scope: h.scope as "ORDER" | "TABLE" | "ROOM", reason: h.reason,
+      direction: h.toUserId === waiterId ? ("IN" as const) : ("OUT" as const),
+      from: clean(h.fromUser?.fullName) || "—", to: clean(h.toUser?.fullName) || "—",
+      what: h.scope === "ORDER" ? `#${(h.order?.number ?? "").replace(/^ORD-\d{4}-0*/, "")}` : h.scope === "ROOM" ? (h.roomNumber ? t("Room {room}", { room: h.roomNumber }) : t("Room")) : (h.locationId && tableName.get(h.locationId) ? spotName(tableName.get(h.locationId)!, t) : t("A table")),
+      orderId: h.order?.id ?? null,
     })),
   };
 }

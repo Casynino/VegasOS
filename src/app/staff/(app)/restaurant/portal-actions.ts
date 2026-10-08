@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { authorize, requestMeta, type CurrentUser } from "@/server/auth";
 import { runAction, type ActionResult } from "@/server/errors";
 import { setMenuItemAvailable } from "@/server/services/restaurant";
+import { msg } from "@/i18n/msg";
 
 async function actor(user: CurrentUser) {
   const { ipAddress } = await requestMeta();
@@ -19,5 +20,5 @@ export async function setDishAvailableAction(input: { id: string; isAvailable: b
     revalidatePath("/order");
     revalidatePath("/menu");
     return null;
-  }, input.isAvailable ? "Back on the menu." : "Marked as sold out — customers can't order it now.");
+  }, input.isAvailable ? msg("Back on the menu.") : msg("Marked as sold out — customers can't order it now."));
 }

@@ -9,7 +9,7 @@ import { billToLabel, termsLabel } from "@/lib/billing";
 import { businessToday, getSettings } from "@/server/settings";
 import { getCheckInBooking, getCheckInList, type CheckInArrival } from "@/server/services/front-desk";
 import { addDays } from "@/lib/time/business-date";
-import { formatBusinessDate, formatMinutesLabel, formatTZS } from "@/lib/format";
+import { formatMinutesLabel, formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { RESERVATION_STATUS_META } from "@/lib/reservation-status";
 import { ArrivalCard, type ArrivalCardData } from "@/components/staff/reception/arrival-card";
@@ -20,8 +20,16 @@ import { Input } from "@/components/ui/input";
 import { PaymentPanel } from "../reservations/[id]/panels";
 import { OrderComposer } from "../restaurant/order-composer";
 import { billMenu, inHouseGuests, reservationOrders, STATUS_LABEL } from "@/server/services/restaurant";
+import { INVOICE_STATUS_META } from "@/lib/invoice-status";
+import type { InvoiceStatus } from "@/generated/prisma/enums";
+import { getT } from "@/i18n/server";
+import { orderItemName } from "@/i18n/content";
+import { DEFAULT_LOCALE } from "@/i18n/config";
+import type { T } from "@/i18n/translate";
 
-export const metadata: Metadata = { title: "Check in" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getT())("Check in") };
+}
 
 /** Does this booking match the search (name, phone, reference, ID or room number)? */
 function matches(r: CheckInArrival, q: string) {
@@ -33,12 +41,12 @@ function matches(r: CheckInArrival, q: string) {
     || r.rooms.some((x) => x.current.number === q.trim());
 }
 
-function toCard(r: CheckInArrival): ArrivalCardData {
+function toCard(r: CheckInArrival, t: T): ArrivalCardData {
   return {
     id: r.id, reference: r.reference, status: r.status, source: r.source.name, eta: r.eta,
     guest: { fullName: r.guest.fullName, phone: r.guest.phone, email: r.guest.email, idType: r.guest.idType, idNumber: r.guest.idNumber, nationality: r.guest.nationality, stays: r.guest._count.reservations },
     rooms: r.rooms, netAmount: r.netAmount, paidAmount: r.paidAmount, balanceAmount: r.balanceAmount,
-    pickup: r.trips[0] ? `Airport pickup${r.trips[0].flightNumber ? ` · flight ${r.trips[0].flightNumber}` : ""}` : null,
+    pickup: r.trips[0] ? (r.trips[0].flightNumber ? t("Airport pickup · flight {flight}", { flight: r.trips[0].flightNumber }) : t("Airport pickup")) : null,
     specialRequests: r.specialRequests, internalNotes: r.internalNotes,
   };
 }
@@ -52,6 +60,7 @@ const firstArrival = (r: CheckInArrival) => r.rooms.reduce((m, x) => (x.arrival 
  */
 export default async function CheckInPage({ searchParams }: PageProps<"/staff/check-in">) {
   const user = await requirePagePermission("reservations.check_in");
+  const t = await getT();
   const sp = await searchParams;
   const q = typeof sp.q === "string" ? sp.q.trim() : "";
   const today = await businessToday();
@@ -101,48 +110,48 @@ export default async function CheckInPage({ searchParams }: PageProps<"/staff/ch
     const invoices = [...new Map(corp.invoiceItems.map((i) => [i.invoice.id, i.invoice])).values()];
     return (
       <div className="mb-3 space-y-2 rounded-2xl border border-[oklch(0.75_0.13_80)]/50 bg-[oklch(0.75_0.13_80)]/[0.08] p-3.5 text-sm">
-        <p className="flex items-center gap-2 font-semibold"><Building2 className="size-4" />Company invoice — {c.companyName}</p>
+        <p className="flex items-center gap-2 font-semibold"><Building2 className="size-4" />{t("Company invoice — {company}", { company: c.companyName })}</p>
         <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-          <dt className="text-muted-foreground">Who pays</dt><dd>{billToLabel(corp.billTo)}</dd>
-          <dt className="text-muted-foreground">Payment terms</dt><dd>{termsLabel(corp.paymentTermDays ?? c.paymentTermDays)}</dd>
-          <dt className="text-muted-foreground">Invoice</dt><dd>{invoices.length ? invoices.map((i) => <Link key={i.id} href={`/staff/invoices/${i.id}`} className="mr-2 font-mono hover:underline">{i.number} · {i.status.replace("_", " ").toLowerCase()}</Link>) : "Made at checkout from the final bill"}</dd>
-          <dt className="text-muted-foreground">Payment status</dt><dd className="font-semibold text-rose-600 dark:text-rose-400">{corp.paidAmount > 0 ? "Partly paid" : "Unpaid"} — checking in records no payment</dd>
-          <dt className="text-muted-foreground">Bill so far</dt><dd className="tabular-nums">{formatTZS(corp.netAmount)}{corp.companyBilledAmount ? ` · on invoice ${formatTZS(corp.companyBilledAmount)}` : ""}</dd>
+          <dt className="text-muted-foreground">{t("Who pays")}</dt><dd>{billToLabel(corp.billTo, [], t)}</dd>
+          <dt className="text-muted-foreground">{t("Payment terms")}</dt><dd>{termsLabel(corp.paymentTermDays ?? c.paymentTermDays, t)}</dd>
+          <dt className="text-muted-foreground">{t("Invoice")}</dt><dd>{invoices.length ? invoices.map((i) => <Link key={i.id} href={`/staff/invoices/${i.id}`} className="mr-2 font-mono hover:underline">{i.number} · {t.locale === DEFAULT_LOCALE ? i.status.replace("_", " ").toLowerCase() : t(INVOICE_STATUS_META[i.status as InvoiceStatus]?.label ?? i.status)}</Link>) : t("Made at checkout from the final bill")}</dd>
+          <dt className="text-muted-foreground">{t("Payment status")}</dt><dd className="font-semibold text-rose-600 dark:text-rose-400">{corp.paidAmount > 0 ? t("Partly paid — checking in records no payment") : t("Unpaid — checking in records no payment")}</dd>
+          <dt className="text-muted-foreground">{t("Bill so far")}</dt><dd className="tabular-nums">{formatTZS(corp.netAmount)}{corp.companyBilledAmount ? ` · ${t("on invoice {amount}", { amount: formatTZS(corp.companyBilledAmount) })}` : ""}</dd>
         </dl>
-        {c.status !== "ACTIVE" && <p className="rounded-lg bg-rose-500/10 px-2.5 py-1.5 text-xs font-medium text-rose-700 dark:text-rose-300">{c.companyName} is {c.status === "ON_HOLD" ? "suspended" : "inactive"} — check with a manager before extending credit.</p>}
+        {c.status !== "ACTIVE" && <p className="rounded-lg bg-rose-500/10 px-2.5 py-1.5 text-xs font-medium text-rose-700 dark:text-rose-300">{c.status === "ON_HOLD" ? t("{company} is suspended — check with a manager before extending credit.", { company: c.companyName }) : t("{company} is inactive — check with a manager before extending credit.", { company: c.companyName })}</p>}
       </div>
     );
   })() : null;
 
   const href = (id: string) => `/staff/check-in?${new URLSearchParams({ ...(q && { q }), id })}#workspace`;
   const groups: { title: string; tone: string; rows: CheckInArrival[] }[] = [
-    { title: "Late — still to arrive", tone: "text-amber-700 dark:text-amber-400", rows: late },
-    { title: "Arriving today", tone: "text-emerald-700 dark:text-emerald-400", rows: todays },
+    { title: t("Late — still to arrive"), tone: "text-amber-700 dark:text-amber-400", rows: late },
+    { title: t("Arriving today"), tone: "text-emerald-700 dark:text-emerald-400", rows: todays },
     ...Array.from(new Set(upcoming.map(firstArrival))).map((d) => ({
-      title: d === addDays(today, 1) ? `Tomorrow · ${formatBusinessDate(d)}` : formatBusinessDate(d),
+      title: d === addDays(today, 1) ? t("Tomorrow · {date}", { date: t.date(d) }) : t.date(d),
       tone: "text-muted-foreground", rows: upcoming.filter((r) => firstArrival(r) === d),
     })),
   ].filter((g) => g.rows.length);
 
   return (
     <div className="w-full space-y-5">
-      <PageHeader eyebrow="Front desk" title="Check in"
-        description="Pick a guest with a booking, confirm the dates, room and details, then check in."
-        actions={<Link href="/staff/reservations/new?mode=walkin" className={buttonVariants({ variant: "outline" })}><DoorOpen />Walk-in (no booking)</Link>} />
+      <PageHeader eyebrow={t("Front desk")} title={t("Check in")}
+        description={t("Pick a guest with a booking, confirm the dates, room and details, then check in.")}
+        actions={<Link href="/staff/reservations/new?mode=walkin" className={buttonVariants({ variant: "outline" })}><DoorOpen />{t("Walk-in (no booking)")}</Link>} />
 
       <div className="grid items-start gap-5 lg:grid-cols-[20rem_minmax(0,1fr)] 2xl:grid-cols-[23rem_minmax(0,1fr)]">
         {/* Guest list */}
         <aside className="overflow-hidden rounded-3xl border border-border/70 bg-card lg:sticky lg:top-24">
           <form role="search" className="border-b border-border/70 p-3">
             <label className="relative block">
-              <span className="sr-only">Find a booking</span>
+              <span className="sr-only">{t("Find a booking")}</span>
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input name="q" defaultValue={q} placeholder="Name, phone, reference, ID, room" className="h-10 rounded-xl pl-9" />
+              <Input name="q" defaultValue={q} placeholder={t("Name, phone, reference, ID, room")} className="h-10 rounded-xl pl-9" />
             </label>
           </form>
           <div className="max-h-[70vh] overflow-y-auto p-2 lg:max-h-[calc(100svh-15rem)]">
             {groups.length === 0 ? (
-              <p className="px-3 py-8 text-center text-sm text-muted-foreground">{q ? `No booking matches “${q}”.` : "No bookings waiting in the next 14 days."}</p>
+              <p className="px-3 py-8 text-center text-sm text-muted-foreground">{q ? t("No booking matches “{q}”.", { q }) : t("No bookings waiting in the next 14 days.")}</p>
             ) : groups.map((g) => (
               <div key={g.title} className="mb-2">
                 <p className={cn("px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.14em]", g.tone)}>{g.title} · {g.rows.length}</p>
@@ -156,16 +165,16 @@ export default async function CheckInPage({ searchParams }: PageProps<"/staff/ch
                           <Initials name={r.guest.fullName} />
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-sm font-semibold text-foreground">{r.guest.fullName}</span>
-                            <span className="block truncate text-xs text-muted-foreground">{r.rooms.map((x) => `${x.roomTypeName} · ${x.current.number}`).join(", ")}</span>
+                            <span className="block truncate text-xs text-muted-foreground">{r.rooms.map((x) => `${t(x.roomTypeName)} · ${x.current.number}`).join(", ")}</span>
                           </span>
                           <span className="shrink-0 text-right text-[11px] leading-tight">
                             {r.eta && <span className="block text-muted-foreground">{r.eta}</span>}
-                            {r.trips.length > 0 && <Plane className="ml-auto size-3 text-sky-500" aria-label="Airport pickup" />}
+                            {r.trips.length > 0 && <Plane className="ml-auto size-3 text-sky-500" aria-label={t("Airport pickup")} />}
                             <span className={cn("block font-semibold tabular-nums", r.balanceAmount > 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400")}>
-                              {r.balanceAmount > 0 ? formatTZS(r.balanceAmount).replace("TZS ", "") : "Paid"}
+                              {r.balanceAmount > 0 ? formatTZS(r.balanceAmount).replace("TZS ", "") : t("Paid")}
                             </span>
                             {/* Booked to pay later (or an enquiry): not paid, the room not held. */}
-                            {r.status === "INQUIRY" && <span className="block font-medium text-orange-700 dark:text-orange-300">{RESERVATION_STATUS_META.INQUIRY.label}</span>}
+                            {r.status === "INQUIRY" && <span className="block font-medium text-orange-700 dark:text-orange-300">{t(RESERVATION_STATUS_META.INQUIRY.label)}</span>}
                           </span>
                         </Link>
                       </li>
@@ -179,20 +188,20 @@ export default async function CheckInPage({ searchParams }: PageProps<"/staff/ch
 
         {/* Workspace */}
         {justIn ? (
-          <JustCheckedIn r={justIn} orders={justOrders.filter((o) => o.status !== "CANCELLED")}
+          <JustCheckedIn t={t} r={justIn} orders={justOrders.filter((o) => o.status !== "CANCELLED")}
             composer={canOrder && orderBill && orderBill.categories.length > 0 ? (
               <OrderComposer menu={orderBill.categories} guests={orderGuests} accounts={can(user, "payments.record") ? methods : []} fee={orderBill.fee}
-                canPay={can(user, "revenue.record")} startGuest={justIn.id} label="Order food & drinks" triggerClassName="h-11 rounded-xl px-5" />
+                canPay={can(user, "revenue.record")} startGuest={justIn.id} label={t("Order food & drinks")} triggerClassName="h-11 rounded-xl px-5" />
             ) : null} />
         ) : booking ? (
-          <ArrivalCard key={`${booking.id}-${booking.netAmount}-${booking.paidAmount}`} a={toCard(booking)} today={today}
+          <ArrivalCard key={`${booking.id}-${booking.netAmount}-${booking.paidAmount}`} a={toCard(booking, t)} today={today}
             canAssign={can(user, "reservations.edit")} canOverride={can(user, "reservations.checkin_override")} canEditDates={can(user, "reservations.edit")} canDiscount={discountLimit(user.permissions, await getSettings()) > 0} discountMax={discountLimit(user.permissions, await getSettings())} checkoutTime={formatMinutesLabel(settings.checkoutMinutes)}
             methods={can(user, "payments.record") ? methods : []}
             payment={<>{companyNote}{can(user, "payments.record") && <PaymentPanel reservationId={booking.id} balance={booking.balanceAmount} paid={booking.paidAmount} canRefund={false} methods={methods} phone={booking.guest.phone} who={booking.guest.fullName} />}</>} />
         ) : (
-          <EmptyState icon={<LogIn />} title={wanted ? "This booking is no longer waiting to check in" : "Nobody to check in"}
-            description={wanted ? "It may already be checked in, cancelled, or more than a year away. Pick another guest from the list." : "When guests book, they appear in the list on the left. Guests without a booking come in as a walk-in."}
-            action={<Link href="/staff/reservations/new?mode=walkin" className={buttonVariants()}>Walk-in guest</Link>} />
+          <EmptyState icon={<LogIn />} title={wanted ? t("This booking is no longer waiting to check in") : t("Nobody to check in")}
+            description={wanted ? t("It may already be checked in, cancelled, or more than a year away. Pick another guest from the list.") : t("When guests book, they appear in the list on the left. Guests without a booking come in as a walk-in.")}
+            action={<Link href="/staff/reservations/new?mode=walkin" className={buttonVariants()}>{t("Walk-in guest")}</Link>} />
         )}
       </div>
     </div>
@@ -204,13 +213,14 @@ export default async function CheckInPage({ searchParams }: PageProps<"/staff/ch
  * straight to the kitchen, on the room bill or paid now — the usual order screen, opened for this guest), the welcome
  * message, their stay, and the next guest.
  */
-function JustCheckedIn({ r, composer, orders }: {
+function JustCheckedIn({ t, r, composer, orders }: {
+  t: T;
   r: { id: string; guest: { fullName: string }; rooms: { departureDate: Date; room: { number: string }; roomType: { name: string } }[] };
   composer: React.ReactNode;
   orders: Awaited<ReturnType<typeof reservationOrders>>;
 }) {
   const rooms = r.rooms.map((x) => x.room.number).join(", ");
-  const types = [...new Set(r.rooms.map((x) => x.roomType.name))].join(", ");
+  const types = [...new Set(r.rooms.map((x) => x.roomType.name))].map((x) => t(x)).join(", ");
   const out = r.rooms.reduce<Date | null>((m, x) => (!m || x.departureDate > m ? x.departureDate : m), null);
   const first = r.guest.fullName.split(" ")[0];
   return (
@@ -218,9 +228,9 @@ function JustCheckedIn({ r, composer, orders }: {
       <div className="flex items-center gap-4 border-b border-border/70 p-5 sm:p-6">
         <span className="grid size-12 shrink-0 place-items-center rounded-full bg-emerald-500/12 text-emerald-600 dark:text-emerald-400"><CircleCheck className="size-6" /></span>
         <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-400">Checked in</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-400">{t("Checked in")}</p>
           <h2 id="done-title" className="truncate text-xl font-semibold">{r.guest.fullName}</h2>
-          <p className="truncate text-sm text-muted-foreground">Room {rooms}{types && ` · ${types}`}{out && ` · until ${formatBusinessDate(out.toISOString().slice(0, 10))}`}</p>
+          <p className="truncate text-sm text-muted-foreground">{t("Room {room}", { room: rooms })}{types && ` · ${types}`}{out && ` · ${t("until {date}", { date: t.date(out.toISOString().slice(0, 10)) })}`}</p>
         </div>
       </div>
 
@@ -228,8 +238,8 @@ function JustCheckedIn({ r, composer, orders }: {
         <div className="rounded-2xl border border-border/70 p-4 sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
-              <p className="flex items-center gap-2 font-semibold"><UtensilsCrossed className="size-4 text-muted-foreground" />Food &amp; drinks</p>
-              <p className="mt-1 text-sm text-muted-foreground">Anything for {first} after the trip? It goes straight to the kitchen — on Room {rooms}&apos;s bill, or paid now.</p>
+              <p className="flex items-center gap-2 font-semibold"><UtensilsCrossed className="size-4 text-muted-foreground" />{t("Food & drinks")}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{t("Anything for {name} after the trip? It goes straight to the kitchen — on Room {room}'s bill, or paid now.", { name: first, room: rooms })}</p>
             </div>
             {composer}
           </div>
@@ -239,11 +249,11 @@ function JustCheckedIn({ r, composer, orders }: {
                 <li key={o.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
                   <span className="min-w-0">
                     <span className="font-mono text-xs font-semibold">{o.number}</span>
-                    <span className="block truncate text-muted-foreground">{o.items.map((i) => `${i.quantity}× ${i.name}`).join(", ")}</span>
+                    <span className="block truncate text-muted-foreground">{o.items.map((i) => `${i.quantity}× ${orderItemName(i, t)}`).join(", ")}</span>
                   </span>
                   <span className="shrink-0 text-right">
                     <span className="block font-semibold tabular-nums">{formatTZS(o.total)}</span>
-                    <span className="block text-xs text-muted-foreground">{STATUS_LABEL[o.status]} · {o.settlement === "ROOM" ? "room bill" : o.settlement === "PAY_NOW" ? "paid" : "to pay"}</span>
+                    <span className="block text-xs text-muted-foreground">{t(STATUS_LABEL[o.status])} · {o.settlement === "ROOM" ? t("room bill") : o.settlement === "PAY_NOW" ? t("paid") : t("to pay")}</span>
                   </span>
                 </li>
               ))}
@@ -252,9 +262,9 @@ function JustCheckedIn({ r, composer, orders }: {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Link href={`/staff/reservations/${r.id}?sent=welcome#message`} className={buttonVariants({ variant: "outline", className: "h-11 rounded-xl" })}><MessageCircle />Send welcome</Link>
-          <Link href={`/staff/reservations/${r.id}`} className={buttonVariants({ variant: "outline", className: "h-11 rounded-xl" })}>Open stay</Link>
-          <Link href="/staff/check-in" className={buttonVariants({ variant: "ghost", className: "ml-auto h-11 rounded-xl" })}>Next guest<ArrowRight /></Link>
+          <Link href={`/staff/reservations/${r.id}?sent=welcome#message`} className={buttonVariants({ variant: "outline", className: "h-11 rounded-xl" })}><MessageCircle />{t("Send welcome")}</Link>
+          <Link href={`/staff/reservations/${r.id}`} className={buttonVariants({ variant: "outline", className: "h-11 rounded-xl" })}>{t("Open stay")}</Link>
+          <Link href="/staff/check-in" className={buttonVariants({ variant: "ghost", className: "ml-auto h-11 rounded-xl" })}>{t("Next guest")}<ArrowRight /></Link>
         </div>
       </div>
     </section>
