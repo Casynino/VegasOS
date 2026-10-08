@@ -200,7 +200,7 @@ model HotelSettings {
   country                    String?  @default("Tanzania")
   phone                      String?  @default("+255 710 223 344")
   email                      String?  @default("vegasluxuryhotel@gmail.com")
-  website                    String?  @default("www.vegasluxuryhotel.co.tz")
+  website                    String?  @default("www.vegashoteltz.com")
   whatsapp                   String?  @default("+255710223344")
   mapUrl                     String?
   currency                   String   @default("TZS")

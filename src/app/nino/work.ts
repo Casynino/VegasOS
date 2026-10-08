@@ -24,7 +24,7 @@ export const LIVE: Project[] = [
   {
     name: "Vegas Luxury Hotel", kind: "Hotel website & operations system",
     line: "You're on it. The hotel's website, online booking and mobile-money payments — and the whole staff system behind it: reception, restaurant and room service, finance, stock and daily reports to the owner on WhatsApp.",
-    url: "https://vegas-os.vercel.app", domain: "vegas-os.vercel.app", shot: "/nino/vegas.webp",
+    url: "https://www.vegashoteltz.com", domain: "vegashoteltz.com", shot: "/nino/vegas.webp",
     tags: ["Booking engine", "Mobile money", "Staff system", "Reports"],
   },
   {

@@ -13,7 +13,7 @@ const cormorant = Cormorant_Garamond({
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.vegasluxuryhotel.co.tz"),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.vegashoteltz.com"),
   title: {
     default: "Vegas Luxury Hotel — Mlimani City, Dar es Salaam",
     template: "%s | Vegas Luxury Hotel",

@@ -15,7 +15,7 @@ export function LoginForm() {
       <div className="space-y-1.5">
         <label htmlFor="email" className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/60 sm:text-xs">Email</label>
         <input key={state?.email ?? ""} id="email" name="email" type="email" autoComplete="username" required autoFocus
-          defaultValue={state?.email} placeholder="you@vegasluxuryhotel.co.tz" className={field} />
+          defaultValue={state?.email} placeholder="you@vegashoteltz.com" className={field} />
       </div>
       <div className="space-y-1.5">
         <label htmlFor="password" className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/60 sm:text-xs">Password</label>

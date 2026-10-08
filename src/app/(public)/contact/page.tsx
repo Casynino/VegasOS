@@ -61,7 +61,7 @@ export default async function ContactPage({ searchParams }: PageProps<"/contact"
   const p = c.pages.contact;
   const w = bookingWindow(settings);
   const address = addressLines(settings);
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.vegasluxuryhotel.co.tz";
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.vegashoteltz.com";
   const f = (s: string) => fill(s, contentVars(settings, { airportKm: c.facts.airportKm }));
   const city = settings.city || "Dar es Salaam";
   const now = CLOCK.format(new Date());

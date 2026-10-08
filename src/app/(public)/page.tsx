@@ -113,7 +113,7 @@ export default async function HomePage() {
   const bw = bookingWindow(settings);
   const vars = contentVars(settings, { airportKm: c.facts.airportKm, rooms: stats.rooms, roomTypes: stats.roomTypes });
   const f = (s: string) => fill(s, vars);
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.vegasluxuryhotel.co.tz";
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.vegashoteltz.com";
   const initialTime = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Africa/Dar_es_Salaam" }).format(new Date());
   const city = settings.city ?? "Dar es Salaam";
 

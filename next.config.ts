@@ -14,6 +14,18 @@ const nextConfig: NextConfig = {
     // Expense receipts (≤ 5 MB) and website photos (≤ 8 MB) are uploaded through server actions.
     serverActions: { bodySizeLimit: "9mb" },
   },
+  // The hotel's domain (owner, 2026-10-08): the old Vercel address forwards to it — old links and printed QR codes
+  // keep working. /api stays on both, so webhooks (nTZS payments) set up with the old address are never broken.
+  async redirects() {
+    return [
+      {
+        source: "/:path((?!api/).*)",
+        has: [{ type: "host", value: "vegas-os.vercel.app" }],
+        destination: "https://www.vegashoteltz.com/:path",
+        permanent: true,
+      },
+    ];
+  },
   async headers() {
     return [
       {
