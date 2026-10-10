@@ -318,7 +318,7 @@ export async function FrontDeskToday() {
       <Panel className="scroll-mt-20" title={<span id="in-house" className="flex items-center gap-2"><Users className="size-4 text-emerald-500" />{t("In the hotel now")} <span className="text-sm font-normal text-muted-foreground">({snap.inHouse.length})</span></span>}
         action={<PanelLink href="/staff/reservations?view=inhouse">{t("All")}</PanelLink>}>
         {snap.inHouse.length === 0 ? <p className="text-sm text-muted-foreground">{t("No guests in the hotel.")}</p> : (
-          <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          <ul className="grid max-h-[22rem] gap-3 overflow-y-auto overscroll-contain pr-1 [scrollbar-width:thin] sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {snap.inHouse.map((r) => {
               const live = r.rooms.filter((x) => x.status === "CHECKED_IN");
               const out = live.reduce((m, x) => (x.endAt > m ? x.endAt : m), live[0]?.endAt ?? r.departureDate);
