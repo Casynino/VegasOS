@@ -183,6 +183,48 @@ export async function setRolePermissionAction(input: z.input<typeof PermissionTo
   });
 }
 
+const isFkViolation = (err: unknown) => {
+  const e = err as { code?: string };
+  if (e?.code === "P2003" || e?.code === "P2014") return true;
+  const text = JSON.stringify(err, Object.getOwnPropertyNames(err ?? {}));
+  return text.includes("23503") || text.includes("foreign key");
+};
+
+export async function deleteUserAction(_prev: unknown, formData: FormData): Promise<ActionResult<null>> {
+  return runAction(async () => {
+    const actor = await authorize("users.manage");
+    const userId = String(formData.get("userId") ?? "");
+    const target = await db.user.findUnique({ where: { id: userId }, include: { role: true } });
+    if (!target || target.role.code === SYSTEM_ROLE) throw new AppError("Staff member not found.", "NOT_FOUND");
+    if (target.id === actor.id) throw new AppError("You cannot delete your own account.");
+    if (target.role.code === "OWNER" && actor.roleCode !== "OWNER") {
+      throw new AppError("Only an owner can delete an owner account.", "FORBIDDEN");
+    }
+    if (target.role.code === "OWNER") {
+      const owners = await db.user.count({ where: { isActive: true, role: { code: "OWNER" } } });
+      if (owners <= 1) throw new AppError("There must always be at least one active owner.");
+    }
+    const { ipAddress } = await requestMeta();
+    try {
+      await db.$transaction(async (tx) => {
+        await tx.session.deleteMany({ where: { userId: target.id } });
+        await tx.user.delete({ where: { id: target.id } });
+        await audit(tx, { userId: actor.id, label: actor.fullName, ipAddress }, {
+          action: "user.deleted", entityType: "User", entityId: target.id,
+          before: { fullName: target.fullName, email: target.email, role: target.role.code },
+        });
+      });
+    } catch (e) {
+      if (isFkViolation(e)) {
+        throw new AppError("This person has records in the system (shifts, payments, etc.). Deactivate their account instead.", "CONFLICT");
+      }
+      throw e;
+    }
+    revalidatePath("/staff/users");
+    return null;
+  }, msg("Staff account removed."));
+}
+
 /** The MD signs one restaurant screen out (lost or replaced) — the others stay signed in. */
 export async function signOutScreenSessionAction(_prev: unknown, formData: FormData): Promise<ActionResult<null>> {
   return runAction(async () => {

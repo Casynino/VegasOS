@@ -359,5 +359,13 @@ const catalog: Catalog = {
   "None right now — sign in once on the restaurant computer or iPad.": "目前没有——请在餐厅电脑或 iPad 上登录一次。",
   "Last used {time}": "最近使用 {time}",
   "A screen stays signed in while it is used. Sign one out here if it is lost or replaced — the others keep working.": "屏幕在使用期间保持登录。如有屏幕丢失或更换，可在此将其退出登录——其他屏幕继续正常使用。",
+  "Remove this account": "删除此账户",
+  "Remove {name}?": "删除 {name}？",
+  "This cannot be undone. If they have records in the system the delete will be blocked — deactivate instead.": "此操作不可撤销。如果此人在系统中有相关记录，删除将被阻止——请改为停用账户。",
+  "Yes, remove": "确认删除",
+  "Staff account removed.": "员工账户已删除。",
+  "This person has records in the system (shifts, payments, etc.). Deactivate their account instead.": "此人在系统中有相关记录（班次、付款等）。请改为停用其账户。",
+  "You cannot delete your own account.": "不能删除自己的账户。",
+  "Only an owner can delete an owner account.": "只有老板才能删除老板账户。",
 };
 export default catalog;

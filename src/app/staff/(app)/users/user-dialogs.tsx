@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { KeyRound, Loader2, MonitorSmartphone, Pencil, UserPlus, UserRound } from "lucide-react";
+import { KeyRound, Loader2, MonitorSmartphone, Pencil, Trash2, UserPlus, UserRound } from "lucide-react";
 import { ActionForm, FieldError } from "@/components/staff/action-form";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeCheckbox, NativeSelect } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
-import { createUserAction, resetPasswordAction, signOutScreenSessionAction, updateUserAction } from "./actions";
+import { createUserAction, deleteUserAction, resetPasswordAction, signOutScreenSessionAction, updateUserAction } from "./actions";
 import { useT } from "@/i18n/client";
 
 /** `screen`: the shared restaurant screen's role — its account is the restaurant's login, not a person. */
@@ -93,8 +93,9 @@ export function EditUserDialog({ user, roles, isSelf, screens = null }: {
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setConfirmDelete(false); }}>
       <DialogTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t("Edit {name}", { name: user.fullName })} />}><Pencil /></DialogTrigger>
       <DialogContent>
         <DialogHeader icon={screens ? <MonitorSmartphone /> : <UserRound />} eyebrow={screens ? t("Restaurant screen") : t("Staff")} tone="violet">
@@ -163,6 +164,30 @@ export function EditUserDialog({ user, roles, isSelf, screens = null }: {
               )}
               <p className="text-xs text-muted-foreground">{t("A screen stays signed in while it is used. Sign one out here if it is lost or replaced — the others keep working.")}</p>
             </div>
+          </>
+        )}
+        {!isSelf && (
+          <>
+            <Separator />
+            {!confirmDelete ? (
+              <button type="button" onClick={() => setConfirmDelete(true)} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-rose-600 transition-colors hover:bg-rose-500/10 dark:text-rose-400">
+                <Trash2 className="size-3.5 shrink-0" />{t("Remove this account")}
+              </button>
+            ) : (
+              <ActionForm action={deleteUserAction} onSuccess={() => setOpen(false)} className="space-y-2">
+                {({ pending }) => (
+                  <>
+                    <input type="hidden" name="userId" value={user.id} />
+                    <p className="text-sm font-medium text-rose-600 dark:text-rose-400">{t("Remove {name}?", { name: user.fullName })}</p>
+                    <p className="text-xs text-muted-foreground">{t("This cannot be undone. If they have records in the system the delete will be blocked — deactivate instead.")}</p>
+                    <div className="flex gap-2">
+                      <Button type="submit" variant="destructive" size="sm" disabled={pending}>{pending && <Loader2 className="animate-spin" />}<Trash2 />{t("Yes, remove")}</Button>
+                      <Button type="button" variant="ghost" size="sm" onClick={() => setConfirmDelete(false)}>{t("Cancel")}</Button>
+                    </div>
+                  </>
+                )}
+              </ActionForm>
+            )}
           </>
         )}
       </DialogContent>
