@@ -7,6 +7,7 @@ import { ArrowRight, ChevronLeft, ChevronRight, Loader2, Minus, Phone, Plus, X }
 import { cn } from "@/lib/utils";
 import { blurFor } from "@/components/public/blur-data";
 import { NamedIcon } from "@/components/public/icon";
+import { useT } from "@/i18n/client";
 import { historyDepth, telHref } from "./lib";
 
 /**
@@ -66,13 +67,14 @@ export function BrandMark({ className }: { className?: string }) {
 
 /** Computers: the hotel above every step (phones keep the space for the step itself). */
 export function BrandBar({ hotel, phone, className }: { hotel: string; phone: string | null; className?: string }) {
+  const t = useT();
   return (
     <div className={cn("items-center justify-between gap-3 pt-6", className)}>
       <span className="flex min-w-0 items-center gap-2.5">
         <BrandMark className="size-9" />
         <span className="min-w-0 leading-none">
           <span className="block truncate font-display text-[17px] font-semibold tracking-wide">{hotel}</span>
-          <span className="mt-0.5 block text-[10px] uppercase tracking-[0.2em] text-(--vr-muted)">Book your stay</span>
+          <span className="mt-0.5 block text-[10px] uppercase tracking-[0.2em] text-(--vr-muted)">{t("Book your stay")}</span>
         </span>
       </span>
       {phone && <a href={telHref(phone)} className={cn(lightButton, "h-10 px-4 text-[13px]")}><Phone className="size-4 text-(--vr-gold-ink)" />{phone}</a>}
@@ -104,6 +106,7 @@ export function Photo({ src, alt, sizes, eager, className, imgClassName }: {
 export function Gallery({ images, alt, sizes, eager, className, round = "rounded-3xl" }: {
   images: string[]; alt: string; sizes: string; eager?: boolean; className?: string; round?: string;
 }) {
+  const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   const [at, setAt] = useState(0);
   const onScroll = useCallback(() => {
@@ -117,7 +120,7 @@ export function Gallery({ images, alt, sizes, eager, className, round = "rounded
       <div ref={ref} onScroll={onScroll} className="absolute inset-0 flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {images.map((src, k) => (
           <div key={`${src}-${k}`} className="relative h-full w-full shrink-0 snap-center snap-always">
-            <Photo src={src} alt={k === 0 ? alt : `${alt} — photo ${k + 1}`} sizes={sizes} eager={eager && k === 0}
+            <Photo src={src} alt={k === 0 ? alt : t("{alt} — photo {n}", { alt, n: k + 1 })} sizes={sizes} eager={eager && k === 0}
               imgClassName="transition-[opacity,scale] duration-700 group-hover:scale-[1.03] motion-reduce:group-hover:scale-100" />
           </div>
         ))}
@@ -127,9 +130,9 @@ export function Gallery({ images, alt, sizes, eager, className, round = "rounded
           <span aria-hidden className="pointer-events-none absolute bottom-2.5 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-sm">
             {images.slice(0, 8).map((src, k) => <span key={`${src}-${k}`} className={cn("h-1.5 rounded-full transition-all", k === Math.min(at, 7) ? "w-3.5 bg-white" : "w-1.5 bg-white/55")} />)}
           </span>
-          <button type="button" onClick={() => go(-1)} disabled={at === 0} aria-label="Previous photo"
+          <button type="button" onClick={() => go(-1)} disabled={at === 0} aria-label={t("Previous photo")}
             className="absolute left-2.5 top-1/2 hidden size-8 -translate-y-1/2 place-items-center rounded-full bg-white/90 text-(--vr-ink) opacity-0 shadow transition group-hover:opacity-100 focus-visible:opacity-100 disabled:hidden sm:grid [@media(hover:none)]:opacity-100"><ChevronLeft className="size-4" /></button>
-          <button type="button" onClick={() => go(1)} disabled={at >= images.length - 1} aria-label="Next photo"
+          <button type="button" onClick={() => go(1)} disabled={at >= images.length - 1} aria-label={t("Next photo")}
             className="absolute right-2.5 top-1/2 hidden size-8 -translate-y-1/2 place-items-center rounded-full bg-white/90 text-(--vr-ink) opacity-0 shadow transition group-hover:opacity-100 focus-visible:opacity-100 disabled:hidden sm:grid [@media(hover:none)]:opacity-100"><ChevronRight className="size-4" /></button>
         </>
       )}
@@ -139,6 +142,7 @@ export function Gallery({ images, alt, sizes, eager, className, round = "rounded
 
 /** A number with − and + (guests). */
 export function Stepper({ label, hint, value, min, max, onChange }: { label: string; hint?: string; value: number; min: number; max: number; onChange: (v: number) => void }) {
+  const t = useT();
   const btn = "grid size-10 place-items-center rounded-full bg-(--vr-card) ring-1 ring-(--vr-line) transition hover:ring-(--vr-gold) disabled:opacity-30 disabled:hover:ring-(--vr-line)";
   return (
     <div className="flex items-center justify-between gap-3 py-2.5">
@@ -147,9 +151,9 @@ export function Stepper({ label, hint, value, min, max, onChange }: { label: str
         {hint && <p className="mt-0.5 text-[12px] text-(--vr-muted)">{hint}</p>}
       </div>
       <div className="flex shrink-0 items-center gap-2.5">
-        <button type="button" onClick={() => onChange(Math.max(min, value - 1))} disabled={value <= min} aria-label={`Fewer ${label.toLowerCase()}`} className={btn}><Minus className="size-4" /></button>
+        <button type="button" onClick={() => onChange(Math.max(min, value - 1))} disabled={value <= min} aria-label={t("Fewer {label}", { label: label.toLowerCase() })} className={btn}><Minus className="size-4" /></button>
         <span className="w-6 text-center text-[17px] font-semibold tabular-nums" aria-live="polite">{value}</span>
-        <button type="button" onClick={() => onChange(Math.min(max, value + 1))} disabled={value >= max} aria-label={`More ${label.toLowerCase()}`} className={btn}><Plus className="size-4" /></button>
+        <button type="button" onClick={() => onChange(Math.min(max, value + 1))} disabled={value >= max} aria-label={t("More {label}", { label: label.toLowerCase() })} className={btn}><Plus className="size-4" /></button>
       </div>
     </div>
   );
@@ -157,16 +161,17 @@ export function Stepper({ label, hint, value, min, max, onChange }: { label: str
 
 /** A few of the room's amenities as small icon chips ("Free Wi-Fi", "Breakfast"…). */
 export function Amenities({ list, max = 4, className }: { list: { code: string; name: string; icon: string | null }[]; max?: number; className?: string }) {
+  const t = useT();
   if (!list.length) return null;
   const shown = list.slice(0, max);
   return (
     <ul className={cn("flex flex-wrap gap-1.5", className)}>
       {shown.map((a) => (
         <li key={a.code} className="inline-flex h-7 items-center gap-1.5 rounded-full bg-(--vr-bg) px-2.5 text-[12px] text-(--vr-ink)/80 ring-1 ring-(--vr-line)">
-          <NamedIcon name={a.icon} className="size-3.5 text-(--vr-gold-ink)" />{a.name}
+          <NamedIcon name={a.icon} className="size-3.5 text-(--vr-gold-ink)" />{t(a.name)}
         </li>
       ))}
-      {list.length > max && <li className="inline-flex h-7 items-center px-1.5 text-[12px] text-(--vr-muted)">+{list.length - max} more</li>}
+      {list.length > max && <li className="inline-flex h-7 items-center px-1.5 text-[12px] text-(--vr-muted)">{t("+{n} more", { n: list.length - max })}</li>}
     </ul>
   );
 }
@@ -179,17 +184,18 @@ export function Amenities({ list, max = 4, className }: { list: { code: string; 
 export const STEPS = 3;
 
 export function StepHeader({ title, sub, onBack, step }: { title: string; sub?: React.ReactNode; onBack: () => void; /** 2–3: room, details & pay. */ step?: number }) {
+  const t = useT();
   return (
     <div className="sticky top-0 z-30 -mx-4 bg-(--vr-bg)/92 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-md sm:-mx-6 sm:px-6 lg:static lg:mx-0 lg:bg-transparent lg:px-0 lg:pt-7 lg:backdrop-blur-none">
       <div className="flex items-center gap-3">
-        <button type="button" onClick={onBack} aria-label="Back" className="grid size-10 shrink-0 place-items-center rounded-full bg-(--vr-card) ring-1 ring-(--vr-line) transition hover:ring-(--vr-gold)">
+        <button type="button" onClick={onBack} aria-label={t("Back")} className="grid size-10 shrink-0 place-items-center rounded-full bg-(--vr-card) ring-1 ring-(--vr-line) transition hover:ring-(--vr-gold)">
           <ChevronLeft className="size-5" />
         </button>
         <div className="min-w-0 flex-1 leading-tight">
           <h1 className="font-display text-[24px] font-semibold leading-[1.1] text-balance lg:text-[30px]">{title}</h1>
           {sub && <div className="mt-0.5 text-[12.5px] leading-snug text-(--vr-muted)">{sub}</div>}
         </div>
-        {step && <span className="shrink-0 self-start pt-1.5 text-[11px] font-medium tabular-nums text-(--vr-muted)" aria-label={`Step ${step} of ${STEPS}`}>Step {step} of {STEPS}</span>}
+        {step && <span className="shrink-0 self-start pt-1.5 text-[11px] font-medium tabular-nums text-(--vr-muted)" aria-label={t("Step {step} of {total}", { step, total: STEPS })}>{t("Step {step} of {total}", { step, total: STEPS })}</span>}
       </div>
       {step && (
         <div aria-hidden className="mt-3 grid gap-1" style={{ gridTemplateColumns: `repeat(${STEPS}, minmax(0, 1fr))` }}>
@@ -270,11 +276,12 @@ export function StepLayout({ header, aside, cta, hotel, phone, children }: {
 export function StaySummary({ photo, title, sub, rows, total }: {
   photo: string | null; title: string; sub?: string | null; rows: { label: string; value: React.ReactNode }[]; total?: { label: string; value: string } | null;
 }) {
+  const t = useT();
   return (
-    <section aria-label="Your stay" className={cn(card, "overflow-hidden shadow-[0_24px_50px_-40px_rgba(29,23,18,0.55)]")}>
+    <section aria-label={t("Your stay")} className={cn(card, "overflow-hidden shadow-[0_24px_50px_-40px_rgba(29,23,18,0.55)]")}>
       {photo && <div className="relative aspect-[16/9]"><Photo src={photo} alt="" sizes="360px" eager /></div>}
       <div className="p-5">
-        <p className={caps}>Your stay</p>
+        <p className={caps}>{t("Your stay")}</p>
         <h2 className="mt-1.5 font-display text-[22px] font-semibold leading-tight">{title}</h2>
         {sub && <p className="mt-0.5 text-[12.5px] text-(--vr-muted)">{sub}</p>}
         {rows.length > 0 && (
@@ -345,6 +352,7 @@ export function useSheetBehaviour(open: boolean, onClose: () => void, box?: Reac
 export function Sheet({ open, onClose, label, footer, children, wide }: {
   open: boolean; onClose: () => void; label: string; footer?: React.ReactNode; children: React.ReactNode; /** Computers: a wider window. */ wide?: boolean;
 }) {
+  const t = useT();
   const reduce = useReducedMotion();
   const drag = useDragControls();
   const panel = useRef<HTMLDivElement>(null);
@@ -363,7 +371,7 @@ export function Sheet({ open, onClose, label, footer, children, wide }: {
             <div onPointerDown={(e) => drag.start(e)} className="absolute inset-x-0 top-0 z-20 flex cursor-grab touch-none justify-center pb-3 pt-2.5 sm:hidden" aria-hidden>
               <span className="h-1.5 w-10 rounded-full bg-white/80 shadow-[0_1px_4px_rgba(0,0,0,0.35)]" />
             </div>
-            <button type="button" onClick={onClose} aria-label="Close" className="absolute right-3.5 top-3.5 z-20 grid size-9 place-items-center rounded-full bg-white/90 text-(--vr-ink) shadow-[0_2px_10px_rgba(0,0,0,0.18)] transition hover:bg-white"><X className="size-4" /></button>
+            <button type="button" onClick={onClose} aria-label={t("Close")} className="absolute right-3.5 top-3.5 z-20 grid size-9 place-items-center rounded-full bg-white/90 text-(--vr-ink) shadow-[0_2px_10px_rgba(0,0,0,0.18)] transition hover:bg-white"><X className="size-4" /></button>
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}</div>
             {footer && <div className="border-t border-(--vr-line) bg-(--vr-card) px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:px-6 sm:pb-5">{footer}</div>}
           </motion.div>
@@ -406,6 +414,7 @@ export function Reveal({ children, className, delay = 0 }: { children: React.Rea
  * computers once there is more than fits.
  */
 export function Rail({ children, label, className, dark }: { children: React.ReactNode; label: string; className?: string; dark?: boolean }) {
+  const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   const [edge, setEdge] = useState({ start: true, end: true });
   const measure = useCallback(() => {
@@ -430,8 +439,8 @@ export function Rail({ children, label, className, dark }: { children: React.Rea
       </div>
       {!(edge.start && edge.end) && (
         <div className="pointer-events-none absolute inset-x-0 top-[38%] hidden -translate-y-1/2 justify-between px-2 lg:flex">
-          <button type="button" onClick={() => go(-1)} disabled={edge.start} aria-label="Scroll back" className={cn(arrow, "-ml-5")}><ChevronLeft className="size-5" /></button>
-          <button type="button" onClick={() => go(1)} disabled={edge.end} aria-label="Scroll on" className={cn(arrow, "-mr-5")}><ChevronRight className="size-5" /></button>
+          <button type="button" onClick={() => go(-1)} disabled={edge.start} aria-label={t("Scroll back")} className={cn(arrow, "-ml-5")}><ChevronLeft className="size-5" /></button>
+          <button type="button" onClick={() => go(1)} disabled={edge.end} aria-label={t("Scroll on")} className={cn(arrow, "-mr-5")}><ChevronRight className="size-5" /></button>
         </div>
       )}
     </div>

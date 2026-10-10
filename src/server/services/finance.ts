@@ -6,10 +6,11 @@ import { AppError } from "../errors";
 import { getSettingsTx, businessDayConfig } from "../settings";
 import { addDays, businessDateOf, fromDbDate, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import { CHARGE_LABELS } from "@/lib/charge-types";
-import { formatBusinessDate as formatDay } from "@/lib/format";
 import { EARNED_NIGHT } from "./reservation-financials";
 import { COUNTED_EXPENSE_STATUSES, RECEIPT_MAX_BYTES, RECEIPT_TYPES } from "./expenses";
 import type { LedgerEntryKind } from "@/generated/prisma/enums";
+import { getT } from "@/i18n/server";
+import { msg, msgf } from "@/i18n/msg";
 
 /**
  * FinanceService — the hotel's money picture, built from the records that
@@ -94,17 +95,17 @@ async function expectedBalance(tx: Tx, accountId: string): Promise<number> {
 // ───────────────────────── Money movements ─────────────────────────
 
 export const MOVEMENT_LABELS: Record<LedgerEntryKind, string> = {
-  TRANSFER: "Transfer between accounts",
-  OWNER_CONTRIBUTION: "Owner put money in",
-  OWNER_WITHDRAWAL: "Owner took money out",
-  OTHER_INCOME: "Other income",
-  ADJUSTMENT_IN: "Correction (money in)",
-  ADJUSTMENT_OUT: "Correction (money out)",
+  TRANSFER: msg("Transfer between accounts"),
+  OWNER_CONTRIBUTION: msg("Owner put money in"),
+  OWNER_WITHDRAWAL: msg("Owner took money out"),
+  OTHER_INCOME: msg("Other income"),
+  ADJUSTMENT_IN: msg("Correction (money in)"),
+  ADJUSTMENT_OUT: msg("Correction (money out)"),
 };
 
 async function storeAttachment(tx: Tx, file: File, userId: string) {
-  if (file.size > RECEIPT_MAX_BYTES) throw new AppError("The document is larger than 5 MB.", "VALIDATION", { attachment: "Too large" });
-  if (!RECEIPT_TYPES.includes(file.type)) throw new AppError("Attach a photo (JPG/PNG/WebP/HEIC) or a PDF.", "VALIDATION", { attachment: "Wrong type" });
+  if (file.size > RECEIPT_MAX_BYTES) throw new AppError("The document is larger than 5 MB.", "VALIDATION", { attachment: msg("Too large") });
+  if (!RECEIPT_TYPES.includes(file.type)) throw new AppError("Attach a photo (JPG/PNG/WebP/HEIC) or a PDF.", "VALIDATION", { attachment: msg("Wrong type") });
   const f = await tx.storedFile.create({
     data: { purpose: "LEDGER_DOCUMENT", fileName: file.name.slice(0, 120) || "document", contentType: file.type, size: file.size, data: new Uint8Array(await file.arrayBuffer()), uploadedById: userId },
   });
@@ -131,11 +132,11 @@ export interface MovementInput {
 /** Post a money movement (transfer, owner money, other income, correction). */
 export async function postMovement(input: MovementInput, actor: Actor, opts: { cashCountId?: string } = {}) {
   if (!actor.permissions.has("finance.manage")) throw new AppError("Only Admin can record money movements.", "FORBIDDEN");
-  if (!Number.isInteger(input.amount) || input.amount <= 0) throw new AppError("Enter a positive whole amount.", "VALIDATION", { amount: "Invalid" });
-  if (!input.description.trim()) throw new AppError("Say what this is for.", "VALIDATION", { description: "Required" });
+  if (!Number.isInteger(input.amount) || input.amount <= 0) throw new AppError("Enter a positive whole amount.", "VALIDATION", { amount: msg("Invalid") });
+  if (!input.description.trim()) throw new AppError("Say what this is for.", "VALIDATION", { description: msg("Required") });
   if (input.kind === "TRANSFER") {
-    if (!input.toAccountId) throw new AppError("Choose the account the money went to.", "VALIDATION", { toAccountId: "Required" });
-    if (input.toAccountId === input.accountId) throw new AppError("Choose two different accounts.", "VALIDATION", { toAccountId: "Same account" });
+    if (!input.toAccountId) throw new AppError("Choose the account the money went to.", "VALIDATION", { toAccountId: msg("Required") });
+    if (input.toAccountId === input.accountId) throw new AppError("Choose two different accounts.", "VALIDATION", { toAccountId: msg("Same account") });
   }
   return db.$transaction(async (tx) => {
     const settings = await getSettingsTx(tx);
@@ -161,7 +162,7 @@ export async function postMovement(input: MovementInput, actor: Actor, opts: { c
 /** A posted movement is never deleted: it is reversed (stays on the ledger, struck through). */
 export async function reverseMovement(id: string, reason: string, actor: Actor) {
   if (!actor.permissions.has("finance.manage")) throw new AppError("Only Admin can reverse money movements.", "FORBIDDEN");
-  if (!reason.trim()) throw new AppError("Say why it is being reversed.", "VALIDATION", { reason: "Required" });
+  if (!reason.trim()) throw new AppError("Say why it is being reversed.", "VALIDATION", { reason: msg("Required") });
   return db.$transaction(async (tx) => {
     const e = await tx.ledgerEntry.findUnique({ where: { id } });
     if (!e) throw new AppError("Entry not found.", "NOT_FOUND");
@@ -179,13 +180,16 @@ export async function reverseMovement(id: string, reason: string, actor: Actor) 
 /** Record a physical count; the system works out what it expected and the difference. */
 export async function recordCashCount(input: { accountId: string; counted: number; note?: string | null }, actor: Actor) {
   if (!actor.permissions.has("payments.record") && !actor.permissions.has("finance.manage")) throw new AppError("You cannot record cash counts.", "FORBIDDEN");
-  if (!Number.isInteger(input.counted) || input.counted < 0) throw new AppError("Enter the amount counted.", "VALIDATION", { counted: "Invalid" });
+  if (!Number.isInteger(input.counted) || input.counted < 0) throw new AppError("Enter the amount counted.", "VALIDATION", { counted: msg("Invalid") });
   return db.$transaction(async (tx) => {
     const settings = await getSettingsTx(tx);
     const expected = await expectedBalance(tx, input.accountId);
     const difference = input.counted - expected;
     if (difference !== 0 && !input.note?.trim()) {
-      throw new AppError(`The count is ${difference > 0 ? "over" : "short"} by TZS ${Math.abs(difference).toLocaleString("en-US")}. Explain the difference.`, "VALIDATION", { note: "Required" });
+      const amount = Math.abs(difference).toLocaleString("en-US");
+      throw new AppError(difference > 0
+        ? msgf("The count is over by TZS {amount}. Explain the difference.", { amount })
+        : msgf("The count is short by TZS {amount}. Explain the difference.", { amount }), "VALIDATION", { note: msg("Required") });
     }
     const now = new Date();
     const c = await tx.cashCount.create({
@@ -264,6 +268,10 @@ export interface LedgerFilter {
 
 /** Every financial event in a period, from the real records, newest first. */
 export async function getLedger(f: LedgerFilter): Promise<{ rows: LedgerRow[]; totals: { income: number; expense: number; net: number; moneyIn: number; moneyOut: number } }> {
+  // Descriptions and one-off notes are in the reader's words; types, categories, "via" and tags stay English (the
+  // ledger page filters and styles by them, and translates them where it shows them).
+  const t = await getT();
+  const voided = (reason: string | null) => (reason ? t("Voided: {reason}", { reason }) : t("Voided"));
   const bd = { gte: toDbDate(f.from), lte: toDbDate(f.to) };
   const [nights, charges, sales, payments, expenses, entries, methods, accounts] = await Promise.all([
     // Room income is earned once the guest has checked in (a booked night is only a price until then).
@@ -316,58 +324,62 @@ export async function getLedger(f: LedgerFilter): Promise<{ rows: LedgerRow[]; t
     const d = fromDbDate(n.businessDate);
     const fmt = (x: number) => x.toLocaleString("en-US");
     const setBy = rr.discountSetById ? staff.get(rr.discountSetById) : null;
-    // Official price → discounts → what was charged, and who gave the discount.
+    // Official price → discounts → what was charged, and who gave the discount (in the reader's words; the ledger page
+    // reads the part before " = " and drops the leading price).
+    const manual = fmt(n.manualDiscount);
     const discounts = [
-      n.promoDiscount && `${n.promotionName ?? "Promotion"} −${fmt(n.promoDiscount)}`,
-      n.manualDiscount && `Discount −${fmt(n.manualDiscount)}${setBy ? ` by ${setBy}${rr.discountSetAt ? ` on ${rr.discountSetAt.toISOString().slice(0, 10)}` : ""}` : ""}`,
+      n.promoDiscount && `${n.promotionName != null ? t(n.promotionName) : t("Promotion")} −${fmt(n.promoDiscount)}`,
+      n.manualDiscount && (!setBy ? t("Discount −{amount}", { amount: manual })
+        : rr.discountSetAt ? t("Discount −{amount} by {name} on {date}", { amount: manual, name: setBy, date: rr.discountSetAt.toISOString().slice(0, 10) })
+          : t("Discount −{amount} by {name}", { amount: manual, name: setBy })),
     ].filter(Boolean).join(" · ");
     const firstNight = fromDbDate(rr.arrivalDate) === d;
     const walkIn = rr.reservation.source.code === "WALK_IN";
     if (rr.roomType.category === "MEETING_ROOM") {
       // Meeting Room revenue: its own line, never room (bedroom) revenue. Earned when the meeting starts.
       rows.push({
-        ...base, id: `n-${n.id}`, source: "MEETING", businessDate: d, type: "Income", category: "Meeting room",
+        ...base, id: `n-${n.id}`, source: "MEETING", businessDate: d, type: msg("Income"), category: msg("Meeting room"),
         at: rr.checkedInAt ? rr.checkedInAt.toISOString() : `${d}T08:00:00.000Z`,
-        description: `Room ${rr.room.number} — ${rr.roomType.name} · ${timeRange(rr.startAt, rr.endAt)} · ${rr.reservation.companyName ?? rr.reservation.guest.fullName}`, reference: rr.reservation.reference,
-        by: rr.checkedInBy?.fullName ?? rr.reservation.createdBy?.fullName ?? "Website", userId: rr.checkedInBy?.id ?? rr.reservation.createdBy?.id ?? null,
-        via: "Meeting started", income: n.netAmount, gross: n.grossAmount, discount: n.discountAmount,
+        description: t("Room {room} — {type} · {time} · {who}", { room: rr.room.number, type: t(rr.roomType.name), time: timeRange(rr.startAt, rr.endAt), who: rr.reservation.companyName ?? rr.reservation.guest.fullName }), reference: rr.reservation.reference,
+        by: rr.checkedInBy?.fullName ?? rr.reservation.createdBy?.fullName ?? t("Website"), userId: rr.checkedInBy?.id ?? rr.reservation.createdBy?.id ?? null,
+        via: msg("Meeting started"), income: n.netAmount, gross: n.grossAmount, discount: n.discountAmount,
         note: `${fmt(n.grossAmount)}${discounts ? ` − ${discounts}` : ""} = ${fmt(n.netAmount)}`, href: `/staff/reservations/${rr.reservation.id}`,
       });
       continue;
     }
     rows.push({
-      ...base, id: `n-${n.id}`, source: "ROOM", businessDate: d, type: "Income", category: n.isDayUse ? "Rooms · short time" : "Rooms",
+      ...base, id: `n-${n.id}`, source: "ROOM", businessDate: d, type: msg("Income"), category: n.isDayUse ? msg("Rooms · short time") : msg("Rooms"),
       at: firstNight && rr.checkedInAt ? rr.checkedInAt.toISOString() : `${d}T08:00:00.000Z`,
-      description: `Room ${nightRooms.get(n.roomId)?.number ?? rr.room.number} · ${nightRooms.get(n.roomId)?.roomType.name ?? rr.roomType.name} · ${rr.reservation.guest.fullName}`, reference: [rr.reservation.reference, rr.reservation.group?.reference].filter(Boolean).join(" · "),
-      by: rr.checkedInBy?.fullName ?? rr.reservation.createdBy?.fullName ?? "Website", userId: rr.checkedInBy?.id ?? rr.reservation.createdBy?.id ?? null,
-      via: firstNight ? (walkIn ? "Walk-in check-in" : "Check-in") : n.isDayUse ? "Short time" : "Night of the stay",
+      description: t("Room {room} · {type} · {guest}", { room: nightRooms.get(n.roomId)?.number ?? rr.room.number, type: t(nightRooms.get(n.roomId)?.roomType.name ?? rr.roomType.name), guest: rr.reservation.guest.fullName }), reference: [rr.reservation.reference, rr.reservation.group?.reference].filter(Boolean).join(" · "),
+      by: rr.checkedInBy?.fullName ?? rr.reservation.createdBy?.fullName ?? t("Website"), userId: rr.checkedInBy?.id ?? rr.reservation.createdBy?.id ?? null,
+      via: firstNight ? (walkIn ? msg("Walk-in check-in") : msg("Check-in")) : n.isDayUse ? msg("Short time") : msg("Night of the stay"),
       income: n.netAmount, gross: n.grossAmount, discount: n.discountAmount,
-      note: `${fmt(n.grossAmount)}${n.priceRuleName ? ` (${n.priceRuleName} price)` : ""}${discounts ? ` − ${discounts}` : ""} = ${fmt(n.netAmount)}`, href: `/staff/reservations/${rr.reservation.id}`,
+      note: `${fmt(n.grossAmount)}${n.priceRuleName ? ` (${t("{name} price", { name: t(n.priceRuleName) })})` : ""}${discounts ? ` − ${discounts}` : ""} = ${fmt(n.netAmount)}`, href: `/staff/reservations/${rr.reservation.id}`,
     });
   }
   for (const c of charges) {
     rows.push({
-      ...base, id: `c-${c.id}`, source: "CHARGE", at: c.createdAt.toISOString(), businessDate: fromDbDate(c.businessDate), type: "Income",
-      category: CHARGE_LABELS[c.category ?? ""] ?? (c.kind === "BAR" ? "Bar" : c.kind === "RESTAURANT" ? "Restaurant" : "Other services"),
-      description: `${c.description} · ${c.reservation.rooms[0] ? `Room ${c.reservation.rooms[0].room.number} · ` : ""}${c.reservation.guest.fullName}`, reference: [c.reservation.reference, c.reservation.group?.reference].filter(Boolean).join(" · "), by: c.createdById ? staff.get(c.createdById) ?? null : null, userId: c.createdById,
-      income: c.isVoided ? 0 : c.amount, status: c.isVoided ? "VOIDED" : "POSTED", note: c.isVoided ? `Voided${c.voidReason ? `: ${c.voidReason}` : ""}` : "On the guest's room bill",
+      ...base, id: `c-${c.id}`, source: "CHARGE", at: c.createdAt.toISOString(), businessDate: fromDbDate(c.businessDate), type: msg("Income"),
+      category: CHARGE_LABELS[c.category ?? ""] ?? (c.kind === "BAR" ? msg("Bar") : c.kind === "RESTAURANT" ? msg("Restaurant") : msg("Other services")),
+      description: `${c.description} · ${c.reservation.rooms[0] ? `${t("Room {room}", { room: c.reservation.rooms[0].room.number })} · ` : ""}${c.reservation.guest.fullName}`, reference: [c.reservation.reference, c.reservation.group?.reference].filter(Boolean).join(" · "), by: c.createdById ? staff.get(c.createdById) ?? null : null, userId: c.createdById,
+      income: c.isVoided ? 0 : c.amount, status: c.isVoided ? "VOIDED" : "POSTED", note: c.isVoided ? voided(c.voidReason) : msg("On the guest's room bill"),
       href: `/staff/reservations/${c.reservation.id}#extras`,
     });
   }
   for (const s of sales) {
     const acct = accountById.get(s.accountId);
     rows.push({
-      ...base, id: `s-${s.id}`, source: "SALE", at: s.occurredAt.toISOString(), businessDate: fromDbDate(s.businessDate), type: "Income",
-      category: s.category.name, description: s.description ?? s.category.name, account: acct?.name ?? null, accountIds: acct ? [acct.id] : [],
+      ...base, id: `s-${s.id}`, source: "SALE", at: s.occurredAt.toISOString(), businessDate: fromDbDate(s.businessDate), type: msg("Income"),
+      category: s.category.name, description: s.description ?? t(s.category.name), account: acct?.name ?? null, accountIds: acct ? [acct.id] : [],
       by: s.recordedBy.fullName, userId: s.recordedBy.id, income: s.isVoided ? 0 : s.amount, moneyIn: s.isVoided ? 0 : s.amount,
-      status: s.isVoided ? "VOIDED" : "POSTED", note: s.isVoided ? `Voided${s.voidReason ? `: ${s.voidReason}` : ""}` : "Paid on the spot", href: "/staff/sales",
+      status: s.isVoided ? "VOIDED" : "POSTED", note: s.isVoided ? voided(s.voidReason) : msg("Paid on the spot"), href: "/staff/sales",
     });
   }
   for (const p of payments) {
     // A payment is never hidden: it stays on its own day as it was recorded, and a reversal
     // is a separate line (minus the same amount) on the day it was reversed, with who and why.
     const acct = accountById.get(p.accountId);
-    const who = p.reservation?.guest.fullName ?? p.corporateCustomer?.companyName ?? p.invoice?.group?.name ?? p.invoice?.guest?.fullName ?? "Customer";
+    const who = p.reservation?.guest.fullName ?? p.corporateCustomer?.companyName ?? p.invoice?.group?.name ?? p.invoice?.guest?.fullName ?? t("Customer");
     const refund = p.kind === "REFUND";
     const reversed = p.status === "REVERSED";
     const common = {
@@ -384,12 +396,12 @@ export async function getLedger(f: LedgerFilter): Promise<{ rows: LedgerRow[]; t
     if (inRange(day)) {
       rows.push({
         ...common, id: `p-${p.id}`, source: refund ? "REFUND" : "PAYMENT", at: p.receivedAt.toISOString(), businessDate: day,
-        type: refund ? "Refund" : "Payment received",
-        description: p.invoice && !refund ? `Payment for invoice ${p.invoice.number} — ${who}` : `${refund ? "Refund to" : "Paid by"} ${who}`,
-        by: p.recordedBy.fullName, userId: p.recordedBy.id, via: p.invoice ? (p.invoice.group ? "Group invoice" : "Company invoice") : p.reservation ? "Guest account" : null,
+        type: refund ? msg("Refund") : msg("Payment received"),
+        description: p.invoice && !refund ? t("Payment for invoice {number} — {who}", { number: p.invoice.number, who }) : refund ? t("Refund to {who}", { who }) : t("Paid by {who}", { who }),
+        by: p.recordedBy.fullName, userId: p.recordedBy.id, via: p.invoice ? (p.invoice.group ? msg("Group invoice") : msg("Company invoice")) : p.reservation ? msg("Guest account") : null,
         income: refund ? -p.amount : 0, moneyIn: refund ? 0 : p.amount, moneyOut: refund ? p.amount : 0,
-        tag: reversed ? "Reversed later" : corrected.length ? `Account corrected: ${place(corrected[0].fromAccountId, corrected[0].fromMethodId)} → ${place(corrected.at(-1)!.toAccountId, corrected.at(-1)!.toMethodId)}` : null,
-        note: refund ? "Money given back — reduces income" : "Settles what is owed — not income again",
+        tag: reversed ? msg("Reversed later") : corrected.length ? `Account corrected: ${place(corrected[0].fromAccountId, corrected[0].fromMethodId)} → ${place(corrected.at(-1)!.toAccountId, corrected.at(-1)!.toMethodId)}` : null,
+        note: refund ? msg("Money given back — reduces income") : msg("Settles what is owed — not income again"),
       });
     }
     // Payment method / reference corrections: a visible line, same amount, never a new payment.
@@ -399,19 +411,24 @@ export async function getLedger(f: LedgerFilter): Promise<{ rows: LedgerRow[]; t
       const staffName = staffCorrectors.get(c.changedById) ?? null;
       rows.push({
         ...common, id: `x-${c.id}`, source: "CORRECTION", at: c.changedAt.toISOString(), businessDate: cd,
-        type: "Payment account change", category: !moved(c) ? "Reference" : `${place(c.fromAccountId, c.fromMethodId)} → ${place(c.toAccountId, c.toMethodId)}`,
-        description: `Payment by ${who} (TZS ${c.amount.toLocaleString("en-US")}, ${formatDay(day)}) — ${!moved(c) ? "reference corrected" : `was ${place(c.fromAccountId, c.fromMethodId)}, now ${place(c.toAccountId, c.toMethodId)}`}`,
-        by: staffName, userId: c.changedById, via: "Correction",
-        note: `Amount unchanged.${c.reason ? ` Why: ${c.reason}` : ""}${c.fromReference !== c.toReference ? ` · reference ${c.fromReference ?? "—"} → ${c.toReference ?? "—"}` : ""}`,
+        type: msg("Payment account change"), category: !moved(c) ? msg("Reference") : `${place(c.fromAccountId, c.fromMethodId)} → ${place(c.toAccountId, c.toMethodId)}`,
+        description: !moved(c)
+          ? t("Payment by {who} (TZS {amount}, {date}) — reference corrected", { who, amount: c.amount.toLocaleString("en-US"), date: t.date(day) })
+          : t("Payment by {who} (TZS {amount}, {date}) — was {from}, now {to}", { who, amount: c.amount.toLocaleString("en-US"), date: t.date(day), from: t(place(c.fromAccountId, c.fromMethodId)), to: t(place(c.toAccountId, c.toMethodId)) }),
+        by: staffName, userId: c.changedById, via: msg("Correction"),
+        note: `${t("Amount unchanged.")}${c.reason ? ` ${t("Why: {reason}", { reason: c.reason })}` : ""}${c.fromReference !== c.toReference ? ` · ${t("reference {from} → {to}", { from: c.fromReference ?? "—", to: c.toReference ?? "—" })}` : ""}`,
       });
     }
     if (reversed && p.reversalBusinessDate && inRange(fromDbDate(p.reversalBusinessDate))) {
       rows.push({
         ...common, id: `r-${p.id}`, source: "REVERSAL", at: (p.reversedAt ?? p.receivedAt).toISOString(), businessDate: fromDbDate(p.reversalBusinessDate),
-        type: refund ? "Refund reversed" : "Payment reversed", description: `Reversal of ${refund ? "refund to" : "payment by"} ${who} (TZS ${p.amount.toLocaleString("en-US")}, ${formatDay(day)})`,
-        by: p.reversedBy?.fullName ?? null, userId: p.reversedBy?.id ?? null, via: "Reversal",
+        type: refund ? msg("Refund reversed") : msg("Payment reversed"),
+        description: refund
+          ? t("Reversal of refund to {who} (TZS {amount}, {date})", { who, amount: p.amount.toLocaleString("en-US"), date: t.date(day) })
+          : t("Reversal of payment by {who} (TZS {amount}, {date})", { who, amount: p.amount.toLocaleString("en-US"), date: t.date(day) }),
+        by: p.reversedBy?.fullName ?? null, userId: p.reversedBy?.id ?? null, via: msg("Reversal"),
         income: refund ? p.amount : 0, moneyIn: refund ? p.amount : 0, moneyOut: refund ? 0 : p.amount,
-        note: `Why: ${p.reversalReason ?? "—"}. The original stays on ${formatDay(day)}.`,
+        note: t("Why: {reason}. The original stays on {date}.", { reason: p.reversalReason ?? "—", date: t.date(day) }),
       });
     }
   }
@@ -421,14 +438,15 @@ export async function getLedger(f: LedgerFilter): Promise<{ rows: LedgerRow[]; t
     // Made by a stock purchase's final approval: still this one line — it opens the purchase, not the expense.
     const sr = e.stockRequest;
     rows.push({
-      ...base, id: `e-${e.id}`, source: "EXPENSE", at: e.spentAt.toISOString(), businessDate: fromDbDate(e.businessDate), type: "Expense",
-      category: e.category.name, description: e.description + (e.payee ? ` · paid to ${e.payee}` : ""), reference: e.reference,
+      ...base, id: `e-${e.id}`, source: "EXPENSE", at: e.spentAt.toISOString(), businessDate: fromDbDate(e.businessDate), type: msg("Expense"),
+      category: e.category.name, description: e.description + (e.payee ? ` · ${t("paid to {payee}", { payee: e.payee })}` : ""), reference: e.reference,
       account: acct?.name ?? e.paymentMethod?.name ?? null, accountIds: acct ? [acct.id] : [], by: e.createdBy.fullName, userId: e.createdBy.id,
       expense: counted ? e.amount : 0, moneyOut: counted ? e.amount : 0,
       status: counted ? "POSTED" : e.status === "VOIDED" ? "VOIDED" : e.status === "REJECTED" ? "REJECTED" : "PENDING",
-      note: e.status === "PENDING_APPROVAL" ? `TZS ${e.amount.toLocaleString("en-US")} waiting for approval` : e.status === "VOIDED" ? `Voided${e.voidReason ? `: ${e.voidReason}` : ""}` : e.notes,
+      // (The ledger page reads the amount back from this note: it stays the first number in it.)
+      note: e.status === "PENDING_APPROVAL" ? t("TZS {amount} waiting for approval", { amount: e.amount.toLocaleString("en-US") }) : e.status === "VOIDED" ? voided(e.voidReason) : e.notes,
       href: sr ? "/staff/stock-requests" : "/staff/expenses", attachment: e.receiptFileId ? `/api/files/${e.receiptFileId}` : e.receiptUrl,
-      ...(sr ? { tag: `Purchase ${sr.purchaseNumber ?? sr.number}`, via: `Stock request ${sr.number}` } : {}),
+      ...(sr ? { tag: `Purchase ${sr.purchaseNumber ?? sr.number}`, via: t("Stock request {number}", { number: sr.number }) } : {}),
     });
   }
   for (const m of entries) {
@@ -437,13 +455,13 @@ export async function getLedger(f: LedgerFilter): Promise<{ rows: LedgerRow[]; t
     const transfer = m.kind === "TRANSFER";
     rows.push({
       ...base, id: `l-${m.id}`, source: "MOVEMENT", at: m.occurredAt.toISOString(), businessDate: fromDbDate(m.businessDate), type: MOVEMENT_LABELS[m.kind],
-      category: transfer ? "Transfer" : m.kind.startsWith("OWNER") ? "Owner" : m.kind === "OTHER_INCOME" ? "Other income" : "Correction",
-      description: transfer ? `${m.description} · ${m.account.name} → ${m.toAccount?.name ?? "?"}` : m.description, reference: m.number,
+      category: transfer ? msg("Transfer") : m.kind.startsWith("OWNER") ? msg("Owner") : m.kind === "OTHER_INCOME" ? msg("Other income") : msg("Correction"),
+      description: transfer ? `${m.description} · ${t(m.account.name)} → ${m.toAccount ? t(m.toAccount.name) : "?"}` : m.description, reference: m.number,
       account: transfer ? `${m.account.name} → ${m.toAccount?.name}` : m.account.name, accountIds: [m.accountId, ...(m.toAccountId ? [m.toAccountId] : [])],
       by: m.createdBy.fullName, userId: m.createdBy.id,
       income: posted && m.kind === "OTHER_INCOME" ? m.amount : 0,
       moneyIn: posted && isIn ? m.amount : 0, moneyOut: posted && (OUT_KINDS.includes(m.kind)) ? m.amount : 0,
-      status: posted ? "POSTED" : "REVERSED", note: posted ? m.notes : `Reversed: ${m.reversalReason ?? ""}`, href: "/staff/finance/accounts",
+      status: posted ? "POSTED" : "REVERSED", note: posted ? m.notes : t("Reversed: {reason}", { reason: m.reversalReason ?? "" }), href: "/staff/finance/accounts",
       attachment: m.attachmentFileId ? `/api/files/${m.attachmentFileId}` : null,
     });
     // A transfer is money out of one account and into another: with an account filter it shows as in or out.
@@ -461,15 +479,15 @@ export async function getLedger(f: LedgerFilter): Promise<{ rows: LedgerRow[]; t
     include: { corporateCustomer: { select: { companyName: true } }, guest: { select: { fullName: true } }, group: { select: { name: true } }, createdBy: { select: { id: true, fullName: true } } },
   });
   for (const i of issued) {
-    const who = i.corporateCustomer?.companyName ?? i.group?.name ?? i.guest?.fullName ?? "Customer";
+    const who = i.corporateCustomer?.companyName ?? i.group?.name ?? i.guest?.fullName ?? t("Customer");
     const off = i.status === "CANCELLED" || i.status === "VOID";
     rows.push({
       ...base, id: `i-${i.id}`, source: "INVOICE", at: i.createdAt.toISOString(), businessDate: fromDbDate(i.issueDate!),
-      type: "Invoice issued", category: "Receivable", description: `${i.number} — ${who} owes TZS ${i.netAmount.toLocaleString("en-US")}`,
-      reference: i.number, by: i.createdBy.fullName, userId: i.createdBy.id, via: "Company invoice", href: `/staff/invoices/${i.id}`,
-      status: off ? "VOIDED" : "POSTED", tag: off ? null : i.balanceAmount > 0 ? `Owed ${i.balanceAmount.toLocaleString("en-US")}` : null,
-      note: off ? `${i.status === "VOID" ? "Void" : "Cancelled"}: ${i.cancelReason ?? ""}`
-        : `Receivable — already earned, not income again · paid ${i.paidAmount.toLocaleString("en-US")}${i.dueDate ? ` · due ${fromDbDate(i.dueDate)}` : ""}`,
+      type: msg("Invoice issued"), category: msg("Receivable"), description: t("{number} — {who} owes TZS {amount}", { number: i.number, who, amount: i.netAmount.toLocaleString("en-US") }),
+      reference: i.number, by: i.createdBy.fullName, userId: i.createdBy.id, via: msg("Company invoice"), href: `/staff/invoices/${i.id}`,
+      status: off ? "VOIDED" : "POSTED", tag: off ? null : i.balanceAmount > 0 ? t("Owed {amount}", { amount: i.balanceAmount.toLocaleString("en-US") }) : null,
+      note: off ? (i.status === "VOID" ? t("Void: {reason}", { reason: i.cancelReason ?? "" }) : t("Cancelled: {reason}", { reason: i.cancelReason ?? "" }))
+        : `${t("Receivable — already earned, not income again · paid {amount}", { amount: i.paidAmount.toLocaleString("en-US") })}${i.dueDate ? ` · ${t("due {date}", { date: fromDbDate(i.dueDate) })}` : ""}`,
     });
   }
 
@@ -538,7 +556,7 @@ export async function staffActivity(from: BusinessDate, to: BusinessDate) {
   const get = (id: string) => {
     if (!map.has(id)) {
       const u = users.find((x) => x.id === id);
-      map.set(id, { id, name: u?.fullName ?? "Staff", role: u?.role.name ?? "", checkIns: 0, checkOuts: 0, bookings: 0, payments: 0, refunds: 0, paymentCount: 0, sales: 0, expenses: 0, expenseCount: 0 });
+      map.set(id, { id, name: u?.fullName ?? msg("Staff"), role: u?.role.name ?? "", checkIns: 0, checkOuts: 0, bookings: 0, payments: 0, refunds: 0, paymentCount: 0, sales: 0, expenses: 0, expenseCount: 0 });
     }
     return map.get(id)!;
   };

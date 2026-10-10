@@ -1,4 +1,5 @@
 import { Mail, MapPin, MessageCircle, Phone } from "lucide-react";
+import { getT } from "@/i18n/server";
 import { cn } from "@/lib/utils";
 import { telHref, whatsappHref } from "../contact";
 import { GlassPanel } from "../kit/hud";
@@ -10,7 +11,8 @@ import { BookingProgress } from "./progress";
 
 /**
  * The private booking and request pages (/booking/[reference]): a night band that says where the
- * guest is (thank-you, reference, status), then calm hairline lists on paper. Server-safe.
+ * guest is (thank-you, reference, status), then calm hairline lists on paper. Server components (in the visitor's
+ * language); labels passed in are English keys or already translated.
  */
 
 export type StatusTone = "ok" | "muted" | "warn";
@@ -20,7 +22,8 @@ export const printInk =
   "print:bg-none print:bg-transparent print:shadow-none print:ring-0 print:[--pub-fg:#15120e] print:[--pub-muted:#5b5249] print:[--pub-faint:#8a7f72] print:[--pub-line:#d9d2c5] print:[--pub-eyebrow:#7a5a1c]";
 
 /** The status line: a dot and plain words, gold when all is well, the error tone when not. */
-export function StatusPill({ label, tone, className }: { label: string; tone: StatusTone; className?: string }) {
+export async function StatusPill({ label, tone, className }: { label: string; tone: StatusTone; className?: string }) {
+  const t = await getT();
   return (
     <p
       className={cn(
@@ -36,8 +39,8 @@ export function StatusPill({ label, tone, className }: { label: string; tone: St
         className={cn("size-1.5 shrink-0 rounded-full", tone === "ok" ? "bg-gold" : tone === "warn" ? "bg-pub-error" : "bg-pub-faint")}
       />
       <span className="min-w-0">
-        <span className="sr-only">Status: </span>
-        {label}
+        <span className="sr-only">{t("Status:")} </span>
+        {t(label)}
       </span>
     </p>
   );
@@ -48,7 +51,7 @@ export function StatusPill({ label, tone, className }: { label: string; tone: St
  * line for a new booking, eyebrow, the thank-you (H1), one line, then the reference — sized
  * to fit a 320px phone — with its status.
  */
-export function ConfirmationBand({
+export async function ConfirmationBand({
   progress,
   progressLast,
   eyebrow,
@@ -71,6 +74,7 @@ export function ConfirmationBand({
   /** A line under the reference (e.g. the booking reference of a converted request). */
   children?: React.ReactNode;
 }) {
+  const t = await getT();
   return (
     <Section tone="night" first space="sm" width="wide" glow="top" stars labelledBy="confirmation-title" className={cn("pb-10 sm:pb-14 lg:pb-16 print:pt-6", printInk)}>
       {progress && <BookingProgress current={4} last={progressLast} className="mb-10 max-w-3xl sm:mb-12 print:hidden" />}
@@ -85,7 +89,7 @@ export function ConfirmationBand({
           <div className="min-w-0">
             <p className="flex items-center gap-2.5 font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-pub-muted sm:text-[11px]">
               <span aria-hidden="true" className="h-px w-3.5 bg-gold" />
-              {referenceLabel}
+              {t(referenceLabel)}
             </p>
             <p className="mt-3 font-display text-[clamp(1.875rem,1.25rem+2.6vw,3.25rem)] font-medium leading-none tracking-[0.06em] text-pub-eyebrow lining-nums [overflow-wrap:anywhere]">
               {reference}
@@ -101,10 +105,11 @@ export function ConfirmationBand({
 }
 
 /** Check-in → check-out (or a meeting's date → time) as two quiet columns. */
-export function DatePair({ from, to }: { from: { label: string; date: string; note?: string }; to: { label: string; date: string; note?: string } }) {
+export async function DatePair({ from, to }: { from: { label: string; date: string; note?: string }; to: { label: string; date: string; note?: string } }) {
+  const t = await getT();
   const col = (d: { label: string; date: string; note?: string }) => (
     <div className="min-w-0 py-5">
-      <dt className={cn(typeScale.meta, "text-pub-muted")}>{d.label}</dt>
+      <dt className={cn(typeScale.meta, "text-pub-muted")}>{t(d.label)}</dt>
       <dd className="mt-2 font-display text-[clamp(1.25rem,1.1rem+0.6vw,1.625rem)] leading-tight text-pub-fg lining-nums text-balance">{d.date}</dd>
       {d.note && <dd className="mt-1 text-[13px] text-pub-muted">{d.note}</dd>}
     </div>
@@ -134,7 +139,7 @@ const rowLink =
   "flex min-h-12 min-w-0 items-center gap-3 py-2 text-[15px] text-pub-fg transition-colors duration-200 hover:text-pub-eyebrow focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none";
 
 /** How to reach the front desk about this booking: hairline rows (phone, WhatsApp, email, address). */
-export function ContactRows({
+export async function ContactRows({
   phone,
   whatsapp,
   whatsappText,
@@ -149,6 +154,7 @@ export function ContactRows({
   emailSubject: string;
   address?: string[];
 }) {
+  const t = await getT();
   return (
     <ul className="grid border-t border-pub-line sm:grid-cols-2 sm:gap-x-10">
       {phone && (
@@ -163,7 +169,7 @@ export function ContactRows({
         <li className="border-b border-pub-line">
           <a href={whatsappHref(whatsapp, whatsappText)} target="_blank" rel="noopener noreferrer" className={rowLink}>
             <MessageCircle className="size-4 shrink-0 text-pub-eyebrow" strokeWidth={1.6} aria-hidden="true" />
-            WhatsApp<span className="sr-only"> (opens in a new tab)</span>
+            WhatsApp<span className="sr-only"> {t("(opens in a new tab)")}</span>
           </a>
         </li>
       )}
@@ -185,12 +191,13 @@ export function ContactRows({
   );
 }
 
-/** "Keep this page's link" with Copy link / Print. */
-export function KeepLink({ what }: { what: string }) {
+/** "Keep this page's link" with Copy link / Print. `what` is an English key ("view this booking") or already translated. */
+export async function KeepLink({ what }: { what: string }) {
+  const t = await getT();
   return (
     <div className="mt-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-8 print:hidden">
       <p className="max-w-[30rem] text-[14px] leading-relaxed text-pub-muted">
-        <strong className="font-medium text-pub-fg">Keep this page’s link</strong> — it’s your private link to {what}.
+        {t.rich("<b>Keep this page’s link</b> — it’s your private link to {what}.", { b: (c) => <strong className="font-medium text-pub-fg">{c}</strong> }, { what: t(what) })}
       </p>
       <BookingActions />
     </div>

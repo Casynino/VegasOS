@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Initials } from "@/components/dashboard/kit";
 import { cn } from "@/lib/utils";
-import { formatTime } from "@/lib/format";
+import { useT } from "@/i18n/client";
 import { colleaguesAction } from "@/app/staff/(app)/restaurant/waiter-actions";
 
 /**
@@ -57,6 +57,7 @@ const first = (n: string) => n.replace(/\s*\(.*\)/, "").trim().split(/\s+/)[0];
  * is done (nobody on shift: every waiter, and their shift starts with it).
  */
 function WhoServes({ open, what, onDone }: { open: boolean; what: string; onDone: (v: WaiterPinValue | null) => void }) {
+  const t = useT();
   const [waiters, setWaiters] = useState<Waiter[] | null>(null);
 
   useEffect(() => {
@@ -78,15 +79,15 @@ function WhoServes({ open, what, onDone }: { open: boolean; what: string; onDone
     <Dialog open={open} onOpenChange={(o) => !o && onDone(null)}>
       <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-md">
         {/* The content has no padding (p-0): the band starts at the edge without the usual pull-out. */}
-        <DialogHeader icon={<HandPlatter />} eyebrow="Restaurant" tone="gold" className="mx-0 mt-0">
-          <DialogTitle>Who serves it?</DialogTitle>
+        <DialogHeader icon={<HandPlatter />} eyebrow={t("Restaurant")} tone="gold" className="mx-0 mt-0">
+          <DialogTitle>{t("Who serves it?")}</DialogTitle>
           <DialogDescription className="truncate">{what}</DialogDescription>
           {waiters && (
             <p className="mt-2 flex items-center gap-2 text-xs text-white/70">
               <span className={cn("size-1.5 rounded-full", onShift.length ? "bg-emerald-500" : "bg-amber-500")} />
               {onShift.length
-                ? `${onShift.length} waiter${onShift.length === 1 ? "" : "s"} on shift — tap the one who serves it`
-                : "Nobody is on shift yet"}
+                ? t.plural(onShift.length, "{n} waiter on shift — tap the one who serves it", "{n} waiters on shift — tap the one who serves it")
+                : t("Nobody is on shift yet")}
             </p>
           )}
         </DialogHeader>
@@ -94,7 +95,7 @@ function WhoServes({ open, what, onDone }: { open: boolean; what: string; onDone
         {!waiters ? (
           <div className="grid h-40 place-items-center text-muted-foreground"><Loader2 className="size-5 animate-spin" /></div>
         ) : !list.length ? (
-          <p className="m-4 rounded-2xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">{waiters.length ? "No waiter is on shift. A waiter taps “Start my shift” on their phone — then they show here." : "No waiters yet — the MD adds them in Staff & roles."}</p>
+          <p className="m-4 rounded-2xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">{waiters.length ? t("No waiter is on shift. A waiter taps “Start my shift” on their phone — then they show here.") : t("No waiters yet — the MD adds them in Staff & roles.")}</p>
         ) : (
           <ul className="max-h-[60vh] space-y-1 overflow-y-auto p-2 pt-3">
             {list.map((w) => (
@@ -103,11 +104,11 @@ function WhoServes({ open, what, onDone }: { open: boolean; what: string; onDone
                   className="group flex w-full items-center gap-3 rounded-2xl border border-transparent px-3 py-2.5 text-left transition hover:border-[oklch(0.75_0.12_80/0.4)] hover:bg-[oklch(0.72_0.12_80/0.07)] focus-visible:border-[oklch(0.75_0.12_80/0.6)] focus-visible:outline-none active:scale-[0.99]">
                   <span className="relative shrink-0">
                     <Initials name={w.name} className="size-11 text-sm" />
-                    {w.onShiftSince && <span className="absolute -bottom-0.5 -right-0.5 size-3 rounded-full border-2 border-popover bg-emerald-500" aria-label="On shift" />}
+                    {w.onShiftSince && <span className="absolute -bottom-0.5 -right-0.5 size-3 rounded-full border-2 border-popover bg-emerald-500" aria-label={t("On shift")} />}
                   </span>
                   <span className="min-w-0 flex-1 leading-tight">
                     <span className="flex min-w-0 items-baseline gap-2"><span className="truncate text-[15px] font-semibold">{first(w.name)}</span>{w.number && <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{w.number}</span>}</span>
-                    <span className="mt-0.5 block truncate text-xs text-muted-foreground">{w.onShiftSince ? `On shift · since ${formatTime(w.onShiftSince)}` : "Not on shift"}</span>
+                    <span className="mt-0.5 block truncate text-xs text-muted-foreground">{w.onShiftSince ? t("On shift · since {time}", { time: t.time(w.onShiftSince) }) : t("Not on shift")}</span>
                   </span>
                   <ArrowRight className="size-4 shrink-0 text-muted-foreground/60 transition group-hover:translate-x-0.5 group-hover:text-[oklch(0.84_0.11_82)]" />
                 </button>

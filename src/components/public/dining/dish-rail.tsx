@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getT } from "@/i18n/server";
 import { MediaFrame } from "../kit/media-frame";
 import { PriceTag } from "../kit/price-tag";
 import { Rail } from "../kit/rail";
@@ -15,15 +16,17 @@ import s from "./dining.module.css";
  * cursor light follows. Stock photos carry the Illustrative tag. Place it directly inside a
  * Section / Container.
  */
-export function DishRail({ dishes, label = "Dishes from the kitchen", className }: { dishes: Dish[]; label?: string; className?: string }) {
+export async function DishRail({ dishes, label, className }: { dishes: Dish[]; label?: string; className?: string }) {
   if (dishes.length === 0) return null;
+  // The dishes are the hotel's own content: shown in the visitor's language (saved translation, else English).
+  const t = await getT();
   return (
-    <Rail label={label} size="md" desktop={dishes.length <= 3 ? "grid" : "rail"} cols={3} className={className}>
+    <Rail label={label ?? t("Dishes from the kitchen")} size="md" desktop={dishes.length <= 3 ? "grid" : "rail"} cols={3} className={className}>
       {dishes.map((d) => (
         <Link key={d.key} href={`/menu?item=${d.key}`} data-spotlight="" className={cn("group block rounded-[0.125rem] [--spot-r:16rem]", focusRing)}>
           <MediaFrame
             src={d.image.src}
-            alt={d.image.alt}
+            alt={t(d.image.alt)}
             ratio="4/5"
             zoom
             illustrative={d.stock}
@@ -43,9 +46,9 @@ export function DishRail({ dishes, label = "Dishes from the kitchen", className 
             </span>
           </MediaFrame>
           <h3 className={cn(typeScale.item, "mt-4 text-pub-fg transition-colors duration-200 group-hover:text-pub-eyebrow motion-reduce:transition-none")}>
-            {d.name}
+            {t(d.name)}
           </h3>
-          {d.description && <p className="mt-1.5 line-clamp-1 text-[14px] text-pub-muted">{d.description}</p>}
+          {d.description && <p className="mt-1.5 line-clamp-1 text-[14px] text-pub-muted">{t(d.description)}</p>}
         </Link>
       ))}
     </Rail>

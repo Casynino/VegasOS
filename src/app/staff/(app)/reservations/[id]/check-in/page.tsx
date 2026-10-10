@@ -3,8 +3,11 @@ import { notFound, redirect } from "next/navigation";
 import { requirePagePermission } from "@/server/auth";
 import { db } from "@/server/db";
 import { CheckInWizard } from "./wizard";
+import { getT } from "@/i18n/server";
 
-export const metadata: Metadata = { title: "Check in" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getT())("Check in") };
+}
 
 export default async function CheckInPage({ params }: PageProps<"/staff/reservations/[id]/check-in">) {
   await requirePagePermission("reservations.check_in");

@@ -9,6 +9,9 @@ import { NavLink } from "./nav-link";
 import { PRIMARY_NAV } from "./site-config";
 import { StaffLink } from "./staff-link";
 import { ThemeToggle } from "./theme-toggle";
+import { LanguageSwitch } from "@/components/i18n/language-switch";
+import { getT } from "@/i18n/server";
+import { msg } from "@/i18n/msg";
 
 /**
  * Desktop (≥1024px): logo · Rooms Dining Experiences Services About Contact · Book now
@@ -18,7 +21,8 @@ import { ThemeToggle } from "./theme-toggle";
  * computers, a lock button beside Book on phones and tablets — "Dashboard" once signed in.
  * Phone, WhatsApp and theme live in the menu and the footer.
  */
-export function SiteHeader({ settings }: { settings: HotelSettings }) {
+export async function SiteHeader({ settings }: { settings: HotelSettings }) {
+  const t = await getT();
   const [first, ...rest] = settings.hotelName.split(" ");
   return (
     <HeaderShell>
@@ -31,7 +35,7 @@ export function SiteHeader({ settings }: { settings: HotelSettings }) {
       >
         <Link
           href="/"
-          aria-label={`${settings.hotelName} — home`}
+          aria-label={t("{hotel} — home", { hotel: settings.hotelName })}
           className="flex min-w-0 items-center gap-2.5 justify-self-start rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-gold"
         >
           <Image
@@ -50,12 +54,12 @@ export function SiteHeader({ settings }: { settings: HotelSettings }) {
           </span>
         </Link>
 
-        <nav aria-label="Main" className="hidden lg:block">
+        <nav aria-label={t("Main")} className="hidden lg:block">
           <ul className="flex items-center gap-5 xl:gap-9">
             {PRIMARY_NAV.map((l) => (
               <li key={l.href}>
                 <NavLink href={l.href} match={l.match} className="whitespace-nowrap text-[12px] font-medium uppercase tracking-[0.16em] text-white/80">
-                  {l.label}
+                  {t(l.label)}
                 </NavLink>
               </li>
             ))}
@@ -64,13 +68,16 @@ export function SiteHeader({ settings }: { settings: HotelSettings }) {
 
         <div className="flex items-center justify-end gap-1.5 min-[360px]:gap-2 sm:gap-3">
           <ThemeToggle compact className="hidden xl:inline-grid" />
+          {/* EN | 中文 — always one tap away (phones: one button naming the other language). */}
+          <LanguageSwitch className="hidden lg:inline-flex" languages={settings.enabledLanguages} />
+          <LanguageSwitch variant="toggle" className="lg:hidden" languages={settings.enabledLanguages} />
           {/* Staff login is just the plain lock, on every screen (owner, 2026-10-05: "just icon, no words", no shape). */}
-          <StaffLink iconOnly labels={{ signedIn: "Staff dashboard", signedOut: "Staff login" }}
+          <StaffLink iconOnly labels={{ signedIn: msg("Staff dashboard"), signedOut: msg("Staff login") }}
             className="h-10 w-9 justify-center rounded-sm text-white/90 transition-colors duration-200 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none [&_svg]:size-[19px]" />
           <Link href="/book"
             className="inline-flex h-10 items-center gap-1 whitespace-nowrap rounded-sm px-1 text-[14px] font-semibold text-gold transition-colors duration-200 hover:text-[#f0d6a0] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none">
             {/* Owner, 2026-10-05: just "Book now". */}
-            Book now
+            {t("Book now")}
           </Link>
           <MobileNav hotelName={settings.hotelName} phone={settings.phone} whatsapp={settings.whatsapp} className="lg:hidden" />
         </div>

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { after } from "next/server";
 import { z } from "zod";
+import { msg } from "@/i18n/msg";
 import { requestMeta } from "@/server/auth";
 import { runAction, type ActionResult } from "@/server/errors";
 import { rateLimit } from "@/server/rate-limit";
@@ -13,6 +14,7 @@ import { identifyAtLocation, placeLocationOrder } from "@/server/services/restau
 import { assertCanPayOnline, payForNewOrder, payTableBillOnline } from "@/server/services/online-pay";
 import type { PlacedOrder } from "@/app/order/actions";
 import { customerRequestBill, SEAT_COOKIE, SEAT_HOURS, seatAtTable } from "@/server/services/dining-sessions";
+import { rememberGuestLanguage } from "@/i18n/server";
 
 const seatToken = async () => (await cookies()).get(SEAT_COOKIE)?.value ?? null;
 
@@ -58,11 +60,13 @@ export async function imDoneAction(): Promise<ActionResult<{ status: string }>> 
 const Order = z.object({
   token: Token,
   clientKey: z.string().regex(/^[a-f0-9]{32}$/),
-  items: z.array(z.object({ menuItemId: z.string().min(1).max(80), quantity: z.number().int().min(1).max(20) })).min(1, "Add something from the menu.").max(30),
+  items: z.array(z.object({ menuItemId: z.string().min(1).max(80), quantity: z.number().int().min(1).max(20) })).min(1, msg("Add something from the menu.")).max(30),
   notes: z.string().trim().max(300).optional(),
+  /** Common requests ticked (ORDER_REQUESTS codes — unknown ones are dropped on the server). */
+  noteCodes: z.array(z.string().max(40)).max(20).optional(),
   name: z.string().trim().max(80).optional(), // blank: a returning customer, named from their phone
   phone: z.string().trim().max(30).optional(), // not needed at a table: the seated customer's details are used
-  email: z.union([z.literal(""), z.email("Enter a valid email.").max(160)]).optional(),
+  email: z.union([z.literal(""), z.email(msg("Enter a valid email.")).max(160)]).optional(),
   kind: z.enum(["DINE_IN", "TAKEAWAY", "PICKUP"]).optional(),
   where: z.string().trim().max(40).optional(),
   /** Eating here at a free table they picked. */
@@ -83,9 +87,10 @@ export async function placeTableOrderAction(input: z.input<typeof Order>): Promi
     const d = parseInput(Order, input);
     await rateLimit(`table-order:spot:${d.token}:${d.phone?.replace(/\D/g, "").slice(-9) || ipAddress || "unknown"}`, 12, 600);
     if (d.payOnline) await assertCanPayOnline("restaurant", d.payOnline.phone);
-    const o = await placeLocationOrder(d.token, { clientKey: d.clientKey, items: d.items, notes: d.notes, name: d.name, phone: d.phone, email: d.email || null, kind: d.kind, where: d.where, tableId: d.tableId, deliveryAddress: d.deliveryAddress, paidFirst: null, payOnline: !!d.payOnline, seatToken: await seatToken() });
+    const o = await placeLocationOrder(d.token, { clientKey: d.clientKey, items: d.items, notes: d.notes, noteCodes: d.noteCodes, name: d.name, phone: d.phone, email: d.email || null, kind: d.kind, where: d.where, tableId: d.tableId, deliveryAddress: d.deliveryAddress, paidFirst: null, payOnline: !!d.payOnline, seatToken: await seatToken() });
     // A table they picked is theirs now: this phone is remembered at it (like sitting down there).
     if (o.seat) (await cookies()).set(SEAT_COOKIE, o.seat, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", maxAge: SEAT_HOURS * 3600 });
+    await rememberGuestLanguage(o.guestId); // their language for their messages (only a language they chose; never fails)
     const paying = d.payOnline ? await payForNewOrder(o, { phone: d.payOnline.phone, clientKey: d.clientKey, ip: ipAddress }) : null;
     after(() => notifyOrderCustomer(o.id, "RECEIVED"));
     revalidatePath("/staff/restaurant", "layout");
@@ -93,7 +98,7 @@ export async function placeTableOrderAction(input: z.input<typeof Order>): Promi
   });
 }
 
-const PayBill = z.object({ phone: z.string().trim().min(9, "Enter your mobile-money number.").max(30), clientKey: z.string().regex(/^[a-f0-9]{32}$/) });
+const PayBill = z.object({ phone: z.string().trim().min(9, msg("Enter your mobile-money number.")).max(30), clientKey: z.string().regex(/^[a-f0-9]{32}$/) });
 
 /** "Pay my bill online" at the table (this phone's seat): everything still due, worked out on the server. Returns the payment page. */
 export async function payTableBillOnlineAction(input: z.input<typeof PayBill>): Promise<ActionResult<{ pay: string }>> {

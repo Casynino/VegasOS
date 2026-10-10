@@ -11,6 +11,7 @@ import { chargeKind, lineDescription, parseLine } from "@/lib/charge-types";
 import type { Actor } from "./reservations";
 import { expireUnpaidHolds, reopenHoldTx, secureByPaymentTx } from "./booking-holds";
 import { resolveAccountTx } from "./payment-accounts";
+import { msg, msgf } from "@/i18n/msg";
 
 /**
  * PaymentService — payments are append-only. Mistakes are corrected by a
@@ -34,7 +35,7 @@ export async function recordPaymentTx(
   actor: Actor,
 ) {
   if (!actor.userId) throw new AppError("Payments must be recorded by a signed-in staff member.", "FORBIDDEN");
-  if (!Number.isInteger(input.amount) || input.amount <= 0) throw new AppError("Enter a positive whole amount.", "VALIDATION", { amount: "Invalid" });
+  if (!Number.isInteger(input.amount) || input.amount <= 0) throw new AppError("Enter a positive whole amount.", "VALIDATION", { amount: msg("Invalid") });
   const kind = input.kind ?? "PAYMENT";
   if (kind === "REFUND" && !actor.permissions?.has("payments.reverse")) throw new AppError("Only a manager can issue refunds.", "FORBIDDEN");
   await tx.$queryRaw`SELECT "id" FROM "reservations" WHERE "id" = ${input.reservationId} FOR UPDATE`;
@@ -45,13 +46,13 @@ export async function recordPaymentTx(
   if (kind === "PAYMENT" && input.amount > r.balanceAmount) {
     throw new AppError(
       r.balanceAmount <= 0
-        ? "Nothing is owed on this booking."
-        : `The amount is more than the balance of TZS ${r.balanceAmount.toLocaleString("en-TZ")}.`,
-      "VALIDATION", { amount: "Exceeds balance" },
+        ? msg("Nothing is owed on this booking.")
+        : msgf("The amount is more than the balance of TZS {amount}.", { amount: r.balanceAmount.toLocaleString("en-TZ") }),
+      "VALIDATION", { amount: msg("Exceeds balance") },
     );
   }
   if (kind === "REFUND" && input.amount > r.paidAmount) {
-    throw new AppError("A refund cannot exceed what the guest has paid.", "VALIDATION", { amount: "Exceeds paid" });
+    throw new AppError("A refund cannot exceed what the guest has paid.", "VALIDATION", { amount: msg("Exceeds paid") });
   }
 
   const settings = await getSettingsTx(tx);
@@ -85,7 +86,7 @@ export async function recordPaymentTx(
 
 export async function reversePayment(paymentId: string, reason: string, actor: Actor) {
   if (!actor.permissions?.has("payments.reverse")) throw new AppError("Only a manager can reverse payments.", "FORBIDDEN");
-  if (!reason.trim()) throw new AppError("Give a reason for the reversal.", "VALIDATION", { reason: "Required" });
+  if (!reason.trim()) throw new AppError("Give a reason for the reversal.", "VALIDATION", { reason: msg("Required") });
   return db.$transaction(async (tx) => {
     const p = await tx.payment.findUnique({ where: { id: paymentId } });
     if (!p) throw new AppError("Payment not found.", "NOT_FOUND");
@@ -110,8 +111,8 @@ export async function reversePayment(paymentId: string, reason: string, actor: A
 }
 
 export async function addReservationCharge(input: { reservationId: string; description: string; amount: number; category?: string }, actor: Actor) {
-  if (!Number.isInteger(input.amount) || input.amount <= 0) throw new AppError("Enter a positive whole amount.", "VALIDATION", { amount: "Invalid" });
-  if (!input.description.trim()) throw new AppError("Describe the charge.", "VALIDATION", { description: "Required" });
+  if (!Number.isInteger(input.amount) || input.amount <= 0) throw new AppError("Enter a positive whole amount.", "VALIDATION", { amount: msg("Invalid") });
+  if (!input.description.trim()) throw new AppError("Describe the charge.", "VALIDATION", { description: msg("Required") });
   return db.$transaction(async (tx) => {
     const r = await tx.reservation.findUnique({ where: { id: input.reservationId } });
     if (!r) throw new AppError("Reservation not found.", "NOT_FOUND");
@@ -133,7 +134,7 @@ export async function addReservationCharge(input: { reservationId: string; descr
 
 export async function voidReservationCharge(chargeId: string, reason: string, actor: Actor) {
   if (!actor.permissions?.has("payments.reverse")) throw new AppError("Only a manager can void charges.", "FORBIDDEN");
-  if (!reason.trim()) throw new AppError("Give a reason.", "VALIDATION", { reason: "Required" });
+  if (!reason.trim()) throw new AppError("Give a reason.", "VALIDATION", { reason: msg("Required") });
   return db.$transaction(async (tx) => {
     const c = await tx.reservationCharge.findUnique({ where: { id: chargeId } });
     if (!c || c.isVoided) throw new AppError("Charge not found or already voided.", "NOT_FOUND");
@@ -167,9 +168,9 @@ export async function postRoomChargesTx(
 ) {
   if (!input.lines.length) throw new AppError("Add at least one item.");
   for (const l of input.lines) {
-    if (!l.item.trim()) throw new AppError("Say what each item is.", "VALIDATION", { item: "Required" });
-    if (!Number.isInteger(l.qty) || l.qty < 1 || l.qty > 99) throw new AppError("Quantity must be 1–99.", "VALIDATION", { qty: "Invalid" });
-    if (!Number.isInteger(l.unitPrice) || l.unitPrice <= 0) throw new AppError(`Enter a price for ${l.item.trim()}.`, "VALIDATION", { unitPrice: "Invalid" });
+    if (!l.item.trim()) throw new AppError("Say what each item is.", "VALIDATION", { item: msg("Required") });
+    if (!Number.isInteger(l.qty) || l.qty < 1 || l.qty > 99) throw new AppError("Quantity must be 1–99.", "VALIDATION", { qty: msg("Invalid") });
+    if (!Number.isInteger(l.unitPrice) || l.unitPrice <= 0) throw new AppError(msgf("Enter a price for {item}.", { item: l.item.trim() }), "VALIDATION", { unitPrice: msg("Invalid") });
   }
   {
     await tx.$queryRaw`SELECT "id" FROM "reservations" WHERE "id" = ${input.reservationId} FOR UPDATE`;
@@ -185,7 +186,12 @@ export async function postRoomChargesTx(
         where: { guestId: { in: people }, settlement: { not: "ROOM" }, paymentStatus: "UNPAID", status: { not: "CANCELLED" } },
         orderBy: { createdAt: "desc" }, select: { number: true, total: true, tableLabel: true },
       });
-      if (open) throw new AppError(`This guest's order #${open.number.replace(/^ORD-\d{4}-0*/, "")}${open.tableLabel ? ` at ${open.tableLabel}` : ""} (TZS ${open.total.toLocaleString("en-US")}) is not on the room yet — put that order on the room instead of typing it again.`, "CONFLICT");
+      if (open) {
+        const vars = { number: open.number.replace(/^ORD-\d{4}-0*/, ""), table: open.tableLabel, total: open.total.toLocaleString("en-US") };
+        throw new AppError(open.tableLabel
+          ? msgf("This guest's order #{number} at {table} (TZS {total}) is not on the room yet — put that order on the room instead of typing it again.", vars)
+          : msgf("This guest's order #{number} (TZS {total}) is not on the room yet — put that order on the room instead of typing it again.", vars), "CONFLICT");
+      }
     }
     const settings = await getSettingsTx(tx);
     const businessDate = toDbDate(businessDateOf(new Date(), stayConfig(settings)));

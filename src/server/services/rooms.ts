@@ -5,8 +5,17 @@ import { audit, type AuditActor } from "../audit";
 import { AppError } from "../errors";
 import { getSettings, businessDayConfig } from "../settings";
 import { businessDateOf, toDbDate, type BusinessDate } from "@/lib/time/business-date";
-import { BLOCKED_STATUSES, MANUAL_TRANSITIONS } from "@/lib/room-status";
+import { BLOCKED_STATUSES, MANUAL_TRANSITIONS, ROOM_STATUS_META } from "@/lib/room-status";
 import type { RoomStatus } from "@/generated/prisma/enums";
+import { getT } from "@/i18n/server";
+import { msg, msgf } from "@/i18n/msg";
+import { DEFAULT_LOCALE } from "@/i18n/config";
+import { englishT, type T } from "@/i18n/translate";
+
+/** The translator of whoever is asking (their own language) — English outside a request (jobs, tests). For words that go inside a message. */
+export const readerT = async (): Promise<T> => (await getT().catch(() => null)) ?? englishT;
+/** A room status inside a sentence: the English word as it always was ("dirty", "out of service"); in another language, the status's own name. */
+export const roomStatusWord = (t: T, status: RoomStatus, english: string) => (t.locale === DEFAULT_LOCALE ? english : t(ROOM_STATUS_META[status].label));
 
 /**
  * RoomService — housekeeping/maintenance status, with history and dated
@@ -61,18 +70,18 @@ export async function changeRoomStatus(
     const room = await tx.room.findUnique({ where: { id: roomId } });
     if (!room || !room.isActive) throw new AppError("Room not found.", "NOT_FOUND");
     if (!MANUAL_TRANSITIONS[room.status].includes(to)) {
-      throw new AppError(
-        room.status === "OCCUPIED"
-          ? "This room has a guest in it. Check the guest out to change its status."
-          : `A room cannot be changed from ${room.status.toLowerCase()} to ${to.toLowerCase()} manually.`,
-      );
+      if (room.status === "OCCUPIED") throw new AppError("This room has a guest in it. Check the guest out to change its status.");
+      const t = await readerT();
+      throw new AppError(msgf("A room cannot be changed from {from} to {to} manually.", {
+        from: roomStatusWord(t, room.status, room.status.toLowerCase()), to: roomStatusWord(t, to, to.toLowerCase()),
+      }));
     }
     // Reception may put a room under maintenance; taking it out of service is a manager's call.
     if (to === "OUT_OF_SERVICE" && !actor.permissions.has("rooms.block")) {
       throw new AppError("Only a manager can take a room out of service.", "FORBIDDEN");
     }
     if (BLOCKED_STATUSES.includes(to) && !note?.trim()) {
-      throw new AppError("Say what needs fixing (e.g. AC, plumbing).", "VALIDATION", { note: "Reason required" });
+      throw new AppError("Say what needs fixing (e.g. AC, plumbing).", "VALIDATION", { note: msg("Reason required") });
     }
     await setRoomStatusTx(tx, roomId, to, actor, note);
 
@@ -81,7 +90,8 @@ export async function changeRoomStatus(
         where: { roomId, status: { in: ["RESERVED", "CONFIRMED"] }, endAt: { gt: new Date() } },
       });
       if (upcoming > 0) {
-        return { warning: `Room ${room.number} has ${upcoming} upcoming booking(s) — reassign them to another room.` };
+        const t = await readerT();
+        return { warning: t("Room {room} has {n} upcoming booking(s) — reassign them to another room.", { room: room.number, n: upcoming }) };
       }
     }
     return {};

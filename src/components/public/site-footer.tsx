@@ -13,9 +13,11 @@ import { containers, typeScale } from "./kit/tokens";
 import { FOOTER_NAV, MAP_LINK_URL } from "./site-config";
 import { StaffLink } from "./staff-link";
 import { ThemeToggle } from "./theme-toggle";
+import { LanguageSwitch } from "@/components/i18n/language-switch";
+import { getT } from "@/i18n/server";
+import { msg } from "@/i18n/msg";
 
 const focus = "rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold";
-const TIME = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Africa/Dar_es_Salaam" });
 
 /**
  * Quiet, organised footer: the hotel and one line about it (Book lives in the header), grouped
@@ -24,7 +26,8 @@ const TIME = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digi
  * the name as a huge faint outline wordmark at the foot.
  * Calls, WhatsApp, theme and the staff door are small quiet links/icons, never pills.
  */
-export function SiteFooter({ settings, blurb = DEFAULT_CONTENT.pages.footer.blurb }: { settings: HotelSettings; blurb?: string }) {
+export async function SiteFooter({ settings, blurb = DEFAULT_CONTENT.pages.footer.blurb }: { settings: HotelSettings; blurb?: string }) {
+  const t = await getT();
   const address = addressLines(settings);
   const year = new Date().getFullYear();
   const place = [settings.city, settings.country].filter(Boolean).join(", ");
@@ -56,14 +59,14 @@ export function SiteFooter({ settings, blurb = DEFAULT_CONTENT.pages.footer.blur
       {/* A night map (contours) and star dust; the gold horizon at its top comes from the atmosphere. */}
       <Atmosphere tone="night" pattern="contour" stars edges="top" />
       <h2 id="footer-heading" className="sr-only">
-        Hotel information
+        {t("Hotel information")}
       </h2>
 
       <div className={cn(containers.wide, "pt-10 sm:pt-14 lg:pt-16")}>
         <div className="mb-10 flex flex-wrap items-center justify-between gap-x-8 gap-y-3 border-b border-white/[0.08] pb-5 sm:mb-14 lg:mb-16">
           <HudLabel>{HOTEL_COORDS.label}</HudLabel>
           <HudLabel live>
-            {settings.city || "Dar es Salaam"} · <LocalTime initial={TIME.format(new Date())} /> local time
+            {t.rich("{city} · <time></time> local time", { time: () => <LocalTime initial={t.time(new Date(), "Africa/Dar_es_Salaam")} /> }, { city: t(settings.city || "Dar es Salaam") })}
           </HudLabel>
         </div>
         <div className="grid gap-8 sm:gap-12 lg:grid-cols-12 lg:gap-10">
@@ -72,19 +75,19 @@ export function SiteFooter({ settings, blurb = DEFAULT_CONTENT.pages.footer.blur
               <Image src="/brand/logo-192.png" alt="" width={48} height={48} className="size-12" />
               <span className="font-display text-2xl font-semibold text-gold">{settings.hotelName}</span>
             </Link>
-            {settings.tagline && <p className={cn(typeScale.eyebrow, "mt-6 text-white/50")}>{settings.tagline}</p>}
+            {settings.tagline && <p className={cn(typeScale.eyebrow, "mt-6 text-white/50")}>{t(settings.tagline)}</p>}
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-white/65">{blurb}</p>
           </div>
 
           {/* Phones: one list that flows over a few lines; from 640px, three tidy columns. */}
-          <nav aria-label="Footer" className="min-w-0 lg:col-span-5">
+          <nav aria-label={t("Footer")} className="min-w-0 lg:col-span-5">
             <div className="sm:hidden">
-              <p className={cn(typeScale.eyebrow, "text-gold")}>Explore</p>
+              <p className={cn(typeScale.eyebrow, "text-gold")}>{t("Explore")}</p>
               <ul className="mt-1.5 grid grid-cols-2 gap-x-5">
                 {phoneLinks.map((l) => (
                   <li key={l.href}>
                     <Link href={l.href} className={link}>
-                      {l.label}
+                      {t(l.label)}
                     </Link>
                   </li>
                 ))}
@@ -93,12 +96,12 @@ export function SiteFooter({ settings, blurb = DEFAULT_CONTENT.pages.footer.blur
             <div className="hidden sm:grid sm:grid-cols-3 sm:gap-x-6">
               {FOOTER_NAV.map((group) => (
                 <div key={group.title} className="min-w-0">
-                  <p className={cn(typeScale.eyebrow, "text-gold")}>{group.title}</p>
+                  <p className={cn(typeScale.eyebrow, "text-gold")}>{t(group.title)}</p>
                   <ul className="mt-3 lg:mt-4">
                     {group.links.map((l) => (
                       <li key={l.href}>
                         <Link href={l.href} className={link}>
-                          {l.label}
+                          {t(l.label)}
                         </Link>
                       </li>
                     ))}
@@ -109,7 +112,7 @@ export function SiteFooter({ settings, blurb = DEFAULT_CONTENT.pages.footer.blur
           </nav>
 
           <address className="not-italic lg:col-span-3">
-            <p className={cn(typeScale.eyebrow, "text-gold")}>Contact</p>
+            <p className={cn(typeScale.eyebrow, "text-gold")}>{t("Contact")}</p>
             {/* Below 1024px the address takes a line and phone, WhatsApp and email share the next ones. */}
             <ul className="mt-1.5 flex flex-wrap gap-x-6 lg:mt-4 lg:block">
               {address.length > 0 && (
@@ -122,7 +125,7 @@ export function SiteFooter({ settings, blurb = DEFAULT_CONTENT.pages.footer.blur
                           {l}
                         </span>
                       ))}
-                      <span className="sr-only"> (opens Google Maps in a new tab)</span>
+                      <span className="sr-only"> {t("(opens Google Maps in a new tab)")}</span>
                     </span>
                   </a>
                 </li>
@@ -139,7 +142,7 @@ export function SiteFooter({ settings, blurb = DEFAULT_CONTENT.pages.footer.blur
                 <li>
                   <a href={whatsappHref(settings.whatsapp)} target="_blank" rel="noopener noreferrer" className={contactLink}>
                     <MessageCircle className={icon} strokeWidth={1.6} aria-hidden="true" />
-                    WhatsApp us<span className="sr-only"> (opens in a new tab)</span>
+                    {t("WhatsApp us")}<span className="sr-only"> {t("(opens in a new tab)")}</span>
                   </a>
                 </li>
               )}
@@ -155,11 +158,11 @@ export function SiteFooter({ settings, blurb = DEFAULT_CONTENT.pages.footer.blur
             {socials.length > 0 && (
               // Follow us: just the networks' own marks — no boxes, few words (owner, 2026-10-06).
               <div className="mt-7">
-                <p className={cn(typeScale.eyebrow, "text-gold")}>Follow us</p>
+                <p className={cn(typeScale.eyebrow, "text-gold")}>{t("Follow us")}</p>
                 <ul className="-ml-2.5 mt-1.5 flex items-center gap-1">
                   {socials.map((s) => (
                     <li key={s.label}>
-                      <a href={s.href} target="_blank" rel="noopener noreferrer" title={s.label} aria-label={`${s.label} (opens in a new tab)`}
+                      <a href={s.href} target="_blank" rel="noopener noreferrer" title={s.label} aria-label={t("{network} (opens in a new tab)", { network: s.label })}
                         className={cn(focus, "grid size-11 place-items-center text-white/75 transition-[color,transform] duration-200 hover:-translate-y-0.5 hover:text-gold motion-reduce:transition-none")}>
                         <s.Icon className="size-[22px]" />
                       </a>
@@ -190,15 +193,16 @@ export function SiteFooter({ settings, blurb = DEFAULT_CONTENT.pages.footer.blur
             </p>
             {/* Who made the site — one quiet line to Nino's page and work. */}
             <Link href="/nino" className={cn(focus, "group inline-flex min-h-11 items-center gap-1 text-xs text-white/45 transition-colors hover:text-white")}>
-              Developed by <span className="font-semibold text-white/75 transition-colors group-hover:text-[#c6f432]">Nino</span>
+              {t.rich("Developed by <b>Nino</b>", { b: (c) => <span className="font-semibold text-white/75 transition-colors group-hover:text-[#c6f432]">{c}</span> })}
               <ArrowUpRight className="size-3.5 transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden="true" />
             </Link>
           </div>
           <div className="-mr-2 flex items-center gap-3">
+            <LanguageSwitch variant="text" languages={settings.enabledLanguages} />
             <ThemeToggle compact />
             <StaffLink
               withIcon
-              labels={{ signedIn: "Staff dashboard", signedOut: "Staff login" }}
+              labels={{ signedIn: msg("Staff dashboard"), signedOut: msg("Staff login") }}
               className={cn("min-h-11 px-1 text-xs text-white/60 transition-colors hover:text-white", focus)}
             />
           </div>

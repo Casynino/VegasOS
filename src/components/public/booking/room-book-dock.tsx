@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import { useT } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 import { buttonClass } from "../kit/button";
 
@@ -15,6 +16,7 @@ const FIELD = "input, textarea, select, [contenteditable='true']";
  * types, so it never covers the form. Marked data-pub-bottom-bar: the footer keeps room for it.
  */
 export function RoomBookDock({ name, price, href, label = "Book" }: { name: string; price: string | null; href: string; label?: string }) {
+  const t = useT();
   const [past, setPast] = useState(false);
   const [targetInView, setTargetInView] = useState(false);
   const [typing, setTyping] = useState(false);
@@ -54,7 +56,7 @@ export function RoomBookDock({ name, price, href, label = "Book" }: { name: stri
   const cls = buttonClass({ size: "sm", className: "shrink-0 gap-1.5 px-[1.125rem]" });
   const inner = (
     <>
-      <span className="truncate">{label}</span>
+      <span className="truncate">{t(label)}</span>
       <ArrowRight className="size-3.5 shrink-0" strokeWidth={1.6} aria-hidden="true" />
     </>
   );
@@ -73,12 +75,12 @@ export function RoomBookDock({ name, price, href, label = "Book" }: { name: stri
         <p className="min-w-0 flex-1 leading-tight">
           <span className="flex items-center gap-2 truncate font-mono text-[10px] uppercase tracking-[0.18em] text-white/70">
             <span aria-hidden="true" className="h-px w-3 shrink-0 bg-gold/80" />
-            <span className="truncate">{name}</span>
+            <span className="truncate">{t(name)}</span>
           </span>
           {price && (
             <span className="mt-0.5 block truncate font-display text-[1.125rem] lining-nums tabular-nums text-gold">
               {price}
-              <span className="font-sans text-[11px] text-white/55"> / night</span>
+              <span className="font-sans text-[11px] text-white/55"> {t("/ night")}</span>
             </span>
           )}
         </p>

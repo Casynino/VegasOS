@@ -2,6 +2,8 @@ import "server-only";
 import { db, type Tx } from "../db";
 import { audit } from "../audit";
 import { AppError, isExclusionViolation } from "../errors";
+import { msgf } from "@/i18n/msg";
+import { readerT } from "./rooms";
 import { getSettingsTx } from "../settings";
 import type { HotelSettings, Prisma } from "@/generated/prisma/client";
 import { findAvailableRooms, lockRoomTypes } from "./availability";
@@ -81,7 +83,8 @@ export async function secureRoomsTx(tx: Tx, reservationId: string, actor: Actor)
     }
     const other = (await findAvailableRooms({ stay, roomTypeId: rr.roomTypeId, category: rr.roomType.category }, tx)).find((f) => !taken.has(f.id));
     if (!other) {
-      throw new AppError(`Sorry — Room ${rr.room.number} was just taken for these dates, and no other ${rr.roomType.name} is free. Please choose again.`, "UNAVAILABLE");
+      const t = await readerT();
+      throw new AppError(msgf("Sorry — Room {room} was just taken for these dates, and no other {type} is free. Please choose again.", { room: rr.room.number, type: t(rr.roomType.name) }), "UNAVAILABLE");
     }
     taken.add(other.id);
     await tx.reservationRoom.update({ where: { id: rr.id }, data: { roomId: other.id } });

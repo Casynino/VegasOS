@@ -4,6 +4,7 @@ import { startTransition, useActionState, useEffect, useRef } from "react";
 import { CircleAlert, CircleCheck, LoaderCircle } from "lucide-react";
 import type { ActionResult } from "@/server/errors";
 import { cn } from "@/lib/utils";
+import { useT } from "@/i18n/client";
 import { Button, field } from "./kit";
 import { CONTACT_SUBJECTS } from "./site-config";
 
@@ -20,6 +21,7 @@ const Req = () => (
  * honeypot "company"). Tone-aware fields; the reply arrives in the status line at the top, which takes focus.
  */
 export function ContactForm({ action, defaultSubject }: { action: Action; defaultSubject?: string }) {
+  const t = useT();
   const [state, run, pending] = useActionState(action, undefined);
   const formRef = useRef<HTMLFormElement>(null);
   const statusRef = useRef<HTMLDivElement>(null);
@@ -54,36 +56,36 @@ export function ContactForm({ action, defaultSubject }: { action: Action; defaul
         )}
       </div>
       <div className="min-w-0 sm:col-span-2">
-        <label htmlFor="c-name" className={field.label}>Your name<Req /></label>
+        <label htmlFor="c-name" className={field.label}>{t("Your name")}<Req /></label>
         <input id="c-name" name="name" required autoComplete="name" aria-invalid={errors?.name ? true : undefined} className={field.input} />
         {errors?.name && <p className={field.error}>{errors.name}</p>}
       </div>
       <div className="min-w-0">
-        <label htmlFor="c-email" className={field.label}>Email</label>
+        <label htmlFor="c-email" className={field.label}>{t("Email")}</label>
         <input id="c-email" name="email" type="email" autoComplete="email" aria-invalid={errors?.email ? true : undefined} className={field.input} />
         {errors?.email && <p className={field.error}>{errors.email}</p>}
       </div>
       <div className="min-w-0">
-        <label htmlFor="c-phone" className={field.label}>Phone / WhatsApp</label>
+        <label htmlFor="c-phone" className={field.label}>{t("Phone / WhatsApp")}</label>
         <input id="c-phone" name="phone" type="tel" inputMode="tel" autoComplete="tel" aria-invalid={errors?.phone ? true : undefined} className={field.input} />
         {errors?.phone && <p className={field.error}>{errors.phone}</p>}
       </div>
       <div className="min-w-0 sm:col-span-2">
-        <label htmlFor="c-subject" className={field.label}>Subject</label>
+        <label htmlFor="c-subject" className={field.label}>{t("Subject")}</label>
         <select id="c-subject" name="subject" defaultValue={subject} className={cn(field.input, "appearance-auto pr-3")}>
-          {CONTACT_SUBJECTS.map((s) => <option key={s.key} value={s.label}>{s.label}</option>)}
+          {CONTACT_SUBJECTS.map((s) => <option key={s.key} value={s.label}>{t(s.label)}</option>)}
         </select>
         {errors?.subject && <p className={field.error}>{errors.subject}</p>}
       </div>
       <div className="min-w-0 sm:col-span-2">
-        <label htmlFor="c-message" className={field.label}>Message<Req /></label>
+        <label htmlFor="c-message" className={field.label}>{t("Message")}<Req /></label>
         <textarea
           id="c-message"
           name="message"
           rows={5}
           required
           maxLength={3000}
-          placeholder={defaultSubject === "meeting" ? "Preferred date, times and number of people…" : "How can we help?"}
+          placeholder={defaultSubject === "meeting" ? t("Preferred date, times and number of people…") : t("How can we help?")}
           aria-invalid={errors?.message ? true : undefined}
           className={field.textarea}
         />
@@ -95,11 +97,11 @@ export function ContactForm({ action, defaultSubject }: { action: Action; defaul
         <Button type="submit" disabled={pending} icon={pending ? "none" : "arrow"} full className="sm:w-auto sm:min-w-48">
           <span className="inline-flex items-center gap-2">
             {pending && <LoaderCircle className="size-4 motion-safe:animate-spin" aria-hidden="true" />}
-            {pending ? "Sending…" : "Send message"}
+            {pending ? t("Sending…") : t("Send message")}
           </span>
         </Button>
         <p className="text-[13px] leading-relaxed text-pub-muted sm:max-w-60 sm:text-right">
-          Leave an email or a phone number. We use your details only to reply to this message.
+          {t("Leave an email or a phone number. We use your details only to reply to this message.")}
         </p>
       </div>
     </form>

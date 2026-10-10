@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { cn } from "@/lib/utils";
+import { getT } from "@/i18n/server";
 import { blurFor } from "../blur-data";
 import { HudLabel } from "../kit/hud";
 import fx from "./fx.module.css";
@@ -82,10 +83,10 @@ const NOTES = (
  * Dimension lines, levels and centre lines stay over both, like an AR overlay. The labels are words,
  * never invented measurements.
  */
-export function BlueprintElevation({
+export async function BlueprintElevation({
   src,
   alt,
-  label = "Elevation · Street entrance",
+  label,
   coords,
   className,
 }: {
@@ -96,6 +97,7 @@ export function BlueprintElevation({
   coords?: string;
   className?: string;
 }) {
+  const t = await getT();
   return (
     <figure className={cn("relative", className)}>
       <div className={fx.bp}>
@@ -123,7 +125,7 @@ export function BlueprintElevation({
 
         {/* Sheet labels (words only), each on its own small dark chip so they read over the photograph. */}
         <span className="absolute left-3 top-3 z-[4] rounded-sm bg-[#0f0c09]/75 px-2 py-1.5 sm:left-4 sm:top-4">
-          <HudLabel tick={false} className="text-[#f0d496]">{label}</HudLabel>
+          <HudLabel tick={false} className="text-[#f0d496]">{label ?? t("Elevation · Street entrance")}</HudLabel>
         </span>
         {coords && (
           <span className="absolute bottom-3 right-3 z-[4] rounded-sm bg-[#0f0c09]/75 px-2 py-1.5 sm:bottom-4 sm:right-4">
@@ -131,7 +133,7 @@ export function BlueprintElevation({
           </span>
         )}
         <span aria-hidden="true" className="absolute bottom-3 left-3 z-[4] hidden rounded-sm bg-[#0f0c09]/75 px-2 py-1.5 sm:bottom-4 sm:left-4 sm:block">
-          <HudLabel tick={false} className="text-[#f3ece0]/70">Street level</HudLabel>
+          <HudLabel tick={false} className="text-[#f3ece0]/70">{t("Street level")}</HudLabel>
         </span>
       </div>
     </figure>

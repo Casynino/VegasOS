@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { useT } from "@/i18n/client";
 
 const DISHES = [
   { src: "/images/menu/mi_local_favorites_nyama_choma_beef.webp", alt: "Nyama choma" },
@@ -20,8 +21,11 @@ export function MainBanner({ ready, fresh, serving, time, aside }: {
   /** The restaurant's QR button. */
   aside?: React.ReactNode;
 }) {
+  const t = useT();
+  const bold = (c: React.ReactNode) => <strong className="font-semibold text-white">{c}</strong>;
+  const dot = (c: React.ReactNode) => <span className="mx-1.5 text-white/35">{c}</span>;
   return (
-    <section aria-label="Vegas Restaurant & Bar" className="relative isolate overflow-hidden rounded-[1.75rem] bg-[#15100c] text-white shadow-[0_24px_60px_-30px_rgba(40,25,5,0.75)]">
+    <section aria-label={t("Vegas Restaurant & Bar")} className="relative isolate overflow-hidden rounded-[1.75rem] bg-[#15100c] text-white shadow-[0_24px_60px_-30px_rgba(40,25,5,0.75)]">
       {/* The dining room (left) and the bar (right), fading into the middle */}
       <div aria-hidden className="absolute inset-y-0 left-0 -z-10 w-[38%] sm:w-[34%]">
         <Image src="/images/illustrative/restaurant-warm.webp" alt="" fill sizes="(min-width: 640px) 34vw, 38vw" className="object-cover object-center opacity-70" priority />
@@ -37,7 +41,7 @@ export function MainBanner({ ready, fresh, serving, time, aside }: {
         {/* Live */}
         <p className="flex items-center gap-1.5 justify-self-center text-[11px] font-medium text-white/80 sm:justify-self-start sm:self-start" suppressHydrationWarning>
           <span className="relative flex size-1.5"><span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-60" /><span className="relative inline-flex size-1.5 rounded-full bg-emerald-400" /></span>
-          Live · {time}
+          {t("Live · {time}", { time })}
         </p>
 
         {/* The name, in the middle */}
@@ -47,11 +51,9 @@ export function MainBanner({ ready, fresh, serving, time, aside }: {
             <h1 className="font-display text-[2.1rem] font-semibold leading-none tracking-[0.28em] text-[#f6e3b4] sm:text-[2.6rem]">VEGAS</h1>
             <span aria-hidden className="hidden h-px w-10 bg-linear-to-l from-transparent to-[oklch(0.82_0.11_82)] sm:block" />
           </div>
-          <p className="mt-1.5 text-[11px] font-semibold uppercase tracking-[0.42em] text-[oklch(0.84_0.11_82)] sm:text-xs">Restaurant &amp; Bar</p>
+          <p className="mt-1.5 text-[11px] font-semibold uppercase tracking-[0.42em] text-[oklch(0.84_0.11_82)] sm:text-xs">{t("Restaurant & Bar")}</p>
           <p className="mt-2.5 text-[13px] text-white/80" suppressHydrationWarning>
-            <strong className="font-semibold text-white">{ready}</strong> ready to serve
-            <span className="mx-1.5 text-white/35">·</span><strong className="font-semibold text-white">{fresh}</strong> new
-            <span className="mx-1.5 text-white/35">·</span><strong className="font-semibold text-white">{serving}</strong> serving
+            {t.rich("<b>{ready}</b> ready to serve<s>·</s><b>{fresh}</b> new<s>·</s><b>{serving}</b> serving", { b: bold, s: dot }, { ready, fresh, serving })}
           </p>
         </div>
 

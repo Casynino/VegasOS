@@ -11,6 +11,7 @@ import { receiveStockTx } from "./inventory";
 import { createPurchaseExpenseTx, storeReceipt } from "./expenses";
 import { accountOptions, resolveAccountTx } from "./payment-accounts";
 import type { Actor } from "./reservations";
+import { msg, msgf } from "@/i18n/msg";
 
 /**
  * STOCK REQUESTS → PURCHASE → FINAL APPROVAL.
@@ -31,8 +32,8 @@ import type { Actor } from "./reservations";
 type StockActor = Actor & { roleCode?: string | null };
 
 export const STOCK_STATUS: Record<string, string> = {
-  SUBMITTED: "Waiting for review", SENT_BACK: "Sent back to change", APPROVED: "Approved — to buy", PURCHASING: "Being bought",
-  PENDING_APPROVAL: "Bought — waiting for approval", COMPLETED: "Done — in stock", REJECTED: "Rejected", CANCELLED: "Cancelled",
+  SUBMITTED: msg("Waiting for review"), SENT_BACK: msg("Sent back to change"), APPROVED: msg("Approved — to buy"), PURCHASING: msg("Being bought"),
+  PENDING_APPROVAL: msg("Bought — waiting for approval"), COMPLETED: msg("Done — in stock"), REJECTED: msg("Rejected"), CANCELLED: msg("Cancelled"),
 };
 export const OPEN_STOCK = ["SUBMITTED", "SENT_BACK", "APPROVED", "PURCHASING", "PENDING_APPROVAL"];
 
@@ -95,8 +96,8 @@ export interface StockRequestInput {
 
 function cleanItems(items: StockRequestInput["items"]) {
   const out = items.map((i) => ({ id: i.id ?? null, name: i.name.trim().slice(0, 80), quantity: round3(i.quantity), unit: i.unit.trim() || "pcs", note: clean(i.note, 120), inventoryItemId: i.inventoryItemId || null })).filter((i) => i.name);
-  if (!out.length) throw new AppError("Add at least one item.", "VALIDATION", { items: "Empty" });
-  if (out.some((i) => !(i.quantity > 0) || i.quantity > 100_000)) throw new AppError("Give each item a quantity.", "VALIDATION", { items: "Quantity" });
+  if (!out.length) throw new AppError("Add at least one item.", "VALIDATION", { items: msg("Empty") });
+  if (out.some((i) => !(i.quantity > 0) || i.quantity > 100_000)) throw new AppError("Give each item a quantity.", "VALIDATION", { items: msg("Quantity") });
   return out;
 }
 
@@ -109,7 +110,7 @@ async function linkItemsTx(tx: Tx, departmentId: string | null, items: ReturnTyp
   });
   return items.map((i) => {
     const byId = i.inventoryItemId ? known.find((k) => k.id === i.inventoryItemId) : null;
-    if (i.inventoryItemId && !byId) throw new AppError(`${i.name} is not a stock item in use.`, "VALIDATION", { items: "Item" });
+    if (i.inventoryItemId && !byId) throw new AppError(msgf("{item} is not a stock item in use.", { item: i.name }), "VALIDATION", { items: msg("Item") });
     const byName = known.find((k) => k.departmentId === departmentId && k.name.toLowerCase() === i.name.toLowerCase());
     return { ...i, inventoryItemId: byId?.id ?? byName?.id ?? null };
   });
@@ -120,7 +121,7 @@ export async function createStockRequest(input: StockRequestInput, actor: StockA
   const items = cleanItems(input.items);
   return db.$transaction(async (tx) => {
     const dept = await tx.inventoryDepartment.findUnique({ where: { code: input.department } });
-    if (!dept || !dept.isActive) throw new AppError("Choose the department it is for.", "VALIDATION", { department: "Required" });
+    if (!dept || !dept.isActive) throw new AppError("Choose the department it is for.", "VALIDATION", { department: msg("Required") });
     const linked = await linkItemsTx(tx, dept.id, items);
     const number = await nextNumberTx(tx, "SR", now);
     const r = await tx.stockRequest.create({
@@ -145,11 +146,11 @@ export async function editStockRequest(id: string, input: { items: StockRequestI
   if (!actor.userId) throw new AppError("Sign in required.", "UNAUTHENTICATED");
   const items = cleanItems(input.items);
   await db.$transaction(async (tx) => {
-    const r = await lockRequestTx(tx, id, ["SUBMITTED", "SENT_BACK", "APPROVED"], "This request can no longer be changed — it is being bought or closed.");
+    const r = await lockRequestTx(tx, id, ["SUBMITTED", "SENT_BACK", "APPROVED"], msg("This request can no longer be changed — it is being bought or closed."));
     const asker = r.status === "SENT_BACK" && r.requestedById === actor.userId;
-    if (!asker && !(canReviewStock(actor) && r.status !== "SENT_BACK")) throw new AppError(r.status === "SENT_BACK" ? "It was sent back to the person who asked — they change it." : "Only a manager can change a stock request.", "FORBIDDEN");
+    if (!asker && !(canReviewStock(actor) && r.status !== "SENT_BACK")) throw new AppError(r.status === "SENT_BACK" ? msg("It was sent back to the person who asked — they change it.") : msg("Only a manager can change a stock request."), "FORBIDDEN");
     const why = clean(input.reason);
-    if (!asker && (why?.length ?? 0) < 3) throw new AppError("Say why you change the request.", "VALIDATION", { reason: "Required" });
+    if (!asker && (why?.length ?? 0) < 3) throw new AppError("Say why you change the request.", "VALIDATION", { reason: msg("Required") });
     const linked = await linkItemsTx(tx, r.departmentId, items);
     const live = r.items.filter((i) => !i.removedAt);
     const before = live.map((i) => line({ ...i, quantity: i.approvedQty ?? i.quantity }));
@@ -178,11 +179,11 @@ export async function editStockRequest(id: string, input: { items: StockRequestI
 export async function reviewStockRequest(id: string, decision: "APPROVE" | "SEND_BACK" | "REJECT", note: string | null, actor: StockActor, now = new Date()) {
   if (!actor.userId || !canReviewStock(actor)) throw new AppError("Only a manager can review stock requests.", "FORBIDDEN");
   const why = clean(note);
-  if (decision !== "APPROVE" && (why?.length ?? 0) < 3) throw new AppError(decision === "REJECT" ? "Say why it is rejected." : "Say what to change.", "VALIDATION", { note: "Required" });
+  if (decision !== "APPROVE" && (why?.length ?? 0) < 3) throw new AppError(decision === "REJECT" ? msg("Say why it is rejected.") : msg("Say what to change."), "VALIDATION", { note: msg("Required") });
   const from = decision === "REJECT" ? ["SUBMITTED", "SENT_BACK", "APPROVED"] : ["SUBMITTED"];
   const to = decision === "APPROVE" ? "APPROVED" : decision === "SEND_BACK" ? "SENT_BACK" : "REJECTED";
   await db.$transaction(async (tx) => {
-    const r = await lockRequestTx(tx, id, from, decision === "REJECT" ? "It is already being bought or closed." : "This request is not waiting for review.");
+    const r = await lockRequestTx(tx, id, from, decision === "REJECT" ? msg("It is already being bought or closed.") : msg("This request is not waiting for review."));
     if (decision === "APPROVE") {
       for (const i of r.items.filter((x) => !x.removedAt && x.approvedQty == null)) await tx.stockRequestItem.update({ where: { id: i.id }, data: { approvedQty: i.quantity } });
     }
@@ -195,7 +196,7 @@ export async function reviewStockRequest(id: string, decision: "APPROVE" | "SEND
 /** The person who asked sends it again after changing it. */
 export async function resubmitStockRequest(id: string, actor: StockActor, now = new Date()) {
   await db.$transaction(async (tx) => {
-    const r = await lockRequestTx(tx, id, ["SENT_BACK"], "This request was not sent back.");
+    const r = await lockRequestTx(tx, id, ["SENT_BACK"], msg("This request was not sent back."));
     if (r.requestedById !== actor.userId) throw new AppError("Only the person who asked can send it again.", "FORBIDDEN");
     await tx.stockRequest.update({ where: { id }, data: { status: "SUBMITTED" } });
     await eventTx(tx, id, "SUBMITTED", actor, { from: "SENT_BACK", to: "SUBMITTED" }, now);
@@ -206,7 +207,7 @@ export async function resubmitStockRequest(id: string, actor: StockActor, now = 
 /** The person who asked no longer needs it (before it is approved). */
 export async function cancelStockRequest(id: string, reason: string | null, actor: StockActor, now = new Date()) {
   await db.$transaction(async (tx) => {
-    const r = await lockRequestTx(tx, id, ["SUBMITTED", "SENT_BACK"], "It is already approved or closed — ask the manager.");
+    const r = await lockRequestTx(tx, id, ["SUBMITTED", "SENT_BACK"], msg("It is already approved or closed — ask the manager."));
     if (r.requestedById !== actor.userId) throw new AppError("Only the person who asked can cancel it.", "FORBIDDEN");
     await tx.stockRequest.update({ where: { id }, data: { status: "CANCELLED", cancelledAt: now } });
     await eventTx(tx, id, "CANCELLED", actor, { from: r.status, to: "CANCELLED", reason: clean(reason) }, now);
@@ -237,11 +238,11 @@ export interface PurchaseInput {
  */
 export async function savePurchase(id: string, input: PurchaseInput, receipt: File | null, actor: StockActor, now = new Date()) {
   if (!actor.userId || !canBuyStock(actor)) throw new AppError("You cannot record purchases.", "FORBIDDEN");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.purchasedOn)) throw new AppError("When was it bought?", "VALIDATION", { purchasedOn: "Required" });
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.purchasedOn)) throw new AppError("When was it bought?", "VALIDATION", { purchasedOn: msg("Required") });
   const purchasedAt = new Date(`${input.purchasedOn}T12:00:00+03:00`);
-  if (purchasedAt.getTime() > now.getTime() + 24 * 3600_000) throw new AppError("The purchase date cannot be in the future.", "VALIDATION", { purchasedOn: "Future" });
+  if (purchasedAt.getTime() > now.getTime() + 24 * 3600_000) throw new AppError("The purchase date cannot be in the future.", "VALIDATION", { purchasedOn: msg("Future") });
   return db.$transaction(async (tx) => {
-    const r = await lockRequestTx(tx, id, ["APPROVED", "PURCHASING"], "This request is not approved for purchase.");
+    const r = await lockRequestTx(tx, id, ["APPROVED", "PURCHASING"], msg("This request is not approved for purchase."));
     const live = r.items.filter((i) => !i.removedAt);
     const itemIds = input.lines.map((l) => l.inventoryItemId).filter((x): x is string => !!x);
     const stock = await tx.inventoryItem.findMany({ where: { id: { in: itemIds } }, select: { id: true, name: true, unit: true, isActive: true, tracksExpiry: true } });
@@ -251,15 +252,15 @@ export async function savePurchase(id: string, input: PurchaseInput, receipt: Fi
       const it = live.find((x) => x.id === l.id);
       if (!it) throw new AppError("A line on this purchase is no longer on the request.", "VALIDATION");
       const qty = round3(l.purchasedQty);
-      if (!(qty >= 0) || qty > 100_000) throw new AppError(`How much ${it.name} was bought? (0 if none)`, "VALIDATION", { lines: "Quantity" });
-      if (!Number.isInteger(l.unitPrice) || l.unitPrice < 0) throw new AppError(`Enter the price of ${it.name} in whole shillings.`, "VALIDATION", { lines: "Price" });
+      if (!(qty >= 0) || qty > 100_000) throw new AppError(msgf("How much {item} was bought? (0 if none)", { item: it.name }), "VALIDATION", { lines: msg("Quantity") });
+      if (!Number.isInteger(l.unitPrice) || l.unitPrice < 0) throw new AppError(msgf("Enter the price of {item} in whole shillings.", { item: it.name }), "VALIDATION", { lines: msg("Price") });
       const lineTotal = qty === 0 ? 0 : l.lineTotal != null ? Math.round(l.lineTotal) : Math.round(qty * l.unitPrice);
-      if (!(lineTotal >= 0)) throw new AppError(`Check the total for ${it.name}.`, "VALIDATION", { lines: "Total" });
+      if (!(lineTotal >= 0)) throw new AppError(msgf("Check the total for {item}.", { item: it.name }), "VALIDATION", { lines: msg("Total") });
       const s = l.inventoryItemId ? stock.find((x) => x.id === l.inventoryItemId) : null;
-      if (l.inventoryItemId && !s) throw new AppError(`${it.name}: that stock item was not found.`, "VALIDATION");
+      if (l.inventoryItemId && !s) throw new AppError(msgf("{item}: that stock item was not found.", { item: it.name }), "VALIDATION");
       if (input.submit && qty > 0 && s) {
-        if (!s.isActive) throw new AppError(`${s.name} is switched off in the stores — choose another item, or "not kept in stock".`, "VALIDATION");
-        if (s.tracksExpiry && !l.expiresOn) throw new AppError(`${s.name} tracks expiry — enter the expiry date on the receipt.`, "VALIDATION", { lines: "Expiry" });
+        if (!s.isActive) throw new AppError(msgf("{item} is switched off in the stores — choose another item, or \"not kept in stock\".", { item: s.name }), "VALIDATION");
+        if (s.tracksExpiry && !l.expiresOn) throw new AppError(msgf("{item} tracks expiry — enter the expiry date on the receipt.", { item: s.name }), "VALIDATION", { lines: msg("Expiry") });
       }
       await tx.stockRequestItem.update({
         where: { id: it.id },
@@ -270,14 +271,14 @@ export async function savePurchase(id: string, input: PurchaseInput, receipt: Fi
     }
     const account = input.accountId ? (await resolveAccountTx(tx, { accountId: input.accountId }, "expenses")).account : null;
     const supplier = input.supplierId ? await tx.supplier.findUnique({ where: { id: input.supplierId }, select: { id: true, name: true } }) : null;
-    if (input.supplierId && !supplier) throw new AppError("That supplier was not found.", "VALIDATION", { supplierId: "Invalid" });
+    if (input.supplierId && !supplier) throw new AppError("That supplier was not found.", "VALIDATION", { supplierId: msg("Invalid") });
     const receiptFileId = receipt && receipt.size > 0 ? await storeReceipt(tx, receipt, actor.userId!, "PURCHASE_RECEIPT") : r.receiptFileId;
     const noReceipt = clean(input.noReceiptReason, 200);
     if (input.submit) {
-      if (!done.length || total <= 0) throw new AppError("Enter what was bought and what it cost.", "VALIDATION", { lines: "Empty" });
-      if (!account) throw new AppError("Which company account paid for it?", "VALIDATION", { accountId: "Required" });
-      if (!supplier && !clean(input.supplierName)) throw new AppError("Who was it bought from?", "VALIDATION", { supplier: "Required" });
-      if (!receiptFileId && (noReceipt?.length ?? 0) < 3) throw new AppError("Add the photo of the receipt — or say why there is none.", "VALIDATION", { receipt: "Required" });
+      if (!done.length || total <= 0) throw new AppError("Enter what was bought and what it cost.", "VALIDATION", { lines: msg("Empty") });
+      if (!account) throw new AppError("Which company account paid for it?", "VALIDATION", { accountId: msg("Required") });
+      if (!supplier && !clean(input.supplierName)) throw new AppError("Who was it bought from?", "VALIDATION", { supplier: msg("Required") });
+      if (!receiptFileId && (noReceipt?.length ?? 0) < 3) throw new AppError("Add the photo of the receipt — or say why there is none.", "VALIDATION", { receipt: msg("Required") });
     }
     const to = input.submit ? "PENDING_APPROVAL" : "PURCHASING";
     const purchaseNumber = r.purchaseNumber ?? await nextNumberTx(tx, "P", now);
@@ -307,9 +308,9 @@ export async function savePurchase(id: string, input: PurchaseInput, receipt: Fi
 export async function sendBackPurchase(id: string, reason: string, actor: StockActor, now = new Date()) {
   if (!actor.userId || !canReviewStock(actor)) throw new AppError("Only a manager can check purchases.", "FORBIDDEN");
   const why = clean(reason);
-  if ((why?.length ?? 0) < 3) throw new AppError("Say what to correct.", "VALIDATION", { reason: "Required" });
+  if ((why?.length ?? 0) < 3) throw new AppError("Say what to correct.", "VALIDATION", { reason: msg("Required") });
   await db.$transaction(async (tx) => {
-    const r = await lockRequestTx(tx, id, ["PENDING_APPROVAL"], "This purchase is not waiting for approval.");
+    const r = await lockRequestTx(tx, id, ["PENDING_APPROVAL"], msg("This purchase is not waiting for approval."));
     await tx.stockRequest.update({ where: { id }, data: { status: "PURCHASING", correctionNote: why } });
     await eventTx(tx, id, "PURCHASE_SENT_BACK", actor, { from: r.status, to: "PURCHASING", reason: why, before: { total: r.purchaseTotal, lines: r.items.filter((i) => (i.purchasedQty ?? 0) > 0).map((i) => `${i.purchasedQty} × ${i.name} = ${money(i.lineTotal ?? 0)}`) } }, now);
     await audit(tx, actor, { action: "stock_request.purchase_sent_back", entityType: "StockRequest", entityId: id, before: { status: r.status, total: r.purchaseTotal }, after: { status: "PURCHASING", reason: why, role: actor.role ?? null } });
@@ -326,7 +327,7 @@ export async function sendBackPurchase(id: string, reason: string, actor: StockA
 export async function approvePurchase(id: string, opts: { categoryId?: string | null }, actor: StockActor, now = new Date()) {
   if (!actor.userId || !canReviewStock(actor)) throw new AppError("Only a manager can approve purchases.", "FORBIDDEN");
   return db.$transaction(async (tx) => {
-    const r = await lockRequestTx(tx, id, ["PENDING_APPROVAL"], "This purchase is not waiting for approval.");
+    const r = await lockRequestTx(tx, id, ["PENDING_APPROVAL"], msg("This purchase is not waiting for approval."));
     if (r.expenseId) throw new AppError("This purchase already has its expense.", "CONFLICT");
     const settings = await getSettingsTx(tx);
     const selfApproved = r.purchasedById === actor.userId;
@@ -358,7 +359,7 @@ export async function approvePurchase(id: string, opts: { categoryId?: string | 
     const category = opts.categoryId
       ? await tx.expenseCategory.findUnique({ where: { id: opts.categoryId } })
       : (await tx.expenseCategory.findUnique({ where: { code: EXPENSE_GROUP[r.department] ?? "OTHER" } })) ?? (await tx.expenseCategory.findUnique({ where: { code: "OTHER" } }));
-    if (!category) throw new AppError("Choose what kind of expense this is.", "VALIDATION", { categoryId: "Required" });
+    if (!category) throw new AppError("Choose what kind of expense this is.", "VALIDATION", { categoryId: msg("Required") });
     const expense = await createPurchaseExpenseTx(tx, {
       amount, categoryId: category.id, spentAt: r.purchasedAt ?? r.submittedAt, accountId: r.accountId,
       description: `Stock purchase ${r.purchaseNumber} · ${dept?.name ?? r.department} · ${bought.map((i) => i.name).join(", ")}`, payee: supplier?.name ?? r.supplierName,
@@ -417,7 +418,7 @@ export async function purchasingSummary(today: string) {
   const count = (s: string) => byStatus.find((x) => x.status === s)?._count ?? 0;
   const dept = new Map<string, number>();
   for (const e of spent) {
-    const name = e.stockRequest?.inventoryDepartment?.name ?? e.stockRequest?.department ?? "Other";
+    const name = e.stockRequest?.inventoryDepartment?.name ?? e.stockRequest?.department ?? msg("Other");
     dept.set(name, (dept.get(name) ?? 0) + e.amount);
   }
   return {

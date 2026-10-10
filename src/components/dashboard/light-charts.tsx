@@ -1,16 +1,18 @@
 "use client";
 
 import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { useT } from "@/i18n/client";
 
 /** Light-surface charts for the staff dashboards (soft gradients, hover tooltips, screen-reader tables). */
-const shortDate = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+const shortDate = (d: string, intl: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString(intl, { day: "numeric", month: "short", timeZone: "UTC" });
 const compact = (v: number) => (v >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M` : v >= 1000 ? `${Math.round(v / 1000)}k` : String(Math.round(v)));
 
 function Tip({ active, payload, label, format }: { active?: boolean; payload?: { value?: number }[]; label?: string; format: (v: number) => string }) {
+  const t = useT();
   if (!active || !payload?.length) return null;
   return (
     <div className="rounded-xl border border-border bg-popover px-3 py-2 text-xs shadow-lg">
-      <p className="text-muted-foreground">{label && /^\d{4}-/.test(label) ? shortDate(label) : label}</p>
+      <p className="text-muted-foreground">{label && /^\d{4}-/.test(label) ? shortDate(label, t.intl) : label}</p>
       <p className="text-sm font-semibold text-foreground">{format(payload[0].value ?? 0)}</p>
     </div>
   );
@@ -19,6 +21,7 @@ function Tip({ active, payload, label, format }: { active?: boolean; payload?: {
 export function AreaTrend({ data, color = "#8b5cf6", unit = "money", height = 240 }: {
   data: { date: string; value: number }[]; color?: string; unit?: "money" | "percent" | "count"; height?: number;
 }) {
+  const t = useT();
   const format = (v: number) => (unit === "money" ? `TZS ${Math.round(v).toLocaleString("en-TZ")}` : unit === "percent" ? `${v.toFixed(1)}%` : String(Math.round(v)));
   const id = `g-${color.replace(/[^a-z0-9]/gi, "")}`;
   return (
@@ -33,7 +36,7 @@ export function AreaTrend({ data, color = "#8b5cf6", unit = "money", height = 24
               </linearGradient>
             </defs>
             <CartesianGrid stroke="var(--border)" vertical={false} />
-            <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} tickLine={false} axisLine={false} minTickGap={24} />
+            <XAxis dataKey="date" tickFormatter={(d: string) => shortDate(d, t.intl)} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} tickLine={false} axisLine={false} minTickGap={24} />
             <YAxis tickFormatter={(v) => (unit === "percent" ? `${v}%` : compact(v))} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} tickLine={false} axisLine={false} width={44}
               domain={unit === "percent" ? [0, 100] : [0, "auto"]} />
             <Tooltip content={<Tip format={format} />} cursor={{ stroke: color, strokeDasharray: "4 4" }} />
@@ -49,6 +52,8 @@ export function AreaTrend({ data, color = "#8b5cf6", unit = "money", height = 24
 export const DONUT = ["#8b5cf6", "#0ea5e9", "#10b981", "oklch(0.72 0.12 80)", "#f43f5e", "#94a3b8"];
 
 export function Donut({ data, center, format = "money", colors = DONUT }: { data: { name: string; value: number }[]; center: { label: string; value: string }; format?: "money" | "count"; colors?: string[] }) {
+  const t = useT();
+  const none = t("None");
   const total = data.reduce((s, d) => s + d.value, 0);
   const shown = data.filter((d) => d.value > 0);
   const fmt = (v: number) => (format === "money" ? `TZS ${Math.round(v).toLocaleString("en-TZ")}` : String(v));
@@ -61,8 +66,8 @@ export function Donut({ data, center, format = "money", colors = DONUT }: { data
             <Tooltip content={({ active, payload }) => active && payload?.length ? (
               <div className="rounded-xl border border-border bg-popover px-3 py-2 text-xs shadow-lg"><p className="text-muted-foreground">{payload[0].name}</p><p className="font-semibold">{fmt(Number(payload[0].value))}</p></div>
             ) : null} />
-            <Pie data={shown.length ? shown : [{ name: "None", value: 1 }]} dataKey="value" nameKey="name" innerRadius="66%" outerRadius="100%" paddingAngle={shown.length > 1 ? 3 : 0} cornerRadius={6} stroke="none">
-              {(shown.length ? shown : [{ name: "None" }]).map((d) => <Cell key={d.name} fill={shown.length ? colors[data.findIndex((x) => x.name === d.name) % colors.length] : "var(--muted)"} />)}
+            <Pie data={shown.length ? shown : [{ name: none, value: 1 }]} dataKey="value" nameKey="name" innerRadius="66%" outerRadius="100%" paddingAngle={shown.length > 1 ? 3 : 0} cornerRadius={6} stroke="none">
+              {(shown.length ? shown : [{ name: none }]).map((d) => <Cell key={d.name} fill={shown.length ? colors[data.findIndex((x) => x.name === d.name) % colors.length] : "var(--muted)"} />)}
             </Pie>
           </PieChart>
         </ResponsiveContainer>

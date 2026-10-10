@@ -8,7 +8,7 @@ import { awaitsOnlinePayment, diningMoney, inHouseGuests, onlinePayStates, order
 import { mainRestaurantQr } from "@/server/services/restaurant-locations";
 import { RestaurantPortal } from "./portal/portal";
 import type { Shortcut } from "./portal/types";
-import { onlyHotelOrders, orderStays, portalAccess, sentUpdates, toPortalOrders } from "./portal/data";
+import { customerTranslators, onlyHotelOrders, orderStays, portalAccess, sentUpdates, toPortalOrders } from "./portal/data";
 import { ActivityFeed, type FeedEvent } from "./portal/activity-feed";
 import { TodayNumbers, type TodayNumbersData } from "./portal/today-numbers";
 import { WaitersToday } from "./portal/waiter-day";
@@ -17,11 +17,14 @@ import { mainScreenData } from "./portal/main-screen-data";
 import { db } from "@/server/db";
 import { toDbDate } from "@/lib/time/business-date";
 import { worksWaiterShift } from "@/lib/permissions";
-import { formatTime } from "@/lib/format";
 import { deliveryPlace } from "@/server/services/restaurant";
 import { waiterResponsibilities } from "@/server/services/waiter-work";
+import { getT } from "@/i18n/server";
 
-export const metadata: Metadata = { title: "Restaurant & Bar" };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT();
+  return { title: t("Restaurant & Bar") };
+}
 export const dynamic = "force-dynamic";
 
 const minutes = (ms: number[]) => (ms.length ? Math.round(ms.reduce((a, b) => a + b, 0) / ms.length / 60000) : null);
@@ -35,6 +38,7 @@ export default async function RestaurantPortalPage() {
   // restaurant.serve: a waiter role without order-taking still has its Home (and shift switch) here.
   const user = await requirePagePermission("restaurant.orders", "restaurant.menu", "kitchen.orders", "restaurant.serve");
   const { perms, role, seesMoney } = portalAccess(user);
+  const t = await getT();
   const device = !!perms.device;
   // A waiter on their own phone sees their orders' prices, never the restaurant's money (received,
   // to collect): waiters serve — the Restaurant Counter records the payments.
@@ -72,9 +76,9 @@ export default async function RestaurantPortalPage() {
     qr: await QRCode.toString(qrUrl, { type: "svg", margin: 0, errorCorrectionLevel: "H", color: { dark: "#0b1026", light: "#00000000" } }),
   } : null;
   // Only the room and the name reach the screen — never the guest's phone or balance.
-  const rooms = guests.map((g) => ({ id: g.id, label: `Room ${g.rooms} — ${g.name}` }));
+  const rooms = guests.map((g) => ({ id: g.id, label: t("Room {room} — {name}", { room: g.rooms, name: g.name }) }));
   const [sent, stays] = await Promise.all([perms.waiter ? sentUpdates(orders.map((o) => o.id)) : Promise.resolve(undefined), seesMoney ? orderStays(orders) : Promise.resolve(undefined)]);
-  const portal = toPortalOrders(orders, { seesMoney, waiter: perms.waiter, settings, origin, sent, stays, online: await onlinePayStates(orders) });
+  const portal = toPortalOrders(orders, { seesMoney, waiter: perms.waiter, settings, origin, sent, stays, online: await onlinePayStates(orders), guestT: await customerTranslators() });
 
   // Today, for the manager: sales, times and who handled what.
   const todays = orders.filter((o) => o.businessDate.toISOString().slice(0, 10) === today && o.status !== "CANCELLED");
@@ -93,9 +97,9 @@ export default async function RestaurantPortalPage() {
   // Shortcuts for this person (drawn by the portal, like the reception home's quick actions).
   // Orders, Take an order, Menu and Stock requests are the tabs above; managers also get these.
   const shortcuts: Shortcut[] = role === "manager" ? [
-    { href: "/staff/rooms/qr", label: "Room QR codes", icon: "qr", tone: "violet" },
-    { href: "/order", label: "Online menu", icon: "web", tone: "emerald" },
-    ...(perms.pay ? [{ href: "/staff/sales", label: "Quick sale", icon: "sale", tone: "rose" } as const] : []),
+    { href: "/staff/rooms/qr", label: t("Room QR codes"), icon: "qr", tone: "violet" },
+    { href: "/order", label: t("Online menu"), icon: "web", tone: "emerald" },
+    ...(perms.pay ? [{ href: "/staff/sales", label: t("Quick sale"), icon: "sale", tone: "rose" } as const] : []),
   ] : [];
   // Managers and the MD: every step the kitchen, bar and waiters took today, newest first.
   const feed: FeedEvent[] = perms.watch ? (await db.restaurantOrderEvent.findMany({
@@ -104,20 +108,24 @@ export default async function RestaurantPortalPage() {
       id: true, from: true, to: true, note: true, at: true, byLabel: true, byRole: true, by: { select: { fullName: true } },
       order: { select: { id: true, number: true, tableLabel: true, roomNumber: true, type: true, location: { select: { name: true } }, items: { select: { type: true, quantity: true } } } },
     },
-  })).map((e) => ({
-    id: e.id, at: e.at.toISOString(), time: new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Africa/Dar_es_Salaam" }).format(e.at),
-    who: e.by?.fullName ?? e.byLabel ?? "Customer", role: e.byRole, from: e.from, to: e.to, note: e.note,
-    orderId: e.order.id, number: e.order.number,
-    place: e.order.location?.name ?? e.order.tableLabel ?? (e.order.roomNumber ? `Room ${e.order.roomNumber}` : e.order.type === "TAKEAWAY" ? "Delivery" : "Counter"),
-    items: e.order.items.reduce((t, i) => t + i.quantity, 0), drinksOnly: e.order.items.length > 0 && e.order.items.every((i) => i.type === "DRINK"),
-  })) : [];
+  })).map((e) => {
+    // A table / place the hotel named shows in the reader's language (it falls back to itself).
+    const named = e.order.location?.name ?? e.order.tableLabel;
+    return {
+      id: e.id, at: e.at.toISOString(), time: new Intl.DateTimeFormat(t.intl, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Africa/Dar_es_Salaam" }).format(e.at),
+      who: e.by?.fullName ?? e.byLabel ?? t("Customer"), role: e.byRole ? t(e.byRole) : e.byRole, from: e.from, to: e.to, note: e.note,
+      orderId: e.order.id, number: e.order.number,
+      place: named != null ? t(named) : e.order.roomNumber ? t("Room {room}", { room: e.order.roomNumber }) : e.order.type === "TAKEAWAY" ? "Delivery" : t("Counter"),
+      items: e.order.items.reduce((n, i) => n + i.quantity, 0), drinksOnly: e.order.items.length > 0 && e.order.items.every((i) => i.type === "DRINK"),
+    };
+  }) : [];
   // The manager's day, up top beside the live feed (how it's paid is already in the money band).
   const numbers: TodayNumbersData = {
     food: sum(todays, (o) => o.foodSubtotal), foodOrders: todays.filter((o) => o.foodSubtotal > 0).length,
     drinks: sum(todays, (o) => o.drinksSubtotal), drinkOrders: todays.filter((o) => o.drinksSubtotal > 0).length,
     roomService: sum(todays.filter((o) => o.type === "ROOM_SERVICE"), (o) => o.total), roomServiceOrders: todays.filter((o) => o.type === "ROOM_SERVICE").length,
     fees: sum(todays, (o) => o.serviceFee), avgPrep, avgDelivery,
-    sources: bySource.map(([src, n]) => ({ label: ORDER_SOURCE[src] ?? src, count: n })),
+    sources: bySource.map(([src, n]) => ({ label: t(ORDER_SOURCE[src] ?? src), count: n })),
     team: [...staff.entries()].map(([name, r]) => ({ name, ...r })),
   };
   // The waiters' day (service facts — orders handled and served, tables, customers; no money: waiters
@@ -144,20 +152,20 @@ export default async function RestaurantPortalPage() {
     ]);
     const byId = new Map(orders.map((o) => [o.id, o]));
     return {
-      shift: shift ? { id: shift.id, since: formatTime(shift.startedAt) } : null,
+      shift: shift ? { id: shift.id, since: t.time(shift.startedAt) } : null,
       left: {
         // A room-bill order has nothing to pay at the table.
         orders: work.orders.map((o) => {
           const b = byId.get(o.id);
           return { id: o.id, number: o.number, status: o.status, due: b?.settlement === "ROOM" ? 0 : o.due,
-            place: b ? deliveryPlace(b) : o.type === "ROOM_SERVICE" ? `Room ${o.roomNumber ?? ""}`.trim() : o.tableLabel ?? "Counter" };
+            place: b ? deliveryPlace(b, t) : o.type === "ROOM_SERVICE" ? (o.roomNumber ? t("Room {room}", { room: o.roomNumber }) : t("Room")) : o.tableLabel ?? t("Counter") };
         }),
         tables: work.sessions.map((s) => ({ locationId: s.locationId, table: s.table, customer: s.customer })),
       },
     };
   })() : null;
   const hour = Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hourCycle: "h23", timeZone: "Africa/Dar_es_Salaam" }).format(new Date()));
-  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const greeting = hour < 12 ? t("Good morning") : hour < 17 ? t("Good afternoon") : t("Good evening");
 
   return (
     <div className="w-full space-y-6">

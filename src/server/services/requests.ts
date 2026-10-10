@@ -5,6 +5,9 @@ import { AppError } from "../errors";
 import { getSettingsTx, stayConfig } from "../settings";
 import { businessDateOf, toDbDate } from "@/lib/time/business-date";
 import type { RequestPriority, RequestStatus, RequestType } from "@/generated/prisma/enums";
+import { msg, msgf } from "@/i18n/msg";
+import { getT } from "@/i18n/server";
+import { englishT } from "@/i18n/translate";
 
 /**
  * Guest service requests (towels, cleaning, maintenance, restaurant, transport…). They work like an order: one comes in
@@ -15,6 +18,12 @@ import type { RequestPriority, RequestStatus, RequestType } from "@/generated/pr
 type Actor = AuditActor & { userId: string };
 
 const OPEN: RequestStatus[] = ["NEW", "ASSIGNED", "IN_PROGRESS"];
+
+/** A request's status inside a sentence, in the words of whoever asks: "in progress" in English (as it always was). */
+async function statusWord(status: RequestStatus) {
+  const t = await getT().catch(() => englishT);
+  return t.ctx("guest-request", status.toLowerCase().replace("_", " "));
+}
 
 /** Who can be given a request: active staff whose role handles requests (reception first). */
 export async function requestHandlers() {
@@ -51,7 +60,7 @@ export async function createServiceRequest(
   input: { reservationId?: string | null; roomId?: string | null; type: RequestType; priority: RequestPriority; description: string; assignedToId?: string | null; orderId?: string | null },
   actor: Actor,
 ) {
-  if (!input.description.trim()) throw new AppError("Describe the request.", "VALIDATION", { description: "Required" });
+  if (!input.description.trim()) throw new AppError("Describe the request.", "VALIDATION", { description: msg("Required") });
   return db.$transaction(async (tx) => {
     const settings = await getSettingsTx(tx);
     if (input.assignedToId) await assigneeTx(tx, input.assignedToId);
@@ -103,7 +112,7 @@ export async function updateServiceRequest(id: string, input: { status?: Request
     }
     if (input.status && input.status !== (data.status ?? r.status)) {
       const from = (data.status ?? r.status) as RequestStatus;
-      if (!NEXT[from].includes(input.status)) throw new AppError(`A ${from.toLowerCase().replace("_", " ")} request cannot become ${input.status.toLowerCase().replace("_", " ")}.`);
+      if (!NEXT[from].includes(input.status)) throw new AppError(msgf("A {from} request cannot become {to}.", { from: await statusWord(from), to: await statusWord(input.status) }));
       data.status = input.status;
       if (input.status === "IN_PROGRESS") { data.acceptedAt = new Date(); data.assignedToId ??= r.assignedToId ?? actor.userId; }
       if (input.status === "COMPLETED") data.completedAt = new Date();
@@ -111,7 +120,7 @@ export async function updateServiceRequest(id: string, input: { status?: Request
     // A complaint is closed with what was done about it.
     if (input.resolution?.trim()) data.resolution = input.resolution.trim();
     if (r.type === "COMPLAINT" && data.status === "COMPLETED" && !data.resolution && !r.resolution) {
-      throw new AppError("Say how the complaint was resolved (e.g. meal replaced, 20% off the bill).", "VALIDATION", { resolution: "Required" });
+      throw new AppError("Say how the complaint was resolved (e.g. meal replaced, 20% off the bill).", "VALIDATION", { resolution: msg("Required") });
     }
     if (!Object.keys(data).length) return;
     await tx.serviceRequest.update({ where: { id }, data });
@@ -130,7 +139,7 @@ export async function acceptServiceRequest(id: string, actor: Actor) {
     if (!r) throw new AppError("Request not found.", "NOT_FOUND");
     if (r.status === "IN_PROGRESS") {
       if (r.assignedToId === actor.userId) return r;
-      throw new AppError(`${r.assignedTo?.fullName ?? "Someone"} is already on it.`, "CONFLICT");
+      throw new AppError(r.assignedTo?.fullName != null ? msgf("{name} is already on it.", { name: r.assignedTo.fullName }) : msg("Someone is already on it."), "CONFLICT");
     }
     if (!OPEN.includes(r.status)) throw new AppError("This request is already closed.");
     await assigneeTx(tx, actor.userId);
@@ -158,9 +167,10 @@ export async function createGuestRequest(
     const same = await db.serviceRequest.findUnique({ where: { clientKey: input.clientKey } });
     if (same) return same; // the same tap sent twice
   }
-  const label = { TOWELS: "Extra towels", CLEANING: "Please clean the room", MAINTENANCE: "Something is not working", GENERAL: "The guest needs help" }[input.type];
+  // Kept as the request's description (English, as it always was); screens may show it with t().
+  const label = { TOWELS: msg("Extra towels"), CLEANING: msg("Please clean the room"), MAINTENANCE: msg("Something is not working"), GENERAL: msg("The guest needs help") }[input.type];
   const note = input.description?.trim().slice(0, 300) || "";
-  if (input.type === "GENERAL" && note.length < 2) throw new AppError("Tell us what you need.", "VALIDATION", { description: "Required" });
+  if (input.type === "GENERAL" && note.length < 2) throw new AppError("Tell us what you need.", "VALIDATION", { description: msg("Required") });
   return db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT "id" FROM "reservations" WHERE "id" = ${reservationId} FOR UPDATE`;
     const r = await tx.reservation.findUnique({

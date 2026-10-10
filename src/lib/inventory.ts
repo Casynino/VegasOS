@@ -2,6 +2,8 @@
  * Hotel-wide inventory — the parts both the server and the screens need: units (and converting
  * between them), why stock moves, and what an item's level means (low, out, too much).
  */
+import { msg } from "@/i18n/msg";
+import { englishT, type T } from "@/i18n/translate";
 
 export type UnitFamily = "mass" | "volume" | "count";
 export const UNITS: { code: string; label: string; plural: string; family: UnitFamily; base: number }[] = [
@@ -9,22 +11,22 @@ export const UNITS: { code: string; label: string; plural: string; family: UnitF
   { code: "G", label: "g", plural: "g", family: "mass", base: 1 },
   { code: "L", label: "L", plural: "L", family: "volume", base: 1000 },
   { code: "ML", label: "ml", plural: "ml", family: "volume", base: 1 },
-  { code: "PIECE", label: "piece", plural: "pieces", family: "count", base: 1 },
-  { code: "BOTTLE", label: "bottle", plural: "bottles", family: "count", base: 1 },
-  { code: "CAN", label: "can", plural: "cans", family: "count", base: 1 },
-  { code: "CARTON", label: "carton", plural: "cartons", family: "count", base: 1 },
-  { code: "CRATE", label: "crate", plural: "crates", family: "count", base: 1 },
-  { code: "BOX", label: "box", plural: "boxes", family: "count", base: 1 },
-  { code: "PACK", label: "pack", plural: "packs", family: "count", base: 1 },
-  { code: "DOZEN", label: "dozen", plural: "dozen", family: "count", base: 12 },
-  { code: "TRAY", label: "tray", plural: "trays", family: "count", base: 1 },
-  { code: "BAG", label: "bag", plural: "bags", family: "count", base: 1 },
-  { code: "ROLL", label: "roll", plural: "rolls", family: "count", base: 1 },
-  { code: "BUNCH", label: "bunch", plural: "bunches", family: "count", base: 1 },
-  { code: "TIN", label: "tin", plural: "tins", family: "count", base: 1 },
-  { code: "SLICE", label: "slice", plural: "slices", family: "count", base: 1 },
-  { code: "CYLINDER", label: "cylinder", plural: "cylinders", family: "count", base: 1 },
-  { code: "SET", label: "set", plural: "sets", family: "count", base: 1 },
+  { code: "PIECE", label: msg("piece"), plural: msg("pieces"), family: "count", base: 1 },
+  { code: "BOTTLE", label: msg("bottle"), plural: msg("bottles"), family: "count", base: 1 },
+  { code: "CAN", label: msg("can"), plural: msg("cans"), family: "count", base: 1 },
+  { code: "CARTON", label: msg("carton"), plural: msg("cartons"), family: "count", base: 1 },
+  { code: "CRATE", label: msg("crate"), plural: msg("crates"), family: "count", base: 1 },
+  { code: "BOX", label: msg("box"), plural: msg("boxes"), family: "count", base: 1 },
+  { code: "PACK", label: msg("pack"), plural: msg("packs"), family: "count", base: 1 },
+  { code: "DOZEN", label: msg("dozen"), plural: msg("dozen"), family: "count", base: 12 },
+  { code: "TRAY", label: msg("tray"), plural: msg("trays"), family: "count", base: 1 },
+  { code: "BAG", label: msg("bag"), plural: msg("bags"), family: "count", base: 1 },
+  { code: "ROLL", label: msg("roll"), plural: msg("rolls"), family: "count", base: 1 },
+  { code: "BUNCH", label: msg("bunch"), plural: msg("bunches"), family: "count", base: 1 },
+  { code: "TIN", label: msg("tin"), plural: msg("tins"), family: "count", base: 1 },
+  { code: "SLICE", label: msg("slice"), plural: msg("slices"), family: "count", base: 1 },
+  { code: "CYLINDER", label: msg("cylinder"), plural: msg("cylinders"), family: "count", base: 1 },
+  { code: "SET", label: msg("set"), plural: msg("sets"), family: "count", base: 1 },
 ];
 const UNIT = new Map(UNITS.map((u) => [u.code, u]));
 export const unitOf = (code: string) => UNIT.get(code) ?? { code, label: code.toLowerCase(), plural: code.toLowerCase(), family: "count" as UnitFamily, base: 1 };
@@ -45,47 +47,56 @@ export function convertQty(qty: number, from: string, to: string): number | null
 
 export const round3 = (v: number) => Math.round(v * 1000) / 1000;
 
-/** "59 kg", "28 L", "120 bottles", "1 bottle", "2.5 kg". */
-export function formatQty(q: number, unit: string) {
+/**
+ * "59 kg", "28 L", "120 bottles", "1 bottle", "2.5 kg". English by default (it is also written into history and
+ * messages); pass the reader's `t` to show the unit in their language.
+ */
+export function formatQty(q: number, unit: string, t: T = englishT) {
+  const p = qtyParts(q, unit);
+  return `${p.n} ${t(p.unit)}`;
+}
+
+/** formatQty's two parts: the number as written and the unit's English word ("2.5" + "kg", "1" + "bottle"). */
+export function qtyParts(q: number, unit: string) {
   const u = unitOf(unit);
   const n = round3(q);
   const s = Number.isInteger(n) ? n.toLocaleString("en-US") : n.toLocaleString("en-US", { maximumFractionDigits: 3 });
-  return `${s} ${Math.abs(n) === 1 ? u.label : u.plural}`;
+  return { n: s, unit: Math.abs(n) === 1 ? u.label : u.plural };
 }
 
 // ── Why stock moves ──
 
 export type MovementKind = "RECEIVE" | "USE" | "SALE" | "WASTE" | "COUNT" | "ADJUST";
 export const KIND_LABEL: Record<MovementKind, string> = {
-  RECEIVE: "Received", USE: "Used", SALE: "Sold (recipe)", WASTE: "Waste", COUNT: "Stock count", ADJUST: "Adjustment",
+  RECEIVE: msg("Received"), USE: msg("Used"), SALE: msg("Sold (recipe)"), WASTE: msg("Waste"), COUNT: msg("Stock count"), ADJUST: msg("Adjustment"),
 };
 
 /** Stock going out for work. */
 export const USE_REASONS = [
-  { code: "KITCHEN_USAGE", label: "Kitchen usage" },
-  { code: "RESTAURANT_USAGE", label: "Restaurant consumption" },
-  { code: "BAR_USAGE", label: "Bar usage" },
-  { code: "HOUSEKEEPING_USAGE", label: "Housekeeping usage" },
-  { code: "MAINTENANCE_USAGE", label: "Maintenance usage" },
-  { code: "RECEPTION_USAGE", label: "Reception / office usage" },
-  { code: "TRANSFER", label: "Internal transfer" },
+  { code: "KITCHEN_USAGE", label: msg("Kitchen usage") },
+  { code: "RESTAURANT_USAGE", label: msg("Restaurant consumption") },
+  { code: "BAR_USAGE", label: msg("Bar usage") },
+  { code: "HOUSEKEEPING_USAGE", label: msg("Housekeeping usage") },
+  { code: "MAINTENANCE_USAGE", label: msg("Maintenance usage") },
+  { code: "RECEPTION_USAGE", label: msg("Reception / office usage") },
+  { code: "TRANSFER", label: msg("Internal transfer") },
 ] as const;
 /** Stock lost — a manager reviews it before it leaves the books. */
 export const WASTE_REASONS = [
-  { code: "SPOILED", label: "Spoiled" },
-  { code: "EXPIRED", label: "Expired" },
-  { code: "DAMAGED", label: "Damaged / broken" },
-  { code: "WASTED", label: "Wasted (cooking, spilt)" },
-  { code: "RETURNED", label: "Returned by guest" },
+  { code: "SPOILED", label: msg("Spoiled") },
+  { code: "EXPIRED", label: msg("Expired") },
+  { code: "DAMAGED", label: msg("Damaged / broken") },
+  { code: "WASTED", label: msg("Wasted (cooking, spilt)") },
+  { code: "RETURNED", label: msg("Returned by guest") },
 ] as const;
 /** Why a physical count differs from the system. */
 export const COUNT_REASONS = [
-  { code: "MEASUREMENT", label: "Measurement difference" },
-  { code: "WASTE", label: "Waste" },
-  { code: "SPOILAGE", label: "Spoilage" },
-  { code: "UNRECORDED_USAGE", label: "Unrecorded usage" },
-  { code: "UNRECORDED_RECEIPT", label: "Delivery not recorded" },
-  { code: "OTHER", label: "Other" },
+  { code: "MEASUREMENT", label: msg("Measurement difference") },
+  { code: "WASTE", label: msg("Waste") },
+  { code: "SPOILAGE", label: msg("Spoilage") },
+  { code: "UNRECORDED_USAGE", label: msg("Unrecorded usage") },
+  { code: "UNRECORDED_RECEIPT", label: msg("Delivery not recorded") },
+  { code: "OTHER", label: msg("Other") },
 ] as const;
 export const RECEIVE_REASON = "RECEIVED";
 /** Received from a stock purchase (a request that was bought and given its final approval). */
@@ -95,7 +106,7 @@ export const ADJUST_REASON = "ADJUSTMENT";
 
 const REASON_LABEL = new Map<string, string>([
   ...[...USE_REASONS, ...WASTE_REASONS, ...COUNT_REASONS].map((r) => [r.code, r.label] as [string, string]),
-  [RECEIVE_REASON, "Received"], [PURCHASE_REASON, "Bought — purchase"], [SALE_REASON, "Sold — recipe"], [ADJUST_REASON, "Adjustment"],
+  [RECEIVE_REASON, msg("Received")], [PURCHASE_REASON, msg("Bought — purchase")], [SALE_REASON, msg("Sold — recipe")], [ADJUST_REASON, msg("Adjustment")],
 ]);
 export const reasonLabel = (code: string) => REASON_LABEL.get(code) ?? code.toLowerCase().replace(/_/g, " ");
 
@@ -115,11 +126,11 @@ export function stockLevel(i: { quantity: number; minStock: number | null; reord
   return "OK";
 }
 export const LEVEL_META: Record<StockLevel, { label: string; dot: string; chip: string; bar: string }> = {
-  OUT: { label: "Out of stock", dot: "bg-rose-500", chip: "bg-rose-500/12 text-rose-700 dark:text-rose-300", bar: "bg-rose-500" },
-  LOW: { label: "Low stock", dot: "bg-amber-500", chip: "bg-amber-500/15 text-amber-800 dark:text-amber-300", bar: "bg-amber-500" },
-  REORDER: { label: "Time to reorder", dot: "bg-sky-500", chip: "bg-sky-500/12 text-sky-700 dark:text-sky-300", bar: "bg-sky-500" },
-  OVER: { label: "Overstock", dot: "bg-violet-500", chip: "bg-violet-500/12 text-violet-700 dark:text-violet-300", bar: "bg-violet-500" },
-  OK: { label: "In stock", dot: "bg-emerald-500", chip: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300", bar: "bg-emerald-500" },
+  OUT: { label: msg("Out of stock"), dot: "bg-rose-500", chip: "bg-rose-500/12 text-rose-700 dark:text-rose-300", bar: "bg-rose-500" },
+  LOW: { label: msg("Low stock"), dot: "bg-amber-500", chip: "bg-amber-500/15 text-amber-800 dark:text-amber-300", bar: "bg-amber-500" },
+  REORDER: { label: msg("Time to reorder"), dot: "bg-sky-500", chip: "bg-sky-500/12 text-sky-700 dark:text-sky-300", bar: "bg-sky-500" },
+  OVER: { label: msg("Overstock"), dot: "bg-violet-500", chip: "bg-violet-500/12 text-violet-700 dark:text-violet-300", bar: "bg-violet-500" },
+  OK: { label: msg("In stock"), dot: "bg-emerald-500", chip: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300", bar: "bg-emerald-500" },
 };
 
 /** Days before an expiry date when a delivery shows as "expiring". */
@@ -128,17 +139,17 @@ export const EXPIRY_WARN_DAYS = 3;
 // ── Assets ──
 
 export const ASSET_CONDITIONS = [
-  { code: "NEW", label: "New" }, { code: "GOOD", label: "Good" }, { code: "FAIR", label: "Fair" }, { code: "POOR", label: "Poor" }, { code: "DAMAGED", label: "Damaged" },
+  { code: "NEW", label: msg("New") }, { code: "GOOD", label: msg("Good") }, { code: "FAIR", label: msg("Fair") }, { code: "POOR", label: msg("Poor") }, { code: "DAMAGED", label: msg("Damaged") },
 ] as const;
 export const ASSET_STATUSES = [
-  { code: "IN_USE", label: "In use", chip: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300" },
-  { code: "IN_STORE", label: "In store", chip: "bg-sky-500/12 text-sky-700 dark:text-sky-300" },
-  { code: "UNDER_REPAIR", label: "Under repair", chip: "bg-amber-500/15 text-amber-800 dark:text-amber-300" },
-  { code: "OUT_OF_ORDER", label: "Out of order", chip: "bg-rose-500/12 text-rose-700 dark:text-rose-300" },
-  { code: "DISPOSED", label: "Disposed", chip: "bg-muted text-muted-foreground" },
-  { code: "LOST", label: "Lost / missing", chip: "bg-muted text-muted-foreground" },
+  { code: "IN_USE", label: msg("In use"), chip: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300" },
+  { code: "IN_STORE", label: msg("In store"), chip: "bg-sky-500/12 text-sky-700 dark:text-sky-300" },
+  { code: "UNDER_REPAIR", label: msg("Under repair"), chip: "bg-amber-500/15 text-amber-800 dark:text-amber-300" },
+  { code: "OUT_OF_ORDER", label: msg("Out of order"), chip: "bg-rose-500/12 text-rose-700 dark:text-rose-300" },
+  { code: "DISPOSED", label: msg("Disposed"), chip: "bg-muted text-muted-foreground" },
+  { code: "LOST", label: msg("Lost / missing"), chip: "bg-muted text-muted-foreground" },
 ] as const;
 export const ASSET_CATEGORIES = [
-  "Beds & mattresses", "Furniture", "TVs & electronics", "Air conditioners", "Fridges & freezers", "Laundry machines",
-  "Kitchen equipment", "Restaurant equipment", "Computers & printers", "POS devices", "Bathroom fittings", "Other",
+  msg("Beds & mattresses"), msg("Furniture"), msg("TVs & electronics"), msg("Air conditioners"), msg("Fridges & freezers"), msg("Laundry machines"),
+  msg("Kitchen equipment"), msg("Restaurant equipment"), msg("Computers & printers"), msg("POS devices"), msg("Bathroom fittings"), msg("Other"),
 ];

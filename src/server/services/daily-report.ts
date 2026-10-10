@@ -9,6 +9,12 @@ import { guestMovement, meetingRoomStats, occupancy, outstanding, profitLoss } f
 import { paymentsByMethod, staffActivity } from "./finance";
 import { deliverToRecipients } from "./report-delivery";
 import { Prisma } from "@/generated/prisma/client";
+import { msg } from "@/i18n/msg";
+import { getTFor } from "@/i18n/server";
+import { englishT, type T } from "@/i18n/translate";
+import type { Locale } from "@/i18n/config";
+import { reportTr, textBook, type TextBook } from "@/lib/report-i18n";
+import { withLang } from "./report-delivery";
 
 /**
  * DailyReportService — builds the Boss's end-of-day report for a closed hotel
@@ -70,6 +76,8 @@ export interface DailyReportData {
   assets?: { records: number; moved: number; underRepair: number; outOfOrder: number; needsAttention: { name: string; code: string; location: string | null; status: string }[] };
   /** How the operation ran: late orders, rooms waiting for cleaning, maintenance issues, waiter money not confirmed. */
   operations?: { delayedOrders: number; roomsWaitingCleaning: number; maintenanceIssues: number; paymentsToConfirm: number };
+  /** The attention lines with their values, to say them in another language — reports before Oct 2026 have none. */
+  i18n?: TextBook;
 }
 
 export async function buildDailyReport(date: BusinessDate): Promise<DailyReportData> {
@@ -137,22 +145,24 @@ export async function buildDailyReport(date: BusinessDate): Promise<DailyReportD
   const delayedOrders = dayOrders.filter((o) => ((o.readyAt ?? reportAt).getTime() - (o.acceptedAt ?? o.createdAt).getTime()) / 60000 > 25).length;
   const { formatQty } = await import("@/lib/inventory");
 
+  // What needs attention — each line kept with its values, to say it again in the reader's language.
+  const { book, L } = textBook();
   const attention: string[] = [];
-  if (owed.total > 0) attention.push(`Unpaid balances TZS ${fmt(owed.total)} (${owed.reservations.count + owed.invoices.count + owed.meetings.count})`);
-  if ((unpaidInHouse._count ?? 0) > 0) attention.push(`${unpaidInHouse._count} in-house guest(s) owe TZS ${fmt(unpaidInHouse._sum.balanceAmount ?? 0)}`);
-  if (overdue._count > 0) attention.push(`${overdue._count} overdue corporate invoice(s): TZS ${fmt(overdue._sum.balanceAmount ?? 0)}`);
-  if (maintenance.length) attention.push(`Maintenance / out of service: ${maintenance.map((r) => r.number).join(", ")}`);
-  if (dirty.length) attention.push(`Rooms awaiting cleaning: ${dirty.map((r) => r.number).join(", ")}`);
-  if (pendingExp) attention.push(`${pendingExp} expense(s) waiting for approval`);
+  if (owed.total > 0) attention.push(L(msg("Unpaid balances TZS {amount} ({count})"), { amount: fmt(owed.total), count: owed.reservations.count + owed.invoices.count + owed.meetings.count }));
+  if ((unpaidInHouse._count ?? 0) > 0) attention.push(L(msg("{n} in-house guest(s) owe TZS {amount}"), { n: unpaidInHouse._count, amount: fmt(unpaidInHouse._sum.balanceAmount ?? 0) }));
+  if (overdue._count > 0) attention.push(L(msg("{n} overdue corporate invoice(s): TZS {amount}"), { n: overdue._count, amount: fmt(overdue._sum.balanceAmount ?? 0) }));
+  if (maintenance.length) attention.push(L(msg("Maintenance / out of service: {rooms}"), { rooms: maintenance.map((r) => r.number).join(", ") }));
+  if (dirty.length) attention.push(L(msg("Rooms awaiting cleaning: {rooms}"), { rooms: dirty.map((r) => r.number).join(", ") }));
+  if (pendingExp) attention.push(L(msg("{n} expense(s) waiting for approval"), { n: pendingExp }));
   const overdueGuests = await db.reservationRoom.count({ where: { status: "CHECKED_IN", departureDate: { lte: d }, roomType: { category: "GUEST_ROOM" } } });
-  if (overdueGuests) attention.push(`${overdueGuests} guest(s) past checkout time`);
-  if (storesAlerts.out.length) attention.push(`Out of stock: ${storesAlerts.out.slice(0, 6).map((i) => i.name).join(", ")}`);
-  if (storesAlerts.low.length) attention.push(`Low stock: ${storesAlerts.low.slice(0, 6).map((i) => `${i.name} ${formatQty(i.quantity, i.unit)}`).join(", ")}`);
-  if (storesAlerts.pendingWaste) attention.push(`${storesAlerts.pendingWaste} waste report(s) waiting for a manager`);
-  if (assetSum.outOfOrder) attention.push(`${assetSum.outOfOrder} asset(s) out of order`);
+  if (overdueGuests) attention.push(L(msg("{n} guest(s) past checkout time"), { n: overdueGuests }));
+  if (storesAlerts.out.length) attention.push(L(msg("Out of stock: {items}"), { items: storesAlerts.out.slice(0, 6).map((i) => i.name).join(", ") }));
+  if (storesAlerts.low.length) attention.push(L(msg("Low stock: {items}"), { items: storesAlerts.low.slice(0, 6).map((i) => `${i.name} ${formatQty(i.quantity, i.unit)}`).join(", ") }));
+  if (storesAlerts.pendingWaste) attention.push(L(msg("{n} waste report(s) waiting for a manager"), { n: storesAlerts.pendingWaste }));
+  if (assetSum.outOfOrder) attention.push(L(msg("{n} asset(s) out of order"), { n: assetSum.outOfOrder }));
   const desk = shifts.filter((s) => s.department === "RECEPTION");
-  if (desk.length === 0) attention.push("No reception shift was recorded");
-  if (schedule && desk.length && !desk.some((s) => s.userId === schedule.scheduledUserId)) attention.push(`Scheduled receptionist (${schedule.scheduledUser.fullName}) did not work the shift`);
+  if (desk.length === 0) attention.push(msg("No reception shift was recorded"));
+  if (schedule && desk.length && !desk.some((s) => s.userId === schedule.scheduledUserId)) attention.push(L(msg("Scheduled receptionist ({name}) did not work the shift"), { name: schedule.scheduledUser.fullName }));
 
   return {
     businessDate: date,
@@ -210,7 +220,7 @@ export async function buildDailyReport(date: BusinessDate): Promise<DailyReportD
     staff: {
       scheduled: schedule?.scheduledUser.fullName ?? null,
       actual: shifts.filter((s) => s.department === "RECEPTION").map((s) => ({ name: s.user.fullName, start: time(s.startedAt), end: s.endedAt ? time(s.endedAt) : null, replacement: s.isReplacement })),
-      actions: actions.map((a) => ({ name: users.find((u) => u.id === a.userId)?.fullName ?? "Staff", count: a._count })),
+      actions: actions.map((a) => ({ name: users.find((u) => u.id === a.userId)?.fullName ?? msg("Staff"), count: a._count })),
     },
     attention,
     shifts: shifts.map((s) => ({
@@ -218,7 +228,7 @@ export async function buildDailyReport(date: BusinessDate): Promise<DailyReportD
       minutes: Math.max(0, Math.round(((s.endedAt ?? new Date()).getTime() - s.startedAt.getTime()) / 60000)), reportId: s.report?.id ?? null,
     })),
     restaurant: { orders: food._count, food: food._sum.foodSubtotal ?? 0, drinks: food._sum.drinksSubtotal ?? 0, roomService: food._sum.serviceFee ?? 0 },
-    sources: bySource.map((x) => ({ name: sourceNames.find((n) => n.id === x.sourceId)?.name ?? "Other", count: x._count })).sort((a, b) => b.count - a.count),
+    sources: bySource.map((x) => ({ name: sourceNames.find((n) => n.id === x.sourceId)?.name ?? msg("Other"), count: x._count })).sort((a, b) => b.count - a.count),
     stores: {
       receivedValue: storesDay.receivedValue, receivedLines: storesDay.receivedLines, usedValue: storesDay.usedValue, usedItems: storesDay.usedItems,
       soldValue: storesDay.soldValue, wasteValue: storesDay.wasteValue, wasteLines: storesDay.wasteLines, countDifferenceValue: storesDay.countDifferenceValue,
@@ -230,6 +240,7 @@ export async function buildDailyReport(date: BusinessDate): Promise<DailyReportD
     },
     assets: { records: assetSum.records, moved: assetSum.moved, underRepair: assetSum.underRepair, outOfOrder: assetSum.outOfOrder, needsAttention: assetSum.needsAttention },
     operations: { delayedOrders, roomsWaitingCleaning: dirty.length, maintenanceIssues: maintenance.length + assetSum.underRepair + assetSum.outOfOrder, paymentsToConfirm: toConfirm },
+    i18n: book,
   };
 }
 
@@ -239,60 +250,62 @@ const round1 = (n: number) => Math.round(n * 10) / 10;
 /**
  * The Boss's phone message (CallMeBot / WhatsApp: *bold*, _italic_): the most important numbers first,
  * short lines, TZS throughout, only what earned something, and a link to the full report.
- * Same numbers as the dashboard and Finance.
+ * Same numbers as the dashboard and Finance — in the reader's language (`t`, English by default).
  */
-export function renderReportText(r: DailyReportData, hotelName: string, link?: string | null): string {
-  const date = new Date(`${r.businessDate}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+export function renderReportText(r: DailyReportData, hotelName: string, link?: string | null, t: T = englishT): string {
+  const date = t.date(r.businessDate);
+  const tr = reportTr(t, r.i18n);
   const tz = (v: number) => `TZS ${v < 0 ? "−" : ""}${fmt(Math.abs(v))}`;
   const dept = ([
-    ["Rooms", r.revenue.roomNet], ["Restaurant", r.revenue.restaurant], ["Bar", r.revenue.bar], ["Room service", r.revenue.roomService ?? 0],
-    ["Meeting room", r.revenue.meeting], ["Transport", r.revenue.transport ?? 0], ["Other", r.revenue.other],
+    [msg("Rooms"), r.revenue.roomNet], [msg("Restaurant"), r.revenue.restaurant], [msg("Bar"), r.revenue.bar], [msg("Room service"), r.revenue.roomService ?? 0],
+    [msg("Meeting room"), r.revenue.meeting], [msg("Transport"), r.revenue.transport ?? 0], [msg("Other"), r.revenue.other],
   ] as const).filter(([, v]) => v !== 0);
   const rooms = r.rooms;
   const sold = rooms ? rooms.occupied : r.hotel.roomNights;
+  const bold = (label: string) => `*${t(label)}*`;
   const lines = [
     `*${hotelName.toUpperCase()}*`,
-    `*Daily business report* · ${date}`,
-    "_hotel day 04:00 → 04:00_",
+    `*${t("Daily business report")}* · ${date}`,
+    `_${t("hotel day 04:00 → 04:00")}_`,
     "",
-    `*Revenue ${tz(r.revenue.total)}*`,
-    ...(dept.length ? dept.map(([k, v]) => `  ${k}: ${fmt(v)}`) : ["  No revenue recorded"]),
-    r.revenue.roomDiscounts ? `  (room discounts given: ${fmt(r.revenue.roomDiscounts)})` : null,
-    r.revenue.refunds ? `  (refunds: −${fmt(r.revenue.refunds)})` : null,
+    `*${t("Revenue {amount}", { amount: tz(r.revenue.total) })}*`,
+    ...(dept.length ? dept.map(([k, v]) => `  ${t("{what}: {amount}", { what: t(k), amount: fmt(v) })}`) : [`  ${t("No revenue recorded")}`]),
+    r.revenue.roomDiscounts ? `  ${t("(room discounts given: {amount})", { amount: fmt(r.revenue.roomDiscounts) })}` : null,
+    r.revenue.refunds ? `  ${t("(refunds: −{amount})", { amount: fmt(r.revenue.refunds) })}` : null,
     "",
-    `*Payments collected:* ${tz(r.money.collected)}`,
-    `*Outstanding (all):* ${tz(r.money.outstanding)}`,
-    `*Expenses:* ${tz(r.expenses.total)}`,
-    `*Net operating result:* ${tz(r.profitLoss.estimated)}`,
+    `${bold(msg("Payments collected:"))} ${tz(r.money.collected)}`,
+    `${bold(msg("Outstanding (all):"))} ${tz(r.money.outstanding)}`,
+    `${bold(msg("Expenses:"))} ${tz(r.expenses.total)}`,
+    `${bold(msg("Net operating result:"))} ${tz(r.profitLoss.estimated)}`,
     "",
-    `*Occupancy:* ${sold}${rooms ? ` / ${rooms.total}` : ""} rooms — ${r.hotel.occupancy}%${rooms?.adr ? ` · avg rate ${fmt(rooms.adr)}` : ""}`,
-    `*Check-ins:* ${r.guests.checkIns} · *Check-outs:* ${r.guests.checkOuts} · *New bookings:* ${r.guests.newBookings}`,
-    r.restaurant ? `*Restaurant & bar:* ${r.restaurant.orders} order${r.restaurant.orders === 1 ? "" : "s"}` : null,
-    r.sources?.length ? `*Bookings from:* ${r.sources.slice(0, 4).map((x) => `${x.name} ${x.count}`).join(" · ")}` : null,
-    r.meetingRoom && (r.meetingRoom.bookings || r.meetingRoom.revenue) ? `*Meeting room:* ${r.meetingRoom.bookings} booking${r.meetingRoom.bookings === 1 ? "" : "s"} · ${tz(r.meetingRoom.revenue)}` : null,
-    r.stores ? `*Stores:* received ${tz(r.stores.receivedValue)} · used ${tz(r.stores.usedValue)}${r.stores.wasteValue ? ` · waste ${tz(r.stores.wasteValue)}` : ""}` : null,
-    r.stores && (r.stores.low || r.stores.out) ? `  Low stock ${r.stores.low} · out of stock ${r.stores.out}` : null,
-    r.assets && (r.assets.moved || r.assets.underRepair || r.assets.outOfOrder) ? `*Assets:* moved ${r.assets.moved} · in repair ${r.assets.underRepair + r.assets.outOfOrder}` : null,
-    r.operations ? `*Operations:* late orders ${r.operations.delayedOrders} · rooms to clean ${r.operations.roomsWaitingCleaning} · maintenance ${r.operations.maintenanceIssues}` : null,
-    ...staffLines(r),
+    `${bold(msg("Occupancy:"))} ${rooms ? t("{sold} / {total} rooms — {pct}%", { sold, total: rooms.total, pct: r.hotel.occupancy }) : t("{sold} rooms — {pct}%", { sold, pct: r.hotel.occupancy })}${rooms?.adr ? ` · ${t("avg rate {amount}", { amount: fmt(rooms.adr) })}` : ""}`,
+    `${bold(msg("Check-ins:"))} ${r.guests.checkIns} · ${bold(msg("Check-outs:"))} ${r.guests.checkOuts} · ${bold(msg("New bookings:"))} ${r.guests.newBookings}`,
+    r.restaurant ? `${bold(msg("Restaurant & bar:"))} ${t.plural(r.restaurant.orders, "{n} order", "{n} orders")}` : null,
+    r.sources?.length ? `${bold(msg("Bookings from:"))} ${r.sources.slice(0, 4).map((x) => `${t(x.name)} ${x.count}`).join(" · ")}` : null,
+    r.meetingRoom && (r.meetingRoom.bookings || r.meetingRoom.revenue) ? `${bold(msg("Meeting room:"))} ${t.plural(r.meetingRoom.bookings, "{n} booking", "{n} bookings")} · ${tz(r.meetingRoom.revenue)}` : null,
+    r.stores ? `${bold(msg("Stores:"))} ${t("received {amount}", { amount: tz(r.stores.receivedValue) })} · ${t("used {amount}", { amount: tz(r.stores.usedValue) })}${r.stores.wasteValue ? ` · ${t("waste {amount}", { amount: tz(r.stores.wasteValue) })}` : ""}` : null,
+    r.stores && (r.stores.low || r.stores.out) ? `  ${t("Low stock {low} · out of stock {out}", { low: r.stores.low, out: r.stores.out })}` : null,
+    r.assets && (r.assets.moved || r.assets.underRepair || r.assets.outOfOrder) ? `${bold(msg("Assets:"))} ${t("moved {moved} · in repair {repair}", { moved: r.assets.moved, repair: r.assets.underRepair + r.assets.outOfOrder })}` : null,
+    r.operations ? `${bold(msg("Operations:"))} ${t("late orders {late} · rooms to clean {clean} · maintenance {maintenance}", { late: r.operations.delayedOrders, clean: r.operations.roomsWaitingCleaning, maintenance: r.operations.maintenanceIssues })}` : null,
+    ...staffLines(r, t),
     "",
-    r.attention.length ? `*Attention (${r.attention.length})*` : "*Nothing needs attention.*",
-    ...r.attention.slice(0, 5).map((a) => `• ${a}`),
-    r.attention.length > 5 ? `• …and ${r.attention.length - 5} more in the full report` : null,
-    link ? `\n*Full report:* ${link}` : null,
+    r.attention.length ? `*${t("Attention ({n})", { n: r.attention.length })}*` : `*${t("Nothing needs attention.")}*`,
+    ...r.attention.slice(0, 5).map((a) => `• ${tr(a)}`),
+    r.attention.length > 5 ? `• ${t("…and {n} more in the full report", { n: r.attention.length - 5 })}` : null,
+    link ? `\n*${t("Full report:")}* ${link}` : null,
   ];
   return lines.filter((l) => l !== null).join("\n").replace(/\n{3,}/g, "\n\n").slice(0, 3500);
 }
 
 /** "Reception: Sarah 12h 12m · John 10h 45m" — who worked the day, each department on its line (their shift reports are linked in the full report). */
-function staffLines(r: DailyReportData) {
+function staffLines(r: DailyReportData, t: T) {
   if (!r.shifts?.length) return [];
   const dur = (m: number) => `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`;
   const line = (dept: "RECEPTION" | "RESTAURANT", label: string) => {
     const xs = r.shifts!.filter((s) => s.department === dept);
-    return xs.length ? `  ${label}: ${xs.map((s) => `${s.name.split(" ")[0]} ${dur(s.minutes)}${s.end ? "" : " (on shift)"}`).join(" · ")}` : null;
+    return xs.length ? `  ${t(label)}: ${xs.map((s) => `${s.name.split(" ")[0]} ${dur(s.minutes)}${s.end ? "" : ` (${t("on shift")})`}`).join(" · ")}` : null;
   };
-  return ["*Staff on shift:*", line("RECEPTION", "Reception"), line("RESTAURANT", "Restaurant")].filter((x): x is string => !!x);
+  return [`*${t("Staff on shift:")}*`, line("RECEPTION", msg("Reception")), line("RESTAURANT", msg("Restaurant"))].filter((x): x is string => !!x);
 }
 
 /** Where the full report opens (the live site; this computer's address while testing). */
@@ -347,7 +360,16 @@ export async function generateDailyReport(date: BusinessDate, who: string | { by
 /** Create delivery rows for each configured recipient (if missing) and attempt sending those not yet sent. */
 export async function deliverDailyReport(reportId: string, opts: { force?: boolean; manual?: boolean; deadline?: number } = {}) {
   const report = await db.dailyReport.findUniqueOrThrow({ where: { id: reportId }, include: { deliveries: true } });
-  return deliverToRecipients({ link: { dailyReportId: report.id }, purpose: "DAILY_REPORT", text: report.summaryText, generatedAt: report.generatedAt, deliveries: report.deliveries, force: opts.force, manual: opts.manual, deadline: opts.deadline });
+  return deliverToRecipients({
+    link: { dailyReportId: report.id }, purpose: "DAILY_REPORT", text: report.summaryText, generatedAt: report.generatedAt, deliveries: report.deliveries, force: opts.force, manual: opts.manual, deadline: opts.deadline,
+    textFor: (lang) => dailyReportTextIn(report, lang),
+  });
+}
+
+/** A saved daily report's message in another language (its frozen figures; the link opens it in that language). */
+export async function dailyReportTextIn(report: { id: string; data: unknown }, lang: Locale) {
+  const [settings, url, t] = await Promise.all([getSettings(), reportLink(report.id), getTFor(lang)]);
+  return renderReportText(report.data as unknown as DailyReportData, settings.hotelName, url ? withLang(url, lang) : null, t);
 }
 
 /** When the day's report is made and sent (hotel time). */

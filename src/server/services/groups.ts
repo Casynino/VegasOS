@@ -14,6 +14,9 @@ import { expireUnpaidHolds } from "./booking-holds";
 import { CHECK_IN_READY } from "@/lib/room-status";
 import { businessDateOf, fromDbDate, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import type { GroupBilling, GroupType, Prisma } from "@/generated/prisma/client";
+import { msg, msgf, type Localized, type MsgVars } from "@/i18n/msg";
+import { getT } from "@/i18n/server";
+import { englishT } from "@/i18n/translate";
 
 /**
  * GroupBookingService — rooms that belong together (a company's staff, a
@@ -123,8 +126,8 @@ async function addOccupantsTx(tx: Tx, reservationId: string, occupants: GuestInp
 export async function createGroupBooking(input: CreateGroupInput, actor: Actor, now = new Date()) {
   if (!actor.userId) throw new AppError("Sign in required.", "UNAUTHENTICATED");
   const name = input.name.trim();
-  if (name.length < 2) throw new AppError("Give the group a name (company or family).", "VALIDATION", { name: "Required" });
-  if (!input.contact.fullName?.trim()) throw new AppError("Enter the contact person.", "VALIDATION", { "contact.fullName": "Required" });
+  if (name.length < 2) throw new AppError("Give the group a name (company or family).", "VALIDATION", { name: msg("Required") });
+  if (!input.contact.fullName?.trim()) throw new AppError("Enter the contact person.", "VALIDATION", { "contact.fullName": msg("Required") });
   if (input.rooms.length === 0) throw new AppError("Add at least one room.");
   if (input.rooms.length > 60) throw new AppError("A group can hold at most 60 rooms.");
   await expireUnpaidHolds(now);
@@ -142,8 +145,8 @@ export async function createGroupBooking(input: CreateGroupInput, actor: Actor, 
 
 async function createGroupTx(tx: Tx, input: CreateGroupInput, actor: Actor, now: Date) {
   const source = await tx.bookingSource.findUnique({ where: { code: input.sourceCode } });
-  if (!source || !source.isActive) throw new AppError("Choose a valid booking source.", "VALIDATION", { sourceCode: "Invalid" });
-  if (source.code === "HOTEL_QR") throw new AppError("Hotel QR bookings are made by guests from the QR — choose how this group booked.", "VALIDATION", { sourceCode: "Invalid" });
+  if (!source || !source.isActive) throw new AppError("Choose a valid booking source.", "VALIDATION", { sourceCode: msg("Invalid") });
+  if (source.code === "HOTEL_QR") throw new AppError("Hotel QR bookings are made by guests from the QR — choose how this group booked.", "VALIDATION", { sourceCode: msg("Invalid") });
   const company = input.corporateCustomerId ? await tx.corporateCustomer.findUnique({ where: { id: input.corporateCustomerId } }) : null;
   if (input.corporateCustomerId && (!company || company.status !== "ACTIVE")) throw new AppError("That company account is not active.");
   const contactGuestId = await resolveGuest(tx, input.contact);
@@ -260,11 +263,16 @@ export async function updateGroup(
     // Who the invoice is made out to: the company, or the group itself (the leader is only the contact person).
     if (companyId !== g.corporateCustomerId) {
       const invoiced = await tx.invoice.count({ where: { groupId: g.id, status: { notIn: ["CANCELLED", "VOID"] } } });
-      if (invoiced) throw new AppError(`The group already has ${invoiced === 1 ? "an invoice" : `${invoiced} invoices`} made out to ${g.corporateCustomer?.companyName ?? g.name}. Void ${invoiced === 1 ? "it" : "them"} first (with a reason) to change who pays.`);
+      const payer = g.corporateCustomer?.companyName ?? g.name;
+      if (invoiced) {
+        throw new AppError(invoiced === 1
+          ? msgf("The group already has an invoice made out to {payer}. Void it first (with a reason) to change who pays.", { payer })
+          : msgf("The group already has {n} invoices made out to {payer}. Void them first (with a reason) to change who pays.", { n: invoiced, payer }));
+      }
     }
     const data: Prisma.BookingGroupUpdateInput = {};
     if (input.name !== undefined) {
-      if (input.name.trim().length < 2) throw new AppError("Give the group a name.", "VALIDATION", { name: "Required" });
+      if (input.name.trim().length < 2) throw new AppError("Give the group a name.", "VALIDATION", { name: msg("Required") });
       data.name = input.name.trim();
     }
     if (input.notes !== undefined) data.notes = input.notes?.trim() || null;
@@ -297,7 +305,7 @@ export async function updateGroup(
 // ───────────────────────── Occupants (people sharing a room) ─────────────────────────
 
 export async function addOccupant(reservationId: string, guest: GuestInput, actor: Actor) {
-  if (!guest.fullName?.trim()) throw new AppError("Enter the guest's name.", "VALIDATION", { fullName: "Required" });
+  if (!guest.fullName?.trim()) throw new AppError("Enter the guest's name.", "VALIDATION", { fullName: msg("Required") });
   return db.$transaction(async (tx) => {
     const r = await tx.reservation.findUnique({ where: { id: reservationId } });
     if (!r) throw new AppError("Reservation not found.", "NOT_FOUND");
@@ -320,6 +328,17 @@ export async function removeOccupant(reservationId: string, guestId: string, act
 
 export interface RoomResult { reservationId: string; reference: string; room: string; guest: string; ok: boolean; message: string }
 
+/** A room's outcome while it is worked out: `message` is the English (kept in the audit); `said` keeps its values to show it in the reader's words. */
+type Said = RoomResult & { said?: { key: string; vars: MsgVars } };
+const words = (m: Localized) => ({ message: m.text, said: { key: m.key, vars: m.vars } });
+/** Why a room was not done, from the error (with its values when it has them). */
+const fromError = (e: unknown, fallback: string) => (e instanceof AppError ? { message: e.message, said: e.i18n } : { message: fallback });
+/** The rooms' outcomes in the language of the person who acted (English for jobs and tests). */
+async function inReaderWords(out: Said[]): Promise<RoomResult[]> {
+  const t = await getT().catch(() => englishT);
+  return out.map(({ said, ...x }) => ({ ...x, message: said ? t(said.key, said.vars) : t(x.message) }));
+}
+
 async function members(groupId: string, reservationIds?: string[] | null) {
   const g = await db.bookingGroup.findUnique({ where: { id: groupId } });
   if (!g) throw new AppError("Group not found.", "NOT_FOUND");
@@ -340,30 +359,30 @@ export async function checkInGroup(groupId: string, actor: Actor, reservationIds
   const { rs } = await members(groupId, reservationIds);
   const settings = await db.hotelSettings.findUniqueOrThrow({ where: { id: 1 } });
   const today = businessDateOf(now, stayConfig(settings));
-  const out: RoomResult[] = [];
+  const out: Said[] = [];
   for (const r of rs) {
     const rr = r.rooms.find((x) => x.status === "RESERVED" || x.status === "CONFIRMED");
     const base = { reservationId: r.id, reference: r.reference, room: r.rooms[0]?.room.number ?? "—", guest: r.guest.fullName };
-    if (!rr) { if (reservationIds?.length) out.push({ ...base, ok: false, message: r.status === "CHECKED_IN" ? "Already in" : "Nothing to check in" }); continue; }
-    if (fromDbDate(rr.arrivalDate) > today) { out.push({ ...base, ok: false, message: `Arrives ${fromDbDate(rr.arrivalDate)}` }); continue; }
+    if (!rr) { if (reservationIds?.length) out.push({ ...base, ok: false, message: r.status === "CHECKED_IN" ? msg("Already in") : msg("Nothing to check in") }); continue; }
+    if (fromDbDate(rr.arrivalDate) > today) { out.push({ ...base, ok: false, ...words(msgf("Arrives {date}", { date: fromDbDate(rr.arrivalDate) })) }); continue; }
     if (!CHECK_IN_READY.includes(rr.room.status)) {
-      const why = rr.room.status === "MAINTENANCE" || rr.room.status === "OUT_OF_SERVICE" ? "Room under maintenance — change the room"
-        : rr.room.status === "OCCUPIED" ? "The previous guest has not checked out yet" : "Room not ready — still being cleaned";
+      const why = rr.room.status === "MAINTENANCE" || rr.room.status === "OUT_OF_SERVICE" ? msg("Room under maintenance — change the room")
+        : rr.room.status === "OCCUPIED" ? msg("The previous guest has not checked out yet") : msg("Room not ready — still being cleaned");
       out.push({ ...base, ok: false, message: why });
       continue;
     }
     try {
       await checkIn(r.id, actor, null, now);
-      out.push({ ...base, ok: true, message: "Checked in" });
+      out.push({ ...base, ok: true, message: msg("Checked in") });
     } catch (e) {
-      const msg = e instanceof AppError ? e.message : "Could not check in";
+      const why = fromError(e, msg("Could not check in"));
       // Early check-in clashes with the room's previous booking (it ends at its checkout time).
-      out.push({ ...base, ok: false, message: /just booked by someone else/.test(msg) ? "Another guest's booking holds this room until their checkout — check in later, or change the room" : msg });
+      out.push({ ...base, ok: false, ...(/just booked by someone else/.test(why.message) ? { message: msg("Another guest's booking holds this room until their checkout — check in later, or change the room") } : why) });
     }
   }
   await db.$transaction((tx) => recalculateGroup(tx, groupId));
   await audit(db, actor, { action: "group.checked_in", entityType: "BookingGroup", entityId: groupId, after: { done: out.filter((x) => x.ok).map((x) => x.room), skipped: out.filter((x) => !x.ok).map((x) => `${x.room}: ${x.message}`) } });
-  return out;
+  return inReaderWords(out);
 }
 
 /**
@@ -377,15 +396,15 @@ export async function checkOutGroup(
 ): Promise<RoomResult[]> {
   if (!reservationIds.length) throw new AppError("Choose the rooms to check out.");
   const { rs } = await members(groupId, reservationIds);
-  const out: RoomResult[] = [];
+  const out: Said[] = [];
   for (const r of rs) {
     const base = { reservationId: r.id, reference: r.reference, room: r.rooms[0]?.room.number ?? "—", guest: r.guest.fullName };
-    if (!r.rooms.some((x) => x.status === "CHECKED_IN")) { out.push({ ...base, ok: false, message: "Not in the hotel" }); continue; }
+    if (!r.rooms.some((x) => x.status === "CHECKED_IN")) { out.push({ ...base, ok: false, message: msg("Not in the hotel") }); continue; }
     try {
       await checkOut(r.id, actor, { allowBalance: !!opts.allowBalance, overrideReason: opts.overrideReason ?? null, earlyReason: opts.earlyReason ?? null }, now);
-      out.push({ ...base, ok: true, message: r.billTo === "GROUP" ? "Checked out — bill on the group invoice" : "Checked out" });
+      out.push({ ...base, ok: true, message: r.billTo === "GROUP" ? msg("Checked out — bill on the group invoice") : msg("Checked out") });
     } catch (e) {
-      out.push({ ...base, ok: false, message: e instanceof AppError ? e.message : "Could not check out" });
+      out.push({ ...base, ok: false, ...fromError(e, msg("Could not check out")) });
     }
   }
   await db.$transaction((tx) => recalculateGroup(tx, groupId));
@@ -393,21 +412,21 @@ export async function checkOutGroup(
     action: "group.checked_out", entityType: "BookingGroup", entityId: groupId,
     after: { done: out.filter((x) => x.ok).map((x) => x.room), notDone: out.filter((x) => !x.ok).map((x) => `${x.room}: ${x.message}`), ...(opts.allowBalance && { overrideReason: opts.overrideReason, by: actor.label }) },
   });
-  return out;
+  return inReaderWords(out);
 }
 
 export async function cancelGroup(groupId: string, actor: Actor, reason: string) {
-  if (!reason.trim()) throw new AppError("A cancellation reason is required.", "VALIDATION", { reason: "Required" });
+  if (!reason.trim()) throw new AppError("A cancellation reason is required.", "VALIDATION", { reason: msg("Required") });
   const { rs } = await members(groupId);
-  const out: RoomResult[] = [];
+  const out: Said[] = [];
   for (const r of rs.filter((x) => ["INQUIRY", "RESERVED", "CONFIRMED"].includes(x.status))) {
     const base = { reservationId: r.id, reference: r.reference, room: r.rooms[0]?.room.number ?? "—", guest: r.guest.fullName };
-    try { await cancelReservation(r.id, actor, reason); out.push({ ...base, ok: true, message: "Cancelled" }); }
-    catch (e) { out.push({ ...base, ok: false, message: e instanceof AppError ? e.message : "Could not cancel" }); }
+    try { await cancelReservation(r.id, actor, reason); out.push({ ...base, ok: true, message: msg("Cancelled") }); }
+    catch (e) { out.push({ ...base, ok: false, ...fromError(e, msg("Could not cancel")) }); }
   }
   await db.$transaction((tx) => recalculateGroup(tx, groupId));
   await audit(db, actor, { action: "group.cancelled", entityType: "BookingGroup", entityId: groupId, after: { reason, rooms: out.map((x) => `${x.room}: ${x.message}`) } });
-  return out;
+  return inReaderWords(out);
 }
 
 // ───────────────────────── Group invoices & payments ─────────────────────────
@@ -476,7 +495,7 @@ export async function recordGroupPayment(
   actor: Actor,
 ) {
   if (!actor.userId) throw new AppError("Sign in required.", "UNAUTHENTICATED");
-  if (!Number.isInteger(input.amount) || input.amount <= 0) throw new AppError("Enter the amount received.", "VALIDATION", { amount: "Invalid" });
+  if (!Number.isInteger(input.amount) || input.amount <= 0) throw new AppError("Enter the amount received.", "VALIDATION", { amount: msg("Invalid") });
   return db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT "id" FROM "booking_groups" WHERE "id" = ${groupId} FOR UPDATE`;
     const g = await tx.bookingGroup.findUnique({ where: { id: groupId } });
@@ -489,9 +508,9 @@ export async function recordGroupPayment(
     const owed = open.reduce((s, i) => s + i.balanceAmount, 0);
     if (owed === 0) {
       const draft = await tx.invoice.count({ where: { groupId, status: "DRAFT" } });
-      throw new AppError(draft ? "The group's invoice is still open (a draft). Issue it first, then record the payment." : "This group has no unpaid invoices.");
+      throw new AppError(draft ? msg("The group's invoice is still open (a draft). Issue it first, then record the payment.") : msg("This group has no unpaid invoices."));
     }
-    if (input.amount > owed) throw new AppError(`That is more than the group owes on its invoices (TZS ${owed.toLocaleString("en-TZ")}).`, "VALIDATION", { amount: "Too much" });
+    if (input.amount > owed) throw new AppError(msgf("That is more than the group owes on its invoices (TZS {amount}).", { amount: owed.toLocaleString("en-TZ") }), "VALIDATION", { amount: msg("Too much") });
     const settings = await getSettingsTx(tx);
     const now = new Date();
     const businessDate = toDbDate(businessDateOf(now, stayConfig(settings)));
@@ -535,7 +554,10 @@ export async function finalizeGroup(groupId: string, actor: Actor, now = new Dat
     const groupRooms = g.reservations.filter((r) => r.billTo === "GROUP" && !["CANCELLED", "NO_SHOW", "INQUIRY"].includes(r.status));
     const staying = g.reservations.filter((r) => r.billTo === "GROUP" && !LEFT_OR_OFF.includes(r.status));
     if (staying.length) {
-      throw new AppError(`Room${staying.length === 1 ? "" : "s"} ${staying.map((r) => r.rooms[0]?.room.number ?? "?").join(", ")} ${staying.length === 1 ? "has" : "have"} not checked out yet. Finalize when everyone has left — print a statement for the charges so far.`);
+      const rooms = staying.map((r) => r.rooms[0]?.room.number ?? "?").join(", ");
+      throw new AppError(staying.length === 1
+        ? msgf("Room {rooms} has not checked out yet. Finalize when everyone has left — print a statement for the charges so far.", { rooms })
+        : msgf("Rooms {rooms} have not checked out yet. Finalize when everyone has left — print a statement for the charges so far.", { rooms }));
     }
     // The running bill is rebuilt from every room's folio as it is now: a corrected or voided charge
     // appears once, at its latest value — never twice, never as the old line plus a correction.

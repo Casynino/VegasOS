@@ -3,6 +3,9 @@
  * type's rate snapshot and the per-room-per-night discount — never from
  * values supplied by a browser.
  */
+import { msg } from "@/i18n/msg";
+import { englishT, type T } from "@/i18n/translate";
+
 export interface RoomQuoteInput {
   ratePerNight: number;
   discountPerNight: number;
@@ -88,7 +91,7 @@ export interface PriceRuleLite {
 export function weekday(date: string): number {
   return new Date(`${date}T00:00:00Z`).getUTCDay();
 }
-export const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+export const WEEKDAYS = [msg("Sun"), msg("Mon"), msg("Tue"), msg("Wed"), msg("Thu"), msg("Fri"), msg("Sat")] as const;
 
 function onNight(r: { startDate: string | null; endDate: string | null; daysOfWeek?: number[] }, date: string) {
   if (r.startDate && date < r.startDate) return false;
@@ -199,7 +202,7 @@ export function findConflicts<T extends {
   });
 }
 
-/** Label for a promotion, e.g. "10% off" or "TZS 20,000 off". */
-export function promoLabel(p: Pick<PromoRule, "type" | "value">): string {
-  return p.type === "PERCENT" ? `${p.value}% off` : `TZS ${p.value.toLocaleString("en-US")} off`;
+/** Label for a promotion, e.g. "10% off" or "TZS 20,000 off" (in the reader's language when their `t` is given). */
+export function promoLabel(p: Pick<PromoRule, "type" | "value">, t: T = englishT): string {
+  return p.type === "PERCENT" ? t("{value}% off", { value: p.value }) : t("TZS {amount} off", { amount: p.value.toLocaleString("en-US") });
 }

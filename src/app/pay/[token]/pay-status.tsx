@@ -8,14 +8,22 @@ import type { CustomerPayView } from "@/server/services/online-pay";
 import { cancelPayAction, payStatusAction, retryPayAction } from "../actions";
 import { cn } from "@/lib/utils";
 import { NetworkMarks } from "@/components/payments/networks";
+import { useT } from "@/i18n/client";
+import type { T } from "@/i18n/translate";
 
 const tzs = (n: number) => `TZS ${Math.round(n).toLocaleString("en-US")}`;
 const POLL_MS = 3000;
 /** Not completed on our side: nTZS is still asked now and then for a while (a late approval shows "paid" by itself). */
 const LATE_POLL_MS = 10_000, LATE_FOR_MS = 5 * 60_000;
+/**
+ * The payment's own words (what it is for, a note, where to go back) come from the server in English: each sentence in
+ * the reader's language where the catalog has it, else as written.
+ */
+const words = (text: string, t: T) => text.replace(/([.!?]) (?=[A-Z])/g, "$1\n").split("\n").map((x) => t(x)).join(t.locale === "zh-CN" ? "" : " ");
 
 /** Waiting → paid / not completed — follows the payment by itself; "paid" only once the hotel's server confirmed it. */
 export function PayStatus({ initial }: { initial: CustomerPayView }) {
+  const t = useT();
   const router = useRouter();
   const [v, setV] = useState(initial);
   const [pending, start] = useTransition();
@@ -44,7 +52,7 @@ export function PayStatus({ initial }: { initial: CustomerPayView }) {
     const r = await payStatusAction({ token: v.token });
     if (!r.ok) { setError(r.error); return; }
     setV(r.data);
-    if (r.data.status !== "PAID") setError("Not received yet. If money left your account, it shows here by itself within a few minutes.");
+    if (r.data.status !== "PAID") setError(t("Not received yet. If money left your account, it shows here by itself within a few minutes."));
   });
 
   const retry = () => start(async () => {
@@ -77,64 +85,64 @@ export function PayStatus({ initial }: { initial: CustomerPayView }) {
           {paid ? <Check className="size-8" strokeWidth={3} /> : waiting ? <Smartphone className="size-7" /> : <X className="size-8" />}
         </span>
         <h1 className="mt-4 font-display text-[26px] font-semibold leading-tight">
-          {paid ? "Payment successful" : waiting ? "Approve on your phone" : "Payment not completed"}
+          {paid ? t("Payment successful") : waiting ? t("Approve on your phone") : t("Payment not completed")}
         </h1>
         <p className="mt-1 text-[28px] font-bold tabular-nums">{tzs(v.amount)}</p>
-        <p className="text-sm text-(--vr-muted)">{v.what}</p>
+        <p className="text-sm text-(--vr-muted)">{t(v.what)}</p>
       </div>
 
       <div className="space-y-4 px-5 py-5">
         {waiting && (
           <>
             <ol className="space-y-2.5 text-[14px]">
-              <li className="flex gap-3"><Step n={1} />A payment request was sent to <strong className="tabular-nums">{v.phone}</strong>.</li>
-              <li className="flex gap-3"><Step n={2} />Open it on your phone and enter your mobile-money PIN.</li>
-              <li className="flex gap-3"><Step n={3} />This page confirms by itself — you can leave it open.</li>
+              <li className="flex gap-3"><Step n={1} />{t.rich("A payment request was sent to <b>{phone}</b>.", { b: (c) => <strong className="tabular-nums">{c}</strong> }, { phone: v.phone })}</li>
+              <li className="flex gap-3"><Step n={2} />{t("Open it on your phone and enter your mobile-money PIN.")}</li>
+              <li className="flex gap-3"><Step n={3} />{t("This page confirms by itself — you can leave it open.")}</li>
             </ol>
-            <p className="flex items-center justify-center gap-2 rounded-2xl bg-(--vr-bg) px-3 py-2.5 text-[13px] text-(--vr-muted)"><Loader2 className="size-4 animate-spin" />Waiting for your approval…</p>
-            <button type="button" onClick={cancel} disabled={pending} className="w-full text-center text-[13px] font-medium text-(--vr-muted) underline-offset-4 hover:underline">Cancel — I will pay another way</button>
+            <p className="flex items-center justify-center gap-2 rounded-2xl bg-(--vr-bg) px-3 py-2.5 text-[13px] text-(--vr-muted)"><Loader2 className="size-4 animate-spin" />{t("Waiting for your approval…")}</p>
+            <button type="button" onClick={cancel} disabled={pending} className="w-full text-center text-[13px] font-medium text-(--vr-muted) underline-offset-4 hover:underline">{t("Cancel — I will pay another way")}</button>
           </>
         )}
         {paid && (
           <>
-            {v.message && <p className="rounded-xl bg-amber-50 px-3 py-2 text-center text-[13px] text-amber-800">{v.message}</p>}
+            {v.message && <p className="rounded-xl bg-amber-50 px-3 py-2 text-center text-[13px] text-amber-800">{words(v.message, t)}</p>}
             <dl className="divide-y divide-(--vr-line) rounded-2xl ring-1 ring-(--vr-line)">
-              <Row k="Amount" v={tzs(v.amount)} />
-              <Row k="For" v={v.what} />
-              <Row k="Paid" v={v.paidAt ? new Date(v.paidAt).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"} />
-              <Row k="Reference" v={v.reference} mono />
-              <Row k="Method" v="Mobile money · online" />
+              <Row k={t("Amount")} v={tzs(v.amount)} />
+              <Row k={t("For")} v={t(v.what)} />
+              <Row k={t("Paid")} v={v.paidAt ? new Date(v.paidAt).toLocaleString(t.intl, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"} />
+              <Row k={t("Reference")} v={v.reference} mono />
+              <Row k={t("Method")} v={t("Mobile money · online")} />
             </dl>
             <div className="grid gap-2">
-              {v.back && <Link href={v.back.href} className="flex h-12 items-center justify-center rounded-full bg-(--vr-dark) text-[15px] font-semibold text-white">{v.back.label}</Link>}
-              {v.receipt && <Link href={v.receipt} className="flex h-11 items-center justify-center gap-2 rounded-full ring-1 ring-(--vr-line) text-[14px] font-medium"><Receipt className="size-4" />Receipt</Link>}
+              {v.back && <Link href={v.back.href} className="flex h-12 items-center justify-center rounded-full bg-(--vr-dark) text-[15px] font-semibold text-white">{t(v.back.label)}</Link>}
+              {v.receipt && <Link href={v.receipt} className="flex h-11 items-center justify-center gap-2 rounded-full ring-1 ring-(--vr-line) text-[14px] font-medium"><Receipt className="size-4" />{t("Receipt")}</Link>}
             </div>
           </>
         )}
         {v.canRetry && (
           <>
-            <p className="text-center text-[14px] text-(--vr-muted)">{v.message}{v.sent ? " If you approved it and money left your account, it shows here by itself — otherwise try again." : ""}</p>
+            <p className="text-center text-[14px] text-(--vr-muted)">{v.message ? words(v.message, t) : null}{v.sent ? `${t.locale === "zh-CN" ? "" : " "}${t("If you approved it and money left your account, it shows here by itself — otherwise try again.")}` : ""}</p>
             {/* Nothing ever reached the phone: there is nothing to check. */}
             {v.sent && (
               <button type="button" onClick={recheck} disabled={pending} className="flex h-11 w-full items-center justify-center gap-2 rounded-full text-[14px] font-medium ring-1 ring-(--vr-line) disabled:opacity-60">
-                {pending ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}I have paid — check again
+                {pending ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}{t("I have paid — check again")}
               </button>
             )}
-            <label className="block text-[12.5px] font-medium text-(--vr-ink)/80">Mobile-money number <span className="font-normal text-(--vr-muted)">· {v.phone} if left empty</span>
+            <label className="block text-[12.5px] font-medium text-(--vr-ink)/80">{t("Mobile-money number")} <span className="font-normal text-(--vr-muted)">· {t("{phone} if left empty", { phone: v.phone })}</span>
               <input value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" inputMode="tel" placeholder="0712 345 678"
                 className="mt-1 block h-12 w-full rounded-xl border border-(--vr-line) bg-white px-3.5 text-[16px] outline-none focus:border-(--vr-gold) focus:ring-4 focus:ring-(--vr-gold)/15" />
             </label>
             {error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-[13px] text-rose-700">{error}</p>}
             <button type="button" onClick={retry} disabled={pending} className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-(--vr-dark) text-[15px] font-semibold text-white disabled:opacity-60">
-              {pending ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4" />}Try again · {tzs(v.retryAmount ?? v.amount)}
+              {pending ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4" />}{t("Try again · {amount}", { amount: tzs(v.retryAmount ?? v.amount) })}
             </button>
-            {v.back && <Link href={v.back.href} className="block text-center text-[13px] font-medium text-(--vr-muted) underline-offset-4 hover:underline">{v.back.label}</Link>}
+            {v.back && <Link href={v.back.href} className="block text-center text-[13px] font-medium text-(--vr-muted) underline-offset-4 hover:underline">{t(v.back.label)}</Link>}
           </>
         )}
       </div>
       <div className="space-y-2 border-t border-(--vr-line) bg-(--vr-bg) px-4 py-3">
         <NetworkMarks center label={null} />
-        <p className="flex items-center justify-center gap-1.5 text-[11.5px] text-(--vr-muted)"><Lock className="size-3.5" />Secure payment by <span className="font-semibold tracking-wide text-(--vr-ink)/80">NTZS</span></p>
+        <p className="flex items-center justify-center gap-1.5 text-[11.5px] text-(--vr-muted)"><Lock className="size-3.5" />{t.rich("Secure payment by <b>NTZS</b>", { b: (c) => <span className="font-semibold tracking-wide text-(--vr-ink)/80">{c}</span> })}</p>
       </div>
     </section>
   );

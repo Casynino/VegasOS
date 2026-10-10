@@ -1,5 +1,6 @@
 import { ArrowUpRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getT } from "@/i18n/server";
 import type { Channel } from "./channel-list";
 
 /**
@@ -7,8 +8,9 @@ import type { Channel } from "./channel-list";
  * WhatsApp, email — only what is set in Settings. Compact rows on phones (the whole card is the
  * 44px+ target), three across from 768px. The cursor lights each card's edge on desktop.
  */
-export function ChannelCards({ channels, className }: { channels: Channel[]; className?: string }) {
+export async function ChannelCards({ channels, className }: { channels: Channel[]; className?: string }) {
   if (channels.length === 0) return null;
+  const t = await getT();
   return (
     <ul
       className={cn(
@@ -49,7 +51,7 @@ export function ChannelCards({ channels, className }: { channels: Channel[]; cla
               strokeWidth={1.6}
               className="size-4 shrink-0 text-white/50 transition duration-300 ease-pub group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-gold motion-reduce:transition-none"
             />
-            {c.external && <span className="sr-only"> (opens in a new tab)</span>}
+            {c.external && <span className="sr-only"> {t("(opens in a new tab)")}</span>}
           </a>
         </li>
       ))}

@@ -4,6 +4,8 @@ import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useT } from "@/i18n/client";
+import { msg } from "@/i18n/msg";
 import { ShowRows } from "./show-rows";
 
 export type AttentionTone = "rose" | "amber" | "gold" | "sky" | "slate";
@@ -22,24 +24,28 @@ const TONE: Record<AttentionTone, { bar: string; icon: string }> = {
  * Money …), then one slim row per item — coloured bar, icon, what and why, and
  * a tap through to fix it. Three rows in view; the rest are a scroll away.
  */
+/** Rows with no area are grouped under this (its English is the key; shown in the reader's language). */
+const OTHER = msg("Other");
+
 export function AttentionList({ items, show = 3 }: { items: AttentionRow[]; show?: number }) {
-  const groups = [...new Set(items.map((i) => i.group ?? "Other"))];
+  const t = useT();
+  const groups = [...new Set(items.map((i) => i.group ?? OTHER))];
   const [pick, setPick] = useState<string | null>(null);
   const on = pick && groups.includes(pick) ? pick : null;
-  const rows = on ? items.filter((i) => (i.group ?? "Other") === on) : items;
+  const rows = on ? items.filter((i) => (i.group ?? OTHER) === on) : items;
   const chip = (label: string, count: number, active: boolean, value: string | null) => (
     <button key={label} type="button" onClick={() => setPick(value)} aria-pressed={active}
       className={cn("inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
         active ? "border-sky-500 bg-sky-500 text-white" : "border-border bg-card text-foreground/80 hover:bg-muted")}>
-      {label}<span className={cn("tabular-nums", active ? "text-white/80" : "text-muted-foreground")}>{count}</span>
+      {t(label)}<span className={cn("tabular-nums", active ? "text-white/80" : "text-muted-foreground")}>{count}</span>
     </button>
   );
 
   return (
     <div className="overflow-hidden rounded-2xl border border-border/70 bg-card">
       <div className="flex gap-1.5 overflow-x-auto border-b border-border/70 px-4 py-2.5 [scrollbar-width:none]">
-        {chip("All", items.length, !on, null)}
-        {groups.map((g) => chip(g, items.filter((i) => (i.group ?? "Other") === g).length, on === g, g))}
+        {chip(msg("All"), items.length, !on, null)}
+        {groups.map((g) => chip(g, items.filter((i) => (i.group ?? OTHER) === g).length, on === g, g))}
       </div>
       <ShowRows key={on ?? "all"} show={show} total={rows.length}>
         <ul className="divide-y divide-border/60">

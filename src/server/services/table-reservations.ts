@@ -5,6 +5,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import type { TableReservationStatus } from "@/generated/prisma/enums";
 import { audit } from "../audit";
 import { AppError } from "../errors";
+import { msg, msgf } from "@/i18n/msg";
 import { getSettings, getSettingsTx } from "../settings";
 import { validPhone } from "@/lib/guest-messages";
 import { isBusinessDate, localParts, parseTimeToMinutes, toDbDate, zonedInstant, type BusinessDate } from "@/lib/time/business-date";
@@ -73,7 +74,7 @@ async function clashTx(tx: Tx, locationId: string, at: Date, exceptId: string | 
   });
   if (near) {
     const t = near.reservedFor.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: tz });
-    throw new AppError(`${near.location.name} is already reserved at ${t} for ${near.guest.fullName} — choose another table or time.`, "CONFLICT", { locationId: "Reserved" });
+    throw new AppError(msgf("{table} is already reserved at {time} for {name} — choose another table or time.", { table: near.location.name, time: t, name: near.guest.fullName }), "CONFLICT", { locationId: "Reserved" });
   }
 }
 
@@ -88,7 +89,7 @@ export async function createTableReservation(input: ReservationInput, actor: Act
   assertBook(actor);
   checkInput(input);
   const ids = [...new Set([input.locationId, ...(input.locationIds ?? [])].filter(Boolean))];
-  if (ids.length > MAX_PARTY_TABLES) throw new AppError(`Up to ${MAX_PARTY_TABLES} tables in one reservation.`, "VALIDATION", { locationIds: "Too many" });
+  if (ids.length > MAX_PARTY_TABLES) throw new AppError(msgf("Up to {n} tables in one reservation.", { n: MAX_PARTY_TABLES }), "VALIDATION", { locationIds: "Too many" });
   return db.$transaction(async (tx) => {
     const tables = [];
     for (const id of ids) tables.push(await tableTx(tx, id));
@@ -130,7 +131,7 @@ async function openBookingTx(tx: Tx, id: string) {
   await tx.$queryRaw`SELECT "id" FROM "table_reservations" WHERE "id" = ${id} FOR UPDATE`;
   const r = await tx.tableReservation.findUnique({ where: { id }, include: { location: { select: { id: true, name: true } }, guest: { select: { fullName: true, phone: true } } } });
   if (!r) throw new AppError("Reservation not found.", "NOT_FOUND");
-  if (!OPEN_BOOKING.includes(r.status)) throw new AppError(r.status === "SEATED" ? "They are already seated — this reservation is done." : "This reservation was cancelled or marked no-show.", "CONFLICT");
+  if (!OPEN_BOOKING.includes(r.status)) throw new AppError(r.status === "SEATED" ? msg("They are already seated — this reservation is done.") : msg("This reservation was cancelled or marked no-show."), "CONFLICT");
   return r;
 }
 
@@ -200,7 +201,7 @@ export async function moveTableReservation(id: string, toLocationId: string, opt
     for (const lid of [r0.locationId, toLocationId].sort()) await lockLocationTx(tx, lid);
     const r = await openBookingTx(tx, id);
     const to = await tableTx(tx, toLocationId);
-    if (to.id === r.locationId) throw new AppError(`It is already for ${to.name}.`, "VALIDATION");
+    if (to.id === r.locationId) throw new AppError(msgf("It is already for {table}.", { table: to.name }), "VALIDATION");
     const settings = await getSettings();
     await clashTx(tx, to.id, r.reservedFor, r.id, settings.timezone);
     const reason = opts.reason?.trim().slice(0, 200) || null;

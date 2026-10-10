@@ -8,24 +8,27 @@ import { authorize, requestMeta } from "@/server/auth";
 import { AppError, runAction, type ActionResult } from "@/server/errors";
 import { parseInput } from "@/server/validation";
 import { parseTimeToMinutes } from "@/lib/time/business-date";
+import { parseRecipientLine } from "@/lib/report-recipients";
+import { msg, msgf } from "@/i18n/msg";
+import { getT } from "@/i18n/server";
 
-const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use HH:MM (24-hour).").transform(parseTimeToMinutes);
-const money = z.coerce.number().int("Whole shillings only.").min(0, "Cannot be negative.");
+const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, msg("Use HH:MM (24-hour).")).transform(parseTimeToMinutes);
+const money = z.coerce.number().int(msg("Whole shillings only.")).min(0, msg("Cannot be negative."));
 const optionalText = z.string().trim().max(300).transform((v) => v || null);
 const checkbox = z.preprocess((v) => v === "on" || v === "true", z.boolean());
 
 const SettingsSchema = z.object({
-  hotelName: z.string().trim().min(2, "Hotel name is required.").max(120),
+  hotelName: z.string().trim().min(2, msg("Hotel name is required.")).max(120),
   tagline: optionalText,
   addressLine: optionalText,
   postalAddress: optionalText,
   city: optionalText,
   country: optionalText,
   phone: optionalText,
-  email: z.union([z.literal(""), z.string().trim().email("Enter a valid email.")]).transform((v) => v || null),
+  email: z.union([z.literal(""), z.string().trim().email(msg("Enter a valid email."))]).transform((v) => v || null),
   website: optionalText,
   whatsapp: optionalText,
-  mapUrl: z.union([z.literal(""), z.string().trim().url("Enter a full URL.")]).transform((v) => v || null),
+  mapUrl: z.union([z.literal(""), z.string().trim().url(msg("Enter a full URL."))]).transform((v) => v || null),
   businessDayStart: time,
   standardCheckIn: time,
   checkout: time,
@@ -46,9 +49,9 @@ const SettingsSchema = z.object({
   thankYouPromoTitle: z.string().trim().max(120).transform((v) => v || null),
   thankYouPromoText: z.string().trim().max(400).transform((v) => v || null),
   thankYouRebookText: z.string().trim().max(300).transform((v) => v || null),
-  instagramUrl: z.union([z.literal(""), z.string().trim().url("Enter the full Instagram link.")]).transform((v) => v || null),
-  facebookUrl: z.union([z.literal(""), z.string().trim().url("Enter the full Facebook link.")]).transform((v) => v || null),
-  tiktokUrl: z.union([z.literal(""), z.string().trim().url("Enter the full TikTok link.")]).transform((v) => v || null),
+  instagramUrl: z.union([z.literal(""), z.string().trim().url(msg("Enter the full Instagram link."))]).transform((v) => v || null),
+  facebookUrl: z.union([z.literal(""), z.string().trim().url(msg("Enter the full Facebook link."))]).transform((v) => v || null),
+  tiktokUrl: z.union([z.literal(""), z.string().trim().url(msg("Enter the full TikTok link."))]).transform((v) => v || null),
   invoiceDefaultDueDays: z.coerce.number().int().min(0).max(365),
   taxName: optionalText,
   taxRatePercent: z.union([z.literal(""), z.coerce.number().min(0).max(100)]).transform((v) => (v === "" ? null : v)),
@@ -82,18 +85,18 @@ const SettingsSchema = z.object({
   airportTransferPrice: z.union([z.literal(""), z.coerce.number().int().min(0)]).transform((v) => (v === "" ? null : v)),
 });
 
-/** "Name, +255710000000" per line → [{ name, phone, channel }] */
+/** "Name, +255710000000, KEY, zh" per line → [{ name, phone, channel, apiKeyRef, lang? }] (no language word = English). */
 function parseRecipients(text: string) {
   return text
     .split("\n")
     .map((l) => l.trim())
     .filter(Boolean)
     .map((line, i) => {
-      const [name, phone, apiKeyRef] = line.split(",").map((p) => p.trim());
-      if (!phone || !/^\+?\d{9,15}$/.test(phone.replace(/\s/g, ""))) {
-        throw new AppError(`Report recipient line ${i + 1}: use "Name, +2557XXXXXXXX".`, "VALIDATION", { reportRecipients: "Invalid recipient" });
+      const r = parseRecipientLine(line);
+      if (!r) {
+        throw new AppError(msgf("Report recipient line {line}: use \"Name, +2557XXXXXXXX\".", { line: i + 1 }), "VALIDATION", { reportRecipients: msg("Invalid recipient") });
       }
-      return { name, phone: phone.replace(/\s/g, ""), channel: "WHATSAPP_CALLMEBOT", apiKeyRef: apiKeyRef || null };
+      return { name: r.name, phone: r.phone, channel: "WHATSAPP_CALLMEBOT", apiKeyRef: r.apiKeyRef, ...(r.lang ? { lang: r.lang } : {}) };
     });
 }
 
@@ -164,10 +167,10 @@ export async function updateSettingsAction(_prev: unknown, formData: FormData): 
     };
 
     if (data.businessDayStartMinutes > 8 * 60) {
-      throw new AppError("The business day must start between 00:00 and 08:00.", "VALIDATION", { businessDayStart: "Too late" });
+      throw new AppError("The business day must start between 00:00 and 08:00.", "VALIDATION", { businessDayStart: msg("Too late") });
     }
     if (data.checkoutMinutes <= data.businessDayStartMinutes) {
-      throw new AppError("Checkout time must be after the business-day start.", "VALIDATION", { checkout: "Must be after business-day start" });
+      throw new AppError("Checkout time must be after the business-day start.", "VALIDATION", { checkout: msg("Must be after business-day start") });
     }
 
     const { ipAddress } = await requestMeta();
@@ -190,7 +193,7 @@ export async function updateSettingsAction(_prev: unknown, formData: FormData): 
     });
     revalidatePath("/", "layout");
     return null;
-  }, "Settings saved.");
+  }, msg("Settings saved."));
 }
 
 // ─────────── Configurable lookup lists ───────────
@@ -199,15 +202,15 @@ const LIST_KINDS = ["bookingSource", "paymentMethod", "expenseCategory", "revenu
 type ListKind = (typeof LIST_KINDS)[number];
 
 const LIST_LABEL: Record<ListKind, string> = {
-  bookingSource: "Booking source",
-  paymentMethod: "Payment method",
-  expenseCategory: "Expense category",
-  revenueCategory: "Revenue category",
+  bookingSource: msg("Booking source"),
+  paymentMethod: msg("Payment method"),
+  expenseCategory: msg("Expense category"),
+  revenueCategory: msg("Revenue category"),
 };
 
 const AddItemSchema = z.object({
   kind: z.enum(LIST_KINDS),
-  name: z.string().trim().min(2, "Name is required.").max(60),
+  name: z.string().trim().min(2, msg("Name is required.")).max(60),
   revenueKind: z.enum(["RESTAURANT", "BAR", "OTHER"]).optional(),
 });
 
@@ -236,7 +239,7 @@ export async function addListItemAction(_prev: unknown, formData: FormData): Pro
     if (!code) throw new AppError("Use letters or numbers in the name.");
     const model = delegate(input.kind);
     if (await model.findUnique({ where: { code } })) {
-      throw new AppError(`${LIST_LABEL[input.kind]} "${input.name}" already exists.`, "CONFLICT");
+      throw new AppError(msgf("{what} \"{name}\" already exists.", { what: (await getT())(LIST_LABEL[input.kind]), name: input.name }), "CONFLICT");
     }
     const data: Record<string, unknown> = { code, name: input.name, sortOrder: (await model.count()) + 1 };
     if (input.kind === "revenueCategory") data.kind = input.revenueKind ?? "OTHER";
@@ -247,7 +250,7 @@ export async function addListItemAction(_prev: unknown, formData: FormData): Pro
     });
     revalidatePath("/staff/settings");
     return null;
-  }, "Added.");
+  }, msg("Added."));
 }
 
 const UpdateItemSchema = z.object({
@@ -265,7 +268,7 @@ export async function updateListItemAction(input: z.input<typeof UpdateItemSchem
     const existing = await model.findUnique({ where: { id: data.id } });
     if (!existing) throw new AppError("Item not found.", "NOT_FOUND");
     if (existing.isSystem && data.isActive === false) {
-      throw new AppError(`"${existing.name}" is required by the system and cannot be disabled.`);
+      throw new AppError(msgf("\"{name}\" is required by the system and cannot be disabled.", { name: existing.name }));
     }
     const patch: Record<string, unknown> = {};
     if (data.name !== undefined) patch.name = data.name;
@@ -278,5 +281,5 @@ export async function updateListItemAction(input: z.input<typeof UpdateItemSchem
     });
     revalidatePath("/staff/settings");
     return null;
-  }, "Saved.");
+  }, msg("Saved."));
 }

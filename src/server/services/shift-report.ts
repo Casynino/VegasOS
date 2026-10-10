@@ -13,7 +13,12 @@ import type { Block, Figure, Report } from "@/lib/report-types";
 import { Prisma } from "@/generated/prisma/client";
 import { ALL_SOURCES, collectionRows, collectionTotals } from "./collections";
 import { waiterActivity } from "./waiter-activity";
-import { deliverToRecipients, MAX_ATTEMPTS } from "./report-delivery";
+import { deliverToRecipients, MAX_ATTEMPTS, withLang } from "./report-delivery";
+import { msg } from "@/i18n/msg";
+import { getTFor } from "@/i18n/server";
+import { englishT, type T } from "@/i18n/translate";
+import type { Locale } from "@/i18n/config";
+import { day as hotelDay, mergeBooks, reportTr, textBook, word, type TextArg, type TextBook } from "@/lib/report-i18n";
 
 /**
  * SHIFT REPORTS — when a waiter or a receptionist ends their shift, the system writes their report from what they
@@ -53,6 +58,8 @@ export interface ShiftReportData {
   timelineLeft?: number;
   /** How busy each hour of the shift was (actions in the system) — for the chart. Reports before Oct 2026 have none. */
   hours?: { at: string; count: number }[];
+  /** Its sentences with values, to say them in another language (src/lib/report-i18n.ts) — reports before Oct 2026 have none. */
+  i18n?: TextBook;
 }
 
 /** Whose records, in which time: a shift — or a week / month of one person's work (`id` null). */
@@ -71,19 +78,38 @@ function perHour(start: Date, end: Date, times: Date[]) {
   return out;
 }
 
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const tzs = (n: number) => `TZS ${Math.round(n).toLocaleString("en-US")}`;
+/** "3 rooms" / "1 room" — a word (to translate) for a count. */
+const count = (n: number, one: string, other: string) => word(n === 1 ? one : other, { n });
+/** Parts joined as one piece of text (each part said in the reader's language). */
+const joined = (parts: TextArg[], sep = ", ") => word(parts.map((_, i) => `{${i}}`).join(sep), Object.fromEntries(parts.map((p, i) => [String(i), p])));
+const roomWord = (room: string) => word(msg("Room {room}"), { room });
 export const shiftDuration = (minutes: number) => `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, "0")}m`;
 const shortNo = (n: string) => `#${n.replace(/^ORD-\d{4}-0*/, "")}`;
 const nonzero = (f: ShiftFact[]) => f.filter((x) => x.value !== 0);
 /** A note on one line, never endless (the boss's message stays short and its link always fits). */
 const oneLine = (t: string, max = 300) => { const x = t.replace(/\s+/g, " ").trim(); return x.length > max ? `${x.slice(0, max - 1)}…` : x; };
-/** "14 guests checked in", "1 guest checked in", "TZS 80,000 recorded in payments" — one line of the headline. */
-export function factLine(f: ShiftFact) {
+/** "14 guests checked in", "1 guest checked in", "TZS 80,000 recorded in payments" — one line of the headline (another language: "label: value"). */
+export function factLine(f: ShiftFact, t?: T) {
+  if (t && t.locale !== "en") return t(FACT_LINE, { label: t(f.label), value: factValue(f) });
   if (f.money) return `${tzs(f.value)} ${f.label.charAt(0).toLowerCase()}${f.label.slice(1)}`;
   const label = f.value === 1 ? f.label.replace(/\b(Guests|Reservations|Payments|Orders|Tables|Rooms|orders|requests)\b/, (m) => m.slice(0, -1)) : f.label;
   return `${f.value.toLocaleString("en-US")} ${label.charAt(0).toLowerCase()}${label.slice(1)}`;
 }
+
+/** A headline line in another language. */
+const FACT_LINE = msg("{label}: {value}");
+/** How factLine's English is said in another language (kept in the report's book). */
+const factEntry = (book: TextBook, f: ShiftFact) => { const line = factLine(f); book[line] = word(FACT_LINE, { label: word(f.label), value: factValue(f) }); return line; };
+
+/** Order, request and payment states as words (the English is the key; anything else as it was). */
+const STATUS_WORD: Record<string, string> = {
+  PENDING: msg("Pending"), ACCEPTED: msg("Accepted"), PREPARING: msg("Preparing"), READY: msg("Ready"), OUT_FOR_DELIVERY: msg("Out for delivery"),
+  DELIVERED: msg("Delivered"), COMPLETED: msg("Completed"), CANCELLED: msg("Cancelled"), COLLECTED: msg("Collected"),
+  NEW: msg("New"), ASSIGNED: msg("Assigned"), IN_PROGRESS: msg("In progress"),
+  PAID: msg("Paid"), PARTLY_PAID: msg("Partly paid"), NOT_RECEIVED: msg("Not received"),
+};
+const statusWord = (s: string) => STATUS_WORD[s] ?? cap(s.toLowerCase().replace(/_/g, " "));
 
 // ───────────────────────── Reading one shift ─────────────────────────
 
@@ -121,29 +147,30 @@ const NOISE = new Set(["auth.logout", "reservation.confirmed_by_payment", "reser
 
 /** The timeline's words for the actions that matter most on a shift (the rest use the shared activity words). */
 const LINE: Record<string, string> = {
-  "shift.started": "Shift started", "shift.ended": "Shift ended", "shift.closed_by_manager": "Shift closed by a manager",
-  "reservation.created": "Reservation created", "reservation.walk_in": "Walk-in guest checked in", "reservation.checked_in": "Guest checked in", "reservation.checked_out": "Guest checked out",
-  "reservation.confirmed": "Reservation confirmed", "reservation.cancelled": "Reservation cancelled", "reservation.no_show": "Marked a no-show",
-  "reservation.dates_changed": "Booking dates changed", "reservation.extended": "Stay extended", "reservation.extended_free": "Stay extended (free)",
-  "reservation.room_changed": "Guest moved to another room", "reservation.room_assigned": "Room assigned",
-  "payment.created": "Payment recorded", "payment.refunded": "Refund recorded", "payment.group": "Group payment recorded", "payment.company": "Company payment recorded",
-  "restaurant_order.created": "Restaurant order created", "restaurant_order.paid": "Restaurant payment recorded", "restaurant_order.charged_to_room": "Order put on a room",
-  "request.created": "Guest request logged", "request.accepted": "Guest request accepted", "request.updated": "Guest request updated", "complaint.logged": "Complaint logged", "complaint.resolved": "Complaint resolved",
-  "transport.requested": "Transport arranged", "transport.confirmed": "Transport confirmed", "transport.driver_assigned": "Driver assigned", "transport.driver_changed": "Driver changed", "transport.completed": "Transport completed",
-  "booking_request.contacted": "Booking request — customer contacted", "booking_request.status_changed": "Booking request updated", "booking_request.assigned": "Booking request taken",
-  "guest.updated": "Guest details updated", "guest.updated_at_checkin": "Guest details updated at check-in", "guest.message_sent": "Message sent to a guest",
-  "room.status_changed": "Room status changed", "meeting.booked": "Meeting room booked", "meeting.started": "Meeting started", "meeting.completed": "Meeting completed",
+  "shift.started": msg("Shift started"), "shift.ended": msg("Shift ended"), "shift.closed_by_manager": msg("Shift closed by a manager"),
+  "reservation.created": msg("Reservation created"), "reservation.walk_in": msg("Walk-in guest checked in"), "reservation.checked_in": msg("Guest checked in"), "reservation.checked_out": msg("Guest checked out"),
+  "reservation.confirmed": msg("Reservation confirmed"), "reservation.cancelled": msg("Reservation cancelled"), "reservation.no_show": msg("Marked a no-show"),
+  "reservation.dates_changed": msg("Booking dates changed"), "reservation.extended": msg("Stay extended"), "reservation.extended_free": msg("Stay extended (free)"),
+  "reservation.room_changed": msg("Guest moved to another room"), "reservation.room_assigned": msg("Room assigned"),
+  "payment.created": msg("Payment recorded"), "payment.refunded": msg("Refund recorded"), "payment.group": msg("Group payment recorded"), "payment.company": msg("Company payment recorded"),
+  "restaurant_order.created": msg("Restaurant order created"), "restaurant_order.paid": msg("Restaurant payment recorded"), "restaurant_order.charged_to_room": msg("Order put on a room"),
+  "request.created": msg("Guest request logged"), "request.accepted": msg("Guest request accepted"), "request.updated": msg("Guest request updated"), "complaint.logged": msg("Complaint logged"), "complaint.resolved": msg("Complaint resolved"),
+  "transport.requested": msg("Transport arranged"), "transport.confirmed": msg("Transport confirmed"), "transport.driver_assigned": msg("Driver assigned"), "transport.driver_changed": msg("Driver changed"), "transport.completed": msg("Transport completed"),
+  "booking_request.contacted": msg("Booking request — customer contacted"), "booking_request.status_changed": msg("Booking request updated"), "booking_request.assigned": msg("Booking request taken"),
+  "guest.updated": msg("Guest details updated"), "guest.updated_at_checkin": msg("Guest details updated at check-in"), "guest.message_sent": msg("Message sent to a guest"),
+  "room.status_changed": msg("Room status changed"), "meeting.booked": msg("Meeting room booked"), "meeting.started": msg("Meeting started"), "meeting.completed": msg("Meeting completed"),
 };
 const AREA = (a: string) =>
-  a.startsWith("shift.") ? "Shift" : /^reservation\.(checked_in|checked_out|walk_in|room_)/.test(a) ? "Front desk" : a.startsWith("reservation.") || a.startsWith("meeting.") || a.startsWith("booking_request.") ? "Bookings"
-  : /^(payment|revenue|invoice)\./.test(a) ? "Money" : a.startsWith("restaurant_order.") || a.startsWith("dining_session.") ? "Restaurant"
-  : a.startsWith("request.") || a.startsWith("complaint.") ? "Requests" : a.startsWith("transport.") ? "Transport" : a.startsWith("room.") ? "Rooms" : a.startsWith("guest.") ? "Guests" : "Other";
+  a.startsWith("shift.") ? msg("Shift") : /^reservation\.(checked_in|checked_out|walk_in|room_)/.test(a) ? msg("Front desk") : a.startsWith("reservation.") || a.startsWith("meeting.") || a.startsWith("booking_request.") ? msg("Bookings")
+  : /^(payment|revenue|invoice)\./.test(a) ? msg("Money") : a.startsWith("restaurant_order.") || a.startsWith("dining_session.") ? msg("Restaurant")
+  : a.startsWith("request.") || a.startsWith("complaint.") ? msg("Requests") : a.startsWith("transport.") ? msg("Transport") : a.startsWith("room.") ? msg("Rooms") : a.startsWith("guest.") ? msg("Guests") : msg("Other");
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 
 // ───────────────────────── Reception ─────────────────────────
 
 async function receptionFacts(s: Subject, opts: { period?: boolean } = {}) {
   const W = { gte: s.startedAt, lt: s.endedAt };
+  const { book, L } = textBook();
   const day = fromDbDate(s.businessDate);
   const [logs, logCount] = await Promise.all([
     db.auditLog.findMany({
@@ -187,31 +214,31 @@ async function receptionFacts(s: Subject, opts: { period?: boolean } = {}) {
   const messagesSent = messages.reduce((t, m) => t + m._count, 0);
 
   const groups: ShiftReportData["groups"] = [
-    { title: "Reservations", facts: [
-      { label: "Reservations handled", value: handled, sub: "made, confirmed, changed or cancelled" },
-      { label: "Reservations created", value: created }, { label: "Walk-ins", value: walkIns },
-      { label: "Confirmed", value: distinct("reservation.confirmed") }, { label: "Changed", value: distinct(...MODIFY), sub: "dates, nights, discount, who pays…" },
-      { label: "Cancelled", value: distinct("reservation.cancelled") }, { label: "No-shows", value: distinct("reservation.no_show") },
-      { label: "Booking requests processed", value: new Set(logs.filter((l) => l.action.startsWith("booking_request.") && l.action !== "booking_request.submitted").map((l) => l.entityId)).size },
+    { title: msg("Reservations"), facts: [
+      { label: msg("Reservations handled"), value: handled, sub: msg("made, confirmed, changed or cancelled") },
+      { label: msg("Reservations created"), value: created }, { label: msg("Walk-ins"), value: walkIns },
+      { label: msg("Confirmed"), value: distinct("reservation.confirmed") }, { label: msg("Changed"), value: distinct(...MODIFY), sub: msg("dates, nights, discount, who pays…") },
+      { label: msg("Cancelled"), value: distinct("reservation.cancelled") }, { label: msg("No-shows"), value: distinct("reservation.no_show") },
+      { label: msg("Booking requests processed"), value: new Set(logs.filter((l) => l.action.startsWith("booking_request.") && l.action !== "booking_request.submitted").map((l) => l.entityId)).size },
     ] },
-    { title: "Guests", facts: [
-      { label: "Guests checked in", value: checkIns, sub: roomsIn ? plural(roomsIn, "room") : undefined },
-      { label: "Guests checked out", value: checkOuts, sub: roomsOut ? plural(roomsOut, "room") : undefined },
-      { label: "Guest details updated", value: distinct("guest.updated", "guest.updated_at_checkin") },
-      { label: "Guest requests logged", value: requestsLogged }, { label: "Guest requests accepted", value: requestsAccepted }, { label: "Guest requests done", value: requestsDone },
-      { label: "Messages sent to guests", value: messagesSent, sub: messages.map((m) => `${m.channel.toLowerCase()} ${m._count}`).join(" · ") || undefined },
+    { title: msg("Guests"), facts: [
+      { label: msg("Guests checked in"), value: checkIns, sub: roomsIn ? L("{x}", { x: count(roomsIn, msg("{n} room"), msg("{n} rooms")) }) : undefined },
+      { label: msg("Guests checked out"), value: checkOuts, sub: roomsOut ? L("{x}", { x: count(roomsOut, msg("{n} room"), msg("{n} rooms")) }) : undefined },
+      { label: msg("Guest details updated"), value: distinct("guest.updated", "guest.updated_at_checkin") },
+      { label: msg("Guest requests logged"), value: requestsLogged }, { label: msg("Guest requests accepted"), value: requestsAccepted }, { label: msg("Guest requests done"), value: requestsDone },
+      { label: msg("Messages sent to guests"), value: messagesSent, sub: messages.map((m) => `${m.channel.toLowerCase()} ${m._count}`).join(" · ") || undefined },
     ] },
-    { title: "Rooms", facts: [
-      { label: "Rooms assigned", value: distinct("reservation.room_assigned") }, { label: "Guests moved to another room", value: logs.filter((l) => l.action === "reservation.room_changed").length },
-      { label: "Room status changes", value: manualRoomStatus, sub: "by hand (not the automatic ones at check-in / out)" },
+    { title: msg("Rooms"), facts: [
+      { label: msg("Rooms assigned"), value: distinct("reservation.room_assigned") }, { label: msg("Guests moved to another room"), value: logs.filter((l) => l.action === "reservation.room_changed").length },
+      { label: msg("Room status changes"), value: manualRoomStatus, sub: msg("by hand (not the automatic ones at check-in / out)") },
     ] },
-    { title: "Restaurant guest service", subtitle: "Orders for hotel guests — the restaurant prepares and serves them", facts: [
-      { label: "Restaurant orders created", value: ordersMade.length }, { label: "Room-service orders", value: roomOrders.length, sub: [...new Set(roomOrders.flatMap((o) => (o.roomNumber ?? "").split(",").map((x) => x.trim()).filter(Boolean)))].map((r) => `Room ${r}`).join(", ") || undefined },
-      { label: "Value of those orders", value: ordersMade.filter((o) => o.status !== "CANCELLED").reduce((t, o) => t + o.total, 0), money: true },
+    { title: msg("Restaurant guest service"), subtitle: msg("Orders for hotel guests — the restaurant prepares and serves them"), facts: [
+      { label: msg("Restaurant orders created"), value: ordersMade.length }, { label: msg("Room-service orders"), value: roomOrders.length, sub: ((rs) => (rs.length ? L("{x}", { x: joined(rs.map(roomWord)) }) : undefined))([...new Set(roomOrders.flatMap((o) => (o.roomNumber ?? "").split(",").map((x) => x.trim()).filter(Boolean)))]) },
+      { label: msg("Value of those orders"), value: ordersMade.filter((o) => o.status !== "CANCELLED").reduce((t, o) => t + o.total, 0), money: true },
     ] },
-    { title: "Transport", facts: [
-      { label: "Transport requests created", value: transport }, { label: "Confirmed", value: distinct("transport.confirmed") },
-      { label: "Drivers assigned", value: distinct("transport.driver_assigned", "transport.driver_changed") }, { label: "Completed", value: distinct("transport.completed") },
+    { title: msg("Transport"), facts: [
+      { label: msg("Transport requests created"), value: transport }, { label: msg("Confirmed"), value: distinct("transport.confirmed") },
+      { label: msg("Drivers assigned"), value: distinct("transport.driver_assigned", "transport.driver_changed") }, { label: msg("Completed"), value: distinct("transport.completed") },
     ] },
   ];
 
@@ -220,34 +247,34 @@ async function receptionFacts(s: Subject, opts: { period?: boolean } = {}) {
   const owing = typeof closing.totalOutstanding === "number" ? closing.totalOutstanding : null;
   const owingGuests = typeof closing.guestsOwing === "number" ? closing.guestsOwing : null;
   const money: ShiftReportData["money"] = {
-    title: "Payments recorded", subtitle: "Money this person recorded in the system during the shift — kept apart from revenue and from what is still owed",
+    title: msg("Payments recorded"), subtitle: msg("Money this person recorded in the system during the shift — kept apart from revenue and from what is still owed"),
     byKind: totals.byKind,
     facts: [
-      { label: "Payments recorded", value: totals.payments }, { label: "Amount recorded", value: totals.collected, money: true },
-      { label: "Refunds", value: totals.refunds, money: true }, { label: "Reversed", value: totals.reversed, money: true },
-      { label: "Restaurant orders put on rooms", value: totals.roomCharges, money: true, sub: totals.roomOrders ? plural(totals.roomOrders, "order") : undefined },
-      ...(owing !== null ? [{ label: "Still owed by guests in the hotel at the close", value: owing, money: true, sub: owingGuests !== null ? plural(owingGuests, "guest") : undefined }] : []),
+      { label: msg("Payments recorded"), value: totals.payments }, { label: msg("Amount recorded"), value: totals.collected, money: true },
+      { label: msg("Refunds"), value: totals.refunds, money: true }, { label: msg("Reversed"), value: totals.reversed, money: true },
+      { label: msg("Restaurant orders put on rooms"), value: totals.roomCharges, money: true, sub: totals.roomOrders ? L("{x}", { x: count(totals.roomOrders, msg("{n} order"), msg("{n} orders")) }) : undefined },
+      ...(owing !== null ? [{ label: msg("Still owed by guests in the hotel at the close"), value: owing, money: true, sub: owingGuests !== null ? L("{x}", { x: count(owingGuests, msg("{n} guest"), msg("{n} guests")) }) : undefined }] : []),
     ],
   };
-  const byAccount = totals.byAccount.map((a) => `${a.name}: ${tzs(a.amount)}`).join(" · ");
-  if (byAccount) money.facts.push({ label: "Into accounts", value: totals.byAccount.length, sub: byAccount });
+  const byAccount = totals.byAccount.length ? L("{x}", { x: joined(totals.byAccount.map((a) => word("{name}: {amount}", { name: word(a.name), amount: tzs(a.amount) })), " · ") }) : "";
+  if (byAccount) money.facts.push({ label: msg("Into accounts"), value: totals.byAccount.length, sub: byAccount });
 
   const records: ShiftRecordTable[] = [];
   if (payRows.rows.length) records.push({
-    title: "Payments recorded", subtitle: "Each payment this person recorded in the shift",
-    columns: [{ label: "Time" }, { label: "For" }, { label: "How" }, { label: "Account" }, { label: "Status" }, { label: "Amount", align: "right", money: true }],
-    rows: [...payRows.rows].reverse().map((r) => [r.at, `${r.what ?? r.place}${r.customer ? ` · ${r.customer}` : ""}`, r.method, r.account, r.status === "REVERSED" ? "Reversed" : r.refund ? "Refund" : "Recorded", r.amount]),
-    more: payRows.count > payRows.rows.length ? payRows.count - payRows.rows.length : undefined, moreNote: "every one is in Collections for this shift",
+    title: msg("Payments recorded"), subtitle: msg("Each payment this person recorded in the shift"),
+    columns: [{ label: msg("Time") }, { label: msg("For") }, { label: msg("How") }, { label: msg("Account") }, { label: msg("Status") }, { label: msg("Amount"), align: "right", money: true }],
+    rows: [...payRows.rows].reverse().map((r) => [r.at, `${r.what ?? r.place}${r.customer ? ` · ${r.customer}` : ""}`, r.method, r.account, r.status === "REVERSED" ? msg("Reversed") : r.refund ? msg("Refund") : msg("Recorded"), r.amount]),
+    more: payRows.count > payRows.rows.length ? payRows.count - payRows.rows.length : undefined, moreNote: msg("every one is in Collections for this shift"),
   });
   if (ordersMade.length) records.push({
-    title: "Restaurant orders created", subtitle: "For hotel guests — prepared and served by the restaurant",
-    columns: [{ label: "Time" }, { label: "Order" }, { label: "Where" }, { label: "Billing" }, { label: "Status" }, { label: "Total", align: "right", money: true }],
-    rows: ordersMade.map((o) => [o.createdAt.toISOString(), shortNo(o.number), o.type === "ROOM_SERVICE" ? `Room ${o.roomNumber ?? ""}`.trim() : o.tableLabel ?? "Restaurant", o.settlement === "ROOM" ? "Room bill" : o.settlement === "PAY_NOW" ? "Paid now" : "To pay", cap(o.status.toLowerCase().replace(/_/g, " ")), o.total]),
+    title: msg("Restaurant orders created"), subtitle: msg("For hotel guests — prepared and served by the restaurant"),
+    columns: [{ label: msg("Time") }, { label: msg("Order") }, { label: msg("Where") }, { label: msg("Billing") }, { label: msg("Status") }, { label: msg("Total"), align: "right", money: true }],
+    rows: ordersMade.map((o) => [o.createdAt.toISOString(), shortNo(o.number), o.type === "ROOM_SERVICE" ? (o.roomNumber ? L(msg("Room {room}"), { room: o.roomNumber }) : msg("Room")) : o.tableLabel ?? msg("Restaurant"), o.settlement === "ROOM" ? msg("Room bill") : o.settlement === "PAY_NOW" ? msg("Paid now") : msg("To pay"), statusWord(o.status), o.total]),
   });
 
   // ── Timeline ──
   const real = logs.filter((l) => !NOISE.has(l.action) && !(l.action === "room.status_changed" && AUTO_ROOM_NOTE.test(String(after(l).note ?? ""))));
-  const timeline = opts.period ? { timeline: [], timelineMore: false, timelineLeft: 0 } : await receptionTimeline(logCount - logs.length, real, s);
+  const timeline = opts.period ? { timeline: [], timelineMore: false, timelineLeft: 0 } : await receptionTimeline(logCount - logs.length, real, s, L);
   const hours = opts.period ? undefined : perHour(s.startedAt, s.endedAt, real.filter((l) => l.action !== "auth.login" && !l.action.startsWith("shift.")).map((l) => l.createdAt));
 
   // ── The people behind the figures: who she checked in and out, the bookings she made, the requests she handled ──
@@ -271,49 +298,52 @@ async function receptionFacts(s: Subject, opts: { period?: boolean } = {}) {
   const listRecords: ShiftRecordTable[] = [];
   const ins = firstOf(CHECK_IN_ACTIONS).filter(([id]) => resById.has(id));
   if (ins.length) listRecords.push({
-    title: "Guests checked in", subtitle: opts.period ? "Each stay she checked in" : "Each stay checked in during the shift",
-    columns: [{ label: opts.period ? "When" : "Time" }, { label: "Guest" }, { label: "Room" }, { label: "Booking" }, { label: "Until" }],
-    rows: ins.slice(0, LIST).map(([id, at]) => { const r = resById.get(id)!; return [at.toISOString(), r.guest.fullName, roomList(r), r.reference, formatBusinessDate(fromDbDate(r.departureDate))]; }),
-    more: ins.length > LIST ? ins.length - LIST : undefined, moreNote: "see Stays for every one",
+    title: msg("Guests checked in"), subtitle: opts.period ? msg("Each stay she checked in") : msg("Each stay checked in during the shift"),
+    columns: [{ label: opts.period ? msg("When") : msg("Time") }, { label: msg("Guest") }, { label: msg("Room") }, { label: msg("Booking") }, { label: msg("Until") }],
+    rows: ins.slice(0, LIST).map(([id, at]) => { const r = resById.get(id)!; return [at.toISOString(), r.guest.fullName, roomList(r), r.reference, L("{date}", { date: hotelDay(fromDbDate(r.departureDate)) })]; }),
+    more: ins.length > LIST ? ins.length - LIST : undefined, moreNote: msg("see Stays for every one"),
   });
   const outs = firstOf(["reservation.checked_out"]).filter(([id]) => resById.has(id));
   if (outs.length) listRecords.push({
-    title: "Guests checked out", subtitle: "With what was still owed on the bill",
-    columns: [{ label: opts.period ? "When" : "Time" }, { label: "Guest" }, { label: "Room" }, { label: "Booking" }, { label: "Bill", align: "right", money: true }, { label: "Still owed", align: "right", money: true }],
+    title: msg("Guests checked out"), subtitle: msg("With what was still owed on the bill"),
+    columns: [{ label: opts.period ? msg("When") : msg("Time") }, { label: msg("Guest") }, { label: msg("Room") }, { label: msg("Booking") }, { label: msg("Bill"), align: "right", money: true }, { label: msg("Still owed"), align: "right", money: true }],
     rows: outs.slice(0, LIST).map(([id, at]) => { const r = resById.get(id)!; return [at.toISOString(), r.guest.fullName, roomList(r), r.reference, r.netAmount, Math.max(0, r.balanceAmount)]; }),
-    more: outs.length > LIST ? outs.length - LIST : undefined, moreNote: "see Stays for every one",
+    more: outs.length > LIST ? outs.length - LIST : undefined, moreNote: msg("see Stays for every one"),
   });
   const made = firstOf(["reservation.created", "meeting.booked"]).filter(([id]) => resById.has(id));
   if (made.length) listRecords.push({
-    title: "Reservations made", subtitle: "Bookings she created",
-    columns: [{ label: opts.period ? "When" : "Time" }, { label: "Booking" }, { label: "Guest" }, { label: "Stay" }, { label: "Value", align: "right", money: true }],
-    rows: made.slice(0, LIST).map(([id, at]) => { const r = resById.get(id)!; return [at.toISOString(), r.reference, r.guest.fullName, `${formatBusinessDate(fromDbDate(r.arrivalDate))} → ${formatBusinessDate(fromDbDate(r.departureDate))}`, r.netAmount]; }),
-    more: made.length > LIST ? made.length - LIST : undefined, moreNote: "see Stays for every one",
+    title: msg("Reservations made"), subtitle: msg("Bookings she created"),
+    columns: [{ label: opts.period ? msg("When") : msg("Time") }, { label: msg("Booking") }, { label: msg("Guest") }, { label: msg("Stay") }, { label: msg("Value"), align: "right", money: true }],
+    rows: made.slice(0, LIST).map(([id, at]) => { const r = resById.get(id)!; return [at.toISOString(), r.reference, r.guest.fullName, L("{from} → {to}", { from: hotelDay(fromDbDate(r.arrivalDate)), to: hotelDay(fromDbDate(r.departureDate)) }), r.netAmount]; }),
+    more: made.length > LIST ? made.length - LIST : undefined, moreNote: msg("see Stays for every one"),
   });
   const handledReq = firstOf(["request.accepted", "request.updated", "complaint.resolved"]).filter(([id]) => reqById.has(id));
   if (handledReq.length) listRecords.push({
-    title: "Guest requests she handled", subtitle: "Accepted or finished",
-    columns: [{ label: opts.period ? "When" : "Time" }, { label: "Request" }, { label: "Room" }, { label: "Now" }],
-    rows: handledReq.slice(0, LIST).map(([id, at]) => { const q = reqById.get(id)!; return [at.toISOString(), REQUEST_TYPE_LABEL[q.type] ?? "Request", q.room?.number ?? "—", q.status === "COMPLETED" ? "Done" : q.status === "IN_PROGRESS" ? "On it" : cap(q.status.toLowerCase().replace(/_/g, " "))]; }),
-    more: handledReq.length > LIST ? handledReq.length - LIST : undefined, moreNote: "see Requests",
+    title: msg("Guest requests she handled"), subtitle: msg("Accepted or finished"),
+    columns: [{ label: opts.period ? msg("When") : msg("Time") }, { label: msg("Request") }, { label: msg("Room") }, { label: msg("Now") }],
+    rows: handledReq.slice(0, LIST).map(([id, at]) => { const q = reqById.get(id)!; return [at.toISOString(), REQUEST_TYPE_LABEL[q.type] ?? msg("Request"), q.room?.number ?? "—", q.status === "COMPLETED" ? msg("Done") : q.status === "IN_PROGRESS" ? msg("On it") : statusWord(q.status)]; }),
+    more: handledReq.length > LIST ? handledReq.length - LIST : undefined, moreNote: msg("see Requests"),
   });
 
   const headline = nonzero([
-    { label: "Guests checked in", value: checkIns }, { label: "Guests checked out", value: checkOuts }, { label: "Reservations handled", value: handled },
-    { label: "Payments recorded", value: totals.payments }, { label: "Recorded in payments", value: totals.collected, money: true },
-    { label: "Restaurant guest orders", value: ordersMade.length }, { label: "Transport requests", value: transport },
-    { label: "Guest requests handled", value: requestsHandled },
+    { label: msg("Guests checked in"), value: checkIns }, { label: msg("Guests checked out"), value: checkOuts }, { label: msg("Reservations handled"), value: handled },
+    { label: msg("Payments recorded"), value: totals.payments }, { label: msg("Recorded in payments"), value: totals.collected, money: true },
+    { label: msg("Restaurant guest orders"), value: ordersMade.length }, { label: msg("Transport requests"), value: transport },
+    { label: msg("Guest requests handled"), value: requestsHandled },
   ]);
+  const released = typeof closing.requestsReleased === "number" ? closing.requestsReleased : 0;
   const handover = [
-    owing !== null ? (owing > 0 ? `Guests in the hotel owed ${tzs(owing)} at the close${owingGuests ? ` (${plural(owingGuests, "guest")})` : ""}.` : "No guest in the hotel owed money at the close.") : null,
-    s.closingNote ? `Handover note: ${oneLine(s.closingNote)}` : null,
-    typeof closing.requestsReleased === "number" && closing.requestsReleased > 0 ? `${plural(closing.requestsReleased, "guest request")} put back to New for the next shift.` : null,
+    owing !== null ? (owing > 0
+      ? owingGuests ? L(msg("Guests in the hotel owed {amount} at the close ({guests})."), { amount: tzs(owing), guests: count(owingGuests, msg("{n} guest"), msg("{n} guests")) }) : L(msg("Guests in the hotel owed {amount} at the close."), { amount: tzs(owing) })
+      : msg("No guest in the hotel owed money at the close.")) : null,
+    s.closingNote ? L(msg("Handover note: {note}"), { note: oneLine(s.closingNote) }) : null,
+    released > 0 ? L(released === 1 ? msg("{n} guest request put back to New for the next shift.") : msg("{n} guest requests put back to New for the next shift."), { n: released }) : null,
   ].filter((x): x is string => !!x);
-  return { headline, groups: groups.map((g) => ({ ...g, facts: nonzero(g.facts) })).filter((g) => g.facts.length), money, records: [...listRecords, ...records], handover, ...timeline, hours };
+  return { headline, groups: groups.map((g) => ({ ...g, facts: nonzero(g.facts) })).filter((g) => g.facts.length), money, records: [...listRecords, ...records], handover, ...timeline, hours, i18n: book };
 }
 
 /** The reception timeline: each action with what it was about (the booking, the room, the amount). */
-async function receptionTimeline(left: number, logs: { id: string; action: string; entityType: string; entityId: string | null; after: unknown; createdAt: Date }[], s: Subject) {
+async function receptionTimeline(left: number, logs: { id: string; action: string; entityType: string; entityId: string | null; after: unknown; createdAt: Date }[], s: Subject, L: ReturnType<typeof textBook>["L"]) {
   const ids = (type: string) => [...new Set(logs.filter((l) => l.entityType === type && l.entityId).map((l) => l.entityId!))];
   const [reservations, payments, orders, requests, trips] = await Promise.all([
     db.reservation.findMany({ where: { id: { in: ids("Reservation") } }, select: { id: true, reference: true, guest: { select: { fullName: true } }, rooms: { select: { room: { select: { number: true } } } } } }),
@@ -328,35 +358,41 @@ async function receptionTimeline(left: number, logs: { id: string; action: strin
   const req = new Map(requests.map((q) => [q.id, q]));
   const trip = new Map(trips.map((t) => [t.id, t]));
   const rooms = (r: { rooms: { room: { number: string } | null }[] }) => [...new Set(r.rooms.map((x) => x.room?.number).filter(Boolean))].join(", ");
-  const detail = (l: (typeof logs)[number]) => {
+  // What each line is about, as parts said in the reader's language (names, references and amounts as they are).
+  const detail = (l: (typeof logs)[number]): TextArg | null => {
     const a = l.after && typeof l.after === "object" ? (l.after as Record<string, unknown>) : {};
     if (l.entityType === "Reservation" && l.entityId) {
       const r = res.get(l.entityId);
       if (!r) return null;
       const where = rooms(r);
-      return /checked_(in|out)|walk_in|room_/.test(l.action) && where ? `Room ${where} · ${r.guest.fullName}` : `${r.reference} · ${r.guest.fullName}`;
+      return /checked_(in|out)|walk_in|room_/.test(l.action) && where ? word(msg("Room {room} · {guest}"), { room: where, guest: r.guest.fullName }) : `${r.reference} · ${r.guest.fullName}`;
     }
     if (l.entityType === "Payment" && l.entityId) { const p = pay.get(l.entityId); return p ? tzs(p.amount) : null; }
     if (l.entityType === "RestaurantOrder" && l.entityId) {
       const o = ord.get(l.entityId);
       if (!o) return null;
-      const amount = typeof a.amount === "number" ? ` · ${tzs(a.amount)}` : "";
-      return `${shortNo(o.number)}${o.roomNumber ? ` · Room ${o.roomNumber}` : ""}${amount}`;
+      return joined([shortNo(o.number), ...(o.roomNumber ? [roomWord(o.roomNumber)] : []), ...(typeof a.amount === "number" ? [tzs(a.amount)] : [])], " · ");
     }
-    if (l.entityType === "ServiceRequest" && l.entityId) { const q = req.get(l.entityId); return q ? `${cap(q.type.toLowerCase())}${q.room ? ` · Room ${q.room.number}` : ""}` : null; }
+    if (l.entityType === "ServiceRequest" && l.entityId) { const q = req.get(l.entityId); return q ? joined([word(cap(q.type.toLowerCase())), ...(q.room ? [roomWord(q.room.number)] : [])], " · ") : null; }
     if (l.entityType === "TransportTrip" && l.entityId) return trip.get(l.entityId)?.reference ?? null;
     return null;
   };
   const rows = logs.map((l) => {
-    const word = l.action === "shift.closed_by_manager" && s.closedById === s.userId ? "Shift ended" : LINE[l.action] ?? cap(friendlyAction(l.action));
+    const what = l.action === "shift.closed_by_manager" && s.closedById === s.userId ? msg("Shift ended") : LINE[l.action] ?? cap(friendlyAction(l.action));
     const d = detail(l);
-    return { at: l.createdAt.toISOString(), text: d ? `${word} — ${d}` : word, area: AREA(l.action) };
+    return { at: l.createdAt.toISOString(), text: d ? L("{what} — {detail}", { what: word(what), detail: d }) : what, area: AREA(l.action) };
   });
   // The end of the shift is always the last line (a manager's close is the manager's own log row).
   if (!rows.some((r) => r.text.startsWith("Shift ended") || r.text.startsWith("Shift closed"))) {
-    rows.push({ at: s.endedAt.toISOString(), text: s.closedById && s.closedById !== s.userId ? `Shift closed by ${s.closedBy?.fullName ?? "a manager"}${s.closeReason ? ` — ${s.closeReason}` : ""}` : "Shift ended", area: "Shift" });
+    rows.push({ at: s.endedAt.toISOString(), text: s.closedById && s.closedById !== s.userId ? closedLine(L, s) : msg("Shift ended"), area: msg("Shift") });
   }
   return { timeline: rows, timelineMore: left > 0, timelineLeft: Math.max(0, left) };
+}
+
+/** "Shift closed by Asha — went home ill" (the reason as they wrote it). */
+function closedLine(L: ReturnType<typeof textBook>["L"], s: Subject) {
+  const name: TextArg = s.closedBy?.fullName ?? word(msg("a manager"));
+  return s.closeReason ? L(msg("Shift closed by {name} — {reason}"), { name, reason: s.closeReason }) : L(msg("Shift closed by {name}"), { name });
 }
 
 // ───────────────────────── Waiter ─────────────────────────
@@ -366,6 +402,7 @@ const CUSTOMER_SOURCES = ["WEBSITE", "PUBLIC_QR", "GUEST_LINK", "ROOM_QR", "TABL
 
 async function waiterFacts(s: Subject, opts: { period?: boolean } = {}) {
   const W = { gte: s.startedAt, lt: s.endedAt };
+  const { book, L } = textBook();
   const me = s.userId;
   const [assignments, steps, made, served, closedTables, brought, activity] = await Promise.all([
     // Up to and including the close: a manager's hand-over at the close is written at the very moment the shift ends.
@@ -422,64 +459,65 @@ async function waiterFacts(s: Subject, opts: { period?: boolean } = {}) {
     cancelled: orders.filter((o) => o.status === "CANCELLED" && inW(o.cancelledAt)).length,
     steps: steps.filter((e) => e.from !== e.to).length,
   };
+  const orders_ = (n: number) => L("{x}", { x: count(n, msg("{n} order"), msg("{n} orders")) });
   const groups: ShiftReportData["groups"] = [
-    { title: "Orders", facts: [
-      { label: "Orders handled", value: facts.handled, sub: "created, given to them, claimed or served by them" },
-      { label: "Orders created", value: facts.created }, { label: "Orders assigned to them", value: facts.assigned }, { label: "Orders claimed", value: facts.claimed },
-      { label: "Orders served / delivered", value: facts.served, sub: facts.servedValue ? tzs(facts.servedValue) : undefined }, { label: "Orders completed", value: facts.completed, sub: "served and settled" },
-      { label: "Orders cancelled", value: facts.cancelled }, { label: "Order steps moved", value: facts.steps, sub: "accept, ready, serve…" },
+    { title: msg("Orders"), facts: [
+      { label: msg("Orders handled"), value: facts.handled, sub: msg("created, given to them, claimed or served by them") },
+      { label: msg("Orders created"), value: facts.created }, { label: msg("Orders assigned to them"), value: facts.assigned }, { label: msg("Orders claimed"), value: facts.claimed },
+      { label: msg("Orders served / delivered"), value: facts.served, sub: facts.servedValue ? tzs(facts.servedValue) : undefined }, { label: msg("Orders completed"), value: facts.completed, sub: msg("served and settled") },
+      { label: msg("Orders cancelled"), value: facts.cancelled }, { label: msg("Order steps moved"), value: facts.steps, sub: msg("accept, ready, serve…") },
     ] },
-    { title: "Where the orders came from", facts: [
-      { label: "Table orders", value: tableOrders.length }, { label: "Room orders", value: roomOrders.length },
-      { label: "Online & QR orders", value: customerOrders.length, sub: "placed by the customer: website, menu QR, stay link" },
-      { label: "Orders from reception (hotel guests)", value: receptionOrders.length },
+    { title: msg("Where the orders came from"), facts: [
+      { label: msg("Table orders"), value: tableOrders.length }, { label: msg("Room orders"), value: roomOrders.length },
+      { label: msg("Online & QR orders"), value: customerOrders.length, sub: msg("placed by the customer: website, menu QR, stay link") },
+      { label: msg("Orders from reception (hotel guests)"), value: receptionOrders.length },
     ] },
-    { title: "Hand-overs", facts: [
-      { label: "Handed over to a colleague", value: facts.handedOut }, { label: "Handed to them by a colleague", value: facts.handedIn },
-      { label: "Moved by a manager", value: facts.reassigned },
+    { title: msg("Hand-overs"), facts: [
+      { label: msg("Handed over to a colleague"), value: facts.handedOut }, { label: msg("Handed to them by a colleague"), value: facts.handedIn },
+      { label: msg("Moved by a manager"), value: facts.reassigned },
     ] },
-    { title: "Tables & rooms", facts: [
-      { label: "Tables served", value: tablesServed.length, sub: tablesServed.join(", ") || undefined }, { label: "Table sessions", value: sessions },
-      { label: "Tables closed (customers left)", value: closedTables }, { label: "Tables given to them", value: assignments.filter((a) => a.scope === "TABLE" && a.toUserId === me).length },
-      { label: "Rooms served", value: roomsServed.length, sub: roomsServed.map((r) => `Room ${r}`).join(", ") || undefined },
-      { label: "Bills printed or shared", value: bills },
+    { title: msg("Tables & rooms"), facts: [
+      { label: msg("Tables served"), value: tablesServed.length, sub: tablesServed.join(", ") || undefined }, { label: msg("Table sessions"), value: sessions },
+      { label: msg("Tables closed (customers left)"), value: closedTables }, { label: msg("Tables given to them"), value: assignments.filter((a) => a.scope === "TABLE" && a.toUserId === me).length },
+      { label: msg("Rooms served"), value: roomsServed.length, sub: roomsServed.length ? L("{x}", { x: joined(roomsServed.map(roomWord)) }) : undefined },
+      { label: msg("Bills printed or shared"), value: bills },
     ] },
   ];
   const money: ShiftReportData["money"] = {
-    title: "Payments on their orders", subtitle: "Service information, not a cash count: the Restaurant Counter records every payment",
+    title: msg("Payments on their orders"), subtitle: msg("Service information, not a cash count: the Restaurant Counter records every payment"),
     byKind: [],
     facts: [
-      { label: "Cash brought to the Counter", value: cash.reduce((t, p) => t + p.amount, 0), money: true, sub: cash.length ? plural(new Set(cash.map((p) => p.orderId)).size, "order") : undefined },
-      { label: "Paid at the restaurant", value: paidAtRestaurant, money: true, sub: atCounter.length ? `${plural(atCounter.length, "order")} recorded by the Counter` : undefined },
-      { label: "Paid online", value: paidOnline, money: true },
-      { label: "Charged to rooms", value: onRoom.reduce((t, o) => t + o.total, 0), money: true, sub: onRoom.length ? plural(onRoom.length, "order") : undefined },
-      { label: "Still unpaid when the report was made", value: unpaid.reduce((t, o) => t + o.total - o.paidAmount, 0), money: true, sub: unpaid.length ? plural(unpaid.length, "order") : undefined },
+      { label: msg("Cash brought to the Counter"), value: cash.reduce((t, p) => t + p.amount, 0), money: true, sub: cash.length ? orders_(new Set(cash.map((p) => p.orderId)).size) : undefined },
+      { label: msg("Paid at the restaurant"), value: paidAtRestaurant, money: true, sub: atCounter.length ? L(atCounter.length === 1 ? msg("{n} order recorded by the Counter") : msg("{n} orders recorded by the Counter"), { n: atCounter.length }) : undefined },
+      { label: msg("Paid online"), value: paidOnline, money: true },
+      { label: msg("Charged to rooms"), value: onRoom.reduce((t, o) => t + o.total, 0), money: true, sub: onRoom.length ? orders_(onRoom.length) : undefined },
+      { label: msg("Still unpaid when the report was made"), value: unpaid.reduce((t, o) => t + o.total - o.paidAmount, 0), money: true, sub: unpaid.length ? orders_(unpaid.length) : undefined },
     ],
   };
   const records: ShiftRecordTable[] = [];
   const rows = activity ? activity.orders.filter((o) => ids.has(o.id)) : [];
   if (rows.length) records.push({
-    title: "Orders they handled", subtitle: "Each order, how it came to them, and how it was paid (as the Counter recorded it)",
-    columns: [{ label: "Order" }, { label: "Where" }, { label: "How" }, { label: "Status" }, { label: "Paid" }, { label: "Total", align: "right", money: true }],
-    rows: rows.map((o) => [o.no, o.place, o.how.join(", ") || "—", cap(o.status.toLowerCase().replace(/_/g, " ")), o.money === "ROOM_BILL" ? "Room bill" : o.money === "PAID_ONLINE" ? "Online" : o.paidBy ?? (o.money === "UNPAID" ? "Unpaid" : cap(o.money.toLowerCase().replace(/_/g, " "))), o.total]),
+    title: msg("Orders they handled"), subtitle: msg("Each order, how it came to them, and how it was paid (as the Counter recorded it)"),
+    columns: [{ label: msg("Order") }, { label: msg("Where") }, { label: msg("How") }, { label: msg("Status") }, { label: msg("Paid") }, { label: msg("Total"), align: "right", money: true }],
+    rows: rows.map((o) => [o.no, o.place, o.how.join(", ") || "—", statusWord(o.status), o.money === "ROOM_BILL" ? msg("Room bill") : o.money === "PAID_ONLINE" ? msg("Online") : o.paidBy ?? (o.money === "UNPAID" ? msg("Unpaid") : statusWord(o.money)), o.total]),
   });
 
-  const timeline = activity ? [...activity.history].reverse().map((h) => ({ at: h.at, text: h.text, area: h.kind === "shift" ? "Shift" : h.kind === "bill" ? "Bills" : h.kind === "table" ? "Tables" : h.kind === "assign" ? "Hand-overs" : "Orders" })) : [];
-  if (activity && !timeline.some((t) => t.area === "Shift" && /^(Ended|Shift closed)/.test(t.text))) timeline.push({ at: s.endedAt.toISOString(), text: s.closedById && s.closedById !== me ? `Shift closed by ${s.closedBy?.fullName ?? "a manager"}${s.closeReason ? ` — ${s.closeReason}` : ""}` : "Ended the shift", area: "Shift" });
-  if (activity && !timeline.some((t) => t.area === "Shift" && /^Started/.test(t.text))) timeline.unshift({ at: s.startedAt.toISOString(), text: "Started the shift", area: "Shift" });
+  const timeline = activity ? [...activity.history].reverse().map((h) => ({ at: h.at, text: h.text, area: h.kind === "shift" ? msg("Shift") : h.kind === "bill" ? msg("Bills") : h.kind === "table" ? msg("Tables") : h.kind === "assign" ? msg("Hand-overs") : msg("Orders") })) : [];
+  if (activity && !timeline.some((t) => t.area === "Shift" && /^(Ended|Shift closed)/.test(t.text))) timeline.push({ at: s.endedAt.toISOString(), text: s.closedById && s.closedById !== me ? closedLine(L, s) : msg("Ended the shift"), area: msg("Shift") });
+  if (activity && !timeline.some((t) => t.area === "Shift" && /^Started/.test(t.text))) timeline.unshift({ at: s.startedAt.toISOString(), text: msg("Started the shift"), area: msg("Shift") });
 
   const headline = nonzero([
-    { label: "Orders handled", value: facts.handled }, { label: "Orders served", value: facts.served }, { label: "Orders completed", value: facts.completed },
-    { label: "Tables served", value: tablesServed.length }, { label: "Room orders", value: roomOrders.length }, { label: "Online & QR orders", value: customerOrders.length },
-    { label: "Cash brought to the Counter", value: cash.reduce((t, p) => t + p.amount, 0), money: true }, { label: "Room-charge orders", value: onRoom.length },
-    { label: "Orders handed over", value: facts.handedOut }, { label: "Orders cancelled", value: facts.cancelled },
+    { label: msg("Orders handled"), value: facts.handled }, { label: msg("Orders served"), value: facts.served }, { label: msg("Orders completed"), value: facts.completed },
+    { label: msg("Tables served"), value: tablesServed.length }, { label: msg("Room orders"), value: roomOrders.length }, { label: msg("Online & QR orders"), value: customerOrders.length },
+    { label: msg("Cash brought to the Counter"), value: cash.reduce((t, p) => t + p.amount, 0), money: true }, { label: msg("Room-charge orders"), value: onRoom.length },
+    { label: msg("Orders handed over"), value: facts.handedOut }, { label: msg("Orders cancelled"), value: facts.cancelled },
   ]);
   const handover = [
-    facts.reassigned ? `${plural(facts.reassigned, "order")} moved to a colleague by a manager.` : null,
-    s.closingNote ? `Note: ${oneLine(s.closingNote)}` : null,
+    facts.reassigned ? L(facts.reassigned === 1 ? msg("{n} order moved to a colleague by a manager.") : msg("{n} orders moved to a colleague by a manager."), { n: facts.reassigned }) : null,
+    s.closingNote ? L(msg("Note: {note}"), { note: oneLine(s.closingNote) }) : null,
   ].filter((x): x is string => !!x);
   const hours = activity ? perHour(s.startedAt, s.endedAt, activity.history.filter((h) => h.kind !== "shift").map((h) => new Date(h.at))) : undefined;
-  return { headline, groups: groups.map((g) => ({ ...g, facts: nonzero(g.facts) })).filter((g) => g.facts.length), money: { ...money, facts: nonzero(money.facts) }, records, handover, timeline, timelineMore: activity?.more ?? false, hours };
+  return { headline, groups: groups.map((g) => ({ ...g, facts: nonzero(g.facts) })).filter((g) => g.facts.length), money: { ...money, facts: nonzero(money.facts) }, records, handover, timeline, timelineMore: activity?.more ?? false, hours, i18n: book };
 }
 
 /** One person's facts for any window (a shift, a week, a month) — the same counting everywhere. */
@@ -493,44 +531,46 @@ const factValue = (f: ShiftFact) => (f.money ? tzs(f.value) : f.value.toLocaleSt
 
 export function buildShiftDocument(d: ShiftReportData, timezone: string): Report {
   const clock = (iso: string) => new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: timezone }).format(new Date(iso));
+  // The document's own sentences join the data's (both kept with the report, to say it in another language).
+  const { book, L } = textBook(mergeBooks(d.i18n));
   const reception = d.shift.department === "RECEPTION";
   const top = d.headline.slice(0, 4);
   const figures: Figure[] = [
-    { label: "Shift", value: `${clock(d.shift.startedAt)} → ${clock(d.shift.endedAt)}`, sub: d.shift.label, tone: "gold" as const },
-    { label: "Duration", value: shiftDuration(d.shift.minutes), sub: formatBusinessDate(d.shift.businessDate) },
+    { label: msg("Shift"), value: `${clock(d.shift.startedAt)} → ${clock(d.shift.endedAt)}`, sub: d.shift.label, tone: "gold" as const },
+    { label: msg("Duration"), value: shiftDuration(d.shift.minutes), sub: L("{date}", { date: hotelDay(d.shift.businessDate) }) },
     ...top.map((f): Figure => ({ label: f.label, value: factValue(f), raw: f.value, tone: f.money ? "emerald" : undefined })),
   ].slice(0, 6);
   const blocks: Block[] = [];
   blocks.push({
-    kind: "highlights", title: "Shift performance",
+    kind: "highlights", title: msg("Shift performance"),
     items: [
-      { label: "Staff", value: d.person.name, sub: d.person.role },
-      { label: "Business date", value: formatBusinessDate(d.shift.businessDate, true), sub: "hotel day 04:00 → 04:00" },
-      { label: "Shift", value: `${clock(d.shift.startedAt)} → ${clock(d.shift.endedAt)}`, sub: `${shiftDuration(d.shift.minutes)} · ${d.shift.label}` },
-      { label: "Closed", value: d.shift.byManager ? `By ${d.shift.closedBy ?? "a manager"}` : "By themselves", sub: d.shift.byManager && d.shift.closeReason ? d.shift.closeReason : undefined },
+      { label: msg("Staff"), value: d.person.name, sub: d.person.role },
+      { label: msg("Business date"), value: L("{date}", { date: hotelDay(d.shift.businessDate, true) }), sub: msg("hotel day 04:00 → 04:00") },
+      { label: msg("Shift"), value: `${clock(d.shift.startedAt)} → ${clock(d.shift.endedAt)}`, sub: L("{duration} · {label}", { duration: shiftDuration(d.shift.minutes), label: word(d.shift.label) }) },
+      { label: msg("Closed"), value: d.shift.byManager ? L(msg("By {name}"), { name: d.shift.closedBy ?? word(msg("a manager")) }) : msg("By themselves"), sub: d.shift.byManager && d.shift.closeReason ? d.shift.closeReason : undefined },
     ],
   });
   blocks.push(d.headline.length
-    ? { kind: "list", title: "Activity", tone: "insight", items: d.headline.map(factLine) }
-    : { kind: "note", text: "No recorded activity in this shift." });
-  if (d.handover.length) blocks.push({ kind: "list", title: "At the end of the shift", tone: "attention", items: d.handover });
-  if (d.shift.replacement) blocks.push({ kind: "note", text: `Worked as a replacement for the scheduled person — ${d.shift.replacement}` });
+    ? { kind: "list", title: msg("Activity"), tone: "insight", items: d.headline.map((f) => factEntry(book, f)) }
+    : { kind: "note", text: msg("No recorded activity in this shift.") });
+  if (d.handover.length) blocks.push({ kind: "list", title: msg("At the end of the shift"), tone: "attention", items: d.handover });
+  if (d.shift.replacement) blocks.push({ kind: "note", text: L(msg("Worked as a replacement for the scheduled person — {reason}"), { reason: d.shift.replacement }) });
 
-  blocks.push({ kind: "section", title: "Activity in detail", subtitle: reception ? "Reservations, guests, rooms, restaurant guest service and transport" : "Orders, where they came from, hand-overs, tables and rooms" });
+  blocks.push({ kind: "section", title: msg("Activity in detail"), subtitle: reception ? msg("Reservations, guests, rooms, restaurant guest service and transport") : msg("Orders, where they came from, hand-overs, tables and rooms") });
   for (const g of d.groups) {
     blocks.push({
       kind: "table", title: g.title, subtitle: g.subtitle, half: true,
-      columns: [{ label: "What" }, { label: "Count", align: "right" }, { label: "", muted: true }],
+      columns: [{ label: msg("What") }, { label: msg("Count"), align: "right" }, { label: "", muted: true }],
       rows: g.facts.map((f) => [f.label, f.money ? tzs(f.value) : f.value, f.sub ?? null]),
     });
   }
   if (d.money && d.money.facts.length) {
     blocks.push({ kind: "section", title: d.money.title, subtitle: d.money.subtitle });
-    blocks.push({ kind: "table", title: d.money.title, half: d.money.byKind.length > 0, columns: [{ label: "What" }, { label: "Amount / count", align: "right" }, { label: "", muted: true }], rows: d.money.facts.map((f) => [f.label, f.money ? tzs(f.value) : f.value, f.sub ?? null]) });
-    if (d.money.byKind.length) blocks.push({ kind: "bars", title: "By payment method", items: d.money.byKind.map((k) => ({ label: k.name, value: k.amount })), money: true, half: true });
+    blocks.push({ kind: "table", title: d.money.title, half: d.money.byKind.length > 0, columns: [{ label: msg("What") }, { label: msg("Amount / count"), align: "right" }, { label: "", muted: true }], rows: d.money.facts.map((f) => [f.label, f.money ? tzs(f.value) : f.value, f.sub ?? null]) });
+    if (d.money.byKind.length) blocks.push({ kind: "bars", title: msg("By payment method"), items: d.money.byKind.map((k) => ({ label: k.name, value: k.amount })), money: true, half: true });
   }
   if (d.records.length) {
-    blocks.push({ kind: "section", title: "Records", subtitle: "The records behind the figures" });
+    blocks.push({ kind: "section", title: msg("Records"), subtitle: msg("The records behind the figures") });
     for (const r of d.records) {
       blocks.push({
         kind: "table", title: r.title, subtitle: r.subtitle, columns: r.columns.map((c) => ({ label: c.label, align: c.align, money: c.money })),
@@ -538,44 +578,53 @@ export function buildShiftDocument(d: ShiftReportData, timezone: string): Report
       });
     }
   }
-  blocks.push({ kind: "section", title: "Timeline", subtitle: "Everything this person did in the system during the shift, in order" });
+  blocks.push({ kind: "section", title: msg("Timeline"), subtitle: msg("Everything this person did in the system during the shift, in order") });
   blocks.push({
-    kind: "table", title: "Activity timeline", columns: [{ label: "Time" }, { label: "What happened" }, { label: "Area", muted: true }],
-    rows: d.timeline.map((t) => [clock(t.at), t.text, t.area]), empty: "Nothing recorded.",
-    ...(d.timelineLeft ? { more: d.timelineLeft, moreNote: "a very long shift — the first part is shown" } : {}),
+    kind: "table", title: msg("Activity timeline"), columns: [{ label: msg("Time") }, { label: msg("What happened") }, { label: msg("Area"), muted: true }],
+    rows: d.timeline.map((t) => [clock(t.at), t.text, t.area]), empty: msg("Nothing recorded."),
+    ...(d.timelineLeft ? { more: d.timelineLeft, moreNote: msg("a very long shift — the first part is shown") } : {}),
   });
-  if (d.timelineMore && !d.timelineLeft) blocks.push({ kind: "note", text: "A very long shift: the timeline shows its newest part." });
-  blocks.push({ kind: "note", text: "An activity record from the hotel system, not a score: every figure is counted from this person's own records inside the shift's time. Payments are the ones they recorded; revenue and what is still owed are shown apart." });
+  if (d.timelineMore && !d.timelineLeft) blocks.push({ kind: "note", text: msg("A very long shift: the timeline shows its newest part.") });
+  blocks.push({ kind: "note", text: msg("An activity record from the hotel system, not a score: every figure is counted from this person's own records inside the shift's time. Payments are the ones they recorded; revenue and what is still owed are shown apart.") });
 
   return {
-    key: "staff", title: `Shift report — ${d.person.name}`, blurb: `${d.person.role} · ${d.shift.label} shift · ${clock(d.shift.startedAt)} → ${clock(d.shift.endedAt)} (${shiftDuration(d.shift.minutes)}).`,
-    period: formatBusinessDate(d.shift.businessDate, true), from: d.shift.businessDate, to: d.shift.businessDate, days: 1, figures, blocks, share: "",
+    key: "staff", title: L(msg("Shift report — {name}"), { name: d.person.name }),
+    blurb: L(msg("{role} · {label} shift · {from} → {to} ({duration})."), { role: word(d.person.role), label: word(d.shift.label), from: clock(d.shift.startedAt), to: clock(d.shift.endedAt), duration: shiftDuration(d.shift.minutes) }),
+    period: formatBusinessDate(d.shift.businessDate, true), from: d.shift.businessDate, to: d.shift.businessDate, days: 1, figures, blocks, share: "", i18n: book,
   };
 }
 
 // ───────────────────────── The boss's message ─────────────────────────
 
-export function renderShiftReportText(d: ShiftReportData, hotelName: string, timezone: string, link?: string | null) {
+/**
+ * The boss's WhatsApp message, in the reader's language (`t`, English by default) — always from the same frozen
+ * figures, so every language says the same numbers.
+ */
+export function renderShiftReportText(d: ShiftReportData, hotelName: string, timezone: string, link?: string | null, t: T = englishT) {
   const clock = (iso: string) => new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: timezone }).format(new Date(iso));
-  const date = new Date(`${d.shift.businessDate}T00:00:00Z`).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" });
+  const date = t.locale === "en"
+    ? new Date(`${d.shift.businessDate}T00:00:00Z`).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" })
+    : t.date(d.shift.businessDate);
+  const tr = reportTr(t, d.i18n);
+  const by = d.shift.closedBy ?? t("a manager");
   const lines = [
     `*${hotelName.toUpperCase()}*`,
-    "*Shift completed*",
+    `*${t("Shift completed")}*`,
     "",
-    `*${d.person.name}* — ${d.person.role}`,
-    `Business date: ${date}`,
+    `*${d.person.name}* — ${t(d.person.role)}`,
+    t("Business date: {date}", { date }),
     "",
-    "*Shift:*",
+    `*${t("Shift:")}*`,
     `${clock(d.shift.startedAt)} → ${clock(d.shift.endedAt)}`,
-    `Duration: ${shiftDuration(d.shift.minutes)}`,
-    d.shift.byManager ? `_Closed by ${d.shift.closedBy ?? "a manager"}${d.shift.closeReason ? ` — ${d.shift.closeReason}` : ""}_` : null,
+    t("Duration: {duration}", { duration: shiftDuration(d.shift.minutes) }),
+    d.shift.byManager ? `_${d.shift.closeReason ? t("Closed by {name} — {reason}", { name: by, reason: d.shift.closeReason }) : t("Closed by {name}", { name: by })}_` : null,
     "",
-    "*Performance:*",
-    ...(d.headline.length ? d.headline.map((f) => `• ${factLine(f)}`) : ["• No recorded activity"]),
-    ...d.handover.slice(0, 2).map((h) => `_${oneLine(h, 200)}_`),
+    `*${t("Performance:")}*`,
+    ...(d.headline.length ? d.headline.map((f) => `• ${factLine(f, t)}`) : [`• ${t("No recorded activity")}`]),
+    ...d.handover.slice(0, 2).map((h) => `_${oneLine(tr(h), 200)}_`),
   ];
   // The link always fits whole: the body is shortened first, the link goes last.
-  const tail = link ? `\n\n*Full shift report:* ${link}` : "";
+  const tail = link ? `\n\n*${t("Full shift report:")}* ${link}` : "";
   return lines.filter((l) => l !== null).join("\n").replace(/\n{3,}/g, "\n\n").slice(0, 3500 - tail.length) + tail;
 }
 
@@ -649,7 +698,16 @@ export async function deliverShiftReport(reportId: string, opts: { force?: boole
   const report = await db.shiftReport.findUniqueOrThrow({ where: { id: reportId }, include: { deliveries: true } });
   // A person sends one made while sending was off: from now on it is a normal report.
   if (opts.manual && report.sendSkipped) await db.shiftReport.update({ where: { id: report.id }, data: { sendSkipped: false } });
-  return deliverToRecipients({ link: { shiftReportId: report.id }, purpose: "SHIFT_REPORT", text: report.summaryText, generatedAt: report.generatedAt, deliveries: report.deliveries, force: opts.force, manual: opts.manual, deadline: opts.deadline });
+  return deliverToRecipients({
+    link: { shiftReportId: report.id }, purpose: "SHIFT_REPORT", text: report.summaryText, generatedAt: report.generatedAt, deliveries: report.deliveries, force: opts.force, manual: opts.manual, deadline: opts.deadline,
+    textFor: (lang) => shiftReportTextIn(report.data as unknown as ShiftReportData, report.shareToken, lang),
+  });
+}
+
+/** The same report's message in another language (the frozen figures; the link opens the report in that language). */
+export async function shiftReportTextIn(d: ShiftReportData, token: string, lang: Locale) {
+  const [settings, link, t] = await Promise.all([getSettings(), shiftReportLink(token), getTFor(lang)]);
+  return renderShiftReportText(d, settings.hotelName, settings.timezone, link ? withLang(link, lang) : null, t);
 }
 
 /**

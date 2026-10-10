@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useBackToClose } from "./use-back-to-close";
+import { useT } from "@/i18n/client";
 
 export interface LightboxImage {
   src: string;
@@ -21,6 +22,7 @@ const control =
  * opener and the page does not scroll behind it.
  */
 export function useLightbox(images: LightboxImage[]) {
+  const t = useT();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
   const touch = useRef<{ x: number; y: number } | null>(null);
@@ -67,16 +69,16 @@ export function useLightbox(images: LightboxImage[]) {
   }
 
   function onTouchStart(e: React.TouchEvent) {
-    const t = e.touches[0];
-    touch.current = t ? { x: t.clientX, y: t.clientY } : null;
+    const pt = e.touches[0];
+    touch.current = pt ? { x: pt.clientX, y: pt.clientY } : null;
   }
   function onTouchEnd(e: React.TouchEvent) {
     const start = touch.current;
-    const t = e.changedTouches[0];
+    const pt = e.changedTouches[0];
     touch.current = null;
-    if (!start || !t || images.length < 2) return;
-    const dx = t.clientX - start.x;
-    const dy = t.clientY - start.y;
+    if (!start || !pt || images.length < 2) return;
+    const dx = pt.clientX - start.x;
+    const dy = pt.clientY - start.y;
     if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.4) move(dx < 0 ? 1 : -1);
   }
 
@@ -88,7 +90,7 @@ export function useLightbox(images: LightboxImage[]) {
       onClose={onClose}
       onKeyDown={onKeyDown}
       onClick={(e) => { if (e.target === e.currentTarget) close(); }}
-      aria-label="Photo viewer"
+      aria-label={t("Photo viewer")}
       className="m-0 h-dvh max-h-none w-full max-w-none overscroll-contain bg-transparent p-0 text-white backdrop:bg-[#0b0906]/95 backdrop:backdrop-blur-sm"
     >
       {current && (
@@ -116,7 +118,7 @@ export function useLightbox(images: LightboxImage[]) {
             )}
             <button type="button" onClick={close} autoFocus className={control}>
               <X className="size-5" strokeWidth={1.6} aria-hidden="true" />
-              <span className="sr-only">Close photo viewer</span>
+              <span className="sr-only">{t("Close photo viewer")}</span>
             </button>
           </div>
           <div
@@ -144,11 +146,11 @@ export function useLightbox(images: LightboxImage[]) {
               <>
                 <button type="button" onClick={() => move(-1)} className={`${control} absolute left-3 top-1/2 hidden -translate-y-1/2 sm:inline-flex sm:left-6`}>
                   <ChevronLeft className="size-5" strokeWidth={1.6} aria-hidden="true" />
-                  <span className="sr-only">Previous photo</span>
+                  <span className="sr-only">{t("Previous photo")}</span>
                 </button>
                 <button type="button" onClick={() => move(1)} className={`${control} absolute right-3 top-1/2 hidden -translate-y-1/2 sm:inline-flex sm:right-6`}>
                   <ChevronRight className="size-5" strokeWidth={1.6} aria-hidden="true" />
-                  <span className="sr-only">Next photo</span>
+                  <span className="sr-only">{t("Next photo")}</span>
                 </button>
               </>
             )}
@@ -157,14 +159,14 @@ export function useLightbox(images: LightboxImage[]) {
             {images.length > 1 && (
               <button type="button" onClick={() => move(-1)} className={`${control} shrink-0 sm:hidden`}>
                 <ChevronLeft className="size-5" strokeWidth={1.6} aria-hidden="true" />
-                <span className="sr-only">Previous photo</span>
+                <span className="sr-only">{t("Previous photo")}</span>
               </button>
             )}
             <p className="min-w-0 text-center text-[13px] leading-snug text-white/70">{current.alt}</p>
             {images.length > 1 && (
               <button type="button" onClick={() => move(1)} className={`${control} shrink-0 sm:hidden`}>
                 <ChevronRight className="size-5" strokeWidth={1.6} aria-hidden="true" />
-                <span className="sr-only">Next photo</span>
+                <span className="sr-only">{t("Next photo")}</span>
               </button>
             )}
           </div>

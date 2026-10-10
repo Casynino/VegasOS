@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Cormorant_Garamond, Geist_Mono } from "next/font/google";
 import Script from "next/script";
-import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
@@ -44,7 +43,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         {/* Public-site visitor theme, applied before first paint (saved choice, else device setting). */}
         <Script id="vlh-theme" strategy="beforeInteractive">{THEME_SCRIPT}</Script>
         {children}
-        <Toaster richColors position="top-center" />
       </body>
     </html>
   );

@@ -7,6 +7,8 @@ import { Check, ChevronDown, Loader2, Smartphone, X } from "lucide-react";
 import { NetworkMarks } from "@/components/payments/networks";
 import { cancelPromptAction, mobilePayAvailableAction, promptStatusAction, sendOrdersPromptAction, sendStayPromptAction } from "@/app/staff/(app)/mobile-pay/actions";
 import { cn } from "@/lib/utils";
+import { useT } from "@/i18n/client";
+import { msg } from "@/i18n/msg";
 
 const fmt = (n: number) => `TZS ${Math.round(n).toLocaleString("en-US")}`;
 const POLL_MS = 4000;
@@ -48,6 +50,7 @@ export function SendToPhone({ target, amount, phone = "", editableAmount = false
   /** The main way to pay here (owner, 2026-10-05: nTZS first, cash/LIPA/bank as other ways): shown open, ready to send. */
   primary?: boolean;
 }) {
+  const t = useT();
   const available = useMobilePayAvailable();
   const router = useRouter();
   const [open, setOpen] = useState(primary);
@@ -67,24 +70,28 @@ export function SendToPhone({ target, amount, phone = "", editableAmount = false
   const waitingId = waiting?.status === "PENDING" ? waiting.id : null;
   const onPaidRef = useRef(onPaid);
   useEffect(() => { onPaidRef.current = onPaid; });
+  // The translator for the follow-up below (read when it speaks, so a language switch never restarts the polling).
+  const tRef = useRef(t);
+  useEffect(() => { tRef.current = t; });
   useEffect(() => {
     if (!waitingId) return;
     let stopped = false, timer: ReturnType<typeof setTimeout> | undefined;
     const tick = async () => {
       if (stopped) return;
+      const t = tRef.current;
       // After a while it is asked less often — never given up (a late approval still shows "paid" here).
       const late = Date.now() - startedAt.current > GIVE_UP_MS;
-      if (late) setWaiting((w) => (w && w.id === waitingId && !w.note ? { ...w, note: "Not paid yet. If they pay later, it is still recorded automatically." } : w));
+      if (late) setWaiting((w) => (w && w.id === waitingId && !w.note ? { ...w, note: t("Not paid yet. If they pay later, it is still recorded automatically.") } : w));
       const r = await promptStatusAction({ id: waitingId }).catch(() => null);
       if (stopped) return;
       if (r?.ok && r.data.status !== "PENDING") {
         setWaiting((w) => (w && w.id === r.data.id ? { ...w, status: r.data.status, note: r.data.note } : w));
         if (r.data.status === "COMPLETED") {
-          if (r.data.note) toast.warning("Mobile money received — please check", { description: r.data.note, duration: 15000 });
-          else toast.success(`Paid — ${fmt(r.data.amount)} received by mobile money.`, { duration: 9000 });
+          if (r.data.note) toast.warning(t("Mobile money received — please check"), { description: r.data.note, duration: 15000 });
+          else toast.success(t("Paid — {amount} received by mobile money.", { amount: fmt(r.data.amount) }), { duration: 9000 });
           router.refresh();
           onPaidRef.current?.();
-        } else if (r.data.status === "FAILED" || r.data.status === "EXPIRED") toast.error(r.data.note ?? "Not paid — the request was declined or timed out.", { duration: 9000 });
+        } else if (r.data.status === "FAILED" || r.data.status === "EXPIRED") toast.error(r.data.note ?? t("Not paid — the request was declined or timed out."), { duration: 9000 });
         return;
       }
       timer = setTimeout(tick, late ? 20_000 : POLL_MS);
@@ -114,7 +121,7 @@ export function SendToPhone({ target, amount, phone = "", editableAmount = false
       // They had just paid: it is recorded — not cancelled, and not collected again.
       if (r.data.status === "COMPLETED") {
         setWaiting((w) => (w ? { ...w, status: "COMPLETED", note: r.data.note } : w));
-        toast.success(`Paid — ${fmt(r.data.amount)} received by mobile money.`, { duration: 9000 });
+        toast.success(t("Paid — {amount} received by mobile money.", { amount: fmt(r.data.amount) }), { duration: 9000 });
         router.refresh();
         onPaidRef.current?.();
       } else setWaiting(null);
@@ -131,14 +138,14 @@ export function SendToPhone({ target, amount, phone = "", editableAmount = false
           </span>
           <span className="min-w-0 flex-1 leading-tight">
             <span className="block font-semibold">
-              {s === "COMPLETED" ? (waiting.note ? "Received — please check" : `Paid · ${fmt(waiting.amount)} received`) : s === "PENDING" ? `Waiting for ${who ? who.split(" ")[0] : "the customer"} to pay…` : s === "CANCELLED" ? "Request cancelled" : s === "EXPIRED" ? "Request expired — not paid" : "Not paid"}
+              {s === "COMPLETED" ? (waiting.note ? t("Received — please check") : t("Paid · {amount} received", { amount: fmt(waiting.amount) })) : s === "PENDING" ? (who ? t("Waiting for {name} to pay…", { name: who.split(" ")[0] }) : t("Waiting for the customer to pay…")) : s === "CANCELLED" ? t("Request cancelled") : s === "EXPIRED" ? t("Request expired — not paid") : t("Not paid")}
             </span>
             <span className="text-xs text-muted-foreground">
-              {s === "PENDING" ? waiting.note ?? `Payment request for ${fmt(waiting.amount)} sent to ${waiting.phone}. They confirm it with their PIN — this updates automatically.` : waiting.note ?? `${fmt(waiting.amount)} · ${waiting.phone}`}
+              {s === "PENDING" ? waiting.note ?? t("Payment request for {amount} sent to {phone}. They confirm it with their PIN — this updates automatically.", { amount: fmt(waiting.amount), phone: waiting.phone }) : waiting.note ?? `${fmt(waiting.amount)} · ${waiting.phone}`}
             </span>
           </span>
-          {s === "PENDING" && <button type="button" onClick={cancel} disabled={pending} className="shrink-0 rounded-lg px-2 py-1 text-[11px] font-semibold text-muted-foreground ring-1 ring-border hover:bg-muted hover:text-foreground">Cancel request</button>}
-          {s !== "PENDING" && <button type="button" onClick={() => { setWaiting(null); setOpen(false); setAsk(String(Math.max(0, Math.round(amount)))); }} className="shrink-0 rounded-lg px-2 py-1 text-[11px] font-semibold ring-1 ring-border hover:bg-muted">{s === "COMPLETED" ? "New request" : "Send again"}</button>}
+          {s === "PENDING" && <button type="button" onClick={cancel} disabled={pending} className="shrink-0 rounded-lg px-2 py-1 text-[11px] font-semibold text-muted-foreground ring-1 ring-border hover:bg-muted hover:text-foreground">{t("Cancel request")}</button>}
+          {s !== "PENDING" && <button type="button" onClick={() => { setWaiting(null); setOpen(false); setAsk(String(Math.max(0, Math.round(amount)))); }} className="shrink-0 rounded-lg px-2 py-1 text-[11px] font-semibold ring-1 ring-border hover:bg-muted">{s === "COMPLETED" ? t("New request") : t("Send again")}</button>}
         </div>
       </div>
     );
@@ -148,7 +155,7 @@ export function SendToPhone({ target, amount, phone = "", editableAmount = false
     return (
       <button type="button" onClick={() => setOpen(true)}
         className={cn("flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-sky-500/50 px-3 py-2 text-sm font-medium text-sky-700 transition-colors hover:bg-sky-500/[0.06] dark:text-sky-300", className)}>
-        <Smartphone className="size-4" />Request mobile money{amount > 0 ? ` · ${fmt(editableAmount ? amt : amount)}` : ""}
+        <Smartphone className="size-4" />{t("Request mobile money")}{amount > 0 ? ` · ${fmt(editableAmount ? amt : amount)}` : ""}
       </button>
     );
   }
@@ -158,21 +165,21 @@ export function SendToPhone({ target, amount, phone = "", editableAmount = false
     <div className={cn("space-y-2 rounded-xl border border-sky-500/30 bg-sky-500/[0.04] p-2.5", className)}>
       <div className="flex items-center gap-2">
         <Smartphone className="size-4 shrink-0 text-sky-500" />
-        <span className="text-sm font-semibold">Mobile money</span>
+        <span className="text-sm font-semibold">{t("Mobile money")}</span>
         {/* A definite width, so the marks shrink inside it (container query) instead of spilling out. */}
         <div className="ml-auto w-44 min-w-0 max-w-[55%]"><NetworkMarks label={null} compact className="justify-end" /></div>
-        {!primary && <button type="button" onClick={() => setOpen(false)} aria-label="Close" className="grid size-7 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"><X className="size-4" /></button>}
+        {!primary && <button type="button" onClick={() => setOpen(false)} aria-label={t("Close")} className="grid size-7 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"><X className="size-4" /></button>}
       </div>
       <div className="flex flex-wrap gap-2">
-        <input value={number} onChange={(e) => setNumber(e.target.value)} type="tel" inputMode="tel" placeholder="Phone, e.g. 0712 345 678" aria-label="Customer's phone number"
+        <input value={number} onChange={(e) => setNumber(e.target.value)} type="tel" inputMode="tel" placeholder={t("Phone, e.g. 0712 345 678")} aria-label={t("Customer's phone number")}
           className="h-9 min-w-[10rem] flex-1 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-sky-500/30" />
         {editableAmount && (
-          <input value={ask} onChange={(e) => setAsk(e.target.value.replace(/\D/g, ""))} inputMode="numeric" aria-label="Amount (TZS)"
+          <input value={ask} onChange={(e) => setAsk(e.target.value.replace(/\D/g, ""))} inputMode="numeric" aria-label={t("Amount (TZS)")}
             className="h-9 w-28 rounded-lg border border-border bg-background px-3 text-sm tabular-nums outline-none focus:ring-2 focus:ring-sky-500/30" />
         )}
         <button type="button" onClick={send} disabled={pending || (!number.trim() && target.kind === "orders") || (editableAmount && amt <= 0)}
           className="flex h-9 shrink-0 grow items-center justify-center gap-1.5 rounded-lg bg-sky-600 px-3.5 text-sm font-semibold text-white transition hover:bg-sky-500 disabled:opacity-60 sm:grow-0">
-          {pending ? <Loader2 className="size-4 animate-spin" /> : <Smartphone className="size-4" />}Send request · {fmt(editableAmount ? amt : amount)}
+          {pending ? <Loader2 className="size-4 animate-spin" /> : <Smartphone className="size-4" />}{t("Send request · {amount}", { amount: fmt(editableAmount ? amt : amount) })}
         </button>
       </div>
     </div>
@@ -183,11 +190,12 @@ export function SendToPhone({ target, amount, phone = "", editableAmount = false
  * The other ways to take the money (cash, LIPA, bank…) — under "Send to phone", folded away while nTZS is the main way
  * (owner, 2026-10-05). Where nTZS is not set up they show as before.
  */
-export function OtherWays({ children, label = "Other payment methods", className, fold = true }: {
+export function OtherWays({ children, label = msg("Other payment methods"), className, fold = true }: {
   children: React.ReactNode; label?: string; className?: string;
   /** False when no prompt is offered above (nothing owed): the ways by hand are shown as they are. */
   fold?: boolean;
 }) {
+  const t = useT();
   const available = useMobilePayAvailable();
   const [open, setOpen] = useState(false);
   if (!available || !fold) return <div className={className}>{children}</div>;
@@ -195,7 +203,7 @@ export function OtherWays({ children, label = "Other payment methods", className
     <div className={className}>
       <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open}
         className="flex w-full items-center gap-2 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground transition hover:text-foreground">
-        <span className="h-px flex-1 bg-border" />{label}<ChevronDown className={cn("size-3.5 transition", open && "rotate-180")} /><span className="h-px flex-1 bg-border" />
+        <span className="h-px flex-1 bg-border" />{t(label)}<ChevronDown className={cn("size-3.5 transition", open && "rotate-180")} /><span className="h-px flex-1 bg-border" />
       </button>
       {open && <div className="mt-2">{children}</div>}
     </div>

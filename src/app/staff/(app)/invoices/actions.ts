@@ -10,6 +10,7 @@ import { cancelInvoice, createInvoiceForReservation, createManualInvoice, issueI
 import { billCompanyNow, recordCompanyPayment } from "@/server/services/company-billing";
 import { audit } from "@/server/audit";
 import { db } from "@/server/db";
+import { msg, msgf } from "@/i18n/msg";
 
 async function actor(user: CurrentUser) {
   const { ipAddress } = await requestMeta();
@@ -35,7 +36,7 @@ const Line = z.object({
 export async function createManualInvoiceAction(input: { corporateCustomerId: string; notes?: string; lines: z.input<typeof Line>[] }): Promise<ActionResult<{ id: string }>> {
   const res = await runAction(async () => {
     const user = await authorize("invoices.manage");
-    const data = parseInput(z.object({ corporateCustomerId: z.string().min(1, "Choose a company."), notes: z.string().max(1000).optional(), lines: z.array(Line).min(1) }), input);
+    const data = parseInput(z.object({ corporateCustomerId: z.string().min(1, msg("Choose a company.")), notes: z.string().max(1000).optional(), lines: z.array(Line).min(1) }), input);
     const inv = await createManualInvoice({ corporateCustomerId: data.corporateCustomerId, notes: data.notes, lines: data.lines }, await actor(user));
     return { id: inv.id };
   });
@@ -48,11 +49,11 @@ export async function issueInvoiceAction(input: { invoiceId: string; dueDate?: s
     const user = await authorize("invoices.manage");
     // A group's running bill becomes its final invoice only by finalizing the group (after everyone has left).
     const running = await db.invoice.findFirst({ where: { id: input.invoiceId, status: "DRAFT", groupId: { not: null } }, select: { group: { select: { name: true } } } });
-    if (running) throw new AppError(`This is ${running.group!.name}'s running bill. It becomes the final invoice when you finalize the group, after every room has checked out — for the charges so far, print the group statement.`);
+    if (running) throw new AppError(msgf("This is {group}'s running bill. It becomes the final invoice when you finalize the group, after every room has checked out — for the charges so far, print the group statement.", { group: running.group!.name }));
     await issueInvoice(input.invoiceId, await actor(user), input.dueDate || null);
     revalidatePath(`/staff/invoices/${input.invoiceId}`);
     return null;
-  }, "Invoice issued.");
+  }, msg("Invoice issued."));
 }
 
 export async function cancelInvoiceAction(input: { invoiceId: string; reason: string }) {
@@ -61,22 +62,22 @@ export async function cancelInvoiceAction(input: { invoiceId: string; reason: st
     await cancelInvoice(input.invoiceId, input.reason ?? "", await actor(user));
     revalidatePath(`/staff/invoices/${input.invoiceId}`);
     return null;
-  }, "Invoice cancelled.");
+  }, msg("Invoice cancelled."));
 }
 
 export async function invoicePaymentAction(_prev: unknown, formData: FormData): Promise<ActionResult<null>> {
   return runAction(async () => {
     const user = await authorize("payments.record");
     const data = parseInput(z.object({
-      invoiceId: z.string().min(1), amount: z.coerce.number().int().positive("Enter an amount."),
-      accountId: z.string().min(1, "Choose where the money was received."), reference: z.string().trim().max(80).optional(),
+      invoiceId: z.string().min(1), amount: z.coerce.number().int().positive(msg("Enter an amount.")),
+      accountId: z.string().min(1, msg("Choose where the money was received.")), reference: z.string().trim().max(80).optional(),
       receivedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal("")).transform((v) => v || null),
       notes: z.string().trim().max(300).optional(),
     }), formData);
     await recordInvoicePayment(data, await actor(user));
     revalidatePath(`/staff/invoices/${data.invoiceId}`);
     return null;
-  }, "Payment recorded.");
+  }, msg("Payment recorded."));
 }
 
 export async function voidInvoiceAction(input: { invoiceId: string; reason: string }) {
@@ -85,13 +86,13 @@ export async function voidInvoiceAction(input: { invoiceId: string; reason: stri
     await voidInvoice(input.invoiceId, input.reason ?? "", await actor(user));
     revalidatePath("/staff", "layout");
     return null;
-  }, "Invoice voided. Any stays on it owe those lines again.");
+  }, msg("Invoice voided. Any stays on it owe those lines again."));
 }
 
 const CompanyPay = z.object({
   companyId: z.string().min(1),
-  amount: z.coerce.number().int().positive("Enter the amount received."),
-  accountId: z.string().min(1, "Choose where the money was received."),
+  amount: z.coerce.number().int().positive(msg("Enter the amount received.")),
+  accountId: z.string().min(1, msg("Choose where the money was received.")),
   reference: z.string().trim().max(80).optional(),
   invoiceIds: z.array(z.string()).max(200).optional(),
 });
@@ -104,7 +105,7 @@ export async function companyPaymentAction(input: z.input<typeof CompanyPay>): P
     const res = await recordCompanyPayment(d, await actor(user));
     revalidatePath("/staff", "layout");
     return res;
-  }, "Payment recorded.");
+  }, msg("Payment recorded."));
 }
 
 /** Move a company-billed stay's company part onto an invoice now (without checking out). */
@@ -114,7 +115,7 @@ export async function billCompanyNowAction(input: { reservationId: string; mode?
     const res = await billCompanyNow(input.reservationId, await actor(user), input.mode ?? null);
     revalidatePath("/staff", "layout");
     return res;
-  }, "Billed to the company.");
+  }, msg("Billed to the company."));
 }
 
 const SendLog = z.object({

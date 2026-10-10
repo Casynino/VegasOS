@@ -1,6 +1,8 @@
 import "server-only";
 import { db } from "../db";
 import type { HotelSettings } from "@/generated/prisma/client";
+import { getT } from "@/i18n/server";
+import { englishT } from "@/i18n/translate";
 import { getPublicRoomType, parseImages, websitePricer } from "./public-booking";
 
 /**
@@ -31,7 +33,9 @@ export async function roomTypePhotos(slug: string) {
  * room card is not one of them. Null for a type the website does not sell (the meeting room, a private type).
  */
 export async function roomTypeOffer(slug: string, s: HotelSettings) {
-  const [type, price] = await Promise.all([getPublicRoomType(slug), websitePricer(s)]);
+  // The promotion label ("10% off") in the guest's language — the page shows it as it is.
+  const words = await getT().catch(() => englishT);
+  const [type, price] = await Promise.all([getPublicRoomType(slug), websitePricer(s, words)]);
   if (!type) return null;
   const p = price(type);
   return {

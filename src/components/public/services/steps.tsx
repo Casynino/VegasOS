@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { getT } from "@/i18n/server";
 import { typeScale } from "../kit/tokens";
 
 /**
@@ -8,7 +9,7 @@ import { typeScale } from "../kit/tokens";
  * steps sit side by side on one gold line with a node at each step (stacked on phones, with the
  * line running down the left).
  */
-export function Steps({
+export async function Steps({
   items,
   headingLevel = 3,
   layout = "list",
@@ -21,6 +22,7 @@ export function Steps({
 }) {
   const H = headingLevel === 3 ? "h3" : "h4";
   if (layout === "track") {
+    const t = await getT();
     return (
       <ol className={cn("relative grid gap-8 md:gap-10", items.length === 3 ? "md:grid-cols-3" : "md:grid-cols-2 lg:grid-cols-4", className)}>
         {/* The line: down the left on phones, across the top from 768px. */}
@@ -33,7 +35,7 @@ export function Steps({
             </span>
             <div className="min-w-0 md:mt-6 md:pr-6">
               <p aria-hidden="true" className="font-mono text-[10px] font-medium tracking-[0.2em] text-pub-eyebrow">
-                STEP {String(i + 1).padStart(2, "0")}
+                {t("STEP {n}", { n: String(i + 1).padStart(2, "0") })}
               </p>
               <H className={cn(typeScale.item, "mt-2 text-pub-fg")}>{s.title}</H>
               <p className="mt-2 text-[15px] leading-relaxed text-pub-muted">{s.body}</p>

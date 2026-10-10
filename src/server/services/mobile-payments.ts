@@ -13,9 +13,12 @@ import { after } from "next/server";
 import { notifyBookingGuestSoon, notifyReservationGuestSoon } from "./guest-comms";
 import { notifyOrderCustomer } from "./online-orders";
 import { holdForPayment, isPayLater, releasePayingHold, type PayingHold } from "./booking-holds";
-import { createNtzsDeposit, depositCompleted, depositFailed, getNtzsDeposit, ntzsEnabled, ntzsLive, ntzsPhone, NTZS_MIN_TZS } from "./ntzs";
+import { createNtzsDeposit, depositCompleted, depositFailed, getNtzsDeposit, ntzsEnabled, ntzsLive, ntzsPhone, ntzsSaid, NTZS_MIN_TZS } from "./ntzs";
 import type { Actor } from "./reservations";
 import type { MobilePayment } from "@/generated/prisma/client";
+import { msg, msgf } from "@/i18n/msg";
+import { getT } from "@/i18n/server";
+import { englishT } from "@/i18n/translate";
 
 /**
  * MOBILE-MONEY PROMPTS (nTZS) — reception sends one for a guest's bill, the Restaurant Counter (or reception) for an
@@ -63,7 +66,7 @@ export type PromptOptions = {
  * the waiting attempt (or throws with a clear message).
  */
 export async function requestMobilePayment(target: PromptTarget, rawPhone: string, actor: (Actor & { userId: string }) | null, now = new Date(), opts: PromptOptions = {}) {
-  if (!ntzsEnabled()) throw new AppError(actor ? "Mobile money requests are not set up yet — add the nTZS key in the server settings." : "Online payment is not available right now — please pay at the hotel.", "CONFLICT");
+  if (!ntzsEnabled()) throw new AppError(actor ? msg("Mobile money requests are not set up yet — add the nTZS key in the server settings.") : msg("Online payment is not available right now — please pay at the hotel."), "CONFLICT");
   const customer = !actor;
   // The same press again: the same attempt (no second prompt, no second payment).
   if (opts.clientKey) {
@@ -71,14 +74,14 @@ export async function requestMobilePayment(target: PromptTarget, rawPhone: strin
     if (again) return { ...again, instructions: null, reused: true };
   }
   const phone = ntzsPhone(rawPhone);
-  if (!phone) throw new AppError(customer ? "Enter your mobile-money number, e.g. 0712 345 678." : "Enter the customer's mobile-money number, e.g. 0712 345 678.", "VALIDATION", { phone: "Invalid" });
+  if (!phone) throw new AppError(customer ? msg("Enter your mobile-money number, e.g. 0712 345 678.") : msg("Enter the customer's mobile-money number, e.g. 0712 345 678."), "VALIDATION", { phone: msg("Invalid") });
   // Before asking again: an earlier attempt for this bill that was approved late is recorded first — never paid twice.
   await settleLateAttempts(target, now);
 
   // A booking that holds no room yet (book now, pay later): its room is checked again and held while it is paid — or
   // "just taken". Moved to a room at another price: said first, nothing is asked until they press again (the room stays held).
   const hold = target.purpose === "RESERVATION" ? await holdForPayment(target.reservationId, actor ?? { label: "Customer · online" }, now) : null;
-  if (hold?.held && hold.after !== hold.before) throw new AppError(priceMoved(hold, customer), "CONFLICT");
+  if (hold?.held && hold.after !== hold.before) throw new AppError(await priceMoved(hold, customer), "CONFLICT");
   try {
     return await promptFor(target, phone, actor, now, opts);
   } catch (e) {
@@ -89,12 +92,19 @@ export async function requestMobilePayment(target: PromptTarget, rawPhone: strin
 }
 
 /** "Room 104 was just taken — Room 105 (same type) is yours to pay for; the price is now…". */
-function priceMoved(h: PayingHold, customer: boolean) {
+async function priceMoved(h: PayingHold, customer: boolean) {
   const m = h.moves[0];
-  const room = m ? `Room ${m.from} was just taken — Room ${m.to} (${m.type}) is kept for you instead. ` : "";
-  return customer
-    ? `${room}The price is now ${fmt(h.after)} (was ${fmt(h.before)}). Press Pay again to pay ${fmt(h.after)}.`
-    : `${m ? `Room ${m.from} was taken by a guest who paid first — the booking moved to Room ${m.to} (${m.type}). ` : ""}The price is now ${fmt(h.after)} (was ${fmt(h.before)}). Check the amount and send again.`;
+  // The room type's name in the reader's language; the rest of the sentence is translated where it is shown.
+  const type = m ? (await getT().catch(() => englishT))(m.type) : "";
+  const v = { from: m?.from ?? "", to: m?.to ?? "", type, after: fmt(h.after), before: fmt(h.before) };
+  if (customer) {
+    return m
+      ? msgf("Room {from} was just taken — Room {to} ({type}) is kept for you instead. The price is now {after} (was {before}). Press Pay again to pay {after}.", v)
+      : msgf("The price is now {after} (was {before}). Press Pay again to pay {after}.", v);
+  }
+  return m
+    ? msgf("Room {from} was taken by a guest who paid first — the booking moved to Room {to} ({type}). The price is now {after} (was {before}). Check the amount and send again.", v)
+    : msgf("The price is now {after} (was {before}). Check the amount and send again.", v);
 }
 
 async function promptFor(target: PromptTarget, phone: string, actor: (Actor & { userId: string }) | null, now: Date, opts: PromptOptions) {
@@ -124,9 +134,9 @@ async function promptFor(target: PromptTarget, phone: string, actor: (Actor & { 
     payingHold = r.status === "RESERVED" && !!r.holdUntil && (isPayLater(r.externalData) || marksPayingHold(r.externalData));
     if (r.status === "CANCELLED" || r.status === "NO_SHOW") throw new AppError("This booking is closed — nothing to pay.", "CONFLICT");
     amount = Math.round(target.amount);
-    if (!Number.isInteger(amount) || amount <= 0) throw new AppError("Enter the amount.", "VALIDATION", { amount: "Required" });
+    if (!Number.isInteger(amount) || amount <= 0) throw new AppError("Enter the amount.", "VALIDATION", { amount: msg("Required") });
     if (r.balanceAmount <= 0) throw new AppError("Nothing is owed on this booking.", "CONFLICT");
-    if (amount > r.balanceAmount) throw new AppError(`That is more than ${customer ? "is owed" : "the guest owes"} (${fmt(r.balanceAmount)}).`, "VALIDATION", { amount: "Exceeds balance" });
+    if (amount > r.balanceAmount) throw new AppError(customer ? msgf("That is more than is owed ({amount}).", { amount: fmt(r.balanceAmount) }) : msgf("That is more than the guest owes ({amount}).", { amount: fmt(r.balanceAmount) }), "VALIDATION", { amount: msg("Exceeds balance") });
     reservationId = r.id; name = r.guest.fullName;
   } else {
     if (target.handedOverById) {
@@ -139,12 +149,12 @@ async function promptFor(target: PromptTarget, phone: string, actor: (Actor & { 
           ] },
         },
       });
-      if (!ok) throw new AppError("Choose the waiter who brought the order.", "VALIDATION", { handedOverById: "Invalid" });
+      if (!ok) throw new AppError("Choose the waiter who brought the order.", "VALIDATION", { handedOverById: msg("Invalid") });
     }
     const due = await ordersDueForPrompt(target.orderIds);
     amount = due.total; orderIds = due.orders.map((o) => o.id); name = due.orders[0]?.customerName ?? null;
   }
-  if (amount < NTZS_MIN_TZS) throw new AppError(`Mobile-money payments start at ${fmt(NTZS_MIN_TZS)}.`, "VALIDATION", { amount: "Too small" });
+  if (amount < NTZS_MIN_TZS) throw new AppError(msgf("Mobile-money payments start at {amount}.", { amount: fmt(NTZS_MIN_TZS) }), "VALIDATION", { amount: msg("Too small") });
   const targetKey = targetKeyOf(target, orderIds);
 
   // One live prompt per bill — decided under a lock on the bill, so two presses at once cannot both send one.
@@ -186,7 +196,7 @@ async function promptFor(target: PromptTarget, phone: string, actor: (Actor & { 
     const refused = typeof res.status === "number" && res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 409;
     if (refused) {
       await db.mobilePayment.updateMany({ where: { id: mp.id, status: "PENDING", completedAt: null }, data: { status: "FAILED", lastError: res.error.slice(0, 500) } });
-      throw new AppError(customer ? friendlyForCustomer(res.error, target.purpose) : res.error, "CONFLICT");
+      throw new AppError(customer ? friendlyForCustomer(res.error, target.purpose) : ntzsSaid(res.error), "CONFLICT");
     }
     console.warn("[ntzs] prompt not confirmed by nTZS — kept waiting", { id: mp.id, httpStatus: res.status ?? null, error: res.error });
     await db.mobilePayment.updateMany({
@@ -222,19 +232,25 @@ async function settleLateAttempts(target: PromptTarget, now: Date) {
 
 /** What a customer sees when nTZS refuses: plain words, never the provider's technical message — and where else to pay. */
 export function friendlyForCustomer(error: string, purpose: PromptTarget["purpose"] = "RESERVATION") {
-  const elsewhere = purpose === "RESTAURANT" ? "pay at the counter" : purpose === "RESERVATION" ? "pay at the hotel" : "contact us";
-  if (/phone|number/i.test(error)) return "That number cannot receive a mobile-money payment request — check it and try again.";
-  if (/amount/i.test(error)) return `This amount cannot be paid online — please ${elsewhere}.`;
-  if (/busy|try again|did not answer|timed out/i.test(error)) return "The payment service is busy — please try again in a moment.";
-  return `Online payment is not available right now — please try again, or ${elsewhere}.`;
+  // Whole sentences (each one translated as it is shown).
+  if (/phone|number/i.test(error)) return msg("That number cannot receive a mobile-money payment request — check it and try again.");
+  if (/amount/i.test(error)) {
+    return purpose === "RESTAURANT" ? msg("This amount cannot be paid online — please pay at the counter.")
+      : purpose === "RESERVATION" ? msg("This amount cannot be paid online — please pay at the hotel.")
+      : msg("This amount cannot be paid online — please contact us.");
+  }
+  if (/busy|try again|did not answer|timed out/i.test(error)) return msg("The payment service is busy — please try again in a moment.");
+  return purpose === "RESTAURANT" ? msg("Online payment is not available right now — please try again, or pay at the counter.")
+    : purpose === "RESERVATION" ? msg("Online payment is not available right now — please try again, or pay at the hotel.")
+    : msg("Online payment is not available right now — please try again, or contact us.");
 }
 
 /** Why a request was refused, in a few plain words (the payment page says what to do next itself). */
 export function refusalReason(error: string) {
-  if (/phone|number/i.test(error)) return "That number cannot receive a mobile-money payment request — check it and try again.";
-  if (/amount/i.test(error)) return "This amount cannot be paid online.";
-  if (/busy|try again|did not answer|timed out/i.test(error)) return "The payment service is busy — please try again in a moment.";
-  return "Online payment did not start.";
+  if (/phone|number/i.test(error)) return msg("That number cannot receive a mobile-money payment request — check it and try again.");
+  if (/amount/i.test(error)) return msg("This amount cannot be paid online.");
+  if (/busy|try again|did not answer|timed out/i.test(error)) return msg("The payment service is busy — please try again in a moment.");
+  return msg("Online payment did not start.");
 }
 
 /** A desk enquiry being paid (see booking-holds: held only while it is paid). */
@@ -369,7 +385,7 @@ async function recordMobilePayment(id: string, info: { received?: number | null;
 export async function checkMobilePaymentWithAnswer(id: string, source: "check" | "sweep" = "check", now = new Date()): Promise<{ mp: MobilePayment; answered: boolean; ntzsStatus: string | null; error: string | null }> {
   const mp = await db.mobilePayment.findUnique({ where: { id } });
   if (!mp) throw new AppError("Payment request not found.", "NOT_FOUND");
-  if (mp.status === "COMPLETED" || !mp.depositId) return { mp, answered: false, ntzsStatus: null, error: mp.depositId ? null : "nTZS gave no reference for this request" };
+  if (mp.status === "COMPLETED" || !mp.depositId) return { mp, answered: false, ntzsStatus: null, error: mp.depositId ? null : msg("nTZS gave no reference for this request") };
   await db.mobilePayment.update({ where: { id }, data: { lastCheckedAt: now } });
   const res = await getNtzsDeposit(mp.depositId);
   if (!res.ok) {

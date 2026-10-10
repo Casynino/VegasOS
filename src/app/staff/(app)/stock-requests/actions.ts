@@ -5,6 +5,7 @@ import { z } from "zod";
 import { authorize, requestMeta, type CurrentUser } from "@/server/auth";
 import { AppError, runAction, type ActionResult } from "@/server/errors";
 import { parseInput } from "@/server/validation";
+import { msg } from "@/i18n/msg";
 import {
   approvePurchase, cancelStockRequest, createStockRequest, editStockRequest, resubmitStockRequest, reviewStockRequest, savePurchase, sendBackPurchase,
 } from "@/server/services/stock-requests";
@@ -25,19 +26,19 @@ const Why = z.string().trim().max(300);
 
 const Item = z.object({
   id: z.string().max(40).nullable().optional(),
-  name: z.string().trim().min(1, "Name each item.").max(80),
-  quantity: z.coerce.number().positive("Give each item a quantity.").max(100_000),
+  name: z.string().trim().min(1, msg("Name each item.")).max(80),
+  quantity: z.coerce.number().positive(msg("Give each item a quantity.")).max(100_000),
   unit: z.string().trim().max(20),
   note: z.string().trim().max(120).optional(),
   inventoryItemId: z.string().max(40).nullable().optional(),
 });
 const Request = z.object({
-  department: z.string().trim().min(1, "Choose the department it is for.").max(40),
+  department: z.string().trim().min(1, msg("Choose the department it is for.")).max(40),
   urgent: z.boolean(),
   neededBy: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal("")),
   reason: Why.optional(),
   note: Why.optional(),
-  items: z.array(Item).min(1, "Add at least one item.").max(40),
+  items: z.array(Item).min(1, msg("Add at least one item.")).max(40),
 });
 
 /** A department asks for stock (the kitchen, the waiters, reception for housekeeping…). */
@@ -48,10 +49,10 @@ export async function createStockRequestAction(input: z.input<typeof Request>): 
     const r = await createStockRequest({ ...d, neededBy: d.neededBy || null }, await actor(user));
     refresh();
     return { number: r.number };
-  }, "Request sent to the manager.");
+  }, msg("Request sent to the manager."));
 }
 
-const Edit = z.object({ id: Id, items: z.array(Item).min(1, "Keep at least one item.").max(40), urgent: z.boolean().optional(), note: Why.optional(), reason: Why.optional() });
+const Edit = z.object({ id: Id, items: z.array(Item).min(1, msg("Keep at least one item.")).max(40), urgent: z.boolean().optional(), note: Why.optional(), reason: Why.optional() });
 /** Change the list: the manager (with the reason) before buying, or the person who asked once it was sent back to them. */
 export async function editStockRequestAction(input: z.input<typeof Edit>): Promise<ActionResult<null>> {
   return runAction(async () => {
@@ -60,7 +61,7 @@ export async function editStockRequestAction(input: z.input<typeof Edit>): Promi
     await editStockRequest(d.id, { items: d.items, urgent: d.urgent, note: d.note, reason: d.reason }, await actor(user));
     refresh();
     return null;
-  }, "Request updated.");
+  }, msg("Request updated."));
 }
 
 const Review = z.object({ id: Id, decision: z.enum(["APPROVE", "SEND_BACK", "REJECT"]), note: Why.optional() });
@@ -72,7 +73,7 @@ export async function reviewStockRequestAction(input: z.input<typeof Review>): P
     await reviewStockRequest(d.id, d.decision, d.note ?? null, await actor(user));
     refresh();
     return null;
-  }, input.decision === "APPROVE" ? "Approved for purchase." : input.decision === "SEND_BACK" ? "Sent back to change." : "Rejected.");
+  }, input.decision === "APPROVE" ? msg("Approved for purchase.") : input.decision === "SEND_BACK" ? msg("Sent back to change.") : msg("Rejected."));
 }
 
 /** The person who asked sends it again after changing it. */
@@ -82,7 +83,7 @@ export async function resubmitStockRequestAction(input: { id: string }): Promise
     await resubmitStockRequest(Id.parse(input.id), await actor(user));
     refresh();
     return null;
-  }, "Sent to the manager again.");
+  }, msg("Sent to the manager again."));
 }
 
 /** The person who asked no longer needs it. */
@@ -92,7 +93,7 @@ export async function cancelStockRequestAction(input: { id: string; reason?: str
     await cancelStockRequest(Id.parse(input.id), Why.optional().parse(input.reason) ?? null, await actor(user));
     refresh();
     return null;
-  }, "Request cancelled.");
+  }, msg("Request cancelled."));
 }
 
 const Purchase = z.object({
@@ -105,7 +106,7 @@ const Purchase = z.object({
   supplierName: z.string().trim().max(120).nullable().optional(),
   receiptNumber: z.string().trim().max(60).nullable().optional(),
   noReceiptReason: z.string().trim().max(200).nullable().optional(),
-  purchasedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "When was it bought?"),
+  purchasedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, msg("When was it bought?")),
   accountId: z.string().max(40).nullable().optional(),
   note: Why.nullable().optional(),
   submit: z.boolean(),
@@ -135,7 +136,7 @@ export async function sendBackPurchaseAction(input: { id: string; reason: string
     await sendBackPurchase(Id.parse(input.id), Why.parse(input.reason), await actor(user));
     refresh();
     return null;
-  }, "Sent back for correction.");
+  }, msg("Sent back for correction."));
 }
 
 /** The final approval: the stock goes in and the one expense is made — in one step. */

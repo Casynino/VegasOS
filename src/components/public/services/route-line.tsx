@@ -1,5 +1,6 @@
 import { PlaneLanding } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getT } from "@/i18n/server";
 import { HudLabel } from "../kit/hud";
 import fx from "./fx.module.css";
 
@@ -47,7 +48,7 @@ function Diagram({ g, className }: { g: typeof WIDE; className?: string }) {
  * hotel pulsing at its real coordinates, and the real distance on the road. The street lines are
  * decorative, not a map. With reduced motion it is a still drawing.
  */
-export function RouteMap({
+export async function RouteMap({
   airport,
   airportCode = "JNIA",
   hotel,
@@ -65,6 +66,7 @@ export function RouteMap({
   distance: string;
   className?: string;
 }) {
+  const t = await getT();
   // Label anchors in % of the drawing. The hotel's label hangs from the right (so it is never squeezed).
   const at = (g: typeof WIDE, p: { x: number; y: number }) => {
     const [, , w, h] = g.box.split(" ").map(Number);
@@ -80,7 +82,7 @@ export function RouteMap({
       <div className="relative sm:hidden">
         <Diagram g={TALL} />
         <div className="absolute w-max max-w-[11rem]" style={{ ...at(TALL, TALL.a), transform: "translate(1.75rem, -50%)" }}>
-          <Endpoint icon code={airportCode} name={airport} hud="Arrivals" />
+          <Endpoint icon code={airportCode} name={airport} hud={t("Arrivals")} />
         </div>
         <div className="absolute w-max max-w-[12rem] text-right" style={{ ...fromRight(TALL, TALL.b), transform: "translate(-2.25rem, -30%)" }}>
           <Endpoint name={hotel} hud={coords} align="end" />
@@ -93,7 +95,7 @@ export function RouteMap({
       <div className="relative hidden sm:block">
         <Diagram g={WIDE} />
         <div className="absolute w-max max-w-[16rem]" style={{ ...at(WIDE, WIDE.a), transform: "translate(-1rem, 1.75rem)" }}>
-          <Endpoint icon code={airportCode} name={airport} hud="Arrivals" />
+          <Endpoint icon code={airportCode} name={airport} hud={t("Arrivals")} />
         </div>
         <div className="absolute w-max max-w-[16rem] text-right" style={{ ...fromRight(WIDE, WIDE.b), transform: "translate(1.25rem, 2.75rem)" }}>
           <Endpoint name={hotel} hud={coords} align="end" />
@@ -106,9 +108,7 @@ export function RouteMap({
           <span className="h-6 w-px bg-linear-to-b from-pub-eyebrow to-transparent" />
         </span>
       </div>
-      <p className="sr-only">
-        From {airport} to {hotel}: {distance}.
-      </p>
+      <p className="sr-only">{t("From {airport} to {hotel}: {distance}.", { airport, hotel, distance })}</p>
     </div>
   );
 }
@@ -147,7 +147,9 @@ function Distance({ children }: { children: React.ReactNode }) {
  * light that travels it while on screen, the destination with a ring. The words are the guest's
  * own pickup and destination; stacked so long addresses wrap freely.
  */
-export function MiniRoute({ from, to, className }: { from: React.ReactNode; to: React.ReactNode; className?: string }) {
+export async function MiniRoute({ from, to, className }: { from: React.ReactNode; to: React.ReactNode; className?: string }) {
+  // t.ctx("trip", …): the trip's sense of the word ("From" is a starting price elsewhere).
+  const t = await getT();
   return (
     <div data-live-watch="" suppressHydrationWarning className={cn(fx.route, "relative grid grid-cols-[1.25rem_minmax(0,1fr)] gap-x-4", className)}>
       {/* From: a lit dot, then the dashed road down to the destination's ring. */}
@@ -156,7 +158,7 @@ export function MiniRoute({ from, to, className }: { from: React.ReactNode; to: 
         <span className={cn(fx.miniRoad, "mt-1.5 w-px flex-1")} />
       </span>
       <div className="min-w-0 pb-6">
-        <HudLabel tick={false}>From</HudLabel>
+        <HudLabel tick={false}>{t.ctx("trip", "From")}</HudLabel>
         <p className="mt-2 font-display text-[1.375rem] leading-tight text-pub-fg [overflow-wrap:anywhere]">{from}</p>
       </div>
       <span aria-hidden="true" className="flex justify-center">
@@ -165,7 +167,7 @@ export function MiniRoute({ from, to, className }: { from: React.ReactNode; to: 
         </span>
       </span>
       <div className="min-w-0">
-        <HudLabel tick={false}>To</HudLabel>
+        <HudLabel tick={false}>{t.ctx("trip", "To")}</HudLabel>
         <p className="mt-2 font-display text-[1.375rem] leading-tight text-pub-fg [overflow-wrap:anywhere]">{to}</p>
       </div>
     </div>

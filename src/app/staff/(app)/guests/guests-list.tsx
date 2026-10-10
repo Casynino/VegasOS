@@ -4,13 +4,16 @@ import { can, getCurrentUser } from "@/server/auth";
 import { db } from "@/server/db";
 import { businessToday } from "@/server/settings";
 import { fromDbDate, toDbDate } from "@/lib/time/business-date";
-import { formatBusinessDate, formatTZS } from "@/lib/format";
+import { formatTZS } from "@/lib/format";
 import { internationalPhone } from "@/lib/guest-messages";
 import type { Prisma } from "@/generated/prisma/client";
 import { PageHeader, EmptyState } from "@/components/staff/page-header";
 import { Initials } from "@/components/dashboard/kit";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { getT } from "@/i18n/server";
+import { msg } from "@/i18n/msg";
+import { shownName } from "./[id]/everything-with-us";
 
 const PAGE = 40;
 const LIVE: Prisma.ReservationWhereInput = { status: { notIn: ["CANCELLED", "NO_SHOW"] } };
@@ -20,13 +23,13 @@ const OPEN_ORDER = ["PENDING", "ACCEPTED", "PREPARING", "READY", "OUT_FOR_DELIVE
 const AT_TABLE: Prisma.GuestWhereInput = { OR: [{ diningSessions: { some: { openAtId: { not: null } } } }, { diningMemberships: { some: { session: { openAtId: { not: null } } } } }] };
 
 const FILTERS = [
-  { key: "all", label: "All" },
-  { key: "inhouse", label: "In the hotel" },
-  { key: "table", label: "At a table now" },
-  { key: "coming", label: "Coming" },
-  { key: "restaurant", label: "Restaurant" },
-  { key: "returning", label: "Returning" },
-  { key: "new", label: "New this month" },
+  { key: "all", label: msg("All") },
+  { key: "inhouse", label: msg("In the hotel") },
+  { key: "table", label: msg("At a table now") },
+  { key: "coming", label: msg("Coming") },
+  { key: "restaurant", label: msg("Restaurant") },
+  { key: "returning", label: msg("Returning") },
+  { key: "new", label: msg("New this month") },
 ] as const;
 type Filter = (typeof FILTERS)[number]["key"];
 const SORTS = {
@@ -46,6 +49,10 @@ const COLS = "grid grid-cols-[minmax(0,1fr)_6.5rem] items-center gap-x-4 md:grid
  * and open them to see everything.
  */
 export async function GuestsList({ sp }: { sp: Record<string, string | string[] | undefined> }) {
+  const t = await getT();
+  // "12 Oct 2026" / "2026年10月12日" — a business date without the weekday.
+  const dayFmt = new Intl.DateTimeFormat(t.intl, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+  const day = (d: string) => dayFmt.format(new Date(`${d}T00:00:00Z`));
   const filter: Filter = FILTERS.find((f) => f.key === sp.filter)?.key ?? "all";
   const sort: Sort = typeof sp.sort === "string" && sp.sort in SORTS ? (sp.sort as Sort) : "";
   const q = typeof sp.q === "string" ? sp.q.trim() : "";
@@ -121,7 +128,7 @@ export async function GuestsList({ sp }: { sp: Record<string, string | string[] 
 
   return (
     <div className="w-full space-y-4">
-      <PageHeader title="Customers" description="Everyone who has stayed, booked or ordered with us — their phone number finds them." />
+      <PageHeader title={t("Customers")} description={t("Everyone who has stayed, booked or ordered with us — their phone number finds them.")} />
 
       {/* Find */}
       <form className="rounded-2xl border border-border/70 bg-card p-3">
@@ -129,45 +136,45 @@ export async function GuestsList({ sp }: { sp: Record<string, string | string[] 
         {sort && <input type="hidden" name="sort" value={sort} />}
         <div className="flex gap-2">
           <label className="relative flex-1">
-            <span className="sr-only">Find a customer</span>
+            <span className="sr-only">{t("Find a customer")}</span>
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <input name="q" defaultValue={q} placeholder="Name, phone, email, ID, G-reference or company"
+            <input name="q" defaultValue={q} placeholder={t("Name, phone, email, ID, G-reference or company")}
               className="h-10 w-full rounded-xl border border-input bg-background/60 pl-9 pr-3 text-sm outline-none transition focus:border-ring focus:ring-3 focus:ring-ring/30" />
           </label>
-          <Button type="submit" variant="outline" className="h-10 px-4">Search</Button>
+          <Button type="submit" variant="outline" className="h-10 px-4">{t("Search")}</Button>
         </div>
-        <p className="mt-2 px-1 text-xs text-muted-foreground">Searches every customer on file, however long ago they came.</p>
+        <p className="mt-2 px-1 text-xs text-muted-foreground">{t("Searches every customer on file, however long ago they came.")}</p>
       </form>
 
       {/* Groups + count */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <nav aria-label="Customer groups" className="flex flex-wrap gap-1.5">
+        <nav aria-label={t("Customer groups")} className="flex flex-wrap gap-1.5">
           {FILTERS.map((f, i) => {
             const on = filter === f.key;
             return (
               <Link key={f.key} href={href({ filter: f.key, page: 1 })} aria-current={on ? "page" : undefined}
                 className={cn("inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors",
                   on ? "border-foreground/15 bg-foreground text-background" : "border-border/70 bg-card text-muted-foreground hover:bg-muted hover:text-foreground")}>
-                {f.label}<span className={cn("tabular-nums", on ? "opacity-70" : "text-muted-foreground/80")}>{counts[i]}</span>
+                {t(f.label)}<span className={cn("tabular-nums", on ? "opacity-70" : "text-muted-foreground/80")}>{counts[i]}</span>
               </Link>
             );
           })}
         </nav>
-        <p className="text-xs text-muted-foreground">{total ? `Showing ${from}–${from + guests.length - 1} of ${total} customer${total === 1 ? "" : "s"}` : "No customers"}</p>
+        <p className="text-xs text-muted-foreground">{total ? t.plural(total, "Showing {from}–{to} of {n} customer", "Showing {from}–{to} of {n} customers", { from, to: from + guests.length - 1 }) : t("No customers")}</p>
       </div>
 
       {guests.length === 0 ? (
-        <EmptyState title={q ? `No customers match "${q}"` : "No customers here"} description={q ? "Try the phone number, or part of the name." : "Customers are added automatically when they book or order."} />
+        <EmptyState title={q ? t("No customers match \"{q}\"", { q }) : t("No customers here")} description={q ? t("Try the phone number, or part of the name.") : t("Customers are added automatically when they book or order.")} />
       ) : (
         <div className="overflow-hidden rounded-2xl border border-border/70 bg-card">
           <div role="row" className={cn(COLS, "border-b border-border/70 bg-muted/30 px-4 py-2.5 text-xs font-semibold text-muted-foreground")}>
-            <SortHead label="Customer" field="name" sort={sort} href={href} />
-            <span className="hidden xl:block">Phone</span>
-            <SortHead label="Stays" field="stays" sort={sort} href={href} className="hidden md:flex" desc />
-            <SortHead label="Orders" field="orders" sort={sort} href={href} className="hidden xl:flex" desc />
-            <span className="hidden text-right md:block">{roomMoney ? "Owes" : "Owes food"}</span>
-            <span className="hidden xl:block">Last visit</span>
-            <span className="sr-only">Actions</span>
+            <SortHead label={t("Customer")} field="name" sort={sort} href={href} />
+            <span className="hidden xl:block">{t("Phone")}</span>
+            <SortHead label={t("Stays")} field="stays" sort={sort} href={href} className="hidden md:flex" desc />
+            <SortHead label={t("Orders")} field="orders" sort={sort} href={href} className="hidden xl:flex" desc />
+            <span className="hidden text-right md:block">{roomMoney ? t("Owes") : t("Owes food")}</span>
+            <span className="hidden xl:block">{t("Last visit")}</span>
+            <span className="sr-only">{t("Actions")}</span>
           </div>
           <ul className="divide-y divide-border/60">
             {guests.map((g) => {
@@ -188,7 +195,7 @@ export async function GuestsList({ sp }: { sp: Record<string, string | string[] 
                     <Initials name={g.fullName} className="size-9 shrink-0 text-xs" />
                     <div className="min-w-0 leading-tight">
                       <Link href={`/staff/guests/${g.id}`} className="flex items-center gap-1.5 font-medium after:absolute after:inset-0 after:content-['']">
-                        <span className="truncate">{g.fullName}</span>
+                        <span className="truncate">{shownName(t, g.fullName)}</span>
                         {g.vip && <span className="shrink-0 rounded-full bg-[oklch(0.75_0.13_80)]/20 px-1.5 text-[9px] font-bold text-[oklch(0.5_0.12_75)] dark:text-[#f0cf86]">VIP</span>}
                       </Link>
                       <p className="mt-0.5 truncate text-xs text-muted-foreground">
@@ -201,38 +208,38 @@ export async function GuestsList({ sp }: { sp: Record<string, string | string[] 
                   <span className="hidden truncate text-sm tabular-nums xl:block">{g.phone ?? <Dash />}</span>
                   <div className="hidden leading-tight md:block">
                     <p className="text-sm font-medium tabular-nums">{stays}</p>
-                    {here ? <p className="truncate text-xs text-emerald-600 dark:text-emerald-400">in house</p>
-                      : nextDay ? <p className="truncate text-xs text-violet-600 dark:text-violet-300">{nextDay === todayStr ? "arrives today" : `arrives ${formatBusinessDate(nextDay)}`}</p>
-                      : stays > 1 ? <p className="text-xs text-amber-600 dark:text-amber-400">returning</p> : null}
+                    {here ? <p className="truncate text-xs text-emerald-600 dark:text-emerald-400">{t("in house")}</p>
+                      : nextDay ? <p className="truncate text-xs text-violet-600 dark:text-violet-300">{nextDay === todayStr ? t("arrives today") : t("arrives {date}", { date: t.date(nextDay) })}</p>
+                      : stays > 1 ? <p className="text-xs text-amber-600 dark:text-amber-400">{t("returning")}</p> : null}
                   </div>
                   <div className="hidden leading-tight xl:block">
                     <p className="text-sm font-medium tabular-nums">{orders}</p>
-                    {ordering && <p className="truncate text-xs text-amber-600 dark:text-amber-400">ordering now</p>}
+                    {ordering && <p className="truncate text-xs text-amber-600 dark:text-amber-400">{t("ordering now")}</p>}
                   </div>
                   <span className={cn("hidden text-right text-sm tabular-nums md:block", owes > 0 ? "font-semibold text-rose-600 dark:text-rose-400" : "text-muted-foreground")}>{owes > 0 ? formatTZS(owes) : "—"}</span>
-                  <span className="hidden text-sm text-muted-foreground xl:block">{here || table || ordering ? "Now" : lastVisit ? formatBusinessDate(lastVisit).replace(/^\w+,?\s*/, "") : <Dash />}</span>
+                  <span className="hidden text-sm text-muted-foreground xl:block">{here || table || ordering ? t("Now") : lastVisit ? day(lastVisit) : <Dash />}</span>
                   <div className="relative z-10 flex flex-wrap items-center justify-end gap-1.5">
                     {phone && (
-                      <a href={`https://wa.me/${phone.replace(/\D/g, "")}`} target="_blank" rel="noopener" aria-label={`WhatsApp ${g.fullName}`} title="WhatsApp"
+                      <a href={`https://wa.me/${phone.replace(/\D/g, "")}`} target="_blank" rel="noopener" aria-label={t("WhatsApp {name}", { name: shownName(t, g.fullName) })} title="WhatsApp"
                         className="grid size-8 place-items-center rounded-lg border border-emerald-500/30 text-emerald-600 transition-colors hover:bg-emerald-500/10 dark:text-emerald-400">
                         <MessageCircle className="size-4" />
                       </a>
                     )}
                     {here && (
                       <Link href={`/staff/reservations/${here.id}`} className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg border border-emerald-500/30 px-2 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-500/10 dark:text-emerald-300">
-                        <BedDouble className="size-3.5" />{here.rooms.map((x) => x.room.number).join(", ") || "In house"}
+                        <BedDouble className="size-3.5" />{here.rooms.map((x) => x.room.number).join(", ") || t("In house")}
                       </Link>
                     )}
                     {table ? (
-                      <Link href="/staff/restaurant/tables" title={`At ${table} now`} className="inline-flex h-8 min-w-0 max-w-full items-center gap-1 rounded-lg border border-amber-500/30 px-2 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-500/10 dark:text-amber-300">
-                        <UtensilsCrossed className="size-3.5 shrink-0" /><span className="truncate">{table}</span>
+                      <Link href="/staff/restaurant/tables" title={t("At {place} now", { place: t(table) })} className="inline-flex h-8 min-w-0 max-w-full items-center gap-1 rounded-lg border border-amber-500/30 px-2 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-500/10 dark:text-amber-300">
+                        <UtensilsCrossed className="size-3.5 shrink-0" /><span className="truncate">{t(table)}</span>
                       </Link>
                     ) : here ? null : next && nextDay ? (
                       <Link href={`/staff/reservations/${next.id}`} className="inline-flex h-8 items-center gap-1 rounded-lg border border-violet-500/30 px-2 text-xs font-medium text-violet-700 transition-colors hover:bg-violet-500/10 dark:text-violet-300">
-                        <CalendarClock className="size-3.5" />{nextDay === todayStr ? "Today" : formatBusinessDate(nextDay).replace(/^\w+,?\s*/, "")}
+                        <CalendarClock className="size-3.5" />{nextDay === todayStr ? t("Today") : day(nextDay)}
                       </Link>
                     ) : ordering ? (
-                      <Link href="/staff/restaurant" className="inline-flex h-8 items-center gap-1 rounded-lg border border-amber-500/30 px-2 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-500/10 dark:text-amber-300"><UtensilsCrossed className="size-3.5" />Order</Link>
+                      <Link href="/staff/restaurant" className="inline-flex h-8 items-center gap-1 rounded-lg border border-amber-500/30 px-2 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-500/10 dark:text-amber-300"><UtensilsCrossed className="size-3.5" />{t("Order")}</Link>
                     ) : null}
                   </div>
                 </li>
@@ -244,10 +251,10 @@ export async function GuestsList({ sp }: { sp: Record<string, string | string[] 
 
       {pages > 1 && (
         <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">Page {page} of {pages}</span>
+          <span className="text-muted-foreground">{t("Page {page} of {pages}", { page, pages })}</span>
           <div className="flex gap-2">
-            {page > 1 && <Link className={buttonVariants({ variant: "outline", size: "sm" })} href={href({ page: page - 1 })}><ChevronLeft />Previous</Link>}
-            {page < pages && <Link className={buttonVariants({ variant: "outline", size: "sm" })} href={href({ page: page + 1 })}>Next<ChevronRight /></Link>}
+            {page > 1 && <Link className={buttonVariants({ variant: "outline", size: "sm" })} href={href({ page: page - 1 })}><ChevronLeft />{t.ctx("page", "Previous")}</Link>}
+            {page < pages && <Link className={buttonVariants({ variant: "outline", size: "sm" })} href={href({ page: page + 1 })}>{t.ctx("page", "Next")}<ChevronRight /></Link>}
           </div>
         </div>
       )}

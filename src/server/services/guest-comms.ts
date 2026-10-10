@@ -14,6 +14,11 @@ import { paidFirstTx, type PaidFirst } from "./online-orders";
 import { createGuestRequest } from "./requests";
 import { guestNotifyConnected, sendGuestText } from "./guest-notify";
 import { bookedAsOf } from "./public-booking";
+import { msg } from "@/i18n/msg";
+import { spotName } from "@/components/restaurant/shell";
+import { getT } from "@/i18n/server";
+import { englishT } from "@/i18n/translate";
+import { orderItemName } from "@/i18n/content";
 
 type Actor = { userId?: string | null; label?: string; ipAddress?: string | null };
 
@@ -191,7 +196,7 @@ export async function stayView(where: { guestToken: string } | { id: string }) {
       },
       restaurantOrders: {
         where: { status: { not: "CANCELLED" } }, orderBy: { createdAt: "desc" }, take: 12,
-        select: { number: true, status: true, total: true, createdAt: true, trackToken: true, items: { select: { name: true, quantity: true } } },
+        select: { number: true, status: true, total: true, createdAt: true, trackToken: true, items: { select: { name: true, nameI18n: true, quantity: true } } },
       },
     },
   });
@@ -199,13 +204,14 @@ export async function stayView(where: { guestToken: string } | { id: string }) {
   const sum = (kinds: string[]) => r.charges.filter((c) => kinds.includes(c.kind)).reduce((t, c) => t + c.amount, 0);
   const known = ["RESTAURANT", "BAR", "ROOM_SERVICE", "TRANSPORT"];
   const lines = [
-    { label: r.kind === "MEETING" ? "Meeting room" : "Room", amount: r.grossAmount },
-    { label: "Restaurant", amount: sum(["RESTAURANT"]) },
-    { label: "Bar", amount: sum(["BAR"]) },
-    { label: "Room service", amount: sum(["ROOM_SERVICE"]) },
-    { label: "Transport", amount: sum(["TRANSPORT"]) },
-    { label: "Other", amount: r.charges.filter((c) => !known.includes(c.kind)).reduce((t, c) => t + c.amount, 0) },
-    { label: "Discount", amount: -r.discountAmount },
+    // Shown on the guest's page in their language (t(label) there).
+    { label: r.kind === "MEETING" ? msg("Meeting room") : msg("Room"), amount: r.grossAmount },
+    { label: msg("Restaurant"), amount: sum(["RESTAURANT"]) },
+    { label: msg("Bar"), amount: sum(["BAR"]) },
+    { label: msg("Room service"), amount: sum(["ROOM_SERVICE"]) },
+    { label: msg("Transport"), amount: sum(["TRANSPORT"]) },
+    { label: msg("Other"), amount: r.charges.filter((c) => !known.includes(c.kind)).reduce((t, c) => t + c.amount, 0) },
+    { label: msg("Discount"), amount: -r.discountAmount },
   ].filter((l) => l.amount !== 0);
   const payer = r.billTo === "GROUP" ? r.group?.corporateCustomer?.companyName ?? r.group?.name ?? null : r.billTo !== "GUEST" ? r.corporateCustomer?.companyName ?? null : null;
   const meeting = r.kind === "MEETING" && r.rooms[0] ? { start: r.rooms[0].startAt.toISOString(), end: r.rooms[0].endAt.toISOString() } : null;
@@ -231,7 +237,7 @@ export async function stayView(where: { guestToken: string } | { id: string }) {
     payer,
     canOrder: r.status === "CHECKED_IN",
     requests: r.requests.map((q) => ({ id: q.id, type: q.type, status: q.status, at: q.createdAt.toISOString() })),
-    orders: r.restaurantOrders.map((o) => ({ number: o.number, status: o.status, total: o.total, at: o.createdAt.toISOString(), track: o.trackToken, items: o.items.map((i) => `${i.quantity} × ${i.name}`) })),
+    orders: r.restaurantOrders.map((o) => ({ number: o.number, status: o.status, total: o.total, at: o.createdAt.toISOString(), track: o.trackToken, items: o.items.map((i) => ({ name: i.name, nameI18n: i.nameI18n, quantity: i.quantity })) })),
   };
 }
 export type GuestStay = NonNullable<Awaited<ReturnType<typeof stayView>>>;
@@ -242,6 +248,8 @@ export const stayByToken = (token: string) => stayView({ guestToken: token });
 const ORDER_LIMIT = 5; // orders per stay per 30 minutes from the guest's phone
 export type StayOrderInput = {
   items: { menuItemId: string; quantity: number }[]; notes?: string | null; clientKey?: string | null;
+  /** Common requests the guest ticked (ORDER_REQUESTS codes). */
+  noteCodes?: string[] | null;
   /** "Pay now" instead of the room bill: the guest's payment screenshot and the account — staff check it and record it. */
   paidFirst?: PaidFirst | null;
   /** "Pay online" (nTZS) instead of the room bill: the payment request follows once the order is in (see online-pay). */
@@ -279,7 +287,7 @@ export async function placeOrderForStay(reservationId: string, input: StayOrderI
       type: meeting ? "DINE_IN" : "ROOM_SERVICE", tableLabel: meeting ? `Meeting room ${room}` : null,
       // On the room bill, or paid now (online, or with the guest's proof — then it is not on the room bill).
       settlement: paidFirst || input.payOnline ? "UNPAID" : "ROOM", reservationId: r.id, items: input.items,
-      notes: input.notes?.trim().slice(0, 300) || null, customerName: r.guest.fullName,
+      notes: input.notes?.trim().slice(0, 300) || null, noteCodes: input.noteCodes, customerName: r.guest.fullName,
     }, { userId: null, label: `Guest (${source === "ROOM_QR" ? "room QR" : "online"}) · ${r.reference}` }, now, {
       byCustomer: true, source, guestId: r.guestId, customerPhone: r.guest.phone, clientKey: input.clientKey ?? null, paidFirst, payOnline: !!input.payOnline, servedRoom: scanned?.room.number ?? null,
     });
@@ -323,7 +331,7 @@ export async function guestTimeline(guestId: string) {
     db.restaurantOrder.findMany({
       // Every order of theirs: on their own (restaurant, table, website) or on their room.
       where: { OR: [{ guestId }, { reservation: { guestId } }], status: { not: "CANCELLED" } }, orderBy: { createdAt: "desc" }, take: 40,
-      select: { id: true, number: true, type: true, source: true, tableLabel: true, location: { select: { name: true } }, total: true, roomNumber: true, createdAt: true, reservationId: true, items: { select: { name: true, quantity: true } } },
+      select: { id: true, number: true, type: true, source: true, tableLabel: true, location: { select: { name: true } }, total: true, roomNumber: true, createdAt: true, reservationId: true, items: { select: { name: true, nameI18n: true, quantity: true } } },
     }),
     // Who put their orders on a room, took them off, or changed who pays — from the history log.
     (async () => {
@@ -344,53 +352,62 @@ export async function guestTimeline(guestId: string) {
     })(),
   ]);
   type Event = { at: Date; kind: "booking" | "checkin" | "checkout" | "cancel" | "message" | "change" | "order" | "billing"; title: string; detail?: string; href?: string };
+  // The words are for the staff member reading the profile (their language); the history itself stays as recorded.
+  const t = await getT().catch(() => englishT);
   const events: Event[] = [];
   for (const r of reservations) {
-    events.push({ at: r.createdAt, kind: "booking", title: `Booking ${r.reference}`, detail: r.source?.name, href: `/staff/reservations/${r.id}` });
+    events.push({ at: r.createdAt, kind: "booking", title: t("Booking {ref}", { ref: r.reference }), detail: r.source ? t(r.source.name) : undefined, href: `/staff/reservations/${r.id}` });
     const inAt = r.rooms.map((x) => x.checkedInAt).filter((d): d is Date => !!d).sort((a, b) => +a - +b)[0];
     const outAt = r.rooms.map((x) => x.checkedOutAt).filter((d): d is Date => !!d).sort((a, b) => +b - +a)[0];
     const rooms = r.rooms.map((x) => x.room.number).join(", ");
-    if (inAt) events.push({ at: inAt, kind: "checkin", title: `Checked in${rooms ? ` · Room ${rooms}` : ""}`, detail: r.reference, href: `/staff/reservations/${r.id}` });
-    if (outAt && r.status === "CHECKED_OUT") events.push({ at: outAt, kind: "checkout", title: "Checked out", detail: r.reference, href: `/staff/reservations/${r.id}` });
-    if (r.status === "CANCELLED" || r.status === "NO_SHOW") events.push({ at: r.createdAt, kind: "cancel", title: r.status === "NO_SHOW" ? "Did not arrive" : "Booking cancelled", detail: r.reference });
+    if (inAt) events.push({ at: inAt, kind: "checkin", title: rooms ? t("Checked in · Room {rooms}", { rooms }) : t("Checked in"), detail: r.reference, href: `/staff/reservations/${r.id}` });
+    if (outAt && r.status === "CHECKED_OUT") events.push({ at: outAt, kind: "checkout", title: t("Checked out"), detail: r.reference, href: `/staff/reservations/${r.id}` });
+    if (r.status === "CANCELLED" || r.status === "NO_SHOW") events.push({ at: r.createdAt, kind: "cancel", title: r.status === "NO_SHOW" ? t("Did not arrive") : t("Booking cancelled"), detail: r.reference });
   }
-  for (const m of messages) events.push({ at: m.createdAt, kind: "message", title: `${m.type === "CUSTOM" ? "Message" : m.type.replaceAll("_", " ").toLowerCase().replace(/^\w/, (c) => c.toUpperCase())} · ${m.channel.toLowerCase()}`, detail: [m.reservation?.reference, m.sentBy?.fullName].filter(Boolean).join(" · ") });
+  for (const m of messages) {
+    // "Booking created · whatsapp" — the kind of message and how it went (catalog keys "guest-message::…", "guest-channel::…").
+    const kind = m.type === "CUSTOM" ? t("Message") : t.ctx("guest-message", m.type.replaceAll("_", " ").toLowerCase().replace(/^\w/, (c) => c.toUpperCase()));
+    events.push({ at: m.createdAt, kind: "message", title: `${kind} · ${t.ctx("guest-channel", m.channel.toLowerCase())}`, detail: [m.reservation?.reference, m.sentBy?.fullName].filter(Boolean).join(" · ") });
+  }
   for (const o of orders) {
+    const what = o.type === "ROOM_SERVICE" ? t("Room service order") : ["GUEST", "GUEST_LINK", "ROOM_QR", "PUBLIC_QR", "TABLE_QR", "QR", "WEBSITE"].includes(o.source) ? t("Ordered from their phone") : t("Restaurant / bar order");
     events.push({
-      at: o.createdAt, kind: "order", title: `${o.type === "ROOM_SERVICE" ? "Room service order" : ["GUEST", "GUEST_LINK", "ROOM_QR", "PUBLIC_QR", "TABLE_QR", "QR", "WEBSITE"].includes(o.source) ? "Ordered from their phone" : "Restaurant / bar order"} · ${formatTZS(o.total)}`,
-      detail: [o.items.map((i) => `${i.quantity} × ${i.name}`).join(", "), o.location?.name ?? o.tableLabel ?? (o.roomNumber ? `Room ${o.roomNumber}` : null), o.number].filter(Boolean).join(" · "),
+      at: o.createdAt, kind: "order", title: `${what} · ${formatTZS(o.total)}`,
+      detail: [o.items.map((i) => `${i.quantity} × ${orderItemName(i, t)}`).join(", "), o.location ? spotName(o.location.name, t) : o.tableLabel != null ? spotName(o.tableLabel, t) : (o.roomNumber ? t("Room {room}", { room: o.roomNumber }) : null), o.number].filter(Boolean).join(" · "),
       href: `/staff/restaurant/orders/${o.id}`,
     });
   }
-  for (const c of changes) events.push({ at: c.createdAt, kind: "change", title: c.action === "guest.created" ? "Customer saved" : "Details updated", detail: c.user?.fullName ?? c.actorLabel ?? undefined });
+  for (const c of changes) events.push({ at: c.createdAt, kind: "change", title: c.action === "guest.created" ? t("Customer saved") : t("Details updated"), detail: c.user?.fullName ?? c.actorLabel ?? undefined });
 
   // Where their bills went: "Order #184 put on Room 305 · TZS 45,000" — by whom, and why.
   const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+  /** A place as it was recorded ("Table 3 — Inside", "Room 305"), in the reader's words. */
+  const spot = (name: string | null) => (name ? spotName(name, t) : null);
   const num = (v: unknown) => (typeof v === "number" ? v : 0);
   const field = (j: unknown, k: string) => (j && typeof j === "object" && !Array.isArray(j) ? (j as Record<string, unknown>)[k] : undefined);
-  const billName = (b: string | null) => (!b || b === "Restaurant" ? "the restaurant bill" : b);
+  const billName = (b: string | null) => (!b || b === "Restaurant" ? t("the restaurant bill") : spotName(b, t));
   const near = (a: Date, b: Date) => Math.abs(+a - +b) < 10_000;
   const bill = billed.logs;
   for (const l of bill) {
     const after = l.after, before = l.before;
     const by = l.user?.fullName.replace(/\s*\(.*\)/, "") ?? l.actorLabel;
     const why = str(field(after, "reason"));
-    const who = [by ? `by ${by}` : null, why ? `(${why})` : null].filter(Boolean).join(" ") || undefined;
+    const who = [by ? t("by {name}", { name: by }) : null, why ? `(${why})` : null].filter(Boolean).join(" ") || undefined;
     const number = billed.numbers.get(l.entityId ?? "");
-    const order = number ? `Order #${number.replace(/^ORD-\d{4}-0*/, "")}` : "An order";
+    const order = number ? t("Order #{number}", { number: number.replace(/^ORD-\d{4}-0*/, "") }) : t("An order");
     const href = l.entityType === "RestaurantOrder" ? `/staff/restaurant/orders/${l.entityId}` : undefined;
     if (l.action === "dining_session.charged_to_room") {
       const n = Array.isArray(field(after, "orders")) ? (field(after, "orders") as unknown[]).length : 0;
-      events.push({ at: l.createdAt, kind: "billing", title: `Table bill at ${str(field(after, "table")) ?? "a table"} put on Room ${str(field(after, "room")) ?? "—"} · ${formatTZS(num(field(after, "amount")))}`, detail: [n ? `${n} order${n === 1 ? "" : "s"}` : null, who].filter(Boolean).join(" · ") || undefined });
+      events.push({ at: l.createdAt, kind: "billing", title: t("Table bill at {table} put on Room {room} · {amount}", { table: spot(str(field(after, "table"))) ?? t("a table"), room: str(field(after, "room")) ?? "—", amount: formatTZS(num(field(after, "amount"))) }), detail: [n ? t.plural(n, "{n} order", "{n} orders") : null, who].filter(Boolean).join(" · ") || undefined });
     } else if (l.action === "restaurant_order.charged_to_room") {
       // Part of a table's bill or a change of who pays: that entry already says it.
       if (bill.some((x) => x !== l && near(x.createdAt, l.createdAt) && ((x.action === "restaurant_order.billing_changed" && x.entityId === l.entityId) || (x.action === "dining_session.charged_to_room" && x.entityId === str(field(after, "session")))))) continue;
       const other = str(field(after, "roomOfAnotherGuest"));
-      events.push({ at: l.createdAt, kind: "billing", title: `${order} put on ${str(field(after, "billing")) ?? "a room"} · ${formatTZS(num(field(after, "total")))}`, detail: [str(field(after, "table")), other ? `${other}'s room` : null, who].filter(Boolean).join(" · ") || undefined, href });
+      events.push({ at: l.createdAt, kind: "billing", title: t("{order} put on {billing} · {amount}", { order, billing: spot(str(field(after, "billing"))) ?? t("a room"), amount: formatTZS(num(field(after, "total"))) }), detail: [spot(str(field(after, "table"))), other ? t("{name}'s room", { name: other }) : null, who].filter(Boolean).join(" · ") || undefined, href });
     } else if (l.action === "restaurant_order.room_paid_now") {
-      events.push({ at: l.createdAt, kind: "billing", title: `${order} removed from ${str(field(before, "billing")) ?? "the room"} — paid now · ${formatTZS(num(field(after, "total")))}`, detail: who, href });
+      events.push({ at: l.createdAt, kind: "billing", title: t("{order} removed from {billing} — paid now · {amount}", { order, billing: spot(str(field(before, "billing"))) ?? t("the room"), amount: formatTZS(num(field(after, "total"))) }), detail: who, href });
     } else {
-      events.push({ at: l.createdAt, kind: "billing", title: `${order} moved from ${billName(str(field(before, "billing")))} to ${billName(str(field(after, "billing")))} · ${formatTZS(num(field(after, "amount")))}`, detail: who, href });
+      events.push({ at: l.createdAt, kind: "billing", title: t("{order} moved from {from} to {to} · {amount}", { order, from: billName(str(field(before, "billing"))), to: billName(str(field(after, "billing"))), amount: formatTZS(num(field(after, "amount"))) }), detail: who, href });
     }
   }
   return { events: events.sort((a, b) => +b.at - +a.at).slice(0, 80), messages };

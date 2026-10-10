@@ -2,6 +2,7 @@ import { db } from "@/server/db";
 import { diffDays, fromDbDate, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import { EARNED_NIGHT } from "@/server/services/reservation-financials";
 import { formatTZS } from "@/lib/format";
+import { getT } from "@/i18n/server";
 import { ROOM_STATUS_META } from "@/lib/room-status";
 import { FinanceTabs, PeriodPicker, periodLabel } from "@/components/staff/finance/finance-nav";
 import { RoomCards, type RoomRow } from "./room-cards";
@@ -17,6 +18,7 @@ const STATE: Record<string, CardState> = {
  * where it stands now — as cards grouped by floor (or ranked by income); tap one for the detail.
  */
 export async function RoomPerformance({ p }: { p: { key: string; from: BusinessDate; to: BusinessDate } }) {
+  const t = await getT();
   const days = diffDays(p.from, p.to) + 1;
   const [rooms, nights, inHouse] = await Promise.all([
     db.room.findMany({ where: { isActive: true }, include: { roomType: { select: { name: true, category: true } } } }),
@@ -68,21 +70,21 @@ export async function RoomPerformance({ p }: { p: { key: string; from: BusinessD
     <div className="w-full space-y-5">
       <FinanceTabs active="/staff/finance/rooms" />
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground"><span className="font-semibold text-foreground">{periodLabel(p)}</span> · {days} day{days === 1 ? "" : "s"}</p>
+        <p className="text-sm text-muted-foreground"><span className="font-semibold text-foreground">{periodLabel(p, t)}</span> · {t.plural(days, "{n} day", "{n} days")}</p>
         <PeriodPicker current={p.key} from={p.from} to={p.to} />
       </div>
 
       {/* The period in one strip */}
       <section className="grid grid-cols-2 overflow-hidden rounded-3xl border border-border/70 bg-card sm:grid-cols-3 xl:grid-cols-6 [&>div]:border-border/60 [&>div]:p-4 [&>div]:border-b xl:[&>div]:border-b-0 [&>div:not(:last-child)]:border-r">
-        <Figure label="Room income" value={formatTZS(total)} tone="text-emerald-600 dark:text-emerald-400" />
-        <Figure label="Rooms sold" value={String(sold)} sub={`${soldNights} night${soldNights === 1 ? "" : "s"}${sold - soldNights ? ` · ${sold - soldNights} short time` : ""}`} />
-        <Figure label="Average rate" value={sold ? formatTZS(Math.round(total / sold)) : "—"} sub="Income ÷ rooms sold" />
-        <Figure label="Occupancy" value={`${occupancy}%`} sub={`${soldNights} of ${guestRooms.length * days} room-nights`} />
-        <Figure label="Best room" value={best && best.income > 0 ? best.number : "—"} sub={best && best.income > 0 ? `${best.type} · ${formatTZS(best.income)}` : "nothing sold yet"} />
-        <Figure label="Not sold" value={String(idle)} sub={`guest room${idle === 1 ? "" : "s"} with no night`} tone={idle ? "text-amber-600 dark:text-amber-300" : undefined} />
+        <Figure label={t("Room income")} value={formatTZS(total)} tone="text-emerald-600 dark:text-emerald-400" />
+        <Figure label={t("Rooms sold")} value={String(sold)} sub={`${t.plural(soldNights, "{n} night", "{n} nights")}${sold - soldNights ? ` · ${t("{n} short time", { n: sold - soldNights })}` : ""}`} />
+        <Figure label={t("Average rate")} value={sold ? formatTZS(Math.round(total / sold)) : "—"} sub={t("Income ÷ rooms sold")} />
+        <Figure label={t("Occupancy")} value={`${occupancy}%`} sub={t("{n} of {total} room-nights", { n: soldNights, total: guestRooms.length * days })} />
+        <Figure label={t("Best room")} value={best && best.income > 0 ? best.number : "—"} sub={best && best.income > 0 ? `${t(best.type)} · ${formatTZS(best.income)}` : t("nothing sold yet")} />
+        <Figure label={t("Not sold")} value={String(idle)} sub={t.plural(idle, "guest room with no night", "guest rooms with no night")} tone={idle ? "text-amber-600 dark:text-amber-300" : undefined} />
       </section>
 
-      <RoomCards rows={rows} period={periodLabel(p)} days={days} />
+      <RoomCards rows={rows} period={periodLabel(p, t)} days={days} />
     </div>
   );
 }

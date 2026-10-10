@@ -10,7 +10,7 @@ import { maskPhone } from "@/server/services/mobile-payments";
 import { isPayLater } from "@/server/services/booking-holds";
 import { accountOptions } from "@/server/services/payment-accounts";
 import { businessToday, getSettings } from "@/server/settings";
-import { formatBusinessDate, formatDateTime, formatTZS } from "@/lib/format";
+import { formatTZS, formatTime } from "@/lib/format";
 import { addDays, fromDbDate } from "@/lib/time/business-date";
 import { RESERVATION_STATUS_META } from "@/lib/reservation-status";
 import { PAYMENT_STATUS_META, paymentStatus } from "@/lib/payment-status";
@@ -23,7 +23,6 @@ import { requestHandlers } from "@/server/services/requests";
 import { REQUEST_TYPE_LABEL } from "@/lib/request-meta";
 import { ReservationActions, RoomRowActions, PaymentPanel, ReversePaymentButton, NoShowPanel, CorrectPaymentButton, EditMeetingButton } from "./panels";
 import { MEETING_STATUS_LABEL, hoursBetween, timeRange } from "@/lib/meeting";
-import { formatTime } from "@/lib/format";
 import { ChargeComposer, GuestTab } from "@/components/staff/reception/room-charges";
 import { recentChargeItems } from "@/server/services/payments";
 import { billMenu, inHouseGuests, reservationOrders, STATUS_LABEL, TYPE_LABEL } from "@/server/services/restaurant";
@@ -45,12 +44,32 @@ import { reservationMessage } from "@/server/services/guest-message-data";
 import { bookingTimeline } from "@/server/services/finance-history";
 import { unbilledCompanyAmount } from "@/server/services/company-billing";
 import type { BillTo } from "@/lib/billing";
-import type { InvoiceStatus } from "@/generated/prisma/enums";
+import type { InvoiceStatus, RoomStatus } from "@/generated/prisma/enums";
+import { ROOM_STATUS_META } from "@/lib/room-status";
+import { idLabel } from "@/lib/company-staff";
+import { msg } from "@/i18n/msg";
+import { getT } from "@/i18n/server";
+import { orderItemName } from "@/i18n/content";
+import { DEFAULT_LOCALE } from "@/i18n/config";
 
-export const metadata: Metadata = { title: "Reservation" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getT())("Reservation") };
+}
+
+/** A guest request's status, as it reads in English (lower case) — translated where shown. */
+const REQUEST_STATUS_WORD: Record<string, string> = {
+  NEW: msg("new"), ASSIGNED: msg("assigned"), IN_PROGRESS: msg("in progress"), COMPLETED: msg("completed"), CANCELLED: msg("cancelled"),
+};
+/** The welcome checklist's ticks (from the check-in), as they read in English — translated where shown. */
+const CHECK_WORD: Record<string, string> = {
+  guestVerified: msg("guest verified"), roomReady: msg("room ready"), keyIssued: msg("key issued"), wifiGiven: msg("wifi given"),
+  breakfastExplained: msg("breakfast explained"), facilitiesExplained: msg("facilities explained"), requestsConfirmed: msg("requests confirmed"),
+  transportConfirmed: msg("transport confirmed"),
+};
 
 export default async function ReservationPage({ params, searchParams }: PageProps<"/staff/reservations/[id]">) {
   const user = await requirePagePermission("reservations.view");
+  const t = await getT();
   const { id } = await params;
   const sp = await searchParams;
   const sentParam = sp.sent;
@@ -103,7 +122,7 @@ export default async function ReservationPage({ params, searchParams }: PageProp
     reservationOrders(r.id),
     arrived ? db.restaurantOrder.findMany({
       where: { createdAt: { gte: r.arrivalDate, ...(leftAt && { lte: leftAt }) }, OR: [{ guestId: { in: people } }, { guestId: null, session: { guestId: { in: people } } }] },
-      include: { items: { orderBy: { id: "asc" }, select: { quantity: true, name: true } }, createdBy: { select: { fullName: true } }, account: { select: { name: true } }, location: { select: { name: true } } },
+      include: { items: { orderBy: { id: "asc" }, select: { quantity: true, name: true, nameI18n: true } }, createdBy: { select: { fullName: true } }, account: { select: { name: true } }, location: { select: { name: true } } },
       orderBy: { createdAt: "desc" },
     }) : Promise.resolve([]),
     // Their table right now — only while they are staying (a past or coming stay has no "now").
@@ -156,27 +175,28 @@ export default async function ReservationPage({ params, searchParams }: PageProp
   const now = new Date();
   const live = r.rooms.filter((x) => !["CANCELLED", "NO_SHOW"].includes(x.status));
   const overdue = inHouse.some((x) => x.endAt <= now);
-  const firstIn = live.reduce<Date | null>((m, x) => { const t = x.checkedInAt ?? x.startAt; return !m || t < m ? t : m; }, null);
-  const lastOut = live.reduce<Date | null>((m, x) => { const t = x.checkedOutAt ?? x.endAt; return !m || t > m ? t : m; }, null);
+  const firstIn = live.reduce<Date | null>((m, x) => { const at = x.checkedInAt ?? x.startAt; return !m || at < m ? at : m; }, null);
+  const lastOut = live.reduce<Date | null>((m, x) => { const at = x.checkedOutAt ?? x.endAt; return !m || at > m ? at : m; }, null);
   const nights = live.reduce((m, x) => Math.max(m, x.nights), 0);
   const open = !["CANCELLED", "NO_SHOW", "CHECKED_OUT"].includes(r.status);
   // Restaurant orders: where each one is paid — this room's bill, the restaurant, or still open at its table.
   const roomLabel = (inHouse.length ? inHouse : live).map((x) => x.room.number).join(", ");
   const canPutOnRoom = canOrder && !watching && r.status === "CHECKED_IN";
   const orderRows = orders.map((o) => {
-    const place = o.type === "ROOM_SERVICE" ? null : o.location?.name ?? o.tableLabel ?? null;
-    const at = place ? `at ${place}` : o.type === "ROOM_SERVICE" ? "for room service" : o.type === "TAKEAWAY" ? "for take out" : "at the restaurant";
-    const [badge, tone] = o.status === "CANCELLED" ? ["Cancelled — not charged", "bg-muted text-muted-foreground"]
-      : o.settlement === "ROOM" ? [o.reservationId === r.id ? "On this room's bill" : `On Room ${o.roomNumber ?? "?"}'s bill`, "bg-violet-500/12 text-violet-700 dark:text-violet-300"]
-      : o.paidAmount >= o.total ? [`Paid at the restaurant${o.account ? ` · ${o.account.name}` : ""}`, "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300"]
-      : o.paidAmount > 0 ? [`Part-paid · ${formatTZS(o.total - o.paidAmount)} open ${at} — not on the room`, "bg-rose-500/12 text-rose-700 dark:text-rose-300"]
-      : [`Open ${at} — not on the room`, "bg-rose-500/12 text-rose-700 dark:text-rose-300"];
+    const rawPlace = o.type === "ROOM_SERVICE" ? null : o.location?.name ?? o.tableLabel ?? null;
+    const place = rawPlace ? t(rawPlace) : null;
+    const at = place ? t("at {place}", { place }) : o.type === "ROOM_SERVICE" ? t("for room service") : o.type === "TAKEAWAY" ? t("for take out") : t("at the restaurant");
+    const [badge, tone] = o.status === "CANCELLED" ? [t("Cancelled — not charged"), "bg-muted text-muted-foreground"]
+      : o.settlement === "ROOM" ? [o.reservationId === r.id ? t("On this room's bill") : t("On Room {room}'s bill", { room: o.roomNumber ?? "?" }), "bg-violet-500/12 text-violet-700 dark:text-violet-300"]
+      : o.paidAmount >= o.total ? [`${t("Paid at the restaurant")}${o.account ? ` · ${t(o.account.name)}` : ""}`, "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300"]
+      : o.paidAmount > 0 ? [t("Part-paid · {amount} open {at} — not on the room", { amount: formatTZS(o.total - o.paidAmount), at }), "bg-rose-500/12 text-rose-700 dark:text-rose-300"]
+      : [t("Open {at} — not on the room", { at }), "bg-rose-500/12 text-rose-700 dark:text-rose-300"];
     return { o, place, badge, tone, canPut: canPutOnRoom && o.status !== "CANCELLED" && o.settlement !== "ROOM" && o.paymentStatus === "UNPAID" && o.paidAmount === 0 };
   });
   // At a table right now: "At Outside 3 now · 2 orders · TZS x to pay at the table · TZS y on this room".
-  const atTables = tables.map((t) => {
-    const m = sessionMoney(t.orders);
-    return { id: t.id, table: t.location.name, orders: m.orders, due: m.due, onThisRoom: t.orders.filter((o) => o.status !== "CANCELLED" && o.settlement === "ROOM" && o.reservationId === r.id).reduce((s, o) => s + o.total, 0) };
+  const atTables = tables.map((tb) => {
+    const m = sessionMoney(tb.orders);
+    return { id: tb.id, table: tb.location.name, orders: m.orders, due: m.due, onThisRoom: tb.orders.filter((o) => o.status !== "CANCELLED" && o.settlement === "ROOM" && o.reservationId === r.id).reduce((s, o) => s + o.total, 0) };
   });
   // Meeting room booking: same reservation, meeting words ("In use", "Completed"), times instead of nights.
   const meeting = r.kind === "MEETING";
@@ -202,13 +222,14 @@ export default async function ReservationPage({ params, searchParams }: PageProp
   ]);
   const opt = (type: GuestMessageOption["type"], label: string, m: { text: string; subject: string } | null) => (m ? [{ type, label, text: m.text, subject: m.subject }] : []);
   const messageOptions: GuestMessageOption[] = [
-    ...opt("BOOKING_CREATED", meeting ? "Meeting room booking" : "Booking details", bookingMsg),
-    ...opt("WELCOME", "Welcome & menu", welcomeMsg),
-    ...opt("BOOKING_UPDATED", "Booking updated", updatedMsg),
-    ...opt("PAYMENT_RECEIVED", "Payment received", paidMsg),
-    ...opt("PAYMENT", "Bill & how to pay", billMsg),
-    ...opt("THANK_YOU", "Check-out & thank you", checkoutMsg),
-    ...opt("BOOKING_CANCELLED", "Booking cancelled", cancelledMsg),
+    // English labels — the messenger shows them in the reader's language.
+    ...opt("BOOKING_CREATED", meeting ? msg("Meeting room booking") : msg("Booking details"), bookingMsg),
+    ...opt("WELCOME", msg("Welcome & menu"), welcomeMsg),
+    ...opt("BOOKING_UPDATED", msg("Booking updated"), updatedMsg),
+    ...opt("PAYMENT_RECEIVED", msg("Payment received"), paidMsg),
+    ...opt("PAYMENT", msg("Bill & how to pay"), billMsg),
+    ...opt("THANK_YOU", msg("Check-out & thank you"), checkoutMsg),
+    ...opt("BOOKING_CANCELLED", msg("Booking cancelled"), cancelledMsg),
   ];
   const autoMessage = !r.guest.phone ? null
     : sentParam === "welcome" && welcomeMsg && guestEventOn(settingsNow.guestNotifications, "checkIn") ? "WELCOME"
@@ -221,7 +242,7 @@ export default async function ReservationPage({ params, searchParams }: PageProp
 
   return (
     <div className="w-full space-y-5">
-      <Link href="/staff/reservations" className={buttonVariants({ variant: "ghost", size: "sm" })}><ArrowLeft /> Reservations</Link>
+      <Link href="/staff/reservations" className={buttonVariants({ variant: "ghost", size: "sm" })}><ArrowLeft /> {t("Reservations")}</Link>
 
       {/* ── Header: who, status, key facts and the main actions ── */}
       <section className="overflow-hidden rounded-3xl border border-border/70 bg-card">
@@ -230,48 +251,48 @@ export default async function ReservationPage({ params, searchParams }: PageProp
           <div className="min-w-0 flex-1">
             <h1 className="flex flex-wrap items-center gap-2 text-2xl font-semibold tracking-tight">
               {meeting && r.companyName ? r.companyName : r.guest.fullName}
-              <Badge variant="outline" className={meta.className}>{meeting ? MEETING_STATUS_LABEL[r.status] : meta.label}</Badge>
-              {(() => { const ps = PAYMENT_STATUS_META[paymentStatus(r)]; return <Badge variant="outline" className={cn("border-transparent", ps.className)}>{ps.label}</Badge>; })()}
-              {overdue && <Badge variant="outline" className="border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-300">{meeting ? "Running over" : "Checkout overdue"}</Badge>}
+              <Badge variant="outline" className={meta.className}>{t(meeting ? MEETING_STATUS_LABEL[r.status] : meta.label)}</Badge>
+              {(() => { const ps = PAYMENT_STATUS_META[paymentStatus(r)]; return <Badge variant="outline" className={cn("border-transparent", ps.className)}>{t(ps.label)}</Badge>; })()}
+              {overdue && <Badge variant="outline" className="border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-300">{meeting ? t("Running over") : t("Checkout overdue")}</Badge>}
             </h1>
             {r.group && (
               <Link href={`/staff/groups/${r.group.id}`} className="mt-1.5 inline-flex flex-wrap items-center gap-1.5 rounded-full bg-violet-500/12 px-3 py-1 text-xs font-semibold text-violet-800 hover:bg-violet-500/20 dark:text-violet-200">
-                <Users className="size-3.5" />Group booking · {r.group.name} · {r.group.reference} · {r.group._count.reservations} room{r.group._count.reservations === 1 ? "" : "s"} →
+                <Users className="size-3.5" />{t.plural(r.group._count.reservations, "Group booking · {name} · {reference} · {n} room →", "Group booking · {name} · {reference} · {n} rooms →", { name: r.group.name, reference: r.group.reference })}
               </Link>
             )}
             {(r.source.code === "HOTEL_QR" || ntzsPaid.length > 0 || payingOnline) && (
               <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
                 {r.source.code === "HOTEL_QR" && (
                   <Link href="/staff/hotel-qr" className="inline-flex items-center gap-1.5 rounded-full bg-[oklch(0.75_0.12_80/0.14)] px-3 py-1 text-xs font-semibold text-[oklch(0.5_0.1_75)] hover:bg-[oklch(0.75_0.12_80/0.22)] dark:text-[oklch(0.85_0.1_84)]">
-                    <QrCode className="size-3.5" />Booked from the Hotel QR{r.bookingQr ? ` · ${r.bookingQr.label}` : ""}
+                    <QrCode className="size-3.5" />{t("Booked from the Hotel QR")}{r.bookingQr ? ` · ${r.bookingQr.label}` : ""}
                   </Link>
                 )}
                 {ntzsPaid.length > 0 && (
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/12 px-3 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
-                    <BadgeCheck className="size-3.5" />Paid online · NTZS · {formatTZS(ntzsPaid.reduce((t, p) => t + p.amount, 0))}{ntzsRef ? <span className="font-mono font-medium"> · {ntzsRef}</span> : null}
+                    <BadgeCheck className="size-3.5" />{t("Paid online · NTZS · {amount}", { amount: formatTZS(ntzsPaid.reduce((sum, p) => sum + p.amount, 0)) })}{ntzsRef ? <span className="font-mono font-medium"> · {ntzsRef}</span> : null}
                   </span>
                 )}
                 {payingOnline && (
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-500/12 px-3 py-1 text-xs font-semibold text-sky-700 dark:text-sky-300">
-                    <Loader2 className="size-3.5 animate-spin" />Guest is paying online (NTZS) · {formatTZS(r.mobilePayments[0].amount)}
+                    <Loader2 className="size-3.5 animate-spin" />{t("Guest is paying online (NTZS) · {amount}", { amount: formatTZS(r.mobilePayments[0].amount) })}
                   </span>
                 )}
               </span>
             )}
-            {atTables.map((t) => (
-              <a key={t.id} href="#restaurant" className="mt-1.5 mr-1.5 inline-flex flex-wrap items-center gap-1.5 rounded-full bg-amber-500/12 px-3 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-500/20 dark:text-amber-200">
-                <UtensilsCrossed className="size-3.5" />At {t.table} now · {t.orders} order{t.orders === 1 ? "" : "s"}
-                {t.due > 0 ? ` · ${formatTZS(t.due)} to pay at the table` : ""}{t.onThisRoom > 0 ? ` · ${formatTZS(t.onThisRoom)} on this room` : ""}
+            {atTables.map((tb) => (
+              <a key={tb.id} href="#restaurant" className="mt-1.5 mr-1.5 inline-flex flex-wrap items-center gap-1.5 rounded-full bg-amber-500/12 px-3 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-500/20 dark:text-amber-200">
+                <UtensilsCrossed className="size-3.5" />{t.plural(tb.orders, "At {table} now · {n} order", "At {table} now · {n} orders", { table: t(tb.table) })}
+                {tb.due > 0 ? ` · ${t("{amount} to pay at the table", { amount: formatTZS(tb.due) })}` : ""}{tb.onThisRoom > 0 ? ` · ${t("{amount} on this room", { amount: formatTZS(tb.onThisRoom) })}` : ""}
               </a>
             ))}
-            {mr && <p className="mt-1 text-sm font-semibold text-violet-700 dark:text-violet-300">Room {mr.room.number} — {mr.roomType.name} · {timeRange(mr.startAt, mr.endAt)}{meeting && r.companyName ? ` · contact ${r.guest.fullName}` : ""}</p>}
+            {mr && <p className="mt-1 text-sm font-semibold text-violet-700 dark:text-violet-300">{t("Room {room}", { room: mr.room.number })} — {t(mr.roomType.name)} · {timeRange(mr.startAt, mr.endAt)}{meeting && r.companyName ? ` · ${t("contact {name}", { name: r.guest.fullName })}` : ""}</p>}
             <p className="mt-1 text-sm text-muted-foreground">
-              <span className="font-mono">{r.reference}</span> · {r.source.name}{r.externalReference && ` · ${r.externalReference}`} · booked {formatDateTime(r.createdAt)} by {r.createdBy?.fullName ?? r.source.name}
+              <span className="font-mono">{r.reference}</span> · {t(r.source.name)}{r.externalReference && ` · ${r.externalReference}`} · {t("booked {date} by {name}", { date: t.dateTime(r.createdAt), name: r.createdBy?.fullName ?? t(r.source.name) })}
             </p>
           </div>
           {!["CANCELLED", "INQUIRY"].includes(r.status) && (
             <Link href={`/staff/stay-bill?reservation=${r.id}`} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[oklch(0.75_0.13_80)]/50 bg-[oklch(0.75_0.13_80)]/10 px-3 text-sm font-semibold hover:bg-[oklch(0.75_0.13_80)]/20">
-              <FileText className="size-4" />{meeting ? "Meeting bill" : "Room bill"}
+              <FileText className="size-4" />{meeting ? t("Meeting bill") : t("Room bill")}
             </Link>
           )}
           <ReservationActions
@@ -295,49 +316,55 @@ export default async function ReservationPage({ params, searchParams }: PageProp
         </div>
         {r.status === "NO_SHOW" && (
           <NoShowPanel reservationId={r.id} released={r.rooms.every((x) => x.status !== "NO_SHOW" || !!x.releasedAt)}
-            releasedAt={r.rooms.find((x) => x.releasedAt)?.releasedAt ? formatDateTime(r.rooms.find((x) => x.releasedAt)!.releasedAt!) : null}
+            releasedAt={r.rooms.find((x) => x.releasedAt)?.releasedAt ? t.dateTime(r.rooms.find((x) => x.releasedAt)!.releasedAt!) : null}
             canRelease={perms.cancel} paid={r.paidAmount} keepPolicy={(await getSettings()).noShowPolicy === "RETAIN_PAYMENT"} />
         )}
         {r.lateArrivalNotedAt && ["RESERVED", "CONFIRMED"].includes(r.status) && (
           <p className="flex flex-wrap items-center gap-2 border-t border-sky-500/30 bg-sky-500/10 px-4 py-3 text-sm text-sky-800 sm:px-6 dark:text-sky-300">
-            <Clock3 className="size-4 shrink-0" /><span><strong>Late arrival</strong>{r.eta ? ` · expected around ${r.eta}` : ""} — {r.lateArrivalNote}. The room stays reserved.</span>
+            <Clock3 className="size-4 shrink-0" /><span><strong>{t("Late arrival")}</strong>{r.eta ? ` · ${t("expected around {time}", { time: r.eta })}` : ""}{" "}{t("— {note}. The room stays reserved.", { note: r.lateArrivalNote ?? "" })}</span>
           </p>
         )}
         {r.status === "INQUIRY" && (
           <p className="flex flex-wrap items-center gap-2 border-t border-orange-500/30 bg-orange-500/10 px-4 py-3 text-sm text-orange-800 sm:px-6 dark:text-orange-300">
             <Clock3 className="size-4 shrink-0" />
-            <span><strong>Not paid — the room is not held.</strong> {payLater ? "Booked online to pay later: " : ""}the room stays free for everyone until this booking is paid — whoever pays first gets it. A payment (a deposit is enough) secures it; at check-in give them any free room.</span>
+            <span><strong>{t("Not paid — the room is not held.")}</strong>{" "}{payLater
+              ? t("Booked online to pay later: the room stays free for everyone until this booking is paid — whoever pays first gets it. A payment (a deposit is enough) secures it; at check-in give them any free room.")
+              : t("the room stays free for everyone until this booking is paid — whoever pays first gets it. A payment (a deposit is enough) secures it; at check-in give them any free room.")}</span>
           </p>
         )}
         {r.status === "RESERVED" && (
           <p className="flex flex-wrap items-center gap-2 border-t border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 sm:px-6 dark:text-amber-300">
             <Clock3 className="size-4 shrink-0" />
-            <span><strong>Pending — not paid.</strong> {r.holdUntil ? <>The room is held until <strong>{formatDateTime(r.holdUntil)}</strong>. </> : null}Receive a payment (a deposit is enough) to confirm it{r.holdUntil ? "; otherwise the room is released automatically" : ""}.</span>
+            <span><strong>{t("Pending — not paid.")}</strong>{" "}{r.holdUntil
+              ? t.rich("The room is held until <b>{time}</b>. Receive a payment (a deposit is enough) to confirm it; otherwise the room is released automatically.", { b: (c) => <strong>{c}</strong> }, { time: t.dateTime(r.holdUntil) })
+              : t("Receive a payment (a deposit is enough) to confirm it.")}</span>
           </p>
         )}
         <dl className="grid grid-cols-2 border-t border-border/70 sm:grid-cols-3 lg:grid-cols-6">
           {(mr ? [
-            ["Room", `${mr.room.number} — ${mr.roomType.name}`],
-            ["Date", formatBusinessDate(mr.arrivalDate.toISOString().slice(0, 10), true)],
-            [mr.checkedInAt ? "Started" : "Starts", formatTime(mr.checkedInAt ?? mr.startAt)],
-            [mr.checkedOutAt ? "Completed" : "Ends", formatTime(mr.checkedOutAt ?? mr.endAt)],
-            ["People", String(r.adults)],
+            [msg("Room"), `${mr.room.number} — ${t(mr.roomType.name)}`],
+            [msg("Date"), t.date(mr.arrivalDate.toISOString().slice(0, 10), true)],
+            [mr.checkedInAt ? msg("Started") : msg("Starts"), t.time(mr.checkedInAt ?? mr.startAt)],
+            [mr.checkedOutAt ? msg("Completed") : msg("Ends"), t.time(mr.checkedOutAt ?? mr.endAt)],
+            [msg("People"), String(r.adults)],
           ] : [
-            ["Room", live.map((x) => x.room.number).join(", ") || "—"],
-            [inHouse.length || r.status === "CHECKED_OUT" ? "Checked in" : "Arrives", firstIn ? formatDateTime(firstIn) : "—"],
-            [r.status === "CHECKED_OUT" ? "Checked out" : "Checkout", lastOut ? formatDateTime(lastOut) : "—"],
-            ["Nights", String(nights)],
-            ["Guests", `${r.adults} adult${r.adults === 1 ? "" : "s"}${r.children ? `, ${r.children} child${r.children === 1 ? "" : "ren"}` : ""}`],
+            [msg("Room"), live.map((x) => x.room.number).join(", ") || "—"],
+            [inHouse.length || r.status === "CHECKED_OUT" ? msg("Checked in") : msg("Arrives"), firstIn ? t.dateTime(firstIn) : "—"],
+            [r.status === "CHECKED_OUT" ? msg("Checked out") : msg("Checkout"), lastOut ? t.dateTime(lastOut) : "—"],
+            [msg("Nights"), String(nights)],
+            [msg("Guests"), r.children
+              ? t("{adults}, {children}", { adults: t.plural(r.adults, "{n} adult", "{n} adults"), children: t.plural(r.children, "{n} child", "{n} children") })
+              : t.plural(r.adults, "{n} adult", "{n} adults")],
           ]).map(([k, v]) => (
-            <div key={k} className="px-4 py-3 sm:px-6"><dt className="text-xs text-muted-foreground">{k}</dt><dd className={cn("font-semibold", k === "Checkout" && overdue && "text-rose-600 dark:text-rose-400")}>{v}</dd></div>
+            <div key={k} className="px-4 py-3 sm:px-6"><dt className="text-xs text-muted-foreground">{t(k)}</dt><dd className={cn("font-semibold", k === "Checkout" && overdue && "text-rose-600 dark:text-rose-400")}>{v}</dd></div>
           ))}
-          <div className="px-4 py-3 sm:px-6"><dt className="text-xs text-muted-foreground">Balance</dt>
+          <div className="px-4 py-3 sm:px-6"><dt className="text-xs text-muted-foreground">{t("Balance")}</dt>
             <dd className={cn("font-semibold tabular-nums", r.balanceAmount > 0 ? "text-rose-600 dark:text-rose-400" : r.balanceAmount < 0 ? "text-amber-700 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400")}>
-              {r.balanceAmount > 0 ? formatTZS(r.balanceAmount) : r.balanceAmount < 0 ? `Credit ${formatTZS(-r.balanceAmount)}` : "Paid"}
+              {r.balanceAmount > 0 ? formatTZS(r.balanceAmount) : r.balanceAmount < 0 ? t("Credit {amount}", { amount: formatTZS(-r.balanceAmount) }) : t("Paid")}
             </dd></div>
         </dl>
-        <nav aria-label="Sections" className="flex gap-1.5 overflow-x-auto border-t border-border/70 px-4 py-2.5 text-xs font-medium [scrollbar-width:none] sm:px-6">
-          {[["#stay", meeting ? "Meeting" : "Stay & rooms", BedDouble], ["#money", "Money", Wallet], ["#extras", meeting ? "Food & extras" : "Room service", Receipt], ["#guest", meeting ? "Customer" : "Guest", UserRound], ["#more", "Transport & requests", ClipboardList], ["#history", "History", History]].map(([href, label, I]) => {
+        <nav aria-label={t("Sections")} className="flex gap-1.5 overflow-x-auto border-t border-border/70 px-4 py-2.5 text-xs font-medium [scrollbar-width:none] sm:px-6">
+          {[["#stay", meeting ? t("Meeting") : t("Stay & rooms"), BedDouble], ["#money", t("Money"), Wallet], ["#extras", meeting ? t("Food & extras") : t("Room service"), Receipt], ["#guest", meeting ? t("Customer") : t("Guest"), UserRound], ["#more", t("Transport & requests"), ClipboardList], ["#history", t("History"), History]].map(([href, label, I]) => {
             const Icon = I as typeof BedDouble;
             return <a key={href as string} href={href as string} className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-muted px-3 py-1.5 text-muted-foreground transition-colors hover:text-foreground"><Icon className="size-3.5" />{label as string}</a>;
           })}
@@ -356,7 +383,7 @@ export default async function ReservationPage({ params, searchParams }: PageProp
                   stay={{ reservationRoomId: x.id, ratePerNight: x.ratePerNight, discountPerNight: x.discountPerNight, nights: x.nights }} />
               </div>
             ))}
-            <h2 className={H2}><BedDouble className="size-4 text-muted-foreground" />{meeting ? "Meeting" : <>Stay &amp; rooms</>}
+            <h2 className={H2}><BedDouble className="size-4 text-muted-foreground" />{meeting ? t("Meeting") : t("Stay & rooms")}
               {mr && perms.edit && ["RESERVED", "CONFIRMED", "CHECKED_IN", "INQUIRY"].includes(mr.status) && (
                 <span className="ml-auto">
                   <EditMeetingButton reservationId={r.id} date={mr.arrivalDate.toISOString().slice(0, 10)} start={formatTime(mr.startAt)} end={formatTime(mr.endAt)}
@@ -376,11 +403,11 @@ export default async function ReservationPage({ params, searchParams }: PageProp
                     <div className="flex flex-wrap items-center gap-3">
                       <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-[#17130e] text-lg font-bold tabular-nums text-[#f0cf86] dark:bg-gold dark:text-[#17130e]">{rr.room.number}</span>
                       <div className="min-w-0 flex-1">
-                        <p className="flex flex-wrap items-center gap-2 font-semibold">{rr.roomType.name}<Badge variant="outline" className={rs.className}>{meeting ? MEETING_STATUS_LABEL[rr.status] : rs.label}</Badge></p>
+                        <p className="flex flex-wrap items-center gap-2 font-semibold">{t(rr.roomType.name)}<Badge variant="outline" className={rs.className}>{t(meeting ? MEETING_STATUS_LABEL[rr.status] : rs.label)}</Badge></p>
                         <p className="text-sm text-muted-foreground">
-                          {meeting ? `${formatBusinessDate(arrival)} · ${timeRange(rr.startAt, rr.endAt)} · ${hoursBetween(rr.startAt, rr.endAt)} h · ${rr.adults} ${rr.adults === 1 ? "person" : "people"}` : <>
-                          {rr.isDayUse ? `Short time · ${formatBusinessDate(arrival)} · no breakfast` : `${formatBusinessDate(arrival)} → ${formatBusinessDate(departure)} · ${rr.nights} night${rr.nights === 1 ? "" : "s"}`}
-                          {" · "}{rr.adults} adult{rr.adults === 1 ? "" : "s"}{rr.children ? `, ${rr.children} child` : ""}{rr.isLateArrival && " · late arrival"}
+                          {meeting ? `${t.date(arrival)} · ${timeRange(rr.startAt, rr.endAt)} · ${t("{hours} h", { hours: hoursBetween(rr.startAt, rr.endAt) })} · ${t.plural(rr.adults, "{n} person", "{n} people")}` : <>
+                          {rr.isDayUse ? t("Short time · {date} · no breakfast", { date: t.date(arrival) }) : `${t.date(arrival)} → ${t.date(departure)} · ${t.plural(rr.nights, "{n} night", "{n} nights")}`}
+                          {" · "}{rr.children ? t("{adults}, {children}", { adults: t.plural(rr.adults, "{n} adult", "{n} adults"), children: t("{n} child", { n: rr.children }) }) : t.plural(rr.adults, "{n} adult", "{n} adults")}{rr.isLateArrival && ` · ${t("late arrival")}`}
                           </>}
                         </p>
                       </div>
@@ -388,8 +415,8 @@ export default async function ReservationPage({ params, searchParams }: PageProp
                         <p className="font-semibold tabular-nums">{formatTZS(rr.netAmount)}</p>
                         <p className="text-xs text-muted-foreground tabular-nums">
                           {rr.nightsLedger.length > 1 && new Set(rr.nightsLedger.map((n) => n.netAmount)).size > 1
-                            ? "price varies by night"
-                            : `${formatTZS(rr.nightsLedger[0]?.netAmount ?? rr.ratePerNight - rr.discountPerNight)}${meeting ? " per booking" : rr.isDayUse ? "" : " /night"}`}
+                            ? t("price varies by night")
+                            : `${formatTZS(rr.nightsLedger[0]?.netAmount ?? rr.ratePerNight - rr.discountPerNight)}${meeting ? ` ${t("per booking")}` : rr.isDayUse ? "" : ` ${t("/night")}`}`}
                         </p>
                       </div>
                       <RoomRowActions
@@ -405,17 +432,17 @@ export default async function ReservationPage({ params, searchParams }: PageProp
                     {rr.nightsLedger.length > 0 && !meeting && (
                       <details className="group mt-3 rounded-xl border border-border/60" open={new Set(rr.nightsLedger.map((n) => n.netAmount)).size > 1}>
                         <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 text-xs font-medium">
-                          <span>Price per night{rr.promotionName && <span className="ml-2 rounded-full bg-rose-500/12 px-2 py-0.5 text-[11px] font-semibold text-rose-700 dark:text-rose-300">{rr.promotionName}</span>}</span>
-                          <span className="text-muted-foreground group-open:hidden">Show</span>
+                          <span>{t("Price per night")}{rr.promotionName && <span className="ml-2 rounded-full bg-rose-500/12 px-2 py-0.5 text-[11px] font-semibold text-rose-700 dark:text-rose-300">{rr.promotionName}</span>}</span>
+                          <span className="text-muted-foreground group-open:hidden">{t("Show")}</span>
                         </summary>
                         <table className="w-full border-t border-border/60 text-xs">
                           <thead className="text-muted-foreground">
-                            <tr><th className="px-3 py-1.5 text-left font-medium">Night</th><th className="px-2 py-1.5 text-right font-medium">Price</th><th className="px-2 py-1.5 text-right font-medium">Promotion</th><th className="px-2 py-1.5 text-right font-medium">Discount</th><th className="px-3 py-1.5 text-right font-medium">Pays</th></tr>
+                            <tr><th className="px-3 py-1.5 text-left font-medium">{t("Night")}</th><th className="px-2 py-1.5 text-right font-medium">{t("Price")}</th><th className="px-2 py-1.5 text-right font-medium">{t("Promotion")}</th><th className="px-2 py-1.5 text-right font-medium">{t("Discount")}</th><th className="px-3 py-1.5 text-right font-medium">{t("Pays")}</th></tr>
                           </thead>
                           <tbody className="divide-y divide-border/40 tabular-nums">
                             {rr.nightsLedger.map((n) => (
                               <tr key={n.id}>
-                                <td className="px-3 py-1.5">{formatBusinessDate(n.businessDate.toISOString().slice(0, 10))}</td>
+                                <td className="px-3 py-1.5">{t.date(n.businessDate.toISOString().slice(0, 10))}</td>
                                 <td className="px-2 py-1.5 text-right">{n.grossAmount.toLocaleString("en-US")}</td>
                                 <td className="px-2 py-1.5 text-right" title={n.promotionName ?? undefined}>{n.promoDiscount ? `− ${n.promoDiscount.toLocaleString("en-US")}` : "—"}</td>
                                 <td className="px-2 py-1.5 text-right">{n.manualDiscount ? `− ${n.manualDiscount.toLocaleString("en-US")}` : "—"}</td>
@@ -424,25 +451,25 @@ export default async function ReservationPage({ params, searchParams }: PageProp
                             ))}
                           </tbody>
                         </table>
-                        <p className="border-t border-border/60 px-3 py-1.5 text-[11px] text-muted-foreground">Each night keeps the price it was booked at. Nights added later use the price on the day they were added.</p>
+                        <p className="border-t border-border/60 px-3 py-1.5 text-[11px] text-muted-foreground">{t("Each night keeps the price it was booked at. Nights added later use the price on the day they were added.")}</p>
                       </details>
                     )}
                     <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                      {rr.checkedInAt && <span>{meeting ? "Started" : "In"} {formatDateTime(rr.checkedInAt)} by {rr.checkedInBy?.fullName ?? "—"}</span>}
-                      {rr.checkedOutAt ? <span>{meeting ? "Completed" : "Out"} {formatDateTime(rr.checkedOutAt)} by {rr.checkedOutBy?.fullName ?? "—"}</span> : <span className={cn(rr.status === "CHECKED_IN" && rr.endAt <= now && "font-semibold text-rose-600 dark:text-rose-400")}>{meeting ? "Ends" : "Checkout"} {formatDateTime(rr.endAt)}</span>}
-                      {meeting && r.specialRequests && <span className="basis-full">Requirements: {r.specialRequests}</span>}
+                      {rr.checkedInAt && <span>{meeting ? t("Started {time} by {name}", { time: t.dateTime(rr.checkedInAt), name: rr.checkedInBy?.fullName ?? "—" }) : t("In {time} by {name}", { time: t.dateTime(rr.checkedInAt), name: rr.checkedInBy?.fullName ?? "—" })}</span>}
+                      {rr.checkedOutAt ? <span>{meeting ? t("Completed {time} by {name}", { time: t.dateTime(rr.checkedOutAt), name: rr.checkedOutBy?.fullName ?? "—" }) : t("Out {time} by {name}", { time: t.dateTime(rr.checkedOutAt), name: rr.checkedOutBy?.fullName ?? "—" })}</span> : <span className={cn(rr.status === "CHECKED_IN" && rr.endAt <= now && "font-semibold text-rose-600 dark:text-rose-400")}>{meeting ? t("Ends {time}", { time: t.dateTime(rr.endAt) }) : t("Checkout {time}", { time: t.dateTime(rr.endAt) })}</span>}
+                      {meeting && r.specialRequests && <span className="basis-full">{t("Requirements: {text}", { text: r.specialRequests })}</span>}
                     </p>
 
                     {perms.edit && !rr.isDayUse && (rr.status === "CHECKED_IN" || upcomingRoom) && (
                       <div className="mt-4 grid gap-4 border-t border-dashed border-border pt-4 lg:grid-cols-2">
                         <div>
-                          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{rr.status === "CHECKED_IN" ? "Add nights" : "Change dates"}</p>
+                          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{rr.status === "CHECKED_IN" ? t("Add nights") : t("Change dates")}</p>
                           {rr.status === "CHECKED_IN"
                             ? <ExtendStay reservationId={r.id} today={today} canDiscount={perms.discount} discountMax={perms.discountMax} room={{ id: rr.id, number: rr.room.number, departure, endAt: rr.endAt.toISOString(), ratePerNight: rr.ratePerNight, discountPerNight: rr.discountPerNight, nights: rr.nights }} />
                             : <StayDates reservationId={r.id} today={today} canEdit room={{ id: rr.id, arrival, departure }} />}
                         </div>
                         <div>
-                          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Discount</p>
+                          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("Discount")}</p>
                           <DiscountEditor reservationId={r.id} canEdit={perms.discount} max={perms.discountMax}
                             room={{ id: rr.id, number: rr.room.number, ratePerNight: rr.ratePerNight, discountPerNight: rr.discountPerNight, nights: rr.nights }} />
                         </div>
@@ -459,15 +486,15 @@ export default async function ReservationPage({ params, searchParams }: PageProp
             <section id="extras" className="grid scroll-mt-24 items-start gap-5 2xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
               {perms.pay && (
                 <div className={BOX}>
-                  <h2 className={H2}><Receipt className="size-4 text-muted-foreground" />Room service &amp; extras</h2>
-                  <p className="-mt-2 mb-4 text-xs text-muted-foreground">Meals, drinks, laundry, transport… it goes on this guest&apos;s bill and is paid at checkout.</p>
+                  <h2 className={H2}><Receipt className="size-4 text-muted-foreground" />{t("Room service & extras")}</h2>
+                  <p className="-mt-2 mb-4 text-xs text-muted-foreground">{t("Meals, drinks, laundry, transport… it goes on this guest's bill and is paid at checkout.")}</p>
                   <ChargeComposer reservationId={r.id} roomLabel={roomLabel} recent={recent}
                     methods={methods} canPay={perms.pay} menu={bill} menuPayNow={can(user, "revenue.record")} />
                 </div>
               )}
               <div className={cn(BOX, !perms.pay && "2xl:col-span-2")}>
                 <div className="mb-4 flex items-center justify-between gap-2">
-                  <h2 className="text-base font-semibold">Guest&apos;s tab</h2>
+                  <h2 className="text-base font-semibold">{t("Guest's tab")}</h2>
                   <span className="text-sm font-semibold tabular-nums">{formatTZS(tab.reduce((sum, c) => sum + c.amount, 0))}</span>
                 </div>
                 <GuestTab reservationId={r.id} charges={tab} canVoid={perms.reverse} />
@@ -479,37 +506,37 @@ export default async function ReservationPage({ params, searchParams }: PageProp
           <section id="more" className="grid scroll-mt-24 gap-5 md:grid-cols-2 2xl:grid-cols-3">
             <div className={BOX}>
               <div className="mb-3 flex items-center justify-between gap-2">
-                <h2 className="flex items-center gap-2 text-base font-semibold"><Car className="size-4 text-muted-foreground" />Transport</h2>
+                <h2 className="flex items-center gap-2 text-base font-semibold"><Car className="size-4 text-muted-foreground" />{t("Transport")}</h2>
                 {(can(user, "transport.request") || can(user, "transport.manage")) && open && (
-                  <Link href={`/staff/transport?reservation=${r.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>Add trip</Link>
+                  <Link href={`/staff/transport?reservation=${r.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>{t("Add trip")}</Link>
                 )}
               </div>
               <div className="space-y-2 text-sm">
-                {r.trips.length === 0 ? <p className="text-muted-foreground">No transport booked.</p> : r.trips.map((t) => (
-                  <div key={t.id} className="rounded-xl border border-border/70 p-2.5">
-                    <p className="font-medium">{TRIP_TYPE_LABEL[t.type]} · {formatDateTime(t.pickupAt)}</p>
-                    <p className="text-xs text-muted-foreground">{t.pickupLocation} → {t.destination}{t.flightNumber && ` · ${t.flightNumber}`}</p>
-                    <p className="mt-1 text-xs"><Badge variant="outline" className={TRIP_STATUS_META[t.status].className}>{TRIP_STATUS_META[t.status].label}</Badge> {t.driver ? `Driver ${t.driver.fullName}` : "No driver yet"}</p>
+                {r.trips.length === 0 ? <p className="text-muted-foreground">{t("No transport booked.")}</p> : r.trips.map((trip) => (
+                  <div key={trip.id} className="rounded-xl border border-border/70 p-2.5">
+                    <p className="font-medium">{t(TRIP_TYPE_LABEL[trip.type])} · {t.dateTime(trip.pickupAt)}</p>
+                    <p className="text-xs text-muted-foreground">{trip.pickupLocation} → {trip.destination}{trip.flightNumber && ` · ${trip.flightNumber}`}</p>
+                    <p className="mt-1 text-xs"><Badge variant="outline" className={TRIP_STATUS_META[trip.status].className}>{t(TRIP_STATUS_META[trip.status].label)}</Badge> {trip.driver ? t("Driver {name}", { name: trip.driver.fullName }) : t("No driver yet")}</p>
                   </div>
                 ))}
               </div>
             </div>
             <div className={BOX}>
               <div className="mb-3 flex items-center justify-between gap-2">
-                <h2 className="flex items-center gap-2 text-base font-semibold"><ClipboardList className="size-4 text-muted-foreground" />Guest requests</h2>
+                <h2 className="flex items-center gap-2 text-base font-semibold"><ClipboardList className="size-4 text-muted-foreground" />{t("Guest requests")}</h2>
                 {can(user, "requests.manage") && r.status === "CHECKED_IN" && <NewRequestDialog compact guests={[]} staff={staffList} reservationId={r.id} />}
               </div>
               <div className="space-y-2 text-sm">
-                {r.requests.length === 0 ? <p className="text-muted-foreground">No requests.</p> : r.requests.map((q) => (
+                {r.requests.length === 0 ? <p className="text-muted-foreground">{t("No requests.")}</p> : r.requests.map((q) => (
                   <div key={q.id} className="flex items-start justify-between gap-2 rounded-xl border border-border/70 p-2.5">
-                    <div><p className="font-medium">{REQUEST_TYPE_LABEL[q.type]}</p><p className="text-xs text-muted-foreground">{q.description}</p></div>
-                    <Badge variant="outline">{q.status.toLowerCase().replace("_", " ")}</Badge>
+                    <div><p className="font-medium">{t(REQUEST_TYPE_LABEL[q.type])}</p><p className="text-xs text-muted-foreground">{q.description}</p></div>
+                    <Badge variant="outline">{t(REQUEST_STATUS_WORD[q.status] ?? q.status.toLowerCase().replace("_", " "))}</Badge>
                   </div>
                 ))}
               </div>
             </div>
             <div className={BOX}>
-              <h2 className="mb-3 flex items-center gap-2 text-base font-semibold"><BedDouble className="size-4 text-muted-foreground" />Room moves</h2>
+              <h2 className="mb-3 flex items-center gap-2 text-base font-semibold"><BedDouble className="size-4 text-muted-foreground" />{t("Room moves")}</h2>
               <div className="space-y-1.5 text-sm">
                 {/* Where the guest slept, night by night (a move keeps the earlier nights in the old room). */}
                 {r.rooms.filter((x) => x.assignments.length > 0).map((x) => {
@@ -522,36 +549,36 @@ export default async function ReservationPage({ params, searchParams }: PageProp
                   }
                   return segs.length > 1 ? (
                     <p key={x.id} className="flex flex-wrap items-center gap-1.5 rounded-xl bg-muted/50 px-2.5 py-1.5 text-xs">
-                      {segs.map((g, i) => <span key={i}>{i > 0 && "→ "}<strong>Room {g.room}</strong> {formatBusinessDate(g.from)}–{formatBusinessDate(addDays(g.to, 1))}</span>)}
+                      {segs.map((g, i) => <span key={i}>{i > 0 && "→ "}<strong>{t("Room {room}", { room: g.room })}</strong> {t.date(g.from)}–{t.date(addDays(g.to, 1))}</span>)}
                     </p>
                   ) : null;
                 })}
-                {r.rooms.flatMap((x) => x.assignments).length === 0 ? <p className="text-muted-foreground">No room changes.</p> :
+                {r.rooms.flatMap((x) => x.assignments).length === 0 ? <p className="text-muted-foreground">{t("No room changes.")}</p> :
                   r.rooms.flatMap((x) => x.assignments).map((a) => (
                     <div key={a.id} className="rounded-xl border border-border/70 p-2.5">
                       <p className="flex flex-wrap items-center gap-2">
                         <strong>{a.fromRoom.number} → {a.toRoom.number}</strong>
                         <span className={cn("rounded-full px-2 py-px text-[10px] font-semibold", a.source === "HOTEL" ? "bg-amber-500/15 text-amber-800 dark:text-amber-300" : a.source === "ARRIVAL" || a.source === "PAYMENT" ? "bg-muted text-muted-foreground" : "bg-sky-500/12 text-sky-700 dark:text-sky-300")}>
-                          {a.source === "HOTEL" ? "Hotel-initiated" : a.source === "ARRIVAL" ? "Assigned at arrival" : a.source === "PAYMENT" ? "Room checked again at payment" : "Customer requested"}
+                          {a.source === "HOTEL" ? t("Hotel-initiated") : a.source === "ARRIVAL" ? t("Assigned at arrival") : a.source === "PAYMENT" ? t("Room checked again at payment") : t("Customer requested")}
                         </span>
-                        <span className="text-xs text-muted-foreground">{formatDateTime(a.changedAt)} · {a.changedBy?.fullName ?? "—"}</span>
+                        <span className="text-xs text-muted-foreground">{t.dateTime(a.changedAt)} · {a.changedBy?.fullName ?? "—"}</span>
                       </p>
                       {a.reason && <p className="text-xs text-muted-foreground">{a.reason}</p>}
                       {a.oldPrice != null && (
                         <p className="mt-1 text-xs">
-                          {a.fromTypeName} → {a.toTypeName} · {a.nights} night{a.nights === 1 ? "" : "s"} · was {formatTZS(a.oldPrice)}, new room normally {formatTZS(a.newStandardPrice ?? 0)} ·{" "}
-                          <strong>{a.charged > 0 ? `guest paid +${formatTZS(a.charged)}` : a.charged < 0 ? `credit ${formatTZS(-a.charged)}` : "no charge"}</strong>
-                          {a.compensation > 0 && <span className="text-amber-700 dark:text-amber-400"> · hotel compensation {formatTZS(a.compensation)}</span>}
-                          {a.oldRoomStatus && <span className="text-muted-foreground"> · room {a.fromRoom.number} → {a.oldRoomStatus.toLowerCase()}</span>}
+                          {a.fromTypeName && t(a.fromTypeName)} → {a.toTypeName && t(a.toTypeName)} · {t.plural(a.nights, "{n} night", "{n} nights")} · {t("was {old}, new room normally {standard}", { old: formatTZS(a.oldPrice), standard: formatTZS(a.newStandardPrice ?? 0) })} ·{" "}
+                          <strong>{a.charged > 0 ? t("guest paid +{amount}", { amount: formatTZS(a.charged) }) : a.charged < 0 ? t("credit {amount}", { amount: formatTZS(-a.charged) }) : t("no charge")}</strong>
+                          {a.compensation > 0 && <span className="text-amber-700 dark:text-amber-400"> · {t("hotel compensation {amount}", { amount: formatTZS(a.compensation) })}</span>}
+                          {a.oldRoomStatus && <span className="text-muted-foreground"> · {t("room {room} → {status}", { room: a.fromRoom.number, status: t.locale === DEFAULT_LOCALE ? a.oldRoomStatus.toLowerCase() : t(ROOM_STATUS_META[a.oldRoomStatus as RoomStatus]?.label ?? a.oldRoomStatus.toLowerCase()) })}</span>}
                         </p>
                       )}
-                      {a.oldPrice == null && a.priceDifference ? <p className="text-xs">upgrade {formatTZS(a.priceDifference)}</p> : null}
+                      {a.oldPrice == null && a.priceDifference ? <p className="text-xs">{t("upgrade {amount}", { amount: formatTZS(a.priceDifference) })}</p> : null}
                     </div>
                   ))}
                 {r.welcomeChecklist && (
                   <div className="mt-3 border-t border-border pt-2">
-                    <p className="text-xs font-semibold uppercase text-muted-foreground">Welcome checklist</p>
-                    <p className="text-xs">{Object.entries(r.welcomeChecklist as Record<string, boolean>).filter(([, v]) => v).map(([k]) => k.replace(/([A-Z])/g, " $1").toLowerCase()).join(" · ")}</p>
+                    <p className="text-xs font-semibold uppercase text-muted-foreground">{t("Welcome checklist")}</p>
+                    <p className="text-xs">{Object.entries(r.welcomeChecklist as Record<string, boolean>).filter(([, v]) => v).map(([k]) => t(CHECK_WORD[k] ?? k.replace(/([A-Z])/g, " $1").toLowerCase())).join(" · ")}</p>
                   </div>
                 )}
               </div>
@@ -560,12 +587,12 @@ export default async function ReservationPage({ params, searchParams }: PageProp
 
           {/* ── History ── */}
           <section id="history" className={cn(BOX, "scroll-mt-24")}>
-            <h2 className={H2}><History className="size-4 text-muted-foreground" />History</h2>
+            <h2 className={H2}><History className="size-4 text-muted-foreground" />{t("History")}</h2>
             <ol className="relative space-y-3 border-l border-border pl-5 text-sm">
               {history.map((h) => (
                 <li key={h.id} className="relative">
                   <span className="absolute -left-[1.62rem] top-1.5 size-2.5 rounded-full border-2 border-card bg-foreground/60" />
-                  <p><span className="text-xs text-muted-foreground">{formatDateTime(h.at)}</span> · <span className="font-medium">{h.who}</span> {h.label}</p>
+                  <p><span className="text-xs text-muted-foreground">{t.dateTime(h.at)}</span> · <span className="font-medium">{h.who === "System" ? t("System") : h.who}</span> {h.label}</p>
                   {h.changes.length > 0 && (
                     <p className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
                       {h.changes.map((c) => (
@@ -573,7 +600,7 @@ export default async function ReservationPage({ params, searchParams }: PageProp
                       ))}
                     </p>
                   )}
-                  {h.reason && <p className="text-xs text-muted-foreground">Reason: {h.reason}</p>}
+                  {h.reason && <p className="text-xs text-muted-foreground">{t("Reason: {reason}", { reason: h.reason })}</p>}
                 </li>
               ))}
             </ol>
@@ -583,17 +610,17 @@ export default async function ReservationPage({ params, searchParams }: PageProp
         {/* ── Side: money & guest ── */}
         <aside className="space-y-5 xl:sticky xl:top-24">
           <section id="money" className={cn(BOX, "scroll-mt-24")}>
-            <h2 className={H2}><Wallet className="size-4 text-muted-foreground" />Money</h2>
+            <h2 className={H2}><Wallet className="size-4 text-muted-foreground" />{t("Money")}</h2>
             <div className="space-y-1.5 text-sm">
-              <Line label="Room charges" value={formatTZS(r.grossAmount)} />
-              {r.discountAmount > 0 && <Line label="Discount" value={`− ${formatTZS(r.discountAmount)}`} />}
-              {extras.map((x) => <Line key={x.label} label={x.label} value={formatTZS(x.amount)} />)}
-              <Line label="Total" value={formatTZS(r.netAmount)} strong />
-              <Line label="Paid" value={formatTZS(r.paidAmount)} />
-              {r.companyBilledAmount !== 0 && <Line label={`On ${r.corporateCustomer?.companyName ?? "company"}'s invoice`} value={`− ${formatTZS(r.companyBilledAmount)}`} />}
+              <Line label={t("Room charges")} value={formatTZS(r.grossAmount)} />
+              {r.discountAmount > 0 && <Line label={t("Discount")} value={`− ${formatTZS(r.discountAmount)}`} />}
+              {extras.map((x) => <Line key={x.label} label={t(x.label)} value={formatTZS(x.amount)} />)}
+              <Line label={t("Total")} value={formatTZS(r.netAmount)} strong />
+              <Line label={t("Paid")} value={formatTZS(r.paidAmount)} />
+              {r.companyBilledAmount !== 0 && <Line label={t("On {company}'s invoice", { company: r.corporateCustomer?.companyName ?? t("company") })} value={`− ${formatTZS(r.companyBilledAmount)}`} />}
               <div className={cn("mt-2 flex justify-between rounded-2xl px-3 py-2.5 text-base font-bold",
                 r.balanceAmount > 0 ? "bg-rose-500/10 text-rose-700 dark:text-rose-300" : r.balanceAmount < 0 ? "bg-amber-500/10 text-amber-800 dark:text-amber-300" : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300")}>
-                <span>{r.balanceAmount < 0 ? "Credit (refund due)" : r.billTo !== "GUEST" && r.corporateCustomerId ? "Still to settle" : "Balance"}</span>
+                <span>{r.balanceAmount < 0 ? t("Credit (refund due)") : r.billTo !== "GUEST" && r.corporateCustomerId ? t("Still to settle") : t("Balance")}</span>
                 <span className="tabular-nums">{formatTZS(Math.abs(r.balanceAmount))}</span>
               </div>
               {perms.pay && (
@@ -603,19 +630,19 @@ export default async function ReservationPage({ params, searchParams }: PageProp
               )}
             </div>
             <div className="mt-4 space-y-2 border-t border-dashed border-border pt-3 text-sm">
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Payments</p>
-              {r.payments.length === 0 && <p className="text-muted-foreground">No payments yet.</p>}
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("Payments")}</p>
+              {r.payments.length === 0 && <p className="text-muted-foreground">{t("No payments yet.")}</p>}
               {r.payments.map((p) => (
                 <div key={p.id} className={cn("flex items-start justify-between gap-2 rounded-xl border border-border/70 p-2.5", p.status === "REVERSED" && "opacity-60")}>
                   <div>
                     <p className={cn("font-medium tabular-nums", p.status === "REVERSED" && "line-through")}>
-                      {p.kind === "REFUND" ? "Refund −" : ""}{formatTZS(p.amount)} <span className="font-normal text-muted-foreground">→ {p.account.name}{p.account.accountNumber && ` · ${p.account.accountNumber}`}</span>
+                      {p.kind === "REFUND" ? t("Refund −") : ""}{formatTZS(p.amount)} <span className="font-normal text-muted-foreground">→ {t(p.account.name)}{p.account.accountNumber && ` · ${p.account.accountNumber}`}</span>
                     </p>
-                    <p className="text-xs text-muted-foreground">{p.method.name} · {formatDateTime(p.receivedAt)} · {p.recordedBy.fullName}{p.reference && ` · ${p.reference}`}</p>
-                    {p.status === "REVERSED" && <p className="text-xs text-destructive">Reversed by {p.reversedBy?.fullName}: {p.reversalReason}</p>}
+                    <p className="text-xs text-muted-foreground">{t(p.method.name)} · {t.dateTime(p.receivedAt)} · {p.recordedBy.fullName}{p.reference && ` · ${p.reference}`}</p>
+                    {p.status === "REVERSED" && <p className="text-xs text-destructive">{t("Reversed by {name}: {reason}", { name: p.reversedBy?.fullName ?? "", reason: p.reversalReason ?? "" })}</p>}
                     {p.corrections.map((c) => (
                       <p key={c.id} className="text-[11px] text-violet-700 dark:text-violet-300">
-                        Corrected {formatDateTime(c.changedAt)}: {accountNames.get(c.fromAccountId ?? "") ?? "?"} → {accountNames.get(c.toAccountId ?? "") ?? "?"}{c.fromReference !== c.toReference ? ` · ref ${c.fromReference ?? "—"} → ${c.toReference ?? "—"}` : ""}{c.reason && ` · ${c.reason}`}
+                        {t("Corrected {time}:", { time: t.dateTime(c.changedAt) })} {t(accountNames.get(c.fromAccountId ?? "") ?? "?")} → {t(accountNames.get(c.toAccountId ?? "") ?? "?")}{c.fromReference !== c.toReference ? ` · ${t("ref {from} → {to}", { from: c.fromReference ?? "—", to: c.toReference ?? "—" })}` : ""}{c.reason && ` · ${c.reason}`}
                       </p>
                     ))}
                   </div>
@@ -631,23 +658,23 @@ export default async function ReservationPage({ params, searchParams }: PageProp
           {(orders.length > 0 || (canOrder && !watching && r.status === "CHECKED_IN")) && (
             <section id="restaurant" className={cn(BOX, "scroll-mt-24")}>
               <div className="mb-4 flex items-center justify-between gap-2">
-                <h2 className={cn(H2, "mb-0")}><Receipt className="size-4 text-muted-foreground" />Restaurant & bar orders</h2>
+                <h2 className={cn(H2, "mb-0")}><Receipt className="size-4 text-muted-foreground" />{t("Restaurant & bar orders")}</h2>
                 {canOrder && !watching && r.status === "CHECKED_IN" && orderMenu.length > 0 && (
                   <OrderComposer menu={orderMenu} guests={orderGuests} accounts={methods} fee={roomServiceFee} canPay={can(user, "revenue.record")} startGuest={r.id} />
                 )}
               </div>
-              {orders.length === 0 ? <p className="text-sm text-muted-foreground">No orders yet.</p> : (
+              {orders.length === 0 ? <p className="text-sm text-muted-foreground">{t("No orders yet.")}</p> : (
                 <ul className="space-y-2">
                   {orderRows.map(({ o, place, badge, tone, canPut }) => (
                     <li key={o.id} className={cn("rounded-2xl border border-border/70 p-3 text-sm", o.status === "CANCELLED" && "opacity-60")}>
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="font-mono text-xs font-semibold">{o.number} <span className="font-sans font-normal text-muted-foreground">· {TYPE_LABEL[o.type]}{place ? ` · ${place}` : ""} · {formatDateTime(o.createdAt)}{o.source === "GUEST" ? " · ordered by the guest (phone)" : o.createdBy ? ` · ${o.createdBy.fullName}` : ""}</span></p>
+                        <p className="font-mono text-xs font-semibold">{o.number} <span className="font-sans font-normal text-muted-foreground">· {t(TYPE_LABEL[o.type])}{place ? ` · ${place}` : ""} · {t.dateTime(o.createdAt)}{o.source === "GUEST" ? ` · ${t("ordered by the guest (phone)")}` : o.createdBy ? ` · ${o.createdBy.fullName}` : ""}</span></p>
                         <span className="flex flex-wrap items-center gap-1.5">
-                          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold">{STATUS_LABEL[o.status]}</span>
+                          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold">{t(STATUS_LABEL[o.status])}</span>
                           <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", tone)}>{badge}</span>
                         </span>
                       </div>
-                      <p className="mt-1 text-muted-foreground">{o.items.map((i) => `${i.quantity} × ${i.name}`).join(", ")}{o.serviceFee ? ` · room service ${formatTZS(o.serviceFee)}` : ""}</p>
+                      <p className="mt-1 text-muted-foreground">{o.items.map((i) => `${i.quantity} × ${orderItemName(i, t)}`).join(", ")}{o.serviceFee ? ` · ${t("room service {amount}", { amount: formatTZS(o.serviceFee) })}` : ""}</p>
                       <div className="mt-1 flex items-center justify-end gap-2">
                         {canPut && <PutOnRoomButton orderId={o.id} reservationId={r.id} room={roomLabel} />}
                         <p className={cn("font-semibold tabular-nums", o.status === "CANCELLED" && "line-through")}>{formatTZS(o.total)}</p>
@@ -661,9 +688,9 @@ export default async function ReservationPage({ params, searchParams }: PageProp
 
           <section id="billing" className={cn(BOX, "scroll-mt-24")}>
             <div className="flex items-center justify-between gap-2">
-              <h2 className={H2}><Building2 className="size-4 text-muted-foreground" />Who pays</h2>
-              {!["CANCELLED", "NO_SHOW"].includes(r.status) && <Link href={`/staff/reservations/${r.id}/proforma`} className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted">Proforma invoice</Link>}
-              {r.status === "CHECKED_OUT" && r.kind === "STAY" && <Link href={`/staff/reservations/${r.id}/thank-you`} className="rounded-lg border border-[oklch(0.75_0.13_80)]/50 bg-[oklch(0.75_0.13_80)]/10 px-2.5 py-1 text-xs font-medium hover:bg-[oklch(0.75_0.13_80)]/20">Thank-you note</Link>}
+              <h2 className={H2}><Building2 className="size-4 text-muted-foreground" />{t("Who pays")}</h2>
+              {!["CANCELLED", "NO_SHOW"].includes(r.status) && <Link href={`/staff/reservations/${r.id}/proforma`} className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted">{t("Proforma invoice")}</Link>}
+              {r.status === "CHECKED_OUT" && r.kind === "STAY" && <Link href={`/staff/reservations/${r.id}/thank-you`} className="rounded-lg border border-[oklch(0.75_0.13_80)]/50 bg-[oklch(0.75_0.13_80)]/10 px-2.5 py-1 text-xs font-medium hover:bg-[oklch(0.75_0.13_80)]/20">{t("Thank-you note")}</Link>}
             </div>
             <BillingPanel
               reservationId={r.id}
@@ -678,29 +705,29 @@ export default async function ReservationPage({ params, searchParams }: PageProp
 
           {messageOptions.length > 0 && (
             <section id="message" className={cn(BOX, "scroll-mt-24")}>
-              <h2 className={H2}><MessageCircle className="size-4 text-muted-foreground" />Message the guest</h2>
+              <h2 className={H2}><MessageCircle className="size-4 text-muted-foreground" />{t("Message the guest")}</h2>
               <GuestMessenger reservationId={r.id} guest={{ name: r.guest.fullName, phone: r.guest.phone, email: r.guest.email }}
-                options={messageOptions} link={stayLink} autoOpen={autoMessage}
+                options={messageOptions} link={stayLink} autoOpen={autoMessage} language={r.guest.preferredLanguage}
                 sent={sentMsgs.map((m) => ({ type: m.type, channel: m.channel, at: m.createdAt.toISOString(), by: m.sentBy?.fullName ?? null }))} />
             </section>
           )}
 
           <section id="guest" className={cn(BOX, "scroll-mt-24")}>
-            <h2 className={H2}><UserRound className="size-4 text-muted-foreground" />Guest</h2>
+            <h2 className={H2}><UserRound className="size-4 text-muted-foreground" />{t("Guest")}</h2>
             <div className="space-y-1 text-sm">
               <p className="font-medium"><Link className="underline-offset-4 hover:underline" href={`/staff/guests/${r.guest.id}`}>{r.guest.fullName}</Link></p>
               {r.guest.phone && <p><a className="underline-offset-4 hover:underline" href={`tel:${r.guest.phone}`}>{r.guest.phone}</a></p>}
               {r.guest.email && <p>{r.guest.email}</p>}
-              <p className={cn(!r.guest.idNumber && "text-amber-700 dark:text-amber-400")}>{r.guest.idNumber ? `${r.guest.idType?.replace("_", " ").toLowerCase() ?? "ID"} ${r.guest.idNumber}` : "No ID on file"}</p>
+              <p className={cn(!r.guest.idNumber && "text-amber-700 dark:text-amber-400")}>{r.guest.idNumber ? `${t.locale === DEFAULT_LOCALE ? r.guest.idType?.replace("_", " ").toLowerCase() ?? "ID" : t(idLabel(r.guest.idType))} ${r.guest.idNumber}` : t("No ID on file")}</p>
               {r.guest.nationality && <p className="text-muted-foreground">{r.guest.nationality}</p>}
-              {r.specialRequests && <p className="mt-2 rounded-xl bg-muted p-2.5">Guest asked: {r.specialRequests}</p>}
-              {r.internalNotes && <p className="mt-2 rounded-xl border border-amber-500/40 bg-amber-500/10 p-2.5">Staff note: {r.internalNotes}</p>}
-              {r.cancelReason && <p className="mt-2 rounded-xl bg-destructive/10 p-2.5 text-destructive">Cancelled: {r.cancelReason}</p>}
+              {r.specialRequests && <p className="mt-2 rounded-xl bg-muted p-2.5">{t("Guest asked: {text}", { text: r.specialRequests })}</p>}
+              {r.internalNotes && <p className="mt-2 rounded-xl border border-amber-500/40 bg-amber-500/10 p-2.5">{t("Staff note: {text}", { text: r.internalNotes })}</p>}
+              {r.cancelReason && <p className="mt-2 rounded-xl bg-destructive/10 p-2.5 text-destructive">{t("Cancelled: {reason}", { reason: r.cancelReason })}</p>}
             </div>
             {!meeting && <Occupants reservationId={r.id} occupants={r.guests.map((x) => x.guest)} canEdit={open && (perms.edit || perms.checkIn)} />}
             {can(user, "guests.manage") && (
               <details className="group mt-4 border-t border-dashed border-border pt-3">
-                <summary className="cursor-pointer list-none text-sm font-semibold text-[oklch(0.55_0.11_76)] dark:text-gold">Edit guest details <span className="text-xs font-normal text-muted-foreground group-open:hidden">— name, phone, ID…</span></summary>
+                <summary className="cursor-pointer list-none text-sm font-semibold text-[oklch(0.55_0.11_76)] dark:text-gold">{t("Edit guest details")} <span className="text-xs font-normal text-muted-foreground group-open:hidden">{t("— name, phone, ID…")}</span></summary>
                 <div className="mt-3">
                   <GuestEditForm canEdit guest={{
                     id: r.guest.id, fullName: r.guest.fullName, phone: r.guest.phone ?? "", email: r.guest.email ?? "", idType: r.guest.idType ?? "",

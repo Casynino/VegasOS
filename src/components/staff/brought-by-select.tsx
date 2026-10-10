@@ -6,6 +6,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { useIsRestaurantDevice } from "@/components/staff/waiter-pin";
 import { colleaguesAction } from "@/app/staff/(app)/restaurant/waiter-actions";
 import { cn } from "@/lib/utils";
+import { useT } from "@/i18n/client";
 
 /**
  * "Brought by" — only on the shared Restaurant Counter. The Counter records every official restaurant
@@ -40,6 +41,7 @@ export function BroughtBySelect({ value, onChange, prefill, className }: {
   prefill?: string | null;
   className?: string;
 }) {
+  const t = useT();
   const device = useIsRestaurantDevice();
   const id = useId();
   const [waiters, setWaiters] = useState<Waiter[] | null>(null);
@@ -58,13 +60,13 @@ export function BroughtBySelect({ value, onChange, prefill, className }: {
   return (
     <div className={cn("space-y-1.5", className)}>
       <label htmlFor={id} className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-        <HandCoins className="size-3.5" />Brought by<span className="font-normal text-muted-foreground/80">— optional</span>
+        <HandCoins className="size-3.5" />{t("Brought by")}<span className="font-normal text-muted-foreground/80">{t("— optional")}</span>
       </label>
       <NativeSelect id={id} value={value} onChange={(e) => onChange(e.target.value)} disabled={!waiters} className="h-10 rounded-xl">
-        <option value="">Nobody — the customer paid at the Counter</option>
-        {waiters?.map((w) => <option key={w.id} value={w.id}>{w.name}{w.onShift ? "" : " · off shift"}</option>)}
+        <option value="">{t("Nobody — the customer paid at the Counter")}</option>
+        {waiters?.map((w) => <option key={w.id} value={w.id}>{w.name}{w.onShift ? "" : ` · ${t("off shift")}`}</option>)}
       </NativeSelect>
-      <p className="text-[11px] leading-snug text-muted-foreground">Recorded by the Restaurant Counter — this only notes the waiter who brought the money.</p>
+      <p className="text-[11px] leading-snug text-muted-foreground">{t("Recorded by the Restaurant Counter — this only notes the waiter who brought the money.")}</p>
     </div>
   );
 }

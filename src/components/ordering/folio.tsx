@@ -1,5 +1,6 @@
 import { Banknote, CreditCard, Landmark, Smartphone, Wallet } from "lucide-react";
 import { prettyPhone } from "@/lib/guest-messages";
+import { englishT, type T } from "@/i18n/translate";
 
 /** The shared look of every bill the hotel hands a guest (restaurant bill, room bill). */
 export const money = (v: number) => v.toLocaleString("en-US");
@@ -61,38 +62,38 @@ export function Stamp({ title, sub, tone }: { title: string; sub: string; tone: 
 }
 
 /** The big dark "Amount due" / "Balance" bar. */
-export function DueBar({ due, label }: { due: number; label?: string }) {
+export function DueBar({ due, label, t = englishT }: { due: number; label?: string; t?: T }) {
   return (
     <div className="mt-3 flex items-center justify-between rounded-xl bg-[#14110d] px-4 py-3 text-white [print-color-adjust:exact]">
-      <dt className="text-[9.5px] font-semibold uppercase tracking-[0.28em] text-[#d9b26a]">{label ?? (due > 0 ? "Amount due" : "Balance")}</dt>
+      <dt className="text-[9.5px] font-semibold uppercase tracking-[0.28em] text-[#d9b26a]">{label ?? (due > 0 ? t("Amount due") : t("Balance"))}</dt>
       <dd className="text-[22px] font-bold leading-none tracking-tight tabular-nums">TZS {money(due)}</dd>
     </div>
   );
 }
 
 /** How to pay: each payment account as a small card, plus cash / card at the desk. */
-export function PayMethods({ payTo, reference }: { payTo: PayTo[]; reference: string }) {
+export function PayMethods({ payTo, reference, t = englishT }: { payTo: PayTo[]; reference: string; t?: T }) {
   return (
     <section className="mx-5 mt-6 rounded-2xl border border-[#eee7da] bg-[#faf7f1] p-4 sm:mx-8">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-[#8a6a2f]">How to pay</p>
-        <p className="text-[11px] text-black/55">Reference: <span className="font-semibold text-black/80">{reference}</span></p>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-[#8a6a2f]">{t("How to pay")}</p>
+        <p className="text-[11px] text-black/55">{t.rich("Reference: <b>{reference}</b>", { b: (c) => <span className="font-semibold text-black/80">{c}</span> }, { reference })}</p>
       </div>
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
         {payTo.slice(0, 5).map((a) => {
           const Icon = PAY_ICON[a.kind ?? ""] ?? Wallet;
           return (
             <div key={a.id} className="rounded-xl bg-white px-3 py-2.5 ring-1 ring-[#eee7da]">
-              <p className="flex items-center gap-2 text-[11px] font-semibold"><span className="grid size-6 place-items-center rounded-full bg-[#14110d] text-[#e8c886]"><Icon className="size-3.5" /></span>{a.name}</p>
+              <p className="flex items-center gap-2 text-[11px] font-semibold"><span className="grid size-6 place-items-center rounded-full bg-[#14110d] text-[#e8c886]"><Icon className="size-3.5" /></span>{t(a.name)}</p>
               <p className="mt-1.5 font-mono text-[15px] font-semibold tracking-wider tabular-nums">{a.number}</p>
               {a.holder && <p className="truncate text-[10px] uppercase tracking-wide text-black/50">{a.holder}</p>}
             </div>
           );
         })}
         <div className="rounded-xl bg-white px-3 py-2.5 ring-1 ring-[#eee7da]">
-          <p className="flex items-center gap-2 text-[11px] font-semibold"><span className="grid size-6 place-items-center rounded-full bg-[#14110d] text-[#e8c886]"><Banknote className="size-3.5" /></span>Cash or card</p>
-          <p className="mt-1.5 text-[13px] font-semibold">At the restaurant or reception</p>
-          <p className="text-[10px] uppercase tracking-wide text-black/50">Ask for your receipt</p>
+          <p className="flex items-center gap-2 text-[11px] font-semibold"><span className="grid size-6 place-items-center rounded-full bg-[#14110d] text-[#e8c886]"><Banknote className="size-3.5" /></span>{t("Cash or card")}</p>
+          <p className="mt-1.5 text-[13px] font-semibold">{t("At the restaurant or reception")}</p>
+          <p className="text-[10px] uppercase tracking-wide text-black/50">{t("Ask for your receipt")}</p>
         </div>
       </div>
     </section>

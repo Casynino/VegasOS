@@ -10,8 +10,13 @@ import { billPlace, OrderReceipt } from "@/components/ordering/order-receipt";
 import { WaiterPinProvider } from "@/components/staff/waiter-pin";
 import { isRestaurantDevice } from "@/lib/permissions";
 import { BillToolbar } from "./bill-toolbar";
+import { getT } from "@/i18n/server";
+import { deliveryPlace } from "@/lib/delivery-place";
 
-export const metadata: Metadata = { title: "Bill", robots: { index: false, follow: false } };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT();
+  return { title: t("Bill"), robots: { index: false, follow: false } };
+}
 export const dynamic = "force-dynamic";
 
 /**
@@ -35,9 +40,11 @@ export default async function RestaurantBillPage({ searchParams }: PageProps<"/s
   }
   // Default: the whole table / the whole stay when the order belongs to one.
   const scope: BillScope = asked === "order" || asked === "table" || asked === "room" ? asked : first.can.table ? "table" : first.can.room ? "room" : "order";
-  const [bill, settings, accounts] = await Promise.all([scope === "order" ? first : orderBill(orderId, scope), getSettings(), accountOptions("payments")]);
+  const [bill, settings, accounts, t] = await Promise.all([scope === "order" ? first : orderBill(orderId, scope), getSettings(), accountOptions("payments"), getT()]);
   if (!bill) notFound();
   const { lead, room, place } = billPlace(bill, orderId);
+  // The same place in the reader's language (the English `place` above names the file and picks the tabs).
+  const placeLabel = bill.scope === "room" ? t("Room {room}", { room: room ?? "" }) : deliveryPlace(lead, t);
   const payTo = accounts.filter((a) => a.number && a.kind !== "CASH");
   // On the Counter, "Brought by" starts with the order's waiter.
   const device = isRestaurantDevice(user.permissions);
@@ -54,17 +61,17 @@ export default async function RestaurantBillPage({ searchParams }: PageProps<"/s
   const hadOnline = new Set((await db.restaurantOrderPayment.findMany({ where: { orderId: { in: open.map((o) => o.id) }, online: true }, select: { orderId: true } })).map((p) => p.orderId));
   const awaiting = (o: (typeof open)[number]) => awaitsOnlinePayment(o, hadOnline.has(o.id));
   const unpaid = open.filter((o) => !awaiting(o));
-  const onlineDue = open.filter(awaiting).reduce((t, o) => t + (o.total - o.paidAmount), 0);
+  const onlineDue = open.filter(awaiting).reduce((sum, o) => sum + (o.total - o.paidAmount), 0);
 
   return (
     <main className="min-h-svh bg-[#e9e6e1] px-3 py-6 sm:px-4 text-[#1b1611] print:bg-white print:p-0">
       <style>{`@media print { @page { margin: 6mm; } body { background: #fff !important; } }`}</style>
       <div className="mx-auto max-w-[680px] space-y-4">
         <WaiterPinProvider device={device}>
-          <BillToolbar orderId={orderId} scope={bill.scope} can={bill.can} place={place} room={room ?? null} count={bill.orders.length} fileName={fileName}
+          <BillToolbar orderId={orderId} scope={bill.scope} can={bill.can} place={place} placeLabel={placeLabel} room={room ?? null} count={bill.orders.length} fileName={fileName}
             due={Math.max(0, bill.totals.due - onlineDue)} onlineDue={onlineDue} total={bill.totals.total} unpaid={unpaid.map((o) => o.id)} pay={!watches && can(user, "revenue.record") ? accounts : null} waiterId={waiterId} />
         </WaiterPinProvider>
-        <OrderReceipt bill={bill} leadId={orderId} payTo={payTo}
+        <OrderReceipt bill={bill} leadId={orderId} payTo={payTo} t={t}
           hotel={{ name: settings.hotelName, address: settings.addressLine, phone: settings.phone, whatsapp: settings.whatsapp, email: settings.email, website: settings.website }} />
       </div>
     </main>

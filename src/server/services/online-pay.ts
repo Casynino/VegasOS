@@ -11,8 +11,10 @@ import { guestStayBill } from "./stay-bill";
 import { qrConfirmPath } from "./booking-qr";
 import { OPEN_SESSION, seatOf } from "./dining-core";
 import type { HotelSettings, MobilePayment } from "@/generated/prisma/client";
-import { formatTime } from "@/lib/format";
 import { TRIP_TYPE_LABEL } from "@/lib/transport-meta";
+import { msg } from "@/i18n/msg";
+import { getT } from "@/i18n/server";
+import { englishT, type T } from "@/i18n/translate";
 
 /**
  * PAY ONLINE — the hotel's one customer-facing online payment (owner, 2026-10-04): wherever a customer pays online
@@ -27,15 +29,22 @@ const FLAG: Record<OnlineService, keyof HotelSettings> = {
   restaurant: "onlinePayRestaurant", roomService: "onlinePayRoomService", stayBill: "onlinePayStayBill", booking: "onlinePayBooking",
   meeting: "onlinePayMeeting", transport: "onlinePayTransport", invoices: "onlinePayInvoices",
 };
+/** The switches on the Online payments page (shown with t(label) / t(hint)). */
 export const ONLINE_SERVICES: { key: OnlineService; label: string; hint: string }[] = [
-  { key: "restaurant", label: "Restaurant & bar orders", hint: "Table, counter and main-restaurant QR codes, the website menu" },
-  { key: "roomService", label: "Room service", hint: "Guests ordering from their room or stay link (Charge to room stays too)" },
-  { key: "stayBill", label: "Guest bills", hint: "A staying guest pays what they owe from their stay link" },
-  { key: "booking", label: "Room bookings", hint: "Book on the website and pay online — confirmed when paid" },
-  { key: "meeting", label: "Meeting room", hint: "Book the meeting room on the website and pay online" },
-  { key: "transport", label: "Transport", hint: "Airport and other trips requested on the website" },
-  { key: "invoices", label: "Invoices", hint: "Pay an invoice from its link" },
+  { key: "restaurant", label: msg("Restaurant & bar orders"), hint: msg("Table, counter and main-restaurant QR codes, the website menu") },
+  { key: "roomService", label: msg("Room service"), hint: msg("Guests ordering from their room or stay link (Charge to room stays too)") },
+  { key: "stayBill", label: msg("Guest bills"), hint: msg("A staying guest pays what they owe from their stay link") },
+  { key: "booking", label: msg("Room bookings"), hint: msg("Book on the website and pay online — confirmed when paid") },
+  { key: "meeting", label: msg("Meeting room"), hint: msg("Book the meeting room on the website and pay online") },
+  { key: "transport", label: msg("Transport"), hint: msg("Airport and other trips requested on the website") },
+  { key: "invoices", label: msg("Invoices"), hint: msg("Pay an invoice from its link") },
 ];
+
+/** The words for whoever is asking (the customer on their payment page; English with no one attached — jobs, tests). */
+const readerT = async (): Promise<T> => (await getT().catch(() => null)) ?? englishT;
+/** A refusal in the reader's words (an AppError's own message, with its values), else the general line. */
+const startError = (e: unknown, t: T) =>
+  e instanceof AppError ? (e.i18n ? t(e.i18n.key, e.i18n.vars) : t(e.message)) : t("Online payment could not start — please try again.");
 
 /** Online payment offered for this service now: nTZS set up, switched on, and this service on. */
 export async function onlinePayAvailable(service?: OnlineService, settings?: HotelSettings) {
@@ -50,10 +59,10 @@ export async function startCustomerPayment(input: {
   target: PromptTarget; phone: string; clientKey: string | null; source: string; service: OnlineService; ip: string | null;
 }) {
   if (!(await onlinePayAvailable(input.service))) {
-    throw new AppError(`Online payment is not available right now — please ${input.service === "restaurant" ? "pay at the counter" : "pay at the hotel"}.`, "CONFLICT");
+    throw new AppError(input.service === "restaurant" ? msg("Online payment is not available right now — please pay at the counter.") : msg("Online payment is not available right now — please pay at the hotel."), "CONFLICT");
   }
   const phone = ntzsPhone(input.phone);
-  if (!phone) throw new AppError("Enter your mobile-money number, e.g. 0712 345 678.", "VALIDATION", { phone: "Invalid" });
+  if (!phone) throw new AppError("Enter your mobile-money number, e.g. 0712 345 678.", "VALIDATION", { phone: msg("Invalid") });
   // A phone cannot be flooded with payment requests, nor a device send many (guests on the hotel Wi-Fi share one address).
   await rateLimit(`online-pay:ip:${input.ip ?? "unknown"}`, 40, 600);
   await rateLimit(`online-pay:phone:${phone}`, 6, 600);
@@ -64,7 +73,7 @@ export async function startCustomerPayment(input: {
 /** Before an order goes in with "Pay online": offered for it now, and a number that can pay (checked again as the request goes). */
 export async function assertCanPayOnline(service: OnlineService, phone: string | null | undefined) {
   if (!(await onlinePayAvailable(service))) throw new AppError("Online payment is not available right now — please choose another way to pay.", "CONFLICT");
-  if (!ntzsPhone(phone)) throw new AppError("Enter your mobile-money number, e.g. 0712 345 678.", "VALIDATION", { payPhone: "Invalid" });
+  if (!ntzsPhone(phone)) throw new AppError("Enter your mobile-money number, e.g. 0712 345 678.", "VALIDATION", { payPhone: msg("Invalid") });
 }
 
 /** Room service (the room QR, the guest's stay link) or the restaurant — each switched on or off on its own. */
@@ -85,7 +94,7 @@ export async function payForNewOrder(order: { id: string; source: string; payOnl
     // Made and refused (nTZS busy, the number cannot pay…): its page says so, with Try again.
     const tried = await db.mobilePayment.findUnique({ where: { clientKey }, select: { publicToken: true } });
     if (tried?.publicToken) return { pay: tried.publicToken, payError: null };
-    return { pay: null, payError: e instanceof AppError ? e.message : "Online payment could not start — please try again." };
+    return { pay: null, payError: startError(e, await readerT()) };
   }
 }
 
@@ -175,7 +184,7 @@ export async function bookAndPayOnline(input: {
       await releasePayingHold(b.id, undefined, new Date(), { payNow: true }).catch((err) => console.error("[online-pay] could not let the room go", b.reference, err));
     }
     if (tried?.publicToken) return { pay: tried.publicToken, booking: page, payError: null, ref };
-    return { pay: null, booking: page, payError: e instanceof AppError ? e.message : "Online payment could not start — please try again.", ref };
+    return { pay: null, booking: page, payError: startError(e, await readerT()), ref };
   }
 }
 
@@ -375,37 +384,39 @@ export async function customerPaymentByToken(token: string, opts: { check?: bool
       mp = (await db.mobilePayment.findUnique({ where: { id: mp.id } }))!;
     }
   }
-  const { what, back, receipt, unpaidNote, paidNote } = await describe(mp);
+  // The page's words in the customer's language (English when no one is attached).
+  const t = await readerT();
+  const { what, back, receipt, unpaidNote, paidNote } = await describe(mp, t);
   const status = STATUS[mp.status];
   // Refused before anything reached the phone: why, in plain words (a wrong number…) — not "was not completed".
-  const refused = status === "FAILED" && !mp.depositId && mp.lastError ? refusalReason(mp.lastError) : null;
-  const ended = refused ?? (status === "FAILED" ? "The payment was not completed." : status === "EXPIRED" ? "The payment request ran out of time." : status === "CANCELLED" ? "This payment request was cancelled." : null);
+  const refused = status === "FAILED" && !mp.depositId && mp.lastError ? t(refusalReason(mp.lastError)) : null;
+  const ended = refused ?? (status === "FAILED" ? t("The payment was not completed.") : status === "EXPIRED" ? t("The payment request ran out of time.") : status === "CANCELLED" ? t("This payment request was cancelled.") : null);
   const canRetry = status === "FAILED" || status === "EXPIRED" || status === "CANCELLED";
   return {
     token, status, amount: mp.amount, phone: maskPhone(mp.phone), what, at: mp.createdAt.toISOString(), paidAt: mp.completedAt?.toISOString() ?? null,
     reference: (mp.pspReference || mp.depositId || mp.id).slice(-10).toUpperCase(), back, receipt,
-    message: ended ? [ended, unpaidNote].filter(Boolean).join(" ") : status === "PAID" ? paidNote : null,
+    message: ended ? [ended, unpaidNote].filter(Boolean).join(t.locale === "zh-CN" ? "" : " ") : status === "PAID" ? paidNote : null,
     canRetry, canCancel: status === "PENDING" && mp.initiator === "CUSTOMER",
     retryAmount: canRetry && mp.initiator === "CUSTOMER" ? await retryAmountOf(mp) : null,
     sent: !!mp.depositId,
   };
 }
 
-/** What was paid for, and where the customer goes back to. */
-async function describe(mp: MobilePayment) {
+/** What was paid for, and where the customer goes back to — in the reader's words (`t`). */
+async function describe(mp: MobilePayment, t: T) {
   if (mp.purpose === "TRANSPORT" && mp.tripId) {
-    const t = await db.transportTrip.findUnique({ where: { id: mp.tripId }, select: { reference: true, type: true, payToken: true } });
+    const trip = await db.transportTrip.findUnique({ where: { id: mp.tripId }, select: { reference: true, type: true, payToken: true } });
     return {
-      what: t ? `${TRIP_TYPE_LABEL[t.type]} ${t.reference}` : "Transport",
-      back: t?.payToken ? { href: `/transport/trip/${t.payToken}`, label: "View your trip" } : { href: "/transport", label: "Back to transport" },
+      what: trip ? `${t(TRIP_TYPE_LABEL[trip.type])} ${trip.reference}` : t("Transport"),
+      back: trip?.payToken ? { href: `/transport/trip/${trip.payToken}`, label: t("View your trip") } : { href: "/transport", label: t("Back to transport") },
       receipt: null, unpaidNote: null, paidNote: null,
     };
   }
   if (mp.purpose === "INVOICE" && mp.invoiceId) {
     const inv = await db.invoice.findUnique({ where: { id: mp.invoiceId }, select: { number: true, verifyToken: true } });
     return {
-      what: inv ? `Invoice ${inv.number}` : "Invoice",
-      back: inv?.verifyToken ? { href: `/verify/${inv.verifyToken}`, label: "View the invoice" } : null,
+      what: inv ? t("Invoice {number}", { number: inv.number }) : t("Invoice"),
+      back: inv?.verifyToken ? { href: `/verify/${inv.verifyToken}`, label: t("View the invoice") } : null,
       receipt: null, unpaidNote: null, paidNote: null,
     };
   }
@@ -419,19 +430,19 @@ async function describe(mp: MobilePayment) {
     const allCancelled = orders.length > 0 && orders.every((o) => o.status === "CANCELLED");
     // Not paid: take out waits for its payment; anything else goes ahead and is paid later.
     const unpaidNote = !open.length ? null
-      : open.some((o) => o.payOnlineAt && o.status === "PENDING" && (o.type === "TAKEAWAY" || o.type === "PICKUP")) ? "We start your order once it is paid."
-      : open.every((o) => o.type === "ROOM_SERVICE") ? "Your order still goes ahead — try again, or pay at reception."
-      : "Your order still goes ahead — try again, or pay at the counter when you are done.";
+      : open.some((o) => o.payOnlineAt && o.status === "PENDING" && (o.type === "TAKEAWAY" || o.type === "PICKUP")) ? t("We start your order once it is paid.")
+      : open.every((o) => o.type === "ROOM_SERVICE") ? t("Your order still goes ahead — try again, or pay at reception.")
+      : t("Your order still goes ahead — try again, or pay at the counter when you are done.");
     const nos = orders.map((o) => `#${o.number.replace(/^ORD-\d{4}-0*/, "")}`);
     const track = orders.find((o) => o.trackToken)?.trackToken ?? null;
     // The table's bill (paid at the table): back to that table — its page shows the whole bill.
     const table = mp.source === "TABLE_QR" ? orders.find((o) => o.location?.kind === "TABLE" && o.location.isActive && o.location.qrActive)?.location ?? null : null;
     return {
-      what: orders.length > 1 ? `Restaurant bill · orders ${nos.join(", ")}` : `Restaurant order ${nos[0] ?? ""}`.trim(),
-      back: table ? { href: `/t/${table.qrToken}`, label: "Back to your table" } : track ? { href: `/order/${track}`, label: "View your order" } : null,
+      what: orders.length > 1 ? t("Restaurant bill · orders {orders}", { orders: nos.join(", ") }) : nos[0] ? t("Restaurant order {number}", { number: nos[0] }) : t("Restaurant order"),
+      back: table ? { href: `/t/${table.qrToken}`, label: t("Back to your table") } : track ? { href: `/order/${track}`, label: t("View your order") } : null,
       receipt: track && mp.status === "COMPLETED" && !allCancelled ? `/order/${track}/receipt` : null,
       unpaidNote,
-      paidNote: allCancelled ? "Your order was cancelled — we will give your money back. Please ask at the counter." : null,
+      paidNote: allCancelled ? t("Your order was cancelled — we will give your money back. Please ask at the counter.") : null,
     };
   }
   if (mp.reservationId) {
@@ -444,39 +455,39 @@ async function describe(mp: MobilePayment) {
     });
     if (r) {
       const booking = BOOKING_PAY_SOURCES.includes(mp.source ?? "");
-      const held = r.status === "RESERVED" && r.holdUntil && r.holdUntil > new Date() ? formatTime(r.holdUntil, (await getSettings()).timezone) : null;
+      const held = r.status === "RESERVED" && r.holdUntil && r.holdUntil > new Date() ? t.time(r.holdUntil, (await getSettings()).timezone) : null;
       // Booked from a Hotel QR: back to its confirmation — while that QR still works with the very code the guest
       // scanned. Switched off, or given a new code since (the old card must stop working): the booking's own page, so
       // this link never hands out a QR's new code.
       const q = r.bookingQr;
       const qr = booking && q?.active && q.isActive && (!q.regeneratedAt || q.regeneratedAt <= r.createdAt) ? q.token : null;
       return {
-        unpaidNote: r.status === "CANCELLED" ? "The booking was released — please book again."
-          : held ? `We hold your booking until ${held} — try again to confirm it.`
-          : r.status === "INQUIRY" ? "Your booking is saved, but the room is not reserved until it is paid — try again to secure it." : null,
-        what: r.kind === "MEETING" ? `Meeting room booking ${r.reference}` : booking ? `Room booking ${r.reference}` : `Your bill · ${r.reference}`,
-        back: qr ? { href: qrConfirmPath(qr, r.reference, r.manageToken), label: "View your booking" }
-          : booking ? { href: `/booking/${r.reference}?token=${r.manageToken}`, label: "View your booking" }
-          : mp.source === "ROOM_QR" ? await roomPageOf(mp.reservationId)
-          : mp.source === "INVOICE_LINK" ? await invoicePageOf(mp.reservationId)
-          : r.guestToken ? { href: `/stay/${r.guestToken}`, label: "Back to your stay" } : null,
+        unpaidNote: r.status === "CANCELLED" ? t("The booking was released — please book again.")
+          : held ? t("We hold your booking until {time} — try again to confirm it.", { time: held })
+          : r.status === "INQUIRY" ? t("Your booking is saved, but the room is not reserved until it is paid — try again to secure it.") : null,
+        what: r.kind === "MEETING" ? t("Meeting room booking {ref}", { ref: r.reference }) : booking ? t("Room booking {ref}", { ref: r.reference }) : t("Your bill · {ref}", { ref: r.reference }),
+        back: qr ? { href: qrConfirmPath(qr, r.reference, r.manageToken), label: t("View your booking") }
+          : booking ? { href: `/booking/${r.reference}?token=${r.manageToken}`, label: t("View your booking") }
+          : mp.source === "ROOM_QR" ? await roomPageOf(mp.reservationId, t)
+          : mp.source === "INVOICE_LINK" ? await invoicePageOf(mp.reservationId, t)
+          : r.guestToken ? { href: `/stay/${r.guestToken}`, label: t("Back to your stay") } : null,
         receipt: null, paidNote: null,
       };
     }
   }
-  return { what: "Payment", back: null, receipt: null, unpaidNote: null, paidNote: null };
+  return { what: t("Payment"), back: null, receipt: null, unpaidNote: null, paidNote: null };
 }
 
 /** Paid from a booking's invoice link: back to that invoice. */
-async function invoicePageOf(reservationId: string) {
+async function invoicePageOf(reservationId: string, t: T) {
   const inv = await db.invoice.findFirst({ where: { reservationId, verifyToken: { not: null } }, orderBy: { createdAt: "desc" }, select: { verifyToken: true } });
-  return inv?.verifyToken ? { href: `/verify/${inv.verifyToken}`, label: "View the invoice" } : null;
+  return inv?.verifyToken ? { href: `/verify/${inv.verifyToken}`, label: t("View the invoice") } : null;
 }
 
 /** Paid from the room's QR card: back to that room's page (never the guest's private stay link). */
-async function roomPageOf(reservationId: string) {
+async function roomPageOf(reservationId: string, t: T) {
   const qr = await db.roomQrCode.findFirst({ where: { active: true, room: { reservationRooms: { some: { reservationId, status: "CHECKED_IN" } } } }, select: { token: true } });
-  return qr ? { href: `/r/${qr.token}?view=guest`, label: "Back to your room" } : null;
+  return qr ? { href: `/r/${qr.token}?view=guest`, label: t("Back to your room") } : null;
 }
 
 /** The customer stops waiting (they will pay another way). Money that still comes in is recorded all the same. */

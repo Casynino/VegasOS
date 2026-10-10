@@ -6,6 +6,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import type { MoneyAccountKind } from "@/generated/prisma/enums";
 import { businessDayConfig, getSettings, stayConfig } from "../settings";
 import { businessDateOf, businessRangeBounds, type BusinessDate } from "@/lib/time/business-date";
+import { msg } from "@/i18n/msg";
 
 /**
  * COLLECTIONS — the money each person actually took from customers, from the payment records
@@ -24,10 +25,10 @@ import { businessDateOf, businessRangeBounds, type BusinessDate } from "@/lib/ti
  */
 
 /** How the money came in, the way staff say it: cash, mobile money, bank, card. */
-export const KIND_GROUP: Record<MoneyAccountKind, string> = { CASH: "Cash", PETTY_CASH: "Cash", MOBILE_MONEY: "Mobile money", BANK: "Bank", CARD: "Card", OTHER: "Other" };
+export const KIND_GROUP: Record<MoneyAccountKind, string> = { CASH: msg("Cash"), PETTY_CASH: msg("Cash"), MOBILE_MONEY: msg("Mobile money"), BANK: msg("Bank"), CARD: msg("Card"), OTHER: msg("Other") };
 
 export type MoneySource = "RESTAURANT" | "ROOMS" | "SALES";
-export const SOURCE_LABEL: Record<MoneySource, string> = { RESTAURANT: "Restaurant & bar", ROOMS: "Rooms & bookings", SALES: "Other sales" };
+export const SOURCE_LABEL: Record<MoneySource, string> = { RESTAURANT: msg("Restaurant & bar"), ROOMS: msg("Rooms & bookings"), SALES: msg("Other sales") };
 export const ALL_SOURCES: MoneySource[] = ["ROOMS", "RESTAURANT", "SALES"];
 
 export type CollectionStatus = "COLLECTED" | "TO_CONFIRM" | "REVERSED";
@@ -63,7 +64,7 @@ async function range(from: BusinessDate, to: BusinessDate, window?: Window | nul
 const clean = (n: string | null | undefined) => n?.replace(/\s*\(.*\)/, "") ?? null;
 const firstName = (n: string | null | undefined) => clean(n)?.trim().split(/\s+/)[0] ?? null;
 /** How a payment recorded through the shared Restaurant Counter account is named — the Counter, never a person. */
-const COUNTER = "Restaurant Counter";
+const COUNTER = msg("Restaurant Counter");
 /** "ORD-2026-000019" → "#19". */
 export const shortOrderNo = (n: string) => `#${n.replace(/^ORD-\d{4}-0*/, "")}`;
 
@@ -76,14 +77,14 @@ export function orderPlace(o: {
   type: string; roomNumber: string | null; tableLabel: string | null; deliveryAddress?: string | null;
   location?: { name: string; kind: string } | null;
 }): { place: string; placeKind: PlaceKind } {
-  if (o.type === "ROOM_SERVICE") return { place: o.roomNumber ? `Room ${o.roomNumber}` : "Room service", placeKind: "ROOM" };
-  if (o.type === "TAKEAWAY") return { place: o.deliveryAddress?.trim() ? `Take away · ${o.deliveryAddress.trim()}` : "Take away", placeKind: "TAKEAWAY" };
-  if (o.type === "PICKUP") return { place: "Pickup", placeKind: "PICKUP" };
+  if (o.type === "ROOM_SERVICE") return { place: o.roomNumber ? `Room ${o.roomNumber}` : msg("Room service"), placeKind: "ROOM" };
+  if (o.type === "TAKEAWAY") return { place: o.deliveryAddress?.trim() ? `Take away · ${o.deliveryAddress.trim()}` : msg("Take away"), placeKind: "TAKEAWAY" };
+  if (o.type === "PICKUP") return { place: msg("Pickup"), placeKind: "PICKUP" };
   if (o.location) return { place: o.location.name, placeKind: o.location.kind === "TABLE" ? "TABLE" : o.location.kind === "COUNTER" ? "COUNTER" : "RESTAURANT" };
   const label = o.tableLabel?.trim();
   if (label) return { place: /^\d+$/.test(label) ? `Table ${label}` : label, placeKind: /^counter/i.test(label) ? "COUNTER" : "TABLE" };
   if (o.roomNumber) return { place: `Room ${o.roomNumber}`, placeKind: "ROOM" };
-  return { place: "Restaurant", placeKind: "RESTAURANT" };
+  return { place: msg("Restaurant"), placeKind: "RESTAURANT" };
 }
 
 // ───────────────────────── Totals ─────────────────────────
@@ -149,9 +150,9 @@ export async function collectionTotals(from: BusinessDate, to: BusinessDate, opt
     for (const r of rows(id)) {
       r.collected += amount; r.payments += count;
       const a = acct.get(accountId);
-      const kind = a ? KIND_GROUP[a.kind] : "Other";
+      const kind = a ? KIND_GROUP[a.kind] : msg("Other");
       r.byKind.set(kind, (r.byKind.get(kind) ?? 0) + amount);
-      r.byAccount.set(a?.name ?? "Other", (r.byAccount.get(a?.name ?? "Other") ?? 0) + amount);
+      r.byAccount.set(a?.name ?? msg("Other"), (r.byAccount.get(a?.name ?? msg("Other")) ?? 0) + amount);
       r.bySource.set(source, (r.bySource.get(source) ?? 0) + amount);
     }
   };
@@ -366,7 +367,7 @@ export async function collectionRows(f: CollectionFilter): Promise<{ count: numb
         amount: p.amount, fee: p.fee, refund: false, reference: p.reference, account: p.account.name, how: KIND_GROUP[p.account.kind], method: p.paymentMethod.name,
         status, confirmed: status === "COLLECTED",
         // Paid online and recorded automatically (not by hand from the proof): "Paid online · automatic".
-        collector, recordedBy: p.online && !p.confirmedBy && p.confirmedByRole?.startsWith("Automatic") ? "Paid by phone" : collector, collectorId: p.collectedBy?.id ?? null, role: p.atCounter ? null : p.collectedByRole,
+        collector, recordedBy: p.online && !p.confirmedBy && p.confirmedByRole?.startsWith("Automatic") ? msg("Paid by phone") : collector, collectorId: p.collectedBy?.id ?? null, role: p.atCounter ? null : p.collectedByRole,
         atCounter: p.atCounter, broughtBy: clean(p.handedOverBy?.fullName), online: p.online, notReceived: p.notReceived,
         confirmedBy: clean(p.confirmedBy?.fullName), confirmedAt: p.confirmedAt?.toISOString() ?? null,
         reversedBy: clean(p.reversedBy?.fullName), reversedAt: p.reversedAt?.toISOString() ?? null, reverseReason: p.reverseReason,
@@ -400,8 +401,8 @@ export async function collectionRows(f: CollectionFilter): Promise<{ count: numb
           waiting: !p.creditedAt && !!r && ["INQUIRY", "RESERVED", "CONFIRMED"].includes(r.status),
         } : null,
         customer: r ? (r.companyName ?? r.guest.fullName) : p.corporateCustomer?.companyName ?? null,
-        place: roomNos ? `Room ${roomNos}` : p.invoice ? `Invoice ${p.invoice.number}` : "Front desk", placeKind: null,
-        what: r ? `Booking ${r.reference}` : p.invoice ? `Invoice ${p.invoice.number}` : "Payment",
+        place: roomNos ? `Room ${roomNos}` : p.invoice ? `Invoice ${p.invoice.number}` : msg("Front desk"), placeKind: null,
+        what: r ? `Booking ${r.reference}` : p.invoice ? `Invoice ${p.invoice.number}` : msg("Payment"),
         href: r ? `/staff/reservations/${r.id}` : p.invoice ? `/staff/invoices/${p.invoice.id}` : null,
         orderId: null, orderNo: null, servedBy: null, servedByFull: null,
         order: null,
@@ -414,7 +415,7 @@ export async function collectionRows(f: CollectionFilter): Promise<{ count: numb
       status: s.isVoided ? "REVERSED" : "COLLECTED", confirmed: !s.isVoided,
       collector: clean(s.recordedBy.fullName) ?? "—", recordedBy: clean(s.recordedBy.fullName) ?? "—", collectorId: s.recordedBy.id, role: s.recordedBy.role.name, atCounter: false, broughtBy: null, online: false, notReceived: false,
       confirmedBy: null, confirmedAt: null, reversedBy: null, reversedAt: s.voidedAt?.toISOString() ?? null, reverseReason: s.voidReason,
-      customer: null, place: s.kind === "TRANSPORT" ? "Transport" : "Sale", placeKind: null, what: s.description ?? "Sale", href: null,
+      customer: null, place: s.kind === "TRANSPORT" ? msg("Transport") : msg("Sale"), placeKind: null, what: s.description ?? msg("Sale"), href: null,
       orderId: null, orderNo: null, servedBy: null, servedByFull: null, order: null, stay: null, paidOnline: null,
     })),
   ].sort((a, b) => b.at.localeCompare(a.at)).slice((page - 1) * PAGE, page * PAGE);
@@ -461,8 +462,8 @@ export async function onlineTotals(f: CollectionFilter) {
 
 /** Where an open order stands, in the restaurant's words. */
 const STEP: Record<string, string> = {
-  PENDING: "New", ACCEPTED: "Preparing", PREPARING: "Preparing", READY: "Ready to serve", OUT_FOR_DELIVERY: "Serving",
-  DELIVERED: "Served · to pay", COMPLETED: "Served · to pay", COLLECTED: "Served · to pay",
+  PENDING: msg("New"), ACCEPTED: msg("Preparing"), PREPARING: msg("Preparing"), READY: msg("Ready to serve"), OUT_FOR_DELIVERY: msg("Serving"),
+  DELIVERED: msg("Served · to pay"), COMPLETED: msg("Served · to pay"), COLLECTED: msg("Served · to pay"),
 };
 
 export type ToCollectRow = {
@@ -518,7 +519,7 @@ export async function stillToCollect(opts: { servedById?: string | null; q?: str
   const byWaiter = new Map<string, { id: string; name: string; orders: number; amount: number }>();
   for (const r of toCollect) {
     const k = r.servedById ?? NO_WAITER;
-    const w = byWaiter.get(k) ?? { id: k, name: r.servedByFull ?? "No waiter", orders: 0, amount: 0 };
+    const w = byWaiter.get(k) ?? { id: k, name: r.servedByFull ?? msg("No waiter"), orders: 0, amount: 0 };
     w.orders += 1; w.amount += r.due;
     byWaiter.set(k, w);
   }
@@ -564,7 +565,7 @@ export async function collectors(from: BusinessDate, to: BusinessDate, sources: 
   ]);
   // The shared Restaurant Counter account is "Restaurant Counter" — never the name of a person.
   const entry = (u: { id: string; fullName: string; role: { name: string; code: string } }) => u.role.code === "RESTAURANT_SCREEN"
-    ? { id: u.id, name: COUNTER, role: "shared account" }
+    ? { id: u.id, name: COUNTER, role: msg("shared account") }
     : { id: u.id, name: u.fullName.replace(/\s*\(.*\)/, ""), role: u.role.name };
   const map = new Map(staff.map((u) => [u.id, entry(u)]));
   for (const u of [...restaurantWho.map((w) => w.collectedBy), ...roomsWho.map((w) => w.recordedBy)]) {

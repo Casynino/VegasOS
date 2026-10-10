@@ -1,3 +1,6 @@
+import { msg } from "@/i18n/msg";
+import { englishT, type T } from "@/i18n/translate";
+
 /**
  * Messages to guests (booking confirmation, welcome at check-in). The hotel can
  * write its own text in Settings; these placeholders are filled in:
@@ -5,25 +8,25 @@
  * {balance} {link} {menu} {phone} {wifi}
  */
 export const GUEST_MESSAGE_TYPES = {
-  BOOKING_CREATED: "Booking details",
-  BOOKING_CONFIRMED: "Booking confirmed",
-  BOOKING_UPDATED: "Booking updated",
-  BOOKING_CANCELLED: "Booking cancelled",
-  ROOM_CHANGED: "Room changed",
-  PAYMENT_RECEIVED: "Payment received",
-  BOOKING_REMINDER: "Arrival reminder",
-  WELCOME: "Welcome / check-in",
-  CHECKOUT_REMINDER: "Check-out reminder",
-  THANK_YOU: "Thank-you note",
-  PAYMENT: "Payment / invoice",
-  ORDER_RECEIVED: "Order received",
-  ORDER_PREPARING: "Order being prepared",
-  ORDER_READY: "Order ready",
-  ORDER_DELIVERED: "Order delivered",
-  ORDER_CANCELLED: "Order cancelled",
-  ORDER_PAID: "Order paid",
-  TRANSPORT: "Transport",
-  CUSTOM: "Message",
+  BOOKING_CREATED: msg("Booking details"),
+  BOOKING_CONFIRMED: msg("Booking confirmed"),
+  BOOKING_UPDATED: msg("Booking updated"),
+  BOOKING_CANCELLED: msg("Booking cancelled"),
+  ROOM_CHANGED: msg("Room changed"),
+  PAYMENT_RECEIVED: msg("Payment received"),
+  BOOKING_REMINDER: msg("Arrival reminder"),
+  WELCOME: msg("Welcome / check-in"),
+  CHECKOUT_REMINDER: msg("Check-out reminder"),
+  THANK_YOU: msg("Thank-you note"),
+  PAYMENT: msg("Payment / invoice"),
+  ORDER_RECEIVED: msg("Order received"),
+  ORDER_PREPARING: msg("Order being prepared"),
+  ORDER_READY: msg("Order ready"),
+  ORDER_DELIVERED: msg("Order delivered"),
+  ORDER_CANCELLED: msg("Order cancelled"),
+  ORDER_PAID: msg("Order paid"),
+  TRANSPORT: msg("Transport"),
+  CUSTOM: msg("Message"),
 } as const;
 export type GuestMessageType = keyof typeof GUEST_MESSAGE_TYPES;
 
@@ -116,13 +119,13 @@ export function validPhone(phone: string | null | undefined) {
   return internationalPhone(phone) !== null;
 }
 
-/** The thank-you message sent with the guest's thank-you note link. */
-export function thankYouMessageText(v: { name: string; hotel: string; link: string | null; phone?: string | null; website?: string | null }) {
+/** The thank-you message sent with the guest's thank-you note link (in the guest's language when their translator is passed). */
+export function thankYouMessageText(v: { name: string; hotel: string; link: string | null; phone?: string | null; website?: string | null }, t: T = englishT) {
   return [
-    `Dear ${v.name.trim().split(/\s+/)[0]},`,
-    `Thank you for staying at ${v.hotel}. It was a pleasure to have you with us.`,
-    v.link ? `Your stay summary: ${v.link}` : null,
-    "We look forward to welcoming you back.",
+    t("Dear {name},", { name: v.name.trim().split(/\s+/)[0] }),
+    t("Thank you for staying at {hotel}. It was a pleasure to have you with us.", { hotel: v.hotel }),
+    v.link ? t("Your stay summary: {link}", { link: v.link }) : null,
+    t("We look forward to welcoming you back."),
     `${v.hotel}${v.phone ? ` · ${v.phone}` : ""}${v.website ? ` · ${v.website}` : ""}`,
   ].filter(Boolean).join("\n");
 }

@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { useT } from "@/i18n/client";
 
 /**
  * The mobile-money networks a "Pay now" prompt reaches — small marks in each network's own colours (names, not logos),
@@ -19,11 +20,14 @@ export const NETWORK_MARKS: { key: string; label: string; className: string; bod
 
 // Always one line (owner, 2026-10-05): the marks shrink a little with the space they get (a container query) instead
 // of wrapping onto a second line in narrow cards.
-export function NetworkMarks({ className, label = "Works with", dark = false, center = false, compact = false }: { className?: string; label?: string | null; dark?: boolean; center?: boolean; /** Tighter, for inside a row. */ compact?: boolean }) {
+export function NetworkMarks({ className, label, dark = false, center = false, compact = false }: { className?: string; label?: string | null; dark?: boolean; center?: boolean; /** Tighter, for inside a row. */ compact?: boolean }) {
+  const t = useT();
+  // Only client components show these marks (checkout, order, bill and payment pages, staff payment rows).
+  const shown = label === undefined ? t("Works with") : label;
   return (
     <div className={cn("@container flex min-w-0 flex-nowrap items-center gap-1.5", center && "justify-center", className)}>
-      {label && <span className={cn("mr-0.5 shrink-0 whitespace-nowrap text-[10.5px] font-medium", dark ? "text-white/55" : "text-[#8a7f72]")}>{label}</span>}
-      <ul className={cn("flex min-w-0 flex-nowrap items-center", compact ? "gap-[3px]" : "gap-1")} aria-label="Mobile-money networks">
+      {shown && <span className={cn("mr-0.5 shrink-0 whitespace-nowrap text-[10.5px] font-medium", dark ? "text-white/55" : "text-[#8a7f72]")}>{shown}</span>}
+      <ul className={cn("flex min-w-0 flex-nowrap items-center", compact ? "gap-[3px]" : "gap-1")} aria-label={t("Mobile-money networks")}>
         {NETWORK_MARKS.map((m) => (
           <li key={m.key} title={m.label} aria-label={m.label}
             className={cn("inline-flex shrink-0 items-center gap-[0.3em] whitespace-nowrap font-extrabold lowercase leading-none tracking-tight shadow-[0_1px_2px_rgba(0,0,0,0.08)]",

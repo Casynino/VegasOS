@@ -12,14 +12,16 @@ import { darkButton, Stepper } from "@/components/hotel-qr/ui";
 import { dayWeek, hotelClock, nightsText, tzs } from "@/components/hotel-qr/lib";
 import { ROOM_ASKS, type RoomAsk, type RoomAskKey } from "./asks";
 import { BottomSheet, card, SheetHead } from "./parts";
+import { useT } from "@/i18n/client";
+import type { T } from "@/i18n/translate";
 
 const ICON: Record<RoomAskKey, typeof Bath> = { MOVE: ArrowLeftRight, EXTEND: CalendarPlus, LATE: Clock, CLEANING: SprayCan, TOWELS: Bath, FIX: Wrench, OTHER: MessageCircle };
 const STATUS_TONE: Record<string, string> = { NEW: "text-(--vr-muted)", ASSIGNED: "text-(--vr-muted)", IN_PROGRESS: "text-(--vr-gold-ink)", COMPLETED: "text-emerald-700", CANCELLED: "text-rose-700" };
 const newKey = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
-/** "14:30" today, "Mon 14:30" before — the hotel's clock (server and phone print the same). */
-const when = (iso: string) => {
-  const [t, d] = hotelClock(iso).split(" · ");
-  return d === hotelClock(new Date().toISOString()).split(" · ")[1] ? t : `${d.split(" ")[0]} ${t}`;
+/** "14:30" today, "Mon 14:30" before — the hotel's clock (server and phone print the same), in the guest's wording. */
+const when = (iso: string, tr: T) => {
+  const [t, d] = hotelClock(iso, undefined, tr).split(" · ");
+  return d === hotelClock(new Date().toISOString(), undefined, tr).split(" · ")[1] ? t : `${d.split(" ")[0]} ${t}`;
 };
 const hhmm = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 
@@ -37,22 +39,23 @@ export function RoomOptions({ ask, requests, departure, today, checkoutMinutes, 
   departure: string; today: string;
   checkoutMinutes: number; lateFee: number; className?: string;
 }) {
+  const t = useT();
   const [open, setOpen] = useState<RoomAsk | null>(null);
   return (
     <section id="room" aria-labelledby="room-title" className={cn("scroll-mt-4", className)}>
-      <h2 id="room-title" className="font-display text-[24px] font-semibold leading-none lg:text-[28px]">Your room</h2>
-      <p className="mt-1.5 text-[13px] text-(--vr-muted)">Ask here and reception takes care of it.</p>
+      <h2 id="room-title" className="font-display text-[24px] font-semibold leading-none lg:text-[28px]">{t("Your room")}</h2>
+      <p className="mt-1.5 text-[13px] text-(--vr-muted)">{t("Ask here and reception takes care of it.")}</p>
       <div className={cn(card, "mt-3 px-4 sm:px-5")}>
         <ul className="divide-y divide-(--vr-line)">
           {ROOM_ASKS.map((a) => {
             const Icon = ICON[a.key];
-            const hint = a.key === "LATE" ? `Leave after ${hhmm(checkoutMinutes)}` : a.hint;
+            const hint = a.key === "LATE" ? t("Leave after {time}", { time: hhmm(checkoutMinutes) }) : t(a.hint);
             return (
               <li key={a.key}>
                 <button type="button" onClick={() => setOpen(a)} className="group -mx-1 flex min-h-[60px] w-[calc(100%+0.5rem)] items-center gap-3.5 rounded-xl px-1 py-2.5 text-left transition hover:bg-(--vr-bg)/60">
                   <Icon className="size-[19px] shrink-0 text-(--vr-gold-ink)" strokeWidth={1.75} />
                   <span className="min-w-0 flex-1 leading-tight">
-                    <span className="block truncate text-[15px] font-semibold">{a.label}</span>
+                    <span className="block truncate text-[15px] font-semibold">{t(a.label)}</span>
                     <span className="mt-0.5 block truncate text-[12.5px] text-(--vr-muted)">{hint}</span>
                   </span>
                   <ChevronRight className="size-4 shrink-0 text-(--vr-muted) transition group-hover:translate-x-0.5 group-hover:text-(--vr-gold-ink) motion-reduce:group-hover:translate-x-0" />
@@ -63,19 +66,19 @@ export function RoomOptions({ ask, requests, departure, today, checkoutMinutes, 
         </ul>
         {requests.length > 0 && (
           <div className="border-t border-(--vr-line) pb-3 pt-3.5">
-            <p className="text-[12px] font-semibold text-(--vr-muted)">Your requests</p>
+            <p className="text-[12px] font-semibold text-(--vr-muted)">{t("Your requests")}</p>
             <ul className="mt-1">
               {requests.map((q) => (
                 <li key={q.id} className="flex items-baseline justify-between gap-3 py-1.5 text-[13.5px]">
-                  <span className="min-w-0 truncate"><span className="font-medium">{q.label}</span> <span className="text-(--vr-muted)">· {when(q.at)}</span></span>
-                  <span className={cn("shrink-0 text-[12.5px] font-semibold", STATUS_TONE[q.status] ?? STATUS_TONE.NEW)}>{GUEST_REQUEST_WORD[q.status] ?? "Received"}</span>
+                  <span className="min-w-0 truncate"><span className="font-medium">{t(q.label)}</span> <span className="text-(--vr-muted)">· {when(q.at, t)}</span></span>
+                  <span className={cn("shrink-0 text-[12.5px] font-semibold", STATUS_TONE[q.status] ?? STATUS_TONE.NEW)}>{t(GUEST_REQUEST_WORD[q.status] ?? "Received")}</span>
                 </li>
               ))}
             </ul>
           </div>
         )}
       </div>
-      <BottomSheet open={!!open} onClose={() => setOpen(null)} label={open?.label ?? "Ask reception"}>
+      <BottomSheet open={!!open} onClose={() => setOpen(null)} label={open ? t(open.label) : t("Ask reception")}>
         {open && <AskForm key={open.key} a={open} ask={ask} departure={departure} today={today} checkoutMinutes={checkoutMinutes} lateFee={lateFee} onDone={() => setOpen(null)} />}
       </BottomSheet>
     </section>
@@ -85,6 +88,7 @@ export function RoomOptions({ ask, requests, departure, today, checkoutMinutes, 
 function AskForm({ a, ask, departure, today, checkoutMinutes, lateFee, onDone }: {
   a: RoomAsk; ask: RoomAskTarget; departure: string; today: string; checkoutMinutes: number; lateFee: number; onDone: () => void;
 }) {
+  const t = useT();
   const router = useRouter();
   const [note, setNote] = useState("");
   const [nights, setNights] = useState(1);
@@ -116,7 +120,7 @@ function AskForm({ a, ask, departure, today, checkoutMinutes, lateFee, onDone }:
   const send = () => start(async () => {
     setError(null);
     const input = { token: ask.token, type: a.type, description: description || undefined, clientKey: key };
-    const r = await (ask.kind === "room" ? askFromRoomQrAction(input) : askFromStayAction(input)).catch(() => ({ ok: false as const, error: "No connection — please try again." }));
+    const r = await (ask.kind === "room" ? askFromRoomQrAction(input) : askFromStayAction(input)).catch(() => ({ ok: false as const, error: t("No connection — please try again.") }));
     if (!r.ok) { setError(r.error); return; }
     setSent(true);
     router.refresh();
@@ -126,34 +130,42 @@ function AskForm({ a, ask, departure, today, checkoutMinutes, lateFee, onDone }:
     return (
       <div className="pb-1 text-center sm:pt-2" role="status">
         <span className="mx-auto grid size-12 place-items-center rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"><Check className="size-5" strokeWidth={2.5} /></span>
-        <h2 className="mt-3 font-display text-[24px] font-semibold leading-tight">Sent to reception</h2>
+        <h2 className="mt-3 font-display text-[24px] font-semibold leading-tight">{t("Sent to reception")}</h2>
         <p className="mx-auto mt-1.5 max-w-xs text-[13.5px] leading-relaxed text-(--vr-muted)">
-          {a.key === "MOVE" || a.key === "EXTEND" || a.key === "LATE" ? "Reception will check and get back to you soon." : "Reception has it and will be with you soon."} You can follow it under Your requests.
+          {a.key === "MOVE" || a.key === "EXTEND" || a.key === "LATE" ? t("Reception will check and get back to you soon.") : t("Reception has it and will be with you soon.")}{t.locale === "zh-CN" ? "" : " "}{t("You can follow it under Your requests.")}
         </p>
-        <button type="button" onClick={onDone} className={cn(darkButton, "mt-5 h-12 w-full text-[14.5px]")}>Done</button>
+        <button type="button" onClick={onDone} className={cn(darkButton, "mt-5 h-12 w-full text-[14.5px]")}>{t("Done")}</button>
       </div>
     );
   }
 
   return (
     <>
-      <SheetHead title={a.label} text={
-        a.key === "MOVE" ? "Tell us why and reception will see what is free."
-        : a.key === "EXTEND" ? `${past ? `Your booking ended ${dayWeek(departure)}` : `Your check-out is ${dayWeek(departure)}`}. Reception checks the room is free and confirms.`
-        : a.key === "LATE" ? <>Check-out is by {hhmm(checkoutMinutes)}{past ? " today" : <> on {dayWeek(departure)}</>}. Reception confirms the time{lateFee > 0 ? <> — late check-out is <strong className="font-semibold text-(--vr-ink)">{tzs(lateFee)}</strong></> : null}.</>
-        : a.key === "FIX" ? "Tell us what is wrong and we will send someone."
-        : a.key === "OTHER" ? "Ask for anything — reception will help."
-        : "Reception will send someone to your room."
+      <SheetHead title={t(a.label)} text={
+        a.key === "MOVE" ? t("Tell us why and reception will see what is free.")
+        : a.key === "EXTEND" ? (past
+          ? t("Your booking ended {date}. Reception checks the room is free and confirms.", { date: dayWeek(departure, t) })
+          : t("Your check-out is {date}. Reception checks the room is free and confirms.", { date: dayWeek(departure, t) }))
+        : a.key === "LATE" ? (() => {
+          const fee = { b: (c: React.ReactNode) => <strong className="font-semibold text-(--vr-ink)">{c}</strong> };
+          const vars = { time: hhmm(checkoutMinutes), date: dayWeek(departure, t), fee: tzs(lateFee) };
+          return past
+            ? lateFee > 0 ? t.rich("Check-out is by {time} today. Reception confirms the time — late check-out is <b>{fee}</b>.", fee, vars) : t.rich("Check-out is by {time} today. Reception confirms the time.", fee, vars)
+            : lateFee > 0 ? t.rich("Check-out is by {time} on {date}. Reception confirms the time — late check-out is <b>{fee}</b>.", fee, vars) : t.rich("Check-out is by {time} on {date}. Reception confirms the time.", fee, vars);
+        })()
+        : a.key === "FIX" ? t("Tell us what is wrong and we will send someone.")
+        : a.key === "OTHER" ? t("Ask for anything — reception will help.")
+        : t("Reception will send someone to your room.")
       } />
 
       {a.key === "EXTEND" && (
         <div className="mt-4 border-y border-(--vr-line)">
-          <Stepper label="More nights" hint={`New check-out ${dayWeek(addDays(outDay, nights))}`} value={nights} min={1} max={14} onChange={setNights} />
+          <Stepper label={t("More nights")} hint={t("New check-out {date}", { date: dayWeek(addDays(outDay, nights), t) })} value={nights} min={1} max={14} onChange={setNights} />
         </div>
       )}
       {a.key === "LATE" && (
         <fieldset className="mt-4">
-          <legend className="text-[12.5px] font-medium text-(--vr-ink)/80">Leave by</legend>
+          <legend className="text-[12.5px] font-medium text-(--vr-ink)/80">{t("Leave by")}</legend>
           <div className="mt-2 grid grid-cols-3 gap-2">
             {lateTimes.map((m) => (
               <button key={m} type="button" onClick={() => setLate(m)} aria-pressed={late === m}
@@ -166,14 +178,14 @@ function AskForm({ a, ask, departure, today, checkoutMinutes, lateFee, onDone }:
       )}
 
       <label className="mt-4 block">
-        <span className="sr-only">{a.needsNote ? "Your message" : "Anything to add"}</span>
+        <span className="sr-only">{a.needsNote ? t("Your message") : t("Anything to add")}</span>
         <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={a.needsNote ? 3 : 2} maxLength={200} autoFocus={a.needsNote}
-          placeholder={a.placeholder}
+          placeholder={t(a.placeholder)}
           className="block w-full resize-none rounded-2xl border border-(--vr-line) bg-white px-4 py-3 text-[16px] leading-snug outline-none transition placeholder:text-(--vr-muted)/70 focus:border-(--vr-gold) focus:ring-4 focus:ring-(--vr-gold)/15 sm:text-[14.5px]" />
       </label>
       {error && <p role="alert" className="mt-2.5 rounded-xl bg-rose-50 px-3 py-2 text-[13px] text-rose-800 ring-1 ring-rose-200">{error}</p>}
       <button type="button" onClick={send} disabled={pending || !ready} className={cn(darkButton, "mt-4 h-12 w-full text-[14.5px]")}>
-        {pending && <Loader2 className="size-4 animate-spin" />}Send to reception
+        {pending && <Loader2 className="size-4 animate-spin" />}{t("Send to reception")}
       </button>
     </>
   );

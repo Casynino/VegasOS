@@ -9,6 +9,7 @@ import { activeStaysFor } from "@/server/services/guests";
 import { isDeskUser as isDesk } from "@/server/desk";
 import { parseInput } from "@/server/validation";
 import { validPhone } from "@/lib/guest-messages";
+import { msg } from "@/i18n/msg";
 import { createTableReservation, moveTableReservation, setTableReservationStatus, updateTableReservation } from "@/server/services/table-reservations";
 
 async function actor(user: CurrentUser) {
@@ -19,18 +20,18 @@ const refresh = () => revalidatePath("/staff/restaurant", "layout");
 const Id = z.string().min(1).max(40);
 
 const Fields = z.object({
-  name: z.string().trim().min(2, "Enter the customer's name.").max(80),
-  phone: z.string().trim().max(30).refine(validPhone, "Enter a phone number like 0712 345 678."),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose the date."),
-  time: z.string().regex(/^\d{1,2}:\d{2}$/, "Choose the time."),
-  guestCount: z.coerce.number().int().min(1, "At least 1 person.").max(60),
+  name: z.string().trim().min(2, msg("Enter the customer's name.")).max(80),
+  phone: z.string().trim().max(30).refine(validPhone, msg("Enter a phone number like 0712 345 678.")),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, msg("Choose the date.")),
+  time: z.string().regex(/^\d{1,2}:\d{2}$/, msg("Choose the time.")),
+  guestCount: z.coerce.number().int().min(1, msg("At least 1 person.")).max(60),
   notes: z.string().trim().max(300).optional(),
 });
-const Create = Fields.extend({ locationId: Id, locationIds: z.array(Id).max(8, "Up to 8 tables in one reservation.").optional(), guestId: z.string().max(40).nullable().optional() });
+const Create = Fields.extend({ locationId: Id, locationIds: z.array(Id).max(8, msg("Up to 8 tables in one reservation.")).optional(), guestId: z.string().max(40).nullable().optional() });
 
 /** Reception (not management) books tables for the hotel's guests only — anyone else books with the restaurant (owner, 2026-10-04). */
 async function assertHotelGuest(guestId: string | null | undefined) {
-  if (!guestId || !(await activeStaysFor(db, [guestId])).length) throw new AppError("Reception reserves tables for guests staying in the hotel — pick the guest. Anyone else books with the restaurant.", "VALIDATION", { guestId: "Required" });
+  if (!guestId || !(await activeStaysFor(db, [guestId])).length) throw new AppError("Reception reserves tables for guests staying in the hotel — pick the guest. Anyone else books with the restaurant.", "VALIDATION", { guestId: msg("Required") });
 }
 /** Reception touches only its staying guests' table bookings. */
 async function deskBooking(user: CurrentUser, id: string) {
@@ -62,7 +63,7 @@ export async function updateReservationAction(input: z.input<typeof Fields> & { 
     await updateTableReservation(Id.parse(input.id), fields, await actor(user));
     refresh();
     return null;
-  }, "Reservation saved.");
+  }, msg("Reservation saved."));
 }
 
 /** Confirmed · cancelled (with the reason) · no-show. */
@@ -74,7 +75,7 @@ export async function setReservationStatusAction(input: { id: string; to: "CONFI
     await setTableReservationStatus(Id.parse(input.id), to, { reason: z.string().trim().max(200).optional().parse(input.reason) }, await actor(user));
     refresh();
     return null;
-  }, input.to === "CONFIRMED" ? "Confirmed." : input.to === "CANCELLED" ? "Reservation cancelled." : "Marked as no-show.");
+  }, input.to === "CONFIRMED" ? msg("Confirmed.") : input.to === "CANCELLED" ? msg("Reservation cancelled.") : msg("Marked as no-show."));
 }
 
 /** Give the reservation another table (the move is kept). */

@@ -3,6 +3,9 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { db } from "../db";
 import { audit, type AuditActor } from "../audit";
 import { AppError } from "../errors";
+import { msg, msgf } from "@/i18n/msg";
+import { getT, rememberGuestLanguage } from "@/i18n/server";
+import { englishT, type T } from "@/i18n/translate";
 import { getSettings, getSettingsTx, stayConfig } from "../settings";
 import { findAvailableRooms } from "./availability";
 import { meetingStay, overnightStay, StayError, type Stay } from "@/lib/time/stay";
@@ -20,6 +23,9 @@ import type { BookingRequestStatus } from "@/generated/prisma/enums";
  * a Reservation through the single reservation engine, which re-checks
  * availability and price at that moment. Requests never hold inventory.
  */
+
+/** The translator of whoever sees the message (English outside a request). */
+const viewerT = () => getT().catch(() => englishT);
 
 const OPEN: BookingRequestStatus[] = ["NEW", "REVIEWING", "CONTACTED", "CONFIRMED"];
 const NEXT: Record<BookingRequestStatus, BookingRequestStatus[]> = {
@@ -55,7 +61,7 @@ export async function submitBookingRequest(
 ) {
   const quote = await quoteSelection(sel); // live availability + server price (throws UNAVAILABLE if sold out)
   if (customer.expectedArrivalTime && !/^([01]\d|2[0-3]):[0-5]\d$/.test(customer.expectedArrivalTime)) {
-    throw new AppError("Enter a valid arrival time.", "VALIDATION", { expectedArrivalTime: "Invalid" });
+    throw new AppError("Enter a valid arrival time.", "VALIDATION", { expectedArrivalTime: msg("Invalid") });
   }
   return db.$transaction(async (tx) => {
     const settings = await getSettingsTx(tx);
@@ -63,6 +69,8 @@ export async function submitBookingRequest(
     if (!source || !source.isActive) throw new AppError("Choose a valid booking source.");
     // Match an existing customer by phone/email rather than creating duplicates.
     const guestId = await resolveGuest(tx, { fullName: customer.fullName, phone: customer.phone, email: customer.email, nationality: customer.nationality });
+    // The language the customer chose on the website (not staff logging a call).
+    if (!staff) await rememberGuestLanguage(guestId, tx);
     const req = await tx.bookingRequest.create({
       data: {
         reference: requestRef(),
@@ -116,7 +124,7 @@ export async function publicMeetingRoom() {
 async function meetingWindow(date: string, start: string, end: string): Promise<Stay> {
   const settings = await getSettings();
   const cfg = stayConfig(settings);
-  if (!isBusinessDate(date)) throw new AppError("Choose a date.", "VALIDATION", { date: "Required" });
+  if (!isBusinessDate(date)) throw new AppError("Choose a date.", "VALIDATION", { date: msg("Required") });
   let stay: Stay;
   try {
     stay = meetingStay({
@@ -124,11 +132,11 @@ async function meetingWindow(date: string, start: string, end: string): Promise<
       endAt: zonedInstant(date, parseTimeToMinutes(end), settings.timezone),
     }, cfg);
   } catch (e) {
-    if (e instanceof StayError) throw new AppError(e.message, "VALIDATION");
+    if (e instanceof StayError) throw new AppError(e.localized ?? e.message, "VALIDATION");
     throw new AppError("Choose a start and an end time.", "VALIDATION");
   }
   const today = businessDateOf(new Date(), cfg);
-  if (stay.arrivalDate < today || stay.startAt <= new Date()) throw new AppError("Please choose a time in the future.", "VALIDATION", { date: "In the past" });
+  if (stay.arrivalDate < today || stay.startAt <= new Date()) throw new AppError("Please choose a time in the future.", "VALIDATION", { date: msg("In the past") });
   return stay;
 }
 
@@ -169,7 +177,7 @@ export async function submitMeetingRequest(input: MeetingRequestInput, ipAddress
   const type = await publicMeetingRoom();
   if (!type) throw new AppError("The meeting room cannot be booked online right now — please call us.", "UNAVAILABLE");
   if (input.attendees < 1 || input.attendees > type.maxAdults) {
-    throw new AppError(`The meeting room holds up to ${type.maxAdults} people.`, "VALIDATION", { attendees: "Too many" });
+    throw new AppError(msgf("The meeting room holds up to {n} people.", { n: type.maxAdults }), "VALIDATION", { attendees: msg("Too many") });
   }
   const stay = await meetingWindow(input.date, input.start, input.end);
   const free = await findAvailableRooms({ stay, roomTypeId: type.id, category: "MEETING_ROOM" });
@@ -179,6 +187,7 @@ export async function submitMeetingRequest(input: MeetingRequestInput, ipAddress
     const source = await tx.bookingSource.findUnique({ where: { code: WEBSITE_SOURCE } });
     if (!source || !source.isActive) throw new AppError("Online booking is paused — please call us.");
     const guestId = await resolveGuest(tx, { fullName: input.fullName, phone: input.phone, email: input.email });
+    await rememberGuestLanguage(guestId, tx);
     const req = await tx.bookingRequest.create({
       data: {
         reference: requestRef(),
@@ -220,7 +229,7 @@ export async function createWebsiteMeetingBooking(input: MeetingRequestInput, ip
   const type = await publicMeetingRoom();
   if (!type) throw new AppError("The meeting room cannot be booked online right now — please call us.", "UNAVAILABLE");
   if (input.attendees < 1 || input.attendees > type.maxAdults) {
-    throw new AppError(`The meeting room holds up to ${type.maxAdults} people.`, "VALIDATION", { attendees: "Too many" });
+    throw new AppError(msgf("The meeting room holds up to {n} people.", { n: type.maxAdults }), "VALIDATION", { attendees: msg("Too many") });
   }
   const stay = await meetingWindow(input.date, input.start, input.end);
   const free = await findAvailableRooms({ stay, roomTypeId: type.id, category: "MEETING_ROOM" });
@@ -236,6 +245,7 @@ export async function createWebsiteMeetingBooking(input: MeetingRequestInput, ip
     internalNotes: ["Website: meeting room booked and paying online (nTZS) — confirmed by the payment.", input.notes?.trim()].filter(Boolean).join(" "),
     holdMinutes: opts.holdMinutes,
   }, { userId: null, label: "website", ipAddress, permissions: new Set<string>() });
+  await rememberGuestLanguage(r.guestId);
   return { id: r.id, reference: r.reference, manageToken: r.manageToken, price: type.baseRate, date: stay.arrivalDate, time: timeRange(stay.startAt, stay.endAt), name: type.name };
 }
 
@@ -272,8 +282,11 @@ async function load(id: string) {
 export async function setRequestStatus(id: string, to: BookingRequestStatus, actor: StaffActor, note?: string | null) {
   const r = await load(id);
   if (to === "CONVERTED") throw new AppError("Use “Confirm & create reservation” to convert a request.");
-  if (!NEXT[r.status].includes(to)) throw new AppError(`A ${label(r.status)} request cannot be marked ${label(to)}.`);
-  if ((to === "REJECTED" || to === "CANCELLED") && !note?.trim()) throw new AppError("Give a reason (the customer may ask).", "VALIDATION", { note: "Required" });
+  if (!NEXT[r.status].includes(to)) {
+    const t = await viewerT();
+    throw new AppError(msgf("A {from} request cannot be marked {to}.", { from: statusWord(t, r.status), to: statusWord(t, to) }));
+  }
+  if ((to === "REJECTED" || to === "CANCELLED") && !note?.trim()) throw new AppError("Give a reason (the customer may ask).", "VALIDATION", { note: msg("Required") });
   await db.$transaction(async (tx) => {
     const n = await tx.bookingRequest.updateMany({
       where: { id, status: r.status },
@@ -292,7 +305,7 @@ export async function setRequestStatus(id: string, to: BookingRequestStatus, act
 
 /** Record a call/WhatsApp to the customer (with time & notes). Moves NEW/REVIEWING requests to CONTACTED. */
 export async function logContact(id: string, input: { note: string; contactedAt?: Date | null }, actor: StaffActor) {
-  if (!input.note.trim()) throw new AppError("Write what was agreed with the customer.", "VALIDATION", { note: "Required" });
+  if (!input.note.trim()) throw new AppError("Write what was agreed with the customer.", "VALIDATION", { note: msg("Required") });
   const r = await load(id);
   if (r.status === "CONVERTED") throw new AppError("This request is already a reservation — add notes there.");
   const at = input.contactedAt ?? new Date();
@@ -357,7 +370,7 @@ export async function convertRequest(id: string, input: ConversionInput, actor: 
   if (!actor.permissions.has("reservations.create")) throw new AppError("You cannot create reservations.", "FORBIDDEN");
   const r = await db.bookingRequest.findUnique({ where: { id }, include: { source: true } });
   if (!r) throw new AppError("Booking request not found.", "NOT_FOUND");
-  if (!OPEN.includes(r.status)) throw new AppError(`This request is ${label(r.status)} and cannot be converted.`);
+  if (!OPEN.includes(r.status)) throw new AppError(msgf("This request is {status} and cannot be converted.", { status: statusWord(await viewerT(), r.status) }));
   if (!isBusinessDate(input.checkIn) || !isBusinessDate(input.checkOut)) throw new AppError("Choose valid dates.");
   const type = await db.roomType.findUnique({ where: { id: input.roomTypeId } });
   if (!type || !type.isActive) throw new AppError("Choose an active room type.");
@@ -384,7 +397,10 @@ export async function convertRequest(id: string, input: ConversionInput, actor: 
   }
   const count = Math.max(1, Math.min(10, Math.trunc(input.roomCount)));
   const rooms = distributeGuests(type, input.adults, input.children, count);
-  if (!rooms) throw new AppError(`${count} ${type.name} room(s) cannot hold ${input.adults} adult(s) and ${input.children} child(ren).`);
+  if (!rooms) {
+    const t = await viewerT();
+    throw new AppError(msgf("{count} {type} room(s) cannot hold {adults} adult(s) and {children} child(ren).", { count, type: t(type.name), adults: input.adults, children: input.children }));
+  }
   if (input.roomId && count !== 1) throw new AppError("Choose a specific room only when converting a single room.");
 
   const reservation = await createReservation(
@@ -425,6 +441,9 @@ export async function convertRequest(id: string, input: ConversionInput, actor: 
 export function label(s: BookingRequestStatus) {
   return s === "CONVERTED" ? "converted" : s.toLowerCase();
 }
+
+/** The status as a word inside a message ("a new request…") in the reader's language — catalog keys "request::new"… */
+const statusWord = (t: T, s: BookingRequestStatus) => t.ctx("request", label(s));
 
 // ───────────────────────────── Staff views ─────────────────────────────
 

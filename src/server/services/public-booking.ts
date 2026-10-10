@@ -3,6 +3,9 @@ import { isPayLater, PAY_LATER_KEY, refreshBookingStates } from "./booking-holds
 import { timingSafeEqual } from "node:crypto";
 import { db } from "../db";
 import { AppError } from "../errors";
+import { msg, msgf } from "@/i18n/msg";
+import { getT, rememberGuestLanguage } from "@/i18n/server";
+import { englishT, type T } from "@/i18n/translate";
 import { businessDayConfig, getSettings, stayConfig } from "../settings";
 import { availabilityByType } from "./availability";
 import { createReservation, type Actor, type RoomRequest } from "./reservations";
@@ -24,6 +27,9 @@ export const WEBSITE_SOURCE = "WEBSITE";
 export const MAX_ADULTS = 20;
 export const MAX_CHILDREN = 10;
 export const MAX_ROOMS_PER_BOOKING = 10;
+
+/** The translator of whoever sees the message (the guest; English outside a request). */
+const viewerT = () => getT().catch(() => englishT);
 
 // ───────────────────────────── Room types ─────────────────────────────
 
@@ -96,14 +102,16 @@ export async function getPublicRoomType(slug: string): Promise<PublicRoomType | 
 /**
  * Tonight's website price per room type, from the pricing engine (the same
  * promotions reception sees). Returns a pricer so a page loads promotions once.
+ * `words`: the reader's translator, for the promotion label ("10% off") shown as it is (the Hotel QR, a room's QR
+ * card); the website's pages leave it out and translate the English label themselves.
  */
-export async function websitePricer(settings: HotelSettings) {
+export async function websitePricer(settings: HotelSettings, words: T = englishT) {
   const today = bookingWindow(settings).today;
   const { promos, rules } = await loadPricing(db, today, today);
   return (t: { id: string; baseRate: number }) => {
     const n = priceNight({ date: today, base: t.baseRate, roomTypeId: t.id, roomId: null, channel: "WEBSITE", promos, rules });
     const promo = n.promotion ? promos.find((p) => p.id === n.promotion!.id) : null;
-    return { baseRate: n.base, discount: n.promoDiscount, net: n.net, promotion: n.promotion?.name ?? null, promoLabel: promo ? promoLabel(promo) : null };
+    return { baseRate: n.base, discount: n.promoDiscount, net: n.net, promotion: n.promotion?.name ?? null, promoLabel: promo ? promoLabel(promo, words) : null };
   };
 }
 
@@ -170,7 +178,8 @@ function intParam(v: string | undefined, fallback: number): number {
 
 /**
  * Validate stay search params (from the URL). Returns `null` when no search
- * was made yet, or an error message keyed by field.
+ * was made yet, or an error message keyed by field (English — the form shows t(message); the messages with a number
+ * in them are in the catalog with that number, e.g. "Online bookings are limited to 90 nights.").
  */
 export function parseStayParams(
   raw: RawParams,
@@ -183,11 +192,11 @@ export function parseStayParams(
   if (!checkIn && !checkOut) return { kind: "empty" };
 
   const errors: Record<string, string> = {};
-  if (!checkIn || !isBusinessDate(checkIn)) errors.checkIn = "Choose a check-in date.";
-  else if (checkIn < window.today) errors.checkIn = "Check-in cannot be in the past.";
-  else if (checkIn > window.maxArrival) errors.checkIn = "That date is too far ahead to book online.";
-  if (!checkOut || !isBusinessDate(checkOut)) errors.checkOut = "Choose a check-out date.";
-  else if (checkIn && isBusinessDate(checkIn) && checkOut <= checkIn) errors.checkOut = "Check-out must be after check-in.";
+  if (!checkIn || !isBusinessDate(checkIn)) errors.checkIn = msg("Choose a check-in date.");
+  else if (checkIn < window.today) errors.checkIn = msg("Check-in cannot be in the past.");
+  else if (checkIn > window.maxArrival) errors.checkIn = msg("That date is too far ahead to book online.");
+  if (!checkOut || !isBusinessDate(checkOut)) errors.checkOut = msg("Choose a check-out date.");
+  else if (checkIn && isBusinessDate(checkIn) && checkOut <= checkIn) errors.checkOut = msg("Check-out must be after check-in.");
   else if (checkIn && isBusinessDate(checkIn) && checkOut > addDays(checkIn, MAX_NIGHTS)) {
     errors.checkOut = `Online bookings are limited to ${MAX_NIGHTS} nights.`;
   }
@@ -209,7 +218,7 @@ export function buildStay(settings: HotelSettings, p: Pick<StayParams, "checkIn"
   try {
     return overnightStay({ arrivalDate: p.checkIn, departureDate: p.checkOut }, stayConfig(settings));
   } catch (e) {
-    if (e instanceof StayError) throw new AppError(e.message, "VALIDATION");
+    if (e instanceof StayError) throw new AppError(e.localized ?? e.message, "VALIDATION");
     throw e;
   }
 }
@@ -318,7 +327,7 @@ export async function quoteSelection(sel: Selection): Promise<SelectionQuote> {
   const window = bookingWindow(settings);
   if (sel.checkIn < window.today) throw new AppError("Check-in cannot be in the past.", "VALIDATION");
   if (sel.checkIn > window.maxArrival) {
-    throw new AppError(`Bookings can be made up to ${settings.maxAdvanceBookingDays} days ahead.`, "VALIDATION");
+    throw new AppError(msgf("Bookings can be made up to {days} days ahead.", { days: settings.maxAdvanceBookingDays }), "VALIDATION");
   }
   const stay = buildStay(settings, sel);
   const type = await getPublicRoomType(sel.typeSlug);
@@ -327,17 +336,29 @@ export async function quoteSelection(sel: Selection): Promise<SelectionQuote> {
   const counts = await availabilityByType(stay);
   const available = counts.get(type.id) ?? 0;
   if (available < sel.rooms) {
+    // The room type's name in the guest's language (the hotel's own content).
+    const name = (await viewerT())(type.name);
     throw new AppError(
       available === 0
-        ? `Sorry — ${type.name} is now fully booked for these dates.`
-        : `Sorry — only ${available} ${type.name} room${available === 1 ? " is" : "s are"} left for these dates.`,
+        ? msgf("Sorry — {type} is now fully booked for these dates.", { type: name })
+        : available === 1
+          ? msgf("Sorry — only 1 {type} room is left for these dates.", { type: name })
+          : msgf("Sorry — only {n} {type} rooms are left for these dates.", { n: available, type: name }),
       "UNAVAILABLE",
     );
   }
   const roomRequests = distributeGuests(type, sel.adults, sel.children, sel.rooms);
   if (!roomRequests) {
+    const t = await viewerT();
+    const vars = { rooms: t.plural(sel.rooms, "{n} {type} room", "{n} {type} rooms", { type: t(type.name) }), adults: sel.adults, children: sel.children, maxAdults: type.maxAdults, maxChildren: type.maxChildren };
     throw new AppError(
-      `${sel.rooms} ${type.name} room${sel.rooms === 1 ? "" : "s"} cannot hold ${sel.adults} adult(s)${sel.children ? ` and ${sel.children} child(ren)` : ""}. Each room fits up to ${type.maxAdults} adult(s)${type.maxChildren ? ` and ${type.maxChildren} child(ren)` : ""}.`,
+      sel.children
+        ? (type.maxChildren
+          ? msgf("{rooms} cannot hold {adults} adult(s) and {children} child(ren). Each room fits up to {maxAdults} adult(s) and {maxChildren} child(ren).", vars)
+          : msgf("{rooms} cannot hold {adults} adult(s) and {children} child(ren). Each room fits up to {maxAdults} adult(s).", vars))
+        : (type.maxChildren
+          ? msgf("{rooms} cannot hold {adults} adult(s). Each room fits up to {maxAdults} adult(s) and {maxChildren} child(ren).", vars)
+          : msgf("{rooms} cannot hold {adults} adult(s). Each room fits up to {maxAdults} adult(s).", vars)),
       "VALIDATION",
     );
   }
@@ -434,6 +455,8 @@ export async function createWebsiteBooking(sel: Selection, guest: WebsiteGuest, 
     },
     actor,
   );
+  // The language they chose on the website: their booking messages and pages follow it (never fails the booking).
+  await rememberGuestLanguage(reservation.guestId);
   let pickupRequested = false;
   if (pickup) {
     // The booking is already committed; a failed trip request must not undo it.

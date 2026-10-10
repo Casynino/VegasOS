@@ -8,6 +8,7 @@ import { parseInput } from "@/server/validation";
 import { correctSaleAccount, recordSale, voidSale } from "@/server/services/outlets";
 import { postRoomCharges } from "@/server/services/payments";
 import { db } from "@/server/db";
+import { msg } from "@/i18n/msg";
 
 async function actor(user: CurrentUser) {
   const { ipAddress } = await requestMeta();
@@ -18,9 +19,9 @@ export async function recordSaleAction(_prev: unknown, formData: FormData): Prom
   return runAction(async () => {
     const user = await authorize("revenue.record");
     const d = parseInput(z.object({
-      categoryId: z.string().min(1, "Choose where the sale was made."),
-      amount: z.coerce.number().int("Whole shillings only.").positive("Enter an amount."),
-      accountId: z.string().min(1, "Choose where the money was received."),
+      categoryId: z.string().min(1, msg("Choose where the sale was made.")),
+      amount: z.coerce.number().int(msg("Whole shillings only.")).positive(msg("Enter an amount.")),
+      accountId: z.string().min(1, msg("Choose where the money was received.")),
       description: z.string().trim().max(200).optional(),
       notes: z.string().trim().max(500).optional(),
     }), formData);
@@ -39,7 +40,7 @@ export async function recordSaleAction(_prev: unknown, formData: FormData): Prom
     await recordSale(d, await actor(user));
     revalidatePath("/staff/sales");
     return null;
-  }, "Sale recorded.");
+  }, msg("Sale recorded."));
 }
 
 export async function correctSaleAccountAction(input: { id: string; accountId: string }) {
@@ -50,7 +51,7 @@ export async function correctSaleAccountAction(input: { id: string; accountId: s
     revalidatePath("/staff/payments");
     revalidatePath("/staff/finance", "layout");
     return null;
-  }, "Sale corrected — the amount is unchanged.");
+  }, msg("Sale corrected — the amount is unchanged."));
 }
 
 export async function voidSaleAction(input: { id: string; reason: string }) {
@@ -59,5 +60,5 @@ export async function voidSaleAction(input: { id: string; reason: string }) {
     await voidSale(input.id, input.reason ?? "", await actor(user));
     revalidatePath("/staff/sales");
     return null;
-  }, "Sale voided.");
+  }, msg("Sale voided."));
 }

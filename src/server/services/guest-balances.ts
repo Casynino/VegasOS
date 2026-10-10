@@ -2,6 +2,7 @@ import "server-only";
 import { db } from "../db";
 import { fromDbDate, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import { paymentStatus } from "@/lib/payment-status";
+import { englishT, type T } from "@/i18n/translate";
 
 /**
  * Who is staying, who has paid, who still owes — ONE calculation used by the
@@ -68,13 +69,17 @@ export async function inHouseBalances(today: BusinessDate) {
 
 export type InHouseBalances = Awaited<ReturnType<typeof inHouseBalances>>;
 
-/** Plain-text money part of the shift handover. */
-export function handoverMoneyText(b: InHouseBalances) {
+/** Plain-text money part of the shift handover (in the reader's language: pass their translator; English by default). */
+export function handoverMoneyText(b: InHouseBalances, t: T = englishT) {
   const s = b.summary;
   const fmt = (n: number) => n.toLocaleString("en-US");
   return [
-    `MONEY TO COLLECT — ${s.guestsCheckedIn} guest${s.guestsCheckedIn === 1 ? "" : "s"} in ${s.occupiedRooms} room${s.occupiedRooms === 1 ? "" : "s"}: ${s.fullyPaid} fully paid, ${s.owingCount} owing.`,
-    s.owingCount ? `Total outstanding TZS ${fmt(s.totalOutstanding)} (owed for nights so far TZS ${fmt(s.totalOwedSoFar)}).` : "Nobody staying owes money.",
-    ...b.owing.map((x) => `Room ${x.rooms.join(", ")} — ${x.guest}: TZS ${fmt(x.outstanding)}${x.paid ? ` (paid ${fmt(x.paid)})` : " (nothing paid)"}`),
+    t("MONEY TO COLLECT — {guests} in {rooms}: {paid} fully paid, {owing} owing.", {
+      guests: t.plural(s.guestsCheckedIn, "{n} guest", "{n} guests"), rooms: t.plural(s.occupiedRooms, "{n} room", "{n} rooms"), paid: s.fullyPaid, owing: s.owingCount,
+    }),
+    s.owingCount ? t("Total outstanding TZS {total} (owed for nights so far TZS {soFar}).", { total: fmt(s.totalOutstanding), soFar: fmt(s.totalOwedSoFar) }) : t("Nobody staying owes money."),
+    ...b.owing.map((x) => x.paid
+      ? t("Room {rooms} — {guest}: TZS {amount} (paid {paid})", { rooms: x.rooms.join(", "), guest: x.guest, amount: fmt(x.outstanding), paid: fmt(x.paid) })
+      : t("Room {rooms} — {guest}: TZS {amount} (nothing paid)", { rooms: x.rooms.join(", "), guest: x.guest, amount: fmt(x.outstanding) })),
   ].join("\n");
 }

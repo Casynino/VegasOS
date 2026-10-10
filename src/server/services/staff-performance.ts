@@ -4,6 +4,8 @@ import { staffActivity } from "./finance";
 import { addDays, diffDays, eachDate, fromDbDate, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import { ROLE_DEPARTMENT } from "@/lib/permissions";
 import { activityArea, friendlyAction } from "@/lib/activity-words";
+import { msg } from "@/i18n/msg";
+import { getT } from "@/i18n/server";
 
 type Range = { from: BusinessDate; to: BusinessDate };
 const dbRange = (r: Range) => ({ gte: toDbDate(r.from), lte: toDbDate(r.to) });
@@ -32,7 +34,7 @@ export async function staffPerformance(r: Range) {
     const startTimes = mine.map((x) => x._min.createdAt).filter((d): d is Date => !!d).map(clock).sort();
     const o = orders.find((x) => x.createdById === u.id);
     return {
-      id: u.id, name: u.fullName, role: u.role.name, department: ROLE_DEPARTMENT[u.role.code] ?? "Other",
+      id: u.id, name: u.fullName, role: u.role.name, department: ROLE_DEPARTMENT[u.role.code] ?? msg("Other"),
       actions: firstActions.find((x) => x.userId === u.id)?._count ?? 0,
       daysActive: mine.length,
       // Their usual start: the middle of their first-action times across the days they worked.
@@ -61,6 +63,7 @@ export async function staffDetail(userId: string, r: Range) {
     db.revenueTransaction.groupBy({ by: ["businessDate"], where: { businessDate: bd, recordedById: userId, isVoided: false }, _sum: { amount: true } }),
     db.auditLog.count({ where: { businessDate: bd, userId, action: { notIn: NOT_COUNTED } } }),
   ]);
+  const t = await getT();
   const dates = [...new Set([...logs.map((l) => fromDbDate(l.businessDate)), ...shifts.map((s) => fromDbDate(s.businessDate))])].sort().reverse();
   const perDay = dates.map((d) => {
     const today = logs.filter((l) => fromDbDate(l.businessDate) === d);
@@ -76,7 +79,7 @@ export async function staffDetail(userId: string, r: Range) {
       date: d,
       signedIn: signIns[0] ? clock(signIns[0]) : null,
       shiftStart: shift[0] ? clock(shift[0].startedAt) : null,
-      shiftEnd: shift.length && shift[shift.length - 1].endedAt ? clock(shift[shift.length - 1].endedAt!) : shift.length ? "still on" : null,
+      shiftEnd: shift.length && shift[shift.length - 1].endedAt ? clock(shift[shift.length - 1].endedAt!) : shift.length ? t("still on") : null,
       first: times[0] ? clock(times[0]) : null,
       last: times.length ? clock(times[times.length - 1]) : null,
       actions: work.length,

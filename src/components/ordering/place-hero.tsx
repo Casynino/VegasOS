@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowUpRight, Globe } from "lucide-react";
 import type { OrderMenuSection } from "./menu-picker";
+import { useT } from "@/i18n/client";
 
 const GOLD = "#e3bd6a";
 export type HeroPhoto = { src: string; name: string; price: number };
@@ -52,6 +53,7 @@ export function PlaceHero({ hotel, eyebrow, title, accent, line, chips, media, b
   below?: React.ReactNode;
   children?: React.ReactNode;
 }) {
+  const t = useT();
   return (
     <header className="relative">
       <div className="relative mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 pt-5 sm:px-6">
@@ -62,7 +64,7 @@ export function PlaceHero({ hotel, eyebrow, title, accent, line, chips, media, b
           </span>
           <span className="truncate text-[11px] font-semibold uppercase tracking-[0.18em] text-white/90 sm:tracking-[0.26em]">{hotel}</span>
         </Link>
-        <Link href="/" className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/[0.06] px-3 py-1.5 text-xs font-medium text-white/85 ring-1 ring-white/15 backdrop-blur transition hover:bg-white/10"><span className="hidden sm:inline">Our website</span><Globe className="size-3.5 sm:hidden" /><ArrowUpRight className="hidden size-3.5 sm:block" /><span className="sr-only sm:hidden">Our website</span></Link>
+        <Link href="/" className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/[0.06] px-3 py-1.5 text-xs font-medium text-white/85 ring-1 ring-white/15 backdrop-blur transition hover:bg-white/10"><span className="hidden sm:inline">{t("Our website")}</span><Globe className="size-3.5 sm:hidden" /><ArrowUpRight className="hidden size-3.5 sm:block" /><span className="sr-only sm:hidden">{t("Our website")}</span></Link>
       </div>
 
       <div className="relative mx-auto grid max-w-6xl items-center gap-6 px-4 pb-8 pt-5 sm:px-6 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)] lg:gap-12 lg:pb-14 lg:pt-10">

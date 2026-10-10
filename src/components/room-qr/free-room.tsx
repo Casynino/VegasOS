@@ -5,8 +5,9 @@ import { useReducedMotion } from "motion/react";
 import { ArrowRight, ChevronRight } from "lucide-react";
 import { tzs } from "@/components/hotel-qr/lib";
 import { goldButton, goldDot, PhotoViewer, RoomCard, sectionTitle } from "./parts";
+import { useT } from "@/i18n/client";
 
-/** A room nobody is checked in to, as its card shows it — prepared on the server (the website's own price and photos). */
+/** A room nobody is checked in to, as its card shows it — prepared on the server in the guest's language (the website's own price and photos). */
 export type FreeRoom = {
   /** "Room 101", "Meeting room 102". */
   title: string;
@@ -28,34 +29,36 @@ export type FreeRoom = {
  * website's page of the room type) — and "See the menu" to eat at the restaurant or take out, right below.
  */
 export function FreeRoomTop({ room }: { room: FreeRoom }) {
+  const t = useT();
   const reduce = useReducedMotion();
   const [viewing, setViewing] = useState<number | null>(null);
   const toMenu = () => document.getElementById("order")?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
   return (
     <>
       <RoomCard photos={room.photos} title={room.title} onPhotos={setViewing}>
-        <p className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-medium text-white/90"><span className="size-1.5 rounded-full bg-emerald-400" />Welcome</p>
+        <p className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-medium text-white/90"><span className="size-1.5 rounded-full bg-emerald-400" />{t("Welcome")}</p>
         <h1 className="mt-2.5 font-display text-[23px] leading-[1.08] lining-nums sm:text-[30px]">
           {room.title}<br /><span className="text-(--vr-gold)">{room.type}</span>
         </h1>
         {room.from !== null && (
           <p className="mt-1.5 text-[12.5px] text-white/80 sm:text-[13.5px]">
-            from {room.base !== null && room.base > room.from && <s className="mr-1 text-white/45 tabular-nums">{tzs(room.base)}</s>}
-            <strong className="font-semibold tabular-nums text-(--vr-gold)">{tzs(room.from)}</strong> / night
+            {room.base !== null && room.base > room.from
+              ? t.rich("from <s>{base}</s><b>{price}</b> / night", { s: (c) => <s className="mr-1 text-white/45 tabular-nums">{c}</s>, b: (c) => <strong className="font-semibold tabular-nums text-(--vr-gold)">{c}</strong> }, { base: tzs(room.base), price: tzs(room.from) })
+              : t.rich("from <b>{price}</b> / night", { b: (c) => <strong className="font-semibold tabular-nums text-(--vr-gold)">{c}</strong> }, { price: tzs(room.from) })}
           </p>
         )}
         {(room.promo || room.facts) && <p className="mt-0.5 text-[11px] leading-snug text-white/55 sm:text-[12px]">{[room.from !== null && room.promo, room.facts].filter(Boolean).join(" · ")}</p>}
         <div className="mt-3">
           {room.book && <a href={room.book.href} className={goldButton}><span className={goldDot}><ArrowRight className="size-3.5" /></span><span className="truncate">{room.book.label}</span></a>}
           <button type="button" onClick={toMenu} className="mt-1 flex min-h-10 items-center gap-1 text-[12px] font-medium text-white/75 transition hover:text-white">
-            See the menu<ChevronRight className="size-3.5 text-(--vr-gold)" />
+            {t("See the menu")}<ChevronRight className="size-3.5 text-(--vr-gold)" />
           </button>
         </div>
       </RoomCard>
       <PhotoViewer photos={room.photos} start={viewing} title={room.title} onClose={() => setViewing(null)} />
 
       <div id="order" className="mt-10 scroll-mt-3 lg:mt-14">
-        <h2 className={sectionTitle}>Food & drinks</h2>
+        <h2 className={sectionTitle}>{t("Food & drinks")}</h2>
         <p className="mt-1.5 text-[13px] text-(--vr-muted)">{room.menuNote}</p>
       </div>
     </>

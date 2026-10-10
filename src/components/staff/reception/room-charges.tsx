@@ -12,12 +12,14 @@ import type { BillMenu } from "@/server/services/restaurant";
 import { MenuPicker } from "./menu-picker";
 import { useWaiterPin } from "@/components/staff/waiter-pin";
 import { CHARGE_LABELS, CHARGE_TYPES, type ChargeTypeCode } from "@/lib/charge-types";
-import { formatBusinessDate, formatTZS } from "@/lib/format";
+import { formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AccountSelect } from "@/components/staff/finance/account-select";
 import type { PayAccount } from "@/lib/pay-account";
+import { useT } from "@/i18n/client";
+import type { T } from "@/i18n/translate";
 
 const ICONS: Record<string, LucideIcon> = { UtensilsCrossed, ConciergeBell, Wine, GlassWater, Shirt, Car, BedSingle, Plus };
 const TONE: Record<string, string> = {
@@ -57,6 +59,7 @@ export function ChargeComposer({ reservationId, roomLabel, recent, methods, canP
   /** May put typed extras (laundry, transport, minibar…) on the bill — false: menu only. */
   canType?: boolean;
 }) {
+  const t = useT();
   const router = useRouter();
   const [type, setType] = useState<ChargeTypeCode>(startType ?? "RESTAURANT");
   const [manual, setManual] = useState(false);
@@ -70,7 +73,7 @@ export function ChargeComposer({ reservationId, roomLabel, recent, methods, canP
   const [seenStart, setSeenStart] = useState(startType);
   if (startType !== seenStart) { setSeenStart(startType); if (startType) { setType(startType); setManual(false); } }
 
-  const types = canType ? CHARGE_TYPES : CHARGE_TYPES.filter((t) => MENU_TYPES.includes(t.code));
+  const types = canType ? CHARGE_TYPES : CHARGE_TYPES.filter((c) => MENU_TYPES.includes(c.code));
   const menuMode = !!menu && MENU_TYPES.includes(type) && (!manual || !canType);
   const quick = useMemo(() => recent.filter((r) => r.type === type).slice(0, 10), [recent, type]);
   // A typed item counts only while its row is on screen (never hidden behind the menu).
@@ -111,9 +114,9 @@ export function ChargeComposer({ reservationId, roomLabel, recent, methods, canP
     const payMenu = payNow && canPay && menuPayNow;
     const menuLines = lines.filter((l) => l.menuItemId);
     const typed = all.filter((l) => !l.menuItemId);
-    const name = (l: Line) => `${l.qty} × ${l.item}`;
+    const name = (l: Line) => `${l.qty} × ${l.menuItemId ? t(l.item) : l.item}`;
     // Menu items paid now on the shared restaurant screen: the waiter taking the money says who they are (once for the ticket).
-    const pin = payMenu && menuLines.length ? await askPin(`Receive the payment${roomLabel ? ` for Room ${roomLabel}` : ""}`) : undefined;
+    const pin = payMenu && menuLines.length ? await askPin(roomLabel ? t("Receive the payment for Room {room}", { room: roomLabel }) : t("Receive the payment")) : undefined;
     if (pin === null) return;
     start(async () => {
       let billed = 0, paid = 0;
@@ -125,7 +128,9 @@ export function ChargeComposer({ reservationId, roomLabel, recent, methods, canP
         toast.error(error, {
           duration: 15000,
           description: done.length
-            ? `Already ${payMenu ? "done" : "on the bill"}: ${sent.join(", ")} (${done.map(name).join(", ")}). Not posted yet: ${left.map(name).join(", ")} — add only these again.`
+            ? (payMenu
+              ? t("Already done: {orders} ({items}). Not posted yet: {left} — add only these again.", { orders: sent.join(", "), items: done.map(name).join(", "), left: left.map(name).join(", ") })
+              : t("Already on the bill: {orders} ({items}). Not posted yet: {left} — add only these again.", { orders: sent.join(", "), items: done.map(name).join(", "), left: left.map(name).join(", ") }))
             : undefined,
         });
         if (done.length) router.refresh();
@@ -153,9 +158,9 @@ export function ChargeComposer({ reservationId, roomLabel, recent, methods, canP
         if (!res.ok) { failed(res.error); return; }
         billed += res.data.total - res.data.paid; paid += res.data.paid;
       }
-      const room = roomLabel ? `Room ${roomLabel}` : "the room";
-      toast.success(billed > 0 ? `${formatTZS(billed)} added to ${room}'s bill.` : `${formatTZS(paid)} paid now.`, {
-        description: [paid > 0 && billed > 0 ? `Paid now: ${formatTZS(paid)}` : billed > 0 ? "It will be paid at checkout." : null, sent.length ? `Sent to the kitchen & bar: ${sent.join(", ")}` : null].filter(Boolean).join(" · "),
+      const added = roomLabel ? t("{amount} added to Room {room}'s bill.", { amount: formatTZS(billed), room: roomLabel }) : t("{amount} added to the room's bill.", { amount: formatTZS(billed) });
+      toast.success(billed > 0 ? added : t("{amount} paid now.", { amount: formatTZS(paid) }), {
+        description: [paid > 0 && billed > 0 ? t("Paid now: {amount}", { amount: formatTZS(paid) }) : billed > 0 ? t("It will be paid at checkout.") : null, sent.length ? t("Sent to the kitchen & bar: {orders}", { orders: sent.join(", ") }) : null].filter(Boolean).join(" · "),
       });
       setLines([]); setDraft({ item: "", qty: 1, price: "" }); setPayNow(false); setPay((p) => ({ ...p, reference: "" }));
       onPosted?.(); router.refresh();
@@ -167,15 +172,15 @@ export function ChargeComposer({ reservationId, roomLabel, recent, methods, canP
     <fieldset disabled={pending} className="min-w-0 space-y-4 disabled:opacity-95">
       {/* Type tiles */}
       <div className={cn("grid gap-2", types.length > 4 ? "grid-cols-4" : "grid-cols-3")}>
-        {types.map((t) => {
-          const I = ICONS[t.icon];
-          const on = t.code === type;
+        {types.map((ct) => {
+          const I = ICONS[ct.icon];
+          const on = ct.code === type;
           return (
-            <button key={t.code} type="button" onClick={() => pickType(t.code)} aria-pressed={on}
+            <button key={ct.code} type="button" onClick={() => pickType(ct.code)} aria-pressed={on}
               className={cn("flex flex-col items-center gap-1.5 rounded-2xl border px-1 py-2.5 text-[11px] font-semibold transition-all",
                 on ? "border-foreground/70 bg-card shadow-[0_8px_20px_-14px_rgba(15,23,42,0.6)]" : "border-border/70 bg-card/60 text-muted-foreground hover:bg-card")}>
-              <span className={cn("grid size-9 place-items-center rounded-xl [&_svg]:size-[18px]", TONE[t.code])}><I /></span>
-              {t.label}
+              <span className={cn("grid size-9 place-items-center rounded-xl [&_svg]:size-[18px]", TONE[ct.code])}><I /></span>
+              {t(ct.label)}
             </button>
           );
         })}
@@ -186,18 +191,18 @@ export function ChargeComposer({ reservationId, roomLabel, recent, methods, canP
           <MenuPicker key={type} menu={menu} drinksOnly={type === "BAR"} counts={counts}
             onAdd={(i) => add({ type, item: i.name, qty: 1, unitPrice: i.price, menuItemId: i.id, image: i.image })} />
           <p className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
-            <span>Menu prices{type === "ROOM_SERVICE" ? ` · delivery ${formatTZS(menu.fee)} per order` : ""} · the kitchen &amp; bar see the order.</span>
-            {canType && <button type="button" onClick={() => setManual(true)} className="font-medium text-foreground underline-offset-2 hover:underline">Not on the menu? Type it in</button>}
+            <span>{t("Menu prices")}{type === "ROOM_SERVICE" ? ` · ${t("delivery {amount} per order", { amount: formatTZS(menu.fee) })}` : ""} · {t("the kitchen & bar see the order.")}</span>
+            {canType && <button type="button" onClick={() => setManual(true)} className="font-medium text-foreground underline-offset-2 hover:underline">{t("Not on the menu? Type it in")}</button>}
           </p>
         </div>
       ) : !canType ? (
-        <p className="rounded-2xl border border-dashed border-border px-4 py-5 text-center text-sm text-muted-foreground">Only menu items can be added here, for a guest staying now.</p>
+        <p className="rounded-2xl border border-dashed border-border px-4 py-5 text-center text-sm text-muted-foreground">{t("Only menu items can be added here, for a guest staying now.")}</p>
       ) : (
         <>
           {/* Recent items for this type */}
           {quick.length > 0 && (
             <div className="space-y-1.5">
-              <p className="text-xs text-muted-foreground">Tap to add · recently used</p>
+              <p className="text-xs text-muted-foreground">{t("Tap to add · recently used")}</p>
               <div className="flex flex-wrap gap-1.5">
                 {quick.map((q) => (
                   <button key={`${q.item}-${q.unitPrice}`} type="button" onClick={() => add({ type: q.type as ChargeTypeCode, item: q.item, qty: 1, unitPrice: q.unitPrice })}
@@ -212,19 +217,19 @@ export function ChargeComposer({ reservationId, roomLabel, recent, methods, canP
           {/* New item */}
           <div className="grid grid-cols-[1fr_auto] gap-2 sm:grid-cols-[1fr_auto_8rem_auto]">
             <Input value={draft.item} onChange={(e) => setDraft({ ...draft, item: e.target.value })} onKeyDown={(e) => e.key === "Enter" && addDraft()}
-              placeholder={`${CHARGE_LABELS[type]} item, e.g. ${type === "LAUNDRY" ? "Shirts washed" : type === "TRANSPORT" ? "Airport drop" : type === "EXTRA_BED" ? "Extra bed" : type === "BAR" || type === "MINIBAR" ? "Soda" : "Breakfast"}`}
-              aria-label="Item" className="h-10" />
+              placeholder={t("{type} item, e.g. {example}", { type: t(CHARGE_LABELS[type]), example: type === "LAUNDRY" ? t("Shirts washed") : type === "TRANSPORT" ? t("Airport drop") : type === "EXTRA_BED" ? t("Extra bed") : type === "BAR" || type === "MINIBAR" ? t("Soda") : t("Breakfast") })}
+              aria-label={t("Item")} className="h-10" />
             <div className="flex h-10 items-center rounded-xl border border-border">
-              <button type="button" aria-label="Less" onClick={() => setDraft({ ...draft, qty: Math.max(1, draft.qty - 1) })} className="grid h-full w-8 place-items-center text-muted-foreground hover:text-foreground"><Minus className="size-3.5" /></button>
+              <button type="button" aria-label={t("Less")} onClick={() => setDraft({ ...draft, qty: Math.max(1, draft.qty - 1) })} className="grid h-full w-8 place-items-center text-muted-foreground hover:text-foreground"><Minus className="size-3.5" /></button>
               <span className="w-6 text-center text-sm font-semibold tabular-nums">{draft.qty}</span>
-              <button type="button" aria-label="More" onClick={() => setDraft({ ...draft, qty: Math.min(99, draft.qty + 1) })} className="grid h-full w-8 place-items-center text-muted-foreground hover:text-foreground"><Plus className="size-3.5" /></button>
+              <button type="button" aria-label={t("More")} onClick={() => setDraft({ ...draft, qty: Math.min(99, draft.qty + 1) })} className="grid h-full w-8 place-items-center text-muted-foreground hover:text-foreground"><Plus className="size-3.5" /></button>
             </div>
             <Input type="number" min={0} step={500} value={draft.price} onChange={(e) => setDraft({ ...draft, price: e.target.value })} onKeyDown={(e) => e.key === "Enter" && addDraft()}
-              placeholder="Price each" aria-label="Price each (TZS)" className="h-10" />
-            <Button type="button" variant="outline" className="h-10" disabled={!draftLine} onClick={addDraft}><Plus />Add</Button>
+              placeholder={t("Price each")} aria-label={t("Price each (TZS)")} className="h-10" />
+            <Button type="button" variant="outline" className="h-10" disabled={!draftLine} onClick={addDraft}><Plus />{t("Add")}</Button>
           </div>
           {menu && MENU_TYPES.includes(type) && (
-            <button type="button" onClick={() => { keepDraft(); setManual(false); }} className="text-[11px] font-medium underline-offset-2 hover:underline">← Back to the menu</button>
+            <button type="button" onClick={() => { keepDraft(); setManual(false); }} className="text-[11px] font-medium underline-offset-2 hover:underline">{t("← Back to the menu")}</button>
           )}
         </>
       )}
@@ -240,20 +245,20 @@ export function ChargeComposer({ reservationId, roomLabel, recent, methods, canP
                   // eslint-disable-next-line @next/next/no-img-element
                   ? <img src={l.image} alt="" className="size-7 shrink-0 rounded-lg object-cover" />
                   : <span className={cn("grid size-7 shrink-0 place-items-center rounded-lg [&_svg]:size-3.5", TONE[l.type])}><I /></span>}
-                <span className="line-clamp-2 min-w-0 flex-1 leading-snug"><strong className="tabular-nums">{l.qty} ×</strong> {l.item} <span className="text-xs text-muted-foreground">@ {l.unitPrice.toLocaleString("en-TZ")}{l.menuItemId && l.type === "ROOM_SERVICE" ? " · room service" : ""}</span></span>
+                <span className="line-clamp-2 min-w-0 flex-1 leading-snug"><strong className="tabular-nums">{l.qty} ×</strong> {l.menuItemId ? t(l.item) : l.item} <span className="text-xs text-muted-foreground">@ {l.unitPrice.toLocaleString("en-TZ")}{l.menuItemId && l.type === "ROOM_SERVICE" ? ` · ${t("room service")}` : ""}</span></span>
                 <span className="flex items-center gap-0.5">
-                  <button type="button" aria-label="Less" onClick={() => setLines(lines.map((x, j) => (j === i ? { ...x, qty: Math.max(1, x.qty - 1) } : x)))} className="rounded p-1 text-muted-foreground hover:bg-muted"><Minus className="size-3" /></button>
-                  <button type="button" aria-label="More" onClick={() => setLines(lines.map((x, j) => (j === i ? { ...x, qty: Math.min(99, x.qty + 1) } : x)))} className="rounded p-1 text-muted-foreground hover:bg-muted"><Plus className="size-3" /></button>
+                  <button type="button" aria-label={t("Less")} onClick={() => setLines(lines.map((x, j) => (j === i ? { ...x, qty: Math.max(1, x.qty - 1) } : x)))} className="rounded p-1 text-muted-foreground hover:bg-muted"><Minus className="size-3" /></button>
+                  <button type="button" aria-label={t("More")} onClick={() => setLines(lines.map((x, j) => (j === i ? { ...x, qty: Math.min(99, x.qty + 1) } : x)))} className="rounded p-1 text-muted-foreground hover:bg-muted"><Plus className="size-3" /></button>
                 </span>
                 <span className="shrink-0 whitespace-nowrap text-right font-semibold tabular-nums">{formatTZS(l.qty * l.unitPrice)}</span>
-                <button type="button" aria-label="Remove" onClick={() => setLines(lines.filter((_, j) => j !== i))} className="rounded p-1 text-muted-foreground hover:bg-rose-500/10 hover:text-rose-600"><Trash2 className="size-3.5" /></button>
+                <button type="button" aria-label={t("Remove")} onClick={() => setLines(lines.filter((_, j) => j !== i))} className="rounded p-1 text-muted-foreground hover:bg-rose-500/10 hover:text-rose-600"><Trash2 className="size-3.5" /></button>
               </li>
             );
           })}
           {fee > 0 && (
             <li className="flex items-center gap-3 px-3 py-2 text-sm text-muted-foreground">
               <span className={cn("grid size-7 shrink-0 place-items-center rounded-lg [&_svg]:size-3.5", TONE.ROOM_SERVICE)}><ConciergeBell /></span>
-              <span className="min-w-0 flex-1">Room service delivery</span>
+              <span className="min-w-0 flex-1">{t("Room service delivery")}</span>
               <span className="shrink-0 whitespace-nowrap text-right font-semibold tabular-nums">{formatTZS(fee)}</span>
               <span className="w-[22px] shrink-0" />
             </li>
@@ -264,22 +269,22 @@ export function ChargeComposer({ reservationId, roomLabel, recent, methods, canP
       {/* Post */}
       <div className="space-y-3 rounded-2xl bg-muted/60 p-3">
         {canPay && (
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={payNow} onChange={(e) => setPayNow(e.target.checked)} />Guest is paying for this now</label>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={payNow} onChange={(e) => setPayNow(e.target.checked)} />{t("Guest is paying for this now")}</label>
         )}
         {payNow && (
           <>
             <div className="grid gap-2 sm:grid-cols-2">
               <AccountSelect accounts={methods} value={pay.accountId} onChange={(v) => setPay({ ...pay, accountId: v })} />
-              <Input value={pay.reference} onChange={(e) => setPay({ ...pay, reference: e.target.value })} placeholder="Reference (M-Pesa code, receipt…)" className="h-10" />
+              <Input value={pay.reference} onChange={(e) => setPay({ ...pay, reference: e.target.value })} placeholder={t("Reference (M-Pesa code, receipt…)")} className="h-10" />
             </div>
-            {hasMenuLines && !menuPayNow && <p className="text-[11px] text-amber-700 dark:text-amber-400">Menu items still go on the bill — receiving restaurant payments needs the cashier.</p>}
+            {hasMenuLines && !menuPayNow && <p className="text-[11px] text-amber-700 dark:text-amber-400">{t("Menu items still go on the bill — receiving restaurant payments needs the cashier.")}</p>}
           </>
         )}
         <Button className="h-11 w-full text-base font-semibold" disabled={pending || total <= 0} onClick={() => void post()}>
           {pending ? <Loader2 className="animate-spin" /> : <Receipt />}
-          {total <= 0 ? "Add an item to post"
-            : payNow && payable > 0 ? (payable === total ? `Post & receive payment · ${formatTZS(total)}` : `Post ${formatTZS(total)} · receive ${formatTZS(payable)} now`)
-              : `Post to room ${roomLabel} · ${formatTZS(total)}`}
+          {total <= 0 ? t("Add an item to post")
+            : payNow && payable > 0 ? (payable === total ? t("Post & receive payment · {amount}", { amount: formatTZS(total) }) : t("Post {amount} · receive {now} now", { amount: formatTZS(total), now: formatTZS(payable) }))
+              : t("Post to room {room} · {amount}", { room: roomLabel, amount: formatTZS(total) })}
         </Button>
       </div>
     </fieldset>
@@ -295,7 +300,7 @@ export interface TabCharge {
 }
 
 /** "From order #184 at Outside 3" — where a line from a restaurant order came from. */
-const fromOrder = (o: NonNullable<TabCharge["order"]>) => (o.roomService ? `From room service order ${o.number}` : `From order ${o.number} at ${o.table ?? "the restaurant"}`);
+const fromOrder = (t: T, o: NonNullable<TabCharge["order"]>) => (o.roomService ? t("From room service order {number}", { number: o.number }) : t("From order {number} at {table}", { number: o.number, table: o.table ?? t("the restaurant") }));
 
 /**
  * The guest's running tab: every extra charge, grouped by day, with who added it (managers can
@@ -303,18 +308,19 @@ const fromOrder = (o: NonNullable<TabCharge["order"]>) => (o.roomService ? `From
  * came from; who pays is changed on the order itself.
  */
 export function GuestTab({ reservationId, charges, canVoid }: { reservationId: string; charges: TabCharge[]; canVoid: boolean }) {
+  const t = useT();
   const router = useRouter();
   const [voiding, setVoiding] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const [pending, start] = useTransition();
-  if (charges.length === 0) return <p className="rounded-2xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">No extra charges yet. Meals, drinks, laundry and other services appear here as they are added.</p>;
+  if (charges.length === 0) return <p className="rounded-2xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">{t("No extra charges yet. Meals, drinks, laundry and other services appear here as they are added.")}</p>;
   const days = [...new Set(charges.map((c) => c.day))].sort().reverse();
-  const time = (iso: string) => new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Africa/Dar_es_Salaam" }).format(new Date(iso));
+  const time = (iso: string) => t.time(iso, "Africa/Dar_es_Salaam");
 
   function doVoid(id: string) {
     start(async () => {
       const res = await voidChargeAction({ reservationId, chargeId: id, reason });
-      if (res.ok) { toast.success("Charge removed from the bill."); setVoiding(null); setReason(""); router.refresh(); } else toast.error(res.error);
+      if (res.ok) { toast.success(t("Charge removed from the bill.")); setVoiding(null); setReason(""); router.refresh(); } else toast.error(res.error);
     });
   }
 
@@ -325,7 +331,7 @@ export function GuestTab({ reservationId, charges, canVoid }: { reservationId: s
         return (
           <div key={d}>
             <p className="mb-1.5 flex justify-between text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              <span>{formatBusinessDate(d)}</span><span className="tabular-nums">{formatTZS(list.reduce((s, c) => s + c.amount, 0))}</span>
+              <span>{t.date(d)}</span><span className="tabular-nums">{formatTZS(list.reduce((s, c) => s + c.amount, 0))}</span>
             </p>
             <ul className="divide-y divide-border rounded-2xl border border-border/70">
               {list.map((c) => {
@@ -341,16 +347,16 @@ export function GuestTab({ reservationId, charges, canVoid }: { reservationId: s
                       )}
                       <span className="min-w-0 flex-1">
                         <span className="block truncate font-medium">{c.description}</span>
-                        <span className="block text-[11px] text-muted-foreground">{c.order ? fromOrder(c.order) : CHARGE_LABELS[c.type] ?? "Other"} · {time(c.at)}{c.by ? ` · ${c.by}` : ""}</span>
+                        <span className="block text-[11px] text-muted-foreground">{c.order ? fromOrder(t, c.order) : t(CHARGE_LABELS[c.type] ?? "Other")} · {time(c.at)}{c.by ? ` · ${c.by}` : ""}</span>
                       </span>
                       <span className="font-semibold tabular-nums">{formatTZS(c.amount)}</span>
-                      {canVoid && !c.order && c.type !== "BILL_DISCOUNT" && voiding !== c.id && <button type="button" aria-label="Remove charge" onClick={() => setVoiding(c.id)} className="rounded p-1 text-muted-foreground hover:bg-rose-500/10 hover:text-rose-600"><X className="size-3.5" /></button>}
+                      {canVoid && !c.order && c.type !== "BILL_DISCOUNT" && voiding !== c.id && <button type="button" aria-label={t("Remove charge")} onClick={() => setVoiding(c.id)} className="rounded p-1 text-muted-foreground hover:bg-rose-500/10 hover:text-rose-600"><X className="size-3.5" /></button>}
                     </div>
                     {voiding === c.id && (
                       <div className="mt-2 flex gap-2">
-                        <Input autoFocus value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why remove it? e.g. added by mistake" className="h-8 text-xs" />
-                        <Button size="sm" variant="destructive" disabled={pending || !reason.trim()} onClick={() => doVoid(c.id)}>Remove</Button>
-                        <Button size="sm" variant="ghost" onClick={() => setVoiding(null)}>Cancel</Button>
+                        <Input autoFocus value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("Why remove it? e.g. added by mistake")} className="h-8 text-xs" />
+                        <Button size="sm" variant="destructive" disabled={pending || !reason.trim()} onClick={() => doVoid(c.id)}>{t("Remove")}</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setVoiding(null)}>{t("Cancel")}</Button>
                       </div>
                     )}
                   </li>

@@ -1,0 +1,117 @@
+import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+import { BadgeCheck, Ban } from "lucide-react";
+import { db } from "@/server/db";
+import { getSettings } from "@/server/settings";
+import { businessToday } from "@/server/settings";
+import { fromDbDate } from "@/lib/time/business-date";
+import { formatNumber } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import { GlassPanel, HudLabel, InfoList, PageIntro, PriceTag, Section, typeScale } from "@/components/public/kit";
+import { PayOnlineCard } from "@/components/public/pay-online-card";
+import { Seal } from "@/components/public/services/seal";
+import { invoicePayOnline } from "@/server/services/online-pay";
+import { payInvoiceOnlineAction } from "./actions";
+import { getT, pageLocale } from "@/i18n/server";
+
+export async function generateMetadata({ params }: PageProps<"/[lang]/verify/[token]">): Promise<Metadata> {
+  await pageLocale(params);
+  const t = await getT();
+  return {
+    title: t("Verify invoice"),
+    robots: { index: false, follow: false },
+    referrer: "no-referrer",
+  };
+}
+
+/**
+ * Scan-to-verify: anyone holding the invoice can check it is genuine and what
+ * is still owed. Only the headline figures are shown — no guest or line details.
+ * A short night band (the verdict, with a seal), then the invoice as a quiet receipt on glass, framed like a
+ * document under inspection, with Pay now when something is owed.
+ */
+export default async function VerifyInvoicePage({ params }: PageProps<"/[lang]/verify/[token]">) {
+  await pageLocale(params);
+  const { token } = await params;
+  if (!/^[A-Za-z0-9_-]{16,64}$/.test(token)) notFound();
+  const [inv, s, today, online, t] = await Promise.all([
+    db.invoice.findUnique({ where: { verifyToken: token }, include: { corporateCustomer: { select: { companyName: true } }, guest: { select: { fullName: true } }, group: { select: { name: true } } } }),
+    getSettings(),
+    businessToday(),
+    invoicePayOnline(token),
+    getT(),
+  ]);
+  if (!inv || inv.status === "DRAFT") notFound();
+  const dead = inv.status === "VOID" || inv.status === "CANCELLED";
+  const due = inv.dueDate ? fromDbDate(inv.dueDate) : null;
+  const overdue = !dead && inv.balanceAmount > 0 && due && due < today;
+  // Tone-aware badges: readable on cream and on the dark theme alike.
+  const state = dead ? { label: inv.status === "VOID" ? t("Void — not payable") : t("Cancelled — not payable"), cls: "border-pub-line text-pub-muted" }
+    : inv.balanceAmount <= 0 ? { label: t("Paid in full"), cls: "border-emerald-700/30 bg-emerald-600/10 text-emerald-800 pub-dark:text-emerald-300" }
+      : overdue ? { label: t("Overdue"), cls: "border-pub-error/40 bg-pub-error/10 text-pub-error" }
+        : inv.paidAmount > 0 ? { label: t("Partly paid"), cls: "border-amber-600/35 bg-amber-500/10 text-amber-800 pub-dark:text-amber-300" }
+          : { label: t("Unpaid"), cls: "border-gold/50 bg-gold/10 text-pub-fg" };
+  const who = inv.corporateCustomer?.companyName ?? inv.group?.name ?? inv.guest?.fullName ?? "—";
+  const owed = dead ? 0 : Math.max(0, inv.balanceAmount);
+
+  return (
+    <>
+      <PageIntro
+        space="sm"
+        align="center"
+        id="verify-title"
+        eyebrow={
+          <span className="inline-flex items-center gap-2">
+            {dead ? <Ban className="size-4" strokeWidth={1.6} aria-hidden="true" /> : <BadgeCheck className="size-4" strokeWidth={1.6} aria-hidden="true" />}
+            {t("Invoice check")}
+          </span>
+        }
+        title={dead ? t("This invoice is not valid for payment") : t("Genuine {hotel} invoice", { hotel: s.hotelName })}
+        meta={<>{t("Checked · {date}", { date: t.date(today) })}</>}
+      >
+        <div className="mt-8 flex justify-center sm:mt-10">
+          <Seal ok={!dead}>
+            {dead ? <Ban className="size-7" strokeWidth={1.3} aria-hidden="true" /> : <BadgeCheck className="size-7" strokeWidth={1.3} aria-hidden="true" />}
+          </Seal>
+        </div>
+      </PageIntro>
+
+      <Section space="sm" width="narrow" atmosphere="calm" labelledBy="invoice-number" className="flex-1">
+        <GlassPanel as="article" variant="paper" padding="md" rounded="lg" hud className="mx-auto max-w-lg">
+          <header className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <HudLabel>{t("Invoice")}</HudLabel>
+              <h2 id="invoice-number" className="mt-2.5 font-mono text-xl font-semibold text-pub-fg [overflow-wrap:anywhere]">{inv.number}</h2>
+            </div>
+            <span className={cn("shrink-0 rounded-full border px-3 py-1.5 text-[12px] font-semibold", state.cls)}>{state.label}</span>
+          </header>
+          <InfoList
+            variant="rows"
+            className="mt-6"
+            items={[
+              { label: t("For"), value: <span className="font-medium [overflow-wrap:anywhere]">{who}</span> },
+              { label: t("Issued"), value: inv.issueDate ? t.date(fromDbDate(inv.issueDate)) : "—" },
+              { label: t("Due"), value: <span className={cn(overdue && "font-semibold text-pub-error")}>{due ? t.date(due) : "—"}</span> },
+              { label: t("Invoice total"), value: <span className="tabular-nums">{s.currency} {formatNumber(inv.netAmount)}</span> },
+              { label: t("Paid"), value: <span className="tabular-nums">{s.currency} {formatNumber(inv.paidAmount)}</span> },
+            ]}
+          />
+          <div className={cn("mt-6 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2", dead && "opacity-60")}>
+            <p className={cn(typeScale.meta, "text-pub-muted")}>{t("Still owed")}</p>
+            <PriceTag amount={owed} currency={s.currency} unit={null} size="lg" />
+          </div>
+          {!dead && (online.offered || online.live) && (
+            <div className="mt-6 border-t border-pub-line pt-6">
+              <PayOnlineCard tone="inherit" flush due={online.due} phone="" live={online.live} action={payInvoiceOnlineAction.bind(null, token)} />
+            </div>
+          )}
+        </GlassPanel>
+        <p className="mx-auto mt-6 max-w-lg text-center text-[13px] leading-relaxed text-pub-muted">
+          {s.email
+            ? t("Questions about this invoice? Call {phone} or email {email}. Always quote {number} with your payment.", { phone: s.phone ?? t("the hotel"), email: s.email, number: inv.number })
+            : t("Questions about this invoice? Call {phone}. Always quote {number} with your payment.", { phone: s.phone ?? t("the hotel"), number: inv.number })}
+        </p>
+      </Section>
+    </>
+  );
+}

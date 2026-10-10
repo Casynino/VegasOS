@@ -9,6 +9,7 @@ import { approveLateCheckout, approveLeaveOwing, changeDiscount, discountStayBil
 import { discountOrders } from "@/server/services/restaurant";
 import { cancelRoomClosure, planRoomClosure } from "@/server/services/room-decisions";
 import { addDays, fromDbDate } from "@/lib/time/business-date";
+import { msg } from "@/i18n/msg";
 
 /**
  * The decisions managers, the MD and the owner make (reception and waiters do the routine work):
@@ -24,7 +25,7 @@ function refresh() {
   for (const p of ["/manager/dashboard", "/admin/dashboard", "/staff/rooms", "/staff/reservations", "/staff/restaurant"]) revalidatePath(p, "layout");
 }
 const Id = z.string().min(1).max(40);
-const Reason = z.string().trim().min(3, "Say why.").max(200);
+const Reason = z.string().trim().min(3, msg("Say why.")).max(200);
 
 /** Extra nights on the house — the guest stays, the bill does not change. */
 export async function freeNightsAction(input: { reservationRoomId: string; nights: number; reason: string }): Promise<ActionResult<{ until: string }>> {
@@ -37,18 +38,18 @@ export async function freeNightsAction(input: { reservationRoomId: string; night
     await extendStayFree(d.reservationRoomId, until, d.reason, await actor(user));
     refresh();
     return { until };
-  }, "Free nights given — the room stays theirs.");
+  }, msg("Free nights given — the room stays theirs."));
 }
 
 /** A later checkout today, free. */
 export async function freeLateCheckoutAction(input: { reservationRoomId: string; until: string; reason: string }): Promise<ActionResult<null>> {
   return runAction(async () => {
     const user = await authorize(...DECIDERS);
-    const d = z.object({ reservationRoomId: Id, until: z.string().regex(/^\d{2}:\d{2}$/, "Choose a time."), reason: Reason }).parse(input);
+    const d = z.object({ reservationRoomId: Id, until: z.string().regex(/^\d{2}:\d{2}$/, msg("Choose a time.")), reason: Reason }).parse(input);
     await approveLateCheckout(d.reservationRoomId, { until: d.until, fee: 0, note: `Free — ${d.reason}` }, await actor(user));
     refresh();
     return null;
-  }, "Late checkout given, free.");
+  }, msg("Late checkout given, free."));
 }
 
 /** A discount on the room price, per night (within the hotel's limit). */
@@ -59,7 +60,7 @@ export async function roomDiscountAction(input: { reservationRoomId: string; per
     await changeDiscount(d.reservationRoomId, d.perNight, d.reason, await actor(user));
     refresh();
     return null;
-  }, "Discount saved.");
+  }, msg("Discount saved."));
 }
 
 /** A discount on a table's bill (all its orders still to pay) or on one order. */
@@ -76,10 +77,10 @@ export async function billDiscountAction(input: { sessionId?: string | null; ord
     const r = await discountOrders(ids, { amount: d.amount ?? null, percent: d.percent ?? null, reason: d.reason }, await actor(user));
     refresh();
     return { amount: r.amount };
-  }, "Discount given.");
+  }, msg("Discount given."));
 }
 
-const Day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a date.");
+const Day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, msg("Choose a date."));
 
 /** Close a room for dates ahead (painting, a big repair) — nobody can book it then. */
 export async function planClosureAction(input: { roomId: string; from: string; to: string; type: "MAINTENANCE" | "OUT_OF_SERVICE"; reason: string }): Promise<ActionResult<{ number: string }>> {
@@ -89,7 +90,7 @@ export async function planClosureAction(input: { roomId: string; from: string; t
     const r = await planRoomClosure(d, await actor(user));
     refresh();
     return { number: r.number };
-  }, "Closure saved — the room can't be booked in those dates.");
+  }, msg("Closure saved — the room can't be booked in those dates."));
 }
 
 /** Cancel a planned closure: the room can be booked again. */
@@ -100,7 +101,7 @@ export async function cancelClosureAction(input: { blockId: string; reason?: str
     await cancelRoomClosure(d.blockId, d.reason ?? "", await actor(user));
     refresh();
     return null;
-  }, "Closure cancelled — the room can be booked again.");
+  }, msg("Closure cancelled — the room can be booked again."));
 }
 
 /** Let a guest check out still owing (reception can then check them out). */
@@ -111,7 +112,7 @@ export async function leaveOwingAction(input: { reservationId: string; reason: s
     const r = await approveLeaveOwing(d.reservationId, d.reason, await actor(user));
     refresh();
     return r;
-  }, "Approved — reception can check the guest out owing.");
+  }, msg("Approved — reception can check the guest out owing."));
 }
 
 export async function withdrawLeaveOwingAction(input: { reservationId: string }): Promise<ActionResult<null>> {
@@ -120,7 +121,7 @@ export async function withdrawLeaveOwingAction(input: { reservationId: string })
     await withdrawLeaveOwing(z.object({ reservationId: Id }).parse(input).reservationId, await actor(user));
     refresh();
     return null;
-  }, "Approval withdrawn — the guest pays before checking out.");
+  }, msg("Approval withdrawn — the guest pays before checking out."));
 }
 
 /** Waiters an order can be handed to. */
@@ -149,12 +150,12 @@ export async function logComplaintAction(input: { orderId?: string | null; reser
   return runAction(async () => {
     const user = await authorize(...DECIDERS, "requests.manage");
     const { createServiceRequest } = await import("@/server/services/requests");
-    const d = z.object({ orderId: Id.nullish(), reservationId: Id.nullish(), description: z.string().trim().min(5, "Say what the complaint is.").max(500), priority: z.enum(["NORMAL", "HIGH", "URGENT"]) }).parse(input);
+    const d = z.object({ orderId: Id.nullish(), reservationId: Id.nullish(), description: z.string().trim().min(5, msg("Say what the complaint is.")).max(500), priority: z.enum(["NORMAL", "HIGH", "URGENT"]) }).parse(input);
     const r = await createServiceRequest({ type: "COMPLAINT", priority: d.priority, description: d.description, orderId: d.orderId ?? null, reservationId: d.reservationId ?? null }, await actor(user));
     refresh();
     revalidatePath("/staff/requests");
     return { id: r.id };
-  }, "Complaint logged — follow it on the Requests page.");
+  }, msg("Complaint logged — follow it on the Requests page."));
 }
 
 /** Put a waiter in charge of a room's room service (its food & drink orders go to them). */

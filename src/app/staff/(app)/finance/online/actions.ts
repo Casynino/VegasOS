@@ -11,6 +11,8 @@ import { testNtzsConnection } from "@/server/services/ntzs";
 import { checkMobilePaymentWithAnswer, sweepMobilePayments } from "@/server/services/mobile-payments";
 import { ONLINE_SERVICES } from "@/server/services/online-pay";
 import { onlinePayFlag } from "@/server/services/online-payments-admin";
+import { msg, msgf } from "@/i18n/msg";
+import { getT } from "@/i18n/server";
 
 const Save = z.object({
   enabled: z.boolean(),
@@ -46,7 +48,7 @@ export async function testNtzsConnectionAction(): Promise<ActionResult<{ live: b
   });
 }
 
-const STATUS_WORD: Record<string, string> = { COMPLETED: "Paid — recorded", PENDING: "Still waiting", FAILED: "Not paid", EXPIRED: "Not paid (timed out)", CANCELLED: "Not paid (stopped)" };
+const STATUS_WORD: Record<string, string> = { COMPLETED: msg("Paid — recorded"), PENDING: msg("Still waiting"), FAILED: msg("Not paid"), EXPIRED: msg("Not paid (timed out)"), CANCELLED: msg("Not paid (stopped)") };
 
 /** "Check with nTZS": ask nTZS about one payment now — money it has is recorded (once), whatever our side said. */
 export async function checkOnlinePaymentAction(input: { id: string }): Promise<ActionResult<{ status: string; text: string }>> {
@@ -55,9 +57,11 @@ export async function checkOnlinePaymentAction(input: { id: string }): Promise<A
     const id = z.string().min(10).max(40).parse(input.id);
     const r = await checkMobilePaymentWithAnswer(id, "check");
     revalidatePath("/staff", "layout");
-    if (r.mp.status === "COMPLETED") return { status: r.mp.status, text: STATUS_WORD.COMPLETED };
-    if (!r.answered) throw new AppError(`nTZS did not answer (${r.error ?? "no reply"}) — nothing has changed. Try again in a minute.`, "CONFLICT");
-    return { status: r.mp.status, text: `${STATUS_WORD[r.mp.status] ?? r.mp.status}${r.ntzsStatus ? ` (nTZS: ${r.ntzsStatus})` : ""}` };
+    // The words go straight to the person's screen (a toast) — in their language.
+    const t = await getT();
+    if (r.mp.status === "COMPLETED") return { status: r.mp.status, text: t(STATUS_WORD.COMPLETED) };
+    if (!r.answered) throw new AppError(msgf("nTZS did not answer ({error}) — nothing has changed. Try again in a minute.", { error: r.error ?? "no reply" }), "CONFLICT");
+    return { status: r.mp.status, text: `${STATUS_WORD[r.mp.status] ? t(STATUS_WORD[r.mp.status]) : r.mp.status}${r.ntzsStatus ? ` (nTZS: ${r.ntzsStatus})` : ""}` };
   });
 }
 

@@ -14,6 +14,7 @@ import {
 import { DeptBadge, StatusChip, norm, picsFor } from "./parts";
 import { NewRequest, groupsFor } from "./new-request";
 import { RequestDialog } from "./request-dialog";
+import { useT } from "@/i18n/client";
 
 type Counter = { key: string; label: string; value: number; statuses: string[]; tone: string; dot: string; sub?: string };
 
@@ -34,6 +35,7 @@ export function StockRequests({ open, closed, me, hotel, today, kitchen, drinks,
   open: StockReqView[]; closed: StockReqView[]; me: Viewer; hotel: string; today: string; kitchen: StockGroup[]; drinks: StockGroup[];
   departments: DepartmentOption[]; storeItems: StoreItem[]; defaultDepartment: string; summary: PurchasingSummaryView | null; options: PurchaseOptionsView | null;
 }) {
+  const t = useT();
   const money = me.reviewer || me.buyer;
   const sentBackToMe = open.filter((r) => r.status === "SENT_BACK" && r.byId === me.id).length;
   const [tab, setTab] = useState<"new" | "requests">(me.asker && !money && !sentBackToMe ? "new" : "requests");
@@ -42,14 +44,14 @@ export function StockRequests({ open, closed, me, hotel, today, kitchen, drinks,
   const turn = open.filter((r) => yourTurn(r, me)).length;
 
   const counters: Counter[] = money && summary ? [
-    { key: "review", label: "To review", value: summary.toReview, statuses: ["SUBMITTED"], tone: "text-sky-600 dark:text-sky-300", dot: "bg-sky-400" },
-    { key: "buy", label: "To buy", value: summary.toBuy, statuses: ["APPROVED"], tone: "text-amber-600 dark:text-amber-300", dot: "bg-amber-400" },
-    { key: "buying", label: "Being bought", value: summary.buying, statuses: ["PURCHASING"], tone: "text-violet-600 dark:text-violet-300", dot: "bg-violet-400" },
-    { key: "approve", label: "To approve", value: summary.toApprove, statuses: ["PENDING_APPROVAL"], tone: "text-fuchsia-600 dark:text-fuchsia-300", dot: "bg-fuchsia-400", sub: summary.toApprove ? formatTZS(summary.toApproveAmount) : undefined },
+    { key: "review", label: t("To review"), value: summary.toReview, statuses: ["SUBMITTED"], tone: "text-sky-600 dark:text-sky-300", dot: "bg-sky-400" },
+    { key: "buy", label: t("To buy"), value: summary.toBuy, statuses: ["APPROVED"], tone: "text-amber-600 dark:text-amber-300", dot: "bg-amber-400" },
+    { key: "buying", label: t("Being bought"), value: summary.buying, statuses: ["PURCHASING"], tone: "text-violet-600 dark:text-violet-300", dot: "bg-violet-400" },
+    { key: "approve", label: t("To approve"), value: summary.toApprove, statuses: ["PENDING_APPROVAL"], tone: "text-fuchsia-600 dark:text-fuchsia-300", dot: "bg-fuchsia-400", sub: summary.toApprove ? formatTZS(summary.toApproveAmount) : undefined },
   ] : [
-    { key: "waiting", label: "Waiting", value: open.filter((r) => r.status === "SUBMITTED" || r.status === "SENT_BACK").length, statuses: ["SUBMITTED", "SENT_BACK"], tone: "text-sky-600 dark:text-sky-300", dot: "bg-sky-400" },
-    { key: "approved", label: "Approved", value: open.filter((r) => ["APPROVED", "PURCHASING", "PENDING_APPROVAL"].includes(r.status)).length, statuses: ["APPROVED", "PURCHASING", "PENDING_APPROVAL"], tone: "text-amber-600 dark:text-amber-300", dot: "bg-amber-400" },
-    { key: "done", label: "Done lately", value: closed.filter((r) => r.status === "COMPLETED").length, statuses: ["COMPLETED"], tone: "text-emerald-600 dark:text-emerald-300", dot: "bg-emerald-400" },
+    { key: "waiting", label: t("Waiting"), value: open.filter((r) => r.status === "SUBMITTED" || r.status === "SENT_BACK").length, statuses: ["SUBMITTED", "SENT_BACK"], tone: "text-sky-600 dark:text-sky-300", dot: "bg-sky-400" },
+    { key: "approved", label: t("Approved"), value: open.filter((r) => ["APPROVED", "PURCHASING", "PENDING_APPROVAL"].includes(r.status)).length, statuses: ["APPROVED", "PURCHASING", "PENDING_APPROVAL"], tone: "text-amber-600 dark:text-amber-300", dot: "bg-amber-400" },
+    { key: "done", label: t("Done lately"), value: closed.filter((r) => r.status === "COMPLETED").length, statuses: ["COMPLETED"], tone: "text-emerald-600 dark:text-emerald-300", dot: "bg-emerald-400" },
   ];
   const active = counters.find((c) => c.key === filter) ?? null;
   const showList = () => { if (tab !== "requests") setTab("requests"); };
@@ -64,10 +66,10 @@ export function StockRequests({ open, closed, me, hotel, today, kitchen, drinks,
             <PackagePlus className="size-5" />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[oklch(0.62_0.11_78)] dark:text-[oklch(0.8_0.11_82)]">{money ? "Every department · purchasing" : "Ask for stock"}</p>
-            <h1 className="font-display text-[26px] font-semibold leading-tight">Stock requests</h1>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[oklch(0.62_0.11_78)] dark:text-[oklch(0.8_0.11_82)]">{money ? t("Every department · purchasing") : t("Ask for stock")}</p>
+            <h1 className="font-display text-[26px] font-semibold leading-tight">{t("Stock requests")}</h1>
           </div>
-          <div role="group" aria-label="Requests at each step" className="flex max-w-full items-stretch divide-x divide-border/70 overflow-x-auto rounded-2xl bg-background/40 ring-1 ring-border/60 [scrollbar-width:none]">
+          <div role="group" aria-label={t("Requests at each step")} className="flex max-w-full items-stretch divide-x divide-border/70 overflow-x-auto rounded-2xl bg-background/40 ring-1 ring-border/60 [scrollbar-width:none]">
             {counters.map((c) => (
               <div key={c.key} className="shrink-0">
                 <button type="button" onClick={() => { setFilter((f) => (f === c.key ? null : c.key)); showList(); }} aria-pressed={filter === c.key}
@@ -82,8 +84,8 @@ export function StockRequests({ open, closed, me, hotel, today, kitchen, drinks,
         </div>
         <div className="relative flex flex-wrap items-center justify-between gap-2 border-t border-border/60 px-2 sm:px-3">
           {me.asker ? (
-            <nav className="flex" aria-label="Stock requests">
-              {([["new", "New request", PackagePlus], ["requests", "Requests", ClipboardList]] as const).map(([v, label, I]) => (
+            <nav className="flex" aria-label={t("Stock requests")}>
+              {([["new", t.ctx("stock", "New request"), PackagePlus], ["requests", t.ctx("stock", "Requests"), ClipboardList]] as const).map(([v, label, I]) => (
                 <button key={v} type="button" onClick={() => setTab(v)} aria-current={tab === v ? "page" : undefined}
                   className={cn("relative flex items-center gap-2 px-3 py-3 text-sm font-medium transition",
                     tab === v ? "text-foreground" : "text-muted-foreground hover:text-foreground")}>
@@ -93,9 +95,9 @@ export function StockRequests({ open, closed, me, hotel, today, kitchen, drinks,
                 </button>
               ))}
             </nav>
-          ) : <p className="px-2 py-3 text-sm text-muted-foreground">What every department needs — review it, buy it, give the final approval.</p>}
+          ) : <p className="px-2 py-3 text-sm text-muted-foreground">{t("What every department needs — review it, buy it, give the final approval.")}</p>}
           <p className="hidden px-2 text-xs text-muted-foreground md:block">
-            {tab === "new" && me.asker ? "Tap the pictures · check the list · send it to the manager" : "Open a request to see it, work on it, print or save it"}
+            {tab === "new" && me.asker ? t("Tap the pictures · check the list · send it to the manager") : t("Open a request to see it, work on it, print or save it")}
           </p>
         </div>
       </header>
@@ -104,7 +106,7 @@ export function StockRequests({ open, closed, me, hotel, today, kitchen, drinks,
         <button type="button" onClick={() => { setTab("requests"); setFilter(null); }}
           className="flex w-full items-center gap-3 rounded-2xl border border-orange-500/40 bg-orange-500/[0.07] px-4 py-3 text-left text-sm">
           <CornerUpLeft className="size-4 shrink-0 text-orange-500" />
-          <span className="flex-1">{sentBackToMe === 1 ? "One of your requests was" : `${sentBackToMe} of your requests were`} sent back to you — change it and send it again.</span>
+          <span className="flex-1">{t.plural(sentBackToMe, "One of your requests was sent back to you — change it and send it again.", "{n} of your requests were sent back to you — change it and send it again.")}</span>
           <ChevronRight className="size-4 text-muted-foreground" />
         </button>
       )}
@@ -127,6 +129,7 @@ function Requests({ open, closed, me, active, clearFilter, summary, options, kit
   summary: PurchasingSummaryView | null; options: PurchaseOptionsView | null; kitchen: StockGroup[]; drinks: StockGroup[]; storeItems: StoreItem[];
   departments: DepartmentOption[]; pics: ReturnType<typeof picsFor>; hotel: string; today: string;
 }) {
+  const t = useT();
   const [openId, setOpenId] = useState<string | null>(null);
   const money = me.reviewer || me.buyer;
   const keep = (r: StockReqView) => !active || active.statuses.includes(r.status);
@@ -143,21 +146,21 @@ function Requests({ open, closed, me, active, clearFilter, summary, options, kit
       <section className="rounded-3xl border border-border/70 bg-card p-2 sm:p-3">
         <div className="flex flex-wrap items-center justify-between gap-2 px-2 pb-2 pt-1">
           <h2 className="text-sm font-semibold">
-            {active ? <>Showing: {active.label}</> : <>Open · {openList.length}</>}
+            {active ? t("Showing: {label}", { label: active.label }) : t("Open · {n}", { n: openList.length })}
           </h2>
           {active
-            ? <Button size="sm" variant="ghost" onClick={clearFilter}>Show all</Button>
-            : <span className="text-xs text-muted-foreground">Tap a request to see it{money ? " and work on it" : ""}</span>}
+            ? <Button size="sm" variant="ghost" onClick={clearFilter}>{t("Show all")}</Button>
+            : <span className="text-xs text-muted-foreground">{money ? t("Tap a request to see it and work on it") : t("Tap a request to see it")}</span>}
         </div>
         {openList.length === 0 && doneList.length === 0 ? (
-          <p className="px-4 py-10 text-center text-sm text-muted-foreground">{active ? "Nothing here right now." : me.asker && !money ? "You have not asked for anything yet." : "No requests yet."}</p>
+          <p className="px-4 py-10 text-center text-sm text-muted-foreground">{active ? t("Nothing here right now.") : me.asker && !money ? t("You have not asked for anything yet.") : t("No requests yet.")}</p>
         ) : (
           <>
             {openList.length > 0 ? <RequestRows list={openList} me={me} onOpen={setOpenId} />
-              : !active && <p className="px-4 py-6 text-center text-sm text-muted-foreground">Nothing waiting — all requests are done.</p>}
+              : !active && <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t("Nothing waiting — all requests are done.")}</p>}
             {doneList.length > 0 && (
               <>
-                <p className="mt-3 border-t border-border/60 px-2 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Finished</p>
+                <p className="mt-3 border-t border-border/60 px-2 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">{t("Finished")}</p>
                 <RequestRows list={doneList} me={me} onOpen={setOpenId} />
               </>
             )}
@@ -172,11 +175,12 @@ function Requests({ open, closed, me, active, clearFilter, summary, options, kit
 }
 
 function RequestRows({ list, me, onOpen }: { list: StockReqView[]; me: Viewer; onOpen: (id: string) => void }) {
+  const t = useT();
   const money = me.reviewer || me.buyer;
   return (
     <ul className="divide-y divide-border/50">
       {list.map((r) => {
-        const summary = r.lines.slice(0, 3).map((i) => `${i.name} ${num(toBuyQty(i))} ${i.unit}`).join(" · ") + (r.lines.length > 3 ? ` · +${r.lines.length - 3} more` : "");
+        const summary = r.lines.slice(0, 3).map((i) => `${t(i.name)} ${num(toBuyQty(i))} ${t(i.unit)}`).join(" · ") + (r.lines.length > 3 ? ` · ${t("+{n} more", { n: r.lines.length - 3 })}` : "");
         const live = OPEN_STATUSES.includes(r.status);
         const amount = money ? r.purchase?.expense?.amount ?? r.purchase?.total ?? null : null;
         return (
@@ -186,14 +190,14 @@ function RequestRows({ list, me, onOpen }: { list: StockReqView[]; me: Viewer; o
               <span className="min-w-0 flex-1 leading-tight">
                 <span className="flex flex-wrap items-center gap-x-2 text-sm font-semibold">
                   <span className="font-mono">{r.number}</span>
-                  <span className="text-xs font-medium text-muted-foreground">{r.departmentName}</span>
-                  {r.urgent && live && <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-rose-600 dark:text-rose-300"><Flame className="size-3" />Urgent</span>}
-                  {live && yourTurn(r, me) && <span className="rounded-full bg-amber-500/15 px-1.5 py-px text-[10.5px] font-semibold text-amber-700 dark:text-amber-300">Your turn</span>}
+                  <span className="text-xs font-medium text-muted-foreground">{t(r.departmentName)}</span>
+                  {r.urgent && live && <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-rose-600 dark:text-rose-300"><Flame className="size-3" />{t("Urgent")}</span>}
+                  {live && yourTurn(r, me) && <span className="rounded-full bg-amber-500/15 px-1.5 py-px text-[10.5px] font-semibold text-amber-700 dark:text-amber-300">{t("Your turn")}</span>}
                 </span>
                 <span className="mt-0.5 block truncate text-xs text-muted-foreground">{summary}</span>
               </span>
               <span className="hidden shrink-0 text-right text-[11px] leading-tight text-muted-foreground md:block">
-                {person(r.by)}<span className="block">{when(r.at)}</span>
+                {person(r.by)}<span className="block">{when(r.at, t)}</span>
               </span>
               {amount != null && amount > 0 && <span className="hidden shrink-0 text-sm font-semibold tabular-nums sm:block">{formatTZS(amount)}</span>}
               <StatusChip status={r.status} />
@@ -208,26 +212,28 @@ function RequestRows({ list, me, onOpen }: { list: StockReqView[]; me: Viewer; o
 
 /** What stock purchases cost — the purchases' own expenses, already in the ledger (never added twice). */
 function Spending({ summary }: { summary: PurchasingSummaryView }) {
+  const t = useT();
   const top = summary.byDepartment.slice(0, 6);
   return (
     <section className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-3xl border border-border/70 bg-card px-4 py-3 sm:px-5">
-      <span className="flex items-center gap-2 text-sm font-semibold"><Coins className="size-4 text-amber-500" />Spent on stock</span>
-      <span className="text-sm"><span className="text-muted-foreground">Today </span><span className="font-semibold tabular-nums">{formatTZS(summary.spentToday)}</span></span>
-      <span className="text-sm"><span className="text-muted-foreground">This month </span><span className="font-semibold tabular-nums">{formatTZS(summary.spentMonth)}</span></span>
+      <span className="flex items-center gap-2 text-sm font-semibold"><Coins className="size-4 text-amber-500" />{t("Spent on stock")}</span>
+      <span className="text-sm"><span className="text-muted-foreground">{t("Today")} </span><span className="font-semibold tabular-nums">{formatTZS(summary.spentToday)}</span></span>
+      <span className="text-sm"><span className="text-muted-foreground">{t("This month")} </span><span className="font-semibold tabular-nums">{formatTZS(summary.spentMonth)}</span></span>
       {top.length > 0 && (
         <span className="flex flex-wrap gap-1.5">
           {top.map((d) => (
-            <span key={d.name} className="rounded-full bg-muted/60 px-2.5 py-1 text-[11.5px]">{d.name} <span className="font-semibold tabular-nums">{formatTZS(d.amount)}</span></span>
+            <span key={d.name} className="rounded-full bg-muted/60 px-2.5 py-1 text-[11.5px]">{t(d.name)} <span className="font-semibold tabular-nums">{formatTZS(d.amount)}</span></span>
           ))}
         </span>
       )}
-      <span className="basis-full text-[11px] text-muted-foreground">From the approved purchases&apos; expenses — the same money the ledger shows, never added twice.</span>
+      <span className="basis-full text-[11px] text-muted-foreground">{t("From the approved purchases' expenses — the same money the ledger shows, never added twice.")}</span>
     </section>
   );
 }
 
 /** For the manager and the buyer: everything approved and not yet bought, added up — the approved amounts. */
 function ShoppingList({ open }: { open: StockReqView[] }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   const lines = useMemo(() => {
     const m = new Map<string, { name: string; unit: string; quantity: number; urgent: boolean }>();
@@ -239,25 +245,25 @@ function ShoppingList({ open }: { open: StockReqView[] }) {
     }
     return [...m.values()].filter((l) => l.quantity > 0).sort((a, b) => Number(b.urgent) - Number(a.urgent) || a.name.localeCompare(b.name));
   }, [open]);
-  const text = () => `Shopping list — ${new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short" })}\n${lines.map((l) => `• ${l.name}: ${num(l.quantity)} ${l.unit}${l.urgent ? " (urgent)" : ""}`).join("\n")}`;
-  const copy = () => navigator.clipboard?.writeText(text()).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1800); toast.success("Shopping list copied."); }).catch(() => {});
+  const text = () => `${t("Shopping list — {date}", { date: new Date().toLocaleDateString(t.intl, { day: "numeric", month: "short" }) })}\n${lines.map((l) => `• ${t(l.name)}: ${num(l.quantity)} ${t(l.unit)}${l.urgent ? ` ${t("(urgent)")}` : ""}`).join("\n")}`;
+  const copy = () => navigator.clipboard?.writeText(text()).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1800); toast.success(t("Shopping list copied.")); }).catch(() => {});
   return (
     <section className="rounded-3xl border border-amber-500/30 bg-amber-500/[0.05] p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="flex items-center gap-2 text-base font-semibold"><ClipboardList className="size-4 text-amber-500" />Shopping list</h2>
-          <p className="text-xs text-muted-foreground">Everything approved and not yet bought · {open.length} request{open.length === 1 ? "" : "s"}</p>
+          <h2 className="flex items-center gap-2 text-base font-semibold"><ClipboardList className="size-4 text-amber-500" />{t("Shopping list")}</h2>
+          <p className="text-xs text-muted-foreground">{t.plural(open.length, "Everything approved and not yet bought · {n} request", "Everything approved and not yet bought · {n} requests")}</p>
         </div>
         <div className="flex gap-1.5">
-          <Button size="sm" variant="outline" onClick={copy}>{copied ? <Check /> : <Copy />}{copied ? "Copied" : "Copy"}</Button>
+          <Button size="sm" variant="outline" onClick={copy}>{copied ? <Check /> : <Copy />}{copied ? t("Copied") : t("Copy")}</Button>
           <Button size="sm" variant="outline" onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(text())}`, "_blank", "noopener")}><MessageCircle />WhatsApp</Button>
         </div>
       </div>
       <ul className="mt-3 grid gap-x-6 sm:grid-cols-2 xl:grid-cols-3">
         {lines.map((l) => (
           <li key={`${l.name}|${l.unit}`} className="flex items-baseline justify-between gap-3 border-b border-border/50 py-1.5 text-sm">
-            <span className="min-w-0 truncate">{l.urgent && <Flame className="-mt-0.5 mr-1 inline size-3.5 text-rose-400" />}{l.name}</span>
-            <span className="shrink-0 font-semibold tabular-nums">{num(l.quantity)} {l.unit}</span>
+            <span className="min-w-0 truncate">{l.urgent && <Flame className="-mt-0.5 mr-1 inline size-3.5 text-rose-400" />}{t(l.name)}</span>
+            <span className="shrink-0 font-semibold tabular-nums">{num(l.quantity)} {t(l.unit)}</span>
           </li>
         ))}
       </ul>

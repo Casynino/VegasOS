@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { SoundConfig } from "@/app/staff/(app)/restaurant/portal/types";
+import { msg } from "@/i18n/msg";
 import { setAlertSoundAction } from "./sound-actions";
 
 /**
@@ -11,7 +12,8 @@ import { setAlertSoundAction } from "./sound-actions";
  * bar is the person's on / off (green: on, amber: on but waiting for that tap, red: off).
  */
 
-export const SOUNDS: Record<string, string> = { bell: "Bell", chime: "Chime", marimba: "Marimba", alarm: "Alarm (loud)" };
+/** Sound names — shown with t(name). */
+export const SOUNDS: Record<string, string> = { bell: msg("Bell"), chime: msg("Chime"), marimba: msg("Marimba"), alarm: msg("Alarm (loud)") };
 export type SoundSettings = SoundConfig;
 
 let ctx: AudioContext | null = null;

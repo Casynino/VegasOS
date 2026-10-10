@@ -1,7 +1,9 @@
 import "server-only";
 import { db } from "../db";
-import { deliveryPlace } from "@/lib/delivery-place";
+import { deliveryPlace, spotWord } from "@/lib/delivery-place";
 import { CLOSED_STATUSES } from "./restaurant";
+import { msg } from "@/i18n/msg";
+import { textBook, word, type TextWord } from "@/lib/report-i18n";
 
 /**
  * A WAITER'S OWN RECORD — built from what they actually did, never typed in: the orders connected to them
@@ -12,7 +14,7 @@ import { CLOSED_STATUSES } from "./restaurant";
  */
 
 export type OrderSourceKind = "TABLE" | "ROOM" | "ONLINE" | "RESTAURANT";
-export const SOURCE_KIND_LABEL: Record<OrderSourceKind, string> = { TABLE: "Table", ROOM: "Room", ONLINE: "Online", RESTAURANT: "Restaurant" };
+export const SOURCE_KIND_LABEL: Record<OrderSourceKind, string> = { TABLE: msg("Table"), ROOM: msg("Room"), ONLINE: msg("Online"), RESTAURANT: msg("Restaurant") };
 
 /** Where an order came from, in the waiter's words: a table, a room, online (the website / public menu), or the restaurant itself (counter, take away, main). */
 const sourceKind = (o: { type: string; source: string; location: { kind: string } | null }): OrderSourceKind =>
@@ -20,6 +22,23 @@ const sourceKind = (o: { type: string; source: string; location: { kind: string 
 
 const shortNo = (n: string) => `#${n.replace(/^ORD-\d{4}-0*/, "")}`;
 const first = (n: string | null | undefined) => n?.replace(/\s*\(.*\)/, "").trim().split(/\s+/)[0] ?? "";
+
+/**
+ * Where an order is taken, as a word to say in the reader's language — word for word what deliveryPlace() writes
+ * in English ("Room 12", "Table 4", "Counter"…).
+ */
+const placeWord = (o: { type: string; roomNumber: string | null; tableLabel: string | null; deliveryAddress?: string | null }): TextWord => {
+  if (o.type === "ROOM_SERVICE") return o.roomNumber ? word(msg("Room {room}"), { room: o.roomNumber }) : word(msg("Room"));
+  if (o.type === "DINE_IN") return o.tableLabel ? (/^\d+$/.test(o.tableLabel.trim()) ? word(msg("Table {table}"), { table: o.tableLabel.trim() }) : spotWord(o.tableLabel)) : word(msg("Restaurant"));
+  if (o.type === "TAKEAWAY" && o.deliveryAddress) return word(msg("Take out — {address}"), { address: o.deliveryAddress });
+  return word(msg("Counter"));
+};
+/** A bill printed, downloaded or shared — the order's own note (restaurant.ts logBillPrinted), said in the reader's language. */
+const BILL_NOTE = new Set<string>([
+  msg("Bill printed"), msg("Bill downloaded (PDF)"), msg("Bill downloaded (image)"), msg("Bill shared"),
+  msg("Table bill printed"), msg("Table bill downloaded (PDF)"), msg("Table bill downloaded (image)"), msg("Table bill shared"),
+  msg("Room bill printed"), msg("Room bill downloaded (PDF)"), msg("Room bill downloaded (image)"), msg("Room bill shared"),
+]);
 
 /** How an order is paid, for the waiter's eyes only (the Counter's payment records say it). */
 export type MoneyState = "PAID" | "PAID_ONLINE" | "ROOM_BILL" | "PARTLY_PAID" | "UNPAID" | "CANCELLED" | "NOT_RECEIVED";
@@ -83,14 +102,15 @@ export async function waiterActivity(waiterId: string, window: { from: Date; to:
       : due === 0 && posted.length ? "PAID"
       : posted.length ? "PARTLY_PAID" : "UNPAID";
     const how = new Set<string>();
-    if (o.createdById === waiterId) how.add("Created");
+    // How it came to them — English values (compared below); the screen shows them with t().
+    if (o.createdById === waiterId) how.add(msg("Created"));
     // Their own new order is theirs from the start ("Created") — not a claim (on their phone or picked at the Counter).
     for (const a of assignments.filter((x) => x.orderId === o.id && !createdTaken(x, o))) {
       // Taken for them at the Counter (picked from the list) is an assignment; on their own phone, a claim.
-      if (a.toUserId === waiterId) how.add(a.kind === "TAKEN" ? (a.via === "PIN" ? "Assigned" : takenByStep(a) && acceptedNew.has(o.id) ? "Accepted" : "Claimed") : a.kind === "TRANSFER" ? "Handed to you" : "Assigned");
-      if (a.fromUserId === waiterId && a.kind === "TRANSFER") how.add("Handed over");
+      if (a.toUserId === waiterId) how.add(a.kind === "TAKEN" ? (a.via === "PIN" ? msg("Assigned") : takenByStep(a) && acceptedNew.has(o.id) ? msg("Accepted") : msg("Claimed")) : a.kind === "TRANSFER" ? msg("Handed to you") : msg("Assigned"));
+      if (a.fromUserId === waiterId && a.kind === "TRANSFER") how.add(msg("Handed over"));
     }
-    if (o.deliveredById === waiterId) how.add("Served");
+    if (o.deliveredById === waiterId) how.add(msg("Served"));
     return {
       id: o.id, number: o.number, no: shortNo(o.number), kind, kindLabel: SOURCE_KIND_LABEL[kind], place: deliveryPlace(o), customer: o.customerName,
       status: o.status, total: o.total, due, createdAt: o.createdAt.toISOString(),
@@ -99,7 +119,7 @@ export async function waiterActivity(waiterId: string, window: { from: Date; to:
       /** Paid at the Counter, as recorded there: cash, mobile money… (and into which account). */
       paidCounter: posted.filter((p) => !p.online).reduce((t, p) => t + p.amount, 0),
       cashPaid: posted.filter((p) => !p.online && p.account.kind === "CASH").reduce((t, p) => t + p.amount, 0),
-      paidBy: [...new Set(posted.map((p) => (p.online ? "Paid online" : p.paymentMethod.name)))].join(" + ") || null,
+      paidBy: [...new Set(posted.map((p) => (p.online ? msg("Paid online") : p.paymentMethod.name)))].join(" + ") || null,
       how: [...how],
     };
   });
@@ -129,56 +149,74 @@ export async function waiterActivity(waiterId: string, window: { from: Date; to:
   };
 
   // ─── The history, in time order ───
-  type Item = { at: string; kind: "shift" | "order" | "assign" | "table" | "bill"; text: string; orderId?: string | null; tone?: "good" | "warn" | "bad"; seq?: number };
+  // Each line is kept twice: `text`, the English (what the screens and the shift report read and match), and `say`,
+  // its key and values (src/lib/report-i18n.ts) — to write the same line in the reader's language.
+  type Item = { at: string; kind: "shift" | "order" | "assign" | "table" | "bill"; text: string; say: TextWord; orderId?: string | null; tone?: "good" | "warn" | "bad"; seq?: number };
   const items: Item[] = [];
+  const { L } = textBook();
+  const line = (say: TextWord) => ({ text: L(say.k, say.v), say });
   // Several things written at one moment keep the order they happened in (shift start first, end last).
   let n = 0;
-  const push = (x: Item, rank = 0) => items.push({ ...x, seq: rank * 1_000_000 + n++ });
-  const orderTag = (id: string | null | undefined) => { const o = id ? byId.get(id) : null; return o ? `${shortNo(o.number)} · ${deliveryPlace(o)}` : "an order"; };
+  const push = (x: Omit<Item, "text" | "say"> & { say: TextWord }, rank = 0) => items.push({ ...x, ...line(x.say), seq: rank * 1_000_000 + n++ });
+  const orderTag = (id: string | null | undefined): TextWord => { const o = id ? byId.get(id) : null; return o ? word(msg("{no} · {place}"), { no: shortNo(o.number), place: placeWord(o) }) : word(msg("an order")); };
+  /** "… — the reason they gave" (as it was written). */
+  const because = (w: TextWord, reason: string | null | undefined) => (reason ? word(msg("{text} — {reason}"), { text: w, reason }) : w);
   for (const s of shifts) {
-    if (s.startedAt >= window.from) push({ at: s.startedAt.toISOString(), kind: "shift", text: "Started the shift" }, -1);
-    if (s.endedAt && s.endedAt <= window.to) push({ at: s.endedAt.toISOString(), kind: "shift", text: s.closedById && s.closedById !== waiterId ? `Shift closed by a manager${s.closeReason ? ` — ${s.closeReason}` : ""}` : "Ended the shift" }, 1);
+    if (s.startedAt >= window.from) push({ at: s.startedAt.toISOString(), kind: "shift", say: word(msg("Started the shift")) }, -1);
+    if (s.endedAt && s.endedAt <= window.to) push({ at: s.endedAt.toISOString(), kind: "shift", say: s.closedById && s.closedById !== waiterId ? because(word(msg("Shift closed by a manager")), s.closeReason) : word(msg("Ended the shift")) }, 1);
   }
   for (const a of [...assignments].reverse()) {
     // The order they made themselves is theirs from the start — "Created" says it.
     if (a.scope === "ORDER" && a.orderId && createdTaken(a, byId.get(a.orderId))) continue;
     // Taken by accepting / serving it: that step's own line says it ("Accepted #12").
     if (a.toUserId === waiterId && a.via !== "PIN" && takenByStep(a)) continue;
-    const what = a.scope === "ORDER" ? orderTag(a.orderId) : a.scope === "TABLE" ? (a.locationId ? placeName.get(a.locationId) ?? "a table" : "a table") : `Room ${a.roomNumber ?? ""}`.trim();
-    const why = a.reason ? ` — ${a.reason}` : "";
+    const table = a.locationId ? placeName.get(a.locationId) : null;
+    const what: TextWord = a.scope === "ORDER" ? orderTag(a.orderId) : a.scope === "TABLE" ? (table ? spotWord(table) : word(msg("a table"))) : a.roomNumber ? word(msg("Room {room}"), { room: a.roomNumber }) : word(msg("Room"));
     const kind = a.scope === "ORDER" ? "assign" : "table";
     // A hand-over a manager made (or a shift a manager closed) is the manager's doing, not the waiter's.
     const byManager = a.via === "MANAGER" || a.via === "SHIFT_CLOSE";
-    const manager = first(a.byLabel) || "a manager";
+    const manager = first(a.byLabel) || word(msg("a manager"));
+    const colleague = (name: string | null | undefined) => first(name) || word(msg("a colleague"));
     if (a.toUserId === waiterId) {
-      const text = a.kind === "TAKEN" ? (a.via === "PIN" ? `${what} assigned to you at the Counter` : `Claimed ${what}`)
-        : a.kind === "TRANSFER" ? (byManager ? `${what} given to you by ${manager} (from ${first(a.fromUser?.fullName) || "a colleague"})${why}` : `${what} handed to you by ${first(a.fromUser?.fullName) || "a colleague"}${why}`)
-        : a.kind === "MANAGER" ? `${what} given to you by ${manager}${why}` : a.via === "TABLE" || a.via === "ROOM" ? `${what} came to you (your ${a.via === "TABLE" ? "table" : "room"})` : `${what} assigned to you`;
-      push({ at: a.at.toISOString(), kind, text, orderId: a.orderId });
+      const say = a.kind === "TAKEN" ? (a.via === "PIN" ? word(msg("{what} assigned to you at the Counter"), { what }) : word(msg("Claimed {what}"), { what }))
+        : a.kind === "TRANSFER" ? because(byManager ? word(msg("{what} given to you by {manager} (from {from})"), { what, manager, from: colleague(a.fromUser?.fullName) }) : word(msg("{what} handed to you by {from}"), { what, from: colleague(a.fromUser?.fullName) }), a.reason)
+        : a.kind === "MANAGER" ? because(word(msg("{what} given to you by {manager}"), { what, manager }), a.reason)
+        : a.via === "TABLE" ? word(msg("{what} came to you (your table)"), { what }) : a.via === "ROOM" ? word(msg("{what} came to you (your room)"), { what }) : word(msg("{what} assigned to you"), { what });
+      push({ at: a.at.toISOString(), kind, say, orderId: a.orderId });
     } else if (a.fromUserId === waiterId) {
-      const text = !a.toUserId ? (a.kind === "RELEASED" ? `${what} released${why}` : `${what} taken off you by ${manager}${why}`)
-        : a.kind === "TRANSFER" && !byManager ? `Handed ${what} to ${first(a.toUser?.fullName) || "a colleague"}${why}`
-        : `${what} moved to ${first(a.toUser?.fullName) || "a colleague"}${byManager || a.kind === "MANAGER" ? ` by ${manager}` : ""}${why}`;
-      push({ at: a.at.toISOString(), kind, text, orderId: a.orderId });
+      const say = !a.toUserId ? because(a.kind === "RELEASED" ? word(msg("{what} released"), { what }) : word(msg("{what} taken off you by {manager}"), { what, manager }), a.reason)
+        : a.kind === "TRANSFER" && !byManager ? because(word(msg("Handed {what} to {to}"), { what, to: colleague(a.toUser?.fullName) }), a.reason)
+        : because(byManager || a.kind === "MANAGER" ? word(msg("{what} moved to {to} by {manager}"), { what, to: colleague(a.toUser?.fullName), manager }) : word(msg("{what} moved to {to}"), { what, to: colleague(a.toUser?.fullName) }), a.reason);
+      push({ at: a.at.toISOString(), kind, say, orderId: a.orderId });
     }
   }
-  const STEP: Record<string, string> = { PENDING: "Created", ACCEPTED: "Accepted", PREPARING: "Started preparing", READY: "Marked ready", OUT_FOR_DELIVERY: "Serving", DELIVERED: "Served", COMPLETED: "Completed", CANCELLED: "Cancelled" };
+  /** Each step on an order, as its line ("Served #12 · Table 4"). */
+  const STEP: Record<string, string> = {
+    PENDING: msg("Created {order}"), ACCEPTED: msg("Accepted {order}"), PREPARING: msg("Started preparing {order}"), READY: msg("Marked ready {order}"),
+    OUT_FOR_DELIVERY: msg("Serving {order}"), DELIVERED: msg("Served {order}"), COMPLETED: msg("Completed {order}"), CANCELLED: msg("Cancelled {order}"),
+  };
   for (const e of [...steps].reverse()) {
     // Notes: only the bills they printed or downloaded (payments are the Counter's).
     if (e.from === e.to) {
-      if (e.note && /^(Bill|Table bill|Room bill) (printed|downloaded|shared)/.test(e.note)) push({ at: e.at.toISOString(), kind: "bill", text: `${e.note.split(" · ")[0]} · ${orderTag(e.orderId)}`, orderId: e.orderId });
+      if (e.note && /^(Bill|Table bill|Room bill) (printed|downloaded|shared)/.test(e.note)) {
+        const head = e.note.split(" · ")[0];
+        push({ at: e.at.toISOString(), kind: "bill", say: word(msg("{note} · {order}"), { note: BILL_NOTE.has(head) ? word(head) : head, order: orderTag(e.orderId) }), orderId: e.orderId });
+      }
       continue;
     }
     // Accepting a new order (it starts at once): "Accepted", not "Started preparing".
-    const word = e.from === "PENDING" && (e.to === "ACCEPTED" || e.to === "PREPARING") ? "Accepted" : STEP[e.to] ?? e.to;
-    push({ at: e.at.toISOString(), kind: "order", text: `${word} ${orderTag(e.orderId)}`, orderId: e.orderId, tone: e.to === "CANCELLED" ? "bad" : e.to === "DELIVERED" ? "good" : undefined });
+    const order = orderTag(e.orderId);
+    const say = e.from === "PENDING" && (e.to === "ACCEPTED" || e.to === "PREPARING") ? word(msg("Accepted {order}"), { order })
+      : STEP[e.to] ? word(STEP[e.to], { order }) : word(msg("{step} {order}"), { step: e.to, order });
+    push({ at: e.at.toISOString(), kind: "order", say, orderId: e.orderId, tone: e.to === "CANCELLED" ? "bad" : e.to === "DELIVERED" ? "good" : undefined });
   }
   items.sort((a, b) => b.at.localeCompare(a.at) || (b.seq ?? 0) - (a.seq ?? 0));
 
   const HISTORY = 300;
   return {
     orders: rows, summary,
-    history: items.slice(0, HISTORY).map((x) => ({ at: x.at, kind: x.kind, text: x.text, orderId: x.orderId, tone: x.tone })),
+    /** `text` is the English line; `say` writes it in the reader's language (reportTr / textBook in src/lib/report-i18n.ts). */
+    history: items.slice(0, HISTORY).map((x) => ({ at: x.at, kind: x.kind, text: x.text, say: x.say, orderId: x.orderId, tone: x.tone })),
     /** Only the newest part is shown (a long period): pick a shorter one for the rest. */
     more: items.length > HISTORY || assignments.length >= LIMIT || steps.length >= LIMIT,
   };

@@ -1,3 +1,5 @@
+import { msg } from "@/i18n/msg";
+
 /**
  * Payment status of a booking — separate from its stay status (a guest can be
  * CHECKED IN and PAID, or CHECKED IN and UNPAID). Company-billed amounts count
@@ -15,10 +17,10 @@ export function paymentStatus(r: { netAmount: number; paidAmount: number; balanc
 }
 
 export const PAYMENT_STATUS_META: Record<PaymentStatus, { label: string; className: string }> = {
-  NOTHING_DUE: { label: "Nothing due", className: "bg-muted text-muted-foreground" },
-  UNPAID: { label: "Unpaid", className: "bg-rose-500/12 text-rose-700 dark:text-rose-300" },
-  PART_PAID: { label: "Part paid", className: "bg-amber-500/15 text-amber-800 dark:text-amber-300" },
-  PAID: { label: "Paid", className: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300" },
-  CREDIT: { label: "Credit (overpaid)", className: "bg-sky-500/12 text-sky-700 dark:text-sky-300" },
-  GROUP_PAYS: { label: "Group pays", className: "bg-violet-500/12 text-violet-700 dark:text-violet-300" },
+  NOTHING_DUE: { label: msg("Nothing due"), className: "bg-muted text-muted-foreground" },
+  UNPAID: { label: msg("Unpaid"), className: "bg-rose-500/12 text-rose-700 dark:text-rose-300" },
+  PART_PAID: { label: msg("Part paid"), className: "bg-amber-500/15 text-amber-800 dark:text-amber-300" },
+  PAID: { label: msg("Paid"), className: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300" },
+  CREDIT: { label: msg("Credit (overpaid)"), className: "bg-sky-500/12 text-sky-700 dark:text-sky-300" },
+  GROUP_PAYS: { label: msg("Group pays"), className: "bg-violet-500/12 text-violet-700 dark:text-violet-300" },
 };

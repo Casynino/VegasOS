@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { ArrowRight, Minus, Plus, X } from "lucide-react";
 import { addDays, isBusinessDate } from "@/lib/time/business-date";
 import { cn } from "@/lib/utils";
+import { useT } from "@/i18n/client";
 import { buttonClass } from "../kit/button";
 import { field, typeScale } from "../kit/tokens";
 import { useBackToClose } from "../use-back-to-close";
@@ -27,6 +28,7 @@ export interface StaySearchProps {
 const LIMITS = { adults: [1, 12], children: [0, 6] } as const;
 
 function useStay({ defaultCheckIn, minDate, maxNights }: StaySearchProps) {
+  const t = useT();
   const [checkIn, setCheckIn] = useState(defaultCheckIn);
   const [checkOut, setCheckOut] = useState(addDays(defaultCheckIn, 1));
   const [adults, setAdults] = useState(2);
@@ -41,13 +43,16 @@ function useStay({ defaultCheckIn, minDate, maxNights }: StaySearchProps) {
     if (isBusinessDate(v) && (!isBusinessDate(checkOut) || checkOut <= v)) setCheckOut(addDays(v, 1));
   }
 
-  const guestsLabel = `${adults} adult${adults === 1 ? "" : "s"}${kids ? `, ${kids} child${kids === 1 ? "" : "ren"}` : ""}`;
+  const adultsLabel = t.plural(adults, "{n} adult", "{n} adults");
+  const guestsLabel = kids ? t("{adults}, {children}", { adults: adultsLabel, children: t.plural(kids, "{n} child", "{n} children") }) : adultsLabel;
   return { checkIn, checkOut, setCheckOut, onCheckIn, minOut, maxOut, adults, setAdults, kids, setKids, guestsLabel };
 }
 
-/** − 2 + : a guest count with 44px buttons. */
+/** − 2 + : a guest count with 44px buttons. `fewer` / `more` name the two buttons ("Fewer adults"). */
 function Stepper({
   label,
+  fewer,
+  more,
   value,
   onChange,
   min,
@@ -55,6 +60,8 @@ function Stepper({
   tone = "sheet",
 }: {
   label: string;
+  fewer: string;
+  more: string;
   value: number;
   onChange: (v: number) => void;
   min: number;
@@ -70,13 +77,13 @@ function Stepper({
     <div className="flex items-center justify-between gap-4 py-2">
       <span className="text-[15px]">{label}</span>
       <span className="flex items-center gap-3">
-        <button type="button" className={btn} onClick={() => onChange(Math.max(min, value - 1))} disabled={value <= min} aria-label={`Fewer ${label.toLowerCase()}`}>
+        <button type="button" className={btn} onClick={() => onChange(Math.max(min, value - 1))} disabled={value <= min} aria-label={fewer}>
           <Minus className="size-4" strokeWidth={1.6} aria-hidden="true" />
         </button>
         <span className="w-5 text-center text-base tabular-nums" aria-live="polite">
           {value}
         </span>
-        <button type="button" className={btn} onClick={() => onChange(Math.min(max, value + 1))} disabled={value >= max} aria-label={`More ${label.toLowerCase()}`}>
+        <button type="button" className={btn} onClick={() => onChange(Math.min(max, value + 1))} disabled={value >= max} aria-label={more}>
           <Plus className="size-4" strokeWidth={1.6} aria-hidden="true" />
         </button>
       </span>
@@ -88,7 +95,8 @@ function Stepper({
  * Desktop: one slim glass bar — dates, guests, room type and a slim "Check availability" button.
  * The guests panel opens upward (the bar sits at the foot of the hero).
  */
-export function HeroBookingBar({ className, submitLabel = "Check availability", ...search }: StaySearchProps & { className?: string; submitLabel?: string }) {
+export function HeroBookingBar({ className, submitLabel, ...search }: StaySearchProps & { className?: string; submitLabel?: string }) {
+  const t = useT();
   const s = useStay(search);
   const id = useId();
   const [guestsOpen, setGuestsOpen] = useState(false);
@@ -118,7 +126,7 @@ export function HeroBookingBar({ className, submitLabel = "Check availability", 
       action="/book"
       method="get"
       role="search"
-      aria-label="Check availability"
+      aria-label={t("Check availability")}
       className={cn(
         // Smoked glass with a light edge and a gold hairline on top (kit .pub-glass).
         "pub-glass grid grid-cols-[1fr_1fr_1fr_1.1fr_auto] items-stretch gap-1 rounded-full p-1.5 pl-2 text-white",
@@ -127,20 +135,20 @@ export function HeroBookingBar({ className, submitLabel = "Check availability", 
     >
       <div className={cell}>
         <label htmlFor={`${id}-in`} className={label}>
-          Check-in
+          {t("Check-in")}
         </label>
         <input id={`${id}-in`} name="checkIn" type="date" required min={search.minDate} max={search.maxDate} value={s.checkIn} onChange={(e) => s.onCheckIn(e.target.value)} className={value} />
       </div>
       <div className={cn(cell, divider)}>
         <label htmlFor={`${id}-out`} className={label}>
-          Check-out
+          {t("Check-out")}
         </label>
         <input id={`${id}-out`} name="checkOut" type="date" required min={s.minOut} max={s.maxOut} value={s.checkOut} onChange={(e) => s.setCheckOut(e.target.value)} className={value} />
       </div>
 
       <div ref={guestsRef} className={cn(cell, divider)}>
         <span id={`${id}-gl`} className={label}>
-          Guests
+          {t("Guests")}
         </span>
         <button
           type="button"
@@ -158,13 +166,13 @@ export function HeroBookingBar({ className, submitLabel = "Check availability", 
           <div
             id={`${id}-gp`}
             role="group"
-            aria-label="Guests"
+            aria-label={t("Guests")}
             className="absolute bottom-full left-0 z-30 mb-3 w-72 rounded-[1rem] border border-white/10 bg-night-raised/95 p-4 text-white shadow-[0_30px_60px_-20px_rgb(0_0_0/0.9)] backdrop-blur-xl motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-200"
           >
-            <Stepper tone="bar" label="Adults" value={s.adults} onChange={s.setAdults} min={LIMITS.adults[0]} max={LIMITS.adults[1]} />
-            <Stepper tone="bar" label="Children" value={s.kids} onChange={s.setKids} min={LIMITS.children[0]} max={LIMITS.children[1]} />
+            <Stepper tone="bar" label={t("Adults")} fewer={t("Fewer adults")} more={t("More adults")} value={s.adults} onChange={s.setAdults} min={LIMITS.adults[0]} max={LIMITS.adults[1]} />
+            <Stepper tone="bar" label={t("Children")} fewer={t("Fewer children")} more={t("More children")} value={s.kids} onChange={s.setKids} min={LIMITS.children[0]} max={LIMITS.children[1]} />
             <button type="button" onClick={() => setGuestsOpen(false)} className={buttonClass({ variant: "glass", size: "sm", full: true, className: "mt-2" })}>
-              Done
+              {t("Done")}
             </button>
           </div>
         )}
@@ -172,20 +180,20 @@ export function HeroBookingBar({ className, submitLabel = "Check availability", 
 
       <div className={cn(cell, divider)}>
         <label htmlFor={`${id}-type`} className={label}>
-          Room
+          {t("Room")}
         </label>
         <select id={`${id}-type`} name="type" defaultValue="" className={cn(value, "cursor-pointer appearance-none [&>option]:bg-night-raised")}>
-          <option value="">Any room type</option>
-          {search.roomTypes.map((t) => (
-            <option key={t.slug} value={t.slug}>
-              {t.name}
+          <option value="">{t("Any room type")}</option>
+          {search.roomTypes.map((rt) => (
+            <option key={rt.slug} value={rt.slug}>
+              {t(rt.name)}
             </option>
           ))}
         </select>
       </div>
 
       <button type="submit" className={buttonClass({ className: "mx-1 self-center px-5" })}>
-        {submitLabel}
+        {submitLabel ? t(submitLabel) : t("Check availability")}
         <ArrowRight className="size-3.5 transition-transform duration-300 ease-pub group-hover/btn:translate-x-0.5 motion-reduce:transition-none" strokeWidth={1.6} aria-hidden="true" />
       </button>
     </form>
@@ -198,6 +206,7 @@ export function HeroBookingBar({ className, submitLabel = "Check availability", 
  * A visit to /#availability opens it too. Without JS the button is a plain link to /book.
  */
 export function BookingSheet({ label, className, ...search }: StaySearchProps & { label: string; className?: string }) {
+  const t = useT();
   const s = useStay(search);
   const id = useId();
   const ref = useRef<HTMLDialogElement>(null);
@@ -231,6 +240,7 @@ export function BookingSheet({ label, className, ...search }: StaySearchProps & 
 
   return (
     <>
+      {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- a plain link on purpose: it opens the sheet, and goes to /book only without JS */}
       <a
         href="/book"
         aria-haspopup="dialog"
@@ -241,7 +251,7 @@ export function BookingSheet({ label, className, ...search }: StaySearchProps & 
         }}
         className={cn(buttonClass({ size: "md" }), className)}
       >
-        <span>{label}</span>
+        <span>{t(label)}</span>
       </a>
 
       <dialog
@@ -266,15 +276,15 @@ export function BookingSheet({ label, className, ...search }: StaySearchProps & 
           <span aria-hidden="true" className="mx-auto block h-1 w-10 rounded-full bg-white/20 sm:hidden" />
           <div className="mt-3 flex items-start justify-between gap-4 sm:mt-0">
             <div>
-              <p className={cn(typeScale.eyebrow, "text-pub-eyebrow")}>Book direct</p>
+              <p className={cn(typeScale.eyebrow, "text-pub-eyebrow")}>{t("Book direct")}</p>
               <h2 id={`${id}-title`} className={cn(typeScale.subheading, "mt-3")}>
-                Check availability
+                {t("Check availability")}
               </h2>
             </div>
             <button
               type="button"
               onClick={() => ref.current?.close()}
-              aria-label="Close"
+              aria-label={t("Close")}
               className="-mr-1 grid size-11 shrink-0 place-items-center rounded-full border border-pub-line text-pub-fg transition-colors duration-200 hover:border-pub-fg/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none"
             >
               <X className="size-4" strokeWidth={1.6} aria-hidden="true" />
@@ -285,7 +295,7 @@ export function BookingSheet({ label, className, ...search }: StaySearchProps & 
             <div className="grid grid-cols-2 gap-3">
               <div className="min-w-0">
                 <label htmlFor={`${id}-in`} className={field.label}>
-                  Check-in
+                  {t("Check-in")}
                 </label>
                 <input
                   id={`${id}-in`}
@@ -301,7 +311,7 @@ export function BookingSheet({ label, className, ...search }: StaySearchProps & 
               </div>
               <div className="min-w-0">
                 <label htmlFor={`${id}-out`} className={field.label}>
-                  Check-out
+                  {t("Check-out")}
                 </label>
                 <input
                   id={`${id}-out`}
@@ -318,10 +328,10 @@ export function BookingSheet({ label, className, ...search }: StaySearchProps & 
             </div>
 
             <fieldset className="min-w-0">
-              <legend className={field.label}>Guests</legend>
+              <legend className={field.label}>{t("Guests")}</legend>
               <div className="divide-y divide-pub-line border-y border-pub-line">
-                <Stepper label="Adults" value={s.adults} onChange={s.setAdults} min={LIMITS.adults[0]} max={LIMITS.adults[1]} />
-                <Stepper label="Children" value={s.kids} onChange={s.setKids} min={LIMITS.children[0]} max={LIMITS.children[1]} />
+                <Stepper label={t("Adults")} fewer={t("Fewer adults")} more={t("More adults")} value={s.adults} onChange={s.setAdults} min={LIMITS.adults[0]} max={LIMITS.adults[1]} />
+                <Stepper label={t("Children")} fewer={t("Fewer children")} more={t("More children")} value={s.kids} onChange={s.setKids} min={LIMITS.children[0]} max={LIMITS.children[1]} />
               </div>
               <input type="hidden" name="adults" value={s.adults} />
               <input type="hidden" name="children" value={s.kids} />
@@ -329,20 +339,20 @@ export function BookingSheet({ label, className, ...search }: StaySearchProps & 
 
             <div className="min-w-0">
               <label htmlFor={`${id}-type`} className={field.label}>
-                Room type
+                {t("Room type")}
               </label>
               <select id={`${id}-type`} name="type" defaultValue="" className={cn(field.input, "cursor-pointer appearance-none [&>option]:bg-night-raised")}>
-                <option value="">Any room type</option>
-                {search.roomTypes.map((t) => (
-                  <option key={t.slug} value={t.slug}>
-                    {t.name}
+                <option value="">{t("Any room type")}</option>
+                {search.roomTypes.map((rt) => (
+                  <option key={rt.slug} value={rt.slug}>
+                    {t(rt.name)}
                   </option>
                 ))}
               </select>
             </div>
 
             <button type="submit" className={buttonClass({ full: true, className: "mt-1" })}>
-              <span>See available rooms</span>
+              <span>{t("See available rooms")}</span>
               <ArrowRight className="size-4" strokeWidth={1.6} aria-hidden="true" />
             </button>
           </form>

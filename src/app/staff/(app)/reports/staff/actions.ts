@@ -7,6 +7,7 @@ import { runAction } from "@/server/errors";
 import { parseInput } from "@/server/validation";
 import { businessToday } from "@/server/settings";
 import { deliverStaffReport, generateTeamPeriodReport, lastCompleted } from "@/server/services/staff-report";
+import { getT } from "@/i18n/server";
 
 /** Send the weekly / monthly report's message to the boss (again, or retry a failed one). */
 export async function sendStaffReportAction(input: { reportId: string; force?: boolean }) {
@@ -17,7 +18,8 @@ export async function sendStaffReportAction(input: { reportId: string; force?: b
     revalidatePath("/staff/reports/staff", "layout");
     const sent = r.results.filter((x) => x.status === "SENT").length;
     const busy = r.results.some((x) => x.status === "BUSY");
-    return { message: !r.recipients ? "No report recipient is set — add one under Settings → Report recipients." : busy && !sent ? "Being sent right now — refresh in a moment." : `Sent to ${sent} of ${r.recipients}.${r.results.some((x) => x.status === "FAILED") ? " Some failed — see Delivery." : ""}` };
+    const t = await getT();
+    return { message: !r.recipients ? t("No report recipient is set — add one under Settings → Report recipients.") : busy && !sent ? t("Being sent right now — refresh in a moment.") : `${t("Sent to {sent} of {total}.", { sent, total: r.recipients })}${r.results.some((x) => x.status === "FAILED") ? ` ${t("Some failed — see Delivery.")}` : ""}` };
   });
 }
 
@@ -28,8 +30,9 @@ export async function makePeriodReportAction(input: { kind: "WEEK" | "MONTH" }) 
     const { kind } = parseInput(z.object({ kind: z.enum(["WEEK", "MONTH"]) }), input);
     const { from, to } = lastCompleted(kind, await businessToday());
     const r = await generateTeamPeriodReport(kind, from, to, { deadline: Date.now() + 45_000 });
-    if (!r) return { id: null, message: "A shift of that time is still open, or it is taking long — try again in a moment." };
+    const t = await getT();
+    if (!r) return { id: null, message: t("A shift of that time is still open, or it is taking long — try again in a moment.") };
     revalidatePath("/staff/reports/staff", "layout");
-    return { id: r.id, message: "Report ready." };
+    return { id: r.id, message: t("Report ready.") };
   });
 }

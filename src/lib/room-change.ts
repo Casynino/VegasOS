@@ -1,13 +1,15 @@
+import { msg } from "@/i18n/msg";
+
 /** Why the hotel moves a guest (the guest pays nothing extra). `maintenance` = the old room is flagged for repair. */
 export const HOTEL_MOVE_REASONS = [
-  { code: "AC_PROBLEM", label: "AC problem", maintenance: true },
-  { code: "PLUMBING", label: "Plumbing", maintenance: true },
-  { code: "ELECTRICAL", label: "Electrical problem", maintenance: true },
-  { code: "WATER", label: "Water problem", maintenance: true },
-  { code: "ROOM_DAMAGE", label: "Room damage", maintenance: true },
-  { code: "MAINTENANCE", label: "Maintenance", maintenance: true },
-  { code: "GUEST_SAFETY", label: "Guest safety", maintenance: false },
-  { code: "OTHER", label: "Other hotel issue", maintenance: false },
+  { code: "AC_PROBLEM", label: msg("AC problem"), maintenance: true },
+  { code: "PLUMBING", label: msg("Plumbing"), maintenance: true },
+  { code: "ELECTRICAL", label: msg("Electrical problem"), maintenance: true },
+  { code: "WATER", label: msg("Water problem"), maintenance: true },
+  { code: "ROOM_DAMAGE", label: msg("Room damage"), maintenance: true },
+  { code: "MAINTENANCE", label: msg("Maintenance"), maintenance: true },
+  { code: "GUEST_SAFETY", label: msg("Guest safety"), maintenance: false },
+  { code: "OTHER", label: msg("Other hotel issue"), maintenance: false },
 ] as const;
 
 export type HotelMoveReason = (typeof HOTEL_MOVE_REASONS)[number]["code"];

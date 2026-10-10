@@ -7,6 +7,8 @@ import { db } from "@/server/db";
 import { AppError, runAction } from "@/server/errors";
 import { parseInput } from "@/server/validation";
 import { afterShiftClosed, deliverShiftReport, generateShiftReport } from "@/server/services/shift-report";
+import { msg } from "@/i18n/msg";
+import { getT } from "@/i18n/server";
 
 const Id = z.string().min(1).max(40);
 const manager = (u: CurrentUser) => can(u, "shifts.manage") || can(u, "reports.view");
@@ -40,7 +42,7 @@ export async function makeShiftReportAction(input: { shiftId: string }) {
     }
     revalidatePath(`/staff/shifts/${shiftId}`, "layout");
     return { id: report.id };
-  }, "Shift report ready.");
+  }, msg("Shift report ready."));
 }
 
 /** Send the report's message to the boss again (or retry a failed one). */
@@ -53,7 +55,8 @@ export async function sendShiftReportAction(input: { reportId: string; force?: b
     if (report) revalidatePath(`/staff/shifts/${report.shiftId}/report`);
     const sent = r.results.filter((x) => x.status === "SENT").length;
     const busy = r.results.some((x) => x.status === "BUSY");
-    return { message: !r.recipients ? "No report recipient is set — add one under Settings → Report recipients." : busy && !sent ? "Being sent right now — refresh in a moment." : `Sent to ${sent} of ${r.recipients}.${r.results.some((x) => x.status === "FAILED") ? " Some failed — see Delivery." : ""}` };
+    const t = await getT();
+    return { message: !r.recipients ? t("No report recipient is set — add one under Settings → Report recipients.") : busy && !sent ? t("Being sent right now — refresh in a moment.") : `${t("Sent to {sent} of {total}.", { sent, total: r.recipients })}${r.results.some((x) => x.status === "FAILED") ? ` ${t("Some failed — see Delivery.")}` : ""}` };
   });
 }
 
@@ -62,9 +65,9 @@ export async function regenerateShiftReportAction(input: { shiftId: string; reas
   return runAction(async () => {
     const user = await authorize("shifts.manage", "reports.view");
     if (!(can(user, "dashboard.admin") || can(user, "dashboard.owner"))) throw new AppError("Only the MD or the owner can regenerate a shift report.", "FORBIDDEN");
-    const d = parseInput(z.object({ shiftId: Id, reason: z.string().trim().min(5, "Say why (at least a few words).").max(300) }), input);
+    const d = parseInput(z.object({ shiftId: Id, reason: z.string().trim().min(5, msg("Say why (at least a few words).")).max(300) }), input);
     const report = await generateShiftReport(d.shiftId, { regenerate: { by: `${user.fullName} (${user.roleName})`, reason: d.reason } });
     revalidatePath(`/staff/shifts/${d.shiftId}`, "layout");
     return { id: report.id, version: report.version };
-  }, "New version made — the earlier one is kept.");
+  }, msg("New version made — the earlier one is kept."));
 }

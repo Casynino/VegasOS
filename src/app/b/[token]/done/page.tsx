@@ -5,8 +5,13 @@ import { prettyPhone } from "@/lib/guest-messages";
 import { qrConfirmation } from "@/server/services/hotel-qr";
 import { QrConfirmationView } from "@/components/hotel-qr/confirmation";
 import { QrMessage } from "@/components/hotel-qr/inactive";
+import { getT, guestLocale } from "@/i18n/server";
 
-export const metadata: Metadata = { title: "Your booking", robots: { index: false, follow: false }, referrer: "no-referrer" };
+export async function generateMetadata(): Promise<Metadata> {
+  await guestLocale();
+  const t = await getT();
+  return { title: t("Your booking"), robots: { index: false, follow: false }, referrer: "no-referrer" };
+}
 export const viewport: Viewport = { themeColor: "#1d1712" };
 export const dynamic = "force-dynamic";
 
@@ -19,6 +24,8 @@ const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) 
  * opens on the booking's own page instead.
  */
 export default async function QrDonePage({ params, searchParams }: PageProps<"/b/[token]/done">) {
+  await guestLocale();
+  const t = await getT();
   const [{ token }, sp] = await Promise.all([params, searchParams]);
   const ref = one(sp.ref).trim().toUpperCase(), key = one(sp.key).trim();
   const found = /^VLH-[A-Z0-9]{4,12}$/.test(ref) && key.length >= 16 && key.length <= 200 ? await qrConfirmation(token, ref, key) : { state: "not_found" as const };
@@ -27,7 +34,7 @@ export default async function QrDonePage({ params, searchParams }: PageProps<"/b
     const s = await getSettings();
     return (
       <QrMessage hotel={{ name: s.hotelName, phone: s.phone ? prettyPhone(s.phone) : null, whatsapp: s.whatsapp ? prettyPhone(s.whatsapp) : null }}
-        title="We could not find this booking" message="The link may be incomplete. Open it again from your message — or call us with your booking reference." />
+        title={t("We could not find this booking")} message={t("The link may be incomplete. Open it again from your message — or call us with your booking reference.")} />
     );
   }
   return <QrConfirmationView token={token} link={{ ref, key }} initial={found.booking} />;

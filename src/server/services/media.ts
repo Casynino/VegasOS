@@ -5,6 +5,7 @@ import { audit, type AuditActor } from "../audit";
 import { AppError } from "../errors";
 import type { MediaCategory } from "@/generated/prisma/enums";
 import type { MediaAsset } from "@/generated/prisma/client";
+import { msg } from "@/i18n/msg";
 
 /**
  * Media library (website CMS). The library is the single source of truth for
@@ -30,10 +31,10 @@ export async function uploadMedia(
   actor: AuditActor & { userId: string },
 ) {
   const { file } = input;
-  if (!file || file.size === 0) throw new AppError("Choose an image.", "VALIDATION", { file: "Required" });
-  if (file.size > MEDIA_MAX_BYTES) throw new AppError("Image is larger than 8 MB — export a smaller version.", "VALIDATION", { file: "Too large" });
-  if (!MEDIA_TYPES.includes(file.type)) throw new AppError("Use a JPG, PNG, WebP or AVIF image.", "VALIDATION", { file: "Wrong type" });
-  if (!input.altText.trim()) throw new AppError("Describe the image for screen readers (alt text).", "VALIDATION", { altText: "Required" });
+  if (!file || file.size === 0) throw new AppError("Choose an image.", "VALIDATION", { file: msg("Required") });
+  if (file.size > MEDIA_MAX_BYTES) throw new AppError("Image is larger than 8 MB — export a smaller version.", "VALIDATION", { file: msg("Too large") });
+  if (!MEDIA_TYPES.includes(file.type)) throw new AppError("Use a JPG, PNG, WebP or AVIF image.", "VALIDATION", { file: msg("Wrong type") });
+  if (!input.altText.trim()) throw new AppError("Describe the image for screen readers (alt text).", "VALIDATION", { altText: msg("Required") });
   // On the live site the photo goes to Vercel Blob (fast, and the database keeps only its link); without Blob
   // (this computer) it is stored in the database as before.
   const safeName = file.name.toLowerCase().replace(/[^a-z0-9.]+/g, "-").replace(/^-+|-+$/g, "").slice(-80) || "photo";

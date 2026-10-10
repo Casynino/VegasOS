@@ -4,16 +4,16 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Clock, LogIn } from "lucide-react";
 import { getSettings } from "@/server/settings";
-import { formatDateTime } from "@/lib/format";
-import { staffReportByToken, type PersonPeriodData, type TeamPeriodData } from "@/server/services/staff-report";
+import { periodLabelOf, staffReportByToken, type PersonPeriodData, type TeamPeriodData } from "@/server/services/staff-report";
 import { PersonPeriodPaper, TeamPeriodPaper, type Hotel } from "@/components/staff/reports/staff-report-paper";
 import { ReportActions } from "@/app/staff/(app)/reports/report-actions";
+import { getT, guestLocale } from "@/i18n/server";
+import { msg } from "@/i18n/msg";
 
-export const metadata: Metadata = {
-  title: "Report",
-  robots: { index: false, follow: false },
-  referrer: "no-referrer",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  await guestLocale();
+  return { title: (await getT())("Report"), robots: { index: false, follow: false }, referrer: "no-referrer" };
+}
 export const dynamic = "force-dynamic";
 
 /**
@@ -22,8 +22,10 @@ export const dynamic = "force-dynamic";
  * the staff app (signed in).
  */
 export default async function SharedStaffReportPage({ params }: PageProps<"/staff-report/[token]">) {
+  await guestLocale();
   const { token } = await params;
-  const [r, s] = await Promise.all([staffReportByToken(token), getSettings()]);
+  const [r, s, t] = await Promise.all([staffReportByToken(token), getSettings(), getT()]);
+  const when = (x: Date) => t.dateTime(x, s.timezone);
   if (!r) notFound();
   const shell = (children: React.ReactNode) => (
     <main className="min-h-svh bg-[#ece6da] px-3 py-5 text-[#1d1a16] sm:px-6 sm:py-8 print:bg-white print:p-0">
@@ -35,9 +37,9 @@ export default async function SharedStaffReportPage({ params }: PageProps<"/staf
     return shell(
       <section className="mx-auto mt-10 max-w-md rounded-3xl bg-white p-6 text-center shadow-sm">
         <span className="mx-auto grid size-14 place-items-center rounded-2xl bg-[#c9a24a]/15 text-[#8a6a25]"><Clock className="size-7" /></span>
-        <h1 className="mt-3 font-display text-2xl font-semibold">This link has expired</h1>
-        <p className="mt-1 text-sm text-[#6f665b]">For privacy, report links work for a limited time. The report is kept — open it in the staff app.</p>
-        <Link href={`/staff/reports/staff/${r.id}`} className="mt-4 inline-flex h-10 items-center gap-2 rounded-xl bg-[#15110c] px-4 text-sm font-semibold text-white"><LogIn className="size-4" />Open in the staff app</Link>
+        <h1 className="mt-3 font-display text-2xl font-semibold">{t("This link has expired")}</h1>
+        <p className="mt-1 text-sm text-[#6f665b]">{t("For privacy, report links work for a limited time. The report is kept — open it in the staff app.")}</p>
+        <Link href={`/staff/reports/staff/${r.id}`} className="mt-4 inline-flex h-10 items-center gap-2 rounded-xl bg-[#15110c] px-4 text-sm font-semibold text-white"><LogIn className="size-4" />{t("Open in the staff app")}</Link>
       </section>,
     );
   }
@@ -48,9 +50,10 @@ export default async function SharedStaffReportPage({ params }: PageProps<"/staf
   };
   const team = r.userId ? null : (r.data as unknown as TeamPeriodData);
   const person = r.userId ? (r.data as unknown as PersonPeriodData) : null;
-  const what = r.kind === "WEEK" ? "Weekly report" : "Monthly report";
+  const what = r.kind === "WEEK" ? msg("Weekly report") : msg("Monthly report");
   const label = (team ?? person)!.label;
-  const name = person ? person.person.name : "Business & team";
+  const shownLabel = periodLabelOf((team ?? person)!, t);
+  const name = person ? person.person.name : msg("Business & team");
   const number = `${r.kind === "WEEK" ? "WR" : "MR"}-${(team ?? person)!.from.replaceAll("-", "")}-${team ? "TEAM" : r.id.slice(-5).toUpperCase()}`;
   return shell(
     <>
@@ -58,18 +61,18 @@ export default async function SharedStaffReportPage({ params }: PageProps<"/staf
         <div className="flex min-w-0 items-center gap-3">
           <Image src="/brand/logo-192.png" alt="" width={36} height={36} className="rounded-xl" />
           <div className="min-w-0 leading-tight">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#f0cf86]">{s.hotelName} · {what}</p>
-            <p className="truncate text-sm font-semibold">{name} · {label}</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#f0cf86]">{s.hotelName} · {t(what)}</p>
+            <p className="truncate text-sm font-semibold">{t(name)} · {shownLabel}</p>
           </div>
         </div>
       </header>
       <div className="flex justify-end print:hidden">
-        <ReportActions fileName={`${s.hotelName}-${what}-${name}-${label}`.replace(/[^\w]+/g, "-").toLowerCase()} share={`${what} — ${name} · ${label}`} />
+        <ReportActions fileName={`${s.hotelName}-${what}-${name}-${label}`.replace(/[^\w]+/g, "-").toLowerCase()} share={`${t(what)} — ${t(name)} · ${shownLabel}`} />
       </div>
       {team
-        ? <TeamPeriodPaper d={team} hotel={hotel} number={number} preparedAt={formatDateTime(r.generatedAt)} personHref={(p) => `/staff-report/${p.token}`} />
-        : <PersonPeriodPaper d={person!} hotel={hotel} number={number} preparedAt={formatDateTime(r.generatedAt)} timezone={s.timezone} />}
-      <p className="text-center text-[11px] text-[#8c8173] print:hidden">Private link · works until {formatDateTime(r.shareExpiresAt)}</p>
+        ? <TeamPeriodPaper d={{ ...team, label: shownLabel }} hotel={hotel} number={number} preparedAt={when(r.generatedAt)} personHref={(p) => `/staff-report/${p.token}`} />
+        : <PersonPeriodPaper d={{ ...person!, label: shownLabel }} hotel={hotel} number={number} preparedAt={when(r.generatedAt)} timezone={s.timezone} />}
+      <p className="text-center text-[11px] text-[#8c8173] print:hidden">{t("Private link · works until {time}", { time: when(r.shareExpiresAt) })}</p>
     </>,
   );
 }

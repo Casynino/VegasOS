@@ -26,6 +26,9 @@ import { useIsRestaurantDevice, useWaiterPin } from "@/components/staff/waiter-p
 import { WaiterChips } from "@/components/staff/waiter-chips";
 import { ACCENT, allPrepared, OrderCard, payBadgeFor, shortNo, since, tileText } from "../portal/order-card";
 import type { PortalOrder, PortalPerms, PortalRole, PortalStay } from "../portal/types";
+import { useT } from "@/i18n/client";
+import { orderItemName } from "@/i18n/content";
+import { msg } from "@/i18n/msg";
 
 /** An open order the customer can still add to (picked from its table / room, or opened with "Add"). */
 export type Addable = { id: string; number: string; place: string; locationId: string | null; reservationId: string | null; customer: string | null; total: number | null; status: string; items: number };
@@ -51,12 +54,11 @@ type OrderType = "DINE_IN" | "TAKEAWAY" | "PICKUP" | "ROOM_SERVICE";
 type Settlement = "PAY_NOW" | "ROOM" | "UNPAID";
 
 const TYPES: { v: OrderType; label: string; icon: typeof UtensilsCrossed }[] = [
-  { v: "DINE_IN", label: "Dine in", icon: UtensilsCrossed },
-  { v: "TAKEAWAY", label: "Takeaway", icon: ShoppingBag },
-  { v: "PICKUP", label: "Pickup", icon: Store },
-  { v: "ROOM_SERVICE", label: "Room service", icon: BedDouble },
+  { v: "DINE_IN", label: msg("Dine in"), icon: UtensilsCrossed },
+  { v: "TAKEAWAY", label: msg("Takeaway"), icon: ShoppingBag },
+  { v: "PICKUP", label: msg("Pickup"), icon: Store },
+  { v: "ROOM_SERVICE", label: msg("Room service"), icon: BedDouble },
 ];
-const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 const field = "h-10 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none focus:border-foreground/30";
 
 /** The till: open orders on a line, the menu with photos, and the ticket being built. */
@@ -110,10 +112,13 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
   const [sent, setSent] = useState<Sent | null>(null);
   const router = useRouter();
   const askPin = useWaiterPin();
+  const t = useT();
 
   const all = useMemo(() => menu.flatMap((c) => c.items.map((i) => ({ ...i, category: c.name }))), [menu]);
   const needle = q.trim().toLowerCase();
-  const shown = all.filter((i) => (needle ? `${i.name} ${i.category}`.toLowerCase().includes(needle) : cat === "all" || menu.find((c) => c.id === cat)?.items.some((x) => x.id === i.id)));
+  // A dish is found by its English name AND by the name this person reads (staff working in Chinese type Chinese).
+  const findText = (i: (typeof all)[number]) => `${i.name} ${i.category} ${t(i.name)} ${t(i.category)} ${i.description ? t(i.description) : ""}`.toLowerCase();
+  const shown = all.filter((i) => (needle ? findText(i).includes(needle) : cat === "all" || menu.find((c) => c.id === cat)?.items.some((x) => x.id === i.id)));
   const lines = Object.entries(cart).map(([id, qty]) => ({ item: all.find((i) => i.id === id)!, qty })).filter((l) => l.item && l.qty > 0);
   const food = lines.filter((l) => l.item.type === "FOOD").reduce((s, l) => s + l.item.price * l.qty, 0);
   const drinks = lines.filter((l) => l.item.type !== "FOOD").reduce((s, l) => s + l.item.price * l.qty, 0);
@@ -135,7 +140,7 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
   const location = locations.find((l) => l.id === locationId) ?? null;
   // An open order already at the picked table / for the picked guest: offer to add to it.
   const openHere = joining ? null : type === "DINE_IN" && location ? addable.find((a) => a.locationId === location.id) ?? null : guest ? addable.find((a) => a.reservationId === guest.id) ?? null : null;
-  const who = joining ? `${joining.place}${joining.customer ? ` · ${joining.customer}` : ""}` : guest ? `Room ${guest.rooms} · ${guest.name}` : (outside ? name : type === "ROOM_SERVICE" ? name : location?.name ?? name) || (hotelOnly || type === "ROOM_SERVICE" ? "Hotel guest — pick the room" : outside ? "Takeaway customer" : "Walk-in customer");
+  const who = joining ? `${joining.place}${joining.customer ? ` · ${joining.customer}` : ""}` : guest ? `${t("Room {room}", { room: guest.rooms })} · ${guest.name}` : (outside ? name : type === "ROOM_SERVICE" ? name : location ? t(location.name) : name) || (hotelOnly || type === "ROOM_SERVICE" ? t("Hotel guest — pick the room") : outside ? t("Takeaway customer") : t("Walk-in customer"));
   // The open bill this order adds to: the table (dine in) or the guest's room.
   const tableBills = bills.filter((b) => b.kind === "table");
   const openBill = type === "DINE_IN" && location
@@ -160,7 +165,7 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
   const roomByStay = !verify && !forStay && settlement === "ROOM";
   const needsGuest = hotelOnly || forStay || (verify && settlement === "ROOM");
   const stay = roomByStay ? ownStays.find((x) => x.id === stayId) ?? null : null;
-  const noRoom = !sameCustomer && !validPhone(phone) ? "Add the customer's phone first — then their room shows." : known.looking ? "Checking the customer's room…" : "No room for this customer — pay at the restaurant.";
+  const noRoom = !sameCustomer && !validPhone(phone) ? t("Add the customer's phone first — then their room shows.") : known.looking ? t("Checking the customer's room…") : t("No room for this customer — pay at the restaurant.");
   const phoneOk = guestHasPhone || sameCustomer || validPhone(phone);
   // "Send to phone": the number the prompt goes to (the customer's, unless changed).
   const viaPhone = settlement === "PAY_NOW" && accountId === PROMPT;
@@ -184,12 +189,12 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
   // Room service for everyone who takes orders (the staying guest is picked from the list); "Room bill" only for a
   // customer staying here.
   const types = TYPES.filter((t) => t.v !== "ROOM_SERVICE" || roomBills);
-  const settlements = ([canPay && ["PAY_NOW", "Pay now"], roomBills && roomAllowed && ["ROOM", "Room bill"], ["UNPAID", type === "ROOM_SERVICE" ? "On delivery" : "Pay later"]].filter(Boolean) as [Settlement, string][]);
+  const settlements = ([canPay && ["PAY_NOW", msg("Pay now")], roomBills && roomAllowed && ["ROOM", msg("Room bill")], ["UNPAID", type === "ROOM_SERVICE" ? msg("On delivery") : msg("Pay later")]].filter(Boolean) as [Settlement, string][]);
 
   async function send() {
     if (joining) {
       // On the shared Restaurant Counter: the waiter chosen above — or asked now.
-      const pin = waiterId ? { waiterId } : await askPin(`Add to ${joining.number.replace(/^ORD-\d{4}-0*/, "#")}`);
+      const pin = waiterId ? { waiterId } : await askPin(t("Add to {order}", { order: joining.number.replace(/^ORD-\d{4}-0*/, "#") }));
       if (pin === null) return;
       start(async () => {
         const res = await addOrderItemsAction({ id: joining.id, items: lines.map((l) => ({ menuItemId: l.item.id, quantity: l.qty })), pin });
@@ -204,7 +209,7 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
     }
     // On the shared Restaurant Counter the waiter making the order says who they are (the order is theirs) —
     // paid now, the payment is the Counter's own record (the waiter is noted as the one who brought it).
-    const pin = waiterId ? { waiterId } : await askPin(settlement === "PAY_NOW" && !viaPhone ? "New order — the payment is recorded at the Counter" : "New order");
+    const pin = waiterId ? { waiterId } : await askPin(settlement === "PAY_NOW" && !viaPhone ? t("New order — the payment is recorded at the Counter") : t("New order"));
     if (pin === null) return;
     start(async () => {
       const res = await createOrderAction({
@@ -235,29 +240,29 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
 
   const settleNote = settlement === "ROOM"
     ? roomByStay
-      ? stay ? `Goes on Room ${stay.rooms}'s bill — no money now, it is collected at check-out.` : ownStays.length ? "Charge it to the customer's own room — only after they agree." : noRoom
-      : guest ? `Goes on Room ${guest.rooms}'s bill — no money now, it is collected at check-out.` : "Pick the guest's room above."
+      ? stay ? t("Goes on Room {room}'s bill — no money now, it is collected at check-out.", { room: stay.rooms }) : ownStays.length ? t("Charge it to the customer's own room — only after they agree.") : noRoom
+      : guest ? t("Goes on Room {room}'s bill — no money now, it is collected at check-out.", { room: guest.rooms }) : t("Pick the guest's room above.")
     : settlement === "UNPAID" ? (type === "ROOM_SERVICE"
-      ? `The guest pays when it arrives — ${canPay ? "record the payment then." : "the Restaurant Counter records the payment."}`
-      : `The customer pays when it is served — ${canPay ? "record the payment on the order then." : "the Restaurant Counter records the payment."}`)
-    : viaPhone ? "The customer gets a payment request on their phone and confirms it with their PIN. It is recorded automatically."
-    : "Paid now — the money goes into the account you pick.";
+      ? canPay ? t("The guest pays when it arrives — record the payment then.") : t("The guest pays when it arrives — the Restaurant Counter records the payment.")
+      : canPay ? t("The customer pays when it is served — record the payment on the order then.") : t("The customer pays when it is served — the Restaurant Counter records the payment."))
+    : viaPhone ? t("The customer gets a payment request on their phone and confirms it with their PIN. It is recorded automatically.")
+    : t("Paid now — the money goes into the account you pick.");
 
   return (
     <div className="space-y-4 pb-24 lg:pb-0">
-      <OrderLine orders={line} perms={perms} role={role} meId={meId} accounts={canPay ? accounts : []} rooms={verify ? guests.map((g) => ({ id: g.id, label: `Room ${g.rooms} — ${g.name}` })) : []} />
+      <OrderLine orders={line} perms={perms} role={role} meId={meId} accounts={canPay ? accounts : []} rooms={verify ? guests.map((g) => ({ id: g.id, label: `${t("Room {room}", { room: g.rooms })} — ${g.name}` })) : []} />
 
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_380px] 2xl:grid-cols-[minmax(0,1fr)_420px]">
         {/* The menu */}
         <section className="min-w-0 space-y-3">
           <div className="relative">
             <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search the menu — biryani, Safari, Hennessy…" className="h-12 w-full rounded-2xl border border-border bg-card pl-11 pr-10 text-sm shadow-sm outline-none focus:border-foreground/30" />
-            {q && <button type="button" onClick={() => setQ("")} aria-label="Clear" className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground"><X className="size-4" /></button>}
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("Search the menu — biryani, Safari, Hennessy…")} className="h-12 w-full rounded-2xl border border-border bg-card pl-11 pr-10 text-sm shadow-sm outline-none focus:border-foreground/30" />
+            {q && <button type="button" onClick={() => setQ("")} aria-label={t("Clear")} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground"><X className="size-4" /></button>}
           </div>
           {!needle && (
             <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-              {[{ id: "all", name: "All", type: "ALL", n: all.length }, ...menu.map((c) => ({ id: c.id, name: c.name, type: c.type as string, n: c.items.length }))].map((c) => {
+              {[{ id: "all", name: msg("All"), type: "ALL", n: all.length }, ...menu.map((c) => ({ id: c.id, name: c.name, type: c.type as string, n: c.items.length }))].map((c) => {
                 const Icon = c.type === "ALL" ? LayoutGrid : c.type === "DRINK" ? Wine : UtensilsCrossed;
                 const on = cat === c.id;
                 return (
@@ -265,7 +270,7 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
                     className={cn("inline-flex h-10 shrink-0 items-center gap-2 rounded-full border pl-1.5 pr-3.5 text-sm font-medium transition",
                       on ? "border-transparent bg-linear-to-b from-[oklch(0.87_0.085_86)] to-[oklch(0.7_0.12_76)] text-[oklch(0.2_0.03_60)] shadow-[0_8px_18px_-12px_oklch(0.7_0.12_80)]" : "border-border/70 bg-card text-foreground/85 hover:bg-muted/60")}>
                     <span className={cn("grid size-7 place-items-center rounded-full", on ? "bg-black/10" : "bg-muted text-muted-foreground")}><Icon className="size-3.5" /></span>
-                    {c.name}<span className={cn("text-[11px] tabular-nums", on ? "text-black/55" : "text-muted-foreground")}>{c.n}</span>
+                    {t(c.name)}<span className={cn("text-[11px] tabular-nums", on ? "text-black/55" : "text-muted-foreground")}>{c.n}</span>
                   </button>
                 );
               })}
@@ -288,7 +293,7 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
                           {i.type === "FOOD" ? <UtensilsCrossed className="size-7 text-amber-700/50 dark:text-amber-300/40" /> : <Wine className="size-7 text-rose-700/50 dark:text-rose-300/40" />}
                         </div>
                       )}
-                      {!i.isAvailable && <span className="absolute inset-x-0 bottom-0 bg-black/75 py-1 text-center text-[10px] font-semibold uppercase tracking-wider text-white">Sold out</span>}
+                      {!i.isAvailable && <span className="absolute inset-x-0 bottom-0 bg-black/75 py-1 text-center text-[10px] font-semibold uppercase tracking-wider text-white">{t("Sold out")}</span>}
                       <AnimatePresence>
                         {qty > 0 && (
                           <motion.span key={qty} initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.4, opacity: 0 }} transition={{ type: "spring", stiffness: 520, damping: 22 }}
@@ -297,21 +302,21 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
                       </AnimatePresence>
                     </div>
                     <div className="px-1 pt-2">
-                      <p className="line-clamp-2 min-h-[2.4em] text-[13px] font-semibold leading-tight">{i.name}</p>
-                      <p className="mt-0.5 truncate text-[10px] uppercase tracking-wider text-muted-foreground">{i.category}</p>
+                      <p className="line-clamp-2 min-h-[2.4em] text-[13px] font-semibold leading-tight">{t(i.name)}</p>
+                      <p className="mt-0.5 truncate text-[10px] uppercase tracking-wider text-muted-foreground">{t(i.category)}</p>
                     </div>
                   </button>
                   <div className="mt-auto flex items-center justify-between gap-1.5 px-1 pb-0.5 pt-2">
                     <span className="whitespace-nowrap text-[13px] font-bold tabular-nums">{formatTZS(i.price)}</span>
                     {!i.isAvailable ? null : qty ? <Stepper small qty={qty} onMinus={() => add(i.id, -1)} onPlus={() => add(i.id, 1)} /> : (
-                      <motion.button type="button" whileTap={{ scale: 0.88 }} onClick={() => add(i.id, 1)} aria-label={`Add ${i.name}`}
+                      <motion.button type="button" whileTap={{ scale: 0.88 }} onClick={() => add(i.id, 1)} aria-label={t("Add {dish}", { dish: t(i.name) })}
                         className="grid size-8 place-items-center rounded-full bg-linear-to-b from-[oklch(0.87_0.085_86)] to-[oklch(0.7_0.12_76)] text-[oklch(0.2_0.03_60)] shadow-[0_6px_14px_-8px_oklch(0.7_0.12_80)] transition hover:brightness-105"><Plus className="size-4" /></motion.button>
                     )}
                   </div>
                 </motion.article>
               );
             })}
-            {shown.length === 0 && <p className="col-span-full rounded-3xl border border-dashed border-border py-12 text-center text-sm text-muted-foreground">Nothing matches “{q}”.</p>}
+            {shown.length === 0 && <p className="col-span-full rounded-3xl border border-dashed border-border py-12 text-center text-sm text-muted-foreground">{t("Nothing matches “{q}”.", { q })}</p>}
           </div>
         </section>
 
@@ -320,48 +325,48 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
           <header className="flex items-center gap-3 border-b border-border/60 px-4 py-3.5">
             <span className="grid h-11 min-w-11 shrink-0 place-items-center rounded-xl bg-[oklch(0.72_0.12_80/0.18)] px-1.5 text-sm font-bold tabular-nums text-[oklch(0.5_0.11_75)] dark:text-[oklch(0.84_0.11_82)]">{tile ?? <TypeIcon className="size-5" />}</span>
             <div className="min-w-0 flex-1 leading-tight">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">{joining ? `Adding to order ${shortNo(joining.number)}` : "New order"} · {waiter}</p>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">{joining ? t("Adding to order {no}", { no: shortNo(joining.number) }) : t("New order")} · {waiter}</p>
               <p className="truncate text-base font-semibold">{who}</p>
-              <p className="text-[11px] text-muted-foreground">{joining ? `${plural(joining.items, "item")} so far${joining.total != null ? ` · ${formatTZS(joining.total)}` : ""}` : TYPES.find((t) => t.v === type)?.label}{count ? ` · +${plural(count, "item")}` : ""}{!joining && openBill ? ` · adds to the open bill` : ""}</p>
+              <p className="text-[11px] text-muted-foreground">{joining ? `${t.plural(joining.items, "{n} item so far", "{n} items so far")}${joining.total != null ? ` · ${formatTZS(joining.total)}` : ""}` : t(TYPES.find((ty) => ty.v === type)?.label ?? "")}{count ? ` · +${t.plural(count, "{n} item", "{n} items")}` : ""}{!joining && openBill ? ` · ${t("adds to the open bill")}` : ""}</p>
             </div>
             {count > 0 && <motion.span key={total} initial={{ scale: 0.85, opacity: 0.6 }} animate={{ scale: 1, opacity: 1 }} className="shrink-0 rounded-full bg-foreground px-2.5 py-1 text-xs font-bold tabular-nums text-background">{formatTZS(total)}</motion.span>}
           </header>
 
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
             {joining ? (
-              <Block icon={UserRound} title="Adding to an open order">
+              <Block icon={UserRound} title={t("Adding to an open order")}>
                 <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-3 rounded-2xl border border-sky-500/35 bg-sky-500/[0.07] p-3">
                   <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-sky-500/15 text-sky-300"><Plus className="size-5" /></span>
                   <span className="min-w-0 flex-1 text-xs leading-tight">
-                    <span className="block text-sm font-semibold">Order {shortNo(joining.number)} · {joining.place}</span>
-                    <span className="text-muted-foreground">{joining.customer ?? "Customer"} · the new items join this order{joining.status === "DELIVERED" ? " and go back to the kitchen" : ""}; its bill updates by itself.</span>
+                    <span className="block text-sm font-semibold">{t("Order {no}", { no: shortNo(joining.number) })} · {joining.place}</span>
+                    <span className="text-muted-foreground">{joining.customer ?? t("Customer")} · {joining.status === "DELIVERED" ? t("the new items join this order and go back to the kitchen; its bill updates by itself.") : t("the new items join this order; its bill updates by itself.")}</span>
                   </span>
-                  <button type="button" onClick={() => setJoinId(null)} className="shrink-0 rounded-lg px-2 py-1 text-[11px] font-semibold text-muted-foreground ring-1 ring-border hover:bg-muted hover:text-foreground">New order</button>
+                  <button type="button" onClick={() => setJoinId(null)} className="shrink-0 rounded-lg px-2 py-1 text-[11px] font-semibold text-muted-foreground ring-1 ring-border hover:bg-muted hover:text-foreground">{t("New order")}</button>
                 </motion.div>
               </Block>
             ) : (
-            <Block icon={UserRound} title="Customer">
+            <Block icon={UserRound} title={t("Customer")}>
               <div className={cn("grid gap-1 rounded-2xl bg-muted/70 p-1", types.length === 4 ? "grid-cols-4" : "grid-cols-3")}>
-                {types.map((t) => (
-                  <button key={t.v} type="button" onClick={() => pickType(t.v)} aria-pressed={type === t.v}
-                    className={cn("flex flex-col items-center gap-1 rounded-xl px-1 py-2 text-[11px] font-medium transition", type === t.v ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground")}>
-                    <t.icon className="size-4" />{t.label}
+                {types.map((ty) => (
+                  <button key={ty.v} type="button" onClick={() => pickType(ty.v)} aria-pressed={type === ty.v}
+                    className={cn("flex flex-col items-center gap-1 rounded-xl px-1 py-2 text-[11px] font-medium transition", type === ty.v ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+                    <ty.icon className="size-4" />{t(ty.label)}
                   </button>
                 ))}
               </div>
               {type === "DINE_IN" && (
                 <div className="mt-2 space-y-1.5 rounded-2xl border border-border/80 bg-background p-2">
-                  {([["INSIDE", "Inside"], ["OUTSIDE", "Outside"]] as const).map(([area, label]) => {
+                  {([["INSIDE", msg("Inside")], ["OUTSIDE", msg("Outside")]] as const).map(([area, label]) => {
                     const row = locations.filter((l) => l.kind === "TABLE" && l.area === area);
                     if (!row.length) return null;
                     return (
                       <div key={area} className="flex items-center gap-1.5">
-                        <span className="w-14 shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</span>
+                        <span className="w-14 shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t(label)}</span>
                         <div className="grid flex-1 grid-cols-6 gap-1">
                           {row.map((l) => {
                             const on = locationId === l.id;
                             return (
-                              <button key={l.id} type="button" onClick={() => setLocationId(on ? "" : l.id)} aria-pressed={on} title={`${l.name}${l.busy ? " — has an open order" : ""}`}
+                              <button key={l.id} type="button" onClick={() => setLocationId(on ? "" : l.id)} aria-pressed={on} title={`${t(l.name)}${l.busy ? ` — ${t("has an open order")}` : ""}`}
                                 className={cn("relative h-9 rounded-lg text-sm font-semibold tabular-nums transition", on ? "bg-[oklch(0.72_0.12_80)] text-[oklch(0.2_0.03_60)] shadow-sm" : "bg-muted/60 hover:bg-muted")}>
                                 {l.number}
                                 {l.busy && <span className={cn("absolute right-1 top-1 size-1.5 rounded-full", on ? "bg-[oklch(0.2_0.03_60)]" : "bg-emerald-400")} />}
@@ -375,58 +380,58 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
                   {locations.filter((l) => l.kind === "COUNTER").map((l) => (
                     <button key={l.id} type="button" onClick={() => setLocationId(locationId === l.id ? "" : l.id)} aria-pressed={locationId === l.id}
                       className={cn("flex h-9 w-full items-center justify-center gap-1.5 rounded-lg text-sm font-semibold transition", locationId === l.id ? "bg-[oklch(0.72_0.12_80)] text-[oklch(0.2_0.03_60)]" : "bg-muted/60 hover:bg-muted")}>
-                      <Store className="size-3.5" />{l.name}{l.busy && <span className="size-1.5 rounded-full bg-emerald-400" />}
+                      <Store className="size-3.5" />{t(l.name)}{l.busy && <span className="size-1.5 rounded-full bg-emerald-400" />}
                     </button>
                   ))}
-                  <p className="px-1 text-[10px] text-muted-foreground">{location ? `${location.name} — tap again to clear` : "Pick the table (a green dot = someone is there) — or leave it for the restaurant."}</p>
+                  <p className="px-1 text-[10px] text-muted-foreground">{location ? t("{place} — tap again to clear", { place: t(location.name) }) : t("Pick the table (a green dot = someone is there) — or leave it for the restaurant.")}</p>
                 </div>
               )}
               {openHere && (
                 <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="mt-2 flex items-center gap-2.5 rounded-xl border border-sky-500/35 bg-sky-500/[0.07] px-3 py-2">
                   <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-sky-500/15 text-sky-300"><ReceiptText className="size-4" /></span>
                   <span className="min-w-0 flex-1 text-xs leading-tight">
-                    <span className="block font-semibold">Open order {shortNo(openHere.number)}{openHere.customer ? ` · ${openHere.customer}` : ""}</span>
-                    <span className="text-muted-foreground">{plural(openHere.items, "item")}{openHere.total != null ? ` · ${formatTZS(openHere.total)}` : ""} — the same customer? Add to it.</span>
+                    <span className="block font-semibold">{t("Open order {no}", { no: shortNo(openHere.number) })}{openHere.customer ? ` · ${openHere.customer}` : ""}</span>
+                    <span className="text-muted-foreground">{t.plural(openHere.items, "{n} item", "{n} items")}{openHere.total != null ? ` · ${formatTZS(openHere.total)}` : ""} — {t("the same customer? Add to it.")}</span>
                   </span>
-                  <button type="button" onClick={() => setJoinId(openHere.id)} className="shrink-0 rounded-lg bg-sky-500 px-2.5 py-1.5 text-[11px] font-semibold text-white hover:brightness-110">Add to it</button>
+                  <button type="button" onClick={() => setJoinId(openHere.id)} className="shrink-0 rounded-lg bg-sky-500 px-2.5 py-1.5 text-[11px] font-semibold text-white hover:brightness-110">{t("Add to it")}</button>
                 </motion.div>
               )}
               {openBill && (
                 <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="mt-2 flex items-center gap-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/[0.07] px-3 py-2">
                   <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"><ReceiptText className="size-4" /></span>
                   <span className="min-w-0 flex-1 text-xs leading-tight">
-                    <span className="block font-semibold">{openBill.orders ? `${openBill.label} has an open bill` : `${openBill.who ?? "A customer"} is seated at ${openBill.label}`}</span>
-                    <span className="text-muted-foreground">{openBill.orders ? `${plural(openBill.orders, "order")}${openBill.total != null ? ` · ${formatTZS(openBill.total)} so far` : ""} — this order adds to it` : "This order starts their table's bill"}</span>
+                    <span className="block font-semibold">{openBill.orders ? t("{place} has an open bill", { place: openBill.label }) : t("{who} is seated at {place}", { who: openBill.who ?? t("A customer"), place: openBill.label })}</span>
+                    <span className="text-muted-foreground">{openBill.orders ? `${t.plural(openBill.orders, "{n} order", "{n} orders")}${openBill.total != null ? ` · ${t("{amount} so far", { amount: formatTZS(openBill.total) })}` : ""} — ${t("this order adds to it")}` : t("This order starts their table's bill")}</span>
                   </span>
-                  {openBill.total != null && openBill.orderId && <Link href={`/staff/restaurant-bill?order=${openBill.orderId}`} className="shrink-0 rounded-lg bg-background px-2 py-1 text-[11px] font-semibold ring-1 ring-border hover:bg-muted">Bill</Link>}
+                  {openBill.total != null && openBill.orderId && <Link href={`/staff/restaurant-bill?order=${openBill.orderId}`} className="shrink-0 rounded-lg bg-background px-2 py-1 text-[11px] font-semibold ring-1 ring-border hover:bg-muted">{t("Bill")}</Link>}
                 </motion.div>
               )}
               {(hotelOnly || forStay) && !guest ? (
                 <p className="mt-2 flex items-start gap-2 rounded-xl bg-violet-500/[0.08] px-3 py-2 text-xs text-violet-800 ring-1 ring-inset ring-violet-500/25 dark:text-violet-200">
-                  <BedDouble className="mt-0.5 size-3.5 shrink-0" />{hotelOnly ? "Reception orders are for guests staying in the hotel — pick their room below. Anyone else orders at the restaurant." : "Room service goes to a guest staying in the hotel — pick their room below."}
+                  <BedDouble className="mt-0.5 size-3.5 shrink-0" />{hotelOnly ? t("Reception orders are for guests staying in the hotel — pick their room below. Anyone else orders at the restaurant.") : t("Room service goes to a guest staying in the hotel — pick their room below.")}
                 </p>
               ) : sameCustomer ? (
                 <div className="mt-2 flex items-center gap-2.5 rounded-xl border border-border/80 bg-background px-3 py-2">
                   <span className="grid size-8 shrink-0 place-items-center rounded-full bg-emerald-500/12 text-emerald-700 dark:text-emerald-300"><UserRound className="size-4" /></span>
                   <span className="min-w-0 flex-1 leading-tight">
-                    <span className="block truncate text-sm font-semibold">{tableCustomer.name ?? "The table's customer"}</span>
-                    <span className="text-[11px] text-muted-foreground">{tableCustomer.phone} · already at this table{tableStays.length ? ` · Room ${tableStays.map((x) => x.rooms).join(", ")}` : ""}</span>
+                    <span className="block truncate text-sm font-semibold">{tableCustomer.name ?? t("The table's customer")}</span>
+                    <span className="text-[11px] text-muted-foreground">{tableCustomer.phone} · {t("already at this table")}{tableStays.length ? ` · ${t("Room {room}", { room: tableStays.map((x) => x.rooms).join(", ") })}` : ""}</span>
                   </span>
-                  <button type="button" onClick={() => setOtherAt(location?.id ?? null)} className="shrink-0 rounded-lg px-2 py-1 text-[11px] font-semibold text-muted-foreground ring-1 ring-border hover:bg-muted hover:text-foreground">Different customer</button>
+                  <button type="button" onClick={() => setOtherAt(location?.id ?? null)} className="shrink-0 rounded-lg px-2 py-1 text-[11px] font-semibold text-muted-foreground ring-1 ring-border hover:bg-muted hover:text-foreground">{t("Different customer")}</button>
                 </div>
               ) : guestHasPhone ? (
-                <p className="mt-2 flex items-center gap-1.5 rounded-xl bg-emerald-500/[0.07] px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300"><Phone className="size-3.5" />Updates go to {guest?.name.split(" ")[0]} · the phone on their booking</p>
+                <p className="mt-2 flex items-center gap-1.5 rounded-xl bg-emerald-500/[0.07] px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300"><Phone className="size-3.5" />{t("Updates go to {name} · the phone on their booking", { name: guest?.name.split(" ")[0] })}</p>
               ) : (
                 <>
                   {/* A customer we already have: search and tap — the phone and name fill in. */}
                   {!guest && <CustomerFinder className="mt-2" onPick={(c) => { setChosen({ id: c.id, name: c.name }); if (c.phone) setPhone(c.phone); setName(c.name); }} />}
                   <div className="mt-2 grid grid-cols-2 gap-2">
-                    <input value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" inputMode="tel" required placeholder={guest ? `${guest.name.split(" ")[0]}'s phone (required)` : "Phone (required)"}
+                    <input value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" inputMode="tel" required placeholder={guest ? t("{name}'s phone (required)", { name: guest.name.split(" ")[0] }) : t("Phone (required)")}
                       className={cn(field, guest && "col-span-2", phone && !validPhone(phone) && "border-rose-500/60")} />
-                    {!guest && <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Customer name" className={field} />}
+                    {!guest && <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("Customer name")} className={field} />}
                   </div>
                   {!guest && <KnownCustomerNote phone={phone} lookup={known} className="mt-2" />}
-                  {tableCustomer && <button type="button" onClick={() => setOtherAt(null)} className="mt-1.5 text-[11px] font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">Same customer as the table ({tableCustomer.name ?? tableCustomer.phone})</button>}
+                  {tableCustomer && <button type="button" onClick={() => setOtherAt(null)} className="mt-1.5 text-[11px] font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">{t("Same customer as the table ({who})", { who: tableCustomer.name ?? tableCustomer.phone })}</button>}
                 </>
               )}
               {(needsGuest || (type === "DINE_IN" && verify)) && (
@@ -434,8 +439,8 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
                   <StayingGuestPicker guests={guests} value={guestId || null} onChange={(id) => { setGuestId(id); if (forStay && id !== guestId) { setPhone(""); setName(""); setChosen(null); } }} ownIds={ownIds} required={needsGuest} />
                   {guest && otherGuestsRoom && (
                     <div className="rounded-xl border border-amber-500/40 bg-amber-500/[0.06] p-2.5">
-                      <p className="text-[11px] font-medium text-amber-700 dark:text-amber-300">This is not the customer&apos;s own room — say why it goes on it.</p>
-                      <input value={roomReason} onChange={(e) => setRoomReason(e.target.value)} placeholder="Why? e.g. the guest in this room pays for their friend" className="mt-1 h-9 w-full rounded-lg border border-border bg-transparent px-2 text-sm outline-none" />
+                      <p className="text-[11px] font-medium text-amber-700 dark:text-amber-300">{t("This is not the customer's own room — say why it goes on it.")}</p>
+                      <input value={roomReason} onChange={(e) => setRoomReason(e.target.value)} placeholder={t("Why? e.g. the guest in this room pays for their friend")} className="mt-1 h-9 w-full rounded-lg border border-border bg-transparent px-2 text-sm outline-none" />
                     </div>
                   )}
                 </div>
@@ -445,14 +450,14 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
 
             {/* The shared Restaurant Counter: who serves this order — it is theirs, the kitchen sees it with their name. */}
             {device && (
-              <Block icon={HandPlatter} title="Waiter">
+              <Block icon={HandPlatter} title={t("Waiter")}>
                 <WaiterChips value={waiterId} onChange={setWaiterId} />
               </Block>
             )}
 
-            <Block icon={ReceiptText} title="Order details" action={lines.length > 0 && <button type="button" onClick={() => setCart({})} className="text-xs font-medium text-muted-foreground hover:text-rose-600">Clear</button>}>
+            <Block icon={ReceiptText} title={t("Order details")} action={lines.length > 0 && <button type="button" onClick={() => setCart({})} className="text-xs font-medium text-muted-foreground hover:text-rose-600">{t("Clear")}</button>}>
               {lines.length === 0 ? (
-                <p className="rounded-2xl border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">Tap a dish or drink to add it</p>
+                <p className="rounded-2xl border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">{t("Tap a dish or drink to add it")}</p>
               ) : (
                 <ul className="space-y-2">
                   {lines.map((l) => (
@@ -462,26 +467,26 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
                         <img src={l.item.image} alt="" className="size-11 shrink-0 rounded-xl object-cover" />
                       ) : <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-muted">{l.item.type === "FOOD" ? <UtensilsCrossed className="size-4 text-muted-foreground" /> : <Wine className="size-4 text-muted-foreground" />}</span>}
                       <span className="min-w-0 flex-1 leading-tight">
-                        <span className="block truncate text-sm font-medium">{l.item.name}</span>
+                        <span className="block truncate text-sm font-medium">{t(l.item.name)}</span>
                         <span className="text-[11px] tabular-nums text-muted-foreground">{formatTZS(l.item.price * l.qty)}</span>
                       </span>
                       <Stepper qty={l.qty} onMinus={() => add(l.item.id, -1)} onPlus={() => add(l.item.id, 1)} />
-                      <button type="button" aria-label={`Remove ${l.item.name}`} onClick={() => add(l.item.id, -99)} className="grid size-7 place-items-center rounded-lg text-muted-foreground hover:bg-background hover:text-rose-600"><Trash2 className="size-3.5" /></button>
+                      <button type="button" aria-label={t("Remove {dish}", { dish: t(l.item.name) })} onClick={() => add(l.item.id, -99)} className="grid size-7 place-items-center rounded-lg text-muted-foreground hover:bg-background hover:text-rose-600"><Trash2 className="size-3.5" /></button>
                     </li>
                   ))}
                 </ul>
               )}
               <div className="mt-2 flex items-center gap-2 rounded-xl border border-border bg-background px-3">
                 <NotebookPen className="size-3.5 shrink-0 text-muted-foreground" />
-                <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Note for the kitchen — no onions, extra spicy…" className="h-9 w-full bg-transparent text-xs outline-none" />
+                <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t("Note for the kitchen — no onions, extra spicy…")} className="h-9 w-full bg-transparent text-xs outline-none" />
               </div>
             </Block>
 
-            {!joining && <Block icon={CircleDollarSign} title="Payment">
+            {!joining && <Block icon={CircleDollarSign} title={t("Payment")}>
               <div className={cn("grid gap-1 rounded-2xl bg-muted/70 p-1", settlements.length === 3 ? "grid-cols-3" : settlements.length === 2 ? "grid-cols-2" : "grid-cols-1")}>
                 {settlements.map(([v, label]) => (
                   <button key={v} type="button" onClick={() => setSettlement(v)} aria-pressed={settlement === v}
-                    className={cn("rounded-xl py-2 text-sm font-medium transition", settlement === v ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground")}>{label}</button>
+                    className={cn("rounded-xl py-2 text-sm font-medium transition", settlement === v ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground")}>{t(label)}</button>
                 ))}
               </div>
               <p className={cn("mt-2 rounded-xl px-3 py-2 text-xs", settlement === "ROOM" && !(roomByStay && !ownStays.length) ? "bg-violet-500/10 text-violet-800 dark:text-violet-200" : settlement !== "PAY_NOW" ? "bg-rose-500/10 text-rose-800 dark:text-rose-200" : "bg-emerald-500/10 text-emerald-800 dark:text-emerald-200")}>{settleNote}</p>
@@ -495,8 +500,8 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
                         className={cn("flex items-center gap-2.5 rounded-xl border px-2.5 py-2 text-left leading-tight transition", on ? "border-violet-500 bg-violet-500/10" : "border-border hover:bg-muted")}>
                         <span className={cn("grid size-8 shrink-0 place-items-center rounded-lg", on ? "bg-violet-500 text-white" : "bg-violet-500/12 text-violet-700 dark:text-violet-300")}><BedDouble className="size-4" /></span>
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-semibold">{settlement === "ROOM" ? "Charge to" : "Room service to"} Room {x.rooms}</span>
-                          <span className="block truncate text-[11px] text-muted-foreground">Customer: {x.guestName} · Room {x.rooms}{x.foodPayer ? ` · ${x.foodPayer}` : ""}</span>
+                          <span className="block truncate text-sm font-semibold">{settlement === "ROOM" ? t("Charge to Room {room}", { room: x.rooms }) : t("Room service to Room {room}", { room: x.rooms })}</span>
+                          <span className="block truncate text-[11px] text-muted-foreground">{t("Customer: {name}", { name: x.guestName })} · {t("Room {room}", { room: x.rooms })}{x.foodPayer ? ` · ${x.foodPayer}` : ""}</span>
                         </span>
                         {on && <Check className="size-3.5 shrink-0 text-violet-600 dark:text-violet-300" />}
                       </button>
@@ -510,27 +515,27 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
                     <div className={cn("rounded-2xl border p-3 transition", viaPhone ? "border-sky-500/60 bg-sky-500/[0.08]" : "border-border")}>
                       <button type="button" onClick={() => { pickedAccount.current = true; setAccountId(PROMPT); }} aria-pressed={viaPhone} className="flex w-full items-center gap-2.5 text-left">
                         <span className={cn("grid size-9 shrink-0 place-items-center rounded-xl", viaPhone ? "bg-sky-600 text-white" : "bg-sky-500/12 text-sky-600 dark:text-sky-300")}><Smartphone className="size-4" /></span>
-                        <span className="min-w-0 flex-1 leading-tight"><span className="block text-sm font-semibold">Mobile money</span><NetworkMarks label={null} compact className="mt-1" /></span>
+                        <span className="min-w-0 flex-1 leading-tight"><span className="block text-sm font-semibold">{t("Mobile money")}</span><NetworkMarks label={null} compact className="mt-1" /></span>
                         {viaPhone && <Check className="size-4 shrink-0 text-sky-600 dark:text-sky-300" />}
                       </button>
                       {viaPhone && (
-                        <input value={promptPhone ?? (sameCustomer ? tableCustomer?.phone ?? "" : phone)} onChange={(e) => setPromptPhone(e.target.value)} type="tel" inputMode="tel" aria-label="Customer's phone number"
-                          placeholder="Phone number, e.g. 0712 345 678" className={cn(field, "mt-2.5 h-10 tabular-nums")} />
+                        <input value={promptPhone ?? (sameCustomer ? tableCustomer?.phone ?? "" : phone)} onChange={(e) => setPromptPhone(e.target.value)} type="tel" inputMode="tel" aria-label={t("Customer's phone number")}
+                          placeholder={t("Phone number, e.g. 0712 345 678")} className={cn(field, "mt-2.5 h-10 tabular-nums")} />
                       )}
                     </div>
                   )}
-                  {mobileOk && <p className="pt-0.5 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Other payment methods</p>}
+                  {mobileOk && <p className="pt-0.5 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t("Other payment methods")}</p>}
                   <div className="grid grid-cols-2 gap-1.5">
                     {accounts.map((a) => (
                       <button key={a.id} type="button" onClick={() => { pickedAccount.current = true; setAccountId(a.id); }} aria-pressed={accountId === a.id}
                         className={cn("flex items-center justify-between rounded-xl border px-2.5 py-1.5 text-left text-xs leading-tight", accountId === a.id ? "border-emerald-500 bg-emerald-500/10" : "border-border hover:bg-muted")}>
-                        <span className="min-w-0"><span className="block truncate font-medium">{a.name}</span><span className="font-mono text-[10px] text-muted-foreground">{a.number ?? "—"}</span></span>
+                        <span className="min-w-0"><span className="block truncate font-medium">{t(a.name)}</span><span className="font-mono text-[10px] text-muted-foreground">{a.number ?? "—"}</span></span>
                         {accountId === a.id && <Check className="size-3.5 shrink-0 text-emerald-600" />}
                       </button>
                     ))}
                   </div>
                   {accountDetail(accounts.find((a) => a.id === accountId)) && <p className="truncate text-[11px] text-muted-foreground">{accountDetail(accounts.find((a) => a.id === accountId))}</p>}
-                  {!viaPhone && <input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Reference (M-Pesa code / card slip) — optional" className={cn(field, "h-9 font-mono text-xs")} />}
+                  {!viaPhone && <input value={reference} onChange={(e) => setReference(e.target.value)} placeholder={t("Reference (M-Pesa code / card slip) — optional")} className={cn(field, "h-9 font-mono text-xs")} />}
                 </div>
               )}
             </Block>}
@@ -538,17 +543,17 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
 
           <footer className="space-y-3 border-t border-border/70 bg-muted/30 p-4">
             <dl className="space-y-1 text-sm">
-              {food > 0 && <div className="flex justify-between text-muted-foreground"><dt>Food</dt><dd className="tabular-nums">{formatTZS(food)}</dd></div>}
-              {drinks > 0 && <div className="flex justify-between text-muted-foreground"><dt>Drinks</dt><dd className="tabular-nums">{formatTZS(drinks)}</dd></div>}
-              {serviceFee > 0 && <div className="flex justify-between text-muted-foreground"><dt>Room service fee</dt><dd className="tabular-nums">{formatTZS(serviceFee)}</dd></div>}
-              <div className="flex items-end justify-between pt-1"><dt className="text-sm font-semibold">Total</dt><dd className="text-2xl font-bold tabular-nums">{formatTZS(total)}</dd></div>
+              {food > 0 && <div className="flex justify-between text-muted-foreground"><dt>{t("Food")}</dt><dd className="tabular-nums">{formatTZS(food)}</dd></div>}
+              {drinks > 0 && <div className="flex justify-between text-muted-foreground"><dt>{t("Drinks")}</dt><dd className="tabular-nums">{formatTZS(drinks)}</dd></div>}
+              {serviceFee > 0 && <div className="flex justify-between text-muted-foreground"><dt>{t("Room service fee")}</dt><dd className="tabular-nums">{formatTZS(serviceFee)}</dd></div>}
+              <div className="flex items-end justify-between pt-1"><dt className="text-sm font-semibold">{t("Total")}</dt><dd className="text-2xl font-bold tabular-nums">{formatTZS(total)}</dd></div>
             </dl>
             <motion.button type="button" whileTap={{ scale: 0.98 }} disabled={!ready || pending} onClick={() => void send()}
               className={cn("flex h-12 w-full items-center justify-center gap-2 rounded-2xl text-[15px] font-semibold transition [&_svg]:size-4",
                 ready ? "bg-linear-to-b from-[oklch(0.87_0.085_86)] to-[oklch(0.7_0.12_76)] text-[oklch(0.2_0.03_60)] shadow-[0_10px_24px_-12px_oklch(0.7_0.12_80)] ring-1 ring-inset ring-white/30 hover:brightness-105" : "bg-muted text-muted-foreground")}>
-              {pending ? <Loader2 className="animate-spin" /> : joining ? <Plus /> : <ChefHat />}{lines.length ? joining ? `Add to ${shortNo(joining.number)} · ${formatTZS(total)}` : `Send to kitchen · ${formatTZS(total)}` : "Add items to the order"}
+              {pending ? <Loader2 className="animate-spin" /> : joining ? <Plus /> : <ChefHat />}{lines.length ? joining ? t("Add to {order} · {total}", { order: shortNo(joining.number), total: formatTZS(total) }) : t("Send to kitchen · {total}", { total: formatTZS(total) }) : t("Add items to the order")}
             </motion.button>
-            {lines.length > 0 && !ready && <p className="text-center text-[11px] text-muted-foreground">{needsGuest && !guest ? (hotelOnly ? "Pick the hotel guest's room first — reception orders are for guests staying here." : "Choose the guest's room first.") : roomByStay && !stay ? (ownStays.length ? (settlement === "ROOM" ? "Tap the customer's room to charge it." : "Tap the customer's room — the food goes there.") : noRoom) : !phoneOk ? "Add the customer's phone — every order needs one." : viaPhone ? "Enter the customer's phone number to send the payment request." : "Choose the account the money goes into."}</p>}
+            {lines.length > 0 && !ready && <p className="text-center text-[11px] text-muted-foreground">{needsGuest && !guest ? (hotelOnly ? t("Pick the hotel guest's room first — reception orders are for guests staying here.") : t("Choose the guest's room first.")) : roomByStay && !stay ? (ownStays.length ? (settlement === "ROOM" ? t("Tap the customer's room to charge it.") : t("Tap the customer's room — the food goes there.")) : noRoom) : !phoneOk ? t("Add the customer's phone — every order needs one.") : viaPhone ? t("Enter the customer's phone number to send the payment request.") : t("Choose the account the money goes into.")}</p>}
           </footer>
         </aside>
       </div>
@@ -560,24 +565,24 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
             <div className="space-y-4">
               <DialogHeader eyebrow={sent.place} tone="gold"
                 icon={<motion.span initial={{ scale: 0.3, rotate: -20, opacity: 0 }} animate={{ scale: 1, rotate: 0, opacity: 1 }} transition={{ type: "spring", stiffness: 380, damping: 18 }} className="grid place-items-center"><Check strokeWidth={3} /></motion.span>}>
-                <DialogTitle>{sent.added ? `Added to order #${sent.number.replace(/^ORD-\d{4}-0*/, "")}` : `Order #${sent.number.replace(/^ORD-\d{4}-0*/, "")} sent to the kitchen`}</DialogTitle>
+                <DialogTitle>{sent.added ? t("Added to order #{no}", { no: sent.number.replace(/^ORD-\d{4}-0*/, "") }) : t("Order #{no} sent to the kitchen", { no: sent.number.replace(/^ORD-\d{4}-0*/, "") })}</DialogTitle>
               </DialogHeader>
               <ul className="divide-y divide-dashed divide-border rounded-2xl border border-border/70 bg-muted/30 px-3 text-sm">
                 {sent.lines.map((l) => (
-                  <li key={l.name} className="flex justify-between gap-2 py-1.5"><span className="truncate"><span className="font-semibold tabular-nums">{l.qty}×</span> {l.name}</span><span className="shrink-0 tabular-nums text-muted-foreground">{(l.qty * l.price).toLocaleString("en-US")}</span></li>
+                  <li key={l.name} className="flex justify-between gap-2 py-1.5"><span className="truncate"><span className="font-semibold tabular-nums">{l.qty}×</span> {t(l.name)}</span><span className="shrink-0 tabular-nums text-muted-foreground">{(l.qty * l.price).toLocaleString("en-US")}</span></li>
                 ))}
-                <li className="flex justify-between py-2 font-semibold"><span>{sent.added ? "Order total now" : "Total"}</span><span className="tabular-nums">{formatTZS(sent.total)}</span></li>
+                <li className="flex justify-between py-2 font-semibold"><span>{sent.added ? t("Order total now") : t("Total")}</span><span className="tabular-nums">{formatTZS(sent.total)}</span></li>
               </ul>
               {sent.settlement === "PROMPT" ? (
                 <>
-                  {sent.promptError && <p className="rounded-xl bg-rose-500/10 px-3 py-2 text-xs text-rose-700 dark:text-rose-300">The payment request was not sent: {sent.promptError} Send it again below.</p>}
+                  {sent.promptError && <p className="rounded-xl bg-rose-500/10 px-3 py-2 text-xs text-rose-700 dark:text-rose-300">{t("The payment request was not sent: {error} Send it again below.", { error: sent.promptError })}</p>}
                   <SendToPhone target={{ kind: "orders", orderIds: [sent.id] }} amount={sent.total} phone={sent.promptPhone ?? ""} resume={sent.prompt ?? null} />
                 </>
-              ) : <p className="text-center text-xs text-muted-foreground">{sent.added ? "The kitchen has the new items — the bill shows everything." : sent.settlement === "ROOM" ? "On the room bill — paid at check-out." : sent.settlement === "PAY_NOW" ? "Paid." : "Not paid yet — print the bill for the customer when they are ready to pay."}</p>}
+              ) : <p className="text-center text-xs text-muted-foreground">{sent.added ? t("The kitchen has the new items — the bill shows everything.") : sent.settlement === "ROOM" ? t("On the room bill — paid at check-out.") : sent.settlement === "PAY_NOW" ? t("Paid.") : t("Not paid yet — print the bill for the customer when they are ready to pay.")}</p>}
               <div className="grid gap-2">
-                <Link href={`/staff/restaurant-bill?order=${sent.id}`} className="flex h-11 items-center justify-center gap-2 rounded-xl bg-linear-to-b from-[oklch(0.87_0.085_86)] to-[oklch(0.7_0.12_76)] text-sm font-semibold text-[oklch(0.2_0.03_60)] ring-1 ring-inset ring-white/30 hover:brightness-105"><Printer className="size-4" />Print / download bill</Link>
-                {sent.again && <Button variant="outline" className="h-11" onClick={() => setSent(null)}><Plus />Add more for {sent.place}</Button>}
-                <Button variant="ghost" className="h-10" onClick={() => { reset(); setSent(null); }}>New order</Button>
+                <Link href={`/staff/restaurant-bill?order=${sent.id}`} className="flex h-11 items-center justify-center gap-2 rounded-xl bg-linear-to-b from-[oklch(0.87_0.085_86)] to-[oklch(0.7_0.12_76)] text-sm font-semibold text-[oklch(0.2_0.03_60)] ring-1 ring-inset ring-white/30 hover:brightness-105"><Printer className="size-4" />{t("Print / download bill")}</Link>
+                {sent.again && <Button variant="outline" className="h-11" onClick={() => setSent(null)}><Plus />{t("Add more for {place}", { place: sent.place })}</Button>}
+                <Button variant="ghost" className="h-10" onClick={() => { reset(); setSent(null); }}>{t("New order")}</Button>
               </div>
             </div>
           )}
@@ -587,7 +592,7 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
       {/* Phone: the ticket is below the menu — jump to it. */}
       {count > 0 && (
         <a href="#pos-ticket" className="fixed inset-x-3 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-30 flex h-14 items-center justify-between rounded-2xl bg-foreground px-4 text-background shadow-2xl lg:hidden">
-          <span className="flex items-center gap-2 text-sm font-semibold"><span className="grid size-7 place-items-center rounded-full bg-amber-500 text-xs font-bold text-black">{count}</span>Review order</span>
+          <span className="flex items-center gap-2 text-sm font-semibold"><span className="grid size-7 place-items-center rounded-full bg-amber-500 text-xs font-bold text-black">{count}</span>{t("Review order")}</span>
           <span className="font-bold tabular-nums">{formatTZS(total)}</span>
         </a>
       )}
@@ -608,12 +613,13 @@ function Block({ icon: Icon, title, action, children }: { icon: typeof UserRound
 }
 
 function Stepper({ qty, onMinus, onPlus, small }: { qty: number; onMinus: () => void; onPlus: () => void; small?: boolean }) {
+  const t = useT();
   const btn = small ? "size-6" : "size-7";
   return (
     <span className="inline-flex shrink-0 items-center rounded-full border border-border bg-background p-0.5">
-      <button type="button" onClick={onMinus} aria-label="One less" className={cn("grid place-items-center rounded-full hover:bg-muted", btn)}><Minus className="size-3.5" /></button>
+      <button type="button" onClick={onMinus} aria-label={t("One less")} className={cn("grid place-items-center rounded-full hover:bg-muted", btn)}><Minus className="size-3.5" /></button>
       <span className={cn("text-center text-sm font-bold tabular-nums", small ? "w-5" : "w-6")}>{qty}</span>
-      <button type="button" onClick={onPlus} aria-label="One more" className={cn("grid place-items-center rounded-full bg-amber-500 text-black hover:bg-amber-400", btn)}><Plus className="size-3.5" /></button>
+      <button type="button" onClick={onPlus} aria-label={t("One more")} className={cn("grid place-items-center rounded-full bg-amber-500 text-black hover:bg-amber-400", btn)}><Plus className="size-3.5" /></button>
     </span>
   );
 }
@@ -626,34 +632,34 @@ function quickStep(o: PortalOrder, perms: PortalPerms, role: PortalRole): { stat
   const prep = perms.cook || (o.items.length > 0 && o.items.every((i) => i.type === "DRINK") && perms.bar);
   // Paid online: accepted only once the Counter has confirmed the money is in the account.
   if (o.status === "PENDING" && o.awaitsPayment) return perms.pay ? "open" : null;
-  if (o.status === "PENDING" && prep) return { status: "PREPARING", label: "Accept", icon: <ChefHat /> };
+  if (o.status === "PENDING" && prep) return { status: "PREPARING", label: msg("Accept"), icon: <ChefHat /> };
   // A waiter on their own phone: accepted drinks they bring themselves (Served); food is with the kitchen.
   const waiterPhone = perms.serve && !perms.device && !perms.watch && !perms.pay && role !== "cook";
   if ((o.status === "PREPARING" || o.status === "ACCEPTED") && waiterPhone) {
     const drinks = o.items.length > 0 && o.items.every((i) => i.type === "DRINK");
-    return drinks ? ((o.due ?? 0) > 0 ? "open" : { status: "DELIVERED", label: "Served", icon: <CircleCheck /> }) : null;
+    return drinks ? ((o.due ?? 0) > 0 ? "open" : { status: "DELIVERED", label: msg("Served"), icon: <CircleCheck /> }) : null;
   }
-  if ((o.status === "PREPARING" || o.status === "ACCEPTED") && prep) return allPrepared(o) ? { status: "READY", label: "Ready", icon: <Check /> } : "open";
-  if (o.status === "READY" && perms.serve) return { status: "OUT_FOR_DELIVERY", label: "Serve", icon: <HandPlatter /> };
-  if (o.status === "OUT_FOR_DELIVERY" && perms.serve) return due ? "open" : { status: "DELIVERED", label: "Served", icon: <CircleCheck /> };
+  if ((o.status === "PREPARING" || o.status === "ACCEPTED") && prep) return allPrepared(o) ? { status: "READY", label: msg("Ready"), icon: <Check /> } : "open";
+  if (o.status === "READY" && perms.serve) return { status: "OUT_FOR_DELIVERY", label: msg("Serve"), icon: <HandPlatter /> };
+  if (o.status === "OUT_FOR_DELIVERY" && perms.serve) return due ? "open" : { status: "DELIVERED", label: msg("Served"), icon: <CircleCheck /> };
   if (o.status === "DELIVERED" && perms.serve) return "open";
   return null;
 }
-const DESK_LABEL = (o: PortalOrder) => (o.update && !o.told ? "Text customer" : (o.due ?? 0) > 0 ? (o.awaitsPayment ? "Confirm online payment" : "Take payment") : "Confirm payment");
+const DESK_LABEL = (o: PortalOrder) => (o.update && !o.told ? msg("Text customer") : (o.due ?? 0) > 0 ? (o.awaitsPayment ? msg("Confirm online payment") : msg("Take payment")) : msg("Confirm payment"));
 /** The strip button that opens the order: payment words only for those who record payments (the Counter) — never a waiter. */
 const openLabel = (o: PortalOrder, perms: PortalPerms) => {
   const due = (o.due ?? 0) > 0;
-  if (o.status === "PENDING" && o.awaitsPayment && perms.pay) return "Check payment";
+  if (o.status === "PENDING" && o.awaitsPayment && perms.pay) return msg("Check payment");
   // A waiter's accepted drinks: they bring them (Served asks how it is paid).
-  if ((o.status === "PREPARING" || o.status === "ACCEPTED") && perms.serve && !perms.device && !perms.watch && !perms.pay) return "Served";
-  if (o.status === "PREPARING") return "Tick items";
-  if (o.status === "OUT_FOR_DELIVERY") return due && perms.pay && !o.awaitsPayment ? "Mark served & record payment" : "Mark served";
-  if (o.status === "DELIVERED") return !due || !perms.pay ? "Open the order" : o.awaitsPayment ? "Confirm online payment" : "Take payment";
-  return "Open";
+  if ((o.status === "PREPARING" || o.status === "ACCEPTED") && perms.serve && !perms.device && !perms.watch && !perms.pay) return msg("Served");
+  if (o.status === "PREPARING") return msg("Tick items");
+  if (o.status === "OUT_FOR_DELIVERY") return due && perms.pay && !o.awaitsPayment ? msg("Mark served & record payment") : msg("Mark served");
+  if (o.status === "DELIVERED") return !due || !perms.pay ? msg("Open the order") : o.awaitsPayment ? msg("Confirm online payment") : msg("Take payment");
+  return msg("Open");
 };
 const PILL: Record<string, { label: string; dot: string }> = {
-  PENDING: { label: "New", dot: "bg-sky-500" }, ACCEPTED: { label: "Accepted", dot: "bg-amber-500" }, PREPARING: { label: "Preparing", dot: "bg-amber-500" },
-  READY: { label: "Ready to serve", dot: "bg-emerald-500" }, OUT_FOR_DELIVERY: { label: "Serving", dot: "bg-violet-500" }, DELIVERED: { label: "Served · to pay", dot: "bg-rose-500" },
+  PENDING: { label: msg("New"), dot: "bg-sky-500" }, ACCEPTED: { label: msg("Accepted"), dot: "bg-amber-500" }, PREPARING: { label: msg("Preparing"), dot: "bg-amber-500" },
+  READY: { label: msg("Ready to serve"), dot: "bg-emerald-500" }, OUT_FOR_DELIVERY: { label: msg("Serving"), dot: "bg-violet-500" }, DELIVERED: { label: msg("Served · to pay"), dot: "bg-rose-500" },
 };
 /** Each person sees their own work first: new orders for the Mpishi, ready ones for waiters. */
 const RANK: Record<PortalRole, string[]> = {
@@ -665,27 +671,28 @@ const RANK: Record<PortalRole, string[]> = {
 
 /** Open orders on a line: one tap does your next step; tap the card for everything you can do. */
 function OrderLine({ orders, perms, role, meId, accounts, rooms }: { orders: PortalOrder[]; perms: PortalPerms; role: PortalRole; meId: string | null; accounts: PayAccount[]; rooms: { id: string; label: string }[] }) {
+  const t = useT();
   const [openId, setOpenId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
-  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(t); }, []);
+  useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(timer); }, []);
   const open = orders.find((x) => x.id === openId) ?? null;
   const n = (s: string[]) => orders.filter((x) => s.includes(x.status)).length;
   const ranked = [...orders].sort((a, b) => RANK[role].indexOf(a.status) - RANK[role].indexOf(b.status) || a.createdAt.localeCompare(b.createdAt));
   return (
     <section className="rounded-2xl border border-border/60 bg-muted/30 p-2.5 dark:bg-white/[0.02]">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-1.5 pb-2.5">
-        <p className="text-[13px] font-semibold">Open orders <span className="ml-1 font-normal text-muted-foreground">{orders.length}</span></p>
+        <p className="text-[13px] font-semibold">{t("Open orders")} <span className="ml-1 font-normal text-muted-foreground">{orders.length}</span></p>
         <div className="ml-auto flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
-          {([["New", ["PENDING"], "bg-sky-500"], ["Preparing", ["ACCEPTED", "PREPARING"], "bg-amber-500"], ["Ready", ["READY"], "bg-emerald-500"], ["Serving", ["OUT_FOR_DELIVERY", "DELIVERED"], "bg-violet-500"]] as const).map(([label, st, dot]) => (
-            <span key={label} className="inline-flex items-center gap-1.5"><span className={cn("size-1.5 rounded-full", dot)} /><strong className="font-semibold tabular-nums text-foreground">{n([...st])}</strong>{label}</span>
+          {([[msg("New"), ["PENDING"], "bg-sky-500"], [msg("Preparing"), ["ACCEPTED", "PREPARING"], "bg-amber-500"], [msg("Ready"), ["READY"], "bg-emerald-500"], [msg("Serving"), ["OUT_FOR_DELIVERY", "DELIVERED"], "bg-violet-500"]] as const).map(([label, st, dot]) => (
+            <span key={label} className="inline-flex items-center gap-1.5"><span className={cn("size-1.5 rounded-full", dot)} /><strong className="font-semibold tabular-nums text-foreground">{n([...st])}</strong>{t(label)}</span>
           ))}
-          <Link href="/staff/restaurant" className="font-semibold text-[oklch(0.55_0.11_75)] hover:underline dark:text-[oklch(0.8_0.11_82)]">Full board →</Link>
+          <Link href="/staff/restaurant" className="font-semibold text-[oklch(0.55_0.11_75)] hover:underline dark:text-[oklch(0.8_0.11_82)]">{t("Full board →")}</Link>
         </div>
       </header>
       <MotionConfig reducedMotion="user">
         <LayoutGroup>
           <div className="-mx-0.5 flex snap-x gap-3 overflow-x-auto px-0.5 pb-2 pt-1 [scrollbar-width:thin]">
-            {ranked.length === 0 && <p className="w-full py-6 text-center text-sm text-muted-foreground">No open orders — new ones appear here by themselves.</p>}
+            {ranked.length === 0 && <p className="w-full py-6 text-center text-sm text-muted-foreground">{t("No open orders — new ones appear here by themselves.")}</p>}
             <AnimatePresence initial mode="popLayout">
               {ranked.map((o, i) => <LineCard key={o.id} index={i} o={o} perms={perms} role={role} now={now} onOpen={() => setOpenId(o.id)} />)}
             </AnimatePresence>
@@ -705,6 +712,7 @@ const STAGE_GLOW = ["bg-sky-500/20", "bg-amber-500/20", "bg-emerald-500/20", "bg
 
 function LineCard({ o, index, perms, role, now, onOpen }: { o: PortalOrder; index: number; perms: PortalPerms; role: PortalRole; now: number; onOpen: () => void }) {
   const router = useRouter();
+  const t = useT();
   const [pending, start] = useTransition();
   const step = quickStep(o, perms, role);
   const accent = ACCENT[o.status] ?? ACCENT.PENDING;
@@ -734,7 +742,7 @@ function LineCard({ o, index, perms, role, now, onOpen }: { o: PortalOrder; inde
       <span aria-hidden className={cn("pointer-events-none absolute -right-10 -top-12 size-28 rounded-full opacity-60 blur-2xl transition-opacity group-hover:opacity-90", STAGE_GLOW[stage])} />
 
       {/* Progress: New → Preparing → Ready → Out */}
-      <div className="relative mb-3 flex gap-1" aria-label={`Step ${stage + 1} of 4: ${pill.label}`}>
+      <div className="relative mb-3 flex gap-1" aria-label={t("Step {n} of 4: {label}", { n: stage + 1, label: t(pill.label) })}>
         {STAGE_COLOR.map((c, i) => (
           <span key={c} className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
             <motion.span className={cn("block h-full rounded-full", c)} initial={false}
@@ -750,7 +758,7 @@ function LineCard({ o, index, perms, role, now, onOpen }: { o: PortalOrder; inde
             <span className="truncate text-[15px] font-semibold tracking-tight">{o.place}</span>
             <span suppressHydrationWarning className={cn("shrink-0 text-[11px] font-medium tabular-nums", !o.readyAt && waited >= 25 ? "text-rose-600 dark:text-rose-400" : !o.readyAt && waited >= 15 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground")}>{since(waited)}</span>
           </span>
-          <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">{o.customer ?? "Walk-in"} · {shortNo(o.number)}</span>
+          <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">{o.customer ?? t("Walk-in")} · {shortNo(o.number)}</span>
         </span>
       </button>
 
@@ -763,8 +771,8 @@ function LineCard({ o, index, perms, role, now, onOpen }: { o: PortalOrder; inde
           )) : <span className="grid size-7 place-items-center rounded-full bg-card text-muted-foreground ring-2 ring-card">{o.items.every((i) => i.type === "DRINK") ? <Wine className="size-3.5" /> : <UtensilsCrossed className="size-3.5" />}</span>}
         </span>
         <span className="min-w-0 flex-1 truncate text-xs">
-          <span className="font-semibold">{count} item{count === 1 ? "" : "s"}</span>
-          <span className="text-muted-foreground"> · {o.items.map((i) => `${i.quantity > 1 ? `${i.quantity}× ` : ""}${i.name}`).join(", ")}</span>
+          <span className="font-semibold">{t.plural(count, "{n} item", "{n} items")}</span>
+          <span className="text-muted-foreground"> · {o.items.map((i) => `${i.quantity > 1 ? `${i.quantity}× ` : ""}${orderItemName(i, t)}`).join(", ")}</span>
         </span>
       </button>
 
@@ -774,9 +782,9 @@ function LineCard({ o, index, perms, role, now, onOpen }: { o: PortalOrder; inde
             {o.status === "PENDING" && <span className={cn("absolute inline-flex size-full animate-ping rounded-full opacity-70", pill.dot)} />}
             <span className={cn("relative inline-flex size-1.5 rounded-full", pill.dot)} />
           </span>
-          {o.status === "DELIVERED" && o.awaitsPayment ? "Served · paid online" : pill.label}{o.status === "PREPARING" ? ` · ${o.items.filter((i) => i.prepared).length}/${o.items.length}` : ""}
+          {o.status === "DELIVERED" && o.awaitsPayment ? t("Served · paid online") : t(pill.label)}{o.status === "PREPARING" ? ` · ${o.items.filter((i) => i.prepared).length}/${o.items.length}` : ""}
         </span>
-        {pay && <span className={cn("truncate rounded-full px-2 py-0.5 ring-1 ring-inset", pay.tone)}>{pay.text}</span>}
+        {pay && <span className={cn("truncate rounded-full px-2 py-0.5 ring-1 ring-inset", pay.tone)}>{t(pay.text)}</span>}
       </div>
 
       <div className="relative mt-3 flex items-center gap-1.5">
@@ -785,15 +793,15 @@ function LineCard({ o, index, perms, role, now, onOpen }: { o: PortalOrder; inde
             className="relative flex h-8 flex-1 items-center justify-center gap-1.5 overflow-hidden rounded-lg bg-linear-to-b from-[oklch(0.87_0.085_86)] to-[oklch(0.7_0.12_76)] text-xs font-semibold text-[oklch(0.2_0.03_60)] shadow-[0_6px_14px_-10px_oklch(0.7_0.12_80)] ring-1 ring-inset ring-white/30 transition hover:brightness-105 disabled:opacity-60 [&_svg]:size-3.5">
             {/* a light sweep across the gold on hover */}
             <span aria-hidden className="pointer-events-none absolute inset-y-0 -left-1/2 w-1/2 -skew-x-12 bg-white/35 opacity-0 transition-all duration-700 group-hover:left-full group-hover:opacity-100" />
-            {pending ? <Loader2 className="animate-spin" /> : step.icon}{step.label}
+            {pending ? <Loader2 className="animate-spin" /> : step.icon}{t(step.label)}
           </motion.button>
         ) : (
           <motion.button type="button" onClick={onOpen} whileTap={{ scale: 0.97 }} className={cn("flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg text-xs font-semibold transition",
             step === "open" ? "bg-foreground text-background hover:opacity-90" : "bg-muted text-muted-foreground hover:text-foreground")}>
-            {step === "open" ? (role === "desk" ? DESK_LABEL(o) : openLabel(o, perms)) : "View order"}
+            {step === "open" ? t(role === "desk" ? DESK_LABEL(o) : openLabel(o, perms)) : t("View order")}
           </motion.button>
         )}
-        {step && <button type="button" onClick={onOpen} aria-label="Open order" title="Open the order" className="grid size-8 shrink-0 place-items-center rounded-lg border border-border/70 text-muted-foreground transition hover:bg-muted hover:text-foreground"><Maximize2 className="size-3.5" /></button>}
+        {step && <button type="button" onClick={onOpen} aria-label={t("Open order")} title={t("Open the order")} className="grid size-8 shrink-0 place-items-center rounded-lg border border-border/70 text-muted-foreground transition hover:bg-muted hover:text-foreground"><Maximize2 className="size-3.5" /></button>}
       </div>
     </motion.article>
   );

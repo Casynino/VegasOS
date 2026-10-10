@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { db } from "../db";
 import { audit } from "../audit";
 import { AppError } from "../errors";
+import { msg, msgf } from "@/i18n/msg";
 import { mediaUrl } from "./media";
 import { placeOrderForStay, stayView, type StayOrderInput } from "./guest-comms";
 import { createGuestRequest } from "./requests";
@@ -126,7 +127,7 @@ export async function placeRoomQrOrder(token: string, input: StayOrderInput, now
   const room = await roomForQr(token);
   if (!room || !room.active) throw new AppError("This QR code is not active — please contact reception.", "VALIDATION");
   const reservationId = await activeStayInRoom(room.roomId);
-  if (!reservationId) throw new AppError(`No one is checked in to ${room.meeting ? "the meeting room" : `Room ${room.number}`} right now — please contact reception to order.`, "VALIDATION");
+  if (!reservationId) throw new AppError(room.meeting ? msg("No one is checked in to the meeting room right now — please contact reception to order.") : msgf("No one is checked in to Room {room} right now — please contact reception to order.", { room: room.number }), "VALIDATION");
   return placeOrderForStay(reservationId, input, "ROOM_QR", now, { roomId: room.roomId });
 }
 
@@ -135,6 +136,6 @@ export async function askFromRoomQr(token: string, input: Parameters<typeof crea
   const room = await roomForQr(token);
   if (!room || !room.active) throw new AppError("This QR code is not active — please contact reception.", "VALIDATION");
   const reservationId = await activeStayInRoom(room.roomId);
-  if (!reservationId) throw new AppError(`No one is checked in to ${room.meeting ? "the meeting room" : `Room ${room.number}`} right now — please contact reception.`, "VALIDATION");
+  if (!reservationId) throw new AppError(room.meeting ? msg("No one is checked in to the meeting room right now — please contact reception.") : msgf("No one is checked in to Room {room} right now — please contact reception.", { room: room.number }), "VALIDATION");
   return createGuestRequest(reservationId, input, "ROOM_QR", now, { roomId: room.roomId });
 }

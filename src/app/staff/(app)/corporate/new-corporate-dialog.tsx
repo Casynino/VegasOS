@@ -5,14 +5,16 @@ import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { QuickCompanyDialog } from "@/components/staff/company/quick-company";
+import { useT } from "@/i18n/client";
 
 /** Add company — a simple form with the company's people; opens the new company's page. */
 export function NewCorporateDialog() {
+  const t = useT();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button onClick={() => setOpen(true)}><Plus /> Add company</Button>
+      <Button onClick={() => setOpen(true)}><Plus /> {t("Add company")}</Button>
       <QuickCompanyDialog open={open} onOpenChange={setOpen} chooseKind onSaved={(c) => router.push(`/staff/corporate/${c.id}`)} />
     </>
   );

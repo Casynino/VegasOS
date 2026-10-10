@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { Expand } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useT } from "@/i18n/client";
 import { blurFor } from "./blur-data";
 import fx from "./dining/dining.module.css";
 import { Button } from "./kit/button";
@@ -58,7 +59,10 @@ export function GalleryChapter({
   images: LightboxImage[];
   layout: ChapterLayout;
 }) {
+  const t = useT();
   const { open, element } = useLightbox(images);
+  // The chapter's name and line: English keys or already in the visitor's language (t() falls back to itself).
+  const name = t(title);
   const headingId = `g-${id}`;
   const lead = layout === "rail-wide" && images.length > 2;
   const right = index % 2 === 1;
@@ -69,7 +73,7 @@ export function GalleryChapter({
       labelledBy={headingId}
       // Chapters share one night band: a tighter rhythm than standalone sections (no long empty gaps).
       className="py-12 sm:py-16 lg:py-20"
-      marker={{ index: index + 1, label: `Chapter ${pad(index + 1)} / ${pad(total)}`, aside: <HudLabel tick={false}>{images.length} {images.length === 1 ? "photo" : "photos"}</HudLabel> }}
+      marker={{ index: index + 1, label: t("Chapter {n} / {total}", { n: pad(index + 1), total: pad(total) }), aside: <HudLabel tick={false}>{t.plural(images.length, "{n} photo", "{n} photos")}</HudLabel> }}
     >
       {/* A soft light of the chapter's own, alternating sides (static paint). */}
       <span
@@ -81,13 +85,13 @@ export function GalleryChapter({
       />
       <SectionIntro
         align="split"
-        title={title}
+        title={name}
         id={headingId}
-        lede={line}
+        lede={line ? t(line) : line}
         actions={
           images.length > 1 && (
             <Button variant="secondary" size="sm" onClick={() => open(0)} icon={<Expand className="size-3.5" strokeWidth={1.6} aria-hidden="true" />}>
-              View all {images.length}
+              {t("View all {n}", { n: images.length })}
             </Button>
           )
         }
@@ -97,7 +101,7 @@ export function GalleryChapter({
         {layout === "mosaic" ? (
           <Mosaic images={images} onOpen={open} />
         ) : (
-          <ChapterRail images={lead ? images.slice(1) : images} offset={lead ? 1 : 0} title={title} layout={layout} onOpen={open} className={lead ? "mt-12 sm:mt-14 lg:mt-16" : undefined} />
+          <ChapterRail images={lead ? images.slice(1) : images} offset={lead ? 1 : 0} title={name} layout={layout} onOpen={open} className={lead ? "mt-12 sm:mt-14 lg:mt-16" : undefined} />
         )}
       </div>
       {element}
@@ -117,6 +121,7 @@ function HoverHud() {
 
 /** The chapter's opening frame: wide, in gold HUD brackets, wiping open once and drifting with the scroll. */
 function Lead({ img, onOpen }: { img: LightboxImage; onOpen: () => void }) {
+  const t = useT();
   return (
     <HudFrame offset="sm" size="lg" label={img.alt} labelEnd={HOTEL_COORDS.label}>
       <MaskReveal direction="center" sweep>
@@ -131,7 +136,7 @@ function Lead({ img, onOpen }: { img: LightboxImage; onOpen: () => void }) {
           <span aria-hidden="true" className="pub-grade-tint" />
           <HoverHud />
           <ExpandChip />
-          <span className="sr-only">, open full screen</span>
+          <span className="sr-only">{t(", open full screen")}</span>
         </button>
       </MaskReveal>
     </HudFrame>
@@ -165,6 +170,7 @@ function Tile({
   className?: string;
   onOpen: () => void;
 }) {
+  const t = useT();
   return (
     <button
       type="button"
@@ -178,7 +184,7 @@ function Tile({
         <ExpandChip />
       </span>
       {caption && <span className={cn(typeScale.small, "mt-3 line-clamp-2 block text-pub-muted transition-colors duration-200 group-hover:text-pub-fg motion-reduce:transition-none")}>{img.alt}</span>}
-      <span className="sr-only">, open full screen</span>
+      <span className="sr-only">{t(", open full screen")}</span>
     </button>
   );
 }
@@ -200,13 +206,14 @@ function ChapterRail({
   onOpen: (i: number) => void;
   className?: string;
 }) {
+  const t = useT();
   const r = RAIL[layout];
   const shown = images.slice(0, RAIL_MAX);
   const next = images[RAIL_MAX];
   const all = images.length + offset;
   const rest = images.length - shown.length;
   return (
-    <Rail label={`${title} — photos`} size={r.size} className={className}>
+    <Rail label={t("{title} — photos", { title })} size={r.size} className={className}>
       {shown.map((img, i) => (
         <Tile key={img.src} img={img} frame={r.frame} sizes={r.sizes} onOpen={() => onOpen(i + offset)} />
       ))}
@@ -221,12 +228,12 @@ function ChapterRail({
             <span className="absolute inset-0 grid place-items-center bg-[rgb(12_10_7/0.35)] text-center text-white">
               <span>
                 <span className="block font-display text-[2.75rem] font-medium leading-none lining-nums">+{rest}</span>
-                <span className={cn(typeScale.cta, "mt-4 block text-white/85")}>View all {all}</span>
+                <span className={cn(typeScale.cta, "mt-4 block text-white/85")}>{t("View all {n}", { n: all })}</span>
               </span>
             </span>
             <span aria-hidden="true" className={fx.corners} />
           </span>
-          <span className={cn(typeScale.small, "mt-3 block text-pub-muted")}>More of {title.toLowerCase()}</span>
+          <span className={cn(typeScale.small, "mt-3 block text-pub-muted")}>{t("More of {title}", { title: title.toLowerCase() })}</span>
         </button>
       )}
     </Rail>

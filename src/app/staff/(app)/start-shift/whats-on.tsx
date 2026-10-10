@@ -3,7 +3,9 @@ import { ArrowRight, BedDouble, Car, ConciergeBell, DoorOpen, Inbox, LogOut } fr
 import { db } from "@/server/db";
 import { businessDayBounds, toDbDate, type BusinessDate, type BusinessDayConfig } from "@/lib/time/business-date";
 import { REQUEST_TYPE_LABEL } from "@/lib/request-meta";
+import { TRIP_TYPE_LABEL } from "@/lib/transport-meta";
 import { cn } from "@/lib/utils";
+import { getT } from "@/i18n/server";
 
 /**
  * WHAT'S GOING ON at the desk right now — read before starting a shift: who arrives, who leaves (and owes), what
@@ -66,66 +68,67 @@ function Line({ lead, title, sub, tag, tagTone }: { lead?: string; title: string
 }
 
 /** The desk right now, in six small cards — each a short list and the page to act on it. */
-export function WhatsOn({ on, timezone, now }: { on: On; timezone: string; now: Date }) {
-  const clock = (d: Date) => new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: timezone }).format(d);
+export async function WhatsOn({ on, timezone, now }: { on: On; timezone: string; now: Date }) {
+  const t = await getT();
+  const clock = (d: Date) => new Intl.DateTimeFormat(t.intl, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: timezone }).format(d);
   const mins = (d: Date) => Math.max(0, Math.round((now.getTime() - d.getTime()) / 60000));
-  const ago = (d: Date) => { const m = mins(d); return m < 60 ? `${m} min ago` : m < 1440 ? `${Math.floor(m / 60)} h ago` : `${Math.floor(m / 1440)} d ago`; };
+  const ago = (d: Date) => { const m = mins(d); return m < 60 ? t("{n} min ago", { n: m }) : m < 1440 ? t("{h} h ago", { h: Math.floor(m / 60) }) : t("{n} d ago", { n: Math.floor(m / 1440) }); };
   const today = toDbDate(on.today).getTime();
   const owing = on.departures.filter((r) => r.balanceAmount > 0);
   return (
     <section className="space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-2 px-1">
         <div>
-          <h2 className="text-base font-semibold">What&apos;s going on</h2>
-          <p className="text-xs text-muted-foreground">The desk right now — read it before you start.</p>
+          <h2 className="text-base font-semibold">{t("What's going on")}</h2>
+          <p className="text-xs text-muted-foreground">{t("The desk right now — read it before you start.")}</p>
         </div>
       </div>
       <div className="grid grid-cols-[minmax(0,1fr)] gap-3 md:grid-cols-2 xl:grid-cols-3">
-        <Card icon={DoorOpen} tone="bg-sky-500/12 text-sky-600 dark:text-sky-300" title="Arriving" count={on.arrivals.length} href="/staff/check-in" cta="Check-in" empty="Nobody is waiting to check in.">
+        <Card icon={DoorOpen} tone="bg-sky-500/12 text-sky-600 dark:text-sky-300" title={t("Arriving")} count={on.arrivals.length} href="/staff/check-in" cta={t("Check-in")} empty={t("Nobody is waiting to check in.")}>
           <ul className="space-y-2">
             {on.arrivals.slice(0, 4).map((r) => {
               const late = r.arrivalDate.getTime() < today;
               const pickup = r.trips[0]?.pickupAt;
-              return <Line key={r.id} lead={rooms(r) || "—"} title={r.guest.fullName} sub={pickup ? `Airport pickup ${clock(pickup)}` : r.kind === "MEETING" ? "Meeting room" : "Arrives today"} tag={late ? "Late" : undefined} tagTone="bg-amber-500/15 text-amber-700 dark:text-amber-300" />;
+              return <Line key={r.id} lead={rooms(r) || "—"} title={r.guest.fullName} sub={pickup ? t("Airport pickup {time}", { time: clock(pickup) }) : r.kind === "MEETING" ? t("Meeting room") : t("Arrives today")} tag={late ? t("Late") : undefined} tagTone="bg-amber-500/15 text-amber-700 dark:text-amber-300" />;
             })}
-            {on.arrivals.length > 4 && <li className="text-[11px] text-muted-foreground">+{on.arrivals.length - 4} more</li>}
+            {on.arrivals.length > 4 && <li className="text-[11px] text-muted-foreground">{t("+{n} more", { n: on.arrivals.length - 4 })}</li>}
           </ul>
         </Card>
-        <Card icon={LogOut} tone="bg-amber-500/12 text-amber-600 dark:text-amber-300" title="Leaving" count={on.departures.length} href="/staff/check-out" cta="Check-out" empty="Nobody is due to check out.">
+        <Card icon={LogOut} tone="bg-amber-500/12 text-amber-600 dark:text-amber-300" title={t("Leaving")} count={on.departures.length} href="/staff/check-out" cta={t("Check-out")} empty={t("Nobody is due to check out.")}>
           <ul className="space-y-2">
             {on.departures.slice(0, 4).map((r) => {
               const overdue = r.departureDate.getTime() < today;
-              return <Line key={r.id} lead={rooms(r) || "—"} title={r.guest.fullName} sub={r.balanceAmount > 0 ? `Owes TZS ${r.balanceAmount.toLocaleString("en-US")}` : "Paid up"} tag={overdue ? "Overdue" : undefined} tagTone="bg-rose-500/15 text-rose-700 dark:text-rose-300" />;
+              return <Line key={r.id} lead={rooms(r) || "—"} title={r.guest.fullName} sub={r.balanceAmount > 0 ? t("Owes {amount}", { amount: `TZS ${r.balanceAmount.toLocaleString("en-US")}` }) : t("Paid up")} tag={overdue ? t("Overdue") : undefined} tagTone="bg-rose-500/15 text-rose-700 dark:text-rose-300" />;
             })}
-            {on.departures.length > 4 && <li className="text-[11px] text-muted-foreground">+{on.departures.length - 4} more{owing.length ? ` · ${owing.length} owe money` : ""}</li>}
+            {on.departures.length > 4 && <li className="text-[11px] text-muted-foreground">{t("+{n} more", { n: on.departures.length - 4 })}{owing.length ? ` · ${t("{n} owe money", { n: owing.length })}` : ""}</li>}
           </ul>
         </Card>
-        <Card icon={ConciergeBell} tone="bg-violet-500/12 text-violet-600 dark:text-violet-300" title="Guest requests" count={on.requests.length} href="/staff/requests" cta="Requests" empty="No guest is waiting for anything.">
+        <Card icon={ConciergeBell} tone="bg-violet-500/12 text-violet-600 dark:text-violet-300" title={t("Guest requests")} count={on.requests.length} href="/staff/requests" cta={t.ctx("request", "Requests")} empty={t("No guest is waiting for anything.")}>
           <ul className="space-y-2">
             {on.requests.slice(0, 4).map((q) => (
-              <Line key={q.id} lead={q.room?.number ?? "—"} title={REQUEST_TYPE_LABEL[q.type] ?? "Request"} sub={`${q.source === "STAFF" ? "Logged" : "From the guest"} · ${ago(q.createdAt)}`}
-                tag={q.status === "IN_PROGRESS" ? `${first(q.assignedTo?.fullName ?? "Someone")} on it` : q.status === "ASSIGNED" ? `For ${first(q.assignedTo?.fullName ?? "")}` : "New"}
+              <Line key={q.id} lead={q.room?.number ?? "—"} title={t(REQUEST_TYPE_LABEL[q.type] ?? "Request")} sub={`${q.source === "STAFF" ? t("Logged") : t("From the guest")} · ${ago(q.createdAt)}`}
+                tag={q.status === "IN_PROGRESS" ? t("{name} on it", { name: q.assignedTo ? first(q.assignedTo.fullName) : t("Someone") }) : q.status === "ASSIGNED" ? t("For {name}", { name: first(q.assignedTo?.fullName ?? "") }) : t("New")}
                 tagTone={q.status === "IN_PROGRESS" ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" : "bg-sky-500/15 text-sky-700 dark:text-sky-300"} />
             ))}
-            {on.requests.length > 4 && <li className="text-[11px] text-muted-foreground">+{on.requests.length - 4} more</li>}
+            {on.requests.length > 4 && <li className="text-[11px] text-muted-foreground">{t("+{n} more", { n: on.requests.length - 4 })}</li>}
           </ul>
         </Card>
-        <Card icon={BedDouble} tone="bg-teal-500/12 text-teal-600 dark:text-teal-300" title="Rooms" count={on.dirty.length + on.broken.length} href="/staff/rooms" cta="Rooms" empty="Every room is clean and working.">
+        <Card icon={BedDouble} tone="bg-teal-500/12 text-teal-600 dark:text-teal-300" title={t("Rooms")} count={on.dirty.length + on.broken.length} href="/staff/rooms" cta={t("Rooms")} empty={t("Every room is clean and working.")}>
           <div className="space-y-2.5 text-sm">
-            {on.dirty.length > 0 && <p><span className="font-semibold">{on.dirty.length} to clean</span><span className="mt-0.5 block text-xs text-muted-foreground">{on.dirty.slice(0, 10).map((r) => r.number).join(" · ")}{on.dirty.length > 10 ? " …" : ""}</span></p>}
-            {on.broken.length > 0 && <p><span className="font-semibold text-rose-600 dark:text-rose-400">{on.broken.length} under repair</span><span className="mt-0.5 block text-xs text-muted-foreground">{on.broken.slice(0, 4).map((r) => `${r.number}${r.statusNote ? ` — ${r.statusNote}` : ""}`).join(" · ")}</span></p>}
+            {on.dirty.length > 0 && <p><span className="font-semibold">{t("{n} to clean", { n: on.dirty.length })}</span><span className="mt-0.5 block text-xs text-muted-foreground">{on.dirty.slice(0, 10).map((r) => r.number).join(" · ")}{on.dirty.length > 10 ? " …" : ""}</span></p>}
+            {on.broken.length > 0 && <p><span className="font-semibold text-rose-600 dark:text-rose-400">{t("{n} under repair", { n: on.broken.length })}</span><span className="mt-0.5 block text-xs text-muted-foreground">{on.broken.slice(0, 4).map((r) => `${r.number}${r.statusNote ? ` — ${r.statusNote}` : ""}`).join(" · ")}</span></p>}
           </div>
         </Card>
-        <Card icon={Car} tone="bg-orange-500/12 text-orange-600 dark:text-orange-300" title="Transport today" count={on.trips.length} href="/staff/transport" cta="Transport" empty="No pickup or drop-off today.">
+        <Card icon={Car} tone="bg-orange-500/12 text-orange-600 dark:text-orange-300" title={t("Transport today")} count={on.trips.length} href="/staff/transport" cta={t("Transport")} empty={t("No pickup or drop-off today.")}>
           <ul className="space-y-2">
-            {on.trips.map((t) => <Line key={t.id} lead={clock(t.pickupAt)} title={t.passengerName} sub={`${t.type.charAt(0)}${t.type.slice(1).toLowerCase().replace(/_/g, " ")} · ${t.destination}`} />)}
+            {on.trips.map((x) => <Line key={x.id} lead={clock(x.pickupAt)} title={x.passengerName} sub={`${t.locale === "en" ? `${x.type.charAt(0)}${x.type.slice(1).toLowerCase().replace(/_/g, " ")}` : t(TRIP_TYPE_LABEL[x.type])} · ${x.destination}`} />)}
           </ul>
         </Card>
-        <Card icon={Inbox} tone="bg-[oklch(0.75_0.12_80)]/15 text-[oklch(0.55_0.11_75)] dark:text-[#f0cf86]" title="Online bookings" count={on.online + on.qr}
-          href={on.online || !on.qr ? "/staff/booking-requests" : "/staff/hotel-qr?list=today#bookings"} cta={on.online || !on.qr ? "Online requests" : "Hotel QR bookings"} empty="No new online booking request.">
+        <Card icon={Inbox} tone="bg-[oklch(0.75_0.12_80)]/15 text-[oklch(0.55_0.11_75)] dark:text-[#f0cf86]" title={t("Online bookings")} count={on.online + on.qr}
+          href={on.online || !on.qr ? "/staff/booking-requests" : "/staff/hotel-qr?list=today#bookings"} cta={on.online || !on.qr ? t("Online requests") : t("Hotel QR bookings")} empty={t("No new online booking request.")}>
           <ul className="space-y-2">
-            {on.online > 0 && <Line lead={String(on.online)} title={`New online booking request${on.online === 1 ? "" : "s"}`} sub="From the website — call them back" tag="New" tagTone="bg-sky-500/15 text-sky-700 dark:text-sky-300" />}
-            {on.qr > 0 && <Line lead={String(on.qr)} title={`Hotel QR booking${on.qr === 1 ? "" : "s"} today`} sub="Booked by the guest from the QR — already in Reservations" tag="QR" tagTone="bg-[oklch(0.75_0.12_80)]/15 text-[oklch(0.5_0.11_75)] dark:text-[#f0cf86]" />}
+            {on.online > 0 && <Line lead={String(on.online)} title={t.plural(on.online, "New online booking request", "New online booking requests")} sub={t("From the website — call them back")} tag={t("New")} tagTone="bg-sky-500/15 text-sky-700 dark:text-sky-300" />}
+            {on.qr > 0 && <Line lead={String(on.qr)} title={t.plural(on.qr, "Hotel QR booking today", "Hotel QR bookings today")} sub={t("Booked by the guest from the QR — already in Reservations")} tag="QR" tagTone="bg-[oklch(0.75_0.12_80)]/15 text-[oklch(0.5_0.11_75)] dark:text-[#f0cf86]" />}
           </ul>
         </Card>
       </div>

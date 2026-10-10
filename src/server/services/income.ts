@@ -2,6 +2,7 @@ import "server-only";
 import { db } from "../db";
 import { toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import { timeRange } from "@/lib/meeting";
+import { msg } from "@/i18n/msg";
 
 /**
  * Income — every shilling actually received, from every source, in one list:
@@ -11,7 +12,7 @@ import { timeRange } from "@/lib/meeting";
  */
 export type IncomeSource = "ROOM" | "RESTAURANT" | "BAR" | "ROOM_SERVICE" | "TRANSPORT" | "MEETING" | "COMPANY" | "OTHER";
 export const SOURCE_LABEL: Record<IncomeSource, string> = {
-  ROOM: "Rooms", RESTAURANT: "Restaurant", BAR: "Bar", ROOM_SERVICE: "Room service fee", TRANSPORT: "Transport", MEETING: "Meeting room", COMPANY: "Company invoice", OTHER: "Other",
+  ROOM: msg("Rooms"), RESTAURANT: msg("Restaurant"), BAR: msg("Bar"), ROOM_SERVICE: msg("Room service fee"), TRANSPORT: msg("Transport"), MEETING: msg("Meeting room"), COMPANY: msg("Company invoice"), OTHER: msg("Other"),
 };
 
 export interface IncomeRow {
@@ -42,13 +43,13 @@ export async function incomeRows(from: BusinessDate, to: BusinessDate): Promise<
       const source: IncomeSource = p.reservation ? (p.reservation.kind === "MEETING" ? "MEETING" : "ROOM") : p.invoice || p.corporateCustomer ? "COMPANY" : "OTHER";
       return {
         id: p.id, kind: "payment", at: p.receivedAt, businessDate: day(p.businessDate), source,
-        who: p.reservation?.companyName ?? p.reservation?.guest.fullName ?? p.corporateCustomer?.companyName ?? "Customer",
+        who: p.reservation?.companyName ?? p.reservation?.guest.fullName ?? p.corporateCustomer?.companyName ?? msg("Customer"),
         detail: p.reservation?.reference ?? p.invoice?.number ?? null,
         rooms: p.reservation?.rooms.map((r) => r.room.number).join(", ") || null,
         href: p.reservation ? `/staff/reservations/${p.reservation.id}` : p.invoice ? `/staff/invoices/${p.invoice.id}` : null, reservationId: p.reservationId,
         account: { id: p.accountId, name: p.account.name, number: p.account.accountNumber }, method: p.method.name, by: p.recordedBy.fullName,
         amount: refund ? -p.amount : p.amount, refund, counted: p.status === "POSTED",
-        note: p.status === "REVERSED" ? `Reversed${p.reversalReason ? `: ${p.reversalReason}` : ""}` : refund ? "Refund" : null, reference: p.reference,
+        note: p.status === "REVERSED" ? `Reversed${p.reversalReason ? `: ${p.reversalReason}` : ""}` : refund ? msg("Refund") : null, reference: p.reference,
       };
     }),
     ...sales.map((s): IncomeRow => ({
@@ -116,23 +117,23 @@ export async function payingParties(today: BusinessDate): Promise<Party[]> {
       parties.push({
         ...base, name: r.companyName ?? r.guest.fullName, kind, meeting: true, room: kind === "LEFT" ? null : rooms,
         detail: `Room ${rooms} — Meeting room · ${when}`,
-        tag: kind === "STAY" ? "Meeting in use" : kind === "LEFT" ? "Meeting done — owing" : today ? "Meeting today" : "Meeting tomorrow",
+        tag: kind === "STAY" ? msg("Meeting in use") : kind === "LEFT" ? msg("Meeting done — owing") : today ? msg("Meeting today") : msg("Meeting tomorrow"),
         urgent: kind === "LEFT", rank: kind === "STAY" ? 2 : kind === "LEFT" ? 3 : 4,
       });
       continue;
     }
     if (r.status === "CHECKED_IN") {
       const overdue = departure < t.getTime(), leaving = departure === t.getTime();
-      parties.push({ ...base, kind: "STAY", detail: `Room ${rooms}${r.guest.phone ? ` · ${r.guest.phone}` : ""}`, room: rooms, tag: overdue ? "Overdue" : leaving ? "Leaving today" : "In the hotel", urgent: (overdue || leaving) && owes > 0, rank: overdue ? 0 : leaving ? 1 : owes > 0 ? 2 : 5 });
+      parties.push({ ...base, kind: "STAY", detail: `Room ${rooms}${r.guest.phone ? ` · ${r.guest.phone}` : ""}`, room: rooms, tag: overdue ? msg("Overdue") : leaving ? msg("Leaving today") : msg("In the hotel"), urgent: (overdue || leaving) && owes > 0, rank: overdue ? 0 : leaving ? 1 : owes > 0 ? 2 : 5 });
     } else if (r.status === "CHECKED_OUT") {
-      parties.push({ ...base, kind: "LEFT", detail: `Left · room ${rooms}`, room: null, tag: "Left owing", urgent: true, rank: 3 });
+      parties.push({ ...base, kind: "LEFT", detail: `Left · room ${rooms}`, room: null, tag: msg("Left owing"), urgent: true, rank: 3 });
     } else if (owes > 0) {
       const arrivesToday = r.arrivalDate.getTime() === t.getTime();
-      parties.push({ ...base, kind: "ARRIVAL", detail: `Room ${rooms} · arriving ${arrivesToday ? "today" : "tomorrow"}`, room: rooms, tag: arrivesToday ? "Arriving today" : "Arriving tomorrow", urgent: false, rank: 4 });
+      parties.push({ ...base, kind: "ARRIVAL", detail: `Room ${rooms} · arriving ${arrivesToday ? "today" : "tomorrow"}`, room: rooms, tag: arrivesToday ? msg("Arriving today") : msg("Arriving tomorrow"), urgent: false, rank: 4 });
     }
   }
   for (const i of invoices) {
-    parties.push({ key: `i-${i.id}`, kind: "INVOICE", id: i.id, name: i.corporateCustomer?.companyName ?? i.group?.name ?? i.guest?.fullName ?? "Company", ref: i.number, detail: i.group ? `Group invoice · ${i.group.name}` : "Company invoice", owes: i.balanceAmount, total: i.netAmount, paid: i.paidAmount, tag: i.status === "OVERDUE" ? "Invoice overdue" : "Company", urgent: i.status === "OVERDUE", room: null, rank: 6 });
+    parties.push({ key: `i-${i.id}`, kind: "INVOICE", id: i.id, name: i.corporateCustomer?.companyName ?? i.group?.name ?? i.guest?.fullName ?? msg("Company"), ref: i.number, detail: i.group ? `Group invoice · ${i.group.name}` : msg("Company invoice"), owes: i.balanceAmount, total: i.netAmount, paid: i.paidAmount, tag: i.status === "OVERDUE" ? msg("Invoice overdue") : msg("Company"), urgent: i.status === "OVERDUE", room: null, rank: 6 });
   }
   return parties.sort((a, b) => a.rank - b.rank || b.owes - a.owes).map(({ rank, ...p }) => { void rank; return p; });
 }

@@ -3,6 +3,7 @@
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
+import { useT } from "@/i18n/client";
 
 /**
  * Command-centre charts (dark surface). Palette = the validated dark
@@ -17,15 +18,16 @@ const AXIS = "rgba(255,255,255,0.45)";
 const tzs = (v: number) => `TZS ${Math.round(v).toLocaleString("en-TZ")}`;
 const compact = (v: number) =>
   v >= 1_000_000 ? `${(v / 1_000_000).toFixed(v >= 10_000_000 ? 0 : 1)}M` : v >= 1000 ? `${Math.round(v / 1000)}k` : String(v);
-const shortDate = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+const shortDate = (d: string, intl: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString(intl, { day: "numeric", month: "short", timeZone: "UTC" });
 
 function TooltipBox({ active, payload, label, money = true, percent = false }: {
   active?: boolean; payload?: { name?: string; value?: number; color?: string }[]; label?: string; money?: boolean; percent?: boolean;
 }) {
+  const t = useT();
   if (!active || !payload?.length) return null;
   return (
     <div className="rounded-lg border border-white/15 bg-[#0b1020]/95 px-3 py-2 text-xs text-white shadow-xl backdrop-blur">
-      {label && <p className="mb-1 font-medium text-white/70">{/^\d{4}-/.test(label) ? shortDate(label) : label}</p>}
+      {label && <p className="mb-1 font-medium text-white/70">{/^\d{4}-/.test(label) ? shortDate(label, t.intl) : label}</p>}
       {payload.map((p) => (
         <p key={p.name} className="flex items-center gap-2">
           <span className="size-2 rounded-full" style={{ background: p.color }} />
@@ -51,11 +53,12 @@ function SrTable({ caption, head, rows }: { caption: string; head: string[]; row
 }
 
 export function RevenueTrend({ data }: { data: { date: string; rooms: number; other: number }[] }) {
+  const t = useT();
   return (
     <div>
       <div className="mb-2 flex gap-4 text-xs text-white/70">
-        <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 rounded" style={{ background: SERIES[0] }} />Rooms (net)</span>
-        <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 rounded" style={{ background: SERIES[1] }} />Restaurant, bar, meeting & other</span>
+        <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 rounded" style={{ background: SERIES[0] }} />{t("Rooms (net)")}</span>
+        <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 rounded" style={{ background: SERIES[1] }} />{t("Restaurant, bar, meeting & other")}</span>
       </div>
       <div className="h-64" aria-hidden>
         <ResponsiveContainer width="100%" height="100%">
@@ -69,39 +72,41 @@ export function RevenueTrend({ data }: { data: { date: string; rooms: number; ot
               ))}
             </defs>
             <CartesianGrid stroke={GRID} vertical={false} />
-            <XAxis dataKey="date" tickFormatter={shortDate} stroke={AXIS} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} minTickGap={24} />
+            <XAxis dataKey="date" tickFormatter={(d: string) => shortDate(d, t.intl)} stroke={AXIS} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} minTickGap={24} />
             <YAxis tickFormatter={compact} stroke={AXIS} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={44} />
             <Tooltip content={<TooltipBox />} cursor={{ stroke: "rgba(255,255,255,0.3)" }} />
-            <Area type="monotone" dataKey="rooms" name="Rooms" stackId="1" stroke={SERIES[0]} strokeWidth={2} fill="url(#rev-0)" />
-            <Area type="monotone" dataKey="other" name="Other streams" stackId="1" stroke={SERIES[1]} strokeWidth={2} fill="url(#rev-1)" />
+            <Area type="monotone" dataKey="rooms" name={t("Rooms")} stackId="1" stroke={SERIES[0]} strokeWidth={2} fill="url(#rev-0)" />
+            <Area type="monotone" dataKey="other" name={t("Other streams")} stackId="1" stroke={SERIES[1]} strokeWidth={2} fill="url(#rev-1)" />
           </AreaChart>
         </ResponsiveContainer>
       </div>
-      <SrTable caption="Net revenue by day" head={["Date", "Rooms", "Other"]} rows={data.map((d) => [d.date, d.rooms, d.other])} />
+      <SrTable caption={t("Net revenue by day")} head={[t("Date"), t("Rooms"), t("Other")]} rows={data.map((d) => [d.date, d.rooms, d.other])} />
     </div>
   );
 }
 
 export function OccupancyTrend({ data }: { data: { date: string; occupancy: number }[] }) {
+  const t = useT();
   return (
     <div>
       <div className="h-56" aria-hidden>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
             <CartesianGrid stroke={GRID} vertical={false} />
-            <XAxis dataKey="date" tickFormatter={shortDate} stroke={AXIS} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} minTickGap={24} />
+            <XAxis dataKey="date" tickFormatter={(d: string) => shortDate(d, t.intl)} stroke={AXIS} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} minTickGap={24} />
             <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} stroke={AXIS} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={40} />
             <Tooltip content={<TooltipBox percent />} cursor={{ stroke: "rgba(255,255,255,0.3)" }} />
-            <Line type="monotone" dataKey="occupancy" name="Occupancy" stroke={SERIES[2]} strokeWidth={2} dot={{ r: 3, fill: SERIES[2], stroke: "#0b1020", strokeWidth: 2 }} activeDot={{ r: 5 }} />
+            <Line type="monotone" dataKey="occupancy" name={t("Occupancy")} stroke={SERIES[2]} strokeWidth={2} dot={{ r: 3, fill: SERIES[2], stroke: "#0b1020", strokeWidth: 2 }} activeDot={{ r: 5 }} />
           </LineChart>
         </ResponsiveContainer>
       </div>
-      <SrTable caption="Occupancy by day" head={["Date", "Occupancy %"]} rows={data.map((d) => [d.date, d.occupancy.toFixed(1)])} />
+      <SrTable caption={t("Occupancy by day")} head={[t("Date"), t("Occupancy %")]} rows={data.map((d) => [d.date, d.occupancy.toFixed(1)])} />
     </div>
   );
 }
 
 export function RevenueMix({ data }: { data: { name: string; value: number }[] }) {
+  const t = useT();
   const total = data.reduce((s, d) => s + d.value, 0);
   const shown = data.filter((d) => d.value > 0);
   return (
@@ -110,7 +115,7 @@ export function RevenueMix({ data }: { data: { name: string; value: number }[] }
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Tooltip content={<TooltipBox />} />
-            <Pie data={shown.length ? shown : [{ name: "No revenue", value: 1 }]} dataKey="value" nameKey="name" innerRadius="68%" outerRadius="100%" paddingAngle={shown.length > 1 ? 2 : 0} stroke="none">
+            <Pie data={shown.length ? shown : [{ name: t("No revenue"), value: 1 }]} dataKey="value" nameKey="name" innerRadius="68%" outerRadius="100%" paddingAngle={shown.length > 1 ? 2 : 0} stroke="none">
               {(shown.length ? shown : [{ name: "none" }]).map((d) => (
                 <Cell key={d.name} fill={shown.length ? SERIES[data.findIndex((x) => x.name === d.name) % SERIES.length] : "rgba(255,255,255,0.08)"} />
               ))}
@@ -118,7 +123,7 @@ export function RevenueMix({ data }: { data: { name: string; value: number }[] }
           </PieChart>
         </ResponsiveContainer>
         <div className="absolute inset-0 grid place-items-center text-center">
-          <div><p className="text-[10px] uppercase tracking-widest text-white/50">Total</p><p className="text-sm font-semibold tabular-nums text-white">{compact(total)}</p></div>
+          <div><p className="text-[10px] uppercase tracking-widest text-white/50">{t("Total")}</p><p className="text-sm font-semibold tabular-nums text-white">{compact(total)}</p></div>
         </div>
       </div>
       <ul className="w-full space-y-1.5 text-sm">
@@ -157,16 +162,17 @@ export function HBars({ data, money = true, colorIndex = 0, emptyText }: { data:
 }
 
 export function SourceBars({ data }: { data: { name: string; roomNights: number; net: number }[] }) {
-  if (data.length === 0) return <p className="py-6 text-center text-sm text-white/50">No room sales in this period yet.</p>;
+  const t = useT();
+  if (data.length === 0) return <p className="py-6 text-center text-sm text-white/50">{t("No room sales in this period yet.")}</p>;
   return (
-    <div className="h-56" aria-label="Revenue by booking source">
+    <div className="h-56" aria-label={t("Revenue by booking source")}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} layout="vertical" margin={{ top: 0, right: 12, left: 8, bottom: 0 }} barCategoryGap={8}>
           <CartesianGrid stroke={GRID} horizontal={false} />
           <XAxis type="number" tickFormatter={compact} stroke={AXIS} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
           <YAxis type="category" dataKey="name" stroke={AXIS} tick={{ fontSize: 11, fill: "rgba(255,255,255,0.75)" }} tickLine={false} axisLine={false} width={90} />
           <Tooltip content={<TooltipBox />} cursor={{ fill: "rgba(255,255,255,0.04)" }} />
-          <Bar dataKey="net" name="Net room revenue" fill={SERIES[0]} radius={[0, 4, 4, 0]} maxBarSize={18} />
+          <Bar dataKey="net" name={t("Net room revenue")} fill={SERIES[0]} radius={[0, 4, 4, 0]} maxBarSize={18} />
         </BarChart>
       </ResponsiveContainer>
     </div>

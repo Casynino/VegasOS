@@ -2,7 +2,9 @@
 
 import { Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useT } from "@/i18n/client";
 
 export function PrintButton() {
-  return <Button variant="outline" onClick={() => window.print()}><Printer /> Print</Button>;
+  const t = useT();
+  return <Button variant="outline" onClick={() => window.print()}><Printer /> {t("Print")}</Button>;
 }

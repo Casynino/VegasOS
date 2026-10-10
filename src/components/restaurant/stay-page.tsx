@@ -5,7 +5,6 @@ import { onlinePayAvailable, stayBillPayOnline } from "@/server/services/online-
 import { guestRequestNotes } from "@/server/services/room-qr-page";
 import { payRoomBillOnlineAction } from "@/app/r/[token]/actions";
 import { payStayBillOnlineAction } from "@/app/stay/[token]/actions";
-import { formatTime } from "@/lib/format";
 import { formatMinutes, localCalendarDate } from "@/lib/time/business-date";
 import { requestLabel } from "@/components/room-qr/asks";
 import { hotelInfo } from "@/components/room-qr/contact";
@@ -13,6 +12,7 @@ import { MEETING_PHOTO, realPhotos, ROOM_PHOTO, SUITE_PHOTO } from "@/components
 import { RestaurantApp } from "./restaurant-app";
 import { restaurantShell } from "./shell";
 import { StayBottom, StayTop, type StayInfo } from "./stay-app";
+import { getT } from "@/i18n/server";
 
 /** A room photo when the room type has none of its own: the meeting room, a suite, or a guest room. */
 const photoFor = (meeting: boolean, types: string) => (meeting ? MEETING_PHOTO : /suite|executive/i.test(types) ? SUITE_PHOTO : ROOM_PHOTO);
@@ -26,11 +26,14 @@ const photoFor = (meeting: boolean, types: string) => (meeting ? MEETING_PHOTO :
 export async function StayPage({ stay, s, target, via }: {
   stay: GuestStay; s: HotelSettings; target: { kind: "stay" | "room"; token: string }; via?: "room";
 }) {
+  const t = await getT();
   const inHouse = stay.status === "CHECKED_IN";
   const meeting = stay.kind === "MEETING";
   const rooms = stay.rooms.filter((r) => !inHouse || r.inHouse);
   const room = rooms.map((r) => r.number).join(", ");
-  const types = [...new Set(rooms.map((r) => r.type))].join(" · ");
+  const typeNames = [...new Set(rooms.map((r) => r.type))];
+  // The room types as the guest reads them (the hotel's own content); the English picks the stand-in photo.
+  const types = typeNames.map((n) => t(n)).join(" · ");
   // First name only, written normally ("HONEST" → "Honest").
   const raw = stay.guestName.split(/\s+/)[0] ?? "";
   const first = /^[A-Z]{2,}$/.test(raw) ? raw[0] + raw.slice(1).toLowerCase() : raw;
@@ -50,26 +53,29 @@ export async function StayPage({ stay, s, target, via }: {
     billHref: target.kind === "room" ? `/r/${target.token}/bill` : `/stay/${target.token}/bill`,
     via: via ?? null,
     room, types, meeting, fee: s.roomServiceFee,
-    photos: realPhotos(stay.roomInfo?.photos ?? [], photoFor(meeting, types)),
+    photos: realPhotos(stay.roomInfo?.photos ?? [], photoFor(meeting, typeNames.join(" · "))),
     today: localCalendarDate(new Date(), s.timezone),
     nights: stay.rooms.reduce((m, r) => Math.max(m, r.nights), 0),
     checkInTime: formatMinutes(s.standardCheckInMinutes), checkoutTime: formatMinutes(s.checkoutMinutes), checkoutMinutes: s.checkoutMinutes,
-    meetingTimes: meeting && stay.meeting ? { start: formatTime(stay.meeting.start, s.timezone), end: formatTime(stay.meeting.end, s.timezone) } : null,
+    meetingTimes: meeting && stay.meeting ? { start: t.time(stay.meeting.start, s.timezone), end: t.time(stay.meeting.end, s.timezone) } : null,
     lateFee: s.lateCheckoutFee,
     wifi: inHouse && !meeting ? { network: s.wifiNetwork || null, password: s.wifiPassword || null } : null,
     ask,
-    requests: stay.requests.map((q) => ({ id: q.id, label: requestLabel(q.type, notes[q.id]), status: q.status, at: q.at })),
+    requests: stay.requests.map((q) => ({ id: q.id, label: t(requestLabel(q.type, notes[q.id])), status: q.status, at: q.at })),
     // The bill page's own payment: offered for what is owed now (or the one on its way), bound to this link / card.
     pay: bill.offered || bill.live
       ? { due: bill.due, live: bill.live, action: target.kind === "room" ? payRoomBillOnlineAction.bind(null, target.token) : payStayBillOnlineAction.bind(null, target.token) }
       : null,
     // The room card: no booking reference in the message (anyone in the room can scan it) — the room says who.
-    contact: hotelInfo(s, via === "room" ? `Hello, this is ${first} in ${meeting ? "the meeting room" : `Room ${room}`}.` : `Hello, this is ${first} (booking ${stay.reference}).`),
+    // Written in the guest's language, like the room card's own message (/r/[token]).
+    contact: hotelInfo(s, via === "room"
+      ? t("Hello, this is {name} in {place}.", { name: first, place: meeting ? t("the meeting room") : t("Room {room}", { room }) })
+      : t("Hello, this is {name} (booking {reference}).", { name: first, reference: stay.reference })),
     bookHref: "/book",
   };
   const { status } = restaurantShell(s);
   return (
-    <RestaurantApp brand={{ name: s.hotelName, hotel: s.hotelName, tagline: meeting ? "Your meeting" : inHouse ? "Your room" : "Your booking" }}
+    <RestaurantApp brand={{ name: s.hotelName, hotel: s.hotelName, tagline: meeting ? t("Your meeting") : inHouse ? t("Your room") : t("Your booking") }}
       status={status} menu={menu} canOrder={stay.canOrder}
       place={{
         kind: "room", room: room || "—", guest: first, meeting, fee: s.roomServiceFee, stayHref: info.billHref,

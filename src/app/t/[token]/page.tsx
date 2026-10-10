@@ -10,8 +10,13 @@ import { guestTableState, SEAT_COOKIE } from "@/server/services/dining-sessions"
 import { onlinePayAvailable, tableBillPayOnline } from "@/server/services/online-pay";
 import { RestaurantApp, type AppPlace } from "@/components/restaurant/restaurant-app";
 import { restaurantShell } from "@/components/restaurant/shell";
+import { getT, guestLocale } from "@/i18n/server";
 
-export const metadata: Metadata = { title: "Order", robots: { index: false, follow: false }, referrer: "no-referrer" };
+export async function generateMetadata(): Promise<Metadata> {
+  await guestLocale();
+  const t = await getT();
+  return { title: t("Order"), robots: { index: false, follow: false }, referrer: "no-referrer" };
+}
 export const dynamic = "force-dynamic";
 
 /**
@@ -22,6 +27,8 @@ export const dynamic = "force-dynamic";
  * else's, reserved — or free (the first "+" asks who they are, once).
  */
 export default async function TableQrPage({ params }: PageProps<"/t/[token]">) {
+  await guestLocale();
+  const t = await getT();
   const { token } = await params;
   const [spot, s] = await Promise.all([scanLocationQr(token), getSettings()]);
   if (!spot || !spot.qrActive) {
@@ -30,9 +37,9 @@ export default async function TableQrPage({ params }: PageProps<"/t/[token]">) {
       <main className="vr grid min-h-svh place-items-center bg-(--vr-bg) px-6 text-center text-(--vr-ink)">
         <div className="max-w-sm">
           <span className="mx-auto grid size-16 place-items-center rounded-full bg-(--vr-gold-soft) text-(--vr-gold-ink)"><QrCode className="size-7" /></span>
-          <h1 className="mt-5 font-display text-3xl font-semibold">This QR code is not active</h1>
-          <p className="mt-2 text-sm text-(--vr-muted)">Please ask a waiter to take your order{phone ? `, or call us on ${phone}` : ""}.</p>
-          <Link href="/order" className="mt-6 inline-flex h-12 items-center rounded-full bg-(--vr-dark) px-6 text-sm font-semibold text-white">See our menu</Link>
+          <h1 className="mt-5 font-display text-3xl font-semibold">{t("This QR code is not active")}</h1>
+          <p className="mt-2 text-sm text-(--vr-muted)">{phone ? t("Please ask a waiter to take your order, or call us on {phone}.", { phone }) : t("Please ask a waiter to take your order.")}</p>
+          <Link href="/order" className="mt-6 inline-flex h-12 items-center rounded-full bg-(--vr-dark) px-6 text-sm font-semibold text-white">{t("See our menu")}</Link>
         </div>
       </main>
     );

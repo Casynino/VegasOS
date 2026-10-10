@@ -9,6 +9,7 @@ import { AppError, runAction, type ActionResult } from "@/server/errors";
 import { parseInput } from "@/server/validation";
 import { toDbDate } from "@/lib/time/business-date";
 import { assertNoPriceRuleConflict, assertNoPromotionConflict } from "@/server/services/pricing-admin";
+import { msg } from "@/i18n/msg";
 
 /**
  * Room pricing — Admin only ("pricing.manage"). Changing a price or a
@@ -30,7 +31,7 @@ async function adminActor() {
 
 const PriceSchema = z.object({
   roomTypeId: z.string().min(1),
-  baseRate: z.coerce.number().int("Whole shillings only.").min(1000, "The price looks too low.").max(10_000_000),
+  baseRate: z.coerce.number().int(msg("Whole shillings only.")).min(1000, msg("The price looks too low.")).max(10_000_000),
 });
 
 export async function updateRoomPriceAction(_prev: unknown, formData: FormData): Promise<ActionResult<null>> {
@@ -49,7 +50,7 @@ export async function updateRoomPriceAction(_prev: unknown, formData: FormData):
     });
     refresh();
     return null;
-  }, "Price saved. New bookings use it; existing bookings keep their price.");
+  }, msg("Price saved. New bookings use it; existing bookings keep their price."));
 }
 
 const WEBSITE_STANDARD = "promo_website_standard";
@@ -57,9 +58,9 @@ const defaultPriority = (scope: string) => (scope === "ROOMS" ? 30 : scope === "
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().or(z.literal("").transform(() => null));
 const PromotionSchema = z.object({
   id: z.string().optional().nullable(),
-  name: z.string().trim().min(2, "Give the promotion a name.").max(80),
+  name: z.string().trim().min(2, msg("Give the promotion a name.")).max(80),
   type: z.enum(["PERCENT", "FIXED"]),
-  value: z.coerce.number().int().positive("Enter the discount."),
+  value: z.coerce.number().int().positive(msg("Enter the discount.")),
   scope: z.enum(["ALL", "ROOM_TYPES", "ROOMS"]),
   roomTypeIds: z.array(z.string()).default([]),
   roomIds: z.array(z.string()).default([]),
@@ -67,16 +68,16 @@ const PromotionSchema = z.object({
   startDate: date,
   endDate: date,
   daysOfWeek: z.array(z.number().int().min(0).max(6)).max(7).default([]),
-  priority: z.coerce.number().int().min(1, "Priority is 1–100.").max(100, "Priority is 1–100.").optional(),
+  priority: z.coerce.number().int().min(1, msg("Priority is 1–100.")).max(100, msg("Priority is 1–100.")).optional(),
   isActive: z.boolean().default(true),
 }).superRefine((p, ctx) => {
-  if (p.type === "PERCENT" && p.value > 100) ctx.addIssue({ code: "custom", path: ["value"], message: "A percentage can't be more than 100." });
+  if (p.type === "PERCENT" && p.value > 100) ctx.addIssue({ code: "custom", path: ["value"], message: msg("A percentage can't be more than 100.") });
   // No unlimited promotions: every promotion has a first and a last night (the built-in website price is the only exception).
-  if (p.id !== WEBSITE_STANDARD && !p.startDate) ctx.addIssue({ code: "custom", path: ["startDate"], message: "Choose the first night of the promotion." });
-  if (p.id !== WEBSITE_STANDARD && !p.endDate) ctx.addIssue({ code: "custom", path: ["endDate"], message: "Choose the last night — a promotion cannot run forever." });
-  if (p.scope === "ROOM_TYPES" && !p.roomTypeIds.length) ctx.addIssue({ code: "custom", path: ["roomTypeIds"], message: "Choose at least one room type." });
-  if (p.scope === "ROOMS" && !p.roomIds.length) ctx.addIssue({ code: "custom", path: ["roomIds"], message: "Choose at least one room." });
-  if (p.startDate && p.endDate && p.endDate < p.startDate) ctx.addIssue({ code: "custom", path: ["endDate"], message: "The end date is before the start date." });
+  if (p.id !== WEBSITE_STANDARD && !p.startDate) ctx.addIssue({ code: "custom", path: ["startDate"], message: msg("Choose the first night of the promotion.") });
+  if (p.id !== WEBSITE_STANDARD && !p.endDate) ctx.addIssue({ code: "custom", path: ["endDate"], message: msg("Choose the last night — a promotion cannot run forever.") });
+  if (p.scope === "ROOM_TYPES" && !p.roomTypeIds.length) ctx.addIssue({ code: "custom", path: ["roomTypeIds"], message: msg("Choose at least one room type.") });
+  if (p.scope === "ROOMS" && !p.roomIds.length) ctx.addIssue({ code: "custom", path: ["roomIds"], message: msg("Choose at least one room.") });
+  if (p.startDate && p.endDate && p.endDate < p.startDate) ctx.addIssue({ code: "custom", path: ["endDate"], message: msg("The end date is before the start date.") });
 });
 
 export async function savePromotionAction(input: z.input<typeof PromotionSchema>): Promise<ActionResult<{ id: string }>> {
@@ -119,7 +120,7 @@ export async function savePromotionAction(input: z.input<typeof PromotionSchema>
     });
     refresh();
     return { id };
-  }, "Promotion saved.");
+  }, msg("Promotion saved."));
 }
 
 export async function setPromotionActiveAction(input: { id: string; isActive: boolean }): Promise<ActionResult<null>> {
@@ -143,7 +144,7 @@ export async function setPromotionActiveAction(input: { id: string; isActive: bo
     });
     refresh();
     return null;
-  }, input.isActive ? "Promotion switched on." : "Promotion switched off.");
+  }, input.isActive ? msg("Promotion switched on.") : msg("Promotion switched off."));
 }
 
 const RulesSchema = z.object({
@@ -171,27 +172,27 @@ export async function saveDiscountRulesAction(_prev: unknown, formData: FormData
     });
     revalidatePath("/staff", "layout");
     return null;
-  }, "Discount rules saved.");
+  }, msg("Discount rules saved."));
 }
 
 // ───────────────────────── Date prices (weekend, holiday, season) ─────────────────────────
 
 const PriceRuleSchema = z.object({
   id: z.string().optional().nullable(),
-  name: z.string().trim().min(2, "Give the date price a name (e.g. Weekend, Christmas).").max(80),
+  name: z.string().trim().min(2, msg("Give the date price a name (e.g. Weekend, Christmas).")).max(80),
   scope: z.enum(["ALL", "ROOM_TYPES", "ROOMS"]),
   roomTypeIds: z.array(z.string()).default([]),
   roomIds: z.array(z.string()).default([]),
-  price: z.coerce.number().int("Whole shillings only.").min(1000, "The price looks too low.").max(10_000_000),
-  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose the first night."),
-  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose the last night."),
+  price: z.coerce.number().int(msg("Whole shillings only.")).min(1000, msg("The price looks too low.")).max(10_000_000),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, msg("Choose the first night.")),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, msg("Choose the last night.")),
   daysOfWeek: z.array(z.number().int().min(0).max(6)).max(7).default([]),
   priority: z.coerce.number().int().min(1).max(100).optional(),
   isActive: z.boolean().default(true),
 }).superRefine((p, ctx) => {
-  if (p.scope === "ROOM_TYPES" && !p.roomTypeIds.length) ctx.addIssue({ code: "custom", path: ["roomTypeIds"], message: "Choose at least one room type." });
-  if (p.scope === "ROOMS" && !p.roomIds.length) ctx.addIssue({ code: "custom", path: ["roomIds"], message: "Choose at least one room." });
-  if (p.endDate < p.startDate) ctx.addIssue({ code: "custom", path: ["endDate"], message: "The end date is before the start date." });
+  if (p.scope === "ROOM_TYPES" && !p.roomTypeIds.length) ctx.addIssue({ code: "custom", path: ["roomTypeIds"], message: msg("Choose at least one room type.") });
+  if (p.scope === "ROOMS" && !p.roomIds.length) ctx.addIssue({ code: "custom", path: ["roomIds"], message: msg("Choose at least one room.") });
+  if (p.endDate < p.startDate) ctx.addIssue({ code: "custom", path: ["endDate"], message: msg("The end date is before the start date.") });
 });
 
 /** A date price replaces the normal room price on the nights it covers. Booked nights keep their price. */
@@ -223,7 +224,7 @@ export async function savePriceRuleAction(input: z.input<typeof PriceRuleSchema>
     });
     refresh();
     return { id };
-  }, "Date price saved. New bookings use it; booked nights keep their price.");
+  }, msg("Date price saved. New bookings use it; booked nights keep their price."));
 }
 
 export async function setPriceRuleActiveAction(input: { id: string; isActive: boolean }): Promise<ActionResult<null>> {
@@ -243,5 +244,5 @@ export async function setPriceRuleActiveAction(input: { id: string; isActive: bo
     });
     refresh();
     return null;
-  }, input.isActive ? "Date price switched on." : "Date price switched off.");
+  }, input.isActive ? msg("Date price switched on.") : msg("Date price switched off."));
 }

@@ -15,17 +15,22 @@ import { AutoSelect } from "@/components/staff/finance/auto-select";
 import { ApproveButtons, CancelButton, ExpenseEditButton, ReinstateButton } from "@/components/staff/finance/fix-buttons";
 import { cn } from "@/lib/utils";
 import { expenseLook } from "@/lib/expense-look";
+import { msg } from "@/i18n/msg";
+import { getT } from "@/i18n/server";
 import { ExpenseDialog, PurchaseChip } from "./expense-dialogs";
 
-export const metadata: Metadata = { title: "Expenses" };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT();
+  return { title: t("Expenses") };
+}
 const PAGE = 40;
 const STATUS = {
-  RECORDED: { label: "Paid", cls: "border-emerald-500/40 text-emerald-700 dark:text-emerald-300" },
-  APPROVED: { label: "Paid · approved", cls: "border-emerald-500/40 text-emerald-700 dark:text-emerald-300" },
-  PENDING_APPROVAL: { label: "Waiting approval", cls: "border-amber-500/50 text-amber-700 dark:text-amber-300" },
-  CORRECTION_REQUESTED: { label: "Needs correction", cls: "border-amber-500/50 text-amber-700 dark:text-amber-300" },
-  REJECTED: { label: "Rejected", cls: "border-rose-500/40 text-rose-700 dark:text-rose-300" },
-  VOIDED: { label: "Cancelled", cls: "border-border text-muted-foreground" },
+  RECORDED: { label: msg("Paid"), cls: "border-emerald-500/40 text-emerald-700 dark:text-emerald-300" },
+  APPROVED: { label: msg("Paid · approved"), cls: "border-emerald-500/40 text-emerald-700 dark:text-emerald-300" },
+  PENDING_APPROVAL: { label: msg("Waiting approval"), cls: "border-amber-500/50 text-amber-700 dark:text-amber-300" },
+  CORRECTION_REQUESTED: { label: msg("Needs correction"), cls: "border-amber-500/50 text-amber-700 dark:text-amber-300" },
+  REJECTED: { label: msg("Rejected"), cls: "border-rose-500/40 text-rose-700 dark:text-rose-300" },
+  VOIDED: { label: msg("Cancelled"), cls: "border-border text-muted-foreground" },
 } as const;
 
 /**
@@ -37,7 +42,7 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/staff/e
   const user = await requirePagePermission("expenses.record", "expenses.view_all");
   const sp = await searchParams;
   const str = (v: unknown) => (typeof v === "string" ? v : "");
-  const today = await businessToday();
+  const [today, t] = await Promise.all([businessToday(), getT()]);
   const period = readPeriod(sp, today, "month");
   const range = { from: period.from, to: period.to };
   const categoryId = str(sp.category);
@@ -86,12 +91,12 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/staff/e
   const month = presetRange("month", today);
   const [types, bills, byType] = await Promise.all([expenseTypes(), viewAll ? monthlyBills(month.from, month.to) : Promise.resolve([]), viewAll ? spendByType(range.from, range.to) : Promise.resolve(null)]);
   const billsPaid = bills.filter((b) => b.paid > 0).length;
-  const monthName = new Date(`${today}T00:00:00Z`).toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
+  const monthName = new Date(`${today}T00:00:00Z`).toLocaleDateString(t.intl, { month: "long", year: "numeric", timeZone: "UTC" });
   const accountOptions = accounts.filter((a) => a.acceptsExpenses).map((a) => ({ id: a.id, name: a.name, methodId: a.paymentMethods[0]?.id ?? null }));
   const catOptions = categories.filter((c) => c.isActive).map((c) => ({ id: c.id, name: c.name }));
   const catName = new Map(categories.map((c) => [c.id, c.name]));
   const catIcon = new Map(categories.map((c) => [c.id, c.icon]));
-  const rangeLabel = periodLabel(range);
+  const rangeLabel = periodLabel(range, t);
   const days: { date: string; total: number; rows: typeof rows }[] = [];
   for (const e of rows) {
     const d = e.businessDate.toISOString().slice(0, 10);
@@ -111,9 +116,9 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/staff/e
   for (const a of edits) { const e = editOf.get(a.entityId!); if (e) e.count++; else editOf.set(a.entityId!, { count: 1, by: a.actorLabel, at: a.createdAt }); }
   const voidOf = new Map(voids.map((v) => [v.expenseId, v]));
   const originalOf = new Map(originals.map((o) => [o.id, o]));
-  const when = (d: Date) => d.toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Africa/Dar_es_Salaam" });
+  const when = (d: Date) => d.toLocaleString(t.intl, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Africa/Dar_es_Salaam" });
   const historyHref = can(user, "finance.view") ? "/staff/finance/history?group=expenses" : null;
-  const dayLabel = (d: string) => (d === today ? "Today" : d === addDays(today, -1) ? "Yesterday" : new Date(`${d}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }));
+  const dayLabel = (d: string) => (d === today ? t("Today") : d === addDays(today, -1) ? t("Yesterday") : new Date(`${d}T00:00:00Z`).toLocaleDateString(t.intl, { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }));
   const totalSpent = all._sum.amount ?? 0;
   const pages = Math.max(1, Math.ceil(total / PAGE));
   const keep: Record<string, string> = Object.fromEntries(Object.entries({ period: period.key === "custom" ? "" : period.key, from: period.key === "custom" ? range.from : "", to: period.key === "custom" ? range.to : "", q, category: categoryId, status, account: accountId }).filter(([, v]) => v));
@@ -123,8 +128,8 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/staff/e
   const billsPanel = (
       <section className="rounded-3xl border border-border/70 bg-card p-4">
         <div className="mb-3 flex items-start justify-between gap-2">
-          <div><p className="font-semibold">Monthly bills</p><p className="text-xs text-muted-foreground">{monthName} · fixed costs paid every month</p></div>
-          <span className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-xs font-semibold tabular-nums">{billsPaid}/{bills.length} paid</span>
+          <div><p className="font-semibold">{t("Monthly bills")}</p><p className="text-xs text-muted-foreground">{t("{month} · fixed costs paid every month", { month: monthName })}</p></div>
+          <span className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-xs font-semibold tabular-nums">{t("{paid}/{total} paid", { paid: billsPaid, total: bills.length })}</span>
         </div>
         <span className="mb-3 block h-1.5 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-emerald-500" style={{ width: `${bills.length ? (billsPaid / bills.length) * 100 : 0}%` }} /></span>
         {(() => {
@@ -132,8 +137,8 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/staff/e
           const sorted = [...bills].sort((a, b) => Number(!!b.paid) - Number(!!a.paid));
           const row = (b: (typeof bills)[number]) => (
             <li key={b.id} className="flex items-center justify-between gap-2 rounded-lg px-1 py-1.5 text-sm">
-              <span className="flex min-w-0 items-center gap-2">{b.paid ? <CheckCircle2 className="size-4 shrink-0 text-emerald-600" /> : <Circle className="size-4 shrink-0 text-muted-foreground/50" />}<span className={cn("truncate", !b.paid && "text-muted-foreground")}>{b.name}</span></span>
-              <span className={cn("shrink-0 text-xs tabular-nums", b.paid ? "font-semibold" : "text-muted-foreground/70")}>{b.paid ? formatTZS(b.paid) : "not yet"}</span>
+              <span className="flex min-w-0 items-center gap-2">{b.paid ? <CheckCircle2 className="size-4 shrink-0 text-emerald-600" /> : <Circle className="size-4 shrink-0 text-muted-foreground/50" />}<span className={cn("truncate", !b.paid && "text-muted-foreground")}>{t(b.name)}</span></span>
+              <span className={cn("shrink-0 text-xs tabular-nums", b.paid ? "font-semibold" : "text-muted-foreground/70")}>{b.paid ? formatTZS(b.paid) : t("not yet")}</span>
             </li>
           );
           const first = sorted.slice(0, Math.max(6, billsPaid + 3));
@@ -144,7 +149,7 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/staff/e
               {rest.length > 0 && (
                 <details className="group mt-1">
                   <summary className="cursor-pointer list-none rounded-lg px-1 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
-                    <span className="group-open:hidden">Show {rest.length} more not paid yet</span><span className="hidden group-open:inline">Show less</span>
+                    <span className="group-open:hidden">{t("Show {n} more not paid yet", { n: rest.length })}</span><span className="hidden group-open:inline">{t("Show less")}</span>
                   </summary>
                   <ul className="space-y-0.5">{rest.map(row)}</ul>
                 </details>
@@ -157,21 +162,21 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/staff/e
   const summaryPanel = byType && (
         <section className="rounded-3xl border border-border/70 bg-card p-4">
           <div className="mb-3 flex items-start justify-between gap-2">
-            <div><p className="font-semibold">Summary by type</p><p className="text-xs text-muted-foreground">{rangeLabel} · paid & approved</p></div>
+            <div><p className="font-semibold">{t("Summary by type")}</p><p className="text-xs text-muted-foreground">{t("{period} · paid & approved", { period: rangeLabel })}</p></div>
             <span className="font-semibold tabular-nums">{formatTZS(byType.total)}</span>
           </div>
-          {byType.groups.length === 0 ? <p className="text-sm text-muted-foreground">Nothing spent in this period.</p> : (
+          {byType.groups.length === 0 ? <p className="text-sm text-muted-foreground">{t("Nothing spent in this period.")}</p> : (
             <div className="space-y-4">
               {byType.groups.map((g) => {
                 const look = expenseLook(catIcon.get(g.id));
                 return (
                   <div key={g.id}>
                     <p className="flex items-center justify-between gap-2 text-sm font-semibold">
-                      <span className="flex items-center gap-2"><span className={cn("grid size-6 place-items-center rounded-md", look.tone)}><look.icon className="size-3.5" /></span>{g.name}</span>
+                      <span className="flex items-center gap-2"><span className={cn("grid size-6 place-items-center rounded-md", look.tone)}><look.icon className="size-3.5" /></span>{t(g.name)}</span>
                       <span className="shrink-0 whitespace-nowrap tabular-nums">{formatTZS(g.total)}</span>
                     </p>
                     <ul className="ml-8 mt-1 space-y-0.5 text-[13px] text-muted-foreground">
-                      {g.lines.map((l) => <li key={l.name} className="flex justify-between gap-2"><span className="truncate">{l.name}{l.count > 1 && <span className="text-xs"> ×{l.count}</span>}</span><span className="shrink-0 whitespace-nowrap tabular-nums">{formatTZS(l.amount)}</span></li>)}
+                      {g.lines.map((l) => <li key={l.name} className="flex justify-between gap-2"><span className="truncate">{t(l.name)}{l.count > 1 && <span className="text-xs"> ×{l.count}</span>}</span><span className="shrink-0 whitespace-nowrap tabular-nums">{formatTZS(l.amount)}</span></li>)}
                     </ul>
                   </div>
                 );
@@ -185,8 +190,8 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/staff/e
     <div className="w-full space-y-5">
       {/* The finance bar is this page's title; staff without finance see the heading instead */}
       {can(user, "finance.view") || can(user, "ledger.view")
-        ? <FinanceTabs active="/staff/expenses" limited={!can(user, "finance.view")} actions={can(user, "expenses.record") && <div className="flex gap-2">{can(user, "settings.manage") && <Link href="/staff/settings/expenses" className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border px-3 text-sm font-medium hover:bg-muted"><Settings2 className="size-4" />Expense types</Link>}<ExpenseDialog types={types} methods={methods.map((m) => ({ id: m.id, name: m.name }))} accounts={accountOptions} /></div>} />
-        : <PageHeader title="Expenses" description="What the hotel spends, and which account it was paid from." actions={can(user, "expenses.record") && <div className="flex gap-2">{can(user, "settings.manage") && <Link href="/staff/settings/expenses" className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border px-3 text-sm font-medium hover:bg-muted"><Settings2 className="size-4" />Expense types</Link>}<ExpenseDialog types={types} methods={methods.map((m) => ({ id: m.id, name: m.name }))} accounts={accountOptions} /></div>} />}
+        ? <FinanceTabs active="/staff/expenses" limited={!can(user, "finance.view")} actions={can(user, "expenses.record") && <div className="flex gap-2">{can(user, "settings.manage") && <Link href="/staff/settings/expenses" className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border px-3 text-sm font-medium hover:bg-muted"><Settings2 className="size-4" />{t("Expense types")}</Link>}<ExpenseDialog types={types} methods={methods.map((m) => ({ id: m.id, name: m.name }))} accounts={accountOptions} /></div>} />
+        : <PageHeader title={t("Expenses")} description={t("What the hotel spends, and which account it was paid from.")} actions={can(user, "expenses.record") && <div className="flex gap-2">{can(user, "settings.manage") && <Link href="/staff/settings/expenses" className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border px-3 text-sm font-medium hover:bg-muted"><Settings2 className="size-4" />{t("Expense types")}</Link>}<ExpenseDialog types={types} methods={methods.map((m) => ({ id: m.id, name: m.name }))} accounts={accountOptions} /></div>} />}
 
       <div className="flex flex-wrap items-end justify-between gap-3">
         <h2 className="text-lg font-semibold">{rangeLabel}</h2>
@@ -196,19 +201,19 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/staff/e
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <div className="relative overflow-hidden rounded-3xl border border-rose-500/30 bg-linear-to-br from-rose-500/[0.12] to-card p-5 col-span-2 flex flex-wrap items-end justify-between gap-4 sm:col-span-3 lg:col-span-5">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Money spent</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{t("Money spent")}</p>
             <p className="mt-2 text-3xl font-semibold tabular-nums tracking-tight">{formatTZS(totalSpent)}</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              {all._count} expense{all._count === 1 ? "" : "s"}
-              {pending._count > 0 && <> · <Link href={link({ status: status === "PENDING_APPROVAL" ? "" : "PENDING_APPROVAL" })} className="font-semibold text-amber-600 hover:underline dark:text-amber-400">{pending._count} waiting approval ({formatTZS(pending._sum.amount ?? 0)})</Link></>}
-              {cancelled._count > 0 && <> · <Link href={link({ status: status === "VOIDED" ? "" : "VOIDED" })} className="hover:underline">{cancelled._count} cancelled</Link></>}
+              {t.plural(all._count, "{n} expense", "{n} expenses")}
+              {pending._count > 0 && <> · <Link href={link({ status: status === "PENDING_APPROVAL" ? "" : "PENDING_APPROVAL" })} className="font-semibold text-amber-600 hover:underline dark:text-amber-400">{t("{n} waiting approval ({amount})", { n: pending._count, amount: formatTZS(pending._sum.amount ?? 0) })}</Link></>}
+              {cancelled._count > 0 && <> · <Link href={link({ status: status === "VOIDED" ? "" : "VOIDED" })} className="hover:underline">{t("{n} cancelled", { n: cancelled._count })}</Link></>}
             </p>
           </div>
           {spentBy.length > 0 && (
             <div className="flex max-w-2xl flex-wrap justify-end gap-1.5">
               {spentBy.map((a) => (
                 <Link key={a.id} href={link({ account: accountId === a.id ? "" : a.id })} className={cn("rounded-full border px-2.5 py-1 text-[11px] font-medium tabular-nums transition", accountId === a.id ? "border-foreground bg-foreground text-background" : "border-border/80 bg-background/50 hover:bg-muted")}>
-                  {a.name} · {a.amount.toLocaleString("en-US")}
+                  {t(a.name)} · {a.amount.toLocaleString("en-US")}
                 </Link>
               ))}
             </div>
@@ -220,7 +225,7 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/staff/e
             <Link key={c.categoryId} href={link({ category: categoryId === c.categoryId ? "" : c.categoryId })}
               className={cn("rounded-3xl border bg-card p-4 transition hover:-translate-y-0.5 hover:border-foreground/25", categoryId === c.categoryId ? "border-foreground/40 ring-1 ring-foreground/20" : "border-border/70")}>
               <span className={cn("grid size-9 place-items-center rounded-xl", look.tone)}><look.icon className="size-4" /></span>
-              <p className="mt-3 truncate text-xs text-muted-foreground">{catName.get(c.categoryId)}</p>
+              <p className="mt-3 truncate text-xs text-muted-foreground">{t(catName.get(c.categoryId) ?? "")}</p>
               <p className="mt-0.5 whitespace-nowrap text-base font-semibold tabular-nums">{formatTZS(c._sum.amount ?? 0)}</p>
             </Link>
           );
@@ -229,8 +234,8 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/staff/e
 
 
       {viewAll && (
-        <nav aria-label="Show" className="flex w-fit gap-1 rounded-2xl bg-muted/60 p-1">
-          {([["list", "Expenses"], ["bills", `Monthly bills · ${billsPaid}/${bills.length}`], ["summary", "Summary by type"]] as const).map(([v, l]) => (
+        <nav aria-label={t("Show")} className="flex w-fit gap-1 rounded-2xl bg-muted/60 p-1">
+          {([["list", t("Expenses")], ["bills", `${t("Monthly bills")} · ${billsPaid}/${bills.length}`], ["summary", t("Summary by type")]] as const).map(([v, l]) => (
             <Link key={v} href={link({ view: v === "list" ? "" : v, page: "" })} aria-current={view === v ? "page" : undefined}
               className={cn("rounded-xl px-4 py-2 text-sm font-medium transition", view === v ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground")}>{l}</Link>
           ))}
@@ -245,22 +250,22 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/staff/e
         <div className="flex gap-2">
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <input name="q" defaultValue={q} placeholder="What it was, the number, who was paid, a note…" className="h-10 w-full rounded-xl border border-border bg-background pl-10 pr-3 text-sm" />
+            <input name="q" defaultValue={q} placeholder={t("What it was, the number, who was paid, a note…")} className="h-10 w-full rounded-xl border border-border bg-background pl-10 pr-3 text-sm" />
           </div>
-          <button className="h-10 rounded-xl border border-border px-4 text-sm font-medium hover:bg-muted">Search</button>
+          <button className="h-10 rounded-xl border border-border px-4 text-sm font-medium hover:bg-muted">{t("Search")}</button>
         </div>
         <div className="flex flex-wrap gap-2">
-          <AutoSelect name="category" value={categoryId} label="Category" options={[{ value: "", label: "Every category" }, ...categories.map((c) => ({ value: c.id, label: c.name }))]} />
-          <AutoSelect name="status" value={status} label="Status" options={[{ value: "", label: "Any status" }, ...Object.entries(STATUS).map(([k, v]) => ({ value: k, label: v.label }))]} />
-          <AutoSelect name="account" value={accountId} label="Account" options={[{ value: "", label: "Any account" }, ...accounts.map((a) => ({ value: a.id, label: a.name }))]} />
+          <AutoSelect name="category" value={categoryId} label={t("Category")} options={[{ value: "", label: t("Every category") }, ...categories.map((c) => ({ value: c.id, label: t(c.name) }))]} />
+          <AutoSelect name="status" value={status} label={t("Status")} options={[{ value: "", label: t("Any status") }, ...Object.entries(STATUS).map(([k, v]) => ({ value: k, label: t(v.label) }))]} />
+          <AutoSelect name="account" value={accountId} label={t("Account")} options={[{ value: "", label: t("Any account") }, ...accounts.map((a) => ({ value: a.id, label: t(a.name) }))]} />
         </div>
       </form>
 
-      <p className="text-xs text-muted-foreground">Showing {total ? (page - 1) * PAGE + 1 : 0}–{Math.min(total, page * PAGE)} of {total} expense{total === 1 ? "" : "s"}</p>
-      {rows.length === 0 ? <p className="rounded-3xl border border-dashed border-border p-12 text-center text-sm text-muted-foreground">No expenses match.</p> : days.map((day) => (
+      <p className="text-xs text-muted-foreground">{t.plural(total, "Showing {from}–{to} of {n} expense", "Showing {from}–{to} of {n} expenses", { from: total ? (page - 1) * PAGE + 1 : 0, to: Math.min(total, page * PAGE) })}</p>
+      {rows.length === 0 ? <p className="rounded-3xl border border-dashed border-border p-12 text-center text-sm text-muted-foreground">{t("No expenses match.")}</p> : days.map((day) => (
         <section key={day.date} className="overflow-hidden rounded-3xl border border-border/70 bg-card">
           <header className="flex items-baseline justify-between gap-2 border-b border-border/60 bg-muted/30 px-4 py-2.5">
-            <p className="text-sm font-semibold">{dayLabel(day.date)}<span className="ml-2 text-xs font-normal text-muted-foreground">{day.rows.length} expense{day.rows.length === 1 ? "" : "s"}</span></p>
+            <p className="text-sm font-semibold">{dayLabel(day.date)}<span className="ml-2 text-xs font-normal text-muted-foreground">{t.plural(day.rows.length, "{n} expense", "{n} expenses")}</span></p>
             <p className="text-sm font-semibold tabular-nums">{formatTZS(day.total)}</p>
           </header>
           <ul className="divide-y divide-border/50">
@@ -277,9 +282,9 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/staff/e
                 <li key={e.id} className={cn("flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 transition hover:bg-muted/30", off && "opacity-60")}>
                   <span className={cn("grid size-10 shrink-0 place-items-center rounded-xl", look.tone)}><look.icon className="size-[18px]" /></span>
                   <div className="min-w-0 flex-1 leading-tight">
-                    <p className={cn("truncate font-semibold", off && "line-through")}>{e.item?.name ?? e.description}{extra && <span className="font-normal text-muted-foreground"> · {extra}</span>}</p>
+                    <p className={cn("truncate font-semibold", off && "line-through")}>{e.item ? t(e.item.name) : e.description}{extra && <span className="font-normal text-muted-foreground"> · {extra}</span>}</p>
                     <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                      {[e.payee && `To ${e.payee}`, `from ${from}`, `by ${e.createdBy.fullName}`, e.number].filter(Boolean).join(" · ")}
+                      {[e.payee && t("To {payee}", { payee: e.payee }), t("from {account}", { account: t(from) }), t("by {name}", { name: e.createdBy.fullName }), e.number].filter(Boolean).join(" · ")}
                     </p>
                     {(() => {
                       const v = voidOf.get(e.id);
@@ -288,10 +293,10 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/staff/e
                       const chips: { label: string; tone: string; text: string }[] = [];
                       if (e.status === "VOIDED") {
                         const replaced = e.voidReason?.startsWith("Corrected:");
-                        chips.push({ label: replaced ? "Replaced" : "Cancelled", tone: "bg-rose-500/12 text-rose-700 dark:text-rose-300", text: `${replaced ? "corrected" : "cancelled"} by ${v?.actor.fullName ?? "—"}${v ? `, ${when(v.createdAt)}` : ""} — ${(e.voidReason ?? "").replace(/^Corrected:\s*/, "")}` });
+                        chips.push({ label: replaced ? t("Replaced") : t("Cancelled"), tone: "bg-rose-500/12 text-rose-700 dark:text-rose-300", text: `${replaced ? t("corrected by {name}", { name: v?.actor.fullName ?? "—" }) : t("cancelled by {name}", { name: v?.actor.fullName ?? "—" })}${v ? `, ${when(v.createdAt)}` : ""} — ${(e.voidReason ?? "").replace(/^Corrected:\s*/, "")}` });
                       }
-                      if (orig) chips.push({ label: "Corrected", tone: "bg-violet-500/12 text-violet-700 dark:text-violet-300", text: `replaces ${orig.number ?? "an older line"}${orig.amount !== e.amount ? ` (was ${formatTZS(orig.amount)})` : ""} · by ${voidOf.get(orig.id)?.actor.fullName ?? "—"}, ${when(e.createdAt)}` });
-                      if (ed) chips.push({ label: ed.count > 1 ? `Edited ×${ed.count}` : "Edited", tone: "bg-amber-500/12 text-amber-700 dark:text-amber-300", text: `last by ${ed.by ?? "—"}, ${when(ed.at)}` });
+                      if (orig) chips.push({ label: t("Corrected"), tone: "bg-violet-500/12 text-violet-700 dark:text-violet-300", text: `${t("replaces {number}", { number: orig.number ?? t("an older line") })}${orig.amount !== e.amount ? ` ${t("(was {amount})", { amount: formatTZS(orig.amount) })}` : ""} · ${t("by {name}", { name: voidOf.get(orig.id)?.actor.fullName ?? "—" })}, ${when(e.createdAt)}` });
+                      if (ed) chips.push({ label: ed.count > 1 ? t("Edited ×{n}", { n: ed.count }) : t("Edited"), tone: "bg-amber-500/12 text-amber-700 dark:text-amber-300", text: `${t("last by {name}", { name: ed.by ?? "—" })}, ${when(ed.at)}` });
                       if (!chips.length) return null;
                       return (
                         <div className="mt-1.5 flex flex-col gap-1">
@@ -299,7 +304,7 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/staff/e
                             <p key={c.label} className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
                               <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold", c.tone)}>{c.label}</span>
                               <span className="truncate">{c.text}</span>
-                              {historyHref && <Link href={historyHref} className="shrink-0 font-medium text-foreground/70 underline-offset-2 hover:underline">history</Link>}
+                              {historyHref && <Link href={historyHref} className="shrink-0 font-medium text-foreground/70 underline-offset-2 hover:underline">{t("history")}</Link>}
                             </p>
                           ))}
                         </div>
@@ -308,8 +313,8 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/staff/e
                   </div>
                   <span className={cn("shrink-0 text-right text-[15px] font-semibold tabular-nums sm:order-last sm:min-w-28", off && "line-through")}>{formatTZS(e.amount)}</span>
                   <div className="flex w-full flex-wrap items-center gap-1.5 pl-[52px] empty:hidden sm:w-auto sm:pl-0">
-                    {e.status !== "RECORDED" && <span className={cn("rounded-full border px-2 py-0.5 text-[11px] font-medium", st.cls)}>{st.label}</span>}
-                    {e.receiptUrl && (!purchase || seesPurchaseReceipt) && <a href={e.receiptUrl} target="_blank" rel="noreferrer" title="Receipt" className="grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-muted"><Paperclip className="size-3.5" /></a>}
+                    {e.status !== "RECORDED" && <span className={cn("rounded-full border px-2 py-0.5 text-[11px] font-medium", st.cls)}>{t(st.label)}</span>}
+                    {e.receiptUrl && (!purchase || seesPurchaseReceipt) && <a href={e.receiptUrl} target="_blank" rel="noreferrer" title={t("Receipt")} className="grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-muted"><Paperclip className="size-3.5" /></a>}
                     {purchase ? <PurchaseChip purchase={purchase} /> : <>
                       {e.status === "PENDING_APPROVAL" && can(user, "expenses.approve") && (e.createdById !== user.id || user.roleCode === "OWNER") && <ApproveButtons expenseId={e.id} />}
                       {!off && canChange && (
@@ -328,8 +333,8 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/staff/e
       ))}
       {pages > 1 && (
         <div className="flex justify-end gap-2 text-sm">
-          {page > 1 && <Link className="rounded-lg border border-border px-3 py-1.5 hover:bg-muted" href={link({ page: String(page - 1) })}>Previous</Link>}
-          {page < pages && <Link className="rounded-lg border border-border px-3 py-1.5 hover:bg-muted" href={link({ page: String(page + 1) })}>Next</Link>}
+          {page > 1 && <Link className="rounded-lg border border-border px-3 py-1.5 hover:bg-muted" href={link({ page: String(page - 1) })}>{t("Previous")}</Link>}
+          {page < pages && <Link className="rounded-lg border border-border px-3 py-1.5 hover:bg-muted" href={link({ page: String(page + 1) })}>{t("Next")}</Link>}
         </div>
       )}
       </div>

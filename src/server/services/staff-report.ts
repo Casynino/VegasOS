@@ -9,7 +9,12 @@ import { formatBusinessDate } from "@/lib/format";
 import { worksWaiterShift } from "@/lib/permissions";
 import { Prisma } from "@/generated/prisma/client";
 import { factLine, personFacts, shiftDuration, type ShiftFact, type ShiftReportData } from "./shift-report";
-import { deliverToRecipients, MAX_ATTEMPTS } from "./report-delivery";
+import { deliverToRecipients, MAX_ATTEMPTS, withLang } from "./report-delivery";
+import { msg } from "@/i18n/msg";
+import { getTFor } from "@/i18n/server";
+import { englishT, type T } from "@/i18n/translate";
+import type { Locale } from "@/i18n/config";
+import type { TextBook } from "@/lib/report-i18n";
 import { dailyByKind, dailyMoney, guestMovement, occupancy, outstanding, profitLoss, restaurantSummary, type Range } from "./reporting";
 
 /**
@@ -40,6 +45,8 @@ export interface PersonPeriodData {
   /** What `a` and `b` count in the day series (guests checked in / out, or orders handled / served). */
   series: { a: string; b: string };
   shifts: { id: string; businessDate: BusinessDate; startedAt: string; endedAt: string | null; minutes: number; reportId: string | null; headline: ShiftFact[] }[];
+  /** Sentences with values in groups / money / records, to say them in another language — reports before Oct 2026 have none. */
+  i18n?: TextBook;
 }
 /** The business over the period (and the same figures for the period before) — from the reporting services. */
 export interface BusinessPeriod {
@@ -87,10 +94,16 @@ export function previousPeriod(kind: PeriodKind, from: BusinessDate, to: Busines
   const pTo = addDays(pFrom, diffDays(from, to));
   return { from: pFrom, to: pTo > pEnd ? pEnd : pTo };
 }
-export function periodLabel(kind: PeriodKind, from: BusinessDate, to: BusinessDate) {
-  if (kind === "MONTH") return new Date(`${from}T12:00:00Z`).toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
-  return `${formatBusinessDate(from)} – ${formatBusinessDate(to)}`;
+/** "September 2026" / "Mon 7 Sep 2026 – Sun 13 Sep 2026" — in the reader's words with `t`. */
+export function periodLabel(kind: PeriodKind, from: BusinessDate, to: BusinessDate, t: T = englishT) {
+  if (kind === "MONTH") return new Date(`${from}T12:00:00Z`).toLocaleDateString(t.intl, { month: "long", year: "numeric", timeZone: "UTC" });
+  return t.locale === "en" ? `${formatBusinessDate(from)} – ${formatBusinessDate(to)}` : `${t.date(from)} – ${t.date(to)}`;
 }
+/** The label a saved period report shows, in the reader's words ("· so far" while it runs). */
+export const periodLabelOf = (d: { kind: PeriodKind; from: BusinessDate; to: BusinessDate; label: string; live?: boolean }, t: T) =>
+  t.locale === "en" ? d.label : d.live && / · so far$/.test(d.label)
+    ? t("{period} · so far", { period: periodLabel(d.kind, d.from, periodOf(d.kind, d.from).to, t) })
+    : periodLabel(d.kind, d.from, d.to, t);
 
 // ───────────────────────── One person's period ─────────────────────────
 
@@ -141,7 +154,7 @@ export async function buildPersonPeriod(userId: string, kind: PeriodKind, from: 
     department === "RESTAURANT" ? db.restaurantOrderEvent.findMany({ where: { byId: userId, at: { gte: start, lt: end } }, select: { orderId: true, at: true } }) : Promise.resolve([]),
   ]);
   const count = (d: string, actions: string[]) => logs.filter((l) => fromDbDate(l.businessDate) === d && actions.includes(l.action)).reduce((t, l) => t + l._count, 0);
-  const series = department === "RECEPTION" ? { a: "Guests checked in", b: "Guests checked out" } : { a: "Orders handled", b: "Orders served" };
+  const series = department === "RECEPTION" ? { a: msg("Guests checked in"), b: msg("Guests checked out") } : { a: msg("Orders handled"), b: msg("Orders served") };
   const dayRows = days.map((d) => ({
     date: d,
     minutes: shifts.filter((x) => fromDbDate(x.businessDate) === d).reduce((t, x) => t + minutesOf(x), 0),
@@ -156,8 +169,8 @@ export async function buildPersonPeriod(userId: string, kind: PeriodKind, from: 
     person: { id: user.id, name: user.fullName, role: user.role.name }, department,
     totals: { shifts: shifts.length, minutes: totalMinutes, days: dayRows.filter((d) => d.minutes > 0).length },
     headline: [
-      { label: "Shifts", value: shifts.length, prev: undefined },
-      { label: "Hours on shift", value: Math.round(totalMinutes / 6) / 10 },
+      { label: msg("Shifts"), value: shifts.length, prev: undefined },
+      { label: msg("Hours on shift"), value: Math.round(totalMinutes / 6) / 10 },
       ...facts.headline.map((f) => ({ ...f, prev: prevBy.get(f.label) ?? 0 })),
     ],
     groups: facts.groups, money: facts.money, records: facts.records,
@@ -169,17 +182,19 @@ export async function buildPersonPeriod(userId: string, kind: PeriodKind, from: 
         reportId: x.report?.id ?? null, headline: rep?.headline?.slice(0, 3) ?? [],
       };
     }),
+    i18n: facts.i18n,
   };
 }
 
-export function renderPersonPeriodText(d: PersonPeriodData, hotelName: string, link?: string | null) {
-  const what = d.kind === "WEEK" ? "Weekly staff report" : "Monthly staff report";
+/** One person's week / month as a message, in the reader's language (`t`, English by default) — the same figures in every language. */
+export function renderPersonPeriodText(d: PersonPeriodData, hotelName: string, link?: string | null, t: T = englishT) {
+  const what = d.kind === "WEEK" ? t("Weekly staff report") : t("Monthly staff report");
   const lines = [
-    `*${hotelName.toUpperCase()}*`, `*${what}*`, "", `*${d.person.name}* — ${d.person.role}`, d.label, "",
-    `${d.totals.shifts} shift${d.totals.shifts === 1 ? "" : "s"} · ${shiftDuration(d.totals.minutes)} on shift`,
-    ...d.headline.slice(2, 9).map((f) => `• ${factLine(f)}`),
+    `*${hotelName.toUpperCase()}*`, `*${what}*`, "", `*${d.person.name}* — ${t(d.person.role)}`, periodLabelOf(d, t), "",
+    t.plural(d.totals.shifts, "{n} shift · {duration} on shift", "{n} shifts · {duration} on shift", { duration: shiftDuration(d.totals.minutes) }),
+    ...d.headline.slice(2, 9).map((f) => `• ${factLine(f, t)}`),
   ];
-  const tail = link ? `\n\n*Full report:* ${link}` : "";
+  const tail = link ? `\n\n*${t("Full report:")}* ${link}` : "";
   return lines.join("\n").slice(0, 3500 - tail.length) + tail;
 }
 
@@ -253,37 +268,39 @@ const fmtN = (n: number) => Math.round(n).toLocaleString("en-US");
 /** "+12%" / "−5%" against the period before (nothing when there is no base to compare with). */
 const vsPrev = (cur: number, prev: number) => (prev > 0 && cur !== prev ? ` (${cur > prev ? "+" : "−"}${Math.round(Math.abs(cur - prev) / prev * 100)}%)` : "");
 
-export function renderTeamText(d: TeamPeriodData, hotelName: string, link?: string | null) {
-  const what = d.kind === "WEEK" ? "Weekly report" : "Monthly report";
+/** The boss's weekly / monthly message (the business and the team), in the reader's language (`t`, English by default) — the same figures in every language. */
+export function renderTeamText(d: TeamPeriodData, hotelName: string, link?: string | null, t: T = englishT) {
+  const what = d.kind === "WEEK" ? t("Weekly report") : t("Monthly report");
   const b = d.business;
   const tz = (v: number) => `TZS ${v < 0 ? "−" : ""}${fmtN(Math.abs(v))}`;
   const deptLines = b ? ([
-    ["Rooms", b.revenue.rooms], ["Restaurant", b.revenue.restaurant], ["Bar", b.revenue.bar], ["Room service", b.revenue.roomService],
-    ["Meeting room", b.revenue.meeting], ["Transport", b.revenue.transport], ["Other", b.revenue.other],
-  ] as const).filter(([, v]) => v !== 0).map(([k, v]) => `  ${k}: ${fmtN(v)}`) : [];
+    [msg("Rooms"), b.revenue.rooms], [msg("Restaurant"), b.revenue.restaurant], [msg("Bar"), b.revenue.bar], [msg("Room service"), b.revenue.roomService],
+    [msg("Meeting room"), b.revenue.meeting], [msg("Transport"), b.revenue.transport], [msg("Other"), b.revenue.other],
+  ] as const).filter(([, v]) => v !== 0).map(([k, v]) => `  ${t("{what}: {amount}", { what: t(k), amount: fmtN(v) })}`) : [];
+  const bold = (label: string, value: string) => `*${t(label)}* ${value}`;
   const business = b ? [
-    `*Revenue ${tz(b.revenue.total)}*${vsPrev(b.revenue.total, b.revenue.prev)}`,
-    ...(deptLines.length ? deptLines : ["  No revenue recorded"]),
-    ...(b.revenue.refunds ? [`  (refunds: −${fmtN(b.revenue.refunds)})`] : []),
-    `*Money received:* ${tz(b.received)}`,
-    `*Expenses:* ${tz(b.expenses)}`,
-    `*Net operating result:* ${tz(b.result)}`,
-    `*Occupancy:* ${b.rooms.occupancy}% · ${b.rooms.roomNights} room nights${b.rooms.adr ? ` · avg rate ${fmtN(b.rooms.adr)}` : ""}`,
-    `*Check-ins:* ${b.guests.checkIns} · *Check-outs:* ${b.guests.checkOuts} · *New bookings:* ${b.guests.newBookings}`,
-    `*Restaurant & bar:* ${b.restaurant.orders} order${b.restaurant.orders === 1 ? "" : "s"} · ${tz(b.restaurant.sales)}`,
-    `*Outstanding (all, today):* ${tz(b.outstanding)}`,
+    `*${t("Revenue {amount}", { amount: tz(b.revenue.total) })}*${vsPrev(b.revenue.total, b.revenue.prev)}`,
+    ...(deptLines.length ? deptLines : [`  ${t("No revenue recorded")}`]),
+    ...(b.revenue.refunds ? [`  ${t("(refunds: −{amount})", { amount: fmtN(b.revenue.refunds) })}`] : []),
+    bold(msg("Money received:"), tz(b.received)),
+    bold(msg("Expenses:"), tz(b.expenses)),
+    bold(msg("Net operating result:"), tz(b.result)),
+    `${bold(msg("Occupancy:"), `${b.rooms.occupancy}%`)} · ${t("{n} room nights", { n: b.rooms.roomNights })}${b.rooms.adr ? ` · ${t("avg rate {amount}", { amount: fmtN(b.rooms.adr) })}` : ""}`,
+    `${bold(msg("Check-ins:"), String(b.guests.checkIns))} · ${bold(msg("Check-outs:"), String(b.guests.checkOuts))} · ${bold(msg("New bookings:"), String(b.guests.newBookings))}`,
+    `${bold(msg("Restaurant & bar:"), t.plural(b.restaurant.orders, "{n} order", "{n} orders"))} · ${tz(b.restaurant.sales)}`,
+    bold(msg("Outstanding (all, today):"), tz(b.outstanding)),
     "",
   ] : [];
   const dept = (k: "RECEPTION" | "RESTAURANT", title: string) => {
     const xs = d.people.filter((p) => p.department === k);
     if (!xs.length) return [];
-    return [`*${title}*`, ...xs.map((p) => `• ${p.name.replace(/\s*\(.*\)/, "")}: ${p.shifts} shift${p.shifts === 1 ? "" : "s"}, ${shiftDuration(p.minutes)}${p.headline.length ? ` — ${p.headline.slice(0, 2).map(factLine).join(", ")}` : ""}`), ""];
+    return [`*${t(title)}*`, ...xs.map((p) => `• ${p.name.replace(/\s*\(.*\)/, "")}: ${t.plural(p.shifts, "{n} shift", "{n} shifts")}, ${shiftDuration(p.minutes)}${p.headline.length ? ` — ${p.headline.slice(0, 2).map((f) => factLine(f, t)).join(t.locale === "en" ? ", " : "，")}` : ""}`), ""];
   };
   const lines = [
-    `*${hotelName.toUpperCase()}*`, `*${what}*`, d.label, "", ...business,
-    "*The team*", ...dept("RECEPTION", "Reception"), ...dept("RESTAURANT", "Restaurant"), d.people.length ? null : "No shift was worked.",
+    `*${hotelName.toUpperCase()}*`, `*${what}*`, periodLabelOf(d, t), "", ...business,
+    `*${t("The team")}*`, ...dept("RECEPTION", msg("Reception")), ...dept("RESTAURANT", msg("Restaurant")), d.people.length ? null : t("No shift was worked."),
   ].filter((x): x is string => x !== null);
-  const tail = link ? `\n*Full report:* ${link}` : "";
+  const tail = link ? `\n*${t("Full report:")}* ${link}` : "";
   return lines.join("\n").replace(/\n{3,}/g, "\n\n").slice(0, 3500 - tail.length) + tail;
 }
 /**
@@ -329,7 +346,19 @@ export async function generateTeamPeriodReport(kind: PeriodKind, from: BusinessD
 
 export async function deliverStaffReport(reportId: string, opts: { force?: boolean; manual?: boolean; deadline?: number } = {}) {
   const r = await db.staffReport.findUniqueOrThrow({ where: { id: reportId }, include: { deliveries: true } });
-  return deliverToRecipients({ link: { staffReportId: r.id }, purpose: "STAFF_REPORT", text: r.summaryText, generatedAt: r.generatedAt, deliveries: r.deliveries, force: opts.force, manual: opts.manual, deadline: opts.deadline });
+  return deliverToRecipients({
+    link: { staffReportId: r.id }, purpose: "STAFF_REPORT", text: r.summaryText, generatedAt: r.generatedAt, deliveries: r.deliveries, force: opts.force, manual: opts.manual, deadline: opts.deadline,
+    textFor: (lang) => staffReportTextIn(r, lang),
+  });
+}
+
+/** A saved weekly / monthly report's message in another language (its frozen figures; the link opens it in that language). */
+export async function staffReportTextIn(r: { userId: string | null; data: unknown; shareToken: string }, lang: Locale) {
+  const [settings, url, t] = await Promise.all([getSettings(), staffReportLink(r.shareToken), getTFor(lang)]);
+  const link = url ? withLang(url, lang) : null;
+  return r.userId
+    ? renderPersonPeriodText(r.data as unknown as PersonPeriodData, settings.hotelName, link, t)
+    : renderTeamText(r.data as unknown as TeamPeriodData, settings.hotelName, link, t);
 }
 
 /** The boss gets the weekly and monthly reports from the morning run on (07:00) — never in the night. */

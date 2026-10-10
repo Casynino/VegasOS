@@ -4,6 +4,8 @@ import { Phone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CinematicHero, type HeroSlide } from "@/components/public/cinema/hero";
 import { containers, HOTEL_COORDS } from "@/components/public/kit";
+import { LanguageSwitch } from "@/components/i18n/language-switch";
+import { useT } from "@/i18n/client";
 import { telHref } from "./lib";
 
 /** The website's own opening (its photos, words, local time and weather), read on the server for the QR page. */
@@ -19,6 +21,8 @@ export interface QrHero {
   temp: string | null;
   /** "29°C · Partly cloudy" for the computer's readout. */
   weather: string | null;
+  /** The languages the hotel offers (Settings → Languages) — the EN / 中文 switch in the header. */
+  languages?: readonly string[];
 }
 
 /**
@@ -29,6 +33,7 @@ export interface QrHero {
 export function Opening({ hero, hotel, onBook, children }: {
   hero: QrHero; hotel: { name: string; phone: string | null }; onBook: (() => void) | null; children: React.ReactNode;
 }) {
+  const t = useT();
   const [first, ...rest] = hotel.name.split(" ");
   const quiet = "inline-flex h-10 items-center rounded-sm transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none";
   return (
@@ -46,14 +51,15 @@ export function Opening({ hero, hotel, onBook, children }: {
             </span>
           </span>
           <span className="flex shrink-0 items-center gap-2 sm:gap-3">
+            <LanguageSwitch variant="toggle" languages={hero.languages} />
             {hotel.phone && (
-              <a href={telHref(hotel.phone)} aria-label={`Call ${hotel.name}`} className={cn(quiet, "w-9 justify-center text-white/90 hover:text-white")}>
+              <a href={telHref(hotel.phone)} aria-label={t("Call {name}", { name: hotel.name })} className={cn(quiet, "w-9 justify-center text-white/90 hover:text-white")}>
                 <Phone className="size-[18px]" strokeWidth={1.8} />
               </a>
             )}
             {onBook && (
               <button type="button" onClick={onBook} className={cn(quiet, "gap-1 whitespace-nowrap px-1 text-[14px] font-semibold text-gold hover:text-[#f0d6a0]")}>
-                Book now
+                {t("Book now")}
               </button>
             )}
           </span>

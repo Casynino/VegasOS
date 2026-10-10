@@ -11,10 +11,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Initials } from "@/components/dashboard/kit";
 import { cn } from "@/lib/utils";
 import { closeWaiterShiftAction, colleaguesAction } from "@/app/staff/(app)/restaurant/waiter-actions";
+import { useT } from "@/i18n/client";
 
 type Colleague = { id: string; name: string; number?: string | null; onShiftSince: string | null };
 const first = (n: string) => n.replace(/\s*\(.*\)/, "").trim().split(/\s+/)[0];
-const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
 /**
  * A manager closes a waiter's open shift, saying why. When the waiter still has open orders or
@@ -26,6 +26,7 @@ export function CloseWaiterShift({ shiftId, name, waiterId, left }: {
   left: string | null;
 }) {
   const router = useRouter();
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   // Shown at once when work is left — or when the server says some is (it changed meanwhile).
@@ -50,38 +51,38 @@ export function CloseWaiterShift({ shiftId, name, waiterId, left }: {
     const r = await closeWaiterShiftAction({ shiftId, reason: reason.trim(), toWaiterId: picker ? to : null });
     if (r.ok) {
       const h = r.data.handed;
-      toast.success(`${first(r.data.name)}'s shift is closed.`, {
-        description: h ? `Transferred to ${first(h.to)}: ${[h.orders && plural(h.orders, "order"), h.tables && plural(h.tables, "table"), h.rooms && plural(h.rooms, "room")].filter(Boolean).join(", ") || "their work"}.` : undefined,
+      toast.success(t("{name}'s shift is closed.", { name: first(r.data.name) }), {
+        description: h ? t("Transferred to {name}: {what}.", { name: first(h.to), what: [h.orders && t.plural(h.orders, "{n} order", "{n} orders"), h.tables && t.plural(h.tables, "{n} table", "{n} tables"), h.rooms && t.plural(h.rooms, "{n} room", "{n} rooms")].filter(Boolean).join(t.locale === "en" ? ", " : "，") || t("their work") }) : undefined,
       });
       setOpen(false); setReason(""); setTo(null);
       router.refresh();
-    } else if (/choose the waiter/i.test(r.error)) {
+    } else if (/choose the waiter/i.test(r.error) || !!r.fieldErrors?.waiter) { // the field says so in any language
       setPicker(true); setLeftNow(r.error);
     } else toast.error(r.error, { duration: 8000 });
   });
 
   return (
     <>
-      <Button variant="outline" size="sm" onClick={() => setOpen(true)}><ShieldAlert />Close this shift</Button>
+      <Button variant="outline" size="sm" onClick={() => setOpen(true)}><ShieldAlert />{t("Close this shift")}</Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader icon={<LogOut />} eyebrow="Waiter shift" tone="gold">
-            <DialogTitle>Close {who}&apos;s shift?</DialogTitle>
-            <DialogDescription>Only when they cannot close it themselves. Your reason is kept on the shift and in the history.</DialogDescription>
+          <DialogHeader icon={<LogOut />} eyebrow={t("Waiter shift")} tone="gold">
+            <DialogTitle>{t("Close {name}'s shift?", { name: who })}</DialogTitle>
+            <DialogDescription>{t("Only when they cannot close it themselves. Your reason is kept on the shift and in the history.")}</DialogDescription>
           </DialogHeader>
 
           {picker && (
             <div className="space-y-2.5">
               <p className="flex gap-2 rounded-xl bg-amber-500/12 px-3 py-2 text-xs text-amber-900 dark:text-amber-100">
                 <ArrowRightLeft className="mt-0.5 size-3.5 shrink-0" />
-                <span>{leftNow && leftNow !== left ? leftNow : `${who} still has ${left ?? "work open"}. Choose the waiter who carries on with it — it is recorded as a transfer, with your reason.`}</span>
+                <span>{leftNow && leftNow !== left ? leftNow : t("{name} still has {what}. Choose the waiter who carries on with it — it is recorded as a transfer, with your reason.", { name: who, what: left ?? t("work open") })}</span>
               </p>
               {!list ? (
                 <div className="grid h-20 place-items-center text-muted-foreground"><Loader2 className="size-5 animate-spin" /></div>
               ) : !choices.length ? (
-                <p className="rounded-xl border border-dashed border-border px-4 py-5 text-center text-sm text-muted-foreground">No other waiter to hand the work to yet.</p>
+                <p className="rounded-xl border border-dashed border-border px-4 py-5 text-center text-sm text-muted-foreground">{t("No other waiter to hand the work to yet.")}</p>
               ) : (
-                [{ label: "On shift", rows: choices.filter((w) => w.onShiftSince) }, { label: "Not on shift", rows: choices.filter((w) => !w.onShiftSince) }].filter((g) => g.rows.length).map((g) => (
+                [{ label: t("On shift"), rows: choices.filter((w) => w.onShiftSince) }, { label: t("Not on shift"), rows: choices.filter((w) => !w.onShiftSince) }].filter((g) => g.rows.length).map((g) => (
                   <div key={g.label}>
                     <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{g.label}</p>
                     <div className="grid grid-cols-2 gap-2">
@@ -91,7 +92,7 @@ export function CloseWaiterShift({ shiftId, name, waiterId, left }: {
                             to === w.id ? "border-primary bg-primary/10 ring-1 ring-primary/40" : "border-border bg-card hover:bg-muted")}>
                           <Initials name={w.name} className="size-7 text-[10px]" />
                           <span className="min-w-0 flex-1 truncate font-medium">{first(w.name)}{w.number && <span className="ml-1.5 font-mono text-[10.5px] font-normal text-muted-foreground">{w.number}</span>}</span>
-                          {w.onShiftSince && <span className="size-2 shrink-0 rounded-full bg-emerald-500" aria-label="On shift" />}
+                          {w.onShiftSince && <span className="size-2 shrink-0 rounded-full bg-emerald-500" aria-label={t("On shift")} />}
                         </button>
                       ))}
                     </div>
@@ -102,12 +103,12 @@ export function CloseWaiterShift({ shiftId, name, waiterId, left }: {
           )}
 
           <div className="space-y-1.5">
-            <Label htmlFor="wr">Why?</Label>
-            <Textarea id="wr" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Went home at 15:00 without closing the shift" />
+            <Label htmlFor="wr">{t("Why?")}</Label>
+            <Textarea id="wr" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("e.g. Went home at 15:00 without closing the shift")} />
           </div>
           <DialogFooter>
             <Button disabled={pending || reason.trim().length < 5 || (picker && !to)} onClick={close}>
-              {pending && <Loader2 className="animate-spin" />}Close the shift{picker && chosen ? ` · hand to ${first(chosen.name)}` : ""}
+              {pending && <Loader2 className="animate-spin" />}{t("Close the shift")}{picker && chosen ? ` · ${t("hand to {name}", { name: first(chosen.name) })}` : ""}
             </Button>
           </DialogFooter>
         </DialogContent>

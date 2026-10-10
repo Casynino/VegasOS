@@ -3,6 +3,9 @@ import { randomBytes } from "node:crypto";
 import { db, type Tx } from "../db";
 import { audit } from "../audit";
 import { AppError } from "../errors";
+import { msg } from "@/i18n/msg";
+import { getT } from "@/i18n/server";
+import { englishT } from "@/i18n/translate";
 import { rateLimit } from "../rate-limit";
 import { getSettings, stayConfig } from "../settings";
 import { siteOrigin } from "../site-origin";
@@ -104,9 +107,9 @@ export async function bookingQrCodes(actor: Actor, opts: { archived?: boolean; o
 
 function cleanLabel(input: { label: string; placement?: string | null }) {
   const label = input.label.trim().replace(/\s+/g, " ");
-  if (label.length < 2 || label.length > 60) throw new AppError("Name the place the QR goes (e.g. Entrance, Lobby, Flyer).", "VALIDATION", { label: "Required" });
+  if (label.length < 2 || label.length > 60) throw new AppError("Name the place the QR goes (e.g. Entrance, Lobby, Flyer).", "VALIDATION", { label: msg("Required") });
   const placement = input.placement?.trim().replace(/\s+/g, " ") || null;
-  if (placement && placement.length > 120) throw new AppError("Keep the note short.", "VALIDATION", { placement: "Too long" });
+  if (placement && placement.length > 120) throw new AppError("Keep the note short.", "VALIDATION", { placement: msg("Too long") });
   return { label, placement };
 }
 
@@ -209,7 +212,9 @@ export async function hotelQrHistory(actor: Actor, take = 30) {
     where: { action: { startsWith: "hotel_qr." } }, orderBy: { createdAt: "desc" }, take: Math.min(Math.max(1, take), 200),
     select: { id: true, createdAt: true, action: true, actorLabel: true, entityId: true, before: true, after: true },
   });
-  return rows.map((r) => ({ id: r.id, at: r.createdAt, action: r.action, by: r.actorLabel ?? "System", qrId: r.entityId, before: r.before, after: r.after }));
+  // Shown as it is on the page: "System" (no person) in the reader's language; names stay as written.
+  const t = rows.some((r) => !r.actorLabel) ? await getT().catch(() => englishT) : englishT;
+  return rows.map((r) => ({ id: r.id, at: r.createdAt, action: r.action, by: r.actorLabel ?? t("System"), qrId: r.entityId, before: r.before, after: r.after }));
 }
 
 // ───────────────────────── What visitors do (the funnel) ─────────────────────────

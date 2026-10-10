@@ -3,6 +3,7 @@
 import { Children, useCallback, useEffect, useId, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useT } from "@/i18n/client";
 
 const WIDTH = {
   /** One large item with the next one peeking (rooms, stories). */
@@ -43,6 +44,7 @@ export function Rail({
   itemClassName?: string;
   children: React.ReactNode;
 }) {
+  const t = useT();
   const id = useId();
   const listRef = useRef<HTMLUListElement>(null);
   const barRef = useRef<HTMLSpanElement>(null);
@@ -131,7 +133,7 @@ export function Rail({
           {/* Owner, 2026-10-05: "hard to know you can scroll" — say it, until the first swipe. */}
           {edges.start && (
             <span aria-hidden="true" className="inline-flex shrink-0 items-center gap-1 text-[12px] font-medium text-pub-eyebrow motion-safe:animate-pulse lg:hidden">
-              Swipe<ChevronRight className="size-3.5" strokeWidth={1.8} />
+              {t("Swipe")}<ChevronRight className="size-3.5" strokeWidth={1.8} />
             </span>
           )}
           <span aria-hidden="true" className="relative h-px flex-1 overflow-hidden bg-pub-line">
@@ -142,10 +144,10 @@ export function Rail({
             />
           </span>
           <div className="flex gap-2">
-            <RailButton label="Previous" controls={id} disabled={edges.start} onClick={() => step(-1)}>
+            <RailButton label={t("Previous")} controls={id} disabled={edges.start} onClick={() => step(-1)}>
               <ChevronLeft className="size-4" strokeWidth={1.6} aria-hidden="true" />
             </RailButton>
-            <RailButton label="Next" controls={id} disabled={edges.end} onClick={() => step(1)}>
+            <RailButton label={t("Next")} controls={id} disabled={edges.end} onClick={() => step(1)}>
               <ChevronRight className="size-4" strokeWidth={1.6} aria-hidden="true" />
             </RailButton>
           </div>

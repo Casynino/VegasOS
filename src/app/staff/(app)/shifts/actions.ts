@@ -13,6 +13,8 @@ import { businessToday } from "@/server/settings";
 import { toDbDate } from "@/lib/time/business-date";
 import { inHouseBalances } from "@/server/services/guest-balances";
 import { REQUEST_TYPE_LABEL } from "@/lib/request-meta";
+import { msg } from "@/i18n/msg";
+import { getT } from "@/i18n/server";
 
 async function actor(user: CurrentUser) {
   const { ipAddress } = await requestMeta();
@@ -27,7 +29,7 @@ export async function startShiftAction(input: { replacementReason?: string }) {
     await startShift(await actor(user), { replacementReason: input.replacementReason ?? null });
     refresh();
     return null;
-  }, "Shift started. Have a good shift!");
+  }, msg("Shift started. Have a good shift!"));
 }
 
 /**
@@ -38,6 +40,7 @@ export async function myShiftWorkAction() {
   return runAction(async () => {
     const user = await authorize("shifts.work");
     const today = toDbDate(await businessToday());
+    const t = await getT();
     const [requests, arrivals, departures, balances] = await Promise.all([
       db.serviceRequest.findMany({ where: { assignedToId: user.id, status: { in: ["ASSIGNED", "IN_PROGRESS"] } }, orderBy: { createdAt: "asc" }, select: { id: true, type: true, status: true, room: { select: { number: true } } } }),
       db.reservation.count({ where: { arrivalDate: { lte: today }, status: { in: ["RESERVED", "CONFIRMED"] } } }),
@@ -45,7 +48,7 @@ export async function myShiftWorkAction() {
       inHouseBalances(await businessToday()),
     ]);
     return {
-      requests: requests.map((r) => ({ id: r.id, what: `${REQUEST_TYPE_LABEL[r.type] ?? "Request"}${r.room ? ` · Room ${r.room.number}` : ""}`, onIt: r.status === "IN_PROGRESS" })),
+      requests: requests.map((r) => ({ id: r.id, what: `${t(REQUEST_TYPE_LABEL[r.type] ?? msg("Request"))}${r.room ? ` · ${t("Room {room}", { room: r.room.number })}` : ""}`, onIt: r.status === "IN_PROGRESS" })),
       arrivals, departures, owing: { count: balances.summary.owingCount, total: balances.summary.totalOutstanding },
     };
   });
@@ -60,7 +63,7 @@ export async function endShiftAction(input: { closingNote: string }) {
     after(() => afterShiftClosed(shiftId));
     refresh();
     return null;
-  }, "Shift closed. Handover saved — your shift report is on its way.");
+  }, msg("Shift closed. Handover saved — your shift report is on its way."));
 }
 
 /** A manager closes someone's shift — always with the reason (kept and audited). */
@@ -84,7 +87,7 @@ export async function setScheduleAction(input: { date: string; userId: string | 
     await setSchedule(await actor(user), data.date, data.userId || null);
     refresh();
     return null;
-  }, "Schedule updated.");
+  }, msg("Schedule updated."));
 }
 
 export async function swapShiftsAction(_prev: unknown, formData: FormData): Promise<ActionResult<null>> {
@@ -94,7 +97,7 @@ export async function swapShiftsAction(_prev: unknown, formData: FormData): Prom
     await swapShifts(await actor(user), data.a, data.b);
     refresh();
     return null;
-  }, "Shifts swapped.");
+  }, msg("Shifts swapped."));
 }
 
 export async function generateRotationAction(_prev: unknown, formData: FormData): Promise<ActionResult<{ created: number; updated: number }>> {
@@ -103,27 +106,27 @@ export async function generateRotationAction(_prev: unknown, formData: FormData)
     const data = parseInput(z.object({
       from: date,
       days: z.coerce.number().int().min(1).max(92),
-      userIds: z.array(z.string()).min(1, "Choose receptionists in rotation order."),
+      userIds: z.array(z.string()).min(1, msg("Choose receptionists in rotation order.")),
       overwrite: z.preprocess((v) => v === "on", z.boolean()),
     }), formData);
     const res = await generateRotation(await actor(user), data);
     refresh();
     return res;
-  }, "Rotation saved.");
+  }, msg("Rotation saved."));
 }
 
 export async function addNoteAction(_prev: unknown, formData: FormData): Promise<ActionResult<null>> {
   return runAction(async () => {
     const user = await authorize("shifts.work", "shifts.manage");
     const data = parseInput(z.object({
-      body: z.string().trim().min(2, "Write the note.").max(1000),
+      body: z.string().trim().min(2, msg("Write the note.")).max(1000),
       kind: z.enum(["SHIFT", "MANAGER", "GUEST", "MAINTENANCE"]).default("SHIFT"),
       isImportant: z.preprocess((v) => v === "on", z.boolean()),
     }), formData);
     await addHandoverNote(await actor(user), data);
     refresh();
     return null;
-  }, "Note added.");
+  }, msg("Note added."));
 }
 
 export async function resolveNoteAction(input: { noteId: string }) {
@@ -132,5 +135,5 @@ export async function resolveNoteAction(input: { noteId: string }) {
     await resolveHandoverNote(await actor(user), input.noteId);
     refresh();
     return null;
-  }, "Note resolved.");
+  }, msg("Note resolved."));
 }

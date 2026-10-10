@@ -5,6 +5,8 @@ import { listPublicRoomTypes, searchAvailability, type SearchOption, type StayPa
 import { addDays, diffDays } from "@/lib/time/business-date";
 import { formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { getT } from "@/i18n/server";
+import type { T } from "@/i18n/translate";
 import { Button, Eyebrow, HudLabel, InfoList, MediaFrame, PriceTag, TextLink, field, typeScale } from "../kit";
 import fx from "../room-fx.module.css";
 import { formatDay } from "./parts";
@@ -32,10 +34,10 @@ export async function AvailabilityResults({
   /** Pay online (nTZS) is offered for room bookings — the next step offers Pay now or pay later. */
   online?: boolean;
 }) {
-  const [result, allTypes] = await Promise.all([searchAvailability(params), listPublicRoomTypes()]);
+  const [result, allTypes, t] = await Promise.all([searchAvailability(params), listPublicRoomTypes(), getT()]);
   const { options, nights } = result;
   const available = new Set(options.map((o) => o.type.slug));
-  const unavailable = allTypes.filter((t) => !available.has(t.slug));
+  const unavailable = allTypes.filter((rt) => !available.has(rt.slug));
   const ordered = [...options].sort((a, b) => Number(b.type.slug === preferred) - Number(a.type.slug === preferred));
   const discounted = options.some((o) => o.perRoom.discountPerNight > 0);
 
@@ -58,15 +60,17 @@ export async function AvailabilityResults({
         <span className="mx-auto grid size-16 place-items-center rounded-full border border-pub-eyebrow/35 text-pub-eyebrow shadow-[0_0_0_8px_color-mix(in_oklab,var(--pub-eyebrow)_7%,transparent)]">
           <CalendarSearch className="size-7" strokeWidth={1.2} aria-hidden="true" />
         </span>
-        <h2 className={cn("mt-5", typeScale.subheading)}>A full house on these dates</h2>
+        <h2 className={cn("mt-5", typeScale.subheading)}>{t("A full house on these dates")}</h2>
         <p className={cn("mx-auto mt-3 max-w-md text-pub-muted", typeScale.body)}>
           {result.tooSmall.length > 0
-            ? `We have rooms free, but not enough to fit ${params.adults} adult(s)${params.children ? ` and ${params.children} child(ren)` : ""} in one booking. Try fewer guests per booking, or contact us and we’ll arrange it.`
-            : "Every room is taken for this stay. Try different dates — or contact us, as cancellations do come up."}
+            ? params.children
+              ? t("We have rooms free, but not enough to fit {adults} adult(s) and {children} child(ren) in one booking. Try fewer guests per booking, or contact us and we’ll arrange it.", { adults: params.adults, children: params.children })
+              : t("We have rooms free, but not enough to fit {adults} adult(s) in one booking. Try fewer guests per booking, or contact us and we’ll arrange it.", { adults: params.adults })
+            : t("Every room is taken for this stay. Try different dates — or contact us, as cancellations do come up.")}
         </p>
         {nearby.length > 0 && (
           <div className="mt-10 text-left">
-            <Eyebrow className="text-center">Rooms are free on these nearby dates</Eyebrow>
+            <Eyebrow className="text-center">{t("Rooms are free on these nearby dates")}</Eyebrow>
             <ul className="mt-5 border-t border-pub-line">
               {nearby.map((n) => (
                 <li key={n.checkIn} className="border-b border-pub-line">
@@ -74,8 +78,8 @@ export async function AvailabilityResults({
                     href={stayQuery({ ...params, checkIn: n.checkIn, checkOut: n.checkOut })}
                     className="group flex min-h-14 items-center justify-between gap-4 py-4 transition-colors duration-200 hover:text-pub-eyebrow focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none"
                   >
-                    <span className="font-display text-[1.25rem] leading-tight">{formatDay(n.checkIn)} → {formatDay(n.checkOut)}</span>
-                    <span className={cn(typeScale.meta, "shrink-0 text-pub-muted")}>From {formatTZS(n.from)} / night</span>
+                    <span className="font-display text-[1.25rem] leading-tight">{formatDay(n.checkIn, t)} → {formatDay(n.checkOut, t)}</span>
+                    <span className={cn(typeScale.meta, "shrink-0 text-pub-muted")}>{t("From {price} / night", { price: formatTZS(n.from) })}</span>
                   </Link>
                 </li>
               ))}
@@ -83,7 +87,7 @@ export async function AvailabilityResults({
           </div>
         )}
         <div className="mt-8 flex justify-center">
-          <TextLink href="/contact?subject=booking">Contact the front desk</TextLink>
+          <TextLink href="/contact?subject=booking">{t("Contact the front desk")}</TextLink>
         </div>
       </div>
     );
@@ -94,12 +98,12 @@ export async function AvailabilityResults({
       <div className="flex flex-col gap-2 border-b border-pub-line pb-4 sm:flex-row sm:items-center sm:justify-between sm:gap-8">
         <p className="flex flex-wrap items-center gap-x-3 gap-y-1" aria-live="polite">
           <HudLabel live as="span">
-            {options.length} room type{options.length === 1 ? "" : "s"} free · {nights} night{nights === 1 ? "" : "s"}
+            {t.plural(options.length, "{n} room type free", "{n} room types free")} · {t.plural(nights, "{n} night", "{n} nights")}
           </HudLabel>
-          {discounted && <span className="text-[13px] text-pub-muted">Prices include the website discount.</span>}
+          {discounted && <span className="text-[13px] text-pub-muted">{t("Prices include the website discount.")}</span>}
         </p>
         {/* How paying works, said once for every room below. */}
-        <p className="text-[13px] leading-snug text-pub-muted">{online ? "Pay now by mobile money, or pay later — you choose next." : "No payment now — pay at the hotel."}</p>
+        <p className="text-[13px] leading-snug text-pub-muted">{online ? t("Pay now by mobile money, or pay later — you choose next.") : t("No payment now — pay at the hotel.")}</p>
       </div>
       <ul className="mt-6 space-y-5 sm:mt-8 sm:space-y-6 lg:mt-4 lg:space-y-0">
         {ordered.map((o, i) => (
@@ -108,7 +112,7 @@ export async function AvailabilityResults({
             className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-4 motion-safe:fill-mode-both motion-safe:duration-700"
             style={{ animationDelay: `${i * 90}ms` }}
           >
-            <AvailabilityRow option={o} params={params} nights={nights} preferred={o.type.slug === preferred} index={i + 1} total={ordered.length} />
+            <AvailabilityRow option={o} params={params} nights={nights} preferred={o.type.slug === preferred} index={i + 1} total={ordered.length} t={t} />
           </li>
         ))}
       </ul>
@@ -116,28 +120,29 @@ export async function AvailabilityResults({
       {unavailable.length > 0 && (
         <section aria-labelledby="unavailable-title" className="mt-12 sm:mt-14">
           <h2 id="unavailable-title" className="leading-none">
-            <HudLabel as="span">Not free for these dates</HudLabel>
+            <HudLabel as="span">{t("Not free for these dates")}</HudLabel>
           </h2>
           <ul className="mt-4 grid gap-x-10 border-t border-pub-line sm:grid-cols-2">
-            {unavailable.map((t) => {
-              const small = result.tooSmall.find((s) => s.name === t.name);
+            {unavailable.map((rt) => {
+              const small = result.tooSmall.find((s) => s.name === rt.name);
+              const reason = small ? t("Too small for {n} guests in one booking", { n: params.adults + params.children }) : t("Fully booked");
+              const [first, second] = options.slice(0, 2);
+              const tryLink = (o: SearchOption, c: React.ReactNode) => (
+                <a href={`#option-${o.type.slug}`} className="text-pub-fg underline decoration-pub-line underline-offset-4 hover:decoration-gold">{c}</a>
+              );
               return (
-                <li key={t.slug} className="flex items-center gap-4 border-b border-pub-line py-4">
-                  {t.images[0] && (
+                <li key={rt.slug} className="flex items-center gap-4 border-b border-pub-line py-4">
+                  {rt.images[0] && (
                     <div className="relative size-14 shrink-0 overflow-hidden grayscale">
-                      <Image src={t.images[0]} alt="" fill sizes="56px" className="object-cover opacity-60" />
+                      <Image src={rt.images[0]} alt="" fill sizes="56px" className="object-cover opacity-60" />
                     </div>
                   )}
                   <div className="min-w-0">
-                    <p className="font-display text-[1.2rem] leading-tight text-pub-fg/80">{t.name}</p>
+                    <p className="font-display text-[1.2rem] leading-tight text-pub-fg/80">{t(rt.name)}</p>
                     <p className="mt-0.5 text-[13px] leading-snug text-pub-muted">
-                      {small ? `Too small for ${params.adults + params.children} guests in one booking` : "Fully booked"} — try{" "}
-                      {options.slice(0, 2).map((o, j) => (
-                        <span key={o.type.slug}>
-                          {j > 0 && " or "}
-                          <a href={`#option-${o.type.slug}`} className="text-pub-fg underline decoration-pub-line underline-offset-4 hover:decoration-gold">{o.type.name}</a>
-                        </span>
-                      ))}
+                      {second
+                        ? t.rich("{reason} — try <a>{first}</a> or <b>{second}</b>", { a: (c) => tryLink(first, c), b: (c) => tryLink(second, c) }, { reason, first: t(first.type.name), second: t(second.type.name) })
+                        : t.rich("{reason} — try <a>{first}</a>", { a: (c) => tryLink(first, c) }, { reason, first: t(first.type.name) })}
                     </p>
                   </div>
                 </li>
@@ -157,6 +162,7 @@ function AvailabilityRow({
   preferred,
   index,
   total,
+  t,
 }: {
   option: SearchOption;
   params: StayParams;
@@ -164,21 +170,24 @@ function AvailabilityRow({
   preferred: boolean;
   index: number;
   total: number;
+  t: T;
 }) {
-  const t = o.type;
-  const codes = new Set(t.amenities.map((a) => a.code));
-  const includes = [codes.has("BREAKFAST") && "Breakfast", codes.has("WIFI") && "Wi-Fi"].filter(Boolean) as string[];
+  const rt = o.type;
+  const name = t(rt.name);
+  const codes = new Set(rt.amenities.map((a) => a.code));
+  const breakfast = codes.has("BREAKFAST"), wifi = codes.has("WIFI");
+  const includes = breakfast && wifi ? t("Breakfast & Wi-Fi included") : breakfast ? t("Breakfast included") : wifi ? t("Wi-Fi included") : null;
   const choices = Array.from({ length: o.maxRooms - o.minRooms + 1 }, (_, i) => o.minRooms + i);
   const facts = [
-    { label: `Up to ${t.maxAdults} adult${t.maxAdults === 1 ? "" : "s"} per room` },
-    t.maxChildren > 0 ? { label: `${t.maxChildren} child${t.maxChildren === 1 ? "" : "ren"}` } : null,
-    t.bedType ? { label: t.bedType } : null,
-    includes.length ? { label: `${includes.join(" & ")} included` } : null,
+    { label: t.plural(rt.maxAdults, "Up to {n} adult per room", "Up to {n} adults per room") },
+    rt.maxChildren > 0 ? { label: t.plural(rt.maxChildren, "{n} child", "{n} children") } : null,
+    rt.bedType ? { label: t(rt.bedType) } : null,
+    includes ? { label: includes } : null,
   ].filter((f): f is { label: string } => f !== null);
 
   return (
     <article
-      id={`option-${t.slug}`}
+      id={`option-${rt.slug}`}
       data-spotlight="border"
       className={cn(
         fx.card,
@@ -187,11 +196,11 @@ function AvailabilityRow({
         preferred && "outline-1 -outline-offset-1 outline-pub-eyebrow/45",
       )}
     >
-      <Link href={`/rooms/${t.slug}`} tabIndex={-1} aria-hidden="true" className="relative block min-w-0">
-        {t.images[0] ? (
+      <Link href={`/rooms/${rt.slug}`} tabIndex={-1} aria-hidden="true" className="relative block min-w-0">
+        {rt.images[0] ? (
           <MediaFrame
-            src={t.images[0]}
-            alt={`${t.name} at Vegas Luxury Hotel`}
+            src={rt.images[0]}
+            alt={t("{name} at Vegas Luxury Hotel", { name })}
             ratio="16/9"
             ratioSm="3/2"
             ratioLg="4/3"
@@ -213,17 +222,17 @@ function AvailabilityRow({
       <div className="flex min-w-0 flex-col px-1.5 pb-1.5 sm:px-1 md:py-2 md:pr-2">
         {(preferred || o.available <= 2) && (
           <p className="mb-2.5 flex flex-wrap items-center gap-x-4 gap-y-1">
-            {preferred && <HudLabel as="span">Your choice</HudLabel>}
-            {o.available <= 2 && <HudLabel as="span" live>Only {o.available} left</HudLabel>}
+            {preferred && <HudLabel as="span">{t("Your choice")}</HudLabel>}
+            {o.available <= 2 && <HudLabel as="span" live>{t("Only {n} left", { n: o.available })}</HudLabel>}
           </p>
         )}
         <h3 className={typeScale.subheading}>
-          <Link href={`/rooms/${t.slug}`} className="rounded-sm transition-colors duration-200 hover:text-pub-eyebrow focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-gold motion-reduce:transition-none">
-            {t.name}
+          <Link href={`/rooms/${rt.slug}`} className="rounded-sm transition-colors duration-200 hover:text-pub-eyebrow focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-gold motion-reduce:transition-none">
+            {name}
           </Link>
         </h3>
         <InfoList items={facts} className="mt-2.5" />
-        {t.shortDescription && <p className={cn(typeScale.body, "mt-3 hidden max-w-[34rem] text-pub-muted sm:block")}>{t.shortDescription}</p>}
+        {rt.shortDescription && <p className={cn(typeScale.body, "mt-3 hidden max-w-[34rem] text-pub-muted sm:block")}>{t(rt.shortDescription)}</p>}
 
         <PriceTag
           amount={o.perRoom.netPerNight}
@@ -236,18 +245,18 @@ function AvailabilityRow({
           <input type="hidden" name="checkOut" value={params.checkOut} />
           <input type="hidden" name="adults" value={params.adults} />
           <input type="hidden" name="children" value={params.children} />
-          <input type="hidden" name="type" value={t.slug} />
+          <input type="hidden" name="type" value={rt.slug} />
           <div className="flex items-end gap-5">
             {choices.length > 1 ? (
               <div className="w-32 shrink-0">
-                <label htmlFor={`rooms-${t.slug}`} className={field.label}>Rooms</label>
+                <label htmlFor={`rooms-${rt.slug}`} className={field.label}>{t("Rooms")}</label>
                 <select
-                  id={`rooms-${t.slug}`}
+                  id={`rooms-${rt.slug}`}
                   name="rooms"
                   defaultValue={o.minRooms}
                   className={cn(field.input, "appearance-auto px-3 [color-scheme:light] pub-dark:[color-scheme:dark]")}
                 >
-                  {choices.map((n) => <option key={n} value={n}>{n} room{n === 1 ? "" : "s"}</option>)}
+                  {choices.map((n) => <option key={n} value={n}>{t.plural(n, "{n} room", "{n} rooms")}</option>)}
                 </select>
               </div>
             ) : (
@@ -255,17 +264,17 @@ function AvailabilityRow({
             )}
             <p className="min-w-0 pb-0.5 text-[13px] leading-snug text-pub-muted">
               <span className="font-mono text-[10px] uppercase tracking-[0.2em] sm:text-[11px]">
-                {nights} night{nights === 1 ? "" : "s"}
-                {choices.length === 1 && o.minRooms > 1 && <> · {o.minRooms} rooms</>}
+                {t.plural(nights, "{n} night", "{n} nights")}
+                {choices.length === 1 && o.minRooms > 1 && <> · {t.plural(o.minRooms, "{n} room", "{n} rooms")}</>}
               </span>
               <span className="mt-1 block font-display text-[1.375rem] leading-tight text-pub-fg lining-nums tabular-nums">
                 {formatTZS(o.perRoom.netAmount * o.minRooms)}
               </span>
-              <span className="block">total{choices.length > 1 && ` for ${o.minRooms} room${o.minRooms === 1 ? "" : "s"}`}</span>
+              <span className="block">{choices.length > 1 ? t.plural(o.minRooms, "total for {n} room", "total for {n} rooms") : t("total")}</span>
             </p>
           </div>
           <Button type="submit" icon="arrow" className="w-full sm:w-auto">
-            Select room<span className="sr-only"> {t.name}</span>
+            {t("Select room")}<span className="sr-only"> {name}</span>
           </Button>
         </form>
       </div>

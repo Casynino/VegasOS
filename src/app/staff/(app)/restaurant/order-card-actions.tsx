@@ -14,6 +14,7 @@ import { BroughtBySelect } from "@/components/staff/brought-by-select";
 import type { PayAccount } from "@/lib/pay-account";
 import { logGuestMessageAction } from "@/app/staff/(app)/guests/actions";
 import { cn } from "@/lib/utils";
+import { useT } from "@/i18n/client";
 import { cancelOrderAction, chargeOrderToRoomAction, recordOrderPaymentAction, setOrderStatusAction } from "./actions";
 import { IconAction, WhatsAppGlyph } from "./portal/icon-action";
 import { OtherWays, SendToPhone } from "@/components/staff/mobile-pay";
@@ -42,6 +43,7 @@ export function OrderCardActions({ id, number, total, next, nextLabel, unpaid, c
   /** Show words next to the icons (when there is room, e.g. an order opened large). */
   labelled?: boolean;
 }) {
+  const t = useT();
   const [pending, start] = useTransition();
   const [dialog, setDialog] = useState<"cancel" | "pay" | "room" | null>(null);
   const [reason, setReason] = useState("");
@@ -57,13 +59,13 @@ export function OrderCardActions({ id, number, total, next, nextLabel, unpaid, c
   });
   const cancel = () => start(async () => {
     const res = await cancelOrderAction({ id, reason });
-    if (res.ok) done(res.message ?? "Cancelled."); else toast.error(res.error, { duration: 8000 });
+    if (res.ok) done(res.message ?? t("Cancelled.")); else toast.error(res.error, { duration: 8000 });
   });
   // The official payment: recorded by whoever is signed in (the Restaurant Counter, reception) — on the Counter
   // it may note the waiter who brought the money.
   const record = () => start(async () => {
     const res = await recordOrderPaymentAction({ id, accountId: account, reference: reference || undefined, handedOverById: broughtBy || null });
-    if (res.ok) { setReference(""); setBroughtBy(""); done("Payment recorded."); } else toast.error(res.error);
+    if (res.ok) { setReference(""); setBroughtBy(""); done(t("Payment recorded.")); } else toast.error(res.error);
   });
   const whatsapp = () => {
     if (!update) return;
@@ -75,29 +77,29 @@ export function OrderCardActions({ id, number, total, next, nextLabel, unpaid, c
   const icons = !labelled;
   // A room only when there is one to choose: the customer's own (waiters), or any staying room (reception).
   const roomOk = unpaid && !!room && (room.stays.length > 0 || !!room.rooms?.length);
-  const roomWord = room?.stays.length === 1 ? `Charge to Room ${room.stays[0].rooms}` : "Charge to a room";
+  const roomWord = room?.stays.length === 1 ? t("Charge to Room {room}", { room: room.stays[0].rooms }) : t("Charge to a room");
 
   return (
     <div className={icons ? "contents" : "space-y-1.5"}>
       {icons ? (
         <div className="flex shrink-0 items-center gap-1.5">
-          {update && <IconAction tip={`WhatsApp the customer (${update.to})`} onClick={whatsapp}
+          {update && <IconAction tip={t("WhatsApp the customer ({phone})", { phone: update.to })} onClick={whatsapp}
             className="bg-[#25D366]/12 text-[#25D366] ring-1 ring-inset ring-[#25D366]/35 hover:bg-[#25D366]/20"><WhatsAppGlyph /></IconAction>}
           {roomOk && <IconAction tip={roomWord} onClick={() => setDialog("room")}
             className="bg-violet-500/12 text-violet-300 ring-1 ring-inset ring-violet-400/35 hover:bg-violet-500/20"><BedDouble /></IconAction>}
-          {canCancel && <IconAction tip={`Cancel ${number}`} onClick={() => setDialog("cancel")}
+          {canCancel && <IconAction tip={t("Cancel {number}", { number })} onClick={() => setDialog("cancel")}
             className="bg-muted text-muted-foreground ring-1 ring-inset ring-border hover:bg-rose-500/12 hover:text-rose-300"><Ban /></IconAction>}
-          {unpaid && pay && <IconAction tip={`Take payment · ${total}`} onClick={() => setDialog("pay")}
+          {unpaid && pay && <IconAction tip={t("Take payment · {total}", { total })} onClick={() => setDialog("pay")}
             className="bg-linear-to-b from-[oklch(0.87_0.085_86)] to-[oklch(0.7_0.12_76)] text-[oklch(0.2_0.03_60)] shadow-[0_8px_18px_-10px_oklch(0.7_0.12_80)] ring-1 ring-inset ring-white/30 hover:brightness-105"><Wallet /></IconAction>}
           {next && <Button size="sm" className="h-8 rounded-lg text-xs" disabled={pending} onClick={go}>{pending && <Loader2 className="animate-spin" />}{nextLabel}</Button>}
         </div>
       ) : (
       <>
       <div className="flex gap-1.5">
-        {unpaid && pay && <Button size="sm" className="h-8 flex-1 rounded-lg bg-emerald-600 text-xs hover:bg-emerald-700" onClick={() => setDialog("pay")}><Wallet className="size-3.5" />Take payment</Button>}
+        {unpaid && pay && <Button size="sm" className="h-8 flex-1 rounded-lg bg-emerald-600 text-xs hover:bg-emerald-700" onClick={() => setDialog("pay")}><Wallet className="size-3.5" />{t("Take payment")}</Button>}
         {next && <Button size="sm" className="h-8 flex-1 rounded-lg text-xs" disabled={pending} onClick={go}>{pending && <Loader2 className="animate-spin" />}{nextLabel}</Button>}
-        {update && <Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5 text-xs" onClick={whatsapp} title={`Send the customer an update on WhatsApp (${update.to})`}><MessageCircle className="size-3.5 text-[#128C7E]" />{labelled && "Update customer"}</Button>}
-        {canCancel && <Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5 text-xs" onClick={() => setDialog("cancel")} aria-label={`Cancel ${number}`}><Ban className="size-3.5" />{labelled && "Cancel"}</Button>}
+        {update && <Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5 text-xs" onClick={whatsapp} title={t("Send the customer an update on WhatsApp ({phone})", { phone: update.to })}><MessageCircle className="size-3.5 text-[#128C7E]" />{labelled && t("Update customer")}</Button>}
+        {canCancel && <Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5 text-xs" onClick={() => setDialog("cancel")} aria-label={t("Cancel {number}", { number })}><Ban className="size-3.5" />{labelled && t("Cancel")}</Button>}
       </div>
       {roomOk && <button type="button" onClick={() => setDialog("room")} className="flex items-center gap-1 text-[11px] font-medium text-violet-700 hover:underline dark:text-violet-300"><BedDouble className="size-3" />{roomWord}</button>}
       </>
@@ -105,11 +107,11 @@ export function OrderCardActions({ id, number, total, next, nextLabel, unpaid, c
 
       <Dialog open={dialog === "cancel"} onOpenChange={(o) => setDialog(o ? "cancel" : null)}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader icon={<Ban />} eyebrow="Restaurant" tone="rose"><DialogTitle>Cancel {number}?</DialogTitle><DialogDescription>{cancelNote}</DialogDescription></DialogHeader>
-          <Textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why? e.g. Guest changed their mind" autoFocus />
+          <DialogHeader icon={<Ban />} eyebrow={t("Restaurant")} tone="rose"><DialogTitle>{t("Cancel {number}?", { number })}</DialogTitle><DialogDescription>{cancelNote}</DialogDescription></DialogHeader>
+          <Textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("Why? e.g. Guest changed their mind")} autoFocus />
           <div className="flex gap-2">
-            <Button variant="destructive" disabled={pending || !reason.trim()} onClick={cancel}>{pending && <Loader2 className="animate-spin" />}Cancel the order</Button>
-            <Button variant="ghost" onClick={() => setDialog(null)}>Keep it</Button>
+            <Button variant="destructive" disabled={pending || !reason.trim()} onClick={cancel}>{pending && <Loader2 className="animate-spin" />}{t("Cancel the order")}</Button>
+            <Button variant="ghost" onClick={() => setDialog(null)}>{t("Keep it")}</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -118,16 +120,16 @@ export function OrderCardActions({ id, number, total, next, nextLabel, unpaid, c
         <DialogContent className="sm:max-w-md">
           {/* Mobile money first (a request to the customer's phone, recorded by itself when they pay); cash, card and the
               rest folded under "Other payment methods" (owner, 2026-10-05). */}
-          <DialogHeader icon={<Wallet />} eyebrow="Payment" tone="emerald"><DialogTitle>{total} to pay</DialogTitle><DialogDescription>Order {number.replace(/^ORD-\d{4}-0*/, "#")}</DialogDescription></DialogHeader>
+          <DialogHeader icon={<Wallet />} eyebrow={t("Payment")} tone="emerald"><DialogTitle>{t("{total} to pay", { total })}</DialogTitle><DialogDescription>{t("Order {number}", { number: number.replace(/^ORD-\d{4}-0*/, "#") })}</DialogDescription></DialogHeader>
           {pay?.due ? (
-            <SendToPhone target={{ kind: "orders", orderIds: [id], handedOverById: broughtBy || null }} amount={pay.due} phone={pay.phone ?? ""} who={pay.customer ?? undefined} primary onPaid={() => done("Paid by mobile money.")} />
+            <SendToPhone target={{ kind: "orders", orderIds: [id], handedOverById: broughtBy || null }} amount={pay.due} phone={pay.phone ?? ""} who={pay.customer ?? undefined} primary onPaid={() => done(t("Paid by mobile money."))} />
           ) : null}
           <OtherWays fold={!!pay?.due}>
             <div className="space-y-2.5 pt-1">
               {pay && <AccountSelect accounts={pay.accounts} value={account} onChange={setAccount} />}
-              <Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Reference (card slip…) — optional" />
+              <Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder={t("Reference (card slip…) — optional")} />
               {dialog === "pay" && <BroughtBySelect value={broughtBy} onChange={setBroughtBy} prefill={pay?.waiterId} />}
-              <Button className="w-full" disabled={pending || !account} onClick={record}>{pending && <Loader2 className="animate-spin" />}Mark as paid · {total}</Button>
+              <Button className="w-full" disabled={pending || !account} onClick={record}>{pending && <Loader2 className="animate-spin" />}{t("Mark as paid · {total}", { total })}</Button>
             </div>
           </OtherWays>
         </DialogContent>
@@ -135,7 +137,7 @@ export function OrderCardActions({ id, number, total, next, nextLabel, unpaid, c
 
       <Dialog open={dialog === "room"} onOpenChange={(o) => setDialog(o ? "room" : null)}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader icon={<BedDouble />} eyebrow="Room bill" tone="sky"><DialogTitle>Put {number} on a room bill</DialogTitle><DialogDescription>Only after you have confirmed with the customer — it is added to their stay and paid at check-out.</DialogDescription></DialogHeader>
+          <DialogHeader icon={<BedDouble />} eyebrow={t("Room bill")} tone="sky"><DialogTitle>{t("Put {number} on a room bill", { number })}</DialogTitle><DialogDescription>{t("Only after you have confirmed with the customer — it is added to their stay and paid at check-out.")}</DialogDescription></DialogHeader>
           {room && <BillTo id={id} total={total} stays={room.stays} rooms={room.rooms} roomOnly onDone={() => done()} />}
         </DialogContent>
       </Dialog>
@@ -164,6 +166,7 @@ export function BillTo({ id, total, stays, rooms, roomOnly, onDone, children }: 
   /** What "Pay at the restaurant" shows: the usual payment. */
   children?: React.ReactNode;
 }) {
+  const t = useT();
   const others = rooms?.filter((r) => !stays.some((s) => s.id === r.id)) ?? [];
   // Nothing is picked for the customer — except in the room window, their own room first.
   const [to, setTo] = useState(roomOnly ? stays[0]?.id ?? (others.length ? OTHER : "") : "");
@@ -174,11 +177,11 @@ export function BillTo({ id, total, stays, rooms, roomOnly, onDone, children }: 
   const stay = stays.find((s) => s.id === to) ?? null;
   const picked = to === OTHER ? others.find((r) => r.id === other) ?? null : null;
   const target = stay?.id ?? picked?.id ?? "";
-  const place = stay ? `Room ${stay.rooms}` : picked ? picked.label.split(" — ")[0] : "the room";
+  const place = stay ? t("Room {room}", { room: stay.rooms }) : picked ? picked.label.split(" — ")[0] : t("the room");
   const why = reason.trim();
   const charge = () => start(async () => {
     const res = await chargeOrderToRoomAction({ id, reservationId: target, reason: picked ? why : undefined });
-    if (res.ok) { toast.success(`On ${place}'s bill — ${total}.`); setReason(""); onDone(); } else toast.error(res.error, { duration: 8000 });
+    if (res.ok) { toast.success(t("On {place}'s bill — {total}.", { place, total })); setReason(""); onDone(); } else toast.error(res.error, { duration: 8000 });
   });
   const choice = (key: string, on: boolean, icon: React.ReactNode, title: string, sub: string, room: boolean) => (
     <button key={key} type="button" onClick={() => setTo(key)} aria-pressed={on}
@@ -195,36 +198,36 @@ export function BillTo({ id, total, stays, rooms, roomOnly, onDone, children }: 
 
   return (
     <div>
-      <p className="mb-1.5 text-xs font-semibold text-muted-foreground">Bill to</p>
+      <p className="mb-1.5 text-xs font-semibold text-muted-foreground">{t("Bill to")}</p>
       <div className="grid grid-cols-2 gap-2">
-        {!roomOnly && choice("", to === "", <Utensils />, "Pay at the restaurant", "Paid here — now or later", false)}
-        {stays.map((s) => choice(s.id, to === s.id, <BedDouble />, `Charge to Room ${s.rooms}`, s.guestName, true))}
-        {others.length > 0 && choice(OTHER, to === OTHER, <Hotel />, "Another guest's room", "Check the stay · say why", true)}
+        {!roomOnly && choice("", to === "", <Utensils />, t("Pay at the restaurant"), t("Paid here — now or later"), false)}
+        {stays.map((s) => choice(s.id, to === s.id, <BedDouble />, t("Charge to Room {room}", { room: s.rooms }), s.guestName, true))}
+        {others.length > 0 && choice(OTHER, to === OTHER, <Hotel />, t("Another guest's room"), t("Check the stay · say why"), true)}
       </div>
       {to === "" ? children : (
         <div className="mt-3 space-y-2.5 rounded-xl bg-violet-500/[0.08] p-3 ring-1 ring-inset ring-violet-500/20">
           {to === OTHER && (
-            <NativeSelect value={other} onChange={(e) => setOther(e.target.value)} aria-label="The room">
-              <option value="">Choose the room…</option>
+            <NativeSelect value={other} onChange={(e) => setOther(e.target.value)} aria-label={t("The room")}>
+              <option value="">{t("Choose the room…")}</option>
               {others.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
             </NativeSelect>
           )}
           {stay && (
             <div className="leading-snug">
-              <p className="text-sm font-semibold">Customer: {stay.guestName} · Room {stay.rooms}</p>
-              {stay.foodPayer && <p className="text-xs text-violet-700 dark:text-violet-200/80">{stay.foodPayer} for food on this stay</p>}
+              <p className="text-sm font-semibold">{t("Customer: {name} · Room {room}", { name: stay.guestName, room: stay.rooms })}</p>
+              {stay.foodPayer && <p className="text-xs text-violet-700 dark:text-violet-200/80">{t("{payer} for food on this stay", { payer: stay.foodPayer })}</p>}
             </div>
           )}
           {picked && (
             <>
-              <p className="text-xs text-muted-foreground">{picked.label} — not this customer&apos;s room. Say why it goes there.</p>
-              <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why? e.g. the guest in this room pays for their friend" />
+              <p className="text-xs text-muted-foreground">{t("{room} — not this customer's room. Say why it goes there.", { room: picked.label })}</p>
+              <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("Why? e.g. the guest in this room pays for their friend")} />
             </>
           )}
           <Button className="w-full" disabled={pending || !target || (!!picked && why.length < 3)} onClick={charge}>
-            {pending ? <Loader2 className="animate-spin" /> : <BedDouble />}{target ? `Charge ${total} to ${place}` : "Choose the room"}
+            {pending ? <Loader2 className="animate-spin" /> : <BedDouble />}{target ? t("Charge {total} to {place}", { total, place }) : t("Choose the room")}
           </Button>
-          {!roomOnly && <p className="text-[11px] text-muted-foreground">Only after the customer has agreed — it goes on the stay and is paid at check-out.</p>}
+          {!roomOnly && <p className="text-[11px] text-muted-foreground">{t("Only after the customer has agreed — it goes on the stay and is paid at check-out.")}</p>}
         </div>
       )}
     </div>

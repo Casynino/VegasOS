@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowUpRight, BellRing } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { englishT, type T } from "@/i18n/translate";
 
 type Tone = "sky" | "rose" | "emerald" | "violet" | "amber";
 const TONE: Record<Tone, { icon: string; bar: string; glow: string; alert: string; solid: string }> = {
@@ -27,26 +28,29 @@ export interface TodayPart {
  * that fills up as the day gets done — arrivals checked in, departures checked
  * out, rooms filled, rooms still free to sell.
  */
-/** `compact`: smaller cards (the main restaurant screen, under its money band). */
-export function TodayStrip({ parts, compact = false }: { parts: TodayPart[]; compact?: boolean }) {
+/**
+ * `compact`: smaller cards (the main restaurant screen, under its money band). `t`: the viewer's translator — shown on
+ * server pages and in client screens alike, so the caller passes it (`await getT()` / `useT()`); English without it.
+ */
+export function TodayStrip({ parts, compact = false, t = englishT }: { parts: TodayPart[]; compact?: boolean; t?: T }) {
   return (
-    <section aria-label="Today" className="grid grid-cols-2 overflow-hidden rounded-3xl border border-border/70 bg-card lg:grid-cols-4">
+    <section aria-label={t("Today")} className="grid grid-cols-2 overflow-hidden rounded-3xl border border-border/70 bg-card lg:grid-cols-4">
       {parts.map((p, i) => {
-        const t = TONE[p.tone];
+        const tone = TONE[p.tone];
         const pct = p.of > 0 ? Math.min(100, Math.round((p.done / p.of) * 100)) : 0;
         return (
           <Link key={p.label} href={p.href}
-            className={cn("group relative flex flex-col bg-linear-to-b to-transparent transition-colors hover:bg-muted/40", compact ? "gap-2 px-4 py-3" : "gap-3 p-4 sm:p-5", p.alert ? cn(t.alert, "ring-2 ring-inset motion-safe:animate-[vlh-alert_2s_ease-in-out_infinite]") : t.glow,
+            className={cn("group relative flex flex-col bg-linear-to-b to-transparent transition-colors hover:bg-muted/40", compact ? "gap-2 px-4 py-3" : "gap-3 p-4 sm:p-5", p.alert ? cn(tone.alert, "ring-2 ring-inset motion-safe:animate-[vlh-alert_2s_ease-in-out_infinite]") : tone.glow,
               i % 2 === 1 && "border-l border-border/60", i >= 2 && "border-t border-border/60 lg:border-t-0", i === 2 && "lg:border-l")}>
             <div className="flex items-center gap-2">
-              <span className={cn("relative grid size-7 shrink-0 place-items-center rounded-lg [&_svg]:size-3.5", p.alert ? t.solid : t.icon)}>
+              <span className={cn("relative grid size-7 shrink-0 place-items-center rounded-lg [&_svg]:size-3.5", p.alert ? tone.solid : tone.icon)}>
                 {p.alert ? <BellRing className="origin-top motion-safe:animate-[vlh-bell_1.2s_ease-in-out_infinite]" /> : p.icon}
-                {p.alert && <span className={cn("absolute -right-1 -top-1 size-2.5 rounded-full ring-2 ring-card motion-safe:animate-ping", t.bar)} />}
+                {p.alert && <span className={cn("absolute -right-1 -top-1 size-2.5 rounded-full ring-2 ring-card motion-safe:animate-ping", tone.bar)} />}
               </span>
               <span className={cn("truncate text-[11px] font-semibold uppercase tracking-[0.08em]", !compact && "sm:text-xs sm:tracking-[0.14em]", p.alert ? "text-foreground" : "text-muted-foreground")}>{p.label}</span>
               {/* Small cards: the ringing bell and the glow say it — no room for the badge. */}
               {p.alert
-                ? !compact && <span className={cn("ml-auto hidden shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider sm:inline", t.solid)}>Tap to open</span>
+                ? !compact && <span className={cn("ml-auto hidden shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider sm:inline", tone.solid)}>{t("Tap to open")}</span>
                 : !compact && <ArrowUpRight className="ml-auto hidden size-4 shrink-0 text-muted-foreground/60 sm:block transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-foreground" />}
             </div>
             <p className="flex items-baseline gap-2">
@@ -55,7 +59,7 @@ export function TodayStrip({ parts, compact = false }: { parts: TodayPart[]; com
             </p>
             <div>
               <div className={cn("overflow-hidden rounded-full bg-muted", compact ? "h-1" : "h-1.5")} role="progressbar" aria-valuemin={0} aria-valuemax={p.of} aria-valuenow={p.done} aria-label={p.note}>
-                <div className={cn("h-full rounded-full", t.bar)} style={{ width: `${pct}%` }} />
+                <div className={cn("h-full rounded-full", tone.bar)} style={{ width: `${pct}%` }} />
               </div>
               <p className={cn("mt-1.5 truncate text-xs", p.alert ? "font-medium text-foreground/85" : "text-muted-foreground")}>{p.alert ?? p.note}</p>
             </div>

@@ -9,6 +9,9 @@ import {
   compatibleUnits, convertQty, formatQty, round3, stockLevel, unitOf, type StockLevel,
 } from "@/lib/inventory";
 import type { Actor } from "./reservations";
+import { msg, msgf } from "@/i18n/msg";
+import { getT } from "@/i18n/server";
+import { englishT, type T } from "@/i18n/translate";
 
 /**
  * Hotel-wide inventory — consumable stock kept by department (Kitchen, Bar, Housekeeping…),
@@ -28,11 +31,16 @@ function need(a: Actor, perms: string[], message: string) {
   if (!perms.some((p) => has(a, p))) throw new AppError(message, "FORBIDDEN");
 }
 const clean = (s: string | null | undefined) => s?.trim() || null;
-const positive = (q: number, what = "quantity") => {
-  if (!Number.isFinite(q) || q <= 0) throw new AppError(`Enter the ${what}.`, "VALIDATION", { quantity: "Required" });
-  if (q > 10_000_000) throw new AppError(`That ${what} is too large.`, "VALIDATION", { quantity: "Too large" });
+/** The quantity — or, with `item`, the amount of that item (a recipe line). */
+const positive = (q: number, item?: string) => {
+  if (!Number.isFinite(q) || q <= 0) throw new AppError(item ? msgf("Enter the amount of {item}.", { item }) : msg("Enter the quantity."), "VALIDATION", { quantity: msg("Required") });
+  if (q > 10_000_000) throw new AppError(item ? msgf("That amount of {item} is too large.", { item }) : msg("That quantity is too large."), "VALIDATION", { quantity: msg("Too large") });
   return round3(q);
 };
+/** The translator of whoever is asking — for the words inside a message (units, departments). English outside a request. */
+const readerT = () => getT().catch(() => englishT);
+/** "g or kg" in the reader's words. */
+const either = (t: T, words: string[]) => (words.length ? words.reduce((a, b) => t("{a} or {b}", { a, b })) : "");
 
 async function lockItem(tx: Tx, id: string) {
   await tx.$queryRaw`SELECT "id" FROM "inventory_items" WHERE "id" = ${id} FOR UPDATE`;
@@ -162,7 +170,7 @@ export async function recentMovements(opts: { take?: number; itemId?: string; de
     id: m.id, kind: m.kind, reason: m.reason, note: m.note, change: m.change, before: m.before, after: m.after, unit: m.unit, status: m.status,
     totalCost: money ? m.totalCost : null, unitCost: money ? m.unitCost : null, reference: m.reference, expiresOn: m.expiresOn?.toISOString().slice(0, 10) ?? null,
     item: m.item, where: m.department?.name ?? m.item.department.name, supplier: money ? m.supplier?.name ?? null : null,
-    by: m.recordedBy?.fullName ?? "System", byRole: m.recordedBy?.role?.name ?? null, approvedBy: m.approvedBy?.fullName ?? null,
+    by: m.recordedBy?.fullName ?? msg("System"), byRole: m.recordedBy?.role?.name ?? null, approvedBy: m.approvedBy?.fullName ?? null,
     at: m.recordedAt.toISOString(), approvedAt: m.approvedAt?.toISOString() ?? null, decisionNote: m.decisionNote,
   }));
 }
@@ -175,9 +183,10 @@ export async function itemDetail(id: string, opts: { money?: boolean } = {}) {
   });
   if (!it) throw new AppError("Stock item not found.", "NOT_FOUND");
   const moves = await recentMovements({ itemId: id, take: 40, status: undefined, money: opts.money });
+  const t = await readerT();
   return {
     id: it.id, name: it.name, unit: it.unit, quantity: it.quantity,
-    recipes: it.recipeLines.map((r) => ({ dish: r.menuItem.name, qty: formatQty(r.quantity, r.unit) })),
+    recipes: it.recipeLines.map((r) => ({ dish: r.menuItem.name, qty: formatQty(r.quantity, r.unit, t) })),
     moves,
   };
 }
@@ -195,23 +204,23 @@ export interface ItemInput {
 }
 
 export async function saveInventoryItem(input: ItemInput, actor: Actor, now = new Date()) {
-  need(actor, MANAGE, "Only the MD sets up stock items.");
+  need(actor, MANAGE, msg("Only the MD sets up stock items."));
   const name = input.name.trim();
-  if (!name) throw new AppError("Give the item a name.", "VALIDATION", { name: "Required" });
-  if (!unitOf(input.unit) || !input.unit) throw new AppError("Choose a unit.", "VALIDATION", { unit: "Required" });
+  if (!name) throw new AppError("Give the item a name.", "VALIDATION", { name: msg("Required") });
+  if (!unitOf(input.unit) || !input.unit) throw new AppError("Choose a unit.", "VALIDATION", { unit: msg("Required") });
   const lv = (v: number | null | undefined) => (v == null || !Number.isFinite(v) ? null : round3(Math.max(0, v)));
   const data = {
     name, sku: clean(input.sku), categoryId: input.categoryId, departmentId: input.departmentId, unit: input.unit,
     minStock: lv(input.minStock), reorderLevel: lv(input.reorderLevel), maxStock: lv(input.maxStock), costPerUnit: Math.max(0, Math.round(input.costPerUnit ?? 0)),
     supplierId: input.supplierId || null, location: clean(input.location), tracksExpiry: !!input.tracksExpiry, isActive: input.isActive ?? true, notes: clean(input.notes),
   };
-  if (data.minStock != null && data.maxStock != null && data.maxStock > 0 && data.maxStock < data.minStock) throw new AppError("The maximum cannot be below the minimum.", "VALIDATION", { maxStock: "Too low" });
+  if (data.minStock != null && data.maxStock != null && data.maxStock > 0 && data.maxStock < data.minStock) throw new AppError("The maximum cannot be below the minimum.", "VALIDATION", { maxStock: msg("Too low") });
   try {
     return await db.$transaction(async (tx) => {
       if (input.id) {
         const before = await lockItem(tx, input.id);
         if (before.unit !== data.unit && (await tx.inventoryMovement.count({ where: { itemId: before.id } })) > 0) {
-          throw new AppError(`${before.name} already has stock history in ${unitOf(before.unit).plural} — the unit cannot change. Make a new item instead.`, "VALIDATION", { unit: "Locked" });
+          throw new AppError(msgf("{item} already has stock history in {unit} — the unit cannot change. Make a new item instead.", { item: before.name, unit: (await readerT())(unitOf(before.unit).plural) }), "VALIDATION", { unit: msg("Locked") });
         }
         const after = await tx.inventoryItem.update({ where: { id: input.id }, data });
         const changed = (Object.keys(data) as (keyof typeof data)[]).filter((k) => String(before[k] ?? "") !== String(after[k] ?? ""));
@@ -239,9 +248,9 @@ export async function saveInventoryItem(input: ItemInput, actor: Actor, now = ne
 }
 
 export async function saveInventoryDepartment(input: { id?: string | null; name: string; isActive?: boolean }, actor: Actor) {
-  need(actor, MANAGE, "Only the MD sets up departments.");
+  need(actor, MANAGE, msg("Only the MD sets up departments."));
   const name = input.name.trim();
-  if (!name) throw new AppError("Give the department a name.", "VALIDATION", { name: "Required" });
+  if (!name) throw new AppError("Give the department a name.", "VALIDATION", { name: msg("Required") });
   const code = name.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 30) || "DEPT";
   try {
     return await db.$transaction(async (tx) => {
@@ -259,9 +268,9 @@ export async function saveInventoryDepartment(input: { id?: string | null; name:
 }
 
 export async function saveInventoryCategory(input: { id?: string | null; name: string; departmentId?: string | null; isActive?: boolean }, actor: Actor) {
-  need(actor, MANAGE, "Only the MD sets up categories.");
+  need(actor, MANAGE, msg("Only the MD sets up categories."));
   const name = input.name.trim();
-  if (!name) throw new AppError("Give the category a name.", "VALIDATION", { name: "Required" });
+  if (!name) throw new AppError("Give the category a name.", "VALIDATION", { name: msg("Required") });
   try {
     return await db.$transaction(async (tx) => {
       const before = input.id ? await tx.inventoryCategory.findUnique({ where: { id: input.id } }) : null;
@@ -277,9 +286,9 @@ export async function saveInventoryCategory(input: { id?: string | null; name: s
 }
 
 export async function saveSupplier(input: { id?: string | null; name: string; contactName?: string | null; phone?: string | null; email?: string | null; notes?: string | null; isActive?: boolean }, actor: Actor) {
-  need(actor, MANAGE, "Only the MD sets up suppliers.");
+  need(actor, MANAGE, msg("Only the MD sets up suppliers."));
   const name = input.name.trim();
-  if (!name) throw new AppError("Give the supplier a name.", "VALIDATION", { name: "Required" });
+  if (!name) throw new AppError("Give the supplier a name.", "VALIDATION", { name: msg("Required") });
   const data = { name, contactName: clean(input.contactName), phone: clean(input.phone), email: clean(input.email), notes: clean(input.notes), isActive: input.isActive ?? true };
   try {
     return await db.$transaction(async (tx) => {
@@ -298,7 +307,7 @@ export async function saveSupplier(input: { id?: string | null; name: string; co
 
 /** New stock in: 50 kg of Beef from ABC Supplier at TZS 15,000/kg. The price becomes the item's cost. */
 export async function receiveStock(input: { itemId: string; quantity: number; unitCost?: number | null; supplierId?: string | null; reference?: string | null; expiresOn?: BusinessDate | null; note?: string | null }, actor: Actor, now = new Date()) {
-  need(actor, ["inventory.receive"], "You cannot record deliveries.");
+  need(actor, ["inventory.receive"], msg("You cannot record deliveries."));
   return db.$transaction((tx) => receiveStockTx(tx, input, actor, now));
 }
 
@@ -313,8 +322,8 @@ export async function receiveStockTx(tx: Tx, input: {
 }, actor: Actor, now: Date) {
   const qty = positive(input.quantity);
   const it = await lockItem(tx, input.itemId);
-  if (!it.isActive) throw new AppError(`${it.name} is switched off — the MD can switch it on again.`);
-  if (it.tracksExpiry && !input.expiresOn) throw new AppError(`${it.name} tracks expiry — enter the expiry date on the delivery.`, "VALIDATION", { expiresOn: "Required" });
+  if (!it.isActive) throw new AppError(msgf("{item} is switched off — the MD can switch it on again.", { item: it.name }));
+  if (it.tracksExpiry && !input.expiresOn) throw new AppError(msgf("{item} tracks expiry — enter the expiry date on the delivery.", { item: it.name }), "VALIDATION", { expiresOn: msg("Required") });
   const unitCost = input.unitCost != null && input.unitCost > 0 ? Math.round(input.unitCost) : it.costPerUnit;
   const m = await postTx(tx, it, qty, {
     kind: "RECEIVE", reason: input.purchase ? PURCHASE_REASON : RECEIVE_REASON, note: clean(input.note), unitCost, totalCost: input.totalCost ?? Math.round(qty * unitCost),
@@ -331,12 +340,12 @@ export async function receiveStockTx(tx: Tx, input: {
 
 /** Stock out for work: 5 kg of Beef for the kitchen. */
 export async function takeStock(input: { itemId: string; quantity: number; reason: string; departmentId?: string | null; note?: string | null }, actor: Actor, now = new Date()) {
-  need(actor, ["inventory.use", "inventory.approve"], "You cannot take stock out.");
+  need(actor, ["inventory.use", "inventory.approve"], msg("You cannot take stock out."));
   const qty = positive(input.quantity);
-  if (!USE_REASONS.some((r) => r.code === input.reason) || input.reason === "TRANSFER") throw new AppError("Choose why the stock is used.", "VALIDATION", { reason: "Required" });
+  if (!USE_REASONS.some((r) => r.code === input.reason) || input.reason === "TRANSFER") throw new AppError("Choose why the stock is used.", "VALIDATION", { reason: msg("Required") });
   return db.$transaction(async (tx) => {
     const it = await lockItem(tx, input.itemId);
-    if (qty > round3(it.quantity)) throw new AppError(`Only ${formatQty(it.quantity, it.unit)} of ${it.name} on the books — ask a manager to count it first.`, "VALIDATION", { quantity: "Too much" });
+    if (qty > round3(it.quantity)) throw new AppError(msgf("Only {qty} of {item} on the books — ask a manager to count it first.", { qty: formatQty(it.quantity, it.unit, await readerT()), item: it.name }), "VALIDATION", { quantity: msg("Too much") });
     const m = await postTx(tx, it, -qty, { kind: "USE", reason: input.reason, note: clean(input.note), departmentId: input.departmentId || it.departmentId }, actor, now);
     await audit(tx, actor, { action: "inventory.used", entityType: "InventoryItem", entityId: it.id, before: { quantity: m.before }, after: { quantity: m.after, used: formatQty(qty, it.unit), reason: input.reason, note: m.note } });
     return { name: it.name, before: m.before!, after: m.after!, unit: it.unit };
@@ -348,13 +357,13 @@ export async function takeStock(input: { itemId: string; quantity: number; reaso
  * manager approves does the stock drop (100 kg → 98 kg). A manager's own report is approved at once.
  */
 export async function reportWaste(input: { itemId: string; quantity: number; reason: string; note?: string | null }, actor: Actor, now = new Date()) {
-  need(actor, ["inventory.use", "inventory.approve"], "You cannot report waste.");
+  need(actor, ["inventory.use", "inventory.approve"], msg("You cannot report waste."));
   const qty = positive(input.quantity);
-  if (!WASTE_REASONS.some((r) => r.code === input.reason)) throw new AppError("Choose why it was wasted.", "VALIDATION", { reason: "Required" });
+  if (!WASTE_REASONS.some((r) => r.code === input.reason)) throw new AppError("Choose why it was wasted.", "VALIDATION", { reason: msg("Required") });
   const approver = has(actor, "inventory.approve");
   return db.$transaction(async (tx) => {
     const it = await lockItem(tx, input.itemId);
-    if (qty > round3(it.quantity)) throw new AppError(`Only ${formatQty(it.quantity, it.unit)} of ${it.name} on the books.`, "VALIDATION", { quantity: "Too much" });
+    if (qty > round3(it.quantity)) throw new AppError(msgf("Only {qty} of {item} on the books.", { qty: formatQty(it.quantity, it.unit, await readerT()), item: it.name }), "VALIDATION", { quantity: msg("Too much") });
     if (approver) {
       const m = await postTx(tx, it, -qty, { kind: "WASTE", reason: input.reason, note: clean(input.note), departmentId: it.departmentId, approvedById: actor.userId ?? null, approvedAt: now }, actor, now);
       await audit(tx, actor, { action: "inventory.waste_recorded", entityType: "InventoryItem", entityId: it.id, before: { quantity: m.before }, after: { quantity: m.after, wasted: formatQty(qty, it.unit), reason: input.reason, note: m.note } });
@@ -373,8 +382,8 @@ export async function reportWaste(input: { itemId: string; quantity: number; rea
 
 /** A manager approves (the stock drops now) or rejects (nothing changes, with a reason) reported waste. */
 export async function decideWaste(id: string, approve: boolean, note: string | null, actor: Actor, now = new Date()) {
-  need(actor, ["inventory.approve"], "Only a manager approves waste.");
-  if (!approve && !note?.trim()) throw new AppError("Say why it is rejected.", "VALIDATION", { note: "Required" });
+  need(actor, ["inventory.approve"], msg("Only a manager approves waste."));
+  if (!approve && !note?.trim()) throw new AppError("Say why it is rejected.", "VALIDATION", { note: msg("Required") });
   return db.$transaction(async (tx) => {
     const m = await tx.inventoryMovement.findUnique({ where: { id } });
     if (!m || m.kind !== "WASTE") throw new AppError("Waste report not found.", "NOT_FOUND");
@@ -399,16 +408,22 @@ export async function decideWaste(id: string, approve: boolean, note: string | n
  * the item of the same name in the other department (made there, same unit, if it is not yet).
  */
 export async function transferStock(input: { itemId: string; toDepartmentId: string; quantity: number; note?: string | null }, actor: Actor, now = new Date()) {
-  need(actor, ["inventory.approve"], "Only a manager moves stock between departments.");
+  need(actor, ["inventory.approve"], msg("Only a manager moves stock between departments."));
   const qty = positive(input.quantity);
   return db.$transaction(async (tx) => {
     const from = await lockItem(tx, input.itemId);
-    if (from.departmentId === input.toDepartmentId) throw new AppError("Choose another department.", "VALIDATION", { toDepartmentId: "Same" });
+    if (from.departmentId === input.toDepartmentId) throw new AppError("Choose another department.", "VALIDATION", { toDepartmentId: msg("Same") });
     const dept = await tx.inventoryDepartment.findUnique({ where: { id: input.toDepartmentId } });
     if (!dept || !dept.isActive) throw new AppError("Department not found.", "NOT_FOUND");
-    if (qty > round3(from.quantity)) throw new AppError(`Only ${formatQty(from.quantity, from.unit)} of ${from.name} in ${from.department.name}.`, "VALIDATION", { quantity: "Too much" });
+    if (qty > round3(from.quantity)) {
+      const t = await readerT();
+      throw new AppError(msgf("Only {qty} of {item} in {department}.", { qty: formatQty(from.quantity, from.unit, t), item: from.name, department: t(from.department.name) }), "VALIDATION", { quantity: msg("Too much") });
+    }
     let target = await tx.inventoryItem.findUnique({ where: { departmentId_name: { departmentId: dept.id, name: from.name } } });
-    if (target && target.unit !== from.unit) throw new AppError(`${dept.name} keeps ${from.name} in ${unitOf(target.unit).plural}, not ${unitOf(from.unit).plural}.`);
+    if (target && target.unit !== from.unit) {
+      const t = await readerT();
+      throw new AppError(msgf("{department} keeps {item} in {unit}, not {other}.", { department: t(dept.name), item: from.name, unit: t(unitOf(target.unit).plural), other: t(unitOf(from.unit).plural) }));
+    }
     if (!target) {
       target = await tx.inventoryItem.create({
         data: { name: from.name, categoryId: from.categoryId, departmentId: dept.id, unit: from.unit, costPerUnit: from.costPerUnit, supplierId: from.supplierId, tracksExpiry: from.tracksExpiry, notes: `Made by a transfer from ${from.department.name}` },
@@ -432,9 +447,9 @@ export async function transferStock(input: { itemId: string; toDepartmentId: str
  * reason. Lines that match are left as they are.
  */
 export async function countStock(input: { lines: { itemId: string; counted: number; reason?: string | null; note?: string | null }[] }, actor: Actor, now = new Date()) {
-  need(actor, ["inventory.approve"], "Only a manager or the MD counts stock.");
+  need(actor, ["inventory.approve"], msg("Only a manager or the MD counts stock."));
   const lines = input.lines.filter((l) => Number.isFinite(l.counted) && l.counted >= 0);
-  if (!lines.length) throw new AppError("Enter at least one count.", "VALIDATION", { lines: "Empty" });
+  if (!lines.length) throw new AppError("Enter at least one count.", "VALIDATION", { lines: msg("Empty") });
   return db.$transaction(async (tx) => {
     const out: { name: string; before: number; after: number; unit: string }[] = [];
     for (const l of [...lines].sort((a, b) => a.itemId.localeCompare(b.itemId))) {
@@ -442,8 +457,11 @@ export async function countStock(input: { lines: { itemId: string; counted: numb
       const counted = round3(l.counted);
       const diff = round3(counted - it.quantity);
       if (diff === 0) continue;
-      if (!l.reason || !COUNT_REASONS.some((r) => r.code === l.reason)) throw new AppError(`Say why ${it.name} is ${diff < 0 ? "short" : "over"} by ${formatQty(Math.abs(diff), it.unit)}.`, "VALIDATION", { reason: it.id });
-      if (l.reason === "OTHER" && !l.note?.trim()) throw new AppError(`Describe the difference on ${it.name}.`, "VALIDATION", { note: it.id });
+      if (!l.reason || !COUNT_REASONS.some((r) => r.code === l.reason)) {
+        const vars = { item: it.name, qty: formatQty(Math.abs(diff), it.unit, await readerT()) };
+        throw new AppError(diff < 0 ? msgf("Say why {item} is short by {qty}.", vars) : msgf("Say why {item} is over by {qty}.", vars), "VALIDATION", { reason: it.id });
+      }
+      if (l.reason === "OTHER" && !l.note?.trim()) throw new AppError(msgf("Describe the difference on {item}.", { item: it.name }), "VALIDATION", { note: it.id });
       const m = await postTx(tx, it, diff, { kind: "COUNT", reason: l.reason, note: clean(l.note), departmentId: it.departmentId, approvedById: actor.userId ?? null, approvedAt: now }, actor, now);
       await audit(tx, actor, { action: "inventory.counted", entityType: "InventoryItem", entityId: it.id, before: { quantity: m.before }, after: { quantity: m.after, difference: formatQty(diff, it.unit), reason: l.reason, note: m.note } });
       out.push({ name: it.name, before: m.before!, after: m.after!, unit: it.unit });
@@ -454,7 +472,7 @@ export async function countStock(input: { lines: { itemId: string; counted: numb
 
 /** An expiring delivery dealt with (used up, or thrown away through waste). */
 export async function clearExpiry(movementId: string, actor: Actor) {
-  need(actor, ["inventory.use", "inventory.approve"], "You cannot change stock records.");
+  need(actor, ["inventory.use", "inventory.approve"], msg("You cannot change stock records."));
   await db.$transaction(async (tx) => {
     const m = await tx.inventoryMovement.update({ where: { id: movementId }, data: { expiryCleared: true } });
     await audit(tx, actor, { action: "inventory.expiry_cleared", entityType: "InventoryMovement", entityId: m.id, after: { expiresOn: m.expiresOn } });
@@ -476,7 +494,8 @@ export async function recipesData() {
 
 /** A dish's recipe, replaced as a whole: Beef Burger = 150 g Beef + 1 Bun + 1 slice Cheese… */
 export async function saveRecipe(menuItemId: string, lines: { itemId: string; quantity: number; unit: string }[], actor: Actor) {
-  need(actor, MANAGE, "Only the MD sets up recipes.");
+  need(actor, MANAGE, msg("Only the MD sets up recipes."));
+  const t = await readerT();
   return db.$transaction(async (tx) => {
     const dish = await tx.menuItem.findUnique({ where: { id: menuItemId }, include: { recipe: { include: { item: { select: { name: true } } } } } });
     if (!dish) throw new AppError("Dish not found.", "NOT_FOUND");
@@ -486,10 +505,12 @@ export async function saveRecipe(menuItemId: string, lines: { itemId: string; qu
     const clean = lines.map((l) => {
       const it = byId.get(l.itemId);
       if (!it) throw new AppError("A stock item in the recipe was not found.", "NOT_FOUND");
-      if (seen.has(it.id)) throw new AppError(`${it.name} is in the recipe twice.`, "VALIDATION");
+      if (seen.has(it.id)) throw new AppError(msgf("{item} is in the recipe twice.", { item: it.name }), "VALIDATION");
       seen.add(it.id);
-      if (!compatibleUnits(it.unit).includes(l.unit)) throw new AppError(`${it.name} is kept in ${unitOf(it.unit).plural} — use ${compatibleUnits(it.unit).map((u) => unitOf(u).label).join(" or ")}.`, "VALIDATION");
-      return { itemId: it.id, quantity: positive(l.quantity, `amount of ${it.name}`), unit: l.unit, name: it.name };
+      if (!compatibleUnits(it.unit).includes(l.unit)) {
+        throw new AppError(msgf("{item} is kept in {unit} — use {units}.", { item: it.name, unit: t(unitOf(it.unit).plural), units: either(t, compatibleUnits(it.unit).map((u) => t(unitOf(u).label))) }), "VALIDATION");
+      }
+      return { itemId: it.id, quantity: positive(l.quantity, it.name), unit: l.unit, name: it.name };
     });
     await tx.recipeLine.deleteMany({ where: { menuItemId } });
     if (clean.length) await tx.recipeLine.createMany({ data: clean.map((l) => ({ itemId: l.itemId, quantity: l.quantity, unit: l.unit, menuItemId })) });
@@ -542,8 +563,8 @@ export interface AssetInput {
 }
 
 function checkAssetCodes(condition: string, status: string) {
-  if (!ASSET_CONDITIONS.some((c) => c.code === condition)) throw new AppError("Choose the condition.", "VALIDATION", { condition: "Invalid" });
-  if (!ASSET_STATUSES.some((c) => c.code === status)) throw new AppError("Choose the status.", "VALIDATION", { status: "Invalid" });
+  if (!ASSET_CONDITIONS.some((c) => c.code === condition)) throw new AppError("Choose the condition.", "VALIDATION", { condition: msg("Invalid") });
+  if (!ASSET_STATUSES.some((c) => c.code === status)) throw new AppError("Choose the status.", "VALIDATION", { status: msg("Invalid") });
 }
 
 export async function assetsData() {
@@ -566,10 +587,10 @@ export async function assetHistory(assetId: string) {
 }
 
 export async function saveAsset(input: AssetInput, actor: Actor, now = new Date()) {
-  need(actor, ["assets.manage"], "Only the MD keeps the asset register.");
+  need(actor, ["assets.manage"], msg("Only the MD keeps the asset register."));
   const name = input.name.trim(), category = input.category.trim();
-  if (!name) throw new AppError("Give the asset a name.", "VALIDATION", { name: "Required" });
-  if (!category) throw new AppError("Choose a category.", "VALIDATION", { category: "Required" });
+  if (!name) throw new AppError("Give the asset a name.", "VALIDATION", { name: msg("Required") });
+  if (!category) throw new AppError("Choose a category.", "VALIDATION", { category: msg("Required") });
   checkAssetCodes(input.condition || "GOOD", input.status || "IN_USE");
   const data = {
     name, category, location: clean(input.location), departmentId: input.departmentId || null, quantity: Math.max(1, Math.round(input.quantity ?? 1)),
@@ -616,16 +637,16 @@ export async function saveAsset(input: AssetInput, actor: Actor, now = new Date(
  * its own record at the new place, so both places stay right.
  */
 export async function moveAsset(input: { assetId: string; to: string; quantity?: number | null; note?: string | null }, actor: Actor, now = new Date()) {
-  need(actor, ["assets.manage", "inventory.approve"], "Only a manager or the MD moves assets.");
+  need(actor, ["assets.manage", "inventory.approve"], msg("Only a manager or the MD moves assets."));
   const to = input.to.trim();
-  if (!to) throw new AppError("Where is it going?", "VALIDATION", { to: "Required" });
+  if (!to) throw new AppError("Where is it going?", "VALIDATION", { to: msg("Required") });
   return db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT "id" FROM "assets" WHERE "id" = ${input.assetId} FOR UPDATE`;
     const a = await tx.asset.findUnique({ where: { id: input.assetId } });
     if (!a) throw new AppError("Asset not found.", "NOT_FOUND");
-    if ((a.location ?? "") === to) throw new AppError(`It is already at ${to}.`);
+    if ((a.location ?? "") === to) throw new AppError(msgf("It is already at {place}.", { place: to }));
     const qty = Math.round(input.quantity ?? a.quantity);
-    if (qty < 1 || qty > a.quantity) throw new AppError(`Move between 1 and ${a.quantity}.`, "VALIDATION", { quantity: "Range" });
+    if (qty < 1 || qty > a.quantity) throw new AppError(msgf("Move between 1 and {n}.", { n: a.quantity }), "VALIDATION", { quantity: msg("Range") });
     const note = clean(input.note);
     let movedId = a.id;
     if (qty < a.quantity) {
@@ -675,7 +696,7 @@ export async function inventoryToday(now = new Date()) {
 
 /** A manager (or the MD) records an asset's condition or status — e.g. TV #TV-012: Needs repair, Under repair. */
 export async function setAssetState(input: { assetId: string; condition?: string | null; status?: string | null; note?: string | null }, actor: Actor, now = new Date()) {
-  need(actor, ["assets.manage", "inventory.approve"], "Only a manager or the MD updates assets.");
+  need(actor, ["assets.manage", "inventory.approve"], msg("Only a manager or the MD updates assets."));
   return db.$transaction(async (tx) => {
     const a = await tx.asset.findUnique({ where: { id: input.assetId } });
     if (!a) throw new AppError("Asset not found.", "NOT_FOUND");

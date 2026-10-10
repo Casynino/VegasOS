@@ -12,8 +12,12 @@ import { cn } from "@/lib/utils";
 import { formatDateRange } from "@/lib/format";
 import { ReportDocument } from "./report-document";
 import { ReportActions } from "./report-actions";
+import { getT } from "@/i18n/server";
+import { localizeReport } from "@/lib/report-i18n";
 
-export const metadata: Metadata = { title: "Reports" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getT())("Reports") };
+}
 export const dynamic = "force-dynamic";
 
 const ICON: Record<ReportKey, LucideIcon> = {
@@ -34,9 +38,11 @@ export default async function ReportsPage({ searchParams }: PageProps<"/staff/re
   const p = readPeriod(sp, today, "today");
   const key = (REPORTS.find((x) => x.key === sp.r)?.key ?? "summary") as ReportKey;
   const report = await buildReport(key, { from: p.from, to: p.to }, today);
+  const t = await getT();
+  const shown = localizeReport(report, t);
 
   const now = new Date();
-  const preparedAt = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: s.timezone }).format(now);
+  const preparedAt = new Intl.DateTimeFormat(t.intl, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: s.timezone }).format(now);
   const number = `RPT-${p.from.replaceAll("-", "")}${p.to !== p.from ? `-${p.to.replaceAll("-", "")}` : ""}-${key.toUpperCase().slice(0, 4)}`;
   const periodQs: Record<string, string> = p.key === "custom" ? { from: p.from, to: p.to } : { period: p.key };
   const href = (r: ReportKey) => `?${new URLSearchParams({ r, ...periodQs })}`;
@@ -60,12 +66,12 @@ export default async function ReportsPage({ searchParams }: PageProps<"/staff/re
           <div className="flex min-w-0 items-center gap-3.5">
             <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-linear-to-br from-[oklch(0.84_0.11_85)] to-[oklch(0.62_0.12_65)] text-[#1b1611] shadow-[0_10px_24px_-12px_oklch(0.7_0.12_75)]"><FileClock className="size-6" /></span>
             <div className="min-w-0">
-              <p className="truncate text-[10px] font-semibold uppercase tracking-[0.22em] text-[oklch(0.62_0.11_78)] dark:text-[oklch(0.8_0.1_82)]">Reports · {user.roleName}</p>
-              <h1 className="truncate text-lg font-semibold leading-tight tracking-tight sm:text-xl">{report.title}</h1>
+              <p className="truncate text-[10px] font-semibold uppercase tracking-[0.22em] text-[oklch(0.62_0.11_78)] dark:text-[oklch(0.8_0.1_82)]">{t("Reports")} · {t(user.roleName)}</p>
+              <h1 className="truncate text-lg font-semibold leading-tight tracking-tight sm:text-xl">{shown.title}</h1>
               <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-                <span className="font-medium tabular-nums text-foreground/85">{formatDateRange(p.from, p.to)}</span>
-                <span className="hidden sm:inline">· Print it, save it as a PDF, open it in Excel or share it ·</span>
-                <Link href="/staff/reports/daily" className="hidden font-medium text-foreground hover:underline sm:inline">daily WhatsApp reports</Link>
+                <span className="font-medium tabular-nums text-foreground/85">{t.locale === "en" ? formatDateRange(p.from, p.to) : t.dateRange(p.from, p.to)}</span>
+                <span className="hidden sm:inline">· {t("Print it, save it as a PDF, open it in Excel or share it")} ·</span>
+                <Link href="/staff/reports/daily" className="hidden font-medium text-foreground hover:underline sm:inline">{t("daily WhatsApp reports")}</Link>
               </p>
             </div>
           </div>
@@ -74,15 +80,15 @@ export default async function ReportsPage({ searchParams }: PageProps<"/staff/re
       </section>
 
       {/* Which report — one bar, like the finance tabs */}
-      <nav aria-label="Reports" className="-mx-1 overflow-x-auto px-1 [scrollbar-width:none] print:hidden">
+      <nav aria-label={t("Reports")} className="-mx-1 overflow-x-auto px-1 [scrollbar-width:none] print:hidden">
         <div className="flex min-w-max gap-1 rounded-2xl border border-border/70 bg-card p-1">
           {REPORTS.map((r) => {
             const Icon = ICON[r.key];
             return (
-              <Link key={r.key} href={href(r.key)} aria-current={r.key === key ? "page" : undefined} title={r.blurb}
+              <Link key={r.key} href={href(r.key)} aria-current={r.key === key ? "page" : undefined} title={t(r.blurb)}
                 className={cn("flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-2 text-xs font-semibold transition-colors",
                   r.key === key ? "bg-foreground text-background" : "text-muted-foreground hover:bg-muted hover:text-foreground")}>
-                <Icon className="size-3.5" />{r.label}
+                <Icon className="size-3.5" />{t(r.label)}
               </Link>
             );
           })}
@@ -91,10 +97,10 @@ export default async function ReportsPage({ searchParams }: PageProps<"/staff/re
 
       <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
         <PeriodPicker current={p.key} from={p.from} to={p.to} keep={{ r: key }} />
-        {key === "outstanding" && <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Coins className="size-3.5" />Outstanding is always as of now — the period does not change it.</p>}
+        {key === "outstanding" && <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Coins className="size-3.5" />{t("Outstanding is always as of now — the period does not change it.")}</p>}
       </div>
 
-      <ReportDocument report={report} hotel={hotel} preparedBy={`${user.fullName.replace(/\s*\(.*\)/, "")} · ${user.roleName}`} preparedAt={preparedAt} number={number} />
+      <ReportDocument report={report} hotel={hotel} preparedBy={`${user.fullName.replace(/\s*\(.*\)/, "")} · ${t(user.roleName)}`} preparedAt={preparedAt} number={number} />
     </div>
   );
 }

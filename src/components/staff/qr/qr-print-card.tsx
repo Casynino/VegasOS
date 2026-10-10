@@ -7,6 +7,7 @@ import { Camera, Download, ExternalLink, Loader2, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { NETWORK_MARKS } from "@/components/payments/networks";
+import { useT } from "@/i18n/client";
 
 /**
  * A room / the meeting room / the public menu card — or a restaurant place: a table, the counter, the main restaurant QR —
@@ -37,12 +38,13 @@ export function saveFile(href: string, name: string) {
 export function QrPreview({ card, hotel, phone, printHref, fileName, className }: {
   card: Printable; hotel: string; phone: string | null; printHref: string; fileName: string; className?: string;
 }) {
+  const t = useT();
   const [busy, setBusy] = useState(false);
   const download = async () => {
     const node = document.getElementById(`qr-${card.id}`);
     if (!node) return;
     setBusy(true);
-    try { saveFile(await snapQrCard(node), `${fileName}.jpg`); } catch { toast.error("Could not make the image — try again."); } finally { setBusy(false); }
+    try { saveFile(await snapQrCard(node), `${fileName}.jpg`); } catch { toast.error(t("Could not make the image — try again.")); } finally { setBusy(false); }
   };
   return (
     <div className={cn("@container", className)}>
@@ -50,14 +52,14 @@ export function QrPreview({ card, hotel, phone, printHref, fileName, className }
       <div className="w-[220px] shrink-0"><QrPrintCard card={card} hotel={hotel} phone={phone} /></div>
       <div className="w-full min-w-0 space-y-2 text-center @[30rem]:text-left">
         <p className="text-sm text-muted-foreground">{card.kind === "public"
-          ? "Put it on restaurant tables, the bar and reception — anyone can order (dine in, takeaway, pickup)."
+          ? t("Put it on restaurant tables, the bar and reception — anyone can order (dine in, takeaway, pickup).")
           : card.kind === "booking"
-            ? "Put it at reception, the entrance, in rooms and on flyers — guests see our rooms, pick their dates, book and pay."
-            : "Put it in the room. Scanning it opens the guest checked in to this room right now — their stay, bill and ordering. When the room is free it shows the room and the menu."}</p>
+            ? t("Put it at reception, the entrance, in rooms and on flyers — guests see our rooms, pick their dates, book and pay.")
+            : t("Put it in the room. Scanning it opens the guest checked in to this room right now — their stay, bill and ordering. When the room is free it shows the room and the menu.")}</p>
         <div className="flex flex-wrap justify-center gap-2 @[30rem]:justify-start">
-          <Button size="sm" disabled={busy} onClick={download}>{busy ? <Loader2 className="animate-spin" /> : <Download />}Download</Button>
-          <a href={printHref} target="_blank" rel="noopener" className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium hover:bg-muted"><Printer className="size-4" />Print</a>
-          <a href={card.kind === "public" || card.kind === "booking" ? card.url : `${card.url}?view=guest`} target="_blank" rel="noopener" className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium hover:bg-muted"><ExternalLink className="size-4" />See what guests see</a>
+          <Button size="sm" disabled={busy} onClick={download}>{busy ? <Loader2 className="animate-spin" /> : <Download />}{t("Download")}</Button>
+          <a href={printHref} target="_blank" rel="noopener" className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium hover:bg-muted"><Printer className="size-4" />{t("Print")}</a>
+          <a href={card.kind === "public" || card.kind === "booking" ? card.url : `${card.url}?view=guest`} target="_blank" rel="noopener" className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium hover:bg-muted"><ExternalLink className="size-4" />{t("See what guests see")}</a>
         </div>
       </div>
     </div>
@@ -73,6 +75,7 @@ export function QrPreview({ card, hotel, phone, printHref, fileName, className }
  * screen, print and download are the same picture.
  */
 export function QrPrintCard({ card, hotel }: { card: Printable; hotel: string; phone?: string | null }) {
+  const t = useT();
   const c = cardCopy(card);
   return (
     <article id={`qr-${card.id}`} className="@container relative aspect-[105/148] w-full overflow-hidden rounded-[22px] bg-[#0c0806] text-center text-white shadow-[0_24px_50px_-28px_rgba(10,7,4,0.9)] [print-color-adjust:exact] print:rounded-none print:shadow-none">
@@ -106,14 +109,14 @@ export function QrPrintCard({ card, hotel }: { card: Printable; hotel: string; p
         </div>
         {/* How — very small */}
         <p className="mt-[2.6cqw] flex items-center justify-center gap-[1.2cqw] text-[2.05cqw] tracking-wide text-white/55">
-          <Camera className="size-[2.6cqw] shrink-0" style={{ color: GOLD }} strokeWidth={1.6} />Open your phone camera and point it here
+          <Camera className="size-[2.6cqw] shrink-0" style={{ color: GOLD }} strokeWidth={1.6} />{t("Open your phone camera and point it here")}
         </p>
 
         <div className="mt-auto w-full">
           <p className="flex items-center justify-center gap-[2cqw] text-[1.9cqw] font-semibold uppercase tracking-[0.42em] text-white/55">
-            <span aria-hidden className="h-px w-[8cqw] bg-[#e3bd6a]/45" />We accept<span aria-hidden className="h-px w-[8cqw] bg-[#e3bd6a]/45" />
+            <span aria-hidden className="h-px w-[8cqw] bg-[#e3bd6a]/45" />{t("We accept")}<span aria-hidden className="h-px w-[8cqw] bg-[#e3bd6a]/45" />
           </p>
-          <ul className="mt-[2.2cqw] flex items-center justify-center gap-[1.3cqw]" aria-label="Mobile-money networks">
+          <ul className="mt-[2.2cqw] flex items-center justify-center gap-[1.3cqw]" aria-label={t("Mobile-money networks")}>
             {NETWORK_MARKS.map((m) => (
               <li key={m.key} title={m.label}
                 className={cn("inline-flex h-[4.8cqw] shrink-0 items-center gap-[0.3em] whitespace-nowrap rounded-[1.1cqw] px-[1.6cqw] text-[2.45cqw] font-extrabold lowercase leading-none tracking-tight", m.className)}>

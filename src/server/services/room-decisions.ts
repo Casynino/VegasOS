@@ -2,6 +2,7 @@ import "server-only";
 import { db } from "../db";
 import { audit } from "../audit";
 import { AppError } from "../errors";
+import { msg, msgf } from "@/i18n/msg";
 import { businessToday } from "../settings";
 import { formatBusinessDate } from "@/lib/format";
 import { fromDbDate, toDbDate, type BusinessDate } from "@/lib/time/business-date";
@@ -19,10 +20,10 @@ const canClose = (a: Actor) => !!a.permissions?.has("rooms.block");
 export async function planRoomClosure(input: { roomId: string; from: BusinessDate; to: BusinessDate; type: "MAINTENANCE" | "OUT_OF_SERVICE"; reason: string }, actor: Actor) {
   if (!actor.userId || !canClose(actor)) throw new AppError("Only a manager or the MD closes rooms.", "FORBIDDEN");
   const reason = input.reason.trim();
-  if (reason.length < 3) throw new AppError("Say why the room is closed (e.g. painting, new AC).", "VALIDATION", { reason: "Required" });
+  if (reason.length < 3) throw new AppError("Say why the room is closed (e.g. painting, new AC).", "VALIDATION", { reason: msg("Required") });
   const today = await businessToday();
-  if (input.from < today) throw new AppError("The closure cannot start in the past.", "VALIDATION", { from: "Past" });
-  if (input.to <= input.from) throw new AppError("The room opens again after the closure starts — choose a later date.", "VALIDATION", { to: "Too early" });
+  if (input.from < today) throw new AppError("The closure cannot start in the past.", "VALIDATION", { from: msg("Past") });
+  if (input.to <= input.from) throw new AppError("The room opens again after the closure starts — choose a later date.", "VALIDATION", { to: msg("Too early") });
   return db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT "id" FROM "rooms" WHERE "id" = ${input.roomId} FOR UPDATE`;
     const room = await tx.room.findUnique({ where: { id: input.roomId } });
@@ -33,10 +34,13 @@ export async function planRoomClosure(input: { roomId: string; from: BusinessDat
       select: { reservation: { select: { reference: true, companyName: true, guest: { select: { fullName: true } } } }, arrivalDate: true },
     });
     if (clash.length) {
-      throw new AppError(`Room ${room.number} is booked in those dates: ${clash.map((c) => `${c.reservation.companyName ?? c.reservation.guest.fullName} (${c.reservation.reference}, ${formatBusinessDate(fromDbDate(c.arrivalDate))})`).join(", ")}. Move ${clash.length === 1 ? "that booking" : "those bookings"} to another room first.`, "CONFLICT");
+      const bookings = clash.map((c) => `${c.reservation.companyName ?? c.reservation.guest.fullName} (${c.reservation.reference}, ${formatBusinessDate(fromDbDate(c.arrivalDate))})`).join(", ");
+      throw new AppError(clash.length === 1
+        ? msgf("Room {room} is booked in those dates: {bookings}. Move that booking to another room first.", { room: room.number, bookings })
+        : msgf("Room {room} is booked in those dates: {bookings}. Move those bookings to another room first.", { room: room.number, bookings }), "CONFLICT");
     }
     const overlap = await tx.roomBlock.count({ where: { roomId: room.id, startDate: { lt: toDbDate(input.to) }, OR: [{ endDate: null }, { endDate: { gt: toDbDate(input.from) } }] } });
-    if (overlap) throw new AppError(`Room ${room.number} is already closed for part of those dates.`, "CONFLICT");
+    if (overlap) throw new AppError(msgf("Room {room} is already closed for part of those dates.", { room: room.number }), "CONFLICT");
     const block = await tx.roomBlock.create({
       data: { roomId: room.id, type: input.type, startDate: toDbDate(input.from), endDate: toDbDate(input.to), reason, createdById: actor.userId },
     });
@@ -56,7 +60,7 @@ export async function cancelRoomClosure(blockId: string, reason: string, actor: 
     const b = await tx.roomBlock.findUnique({ where: { id: blockId }, include: { room: { select: { number: true, status: true } } } });
     if (!b) throw new AppError("Closure not found.", "NOT_FOUND");
     if (b.endDate && fromDbDate(b.endDate) <= today) throw new AppError("This closure is already over.");
-    if (b.endDate === null) throw new AppError(`Room ${b.room.number} is closed now — use "Fixed" on the room to open it.`);
+    if (b.endDate === null) throw new AppError(msgf('Room {room} is closed now — use "Fixed" on the room to open it.', { room: b.room.number }));
     const start = fromDbDate(b.startDate);
     const end = start > today ? start : today; // not started: nothing left; running: ends today
     await tx.roomBlock.update({ where: { id: b.id }, data: { endDate: toDbDate(end), closedAt: now } });

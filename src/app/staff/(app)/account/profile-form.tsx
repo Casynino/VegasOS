@@ -7,9 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { signOutOtherDevicesAction, updateProfileAction } from "./actions";
+import { useT } from "@/i18n/client";
 
 /** Name, email and phone. The password field appears only when the email (the login) changes. */
 export function ProfileForm({ fullName, email, phone }: { fullName: string; email: string; phone: string | null }) {
+  const t = useT();
   const [newEmail, setNewEmail] = useState(email);
   const emailChanged = newEmail.trim().toLowerCase() !== email.toLowerCase();
   return (
@@ -17,31 +19,31 @@ export function ProfileForm({ fullName, email, phone }: { fullName: string; emai
       {({ pending, fieldErrors: e }) => (
         <>
           <div className="space-y-1.5">
-            <Label htmlFor="fullName">Full name</Label>
+            <Label htmlFor="fullName">{t("Full name")}</Label>
             <Input id="fullName" name="fullName" defaultValue={fullName} autoComplete="name" required />
             <FieldError message={e?.fullName} />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label htmlFor="email">Email (used to sign in)</Label>
+              <Label htmlFor="email">{t("Email (used to sign in)")}</Label>
               <Input id="email" name="email" type="email" value={newEmail} onChange={(ev) => setNewEmail(ev.target.value)} autoComplete="email" required />
               <FieldError message={e?.email} />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="phone">Phone number</Label>
+              <Label htmlFor="phone">{t("Phone number")}</Label>
               <Input id="phone" name="phone" type="tel" defaultValue={phone ?? ""} placeholder="0712 345 678" autoComplete="tel" />
               <FieldError message={e?.phone} />
             </div>
           </div>
           {emailChanged && (
             <div className="space-y-1.5 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3">
-              <Label htmlFor="profilePassword">Your password</Label>
+              <Label htmlFor="profilePassword">{t("Your password")}</Label>
               <Input id="profilePassword" name="currentPassword" type="password" autoComplete="current-password" required />
-              <p className="text-xs text-muted-foreground">You are changing the email you sign in with, so confirm it&apos;s you. Next time, sign in with the new email.</p>
+              <p className="text-xs text-muted-foreground">{t("You are changing the email you sign in with, so confirm it's you. Next time, sign in with the new email.")}</p>
               <FieldError message={e?.currentPassword} />
             </div>
           )}
-          <Button type="submit" disabled={pending}>{pending && <Loader2 className="animate-spin" />}Save changes</Button>
+          <Button type="submit" disabled={pending}>{pending && <Loader2 className="animate-spin" />}{t("Save changes")}</Button>
         </>
       )}
     </ActionForm>
@@ -49,11 +51,12 @@ export function ProfileForm({ fullName, email, phone }: { fullName: string; emai
 }
 
 export function SignOutOthersButton({ disabled }: { disabled: boolean }) {
+  const t = useT();
   return (
     <ActionForm action={signOutOtherDevicesAction}>
       {({ pending }) => (
         <Button type="submit" variant="outline" disabled={pending || disabled}>
-          {pending ? <Loader2 className="animate-spin" /> : <LogOut />}Sign out other devices
+          {pending ? <Loader2 className="animate-spin" /> : <LogOut />}{t("Sign out other devices")}
         </Button>
       )}
     </ActionForm>

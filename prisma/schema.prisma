@@ -65,6 +65,8 @@ model User {
   mustChangePassword Boolean   @default(false)
   /// The top-bar bell switched off by this person — silent in every tab, browser and device they use.
   alertSoundOff      Boolean   @default(false)
+  /// This person's interface language: "en" | "zh-CN" (their own — never anyone else's; never affects permissions).
+  preferredLanguage  String    @default("en")
   lastLoginAt        DateTime?
   /// (No longer used: a waiter is now picked from the list on the Restaurant Counter — no code.)
   staffCode          String?   @unique
@@ -310,6 +312,10 @@ model HotelSettings {
   instagramUrl               String?
   facebookUrl                String?
   tiktokUrl                  String?
+  /// Languages offered to guests and staff (English is always on and is the fallback).
+  enabledLanguages           String[] @default(["en", "zh-CN"])
+  /// The language a first-time visitor sees.
+  defaultLanguage            String   @default("en")
   updatedAt                  DateTime @updatedAt
   updatedById                String?
   updatedBy                  User?    @relation(fields: [updatedById], references: [id])
@@ -351,12 +357,13 @@ model PaymentMethod {
 // ───────────────────────────── Rooms & inventory ─────────────────────────────
 
 model Amenity {
-  id        String            @id @default(cuid())
-  code      String            @unique
-  name      String
-  icon      String? // lucide icon name
-  sortOrder Int               @default(0)
-  roomTypes RoomTypeAmenity[]
+  id           String               @id @default(cuid())
+  code         String               @unique
+  name         String
+  icon         String? // lucide icon name
+  sortOrder    Int                  @default(0)
+  roomTypes    RoomTypeAmenity[]
+  translations AmenityTranslation[]
 
   @@map("amenities")
 }
@@ -368,32 +375,33 @@ enum RoomCategory {
 }
 
 model RoomType {
-  id               String            @id @default(cuid())
-  code             String            @unique // STANDARD, DOUBLE_DELUXE, ..., MEETING_ROOM
+  id               String                @id @default(cuid())
+  code             String                @unique // STANDARD, DOUBLE_DELUXE, ..., MEETING_ROOM
   name             String
   /// Meeting rooms use the same rooms, reservations, folio and payments, but are booked by time
   /// and reported apart (Meeting Room revenue, utilisation — never guest-room occupancy).
-  category         RoomCategory      @default(GUEST_ROOM)
-  slug             String            @unique
+  category         RoomCategory          @default(GUEST_ROOM)
+  slug             String                @unique
   baseRate         Int // TZS per night (meeting room: per booking) — the only source of room prices
   displayRateUsd   Int? // indicative USD price shown on the website
-  maxAdults        Int               @default(2)
-  maxChildren      Int               @default(1)
+  maxAdults        Int                   @default(2)
+  maxChildren      Int                   @default(1)
   bedType          String?
   sizeSqm          Int?
   shortDescription String?
   description      String?
-  images           Json              @default("[]") // ["/images/rooms/...jpg"]
-  isActive         Boolean           @default(true)
-  isPublic         Boolean           @default(true)
-  sortOrder        Int               @default(0)
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  images           Json                  @default("[]") // ["/images/rooms/...jpg"]
+  isActive         Boolean               @default(true)
+  isPublic         Boolean               @default(true)
+  sortOrder        Int                   @default(0)
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
   rooms            Room[]
   amenities        RoomTypeAmenity[]
   reservationRooms ReservationRoom[]
   media            MediaAsset[]
   bookingRequests  BookingRequest[]
+  translations     RoomTypeTranslation[]
 
   @@map("room_types")
 }
@@ -509,6 +517,9 @@ model Guest {
   vip                 Boolean               @default(false)
   /// How the guest likes to be contacted: WHATSAPP | SMS | EMAIL | CALL.
   preferredChannel    String?
+  /// The customer's language ("en" | "zh-CN") — set when they chose it themselves (website/QR) or staff set it.
+  /// Their pages and WhatsApp messages use it; null = not known yet (English).
+  preferredLanguage   String?
   /// Agreed to promotions / offers (booking messages are sent regardless — they are part of the stay).
   marketingConsent    Boolean               @default(false)
   marketingConsentAt  DateTime?
@@ -1618,19 +1629,20 @@ enum ServiceCategory {
 
 // Configurable list of services the hotel actually offers (website + operations).
 model HotelService {
-  id           String          @id @default(cuid())
-  code         String          @unique
+  id           String                    @id @default(cuid())
+  code         String                    @unique
   name         String
   description  String?
-  category     ServiceCategory @default(OTHER)
+  category     ServiceCategory           @default(OTHER)
   icon         String? // lucide icon name
-  isActive     Boolean         @default(true)
-  isPublic     Boolean         @default(true)
-  isChargeable Boolean         @default(false)
+  isActive     Boolean                   @default(true)
+  isPublic     Boolean                   @default(true)
+  isChargeable Boolean                   @default(false)
   price        Int?
   priceNote    String? // e.g. "on request"
-  sortOrder    Int             @default(0)
-  updatedAt    DateTime        @updatedAt
+  sortOrder    Int                       @default(0)
+  updatedAt    DateTime                  @updatedAt
+  translations HotelServiceTranslation[]
 
   @@map("hotel_services")
 }
@@ -1652,34 +1664,36 @@ model Vehicle {
 /// What the hotel offers for guest transport, with the current price (admin sets it).
 /// A trip keeps the price it was made with — changing a price never changes old trips.
 model TransportService {
-  id          String                   @id @default(cuid())
-  code        String                   @unique
-  name        String
-  description String?
-  type        TripType
-  price       Int
-  isActive    Boolean                  @default(true)
+  id           String                        @id @default(cuid())
+  code         String                        @unique
+  name         String
+  description  String?
+  type         TripType
+  price        Int
+  isActive     Boolean                       @default(true)
   /// Shown on the website request form.
-  isPublic    Boolean                  @default(true)
-  sortOrder   Int                      @default(0)
-  updatedAt   DateTime                 @updatedAt
-  trips       TransportTrip[]
+  isPublic     Boolean                       @default(true)
+  sortOrder    Int                           @default(0)
+  updatedAt    DateTime                      @updatedAt
+  trips        TransportTrip[]
   /// Price packages to pick from (e.g. meeting trips by time & distance). None = one price (`price`).
-  options     TransportServiceOption[]
+  options      TransportServiceOption[]
+  translations TransportServiceTranslation[]
 
   @@map("transport_services")
 }
 
 /// One price package of a transport service — admin and managers change them any time.
 model TransportServiceOption {
-  id          String           @id @default(cuid())
-  serviceId   String
-  service     TransportService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-  name        String
-  description String?
-  price       Int
-  isActive    Boolean          @default(true)
-  sortOrder   Int              @default(0)
+  id           String                              @id @default(cuid())
+  serviceId    String
+  service      TransportService                    @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  name         String
+  description  String?
+  price        Int
+  isActive     Boolean                             @default(true)
+  sortOrder    Int                                 @default(0)
+  translations TransportServiceOptionTranslation[]
 
   @@index([serviceId])
   @@map("transport_service_options")
@@ -2274,51 +2288,53 @@ enum RestaurantSettlement {
 }
 
 model MenuCategory {
-  id          String       @id @default(cuid())
-  name        String
-  slug        String       @unique
-  type        MenuItemType
+  id           String                    @id @default(cuid())
+  name         String
+  slug         String                    @unique
+  type         MenuItemType
   /// Which income line its items count under (restaurant or bar).
-  revenueKind RevenueKind
-  description String?
-  sortOrder   Int          @default(0)
-  isActive    Boolean      @default(true)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @default(now()) @updatedAt
-  items       MenuItem[]
+  revenueKind  RevenueKind
+  description  String?
+  sortOrder    Int                       @default(0)
+  isActive     Boolean                   @default(true)
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @default(now()) @updatedAt
+  items        MenuItem[]
+  translations MenuCategoryTranslation[]
 
   @@map("menu_categories")
 }
 
 model MenuItem {
-  id          String                @id @default(cuid())
-  categoryId  String
-  category    MenuCategory          @relation(fields: [categoryId], references: [id])
-  name        String
-  description String?
+  id           String                @id @default(cuid())
+  categoryId   String
+  category     MenuCategory          @relation(fields: [categoryId], references: [id])
+  name         String
+  description  String?
   /// Current price in TZS. Orders keep their own copy.
-  price       Int
-  type        MenuItemType
-  subcategory String?
-  imageId     String?
-  image       MediaAsset?           @relation(fields: [imageId], references: [id])
+  price        Int
+  type         MenuItemType
+  subcategory  String?
+  imageId      String?
+  image        MediaAsset?           @relation(fields: [imageId], references: [id])
   /// Temporarily out (e.g. sold out today) — still shown on the menu as unavailable.
-  isAvailable Boolean               @default(true)
+  isAvailable  Boolean               @default(true)
   /// Off the menu entirely.
-  isActive    Boolean               @default(true)
+  isActive     Boolean               @default(true)
   /// Shown first under "Recommended" on the ordering screens (chosen by a manager).
-  isFeatured  Boolean               @default(false)
-  sortOrder   Int                   @default(0)
-  createdById String?
-  createdBy   User?                 @relation("MenuItemCreatedBy", fields: [createdById], references: [id])
-  updatedById String?
-  updatedBy   User?                 @relation("MenuItemUpdatedBy", fields: [updatedById], references: [id])
-  createdAt   DateTime              @default(now())
-  updatedAt   DateTime              @default(now()) @updatedAt
-  orderItems  RestaurantOrderItem[]
-  charges     ReservationCharge[]
+  isFeatured   Boolean               @default(false)
+  sortOrder    Int                   @default(0)
+  createdById  String?
+  createdBy    User?                 @relation("MenuItemCreatedBy", fields: [createdById], references: [id])
+  updatedById  String?
+  updatedBy    User?                 @relation("MenuItemUpdatedBy", fields: [updatedById], references: [id])
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @default(now()) @updatedAt
+  orderItems   RestaurantOrderItem[]
+  charges      ReservationCharge[]
   /// What one of this dish uses from the stores (configurable; empty = nothing tracked).
-  recipe      RecipeLine[]
+  recipe       RecipeLine[]
+  translations MenuItemTranslation[]
 
   @@index([categoryId, sortOrder])
   @@map("menu_items")
@@ -2392,6 +2408,9 @@ model RestaurantOrder {
   readyById          String?
   readyBy            User?                    @relation("RestaurantOrderReadyBy", fields: [readyById], references: [id])
   acceptedById       String?
+  /// Common requests the customer ticked ("NO_ONION", "NOT_SPICY"…) — shown to each person in their own language.
+  /// `notes` keeps the customer's own words exactly as written.
+  noteCodes          String[]                 @default([])
   acceptedBy         User?                    @relation("RestaurantOrderAcceptedBy", fields: [acceptedById], references: [id])
   preparingAt        DateTime?
   /// The waiter who took the ready order out (OUT_FOR_DELIVERY) and when.
@@ -2587,6 +2606,9 @@ model RestaurantOrderItem {
   payment        RestaurantOrderPayment? @relation(fields: [paymentId], references: [id])
   /// When this line's ingredients were taken off stock (recipe), once — when it is ready or the order closes.
   stockUsedAt    DateTime?
+  /// The item's name in every language at the moment it was ordered ({"zh-CN": "牛肉汉堡"}); `name` is the English.
+  /// Old orders keep these even if the menu is renamed later.
+  nameI18n       Json?
 
   @@index([orderId])
   @@map("restaurant_order_items")
@@ -3275,4 +3297,127 @@ model MobilePayment {
   @@index([attentionAt, resolvedAt])
   @@index([targetKey, status])
   @@map("mobile_payments")
+}
+
+// ───────────────────────── Translations (English lives on the record itself) ─────────────────────────
+
+/// MenuItem in another language (one row per language). English stays on MenuItem itself — the fallback.
+model MenuItemTranslation {
+  id          String   @id @default(cuid())
+  parentId    String
+  parent      MenuItem @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  /// "zh-CN" …
+  locale      String
+  name        String?
+  description String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([parentId, locale])
+  @@map("menu_item_translations")
+}
+
+/// MenuCategory in another language (one row per language). English stays on MenuCategory itself — the fallback.
+model MenuCategoryTranslation {
+  id          String       @id @default(cuid())
+  parentId    String
+  parent      MenuCategory @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  /// "zh-CN" …
+  locale      String
+  name        String?
+  description String?
+  updatedById String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([parentId, locale])
+  @@map("menu_category_translations")
+}
+
+/// RoomType in another language (one row per language). English stays on RoomType itself — the fallback.
+model RoomTypeTranslation {
+  id               String   @id @default(cuid())
+  parentId         String
+  parent           RoomType @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  /// "zh-CN" …
+  locale           String
+  name             String?
+  shortDescription String?
+  description      String?
+  bedType          String?
+  updatedById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([parentId, locale])
+  @@map("room_type_translations")
+}
+
+/// Amenity in another language (one row per language). English stays on Amenity itself — the fallback.
+model AmenityTranslation {
+  id          String   @id @default(cuid())
+  parentId    String
+  parent      Amenity  @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  /// "zh-CN" …
+  locale      String
+  name        String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([parentId, locale])
+  @@map("amenity_translations")
+}
+
+/// HotelService in another language (one row per language). English stays on HotelService itself — the fallback.
+model HotelServiceTranslation {
+  id          String       @id @default(cuid())
+  parentId    String
+  parent      HotelService @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  /// "zh-CN" …
+  locale      String
+  name        String?
+  description String?
+  priceNote   String?
+  updatedById String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([parentId, locale])
+  @@map("hotel_service_translations")
+}
+
+/// TransportService in another language (one row per language). English stays on TransportService itself — the fallback.
+model TransportServiceTranslation {
+  id          String           @id @default(cuid())
+  parentId    String
+  parent      TransportService @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  /// "zh-CN" …
+  locale      String
+  name        String?
+  description String?
+  updatedById String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([parentId, locale])
+  @@map("transport_service_translations")
+}
+
+/// TransportServiceOption in another language (one row per language). English stays on TransportServiceOption itself — the fallback.
+model TransportServiceOptionTranslation {
+  id          String                 @id @default(cuid())
+  parentId    String
+  parent      TransportServiceOption @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  /// "zh-CN" …
+  locale      String
+  name        String?
+  description String?
+  updatedById String?
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  @@unique([parentId, locale])
+  @@map("transport_service_option_translations")
 }

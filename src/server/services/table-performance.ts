@@ -2,6 +2,9 @@ import "server-only";
 import { db } from "../db";
 import { tableFloor } from "./dining-sessions";
 import { addDays, eachDate, fromDbDate, toDbDate, type BusinessDate } from "@/lib/time/business-date";
+import { spotName } from "@/components/restaurant/shell";
+import { getT } from "@/i18n/server";
+import type { T } from "@/i18n/translate";
 
 type Range = { from: BusinessDate; to: BusinessDate };
 
@@ -10,8 +13,8 @@ export type TableState = "FREE" | "BLOCKED" | "SEATED" | "BILL" | "PAID" | "RESE
 
 const minutesSince = (iso: string | null, now: Date) => (iso ? Math.max(0, Math.round((now.getTime() - new Date(iso).getTime()) / 60000)) : 0);
 const TZ = "Africa/Dar_es_Salaam";
-/** 12 → "12 min", 95 → "1 h 35 min", 1500 → "1 day". */
-const ago = (m: number) => (m < 60 ? `${m} min` : m < 1440 ? `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ""}` : `${Math.round(m / 1440)} day${Math.round(m / 1440) === 1 ? "" : "s"}`);
+/** 12 → "12 min", 95 → "1 h 35 min", 1500 → "1 day" — in the reader's language. */
+const ago = (m: number, t: T) => (m < 60 ? t("{n} min", { n: m }) : m < 1440 ? (m % 60 ? t("{h} h {m} min", { h: Math.floor(m / 60), m: m % 60 }) : t("{h} h", { h: Math.floor(m / 60) })) : t.plural(Math.round(m / 1440), "{n} day", "{n} days"));
 const clock = (d: Date | string) => new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: TZ }).format(new Date(d));
 
 /**
@@ -89,12 +92,13 @@ export async function tablesOnHome(today: BusinessDate, range: Range, now = new 
   const staysCount = places.reduce((t, p) => t + (p.period.minutes != null ? p.period.customers : 0), 0);
   const best = [...places].sort((a, b) => b.period.sales - a.period.sales)[0];
 
-  // What a manager may want to look at (the waiters do the work).
+  // What a manager may want to look at (the waiters do the work) — written in their language.
+  const t = await getT();
   const watch: { tone: "amber" | "violet" | "rose" | "sky"; text: string; id: string }[] = [
-    ...places.filter((p) => p.now?.billAsked != null && p.now.billAsked >= 15 && p.state === "BILL").map((p) => ({ tone: "amber" as const, id: p.id, text: `${p.name} has waited ${ago(p.now!.billAsked!)} to pay` })),
-    ...places.filter((p) => p.state === "PAID" && (p.now?.paidAgo ?? 0) >= 20).map((p) => ({ tone: "violet" as const, id: p.id, text: `${p.name} paid ${ago(p.now!.paidAgo!)} ago — not cleared yet` })),
-    ...places.filter((p) => p.next?.late && p.next.late >= 10 && p.state === "RESERVED").map((p) => ({ tone: "sky" as const, id: p.id, text: `${p.next!.name} (${p.next!.at}) hasn't come to ${p.name} — ${ago(p.next!.late)} late` })),
-    ...places.filter((p) => !p.qrActive).map((p) => ({ tone: "rose" as const, id: p.id, text: `${p.name}: QR switched off — customers can't order by scanning` })),
+    ...places.filter((p) => p.now?.billAsked != null && p.now.billAsked >= 15 && p.state === "BILL").map((p) => ({ tone: "amber" as const, id: p.id, text: t("{table} has waited {time} to pay", { table: spotName(p.name, t), time: ago(p.now!.billAsked!, t) }) })),
+    ...places.filter((p) => p.state === "PAID" && (p.now?.paidAgo ?? 0) >= 20).map((p) => ({ tone: "violet" as const, id: p.id, text: t("{table} paid {time} ago — not cleared yet", { table: spotName(p.name, t), time: ago(p.now!.paidAgo!, t) }) })),
+    ...places.filter((p) => p.next?.late && p.next.late >= 10 && p.state === "RESERVED").map((p) => ({ tone: "sky" as const, id: p.id, text: t("{name} ({time}) hasn't come to {table} — {late} late", { name: p.next!.name, time: p.next!.at, table: spotName(p.name, t), late: ago(p.next!.late, t) }) })),
+    ...places.filter((p) => !p.qrActive).map((p) => ({ tone: "rose" as const, id: p.id, text: t("{table}: QR switched off — customers can't order by scanning", { table: spotName(p.name, t) }) })),
   ];
 
   return {

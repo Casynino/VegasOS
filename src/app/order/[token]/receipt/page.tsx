@@ -6,12 +6,19 @@ import { getSettings } from "@/server/settings";
 import { orderBillByTrackToken } from "@/server/services/restaurant";
 import { OrderReceipt } from "@/components/ordering/order-receipt";
 import { ReceiptActions } from "@/components/ordering/receipt-actions";
+import { getT, guestLocale } from "@/i18n/server";
 
-export const metadata: Metadata = { title: "Your receipt", robots: { index: false, follow: false }, referrer: "no-referrer" };
+export async function generateMetadata(): Promise<Metadata> {
+  await guestLocale();
+  const t = await getT();
+  return { title: t("Your receipt"), robots: { index: false, follow: false }, referrer: "no-referrer" };
+}
 export const dynamic = "force-dynamic";
 
 /** The customer's receipt for their order — print it or keep it as a PDF / picture. */
 export default async function OrderReceiptPage({ params }: PageProps<"/order/[token]/receipt">) {
+  await guestLocale();
+  const t = await getT();
   const { token } = await params;
   const [found, settings] = await Promise.all([orderBillByTrackToken(token), getSettings()]);
   if (!found) notFound();
@@ -21,11 +28,11 @@ export default async function OrderReceiptPage({ params }: PageProps<"/order/[to
       <style>{`@media print { @page { margin: 6mm; } body { background: #fff !important; } }`}</style>
       <div className="mx-auto max-w-[680px] space-y-4">
         <div className="flex items-center justify-between gap-2 print:hidden">
-          <Link href={`/order/${token}`} className="inline-flex h-9 items-center gap-1.5 rounded-xl px-2 text-sm font-medium text-black/70 hover:bg-black/5"><ArrowLeft className="size-4" />Your order</Link>
-          <p className="text-xs text-black/55">Your receipt</p>
+          <Link href={`/order/${token}`} className="inline-flex h-9 items-center gap-1.5 rounded-xl px-2 text-sm font-medium text-black/70 hover:bg-black/5"><ArrowLeft className="size-4" />{t("Your order")}</Link>
+          <p className="text-xs text-black/55">{t("Your receipt")}</p>
         </div>
         <ReceiptActions fileName={`${settings.hotelName.replace(/\s+/g, "-")}-${bill.orders[0].number}`} />
-        <OrderReceipt bill={bill} leadId={id} payTo={[]}
+        <OrderReceipt bill={bill} leadId={id} payTo={[]} t={t}
           hotel={{ name: settings.hotelName, address: settings.addressLine, phone: settings.phone, whatsapp: settings.whatsapp, email: settings.email, website: settings.website }} />
       </div>
     </main>

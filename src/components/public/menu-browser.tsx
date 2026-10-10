@@ -11,6 +11,7 @@ import { tones, typeScale } from "./kit/tokens";
 import fx from "./dining/dining.module.css";
 import roomFx from "./room-fx.module.css";
 import { AddControl, BasketPill, OrderDrawer, SHEET, useMenuOrder, WhoDialog, type MenuOrder } from "./menu-order";
+import { useT } from "@/i18n/client";
 
 export type MenuSize = { id: string; label: string | null; price: number; available: boolean };
 export type MenuEntry = {
@@ -46,7 +47,7 @@ const SECTION_TOP = "scroll-mt-32";
  * menu, the same order and the same restaurant flow as the table and room QR codes.
  * Cards can be shared: /menu?item=…
  */
-export function MenuBrowser({ sections, whatsapp, roomServiceFee, initialItem = null, online }: {
+export function MenuBrowser({ sections: english, whatsapp, roomServiceFee, initialItem = null, online }: {
   sections: MenuSection[]; whatsapp: string | null; roomServiceFee: number;
   /** Where take out is paid first (mobile money, banks). */
   /** Paying now by mobile money (nTZS) is on for the restaurant. */
@@ -54,6 +55,17 @@ export function MenuBrowser({ sections, whatsapp, roomServiceFee, initialItem = 
   /** From a shared link (/menu?item=…): open that dish or drink straight away. */
   initialItem?: string | null;
 }) {
+  const t = useT();
+  // The hotel's dishes and sections in the visitor's language (the saved translation, else the default, else English).
+  const sections = useMemo(() => english.map((s) => ({
+    ...s, name: t(s.name), description: s.description ? t(s.description) : null,
+    entries: s.entries.map((e) => ({ ...e, name: t(e.name), description: e.description ? t(e.description) : null, subcategory: e.subcategory ? t(e.subcategory) : null })),
+  })), [english, t]);
+  // Search finds a dish by its English AND by what this visitor reads (a Chinese visitor types Chinese).
+  const findText = useMemo(() => new Map(english.flatMap((s, si) => s.entries.map((e, ei) => {
+    const shown = sections[si].entries[ei];
+    return [e.key, norm(`${e.name} ${e.description ?? ""} ${e.subcategory ?? ""} ${s.name} ${shown.name} ${shown.description ?? ""} ${shown.subcategory ?? ""} ${sections[si].name}`)] as const;
+  }))), [english, sections]);
   const [q, setQ] = useState("");
   const [searching, setSearching] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -73,9 +85,9 @@ export function MenuBrowser({ sections, whatsapp, roomServiceFee, initialItem = 
   const shown = useMemo(() => {
     if (!needle) return sections;
     return sections
-      .map((s) => ({ ...s, entries: s.entries.filter((e) => norm(`${e.name} ${e.description ?? ""} ${e.subcategory ?? ""} ${s.name}`).includes(needle)) }))
+      .map((s) => ({ ...s, entries: s.entries.filter((e) => findText.get(e.key)?.includes(needle)) }))
       .filter((s) => s.entries.length);
-  }, [sections, needle]);
+  }, [sections, needle, findText]);
   const flat = useMemo(() => shown.flatMap((s) => s.entries.map((e) => ({ s, e }))), [shown]);
   const openAt = flat.findIndex((x) => x.e.key === openKey);
   const current = openAt >= 0 ? flat[openAt] : null;
@@ -117,7 +129,7 @@ export function MenuBrowser({ sections, whatsapp, roomServiceFee, initialItem = 
       {/* The bar sticks only while the menu is on screen (its parent ends with the last section). */}
       <div className="relative">
       {/* Smoked glass (night ink) in both themes: it reads the same over the light kitchen and the dark bar bands. */}
-      <nav aria-label="Menu sections" data-tone="night"
+      <nav aria-label={t("Menu sections")} data-tone="night"
         className="sticky top-16 z-30 border-b border-white/10 bg-[linear-gradient(to_bottom,rgb(20_16_12/0.8),rgb(12_10_7/0.86))] text-pub-fg shadow-[0_18px_40px_-26px_rgb(0_0_0/0.7)] backdrop-blur-xl backdrop-saturate-150">
         <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 -bottom-px h-px bg-linear-to-r from-transparent via-gold/50 to-transparent" />
         <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center px-4 sm:px-8 md:flex-nowrap md:gap-6">
@@ -139,15 +151,15 @@ export function MenuBrowser({ sections, whatsapp, roomServiceFee, initialItem = 
             onClick={() => { if (searchOpen) { setSearching(false); setQ(""); } else setSearching(true); }}
             className="-mr-2 ml-1 grid size-11 shrink-0 place-items-center rounded-full text-pub-muted transition-colors duration-200 hover:text-pub-fg focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-gold motion-reduce:transition-none md:hidden">
             {searchOpen ? <X className="size-[1.125rem]" strokeWidth={1.6} aria-hidden="true" /> : <Search className="size-[1.125rem]" strokeWidth={1.6} aria-hidden="true" />}
-            <span className="sr-only">{searchOpen ? "Close search" : "Search the menu"}</span>
+            <span className="sr-only">{searchOpen ? t("Close search") : t("Search the menu")}</span>
           </button>
           <label id="menu-search" className={cn("relative w-full pb-3 md:w-64 md:shrink-0 md:pb-0", searchOpen ? "block" : "hidden md:block")}>
-            <span className="sr-only">Search the menu</span>
+            <span className="sr-only">{t("Search the menu")}</span>
             <Search className="pointer-events-none absolute left-4 top-[1.375rem] size-4 -translate-y-1/2 text-pub-faint" strokeWidth={1.6} aria-hidden="true" />
-            <input ref={searchRef} value={q} onChange={(e) => setQ(e.target.value)} type="search" placeholder="Find a dish or drink"
+            <input ref={searchRef} value={q} onChange={(e) => setQ(e.target.value)} type="search" placeholder={t("Find a dish or drink")}
               className="h-11 w-full rounded-full border border-pub-line bg-pub-field pl-11 pr-11 text-base text-pub-fg placeholder:text-pub-faint transition-[border-color,box-shadow] duration-200 focus:border-pub-fg/40 focus:outline-none focus:ring-3 focus:ring-gold/30 motion-reduce:transition-none md:text-sm [&::-webkit-search-cancel-button]:hidden" />
             {q && (
-              <button type="button" onClick={() => { setQ(""); searchRef.current?.focus(); }} aria-label="Clear search"
+              <button type="button" onClick={() => { setQ(""); searchRef.current?.focus(); }} aria-label={t("Clear search")}
                 className="absolute right-0.5 top-0 grid size-11 place-items-center rounded-full text-pub-muted hover:text-pub-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-gold">
                 <X className="size-4" strokeWidth={1.8} aria-hidden="true" />
               </button>
@@ -162,7 +174,7 @@ export function MenuBrowser({ sections, whatsapp, roomServiceFee, initialItem = 
         {shown.length === 0 && (
           <div data-tone="paper" className={cn("relative isolate", tones.paper)}>
             <Atmosphere tone="paper" atmosphere="calm" />
-            <p className={cn(typeScale.lede, "mx-auto max-w-xl px-4 pb-24 pt-20 text-center text-pub-muted")}>Nothing on the menu matches “{q}”. Try “chicken”, “fish”, “beer” or “whisky”.</p>
+            <p className={cn(typeScale.lede, "mx-auto max-w-xl px-4 pb-24 pt-20 text-center text-pub-muted")}>{t("Nothing on the menu matches “{q}”. Try “chicken”, “fish”, “beer” or “whisky”.", { q })}</p>
           </div>
         )}
         {(() => {
@@ -175,8 +187,8 @@ export function MenuBrowser({ sections, whatsapp, roomServiceFee, initialItem = 
                 className={cn(SECTION_TOP, "relative", own && cn("isolate", tones[tone]), "py-12 sm:py-16 lg:py-20", i === shown.length - 1 && "pb-20 sm:pb-28")}>
                 {own && <Atmosphere tone={tone} atmosphere="calm" />}
                 <div className="mx-auto w-full max-w-7xl px-4 sm:px-8">
-                  <SectionIndex index={i + 1} label={food ? "From the kitchen" : s.bar ? "From the bar" : "Drinks"}
-                    aside={<HudLabel tick={false}>{s.entries.length} {food ? (s.entries.length === 1 ? "dish" : "dishes") : s.entries.length === 1 ? "drink" : "drinks"}</HudLabel>} />
+                  <SectionIndex index={i + 1} label={food ? t("From the kitchen") : s.bar ? t("From the bar") : t("Drinks")}
+                    aside={<HudLabel tick={false}>{food ? t.plural(s.entries.length, "{n} dish", "{n} dishes") : t.plural(s.entries.length, "{n} drink", "{n} drinks")}</HudLabel>} />
                   <header className="grid gap-3 pb-6 pt-5 sm:pb-8 sm:pt-6 lg:grid-cols-12 lg:items-end lg:gap-x-10">
                     <div className={cn("min-w-0 lg:col-span-7", tone === "night" && "flex items-end justify-between gap-4 lg:justify-start lg:gap-8")}>
                       <h2 id={`${s.slug}-title`} className="min-w-0 font-display text-[clamp(2rem,1.5rem+1.8vw,3.25rem)] font-medium leading-[1.05] text-balance">{s.name}</h2>
@@ -194,7 +206,7 @@ export function MenuBrowser({ sections, whatsapp, roomServiceFee, initialItem = 
                     : <DrinkList section={s} onOpen={setOpen} order={order} />}
                   {s.id === lastBar && (
                     <p className={cn(typeScale.small, "mt-8 max-w-2xl border-l-2 border-gold/60 pl-4 text-pub-muted")}>
-                      Alcohol is served only to guests aged 18 and over — please drink responsibly. Drinks are served at the bar, at your table or through room service — you can also order them online.
+                      {t("Alcohol is served only to guests aged 18 and over — please drink responsibly. Drinks are served at the bar, at your table or through room service — you can also order them online.")}
                     </p>
                   )}
                 </div>
@@ -235,15 +247,17 @@ export function MenuBrowser({ sections, whatsapp, roomServiceFee, initialItem = 
 
 /** The honest label on a stock photo (same look as the kit's IllustrativeTag). */
 function StockTag({ className }: { className?: string }) {
+  const t = useT();
   return (
     <span className={cn("pointer-events-none inline-flex items-center rounded-full bg-black/50 px-2.5 py-1 text-[9px] font-medium uppercase leading-none tracking-[0.22em] text-white/85 backdrop-blur-sm", className)}>
-      Illustrative
+      {t("Illustrative")}
     </span>
   );
 }
 
 /** A dish or drink photo filling its frame; an espresso tile with a quiet mark when there is none. */
 function Photo({ entry, sizes, className, decorative, eager }: { entry: MenuEntry; sizes: string; className?: string; decorative?: boolean; eager?: boolean }) {
+  const t = useT();
   if (!entry.image) {
     return (
       <span className={cn("grid size-full place-items-center bg-[#1c1712] text-gold/55", className)}>
@@ -251,16 +265,17 @@ function Photo({ entry, sizes, className, decorative, eager }: { entry: MenuEntr
       </span>
     );
   }
-  return <Image src={entry.image.src} alt={decorative ? "" : entry.image.alt} fill sizes={sizes} loading={eager ? "eager" : undefined} className={cn("object-cover", className)} />;
+  return <Image src={entry.image.src} alt={decorative ? "" : t(entry.image.alt)} fill sizes={sizes} loading={eager ? "eager" : undefined} className={cn("object-cover", className)} />;
 }
 
 /** "TZS 9,000" — the amount in the serif, the currency small; "from" when sizes differ. */
 function Amount({ entry, value, className, large }: { entry?: MenuEntry; value?: number; className?: string; large?: boolean }) {
+  const t = useT();
   const from = !!entry && entry.sizes.length > 1;
   const amount = value ?? (entry ? minPrice(entry) : 0);
   return (
     <span className={cn("inline-flex shrink-0 items-baseline gap-1 whitespace-nowrap", className)}>
-      {from && <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-pub-muted">from</span>}
+      {from && <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-pub-muted">{t("from")}</span>}
       <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-pub-muted">TZS</span>
       <span className={cn(typeScale.price, large ? "text-[1.625rem]" : "text-[1.1875rem]", "leading-none text-pub-fg")}>{n(amount)}</span>
     </span>
@@ -269,11 +284,13 @@ function Amount({ entry, value, className, large }: { entry?: MenuEntry; value?:
 
 /** "Choose" for a drink in several sizes — the sizes are on its card; a gold count once some are in the order. */
 function ChooseControl({ entry, inOrder, onOpen }: { entry: MenuEntry; inOrder: number; onOpen: () => void }) {
-  if (!available(entry)) return <span className={cn(typeScale.meta, "shrink-0 px-1 text-pub-muted")}>Not today</span>;
+  const t = useT();
+  if (!available(entry)) return <span className={cn(typeScale.meta, "shrink-0 px-1 text-pub-muted")}>{t("Not today")}</span>;
   return (
-    <button type="button" onClick={onOpen} aria-haspopup="dialog" aria-label={`Choose a size of ${entry.name}${inOrder ? ` — ${inOrder} in your order` : ""}`}
+    <button type="button" onClick={onOpen} aria-haspopup="dialog"
+      aria-label={inOrder ? t("Choose a size of {name} — {n} in your order", { name: entry.name, n: inOrder }) : t("Choose a size of {name}", { name: entry.name })}
       className={buttonClass({ variant: "secondary", size: "sm", className: "shrink-0 gap-2 px-4" })}>
-      Choose
+      {t("Choose")}
       {inOrder > 0 && <span className="grid size-5 place-items-center rounded-full bg-gold text-[10px] font-bold tracking-normal text-[#16110a]">{inOrder}</span>}
     </button>
   );
@@ -281,6 +298,7 @@ function ChooseControl({ entry, inOrder, onOpen }: { entry: MenuEntry; inOrder: 
 
 /** Food: a classic menu list; on wide screens a large photo beside it follows the dish you point at. */
 function FoodList({ section, onOpen, order }: { section: MenuSection; onOpen: (key: string) => void; order: MenuOrder }) {
+  const t = useT();
   const [focus, setFocus] = useState(section.entries[0]?.key);
   const previewAt = Math.max(0, section.entries.findIndex((e) => e.key === focus));
   const preview = section.entries[previewAt];
@@ -289,7 +307,7 @@ function FoodList({ section, onOpen, order }: { section: MenuSection; onOpen: (k
     <div className="grid items-start gap-10 lg:grid-cols-12 lg:gap-x-10">
       {withPreview && preview && (
         <figure className="sticky top-[9rem] hidden lg:col-span-5 lg:block">
-          <HudFrame offset="sm" label={`${pad(previewAt + 1)} / ${pad(section.entries.length)}`} labelEnd="Select a dish for details">
+          <HudFrame offset="sm" label={`${pad(previewAt + 1)} / ${pad(section.entries.length)}`} labelEnd={t("Select a dish for details")}>
           <div className="relative aspect-[5/4] overflow-hidden rounded-[0.375rem] bg-[#1c1712]">
             <span key={preview.key} className="absolute inset-0 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500">
               <Photo entry={preview} sizes="(min-width: 1280px) 500px, 40vw" />
@@ -312,7 +330,7 @@ function FoodList({ section, onOpen, order }: { section: MenuSection; onOpen: (k
       <ul className={cn("border-t border-pub-line", withPreview ? "lg:col-span-7" : "lg:col-span-12 lg:max-w-4xl")}>
         {section.entries.map((e) => {
           const single = e.sizes.length === 1;
-          const inOrder = e.sizes.reduce((t, x) => t + order.qty(x.id), 0);
+          const inOrder = e.sizes.reduce((sum, x) => sum + order.qty(x.id), 0);
           return (
             <li key={e.key}
               className={cn("relative border-b border-pub-line transition-colors duration-200 motion-reduce:transition-none",
@@ -333,7 +351,7 @@ function FoodList({ section, onOpen, order }: { section: MenuSection; onOpen: (k
                       <Amount entry={e} className="hidden sm:inline-flex" />
                     </span>
                     {e.description && <span className="mt-1 line-clamp-2 block text-[14px] leading-relaxed text-pub-muted">{e.description}</span>}
-                    {!available(e) && <span className={cn(typeScale.meta, "mt-1.5 block text-pub-muted")}>Not available today</span>}
+                    {!available(e) && <span className={cn(typeScale.meta, "mt-1.5 block text-pub-muted")}>{t("Not available today")}</span>}
                   </span>
                 </button>
                 {/* Under the dish on phones (price left, Add right); at the end of the row on wider screens. */}
@@ -354,11 +372,12 @@ function FoodList({ section, onOpen, order }: { section: MenuSection; onOpen: (k
 
 /** Drinks: a two-column list (one on phones); every size of one drink on one row. */
 function DrinkList({ section, onOpen, order }: { section: MenuSection; onOpen: (key: string) => void; order: MenuOrder }) {
+  const t = useT();
   return (
     <ul className="grid border-t border-pub-line md:grid-cols-2 md:gap-x-10 lg:gap-x-14">
       {section.entries.map((e) => {
         const single = e.sizes.length === 1;
-        const inOrder = e.sizes.reduce((t, x) => t + order.qty(x.id), 0);
+        const inOrder = e.sizes.reduce((sum, x) => sum + order.qty(x.id), 0);
         return (
           <li key={e.key}
             className={cn("relative min-w-0 border-b border-pub-line",
@@ -373,7 +392,7 @@ function DrinkList({ section, onOpen, order }: { section: MenuSection; onOpen: (
                 <span className="min-w-0 flex-1">
                   <span className={cn(typeScale.item, "line-clamp-2 text-pub-fg transition-colors duration-200 group-hover:text-pub-eyebrow motion-reduce:transition-none")}>{e.name}</span>
                   <span className={cn(typeScale.meta, "mt-1 block truncate text-pub-muted")}>
-                    {e.sizes.length > 1 ? e.sizes.map((x) => x.label).join(" · ") : e.subcategory ?? (section.bar ? "Bar" : "Drink")}
+                    {e.sizes.length > 1 ? e.sizes.map((x) => x.label).join(" · ") : e.subcategory ?? (section.bar ? t("Bar") : t("Drink"))}
                   </span>
                   <Amount entry={e} className="mt-1.5" />
                 </span>
@@ -394,6 +413,7 @@ function DishCard({ entry, section, roomServiceFee, whatsappOrder, order, onRevi
   entry: MenuEntry | null; section: MenuSection | null; roomServiceFee: number; whatsappOrder: (text: string) => string | null; order: MenuOrder;
   onReview: () => void; onClose: () => void; onMove: ((d: number) => void) | null;
 }) {
+  const t = useT();
   const ref = useRef<HTMLDialogElement>(null);
   const opener = useRef<HTMLElement | null>(null);
   const touch = useRef<{ x: number; y: number } | null>(null);
@@ -406,20 +426,20 @@ function DishCard({ entry, section, roomServiceFee, whatsappOrder, order, onRevi
 
   // A sideways swipe on the photo moves to the next or previous dish.
   function onTouchStart(e: React.TouchEvent) {
-    const t = e.touches[0];
-    touch.current = t ? { x: t.clientX, y: t.clientY } : null;
+    const p = e.touches[0];
+    touch.current = p ? { x: p.clientX, y: p.clientY } : null;
   }
   function onTouchEnd(e: React.TouchEvent) {
     const start = touch.current;
-    const t = e.changedTouches[0];
+    const p = e.changedTouches[0];
     touch.current = null;
-    if (!start || !t || !onMove) return;
-    const dx = t.clientX - start.x;
-    if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(t.clientY - start.y) * 1.4) onMove(dx < 0 ? 1 : -1);
+    if (!start || !p || !onMove) return;
+    const dx = p.clientX - start.x;
+    if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(p.clientY - start.y) * 1.4) onMove(dx < 0 ? 1 : -1);
   }
 
   const multi = !!entry && entry.sizes.length > 1;
-  const wa = entry ? whatsappOrder(`Hello, I would like to order ${entry.name}.`) : null;
+  const wa = entry ? whatsappOrder(t("Hello, I would like to order {name}.", { name: entry.name })) : null;
   const overPhoto = "grid size-11 place-items-center rounded-full border border-white/20 bg-black/45 text-white backdrop-blur-md transition-colors duration-200 hover:border-gold/70 hover:text-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold motion-reduce:transition-none";
   return (
     <dialog ref={ref} aria-labelledby="dish-title" data-tone="paper"
@@ -435,13 +455,13 @@ function DishCard({ entry, section, roomServiceFee, whatsappOrder, order, onRevi
             </span>
             <span className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-linear-to-b from-black/45 to-transparent" aria-hidden="true" />
             {entry.image?.stock && <StockTag className="absolute left-4 top-4" />}
-            <button type="button" onClick={() => ref.current?.close()} aria-label="Close" autoFocus className={cn(overPhoto, "absolute right-3 top-3")}>
+            <button type="button" onClick={() => ref.current?.close()} aria-label={t("Close")} autoFocus className={cn(overPhoto, "absolute right-3 top-3")}>
               <X className="size-5" strokeWidth={1.6} aria-hidden="true" />
             </button>
             {onMove && (
               <span className="absolute bottom-3 right-3 flex gap-2">
-                <button type="button" onClick={() => onMove(-1)} aria-label="Previous" className={overPhoto}><ChevronLeft className="size-5" strokeWidth={1.6} aria-hidden="true" /></button>
-                <button type="button" onClick={() => onMove(1)} aria-label="Next" className={overPhoto}><ChevronRight className="size-5" strokeWidth={1.6} aria-hidden="true" /></button>
+                <button type="button" onClick={() => onMove(-1)} aria-label={t("Previous")} className={overPhoto}><ChevronLeft className="size-5" strokeWidth={1.6} aria-hidden="true" /></button>
+                <button type="button" onClick={() => onMove(1)} aria-label={t("Next")} className={overPhoto}><ChevronRight className="size-5" strokeWidth={1.6} aria-hidden="true" /></button>
               </span>
             )}
           </div>
@@ -468,29 +488,29 @@ function DishCard({ entry, section, roomServiceFee, whatsappOrder, order, onRevi
                 ))}
               </ul>
             )}
-            {!available(entry) && <p className="mt-4 border-l-2 border-gold/60 pl-4 text-sm font-medium text-pub-fg">Not available today — ask the restaurant what&apos;s fresh.</p>}
+            {!available(entry) && <p className="mt-4 border-l-2 border-gold/60 pl-4 text-sm font-medium text-pub-fg">{t("Not available today — ask the restaurant what's fresh.")}</p>}
 
             <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               {!multi && available(entry) && (
                 <div className="flex items-center gap-3">
                   <AddControl qty={order.qty(entry.sizes[0].id)} name={entry.name} onChange={(q) => order.setQty(entry.sizes[0].id, q)} />
-                  {order.qty(entry.sizes[0].id) > 0 && <span className="text-sm tabular-nums text-pub-muted">In your order · TZS {n(entry.sizes[0].price * order.qty(entry.sizes[0].id))}</span>}
+                  {order.qty(entry.sizes[0].id) > 0 && <span className="text-sm tabular-nums text-pub-muted">{t("In your order · {amount}", { amount: `TZS ${n(entry.sizes[0].price * order.qty(entry.sizes[0].id))}` })}</span>}
                 </div>
               )}
-              {wa && <a href={wa} target="_blank" rel="noopener" className="inline-flex min-h-11 items-center self-start text-[13px] font-medium text-pub-muted underline decoration-pub-line underline-offset-4 transition-colors duration-200 hover:text-pub-fg hover:decoration-gold motion-reduce:transition-none sm:self-auto">Or ask on WhatsApp</a>}
+              {wa && <a href={wa} target="_blank" rel="noopener" className="inline-flex min-h-11 items-center self-start text-[13px] font-medium text-pub-muted underline decoration-pub-line underline-offset-4 transition-colors duration-200 hover:text-pub-fg hover:decoration-gold motion-reduce:transition-none sm:self-auto">{t("Or ask on WhatsApp")}</a>}
             </div>
             {order.count > 0 && (
               <button type="button" onClick={onReview} className={buttonClass({ variant: "primary", size: "md", full: true, className: "mt-5 justify-between px-5" })}>
                 <span className="flex min-w-0 items-center gap-2.5">
                   <ShoppingBag className="size-4 shrink-0" strokeWidth={1.8} aria-hidden="true" />
-                  <span className="truncate">View your order · {order.count}<span className="sr-only"> item{order.count === 1 ? "" : "s"}</span></span>
+                  <span className="truncate">{t("View your order · {n}", { n: order.count })}<span className="sr-only"> {t.plural(order.count, "item", "items")}</span></span>
                 </span>
                 <span className="shrink-0 font-display text-[1.125rem] font-medium normal-case tracking-normal tabular-nums lining-nums">TZS {n(order.subtotal)}</span>
               </button>
             )}
             <p className="mt-5 flex items-start gap-2.5 border-t border-pub-line pt-4 text-[13px] leading-relaxed text-pub-muted">
               <BedDouble className="mt-0.5 size-4 shrink-0 text-pub-eyebrow" strokeWidth={1.6} aria-hidden="true" />
-              Staying with us? Scan the QR card in your room — we bring it up and add it to your room bill (TZS {n(roomServiceFee)} delivery).
+              {t("Staying with us? Scan the QR card in your room — we bring it up and add it to your room bill ({amount} delivery).", { amount: `TZS ${n(roomServiceFee)}` })}
             </p>
           </div>
         </div>

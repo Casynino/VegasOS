@@ -5,6 +5,7 @@ import { Initials } from "@/components/dashboard/kit";
 import { cn } from "@/lib/utils";
 import { colleaguesAction } from "@/app/staff/(app)/restaurant/waiter-actions";
 import { useIsRestaurantDevice } from "./waiter-pin";
+import { useT } from "@/i18n/client";
 
 type Waiter = { id: string; name: string; number?: string | null; onShiftSince: string | null };
 const first = (n: string) => n.replace(/\s*\(.*\)/, "").trim().split(/\s+/)[0];
@@ -14,6 +15,7 @@ const first = (n: string) => n.replace(/\s*\(.*\)/, "").trim().split(/\s+/)[0];
  * take work). Tap one to choose, tap again to clear. Off the Counter: nothing.
  */
 export function WaiterChips({ value, onChange }: { value: string; onChange: (id: string) => void }) {
+  const t = useT();
   const device = useIsRestaurantDevice();
   const [waiters, setWaiters] = useState<Waiter[] | null>(null);
 
@@ -26,17 +28,17 @@ export function WaiterChips({ value, onChange }: { value: string; onChange: (id:
     const again = () => { if (document.visibilityState === "visible") void load(); };
     window.addEventListener("focus", again);
     document.addEventListener("visibilitychange", again);
-    const t = setInterval(again, 60_000);
-    return () => { live = false; window.removeEventListener("focus", again); document.removeEventListener("visibilitychange", again); clearInterval(t); };
+    const timer = setInterval(again, 60_000);
+    return () => { live = false; window.removeEventListener("focus", again); document.removeEventListener("visibilitychange", again); clearInterval(timer); };
   }, [device]);
 
   if (!device) return null;
   // Only the waiters on shift take work.
   const list = waiters?.filter((w) => w.onShiftSince) ?? [];
-  if (!waiters) return <p className="text-xs text-muted-foreground">Loading the waiters…</p>;
-  if (!list.length) return <p className="text-xs text-muted-foreground">{waiters.length ? "No waiter is on shift — a waiter taps “Start my shift” on their phone." : "No waiters yet — the MD adds them in Staff & roles."}</p>;
+  if (!waiters) return <p className="text-xs text-muted-foreground">{t("Loading the waiters…")}</p>;
+  if (!list.length) return <p className="text-xs text-muted-foreground">{waiters.length ? t("No waiter is on shift — a waiter taps “Start my shift” on their phone.") : t("No waiters yet — the MD adds them in Staff & roles.")}</p>;
   return (
-    <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Who serves it">
+    <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={t("Who serves it")}>
       {list.map((w) => {
         const on = value === w.id;
         return (
@@ -45,7 +47,7 @@ export function WaiterChips({ value, onChange }: { value: string; onChange: (id:
               on ? "border-[oklch(0.75_0.12_80)] bg-[oklch(0.72_0.12_80/0.16)] text-foreground" : "border-border/80 text-muted-foreground hover:bg-muted hover:text-foreground")}>
             <span className="relative">
               <Initials name={w.name} className="size-6 text-[9px]" />
-              {w.onShiftSince && <span className="absolute -right-0.5 -bottom-0.5 size-2 rounded-full bg-emerald-500 ring-2 ring-card" aria-label="On shift" />}
+              {w.onShiftSince && <span className="absolute -right-0.5 -bottom-0.5 size-2 rounded-full bg-emerald-500 ring-2 ring-card" aria-label={t("On shift")} />}
             </span>
             {first(w.name)}
             {w.number && <span className="font-mono text-[10px] text-muted-foreground">{w.number}</span>}

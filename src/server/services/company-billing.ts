@@ -8,7 +8,8 @@ import { resolveAccountTx } from "./payment-accounts";
 import { getSettingsTx, stayConfig } from "../settings";
 import { addDays, businessDateOf, fromDbDate, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import { chargeGroup, companyPays, type BillTo } from "@/lib/billing";
-import { formatBusinessDate } from "@/lib/format";
+import { getT } from "@/i18n/server";
+import { msg, msgf } from "@/i18n/msg";
 import { nextInvoiceNumber, syncInvoice } from "./invoices";
 import { recalculateReservation } from "./reservation-financials";
 import type { Actor } from "./reservations";
@@ -308,18 +309,20 @@ export async function assertCompanyCredit(
   actor: Actor,
 ) {
   const c = await tx.corporateCustomer.findUnique({ where: { id: input.companyId } });
-  if (!c) throw new AppError("Choose a company.", "VALIDATION", { corporateCustomerId: "Required" });
+  if (!c) throw new AppError("Choose a company.", "VALIDATION", { corporateCustomerId: msg("Required") });
   if (c.status !== "ACTIVE") {
-    throw new AppError(`${c.companyName} is ${c.status === "ON_HOLD" ? "on hold" : "inactive"} — it cannot be billed. Ask a manager.`, "FORBIDDEN");
+    throw new AppError(c.status === "ON_HOLD"
+      ? msgf("{company} is on hold — it cannot be billed. Ask a manager.", { company: c.companyName })
+      : msgf("{company} is inactive — it cannot be billed. Ask a manager.", { company: c.companyName }), "FORBIDDEN");
   }
   if (c.creditLimit == null || input.amount <= 0) return;
   const settings = await getSettingsTx(tx);
   const acct = await companyAccount(c.id, businessDateOf(new Date(), stayConfig(settings)));
   const available = (acct?.available ?? 0);
   if (input.amount <= available) return;
-  const msg = `This booking (TZS ${input.amount.toLocaleString("en-TZ")}) will go over ${c.companyName}'s available credit of TZS ${Math.max(0, available).toLocaleString("en-TZ")}.`;
-  if (!input.override?.reason?.trim()) throw new AppError(`${msg} A manager must approve it.`, "CONFLICT", { creditOverride: "Needs approval" });
-  if (!actor.permissions?.has("corporate.manage")) throw new AppError(`${msg} Only a manager can approve going over the limit.`, "FORBIDDEN");
+  const over = { amount: input.amount.toLocaleString("en-TZ"), company: c.companyName, available: Math.max(0, available).toLocaleString("en-TZ") };
+  if (!input.override?.reason?.trim()) throw new AppError(msgf("This booking (TZS {amount}) will go over {company}'s available credit of TZS {available}. A manager must approve it.", over), "CONFLICT", { creditOverride: msg("Needs approval") });
+  if (!actor.permissions?.has("corporate.manage")) throw new AppError(msgf("This booking (TZS {amount}) will go over {company}'s available credit of TZS {available}. Only a manager can approve going over the limit.", over), "FORBIDDEN");
   await audit(tx, actor, {
     action: "corporate.credit_override", entityType: "CorporateCustomer", entityId: c.id,
     after: { company: c.companyName, amount: input.amount, available, limit: c.creditLimit, reason: input.override.reason.trim(), reservation: input.reference ?? null },
@@ -335,7 +338,7 @@ export async function recordCompanyPayment(
   actor: Actor,
 ) {
   if (!actor.userId) throw new AppError("Sign in required.", "UNAUTHENTICATED");
-  if (!Number.isInteger(input.amount) || input.amount <= 0) throw new AppError("Enter the amount received.", "VALIDATION", { amount: "Invalid" });
+  if (!Number.isInteger(input.amount) || input.amount <= 0) throw new AppError("Enter the amount received.", "VALIDATION", { amount: msg("Invalid") });
   return db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT "id" FROM "corporate_customers" WHERE "id" = ${input.companyId} FOR UPDATE`;
     const { account, method } = await resolveAccountTx(tx, input);
@@ -348,7 +351,7 @@ export async function recordCompanyPayment(
     });
     const owed = open.reduce((s, i) => s + i.balanceAmount, 0);
     if (owed === 0) throw new AppError("This company has no unpaid invoices.");
-    if (input.amount > owed) throw new AppError(`That is more than the company owes (TZS ${owed.toLocaleString("en-TZ")}).`, "VALIDATION", { amount: "Too much" });
+    if (input.amount > owed) throw new AppError(msgf("That is more than the company owes (TZS {amount}).", { amount: owed.toLocaleString("en-TZ") }), "VALIDATION", { amount: msg("Too much") });
 
     const settings = await getSettingsTx(tx);
     const now = new Date();
@@ -378,6 +381,7 @@ export async function recordCompanyPayment(
 
 /** Account statement: opening balance, invoices (+), payments (−), closing balance. */
 export async function companyStatement(companyId: string, from: BusinessDate, to: BusinessDate) {
+  const t = await getT();
   const [invoices, payments] = await Promise.all([
     db.invoice.findMany({
       where: { corporateCustomerId: companyId, reservationId: null, issueDate: { not: null, lte: toDbDate(to) }, status: { notIn: ["DRAFT", "CANCELLED", "VOID"] } },
@@ -392,12 +396,12 @@ export async function companyStatement(companyId: string, from: BusinessDate, to
   const all: Entry[] = [
     ...invoices.map((i) => ({
       date: fromDbDate(i.issueDate!), kind: "INVOICE" as const, ref: i.number,
-      detail: `Invoice${i.dueDate ? ` · due ${formatBusinessDate(fromDbDate(i.dueDate))}` : ""}${i.items.length ? ` · ${i.items.map((x) => x.guestName).filter(Boolean).slice(0, 3).join(", ")}` : ""}`,
+      detail: `${t("Invoice")}${i.dueDate ? ` · ${t("due {date}", { date: t.date(fromDbDate(i.dueDate)) })}` : ""}${i.items.length ? ` · ${i.items.map((x) => x.guestName).filter(Boolean).slice(0, 3).join(", ")}` : ""}`,
       debit: i.netAmount, credit: 0, href: `/staff/invoices/${i.id}`,
     })),
     ...payments.map((p) => ({
       date: fromDbDate(p.businessDate), kind: p.kind === "PAYMENT" ? ("PAYMENT" as const) : ("REFUND" as const), ref: p.invoice?.number ?? "",
-      detail: `${p.kind === "PAYMENT" ? "Payment" : "Refund"} · ${p.method.name}${p.reference ? ` · ${p.reference}` : ""}`,
+      detail: `${p.kind === "PAYMENT" ? t.ctx("money", "Payment") : t("Refund")} · ${t(p.method.name)}${p.reference ? ` · ${p.reference}` : ""}`,
       debit: p.kind === "REFUND" ? p.amount : 0, credit: p.kind === "PAYMENT" ? p.amount : 0, href: null,
     })),
   ].sort((a, b) => a.date.localeCompare(b.date) || (a.kind === "INVOICE" ? -1 : 1));
@@ -448,6 +452,11 @@ export async function receivablesBoard(today: BusinessDate) {
   };
 }
 
+/** "Part of this stay is already on <company>'s invoice…" — the company's name when it has one. */
+const alreadyBilled = (company: string | null | undefined) => company != null
+  ? msgf("Part of this stay is already on {company}'s invoice — void that invoice first.", { company })
+  : msg("Part of this stay is already on a company's invoice — void that invoice first.");
+
 /** Change who pays for a stay (guest / company / split). Lines already billed are corrected at the next billing. */
 export async function changeBilling(
   reservationId: string,
@@ -464,7 +473,7 @@ export async function changeBilling(
       if (!r.group) throw new AppError("This booking is not part of a group.");
       if (r.billTo === "GROUP") return;
       if (r.companyBilledAmount !== 0 && r.corporateCustomerId && r.corporateCustomerId !== r.group.corporateCustomerId) {
-        throw new AppError(`Part of this stay is already on ${r.corporateCustomer?.companyName ?? "a company"}'s invoice — void that invoice first.`, "CONFLICT");
+        throw new AppError(alreadyBilled(r.corporateCustomer?.companyName), "CONFLICT");
       }
       await tx.reservation.update({ where: { id: r.id }, data: { billTo: "GROUP", corporateCustomerId: r.group.corporateCustomerId, companyCovers: [], paymentTermDays: null } });
       await audit(tx, actor, { action: "reservation.billing_changed", entityType: "Reservation", entityId: r.id, before: { billTo: r.billTo }, after: { billTo: "GROUP", group: r.group.reference } });
@@ -472,10 +481,10 @@ export async function changeBilling(
       return;
     }
     const companyId = input.corporateCustomerId;
-    if (input.billTo !== "GUEST" && !companyId) throw new AppError("Choose the company.", "VALIDATION", { corporateCustomerId: "Required" });
-    if (input.billTo === "SPLIT" && input.covers.length === 0) throw new AppError("Choose what the company pays for.", "VALIDATION", { covers: "Required" });
+    if (input.billTo !== "GUEST" && !companyId) throw new AppError("Choose the company.", "VALIDATION", { corporateCustomerId: msg("Required") });
+    if (input.billTo === "SPLIT" && input.covers.length === 0) throw new AppError("Choose what the company pays for.", "VALIDATION", { covers: msg("Required") });
     if (r.companyBilledAmount !== 0 && companyId !== r.corporateCustomerId) {
-      throw new AppError(`Part of this stay is already on ${r.corporateCustomer?.companyName ?? "a company"}'s invoice — void that invoice first.`, "CONFLICT");
+      throw new AppError(alreadyBilled(r.corporateCustomer?.companyName), "CONFLICT");
     }
     if (companyId && companyId !== r.corporateCustomerId) {
       const c = await tx.corporateCustomer.findUnique({ where: { id: companyId } });

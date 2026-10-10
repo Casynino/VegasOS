@@ -5,14 +5,21 @@ import { getSettings } from "@/server/settings";
 import { orderByTrackToken, restaurantMenu } from "@/server/services/online-orders";
 import { RestaurantApp } from "@/components/restaurant/restaurant-app";
 import { restaurantShell } from "@/components/restaurant/shell";
+import { getT, guestLocale } from "@/i18n/server";
 
-export const metadata: Metadata = { title: "Order more", robots: { index: false, follow: false }, referrer: "no-referrer" };
+export async function generateMetadata(): Promise<Metadata> {
+  await guestLocale();
+  const t = await getT();
+  return { title: t("Order more"), robots: { index: false, follow: false }, referrer: "no-referrer" };
+}
 export const dynamic = "force-dynamic";
 
 const CAN_ADD = ["PENDING", "ACCEPTED", "PREPARING", "DELIVERED"];
 
 /** "Order more": the restaurant app, adding to the customer's own open order — the same order, one bill. */
 export default async function OrderMorePage({ params }: PageProps<"/order/[token]/more">) {
+  await guestLocale();
+  const t = await getT();
   const { token } = await params;
   const [o, s] = await Promise.all([orderByTrackToken(token), getSettings()]);
   if (!o) notFound();
@@ -23,11 +30,11 @@ export default async function OrderMorePage({ params }: PageProps<"/order/[token
     return (
       <main className="vr grid min-h-svh place-items-center bg-(--vr-bg) px-6 text-center text-(--vr-ink)">
         <div className="max-w-sm">
-          <h1 className="font-display text-3xl font-semibold">{takeOutStarted ? "Your take-out order is being prepared" : onWay ? "Your order is on its way" : "This order is closed"}</h1>
-          <p className="mt-2 text-sm text-(--vr-muted)">{takeOutStarted ? "Place a new order for the extra items." : onWay ? "Add more once it has arrived — or ask the waiter." : "Scan the QR again to start a new order, or ask a waiter."}</p>
+          <h1 className="font-display text-3xl font-semibold">{takeOutStarted ? t("Your take-out order is being prepared") : onWay ? t("Your order is on its way") : t("This order is closed")}</h1>
+          <p className="mt-2 text-sm text-(--vr-muted)">{takeOutStarted ? t("Place a new order for the extra items.") : onWay ? t("Add more once it has arrived — or ask the waiter.") : t("Scan the QR again to start a new order, or ask a waiter.")}</p>
           <div className="mt-6 flex flex-wrap justify-center gap-2">
-            {takeOutStarted && <Link href="/order" className="inline-flex h-12 items-center rounded-full bg-(--vr-dark) px-6 text-sm font-semibold text-white">New order</Link>}
-            <Link href={`/order/${token}`} className={takeOutStarted ? "inline-flex h-12 items-center rounded-full px-6 text-sm font-semibold ring-1 ring-(--vr-line)" : "inline-flex h-12 items-center rounded-full bg-(--vr-dark) px-6 text-sm font-semibold text-white"}>Back to order #{o.number}</Link>
+            {takeOutStarted && <Link href="/order" className="inline-flex h-12 items-center rounded-full bg-(--vr-dark) px-6 text-sm font-semibold text-white">{t("New order")}</Link>}
+            <Link href={`/order/${token}`} className={takeOutStarted ? "inline-flex h-12 items-center rounded-full px-6 text-sm font-semibold ring-1 ring-(--vr-line)" : "inline-flex h-12 items-center rounded-full bg-(--vr-dark) px-6 text-sm font-semibold text-white"}>{t("Back to order #{number}", { number: o.number })}</Link>
           </div>
         </div>
       </main>

@@ -2,6 +2,9 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { db } from "../db";
 import { AppError } from "../errors";
+import { msg, msgf } from "@/i18n/msg";
+import { getT, rememberGuestLanguage } from "@/i18n/server";
+import { englishT, type T } from "@/i18n/translate";
 import { rateLimit } from "../rate-limit";
 import { getSettings } from "../settings";
 import { formatTZS } from "@/lib/format";
@@ -184,8 +187,14 @@ const typeInfo = (t: PublicRoomType): QrRoomTypeInfo => ({
   maxAdults: t.maxAdults, maxChildren: t.maxChildren, bedType: t.bedType, sizeSqm: t.sizeSqm,
 });
 const fits = (t: { maxAdults: number; maxChildren: number }, p: { adults: number; children: number }) => p.adults <= t.maxAdults && p.children <= t.maxChildren;
-const holds = (t: { maxAdults: number; maxChildren: number }) => `${t.maxAdults} adult${t.maxAdults === 1 ? "" : "s"}${t.maxChildren ? ` and ${t.maxChildren} child${t.maxChildren === 1 ? "" : "ren"}` : ""}`;
-const taken = (number: string) => new AppError(`Sorry — Room ${number} was just booked for these dates. Please choose another room.`, "UNAVAILABLE", { roomNumber: "Taken" });
+/** The translator of whoever sees the words (the guest on their phone; English outside a request). */
+const viewerT = () => getT().catch(() => englishT);
+/** "2 adults and 1 child" — how many one room takes, in the reader's language. */
+const holds = (x: { maxAdults: number; maxChildren: number }, t: T = englishT) => {
+  const adults = t.plural(x.maxAdults, "{n} adult", "{n} adults");
+  return x.maxChildren ? t("{adults} and {children}", { adults, children: t.plural(x.maxChildren, "{n} child", "{n} children") }) : adults;
+};
+const taken = (number: string) => new AppError(msgf("Sorry — Room {room} was just booked for these dates. Please choose another room.", { room: number }), "UNAVAILABLE", { roomNumber: msg("Taken") });
 /** "255712345678" → "0712 345 678" — how a guest types their own number (Pay now offers it first). */
 const localPhone = (p: string | null) => {
   const m = p ? /^(?:255|0)?([67]\d{2})(\d{3})(\d{3})$/.exec(p.replace(/\D/g, "")) : null;
@@ -201,15 +210,18 @@ async function payOptions(s: HotelSettings): Promise<QrPayOptions> {
   return { online: await onlinePayAvailable("booking", s), atHotel: s.hotelQrPayAtHotel, onlineHoldMinutes: ONLINE_BOOKING_HOLD_MINUTES };
 }
 
-/** The hotel's rules, in plain words, from its settings (never written into the page). */
-function policiesOf(s: HotelSettings, pay: QrPayOptions) {
+/**
+ * The hotel's rules, in plain words, from its settings (never written into the page) — in the guest's language. The
+ * first line stays English: the QR screens leave it out by how it starts ("Check-in from"; the times are shown apart).
+ */
+function policiesOf(s: HotelSettings, pay: QrPayOptions, t: T = englishT) {
   const w = bookingWindow(s);
   return [
     `Check-in from ${w.checkInTime}. Check-out by ${w.checkoutTime}.`,
-    pay.online ? `Pay now and your booking is confirmed as soon as the payment comes in. We keep the room for ${pay.onlineHoldMinutes} minutes while you pay.` : null,
-    pay.atHotel ? "Pay later: the room is not reserved until it is paid — whoever pays first gets it." : null,
-    s.noShowPolicy === "REFUND_DUE" ? "Paid but cannot come? Tell us and your payment is refunded." : "A paid booking that is cancelled or not used is not refunded.",
-    s.lateCheckoutFee > 0 ? `Late check-out: ${formatTZS(s.lateCheckoutFee)}.` : null,
+    pay.online ? t("Pay now and your booking is confirmed as soon as the payment comes in. We keep the room for {minutes} minutes while you pay.", { minutes: pay.onlineHoldMinutes }) : null,
+    pay.atHotel ? t("Pay later: the room is not reserved until it is paid — whoever pays first gets it.") : null,
+    s.noShowPolicy === "REFUND_DUE" ? t("Paid but cannot come? Tell us and your payment is refunded.") : t("A paid booking that is cancelled or not used is not refunded."),
+    s.lateCheckoutFee > 0 ? t("Late check-out: {amount}.", { amount: formatTZS(s.lateCheckoutFee) }) : null,
   ].filter((x): x is string => !!x);
 }
 
@@ -225,8 +237,8 @@ async function openQr(token: string) {
 function stayFor(settings: HotelSettings, input: QrStayInput) {
   const window = bookingWindow(settings);
   const p = parseStayParams({ checkIn: input.checkIn, checkOut: input.checkOut, adults: String(input.adults), children: String(input.children) }, window);
-  if (p.kind === "empty") throw new AppError("Choose your check-in and check-out dates.", "VALIDATION", { checkIn: "Required" });
-  if (p.kind === "invalid") throw new AppError(Object.values(p.errors)[0] ?? "Please check your dates.", "VALIDATION", p.errors);
+  if (p.kind === "empty") throw new AppError("Choose your check-in and check-out dates.", "VALIDATION", { checkIn: msg("Required") });
+  if (p.kind === "invalid") throw new AppError(Object.values(p.errors)[0] ?? msg("Please check your dates."), "VALIDATION", p.errors);
   const stay = buildStay(settings, p.value);
   const out: QrStay = { ...p.value, nights: stay.nights, checkInTime: window.checkInTime, checkoutTime: window.checkoutTime };
   return { params: p.value, stay, out };
@@ -239,8 +251,11 @@ async function pickRoom(roomNumber: string, p: Pick<StayParams, "adults" | "chil
     ? await db.room.findUnique({ where: { number }, select: { id: true, number: true, floor: true, isActive: true, roomTypeId: true } })
     : null;
   const type = room?.isActive ? (await listPublicRoomTypes()).find((t) => t.id === room.roomTypeId) : undefined;
-  if (!room || !type) throw new AppError("That room cannot be booked here — please choose another room.", "UNAVAILABLE", { roomNumber: "Unknown" });
-  if (!fits(type, p)) throw new AppError(`Room ${room.number} (${type.name}) holds up to ${holds(type)} — please choose a bigger room.`, "VALIDATION", { roomNumber: "Too small" });
+  if (!room || !type) throw new AppError("That room cannot be booked here — please choose another room.", "UNAVAILABLE", { roomNumber: msg("Unknown") });
+  if (!fits(type, p)) {
+    const t = await viewerT();
+    throw new AppError(msgf("Room {room} ({type}) holds up to {holds} — please choose a bigger room.", { room: room.number, type: t(type.name), holds: holds(type, t) }), "VALIDATION", { roomNumber: msg("Too small") });
+  }
   return { room, type };
 }
 
@@ -267,11 +282,11 @@ async function track(qrId: string, type: BookingQrEventType, visit: QrVisit) {
  * opens — link previews and bots do not).
  */
 export async function qrLanding(token: string): Promise<QrLanding | QrInactive> {
-  const settings = await getSettings();
+  const [settings, t] = await Promise.all([getSettings(), viewerT()]);
   const qr = await activeBookingQr(token);
-  if (!qr) return { active: false, hotel: hotelContact(settings), message: "This booking QR code is not active. Please ask reception, or call us to book." };
-  const [content, types, price, tonight, pay] = await Promise.all([getSiteContent(), listPublicRoomTypes(), websitePricer(settings), tonightAvailability(settings), payOptions(settings)]);
-  const free = new Map(tonight.types.map((t) => [t.slug, t.free]));
+  if (!qr) return { active: false, hotel: hotelContact(settings), message: t("This booking QR code is not active. Please ask reception, or call us to book.") };
+  const [content, types, price, tonight, pay] = await Promise.all([getSiteContent(), listPublicRoomTypes(), websitePricer(settings, t), tonightAvailability(settings), payOptions(settings)]);
+  const free = new Map(tonight.types.map((x) => [x.slug, x.free]));
   const w = bookingWindow(settings);
   const open = settings.hotelQrEnabled && (pay.online || pay.atHotel);
   const hero = content.home.hero;
@@ -286,21 +301,21 @@ export async function qrLanding(token: string): Promise<QrLanding | QrInactive> 
       photos: (content.gallery as GalleryImage[]).map((g) => ({ src: g.src, alt: g.alt, width: g.width, height: g.height, category: g.category })),
       highlights: hero.highlights,
     },
-    policies: policiesOf(settings, pay),
-    roomTypes: types.map((t) => {
-      const p = price(t);
-      return { ...typeInfo(t), baseRate: p.baseRate, fromPerNight: p.net, promotion: p.promotion, promoLabel: p.promoLabel, freeTonight: free.get(t.slug) ?? 0 };
+    policies: policiesOf(settings, pay, t),
+    roomTypes: types.map((x) => {
+      const p = price(x);
+      return { ...typeInfo(x), baseRate: p.baseRate, fromPerNight: p.net, promotion: p.promotion, promoLabel: p.promoLabel, freeTonight: free.get(x.slug) ?? 0 };
     }),
     booking: {
       ...pay, open,
-      message: !settings.hotelQrEnabled ? "Booking from this QR is switched off right now — please ask reception or call us."
-        : !open ? "Booking here is not available right now — please ask reception or call us." : null,
+      message: !settings.hotelQrEnabled ? t("Booking from this QR is switched off right now — please ask reception or call us.")
+        : !open ? t("Booking here is not available right now — please ask reception or call us.") : null,
     },
     window: {
       today: w.today, maxCheckIn: w.maxArrival, maxNights: w.maxNights,
-      maxAdults: types.length ? Math.max(...types.map((t) => t.maxAdults)) : MAX_ADULTS,
-      maxChildren: types.length ? Math.max(...types.map((t) => t.maxChildren)) : 0,
-      maxGuests: types.length ? Math.max(...types.map((t) => t.maxAdults + t.maxChildren)) : MAX_ADULTS,
+      maxAdults: types.length ? Math.max(...types.map((x) => x.maxAdults)) : MAX_ADULTS,
+      maxChildren: types.length ? Math.max(...types.map((x) => x.maxChildren)) : 0,
+      maxGuests: types.length ? Math.max(...types.map((x) => x.maxAdults + x.maxChildren)) : MAX_ADULTS,
     },
   };
 }
@@ -320,7 +335,7 @@ export async function qrSearch(token: string, input: QrStayInput & { roomType?: 
   await refreshBookingStates();
   const types = await listPublicRoomTypes();
   const pick = input.roomType ? types.find((t) => t.slug === input.roomType) : null;
-  if (input.roomType && !pick) throw new AppError("That room type cannot be booked here.", "VALIDATION", { roomType: "Unknown" });
+  if (input.roomType && !pick) throw new AppError("That room type cannot be booked here.", "VALIDATION", { roomType: msg("Unknown") });
   const [free, pricing] = await Promise.all([findAvailableRooms({ stay }), loadPricing(db, stay.arrivalDate, addDays(stay.departureDate, -1))]);
   const channel = channelFor(HOTEL_QR_SOURCE);
   const result: QrSearchResult = { stay: out, types: [], tooSmall: [], chosen: null };
@@ -372,7 +387,7 @@ export async function qrQuote(token: string, input: QrStayInput & { roomNumber: 
     nights: q.nights.map((x) => ({ date: x.date, price: x.base, discount: x.promoDiscount + x.manualDiscount, net: x.net, datePrice: x.priceRule?.name ?? null, promotion: x.promotion?.name ?? null })),
     ratePerNight: Math.round(q.gross / n), perNight: Math.round(q.net / n), sameEveryNight: new Set(q.nights.map((x) => x.net)).size <= 1,
     gross: q.gross, discount: q.promoDiscount + q.manualDiscount, total: q.net, promotion: q.promotion?.name ?? null,
-    pay, policies: policiesOf(settings, pay),
+    pay, policies: policiesOf(settings, pay, await viewerT()),
   };
 }
 
@@ -382,23 +397,23 @@ const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 function timeOf(v: string | null | undefined, field: string) {
   const t = v?.trim();
   if (!t) return null;
-  if (!TIME.test(t)) throw new AppError("Enter the time like 14:30.", "VALIDATION", { [field]: "Invalid" });
+  if (!TIME.test(t)) throw new AppError("Enter the time like 14:30.", "VALIDATION", { [field]: msg("Invalid") });
   return t;
 }
 
 function guestOf(g: QrBookInput["guest"]) {
   const fullName = g.fullName.trim().replace(/\s+/g, " ");
-  if (fullName.length < 2 || fullName.length > 80) throw new AppError("Please enter your full name.", "VALIDATION", { fullName: "Required" });
-  if (!validPhone(g.phone)) throw new AppError("Please enter a phone number we can reach you on (e.g. 0712 345 678).", "VALIDATION", { phone: "Invalid" });
+  if (fullName.length < 2 || fullName.length > 80) throw new AppError("Please enter your full name.", "VALIDATION", { fullName: msg("Required") });
+  if (!validPhone(g.phone)) throw new AppError("Please enter a phone number we can reach you on (e.g. 0712 345 678).", "VALIDATION", { phone: msg("Invalid") });
   const email = g.email?.trim().toLowerCase() || null;
-  if (email && (email.length > 160 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) throw new AppError("Please check your email address.", "VALIDATION", { email: "Invalid" });
+  if (email && (email.length > 160 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) throw new AppError("Please check your email address.", "VALIDATION", { email: msg("Invalid") });
   return { fullName, phone: normalizePhone(g.phone)!, email };
 }
 
 function pickupOf(t: QrBookInput["transportRequest"], checkIn: BusinessDate) {
   if (!t) return null;
   const flightNumber = t.flightNumber?.trim().toUpperCase().replace(/\s+/g, " ") || null;
-  if (flightNumber && !/^[A-Z0-9 -]{2,12}$/.test(flightNumber)) throw new AppError("Please check the flight number.", "VALIDATION", { flightNumber: "Invalid" });
+  if (flightNumber && !/^[A-Z0-9 -]{2,12}$/.test(flightNumber)) throw new AppError("Please check the flight number.", "VALIDATION", { flightNumber: msg("Invalid") });
   const arrivalTime = timeOf(t.arrivalTime, "transportTime");
   const note = t.note?.trim().replace(/\s+/g, " ").slice(0, 300) || null;
   if (!flightNumber && !arrivalTime && !note) return null;
@@ -464,22 +479,22 @@ export async function qrBook(token: string, input: QrBookInput, visit: QrVisit &
     // The key belongs to that booking: asked with another room or other dates, it is not handed back as this one.
     const same = was.arrivalDate.getTime() === toDbDate(params.checkIn).getTime() && was.departureDate.getTime() === toDbDate(params.checkOut).getTime()
       && was.rooms.some((x) => x.room.number === input.roomNumber.trim());
-    if (!same) throw new AppError(`You already booked Room ${was.rooms[0]?.room.number ?? ""} (${was.reference}) — check that booking, or choose your room again.`, "CONFLICT");
+    if (!same) throw new AppError(msgf("You already booked Room {room} ({ref}) — check that booking, or choose your room again.", { room: was.rooms[0]?.room.number ?? "", ref: was.reference }), "CONFLICT");
     return bookedOf(token, was, qrPayWay({ internalNotes: was.internalNotes, startedOnline: !!payToken }), payToken, null);
   }
 
   const pay = await payOptions(settings);
   if (way === "ONLINE" && !pay.online) {
-    throw new AppError(pay.atHotel ? "Paying online is not available right now — please choose Pay later." : "Booking here is not available right now — please ask reception or call us.", "CONFLICT");
+    throw new AppError(pay.atHotel ? msg("Paying online is not available right now — please choose Pay later.") : msg("Booking here is not available right now — please ask reception or call us."), "CONFLICT");
   }
   if (way === "HOTEL" && !pay.atHotel) {
-    throw new AppError(pay.online ? "Please choose Pay now to book here." : "Booking here is not available right now — please ask reception or call us.", "CONFLICT");
+    throw new AppError(pay.online ? msg("Please choose Pay now to book here.") : msg("Booking here is not available right now — please ask reception or call us."), "CONFLICT");
   }
   // Pay later holds no room, but it lands with reception: a phone number can make only a few a day — and one address
   // (guests on the hotel Wi-Fi share one) a fair number more.
   if (way === "HOTEL") {
-    await limited(`hotel-qr-hold:${guest.phone}`, 5, 86_400, "This phone number has made several bookings today — choose Pay now, or ask reception.");
-    await limited(`hotel-qr-hold-ip:${visit.ip ?? "unknown"}`, 40, 86_400, "Too many bookings from this network today — choose Pay now, or ask reception.");
+    await limited(`hotel-qr-hold:${guest.phone}`, 5, 86_400, msg("This phone number has made several bookings today — choose Pay now, or ask reception."));
+    await limited(`hotel-qr-hold-ip:${visit.ip ?? "unknown"}`, 40, 86_400, msg("Too many bookings from this network today — choose Pay now, or ask reception."));
   }
   const { room, type } = await pickRoom(input.roomNumber, params);
   await expireUnpaidHolds(); // a hold whose time ran out never makes the room look taken
@@ -507,6 +522,8 @@ export async function qrBook(token: string, input: QrBookInput, visit: QrVisit &
       if (e instanceof AppError && e.code === "UNAVAILABLE") throw taken(room.number);
       throw e;
     }
+    // The language the guest chose on this phone: their booking messages and pages follow it (never fails the booking).
+    await rememberGuestLanguage(r.guestId);
     if (pickup?.arrivalTime) {
       // The booking is made; a trip request that fails must not undo it — reception sees the pickup in the notes.
       try {

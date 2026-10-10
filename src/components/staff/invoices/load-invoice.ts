@@ -3,6 +3,8 @@ import { db } from "@/server/db";
 import { fromDbDate } from "@/lib/time/business-date";
 import { DEPT_LABEL, type InvoiceDept, type InvoiceDoc } from "./invoice-document";
 import { companyBillTo, groupBillTo } from "./bill-to";
+import { getT } from "@/i18n/server";
+import { englishT } from "@/i18n/translate";
 
 /** Load an invoice (by id, or by its public verify token) shaped for the invoice document. */
 export async function loadInvoiceDoc(where: { id: string } | { verifyToken: string }) {
@@ -17,6 +19,8 @@ export async function loadInvoiceDoc(where: { id: string } | { verifyToken: stri
     },
   });
   if (!inv) return null;
+  // The document's own words (who it is for, tax labels) in the reader's language; English outside a request.
+  const t = await getT().catch(() => englishT);
   const c = inv.corporateCustomer;
   // Where every line came from — the room's folio department (accommodation, restaurant, bar, room service, transport, other).
   const chargeIds = inv.items.filter((i) => i.sourceType === "CHARGE" && i.sourceId).map((i) => i.sourceId!);
@@ -49,8 +53,8 @@ export async function loadInvoiceDoc(where: { id: string } | { verifyToken: stri
   const doc: InvoiceDoc = {
     number: inv.number, status: inv.status, issueDate: iso(inv.issueDate), dueDate: iso(inv.dueDate),
     terms: inv.paymentTermDays ?? c?.paymentTermDays ?? null,
-    billTo: inv.group ? groupBillTo(inv.group, c) : c ? companyBillTo(c) : {
-      name: inv.guest?.fullName ?? "Guest", lines: inv.guest?.address ? [inv.guest.address] : [],
+    billTo: inv.group ? groupBillTo(inv.group, c, t) : c ? companyBillTo(c, t) : {
+      name: inv.guest?.fullName ?? t("Guest"), lines: inv.guest?.address ? [inv.guest.address] : [],
       contact: [inv.guest?.phone, inv.guest?.email].filter(Boolean).join("  ·  ") || null,
     },
     bookings: [...new Set([inv.reservation?.reference, ...inv.items.map((i) => i.reservation?.reference)].filter((x): x is string => !!x))],

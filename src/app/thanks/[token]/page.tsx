@@ -5,15 +5,21 @@ import { thankYouByToken } from "@/server/services/thank-you";
 import type { StaySnapshot } from "@/lib/thank-you";
 import { ThankYouDocument } from "@/components/staff/thank-you/thank-you-document";
 import { GuestPrintButton } from "./print-button";
+import { getT, guestLocale } from "@/i18n/server";
 
-export const metadata: Metadata = {
-  title: "Thank you for staying with us",
-  robots: { index: false, follow: false },
-  referrer: "no-referrer",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  await guestLocale();
+  const t = await getT();
+  return {
+    title: t("Thank you for staying with us"),
+    robots: { index: false, follow: false },
+    referrer: "no-referrer",
+  };
+}
 
 /** The guest's own copy of their thank-you note (the link sent by reception) — view, print or save as PDF. */
 export default async function GuestThankYouPage({ params }: PageProps<"/thanks/[token]">) {
+  await guestLocale();
   const { token } = await params;
   const [note, s] = await Promise.all([thankYouByToken(token), getSettings()]);
   if (!note) notFound();

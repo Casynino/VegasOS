@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { db } from "../db";
 import { audit } from "../audit";
 import { AppError, isUniqueViolation } from "../errors";
+import { msg, msgf } from "@/i18n/msg";
 import { getSettings } from "../settings";
 import { prettyPhone, shortName, validPhone } from "@/lib/guest-messages";
 import { normalizePhone, resolveGuest } from "./guests";
@@ -39,7 +40,7 @@ export async function restaurantLocations(opts: { today?: string } = {}) {
         orderBy: { createdAt: "asc" },
         select: {
           id: true, number: true, status: true, customerName: true, total: true, paidAmount: true, settlement: true, roomNumber: true, createdAt: true, trackToken: true,
-          items: { select: { id: true, name: true, quantity: true, unitPrice: true, lineTotal: true, preparedAt: true, paymentId: true, round: true }, orderBy: { id: "asc" } },
+          items: { select: { id: true, name: true, nameI18n: true, quantity: true, unitPrice: true, lineTotal: true, preparedAt: true, paymentId: true, round: true }, orderBy: { id: "asc" } },
         },
       },
     },
@@ -125,11 +126,17 @@ export async function setTableInUse(id: string, active: boolean, reason: string 
     if (l.kind !== "TABLE") throw new AppError("Only tables can be switched off.");
     if (l.isActive === active) return { name: l.name };
     if (!active) {
-      if (l.openSession) throw new AppError(`Someone is at ${l.name} — clear the table first.`, "CONFLICT");
+      if (l.openSession) throw new AppError(msgf("Someone is at {table} — clear the table first.", { table: l.name }), "CONFLICT");
       const open = await tx.restaurantOrder.count({ where: { locationId: id, status: OPEN } });
-      if (open) throw new AppError(`${l.name} has ${open} open order${open === 1 ? "" : "s"} — finish or move them first.`, "CONFLICT");
+      if (open) {
+        const vars = { table: l.name, n: open };
+        throw new AppError(open === 1 ? msgf("{table} has {n} open order — finish or move them first.", vars) : msgf("{table} has {n} open orders — finish or move them first.", vars), "CONFLICT");
+      }
       const booked = await tx.tableReservation.count({ where: { locationId: id, status: { in: ["BOOKED", "CONFIRMED"] }, reservedFor: { gte: new Date(now.getTime() - HOLD_AFTER_MIN * 60_000) } } });
-      if (booked) throw new AppError(`${l.name} has ${booked} reservation${booked === 1 ? "" : "s"} coming — move ${booked === 1 ? "it" : "them"} to another table first.`, "CONFLICT");
+      if (booked) {
+        const vars = { table: l.name, n: booked };
+        throw new AppError(booked === 1 ? msgf("{table} has {n} reservation coming — move it to another table first.", vars) : msgf("{table} has {n} reservations coming — move them to another table first.", vars), "CONFLICT");
+      }
     }
     await tx.restaurantLocation.update({ where: { id }, data: { isActive: active, qrActive: active } });
     await audit(tx, actor, {
@@ -154,7 +161,7 @@ export async function setTableBlocked(id: string, as: "UNAVAILABLE" | "MAINTENAN
     const l = await tx.restaurantLocation.findUnique({ where: { id }, include: { openSession: { select: { id: true, guest: { select: { fullName: true } } } } } });
     if (!l || !l.isActive) throw new AppError("Table not found.", "NOT_FOUND");
     if (l.kind !== "TABLE") throw new AppError("Only tables can be blocked.");
-    if (as && l.openSession) throw new AppError(`${l.openSession.guest.fullName} is at ${l.name} — move them or clear the table first.`, "CONFLICT");
+    if (as && l.openSession) throw new AppError(msgf("{name} is at {table} — move them or clear the table first.", { name: l.openSession.guest.fullName, table: l.name }), "CONFLICT");
     const booked = as ? await tx.tableReservation.count({ where: { locationId: id, status: { in: ["BOOKED", "CONFIRMED"] }, reservedFor: { gte: new Date(now.getTime() - HOLD_AFTER_MIN * 60_000) } } }) : 0;
     await tx.restaurantLocation.update({ where: { id }, data: as ? { blockedAs: as, blockedReason: why, blockedAt: now, blockedById: actor.userId ?? null } : { blockedAs: null, blockedReason: null, blockedAt: null, blockedById: null } });
     await audit(tx, actor, {
@@ -220,6 +227,8 @@ export interface LocationOrderInput {
   clientKey: string;
   items: { menuItemId: string; quantity: number }[];
   notes?: string | null;
+  /** Common requests the customer ticked (ORDER_REQUESTS codes). */
+  noteCodes?: string[] | null;
   /** Blank for a returning customer: the name we have for their phone is used. */
   name?: string | null;
   /** Not needed at a table: the seated customer's own details are used. */
@@ -274,7 +283,7 @@ export async function pickedTableTx(tx: Tx, tableId: string, now: Date) {
   const busy = (await tx.diningSession.findUnique({ where: { openAtId: t.id }, select: { id: true } }))
     || (await holdingReservationTx(tx, t.id, now))
     || (await tx.restaurantOrder.findFirst({ where: { ...LOOSE_AT_TABLE, locationId: t.id }, select: { id: true } }));
-  if (busy) throw new AppError(`${t.name.split(" — ")[0]} was just taken — please pick another table.`, "CONFLICT", { tableId: "Taken" });
+  if (busy) throw new AppError(msgf("{table} was just taken — please pick another table.", { table: t.name.split(" — ")[0] }), "CONFLICT", { tableId: "Taken" });
   return t;
 }
 
@@ -297,7 +306,7 @@ export async function sitAtPickedTableTx(tx: Tx, tableId: string, guestId: strin
 export async function placeLocationOrder(token: string, input: LocationOrderInput, now = new Date()) {
   const l = await activeLocation(token);
   const settings = await getSettings();
-  if (!settings.publicOrderingEnabled) throw new AppError(`Ordering from the QR is closed right now — please ask a waiter${settings.phone ? ` or call ${prettyPhone(settings.phone)}` : ""}.`);
+  if (!settings.publicOrderingEnabled) throw new AppError(settings.phone ? msgf("Ordering from the QR is closed right now — please ask a waiter or call {phone}.", { phone: prettyPhone(settings.phone) }) : msg("Ordering from the QR is closed right now — please ask a waiter."));
   // At a table or the counter: eat here (on the bill, or paid now). Take out only from the restaurant's own QR (and the website).
   if (input.kind === "TAKEAWAY" && l.kind !== "MAIN") throw new AppError("Take out is ordered from the restaurant's own QR code or our website — here you can add it to your bill or pay now.", "VALIDATION", { kind: "Not here" });
   const seated = l.kind === "TABLE" ? await seatOf(input.seatToken) : null;
@@ -338,7 +347,7 @@ export async function placeLocationOrder(token: string, input: LocationOrderInpu
       const sat = picked ? await sitAtPickedTableTx(tx, picked.id, guestId, now) : null;
       seat = sat?.seat ?? null;
       return createRestaurantOrderTx(tx, {
-        type: kind, settlement: "UNPAID", items: input.items, notes: input.notes?.trim().slice(0, 300) || null, customerName: name,
+        type: kind, settlement: "UNPAID", items: input.items, notes: input.notes?.trim().slice(0, 300) || null, noteCodes: input.noteCodes, customerName: name,
         // Take out is not at the table: it does not keep the table busy or join its bill. A moved customer's order goes to their table now.
         locationId: kind === "TAKEAWAY" ? null : picked?.id ?? session?.locationId ?? l.id, tableLabel: picked ? null : where, deliveryAddress: address || null,
       }, { userId: null, label: `${name} (${l.name})` }, now, {

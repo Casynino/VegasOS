@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { getT } from "@/i18n/server";
+import { msg } from "@/i18n/msg";
 import { containers, typeScale } from "../kit/tokens";
 
 const ITEMS = [
-  { key: "restaurant", label: "Restaurant", note: "Breakfast to dinner", href: "/restaurant" },
-  { key: "room-service", label: "Room service", note: "In your room", href: "/restaurant#room-service" },
-  { key: "drinks", label: "Drinks", note: "At the bar", href: "/bar" },
+  { key: "restaurant", label: msg("Restaurant"), note: msg("Breakfast to dinner"), href: "/restaurant" },
+  { key: "room-service", label: msg("Room service"), note: msg("In your room"), href: "/restaurant#room-service" },
+  { key: "drinks", label: msg("Drinks"), note: msg("At the bar"), href: "/bar" },
 ] as const;
 
 export type DiningPlace = (typeof ITEMS)[number]["key"];
@@ -15,10 +17,11 @@ export type DiningPlace = (typeof ITEMS)[number]["key"];
  * on the foot of the hero photograph (pass it to DiningHero `nav`). Not sticky: the site header is
  * the only bar that follows the page. Numbered like a HUD index; a gold rule marks where you are.
  */
-export function DiningNav({ active }: { active: DiningPlace }) {
+export async function DiningNav({ active }: { active: DiningPlace }) {
+  const t = await getT();
   return (
     <nav
-      aria-label="Dining"
+      aria-label={t("Dining")}
       className="relative border-t border-white/12 bg-[linear-gradient(to_bottom,rgb(14_11_8/0.42),rgb(14_11_8/0.78))] backdrop-blur-md"
     >
       <span aria-hidden="true" className="absolute inset-x-0 -top-px h-px bg-linear-to-r from-transparent via-gold/55 to-transparent" />
@@ -43,10 +46,10 @@ export function DiningNav({ active }: { active: DiningPlace }) {
                     {String(i + 1).padStart(2, "0")}
                   </span>
                   <span className={cn("font-display text-[1.125rem] leading-none sm:text-[1.5rem]", current ? "text-gold" : "text-pub-fg group-hover:text-gold")}>
-                    {item.label}
+                    {t(item.label)}
                   </span>
                 </span>
-                <span className={cn(typeScale.meta, "hidden text-white/60 sm:block sm:pl-[1.6rem]")}>{item.note}</span>
+                <span className={cn(typeScale.meta, "hidden text-white/60 sm:block sm:pl-[1.6rem]")}>{t(item.note)}</span>
               </Link>
             </li>
           );

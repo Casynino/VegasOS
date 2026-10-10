@@ -1,4 +1,3 @@
-import type { Metadata } from "next";
 import { timeRange } from "@/lib/meeting";
 import Link from "next/link";
 import { CalendarPlus, CalendarRange, ChevronLeft, ChevronRight, List, TriangleAlert } from "lucide-react";
@@ -7,30 +6,33 @@ import { refreshBookingStates } from "@/server/services/booking-holds";
 import { db } from "@/server/db";
 import { businessToday } from "@/server/settings";
 import { addDays, diffDays, eachDate, fromDbDate, isBusinessDate, toDbDate } from "@/lib/time/business-date";
-import { formatBusinessDate, formatShortDate } from "@/lib/format";
+import { getT } from "@/i18n/server";
+import { msg } from "@/i18n/msg";
 import { BookingBar, type BarInfo } from "./booking-bar";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-export const metadata: Metadata = { title: "Room schedule" };
+export async function generateMetadata() {
+  const t = await getT();
+  return { title: t("Room schedule") };
+}
 
-const SPANS = [{ n: 7, label: "Week" }, { n: 14, label: "2 weeks" }, { n: 31, label: "Month" }] as const;
+const SPANS = [{ n: 7, label: msg("Week") }, { n: 14, label: msg("2 weeks") }, { n: 31, label: msg("Month") }] as const;
 
 /** One calm colour per kind of stay: a soft fill with a strong left edge. */
 const BAR = {
-  CHECKED_IN: { cls: "bg-linear-to-r from-sky-500/30 to-sky-500/[0.12] border-sky-500 text-sky-950 ring-1 ring-inset ring-sky-500/25 dark:text-white", dot: "bg-sky-500", label: "In the hotel" },
-  CONFIRMED: { cls: "bg-linear-to-r from-emerald-500/30 to-emerald-500/[0.12] border-emerald-500 text-emerald-950 ring-1 ring-inset ring-emerald-500/25 dark:text-white", dot: "bg-emerald-500", label: "Reserved · paid / confirmed" },
-  RESERVED: { cls: "border-dashed bg-linear-to-r from-amber-400/25 to-amber-400/[0.08] border-amber-500 text-amber-950 ring-1 ring-inset ring-amber-500/20 dark:text-amber-50", dot: "bg-amber-500", label: "Pending · unpaid (held for a while)" },
-  OVERDUE: { cls: "bg-linear-to-r from-rose-500/30 to-rose-500/[0.12] border-rose-500 text-rose-950 ring-1 ring-inset ring-rose-500/25 dark:text-white", dot: "bg-rose-500", label: "Checkout overdue" },
-  NO_SHOW: { cls: "border-dashed bg-rose-500/[0.12] border-rose-400 text-rose-950 ring-1 ring-inset ring-rose-400/20 dark:text-rose-50", dot: "bg-rose-400", label: "No-show · room still held" },
-  BLOCK: { cls: "border-zinc-400 text-zinc-600 dark:text-zinc-300 bg-[repeating-linear-gradient(135deg,rgba(120,120,120,0.14)_0_6px,transparent_6px_12px)]", dot: "bg-zinc-400", label: "Maintenance" },
+  CHECKED_IN: { cls: "bg-linear-to-r from-sky-500/30 to-sky-500/[0.12] border-sky-500 text-sky-950 ring-1 ring-inset ring-sky-500/25 dark:text-white", dot: "bg-sky-500", label: msg("In the hotel") },
+  CONFIRMED: { cls: "bg-linear-to-r from-emerald-500/30 to-emerald-500/[0.12] border-emerald-500 text-emerald-950 ring-1 ring-inset ring-emerald-500/25 dark:text-white", dot: "bg-emerald-500", label: msg("Reserved · paid / confirmed") },
+  RESERVED: { cls: "border-dashed bg-linear-to-r from-amber-400/25 to-amber-400/[0.08] border-amber-500 text-amber-950 ring-1 ring-inset ring-amber-500/20 dark:text-amber-50", dot: "bg-amber-500", label: msg("Pending · unpaid (held for a while)") },
+  OVERDUE: { cls: "bg-linear-to-r from-rose-500/30 to-rose-500/[0.12] border-rose-500 text-rose-950 ring-1 ring-inset ring-rose-500/25 dark:text-white", dot: "bg-rose-500", label: msg("Checkout overdue") },
+  NO_SHOW: { cls: "border-dashed bg-rose-500/[0.12] border-rose-400 text-rose-950 ring-1 ring-inset ring-rose-400/20 dark:text-rose-50", dot: "bg-rose-400", label: msg("No-show · room still held") },
+  BLOCK: { cls: "border-zinc-400 text-zinc-600 dark:text-zinc-300 bg-[repeating-linear-gradient(135deg,rgba(120,120,120,0.14)_0_6px,transparent_6px_12px)]", dot: "bg-zinc-400", label: msg("Maintenance") },
 } as const;
 type Tone = keyof typeof BAR;
 type Bar = { key: string; start: number; end: number; tone: Tone; title: string; sub: string; nights: number; href?: string; clipL: boolean; clipR: boolean; lane: number; info?: BarInfo };
 
+/** English short weekday — for telling weekends apart (logic only; the header shows the person's own words). */
 const wd = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", timeZone: "UTC" });
-const mon = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString("en-GB", { month: "long", timeZone: "UTC" });
-const hhmm = (d: Date) => new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Africa/Dar_es_Salaam" }).format(d);
 const initials = (n: string) => n.replace(/\(.*\)/, "").trim().split(/\s+/).map((x) => x[0]).slice(0, 2).join("").toUpperCase();
 
 /**
@@ -41,6 +43,14 @@ const initials = (n: string) => n.replace(/\(.*\)/, "").trim().split(/\s+/).map(
  */
 export default async function RoomCalendarPage({ searchParams }: PageProps<"/staff/reservations/calendar">) {
   const user = await requirePagePermission("reservations.view");
+  const t = await getT();
+  // Dates in the person's own words (the hotel's time zone is kept).
+  const mon = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString(t.intl, { month: "long", timeZone: "UTC" });
+  const dayName = (d: string, narrow: boolean) => new Date(`${d}T00:00:00Z`).toLocaleDateString(t.intl, { weekday: narrow ? "narrow" : "short", timeZone: "UTC" });
+  const hhmm = (d: Date) => t.time(d);
+  // A closure's reason: a quick fault ("Electricity / lights", saved in English) in the reader's words; a note someone
+  // typed after it (" — …") stays as written.
+  const reasonWords = (r: string) => { const [head, ...rest] = r.split(" — "); return [t(head), ...rest].join(" — "); };
   await refreshBookingStates();
   // Managers and the MD watch the chart; reception books from it.
   const watching = can(user, "dashboard.manager") || can(user, "dashboard.owner") || can(user, "dashboard.admin");
@@ -97,37 +107,38 @@ export default async function RoomCalendarPage({ searchParams }: PageProps<"/sta
   const push = (roomId: string, b: Omit<Bar, "lane">) => {
     if (b.end <= b.start) return;
     (bars.get(roomId) ?? bars.set(roomId, []).get(roomId)!).push({ ...b, lane: 0 });
-    const t = taken.get(roomId);
-    if (t) for (let i = b.start; i < b.end; i++) t[i] = true;
+    const row = taken.get(roomId);
+    if (row) for (let i = b.start; i < b.end; i++) row[i] = true;
   };
   for (const s of stays) {
     const arr = fromDbDate(s.arrivalDate);
     const booked = s.isDayUse ? addDays(arr, 1) : fromDbDate(s.departureDate);
     const overdue = s.status === "CHECKED_IN" && booked <= today;
     const dep = overdue ? addDays(today, 1) : booked; // still in the room until checked out
+    const name = s.reservation.kind === "MEETING" ? s.reservation.companyName ?? s.reservation.guest.fullName : s.reservation.guest.fullName;
     push(s.roomId, {
       key: s.id, start: col(arr), end: col(dep), tone: overdue ? "OVERDUE" : (s.status as Tone), nights: s.nights,
-      title: `${s.status === "NO_SHOW" ? "No-show · " : ""}${s.reservation.kind === "MEETING" ? s.reservation.companyName ?? s.reservation.guest.fullName : s.reservation.guest.fullName}`,
-      sub: s.reservation.kind === "MEETING" ? `Meeting ${timeRange(s.startAt, s.endAt)}` : s.isDayUse ? `Short time · ${formatBusinessDate(arr)}` : `${formatBusinessDate(arr)} → ${formatBusinessDate(booked)}`,
+      title: s.status === "NO_SHOW" ? t("No-show · {name}", { name }) : name,
+      sub: s.reservation.kind === "MEETING" ? t("Meeting {time}", { time: timeRange(s.startAt, s.endAt) }) : s.isDayUse ? t("Short time · {date}", { date: t.date(arr) }) : `${t.date(arr)} → ${t.date(booked)}`,
       href: `/staff/reservations/${s.reservation.id}`, clipL: arr < from, clipR: dep > to,
       info: (() => {
         const r = s.reservation;
         const meeting = r.kind === "MEETING";
         const tone = overdue ? "OVERDUE" : (s.status as Tone);
         const actions: BarInfo["actions"] = [];
-        if (s.status === "CHECKED_IN" && canOut && !meeting) actions.push({ label: overdue ? "Check out now" : "Check out", href: `/staff/check-out?id=${r.id}#workspace`, primary: true });
-        if ((s.status === "RESERVED" || s.status === "CONFIRMED") && arr <= today && canIn && !meeting) actions.push({ label: "Check in", href: `/staff/check-in?id=${r.id}#workspace`, primary: true });
-        actions.push({ label: "Open booking", href: `/staff/reservations/${r.id}` });
+        if (s.status === "CHECKED_IN" && canOut && !meeting) actions.push({ label: overdue ? t("Check out now") : t("Check out"), href: `/staff/check-out?id=${r.id}#workspace`, primary: true });
+        if ((s.status === "RESERVED" || s.status === "CONFIRMED") && arr <= today && canIn && !meeting) actions.push({ label: t("Check in"), href: `/staff/check-in?id=${r.id}#workspace`, primary: true });
+        actions.push({ label: t("Open booking"), href: `/staff/reservations/${r.id}` });
         return {
           id: r.id, reference: r.reference, who: meeting ? r.companyName ?? r.guest.fullName : r.guest.fullName, guest: r.guest.fullName, phone: r.guest.phone,
-          company: r.corporateCustomer?.companyName ?? r.companyName, status: BAR[tone].label.split(" · ")[0], dot: BAR[tone].dot,
-          room: s.room.number, type: s.roomType.name,
-          dates: s.isDayUse || meeting ? formatShortDate(arr) : `${formatShortDate(arr)} → ${formatShortDate(booked)}`,
-          nights: meeting ? "Meeting" : s.isDayUse ? "Short time" : `${s.nights} night${s.nights === 1 ? "" : "s"}`,
+          company: r.corporateCustomer?.companyName ?? r.companyName, status: t(BAR[tone].label).split(" · ")[0], dot: BAR[tone].dot,
+          room: s.room.number, type: t(s.roomType.name),
+          dates: s.isDayUse || meeting ? t.shortDate(arr) : `${t.shortDate(arr)} → ${t.shortDate(booked)}`,
+          nights: meeting ? t("Meeting") : s.isDayUse ? t("Short time") : t.plural(s.nights, "{n} night", "{n} nights"),
           times: `${hhmm(s.startAt)} → ${hhmm(s.endAt)}`,
-          people: `${s.adults} adult${s.adults === 1 ? "" : "s"}${s.children ? ` · ${s.children} child${s.children === 1 ? "" : "ren"}` : ""}`,
-          source: r.source.name, net: r.netAmount, paid: r.paidAmount, balance: r.balanceAmount,
-          billTo: r.billTo === "GROUP" ? "Group" : r.billTo && r.billTo !== "GUEST" ? "Company" : null, actions,
+          people: `${t.plural(s.adults, "{n} adult", "{n} adults")}${s.children ? ` · ${t.plural(s.children, "{n} child", "{n} children")}` : ""}`,
+          source: t(r.source.name), net: r.netAmount, paid: r.paidAmount, balance: r.balanceAmount,
+          billTo: r.billTo === "GROUP" ? t("Group") : r.billTo && r.billTo !== "GUEST" ? t("Company") : null, actions,
         };
       })(),
     });
@@ -136,8 +147,8 @@ export default async function RoomCalendarPage({ searchParams }: PageProps<"/sta
     const start = fromDbDate(b.startDate);
     const end = b.endDate ? fromDbDate(b.endDate) : to;
     push(b.roomId, {
-      key: b.id, start: col(start), end: col(end), tone: "BLOCK", nights: 0, title: b.type === "MAINTENANCE" ? "Maintenance" : "Out of service",
-      sub: b.reason ?? (b.endDate ? `until ${formatBusinessDate(end)}` : "no end date"), clipL: start < from, clipR: end > to,
+      key: b.id, start: col(start), end: col(end), tone: "BLOCK", nights: 0, title: b.type === "MAINTENANCE" ? t("Maintenance") : t("Out of service"),
+      sub: b.reason != null ? reasonWords(b.reason) : (b.endDate ? t("until {date}", { date: t.date(end) }) : t("no end date")), clipL: start < from, clipR: end > to,
     });
   }
   // Overlapping stays (an overdue guest and today's arrival) get their own line.
@@ -181,14 +192,14 @@ export default async function RoomCalendarPage({ searchParams }: PageProps<"/sta
           <div className="flex min-w-0 items-center gap-3.5">
             <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-linear-to-br from-violet-400 to-indigo-600 text-white shadow-[0_10px_24px_-12px_rgb(139_92_246)]"><CalendarRange className="size-6" /></span>
             <div className="min-w-0">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[oklch(0.62_0.11_78)] dark:text-[oklch(0.8_0.1_82)]">Room schedule · {user.roleName}</p>
-              <h1 className="text-lg font-semibold leading-tight tracking-tight sm:text-xl">Every room, every night</h1>
-              <p className="text-xs text-muted-foreground">Tap a booking to see its guest, dates and bill{canBook ? " · tap an empty night to book it" : ""}.</p>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[oklch(0.62_0.11_78)] dark:text-[oklch(0.8_0.1_82)]">{t("Room schedule")} · {t(user.roleName)}</p>
+              <h1 className="text-lg font-semibold leading-tight tracking-tight sm:text-xl">{t("Every room, every night")}</h1>
+              <p className="text-xs text-muted-foreground">{canBook ? t("Tap a booking to see its guest, dates and bill · tap an empty night to book it.") : t("Tap a booking to see its guest, dates and bill.")}</p>
             </div>
           </div>
           <div className="flex gap-2">
-            <Link href="/staff/reservations" className={buttonVariants({ variant: "outline", size: "sm" })}><List /> List</Link>
-            {canBook && <Link href="/staff/reservations/new" className={buttonVariants({ size: "sm" })}><CalendarPlus /> New booking</Link>}
+            <Link href="/staff/reservations" className={buttonVariants({ variant: "outline", size: "sm" })}><List /> {t("List")}</Link>
+            {canBook && <Link href="/staff/reservations/new" className={buttonVariants({ size: "sm" })}><CalendarPlus /> {t("New booking")}</Link>}
           </div>
         </div>
       </section>
@@ -197,21 +208,21 @@ export default async function RoomCalendarPage({ searchParams }: PageProps<"/sta
         {/* Toolbar */}
         <div className="flex flex-wrap items-center gap-2 border-b border-border/70 px-3 py-2.5 sm:px-4">
           <div className="flex items-center rounded-xl border border-border/70 p-0.5">
-            <Link aria-label="Earlier" href={link({ from: addDays(from, -days) })} className="grid size-8 place-items-center rounded-lg hover:bg-muted"><ChevronLeft className="size-4" /></Link>
-            <Link href={link({ from: today })} className={cn("rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted", from === today && "text-muted-foreground")}>Today</Link>
-            <Link aria-label="Later" href={link({ from: addDays(from, days) })} className="grid size-8 place-items-center rounded-lg hover:bg-muted"><ChevronRight className="size-4" /></Link>
+            <Link aria-label={t("Earlier")} href={link({ from: addDays(from, -days) })} className="grid size-8 place-items-center rounded-lg hover:bg-muted"><ChevronLeft className="size-4" /></Link>
+            <Link href={link({ from: today })} className={cn("rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted", from === today && "text-muted-foreground")}>{t("Today")}</Link>
+            <Link aria-label={t("Later")} href={link({ from: addDays(from, days) })} className="grid size-8 place-items-center rounded-lg hover:bg-muted"><ChevronRight className="size-4" /></Link>
           </div>
           <h2 className="px-1 text-base font-semibold tracking-tight">
-            <span className="tabular-nums">{formatShortDate(from)}</span> <span className="text-muted-foreground">–</span> <span className="tabular-nums">{formatShortDate(addDays(to, -1))}</span>
+            <span className="tabular-nums">{t.shortDate(from)}</span> <span className="text-muted-foreground">–</span> <span className="tabular-nums">{t.shortDate(addDays(to, -1))}</span>
           </h2>
           <form className="flex items-center gap-1">
             <input type="hidden" name="days" value={days} />
-            <input type="date" name="from" defaultValue={from} aria-label="Jump to date" className="h-8 rounded-lg border border-border/70 bg-transparent px-2 text-xs" />
-            <button className="h-8 rounded-lg px-2.5 text-xs font-medium hover:bg-muted">Go</button>
+            <input type="date" name="from" defaultValue={from} aria-label={t("Jump to date")} className="h-8 rounded-lg border border-border/70 bg-transparent px-2 text-xs" />
+            <button className="h-8 rounded-lg px-2.5 text-xs font-medium hover:bg-muted">{t("Go")}</button>
           </form>
           <div className="ml-auto flex rounded-xl bg-muted p-0.5 text-xs">
             {SPANS.map((s) => (
-              <Link key={s.n} href={link({ days: s.n })} className={cn("rounded-lg px-3 py-1.5 font-medium transition-colors", s.n === days ? "bg-card shadow-sm" : "text-muted-foreground hover:text-foreground")}>{s.label}</Link>
+              <Link key={s.n} href={link({ days: s.n })} className={cn("rounded-lg px-3 py-1.5 font-medium transition-colors", s.n === days ? "bg-card shadow-sm" : "text-muted-foreground hover:text-foreground")}>{t(s.label)}</Link>
             ))}
           </div>
         </div>
@@ -219,13 +230,17 @@ export default async function RoomCalendarPage({ searchParams }: PageProps<"/sta
         {/* At a glance */}
         <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 border-b border-border/70 px-4 py-2 text-xs">
           <span className="flex items-center gap-1.5"><span className={cn("size-2 rounded-full", fullNights.length ? "bg-rose-500" : "bg-emerald-500")} />
-            {fullNights.length ? <><strong>{fullNights.length}</strong> fully booked night{fullNights.length === 1 ? "" : "s"}: {fullNights.slice(0, 3).map((d) => formatBusinessDate(d)).join(", ")}{fullNights.length > 3 ? "…" : ""}</> : "Rooms free every night"}
+            {fullNights.length ? (() => {
+              const vars = { n: fullNights.length, dates: `${fullNights.slice(0, 3).map((d) => t.date(d)).join(", ")}${fullNights.length > 3 ? "…" : ""}` };
+              const b = (c: React.ReactNode) => <strong>{c}</strong>;
+              return fullNights.length === 1 ? t.rich("<b>{n}</b> fully booked night: {dates}", { b }, vars) : t.rich("<b>{n}</b> fully booked nights: {dates}", { b }, vars);
+            })() : t("Rooms free every night")}
           </span>
-          <span className="text-muted-foreground"><strong className="text-foreground">{booked}%</strong> booked</span>
-          <span className="text-muted-foreground">Fewest free: <strong className={cn("text-foreground", fewest <= 3 && "text-amber-600 dark:text-amber-400")}>{fewest}</strong> on {formatBusinessDate(dates[freePerNight.indexOf(fewest)])}</span>
-          {clashes > 0 && <span className="flex items-center gap-1 font-medium text-rose-600 dark:text-rose-400"><TriangleAlert className="size-3.5" />{clashes} room{clashes === 1 ? "" : "s"} with two guests at once — sort out</span>}
+          <span className="text-muted-foreground">{t.rich("<b>{pct}%</b> booked", { b: (c) => <strong className="text-foreground">{c}</strong> }, { pct: booked })}</span>
+          <span className="text-muted-foreground">{t.rich("Fewest free: <b>{n}</b> on {date}", { b: (c) => <strong className={cn("text-foreground", fewest <= 3 && "text-amber-600 dark:text-amber-400")}>{c}</strong> }, { n: fewest, date: t.date(dates[freePerNight.indexOf(fewest)]) })}</span>
+          {clashes > 0 && <span className="flex items-center gap-1 font-medium text-rose-600 dark:text-rose-400"><TriangleAlert className="size-3.5" />{t.plural(clashes, "{n} room with two guests at once — sort out", "{n} rooms with two guests at once — sort out")}</span>}
           <span className="ml-auto hidden flex-wrap gap-3 text-muted-foreground lg:flex">
-            {(Object.keys(BAR) as Tone[]).map((k) => <span key={k} className="inline-flex items-center gap-1.5"><span className={cn("size-2 rounded-full", BAR[k].dot)} />{BAR[k].label}</span>)}
+            {(Object.keys(BAR) as Tone[]).map((k) => <span key={k} className="inline-flex items-center gap-1.5"><span className={cn("size-2 rounded-full", BAR[k].dot)} />{t(BAR[k].label)}</span>)}
           </span>
         </div>
 
@@ -246,7 +261,7 @@ export default async function RoomCalendarPage({ searchParams }: PageProps<"/sta
                 const weekend = ["Sat", "Sun"].includes(wd(d));
                 return (
                   <div key={d} style={{ gridColumn: dayCols(i) }} className="flex flex-col items-center gap-0.5 py-1.5">
-                    <span className={cn("text-[10px] font-medium uppercase", weekend ? "text-amber-600/80 dark:text-amber-400/80" : "text-muted-foreground")}>{days > 14 ? wd(d)[0] : wd(d)}</span>
+                    <span className={cn("text-[10px] font-medium uppercase", weekend ? "text-amber-600/80 dark:text-amber-400/80" : "text-muted-foreground")}>{dayName(d, days > 14)}</span>
                     <span className={cn("grid size-7 place-items-center rounded-full text-[13px] font-semibold tabular-nums", isToday && "bg-[oklch(0.75_0.13_80)] text-black")}>{Number(d.slice(8))}</span>
                   </div>
                 );
@@ -254,13 +269,13 @@ export default async function RoomCalendarPage({ searchParams }: PageProps<"/sta
             </div>
             {/* Free rooms per night */}
             <div className="grid items-center border-b border-border/70 pb-2" style={grid}>
-              <div className="sticky left-0 z-30 bg-card pl-3 text-[11px] font-medium text-muted-foreground">Rooms free</div>
+              <div className="sticky left-0 z-30 bg-card pl-3 text-[11px] font-medium text-muted-foreground">{t("Rooms free")}</div>
               {freePerNight.map((f, i) => {
                 const pct = rooms.length ? (rooms.length - f) / rooms.length : 0;
                 return (
-                  <div key={i} style={{ gridColumn: dayCols(i) }} className="px-0.5" title={`${f} of ${rooms.length} rooms free on ${formatBusinessDate(dates[i])}`}>
+                  <div key={i} style={{ gridColumn: dayCols(i) }} className="px-0.5" title={t("{free} of {total} rooms free on {date}", { free: f, total: rooms.length, date: t.date(dates[i]) })}>
                     {f === 0 ? (
-                      <span className="block rounded-md bg-rose-500 py-0.5 text-center text-[10px] font-bold uppercase text-white">Full</span>
+                      <span className="block rounded-md bg-rose-500 py-0.5 text-center text-[10px] font-bold uppercase text-white">{t("Full")}</span>
                     ) : (
                       <div className="flex flex-col items-center gap-1">
                         <span className={cn("text-[11px] font-semibold tabular-nums", f <= 3 ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400")}>{f}</span>
@@ -275,7 +290,7 @@ export default async function RoomCalendarPage({ searchParams }: PageProps<"/sta
             {groups.map((g) => (
               <div key={g.name}>
                 <div className="grid" style={grid}>
-                  <div className="sticky left-0 z-30 col-span-1 bg-card px-3 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{g.name}</div>
+                  <div className="sticky left-0 z-30 col-span-1 bg-card px-3 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{t(g.name)}</div>
                   <div style={{ gridColumn: `2 / span ${days * 2}` }} className="mb-1 mt-4 border-t border-dashed border-border/70" />
                 </div>
                 {g.rooms.map((r) => {
@@ -285,13 +300,13 @@ export default async function RoomCalendarPage({ searchParams }: PageProps<"/sta
                     <div key={r.id} className="group/row grid rounded-lg hover:bg-muted/40" style={{ ...grid, gridTemplateRows: `repeat(${n}, 2.5rem)` }}>
                       <div className="sticky left-0 z-20 flex items-center gap-2 bg-card pl-3 pr-2 group-hover/row:bg-muted" style={{ gridRow: rows, gridColumn: 1 }}>
                         <span className="text-sm font-semibold tabular-nums">{r.number}</span>
-                        {n > 1 && <span className="inline-flex items-center gap-0.5 rounded-full bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-rose-600 dark:text-rose-400" title="Two stays on the same night — an overdue guest is still in the room"><TriangleAlert className="size-3" />Clash</span>}
+                        {n > 1 && <span className="inline-flex items-center gap-0.5 rounded-full bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-rose-600 dark:text-rose-400" title={t("Two stays on the same night — an overdue guest is still in the room")}><TriangleAlert className="size-3" />{t("Clash")}</span>}
                       </div>
                       {dates.map((d, i) => {
                         const cell = cn("border-l border-border/40", i === todayIdx && "bg-[oklch(0.75_0.13_80)]/[0.07]");
                         const style = { gridRow: rows, gridColumn: dayCols(i) };
                         return canBook && !taken.get(r.id)![i] && d >= today ? (
-                          <Link key={d} href={`/staff/reservations/new?room=${r.id}&from=${d}`} style={style} title={`Book room ${r.number} from ${formatBusinessDate(d)}`}
+                          <Link key={d} href={`/staff/reservations/new?room=${r.id}&from=${d}`} style={style} title={t("Book room {room} from {date}", { room: r.number, date: t.date(d) })}
                             className={cn(cell, "group/cell grid place-items-center hover:bg-primary/10")}>
                             <CalendarPlus className="size-3.5 text-primary opacity-0 transition-opacity group-hover/cell:opacity-100" />
                           </Link>
@@ -309,12 +324,12 @@ export default async function RoomCalendarPage({ searchParams }: PageProps<"/sta
                             {wide && b.tone !== "BLOCK" && <span className="grid size-5 shrink-0 place-items-center rounded-full bg-white/70 text-[9px] font-bold text-foreground/80 dark:bg-black/25 dark:text-white/85">{initials(b.title)}</span>}
                             <span className="min-w-0 leading-tight">
                               <span className="block truncate text-[11px] font-semibold">{b.title}</span>
-                              {span >= 4 && <span className="block truncate text-[10px] opacity-70">{b.nights ? `${b.nights} night${b.nights === 1 ? "" : "s"} · ` : ""}{b.sub}</span>}
+                              {span >= 4 && <span className="block truncate text-[10px] opacity-70">{b.nights ? `${t.plural(b.nights, "{n} night", "{n} nights")} · ` : ""}{b.sub}</span>}
                             </span>
                           </>
                         );
                         const style = { gridRow: b.lane + 1, gridColumn: `${startLine} / ${endLine}` };
-                        const title = `${b.title} · ${BAR[b.tone].label} · ${b.sub}`;
+                        const title = `${b.title} · ${t(BAR[b.tone].label)} · ${b.sub}`;
                         return b.info
                           ? <BookingBar key={b.key} className={cls} style={style} title={title} info={b.info}>{inner}</BookingBar>
                           : <div key={b.key} className={cls} style={style} title={title}>{inner}</div>;
@@ -327,9 +342,9 @@ export default async function RoomCalendarPage({ searchParams }: PageProps<"/sta
           </div>
         </div>
         <div className="flex flex-wrap gap-x-4 gap-y-1.5 border-t border-border/70 px-4 py-2.5 text-[11px] text-muted-foreground lg:hidden">
-          {(Object.keys(BAR) as Tone[]).map((k) => <span key={k} className="inline-flex items-center gap-1.5"><span className={cn("size-2 rounded-full", BAR[k].dot)} />{BAR[k].label}</span>)}
+          {(Object.keys(BAR) as Tone[]).map((k) => <span key={k} className="inline-flex items-center gap-1.5"><span className={cn("size-2 rounded-full", BAR[k].dot)} />{t(BAR[k].label)}</span>)}
         </div>
-        <p className="border-t border-border/70 px-4 py-2 text-[11px] text-muted-foreground">Stays run from the afternoon they arrive to the morning they leave. Tap a booking for its card{canBook ? "; tap an empty night to book that room" : ""}.</p>
+        <p className="border-t border-border/70 px-4 py-2 text-[11px] text-muted-foreground">{canBook ? t("Stays run from the afternoon they arrive to the morning they leave. Tap a booking for its card; tap an empty night to book that room.") : t("Stays run from the afternoon they arrive to the morning they leave. Tap a booking for its card.")}</p>
       </section>
     </div>
   );

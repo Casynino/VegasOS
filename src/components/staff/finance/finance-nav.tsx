@@ -1,47 +1,50 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { addDays, isBusinessDate, presetRange, type BusinessDate, type PeriodPreset } from "@/lib/time/business-date";
-import { formatBusinessDate, formatDateRange } from "@/lib/format";
+import { getT } from "@/i18n/server";
+import { msg } from "@/i18n/msg";
+import { englishT, type T } from "@/i18n/translate";
 
 const TABS = [
-  { href: "/staff/finance", label: "Overview" },
-  { href: "/staff/finance/accounts", label: "Accounts" },
-  { href: "/staff/finance/ledger", label: "General ledger" },
-  { href: "/staff/finance/receivables", label: "Who owes us" },
-  { href: "/staff/finance/online", label: "Online payments" },
-  { href: "/staff/finance/rooms", label: "Room performance" },
-  { href: "/staff/finance/staff", label: "Staff activity" },
-  { href: "/staff/finance/history", label: "Edit history" },
-  { href: "/staff/expenses", label: "Expenses" },
-  { href: "/staff/payments", label: "Income" },
-  { href: "/staff/invoices", label: "Invoices" },
-  { href: "/staff/corporate", label: "Companies" },
-  { href: "/staff/reports/daily", label: "Daily reports" },
+  { href: "/staff/finance", label: msg("Overview") },
+  { href: "/staff/finance/accounts", label: msg("Accounts") },
+  { href: "/staff/finance/ledger", label: msg("General ledger") },
+  { href: "/staff/finance/receivables", label: msg("Who owes us") },
+  { href: "/staff/finance/online", label: msg("Online payments") },
+  { href: "/staff/finance/rooms", label: msg("Room performance") },
+  { href: "/staff/finance/staff", label: msg("Staff activity") },
+  { href: "/staff/finance/history", label: msg("Edit history") },
+  { href: "/staff/expenses", label: msg("Expenses") },
+  { href: "/staff/payments", label: msg("Income") },
+  { href: "/staff/invoices", label: msg("Invoices") },
+  { href: "/staff/corporate", label: msg("Companies") },
+  { href: "/staff/reports/daily", label: msg("Daily reports") },
 ] as const;
 
 /** What front-desk staff (ledger access, no full finance) can open — Accounts first. */
 const LIMITED_TABS: { href: string; label: string }[] = [
-  { href: "/staff/finance/accounts", label: "Accounts" }, { href: "/staff/finance/ledger", label: "General ledger" },
-  { href: "/staff/expenses", label: "Expenses" }, { href: "/staff/payments", label: "Income" },
-  { href: "/staff/invoices", label: "Invoices" }, { href: "/staff/corporate", label: "Companies" },
+  { href: "/staff/finance/accounts", label: msg("Accounts") }, { href: "/staff/finance/ledger", label: msg("General ledger") },
+  { href: "/staff/expenses", label: msg("Expenses") }, { href: "/staff/payments", label: msg("Income") },
+  { href: "/staff/invoices", label: msg("Invoices") }, { href: "/staff/corporate", label: msg("Companies") },
 ];
 
 /** Tabs across every finance page (like one finance app) — always first on the page, in the same place. */
-export function FinanceTabs({ active, limited, actions }: {
+export async function FinanceTabs({ active, limited, actions }: {
   active: string; /** Staff with ledger access only: just the pages they can open. */ limited?: boolean;
   /** The page's own buttons (New invoice, Export…), on the right of the bar — the bar is the page's title. */
   actions?: React.ReactNode;
 }) {
+  const t = await getT();
   const tabs = limited ? LIMITED_TABS : TABS;
   const bar = (
-    <nav aria-label="Finance" className="-mx-1 min-w-0 flex-1 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none]">
+    <nav aria-label={t("Finance")} className="-mx-1 min-w-0 flex-1 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none]">
       {/* As wide as the cards below; the tabs share the width (and scroll on a phone) */}
       <div className="flex w-full min-w-max items-center gap-0.5 rounded-2xl border border-border/70 bg-card p-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-        {tabs.map((t) => (
-          <Link key={t.href} href={t.href} aria-current={active === t.href ? "page" : undefined}
+        {tabs.map((tab) => (
+          <Link key={tab.href} href={tab.href} aria-current={active === tab.href ? "page" : undefined}
             className={cn("flex-1 rounded-xl px-3 py-1.5 text-center text-[13px] font-medium whitespace-nowrap transition-colors",
-              active === t.href ? "bg-foreground text-background shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground")}>
-            {t.label}
+              active === tab.href ? "bg-foreground text-background shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground")}>
+            {t(tab.label)}
           </Link>
         ))}
       </div>
@@ -52,8 +55,8 @@ export function FinanceTabs({ active, limited, actions }: {
 }
 
 export const PERIODS: { key: PeriodPreset | "custom"; label: string }[] = [
-  { key: "today", label: "Today" }, { key: "yesterday", label: "Yesterday" }, { key: "week", label: "This week" },
-  { key: "month", label: "This month" }, { key: "year", label: "This year" },
+  { key: "today", label: msg("Today") }, { key: "yesterday", label: msg("Yesterday") }, { key: "week", label: msg("This week") },
+  { key: "month", label: msg("This month") }, { key: "year", label: msg("This year") },
 ];
 
 /** "All time": every hotel day up to today (only where a page offers it). */
@@ -77,28 +80,30 @@ export function readPeriod(sp: Record<string, string | string[] | undefined>, to
   return { key, ...presetRange(key, today) };
 }
 
-export function periodLabel(r: { key?: string; from: BusinessDate; to: BusinessDate }) {
-  if (r.key === "all") return "All time";
-  return r.from === r.to ? formatBusinessDate(r.from, true) : formatDateRange(r.from, r.to);
+/** The period in words — in the reader's language when their `t` is given (English otherwise). */
+export function periodLabel(r: { key?: string; from: BusinessDate; to: BusinessDate }, t: T = englishT) {
+  if (r.key === "all") return t("All time");
+  return r.from === r.to ? t.date(r.from, true) : t.dateRange(r.from, r.to);
 }
 
 /** Period buttons + custom dates. `keep` = other query params to preserve; `allTime` adds "All time"; `dayOnly`: one day at a time (Today, Yesterday or a date). */
-export function PeriodPicker({ current, from, to, keep = {}, allTime, dayOnly }: { current: string; from: BusinessDate; to: BusinessDate; keep?: Record<string, string>; allTime?: boolean; dayOnly?: boolean }) {
+export async function PeriodPicker({ current, from, to, keep = {}, allTime, dayOnly }: { current: string; from: BusinessDate; to: BusinessDate; keep?: Record<string, string>; allTime?: boolean; dayOnly?: boolean }) {
+  const t = await getT();
   const qs = (extra: Record<string, string>) => `?${new URLSearchParams({ ...keep, ...extra })}`;
-  const periods = dayOnly ? PERIODS.slice(0, 2) : allTime ? [...PERIODS, { key: "all", label: "All time" }] : PERIODS;
+  const periods = dayOnly ? PERIODS.slice(0, 2) : allTime ? [...PERIODS, { key: "all", label: msg("All time") }] : PERIODS;
   if (dayOnly) {
     return (
       <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto">
         <div className="flex gap-1 rounded-xl bg-muted p-1">
           {periods.map((p) => (
             <Link key={p.key} href={qs({ period: p.key })}
-              className={cn("rounded-lg px-3 py-1.5 text-xs font-medium", current === p.key ? "bg-card shadow-sm" : "text-muted-foreground hover:text-foreground")}>{p.label}</Link>
+              className={cn("rounded-lg px-3 py-1.5 text-xs font-medium", current === p.key ? "bg-card shadow-sm" : "text-muted-foreground hover:text-foreground")}>{t(p.label)}</Link>
           ))}
         </div>
         <form className="flex items-center gap-1.5 text-xs">
           {Object.entries(keep).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
-          <input type="date" name="day" defaultValue={to} aria-label="Day" className="h-9 rounded-lg border border-border bg-card px-2 sm:h-8" />
-          <button className="h-9 shrink-0 rounded-lg bg-foreground px-3 font-medium text-background sm:h-8">Show</button>
+          <input type="date" name="day" defaultValue={to} aria-label={t.ctx("date", "Day")} className="h-9 rounded-lg border border-border bg-card px-2 sm:h-8" />
+          <button className="h-9 shrink-0 rounded-lg bg-foreground px-3 font-medium text-background sm:h-8">{t("Show")}</button>
         </form>
       </div>
     );
@@ -110,16 +115,16 @@ export function PeriodPicker({ current, from, to, keep = {}, allTime, dayOnly }:
       <div className="flex w-max gap-1 rounded-xl bg-muted p-1">
         {periods.map((p) => (
           <Link key={p.key} href={qs({ period: p.key })}
-            className={cn("rounded-lg px-3 py-1.5 text-xs font-medium", current === p.key ? "bg-card shadow-sm" : "text-muted-foreground hover:text-foreground")}>{p.label}</Link>
+            className={cn("rounded-lg px-3 py-1.5 text-xs font-medium", current === p.key ? "bg-card shadow-sm" : "text-muted-foreground hover:text-foreground")}>{t(p.label)}</Link>
         ))}
       </div>
       </div>
       <form className="flex w-full min-w-0 items-center gap-1.5 text-xs sm:w-auto">
         {Object.entries(keep).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
-        <input type="date" name="from" defaultValue={current === "all" ? undefined : from} aria-label="From" className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-card px-2 sm:h-8 sm:flex-none" />
+        <input type="date" name="from" defaultValue={current === "all" ? undefined : from} aria-label={t.ctx("date", "From")} className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-card px-2 sm:h-8 sm:flex-none" />
         <span className="text-muted-foreground">→</span>
-        <input type="date" name="to" defaultValue={to} max={addDays(to, 3650)} aria-label="To" className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-card px-2 sm:h-8 sm:flex-none" />
-        <button className="h-9 shrink-0 rounded-lg bg-foreground px-3 font-medium text-background sm:h-8">Show</button>
+        <input type="date" name="to" defaultValue={to} max={addDays(to, 3650)} aria-label={t.ctx("date", "To")} className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-card px-2 sm:h-8 sm:flex-none" />
+        <button className="h-9 shrink-0 rounded-lg bg-foreground px-3 font-medium text-background sm:h-8">{t("Show")}</button>
       </form>
     </div>
   );

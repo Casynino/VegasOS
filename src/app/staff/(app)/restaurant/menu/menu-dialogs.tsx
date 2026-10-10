@@ -12,13 +12,16 @@ import { Label } from "@/components/ui/label";
 import { NativeCheckbox, NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { useT } from "@/i18n/client";
+import { TranslationFields, type TranslationForm } from "@/components/staff/translation-fields";
 import { moveMenuCategoryAction, saveMenuCategoryAction, saveMenuItemAction, setAvailableAction } from "../actions";
 
 type Cat = { id: string; name: string };
 export type EditableItem = { id: string; categoryId: string; name: string; description: string | null; price: number; subcategory: string | null; isAvailable: boolean; isActive: boolean; isFeatured: boolean; image: string | null };
 
 /** Add or edit a menu item — name, category, price, photo, available / on the menu. */
-export function MenuItemButton({ item, categories, defaultCategory }: { item?: EditableItem; categories: Cat[]; defaultCategory?: string }) {
+export function MenuItemButton({ item, categories, defaultCategory, zh }: { item?: EditableItem; categories: Cat[]; defaultCategory?: string; zh?: TranslationForm }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [file, setFile] = useState("");
   const router = useRouter();
@@ -26,41 +29,42 @@ export function MenuItemButton({ item, categories, defaultCategory }: { item?: E
   return (
     <>
       {item
-        ? <Button variant="outline" size="sm" className="h-8 gap-1 rounded-lg px-2.5 text-xs" onClick={() => setOpen(true)}><Pencil className="size-3.5" />Edit</Button>
-        : <Button variant="outline" size="sm" className="h-8 gap-1 rounded-lg px-2.5 text-xs" onClick={() => setOpen(true)}><Plus className="size-3.5" />Add item</Button>}
+        ? <Button variant="outline" size="sm" className="h-8 gap-1 rounded-lg px-2.5 text-xs" onClick={() => setOpen(true)}><Pencil className="size-3.5" />{t("Edit")}</Button>
+        : <Button variant="outline" size="sm" className="h-8 gap-1 rounded-lg px-2.5 text-xs" onClick={() => setOpen(true)}><Plus className="size-3.5" />{t("Add item")}</Button>}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-h-[92svh] overflow-y-auto sm:max-w-lg">
-          <DialogHeader icon={<UtensilsCrossed />} eyebrow="Menu" tone="gold">
-            <DialogTitle>{item ? `Edit ${item.name}` : "Add a menu item"}</DialogTitle>
-            <DialogDescription>Price changes apply to new orders only — orders already placed keep the price they were charged.</DialogDescription>
+          <DialogHeader icon={<UtensilsCrossed />} eyebrow={t("Menu")} tone="gold">
+            <DialogTitle>{item ? t("Edit {name}", { name: item.name }) : t("Add a menu item")}</DialogTitle>
+            <DialogDescription>{t("Price changes apply to new orders only — orders already placed keep the price they were charged.")}</DialogDescription>
           </DialogHeader>
           <ActionForm action={saveMenuItemAction} onSuccess={() => { setOpen(false); setFile(""); router.refresh(); }} className="space-y-3">
             {({ pending, fieldErrors: e }) => (
               <>
                 {item && <input type="hidden" name="id" value={item.id} />}
-                <div className="space-y-1.5"><Label htmlFor={`n-${key}`}>Name</Label><Input id={`n-${key}`} name="name" defaultValue={item?.name} required /><FieldError message={e?.name} /></div>
+                <div className="space-y-1.5"><Label htmlFor={`n-${key}`}>{t("Name")}</Label><Input id={`n-${key}`} name="name" defaultValue={item?.name} required /><FieldError message={e?.name} /></div>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1.5"><Label htmlFor={`c-${key}`}>Category</Label>
+                  <div className="space-y-1.5"><Label htmlFor={`c-${key}`}>{t("Category")}</Label>
                     <NativeSelect id={`c-${key}`} name="categoryId" defaultValue={item?.categoryId ?? defaultCategory ?? categories[0]?.id}>{categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</NativeSelect></div>
-                  <div className="space-y-1.5"><Label htmlFor={`p-${key}`}>Price (TZS)</Label>
+                  <div className="space-y-1.5"><Label htmlFor={`p-${key}`}>{t("Price (TZS)")}</Label>
                     <Input id={`p-${key}`} name="price" type="number" inputMode="numeric" min={1} step={500} defaultValue={item?.price} className="text-base font-semibold tabular-nums" required /><FieldError message={e?.price} /></div>
                 </div>
-                <div className="space-y-1.5"><Label htmlFor={`d-${key}`}>Short description</Label><Textarea id={`d-${key}`} name="description" rows={2} defaultValue={item?.description ?? ""} placeholder="What makes it good — shown on the website menu" /></div>
-                <div className="space-y-1.5"><Label htmlFor={`s-${key}`}>Sub-group (optional)</Label><Input id={`s-${key}`} name="subcategory" defaultValue={item?.subcategory ?? ""} placeholder="e.g. Red wine, Vodka, Vegetarian" /></div>
+                <div className="space-y-1.5"><Label htmlFor={`d-${key}`}>{t("Short description")}</Label><Textarea id={`d-${key}`} name="description" rows={2} defaultValue={item?.description ?? ""} placeholder={t("What makes it good — shown on the website menu")} /></div>
+                <div className="space-y-1.5"><Label htmlFor={`s-${key}`}>{t("Sub-group (optional)")}</Label><Input id={`s-${key}`} name="subcategory" defaultValue={item?.subcategory ?? ""} placeholder={t("e.g. Red wine, Vodka, Vegetarian")} /></div>
+                <TranslationFields idPrefix={`mi-${key}`} form={zh} fields={[{ name: "name", label: t("Name") }, { name: "description", label: t("Short description"), multiline: true }]} />
                 <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-dashed border-border p-3 text-sm hover:bg-muted/40">
                   {item?.image && !file
                     // eslint-disable-next-line @next/next/no-img-element
                     ? <img src={item.image} alt="" className="size-14 rounded-xl object-cover" />
                     : <span className="grid size-14 place-items-center rounded-xl bg-muted"><ImagePlus className="size-5 text-muted-foreground" /></span>}
-                  <span className="min-w-0"><span className="block font-medium">{item?.image ? "Change photo" : "Add a photo"}</span><span className="block truncate text-xs text-muted-foreground">{file || "JPG, PNG or WebP · up to 8 MB"}</span></span>
+                  <span className="min-w-0"><span className="block font-medium">{item?.image ? t("Change photo") : t("Add a photo")}</span><span className="block truncate text-xs text-muted-foreground">{file || t("JPG, PNG or WebP · up to 8 MB")}</span></span>
                   <input name="image" type="file" accept="image/jpeg,image/png,image/webp,image/avif" className="sr-only" onChange={(ev) => setFile(ev.target.files?.[0]?.name ?? "")} />
                 </label>
                 <div className="space-y-2 rounded-2xl border border-border/70 p-3">
-                  <NativeCheckbox name="isAvailable" defaultChecked={item?.isAvailable ?? true} label={<><strong>Available</strong> — untick when sold out; it stays on the menu as not available</>} />
-                  <NativeCheckbox name="isActive" defaultChecked={item?.isActive ?? true} label={<><strong>On the menu</strong> — untick to hide it everywhere</>} />
-                  <NativeCheckbox name="isFeatured" defaultChecked={item?.isFeatured ?? false} label={<><strong>Featured</strong> — shown first under &ldquo;Recommended&rdquo; when customers order</>} />
+                  <NativeCheckbox name="isAvailable" defaultChecked={item?.isAvailable ?? true} label={t.rich("<b>Available</b> — untick when sold out; it stays on the menu as not available", { b: (c) => <strong>{c}</strong> })} />
+                  <NativeCheckbox name="isActive" defaultChecked={item?.isActive ?? true} label={t.rich("<b>On the menu</b> — untick to hide it everywhere", { b: (c) => <strong>{c}</strong> })} />
+                  <NativeCheckbox name="isFeatured" defaultChecked={item?.isFeatured ?? false} label={t.rich("<b>Featured</b> — shown first under “Recommended” when customers order", { b: (c) => <strong>{c}</strong> })} />
                 </div>
-                <Button type="submit" className="w-full" disabled={pending}>{pending && <Loader2 className="animate-spin" />}{item ? "Save" : "Add to the menu"}</Button>
+                <Button type="submit" className="w-full" disabled={pending}>{pending && <Loader2 className="animate-spin" />}{item ? t("Save") : t("Add to the menu")}</Button>
               </>
             )}
           </ActionForm>
@@ -72,6 +76,7 @@ export function MenuItemButton({ item, categories, defaultCategory }: { item?: E
 
 /** Available / sold out, in one tap. */
 export function AvailableToggle({ id, isAvailable }: { id: string; isAvailable: boolean }) {
+  const t = useT();
   const [pending, start] = useTransition();
   const router = useRouter();
   return (
@@ -79,35 +84,37 @@ export function AvailableToggle({ id, isAvailable }: { id: string; isAvailable: 
       const res = await setAvailableAction({ id, isAvailable: !isAvailable });
       if (res.ok) router.refresh(); else toast.error(res.error);
     })} className={cn("rounded-full px-2.5 py-1 text-[11px] font-semibold transition", isAvailable ? "bg-emerald-500/12 text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300" : "bg-rose-500/12 text-rose-700 hover:bg-rose-500/20 dark:text-rose-300")}>
-      {pending ? "…" : isAvailable ? "Available" : "Sold out"}
+      {pending ? "…" : isAvailable ? t("Available") : t("Sold out")}
     </button>
   );
 }
 
-export function CategoryButton({ category }: { category?: { id: string; name: string; type: string; revenueKind: string; description: string | null; isActive: boolean } }) {
+export function CategoryButton({ category, zh }: { category?: { id: string; name: string; type: string; revenueKind: string; description: string | null; isActive: boolean }; zh?: TranslationForm }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const key = category?.id ?? "new";
   return (
     <>
       {category
-        ? <Button variant="ghost" size="sm" className="h-8 gap-1 rounded-lg px-2 text-xs" onClick={() => setOpen(true)}><Pencil className="size-3.5" />Edit</Button>
-        : <Button variant="outline" onClick={() => setOpen(true)}><Plus />Category</Button>}
+        ? <Button variant="ghost" size="sm" className="h-8 gap-1 rounded-lg px-2 text-xs" onClick={() => setOpen(true)}><Pencil className="size-3.5" />{t("Edit")}</Button>
+        : <Button variant="outline" onClick={() => setOpen(true)}><Plus />{t("Category")}</Button>}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader icon={<Layers />} eyebrow="Menu" tone="gold"><DialogTitle>{category ? `Edit ${category.name}` : "Add a category"}</DialogTitle><DialogDescription>Categories group the menu on the website and on the order screen.</DialogDescription></DialogHeader>
+          <DialogHeader icon={<Layers />} eyebrow={t("Menu")} tone="gold"><DialogTitle>{category ? t("Edit {name}", { name: category.name }) : t("Add a category")}</DialogTitle><DialogDescription>{t("Categories group the menu on the website and on the order screen.")}</DialogDescription></DialogHeader>
           <ActionForm action={saveMenuCategoryAction} onSuccess={() => { setOpen(false); router.refresh(); }} className="space-y-3">
             {({ pending, fieldErrors: e }) => (
               <>
                 {category && <input type="hidden" name="id" value={category.id} />}
-                <div className="space-y-1.5"><Label htmlFor={`cn-${key}`}>Name</Label><Input id={`cn-${key}`} name="name" defaultValue={category?.name} required /><FieldError message={e?.name} /></div>
+                <div className="space-y-1.5"><Label htmlFor={`cn-${key}`}>{t("Name")}</Label><Input id={`cn-${key}`} name="name" defaultValue={category?.name} required /><FieldError message={e?.name} /></div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5"><Label htmlFor={`ct-${key}`}>Food or drink</Label><NativeSelect id={`ct-${key}`} name="type" defaultValue={category?.type ?? "FOOD"}><option value="FOOD">Food</option><option value="DRINK">Drink</option></NativeSelect></div>
-                  <div className="space-y-1.5"><Label htmlFor={`ck-${key}`}>Counts as</Label><NativeSelect id={`ck-${key}`} name="revenueKind" defaultValue={category?.revenueKind ?? "RESTAURANT"}><option value="RESTAURANT">Restaurant income</option><option value="BAR">Bar income</option></NativeSelect></div>
+                  <div className="space-y-1.5"><Label htmlFor={`ct-${key}`}>{t("Food or drink")}</Label><NativeSelect id={`ct-${key}`} name="type" defaultValue={category?.type ?? "FOOD"}><option value="FOOD">{t("Food")}</option><option value="DRINK">{t("Drink")}</option></NativeSelect></div>
+                  <div className="space-y-1.5"><Label htmlFor={`ck-${key}`}>{t("Counts as")}</Label><NativeSelect id={`ck-${key}`} name="revenueKind" defaultValue={category?.revenueKind ?? "RESTAURANT"}><option value="RESTAURANT">{t("Restaurant income")}</option><option value="BAR">{t("Bar income")}</option></NativeSelect></div>
                 </div>
-                <div className="space-y-1.5"><Label htmlFor={`cd-${key}`}>Short line for the website</Label><Input id={`cd-${key}`} name="description" defaultValue={category?.description ?? ""} /></div>
-                <NativeCheckbox name="isActive" defaultChecked={category?.isActive ?? true} label="Show this category" />
-                <Button type="submit" className="w-full" disabled={pending}>{pending && <Loader2 className="animate-spin" />}Save</Button>
+                <div className="space-y-1.5"><Label htmlFor={`cd-${key}`}>{t("Short line for the website")}</Label><Input id={`cd-${key}`} name="description" defaultValue={category?.description ?? ""} /></div>
+                <TranslationFields idPrefix={`mc-${key}`} form={zh} fields={[{ name: "name", label: t("Name") }, { name: "description", label: t("Short line for the website") }]} />
+                <NativeCheckbox name="isActive" defaultChecked={category?.isActive ?? true} label={t("Show this category")} />
+                <Button type="submit" className="w-full" disabled={pending}>{pending && <Loader2 className="animate-spin" />}{t("Save")}</Button>
               </>
             )}
           </ActionForm>
@@ -118,13 +125,14 @@ export function CategoryButton({ category }: { category?: { id: string; name: st
 }
 
 export function MoveCategory({ id }: { id: string }) {
+  const t = useT();
   const [pending, start] = useTransition();
   const router = useRouter();
   const move = (dir: -1 | 1) => start(async () => { const res = await moveMenuCategoryAction({ id, dir }); if (res.ok) router.refresh(); else toast.error(res.error); });
   return (
     <span className="flex">
-      <button type="button" disabled={pending} onClick={() => move(-1)} aria-label="Move up" className="grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-muted"><ArrowUp className="size-3.5" /></button>
-      <button type="button" disabled={pending} onClick={() => move(1)} aria-label="Move down" className="grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-muted"><ArrowDown className="size-3.5" /></button>
+      <button type="button" disabled={pending} onClick={() => move(-1)} aria-label={t("Move up")} className="grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-muted"><ArrowUp className="size-3.5" /></button>
+      <button type="button" disabled={pending} onClick={() => move(1)} aria-label={t("Move down")} className="grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-muted"><ArrowDown className="size-3.5" /></button>
     </span>
   );
 }

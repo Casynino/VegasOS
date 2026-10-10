@@ -1,4 +1,5 @@
 import { Banknote, CreditCard, Landmark, Smartphone, Wallet, type LucideIcon } from "lucide-react";
+import { englishT, type T } from "@/i18n/translate";
 
 /** Icon + colour for a payment account by its type (cards, headers, lists). */
 const LOOK: Record<string, { icon: LucideIcon; card: string; tile: string; hero: string }> = {
@@ -14,15 +15,15 @@ export const accountLook = (kind: string) => LOOK[kind] ?? LOOK.OTHER;
 /** "015C799490700" → "015C 7994 9070 0" (easier to read out and compare). */
 export const spacedNumber = (n: string) => n.replace(/\s+/g, "").replace(/(.{4})(?=.)/g, "$1 ");
 
-/** "4 days ago", "24 hours ago", "just now". */
-export function ago(d: Date | null, now = new Date()) {
-  if (!d) return "no movement yet";
+/** "4 days ago", "24 hours ago", "just now" — in the reader's language when their `t` is given (English otherwise). */
+export function ago(d: Date | null, now = new Date(), t: T = englishT) {
+  if (!d) return t("no movement yet");
   const m = Math.max(0, Math.round((now.getTime() - d.getTime()) / 60_000));
-  if (m < 2) return "just now";
-  if (m < 60) return `${m} min ago`;
+  if (m < 2) return t("just now");
+  if (m < 60) return t("{m} min ago", { m });
   const h = Math.round(m / 60);
-  if (h < 48) return `${h} hour${h === 1 ? "" : "s"} ago`;
+  if (h < 48) return t.plural(h, "{n} hour ago", "{n} hours ago");
   const days = Math.round(h / 24);
-  if (days < 60) return `${days} days ago`;
-  return `${Math.round(days / 30)} months ago`;
+  if (days < 60) return t("{days} days ago", { days });
+  return t("{months} months ago", { months: Math.round(days / 30) });
 }

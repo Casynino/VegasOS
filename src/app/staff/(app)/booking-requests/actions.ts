@@ -12,6 +12,7 @@ import {
 import { isBusinessDate, zonedInstant, type BusinessDate } from "@/lib/time/business-date";
 import { getSettings } from "@/server/settings";
 import type { BookingRequestStatus } from "@/generated/prisma/enums";
+import { msg } from "@/i18n/msg";
 
 async function actor(user: CurrentUser) {
   const { ipAddress } = await requestMeta();
@@ -24,7 +25,7 @@ function refresh(id?: string) {
   for (const p of ["/admin/dashboard", "/manager/dashboard", "/reception/dashboard"]) revalidatePath(p);
 }
 
-const date = z.string().refine((v) => isBusinessDate(v), "Choose a valid date.");
+const date = z.string().refine((v) => isBusinessDate(v), msg("Choose a valid date."));
 
 export async function setRequestStatusAction(input: { id: string; to: BookingRequestStatus; note?: string }) {
   return runAction(async () => {
@@ -32,7 +33,7 @@ export async function setRequestStatusAction(input: { id: string; to: BookingReq
     await setRequestStatus(input.id, input.to, await actor(user), input.note ?? null);
     refresh(input.id);
     return null;
-  }, "Status updated.");
+  }, msg("Status updated."));
 }
 
 export async function logContactAction(_prev: unknown, formData: FormData): Promise<ActionResult<null>> {
@@ -40,7 +41,7 @@ export async function logContactAction(_prev: unknown, formData: FormData): Prom
     const user = await authorize("booking_requests.manage");
     const d = parseInput(z.object({
       id: z.string().min(1),
-      note: z.string().trim().min(2, "Write what was said or agreed.").max(1000),
+      note: z.string().trim().min(2, msg("Write what was said or agreed.")).max(1000),
       contactedAt: z.string().optional(),
     }), formData);
     // "2026-10-04T14:30" from the form is hotel time (never the server's own clock zone).
@@ -49,7 +50,7 @@ export async function logContactAction(_prev: unknown, formData: FormData): Prom
     await logContact(d.id, { note: d.note, contactedAt: at && !Number.isNaN(at.getTime()) ? at : null }, await actor(user));
     refresh(d.id);
     return null;
-  }, "Contact logged.");
+  }, msg("Contact logged."));
 }
 
 export async function assignRequestAction(input: { id: string; userId: string | null }) {
@@ -58,7 +59,7 @@ export async function assignRequestAction(input: { id: string; userId: string | 
     await assignRequest(input.id, input.userId, await actor(user));
     refresh(input.id);
     return null;
-  }, "Assignment updated.");
+  }, msg("Assignment updated."));
 }
 
 export async function relinkCustomerAction(input: { id: string; guestId: string }) {
@@ -67,7 +68,7 @@ export async function relinkCustomerAction(input: { id: string; guestId: string 
     await relinkCustomer(input.id, input.guestId === "NEW" ? "NEW" : input.guestId, await actor(user));
     refresh(input.id);
     return null;
-  }, "Customer updated.");
+  }, msg("Customer updated."));
 }
 
 /** Confirm & create reservation — the engine re-checks availability and price at this moment. */
@@ -79,7 +80,7 @@ export async function convertRequestAction(_prev: unknown, formData: FormData): 
       id: z.string().min(1),
       checkIn: date,
       checkOut: date,
-      roomTypeId: z.string().min(1, "Choose a room type."),
+      roomTypeId: z.string().min(1, msg("Choose a room type.")),
       roomId: z.string().optional(),
       roomCount: z.coerce.number().int().min(1).max(10),
       adults: z.coerce.number().int().min(1).max(40),
@@ -93,7 +94,7 @@ export async function convertRequestAction(_prev: unknown, formData: FormData): 
         try {
           return z.array(z.object({ menuItemId: z.string().min(1), quantity: z.number().int().min(1).max(99) })).max(40).parse(JSON.parse(v));
         } catch {
-          ctx.addIssue({ code: "custom", message: "The food & drinks list could not be read — pick them again." });
+          ctx.addIssue({ code: "custom", message: msg("The food & drinks list could not be read — pick them again.") });
           return z.NEVER;
         }
       }),
@@ -110,7 +111,7 @@ export async function convertRequestAction(_prev: unknown, formData: FormData): 
     // (The list then shows it under Converted, open: "Reservation made" with its link.)
     target = formData.get("stay") === "1" ? `/staff/booking-requests?status=converted&open=${d.id}` : `/staff/reservations/${reservation.id}`;
     return null;
-  }, "Reservation created.");
+  }, msg("Reservation created."));
   if (res.ok && target) redirect(target);
   return res;
 }
@@ -121,16 +122,16 @@ export async function logManualRequestAction(_prev: unknown, formData: FormData)
     const user = await authorize("booking_requests.manage");
     const d = parseInput(z.object({
       sourceCode: z.enum(["WHATSAPP", "PHONE", "INSTAGRAM", "DIRECT", "OTHER"]),
-      fullName: z.string().trim().min(2, "Enter the customer's name.").max(120),
-      phone: z.string().trim().min(7, "Enter a phone number.").max(30),
-      email: z.union([z.literal(""), z.email("Enter a valid email.")]).optional(),
+      fullName: z.string().trim().min(2, msg("Enter the customer's name.")).max(120),
+      phone: z.string().trim().min(7, msg("Enter a phone number.")).max(30),
+      email: z.union([z.literal(""), z.email(msg("Enter a valid email."))]).optional(),
       checkIn: date,
       checkOut: date,
-      typeSlug: z.string().min(1, "Choose a room type."),
+      typeSlug: z.string().min(1, msg("Choose a room type.")),
       rooms: z.coerce.number().int().min(1).max(10),
       adults: z.coerce.number().int().min(1).max(40),
       children: z.coerce.number().int().min(0).max(40),
-      expectedArrivalTime: z.union([z.literal(""), z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use HH:MM.")]).optional(),
+      expectedArrivalTime: z.union([z.literal(""), z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, msg("Use HH:MM."))]).optional(),
       specialRequests: z.string().trim().max(1000).optional(),
     }), formData);
     const { ipAddress } = await requestMeta();
@@ -142,5 +143,5 @@ export async function logManualRequestAction(_prev: unknown, formData: FormData)
     );
     refresh();
     return { id: r.id };
-  }, "Request logged.");
+  }, msg("Request logged."));
 }

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { AlertTriangle, ArrowRight, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useT } from "@/i18n/client";
 import { setHotelQrSettingsAction } from "./actions";
 
 export type QrSetupView = {
@@ -19,6 +20,7 @@ export type QrSetupView = {
  * them without changing them.
  */
 export function QrSwitches({ setup, canManage, canOpenFinance }: { setup: QrSetupView; canManage: boolean; canOpenFinance: boolean }) {
+  const t = useT();
   const router = useRouter();
   const [state, setState] = useState({ enabled: setup.bookingOn, payAtHotel: setup.payAtHotel });
   const [saving, setSaving] = useState<"enabled" | "payAtHotel" | null>(null);
@@ -34,52 +36,52 @@ export function QrSwitches({ setup, canManage, canOpenFinance }: { setup: QrSetu
       if (!res.ok) { setState(before); toast.error(res.error); return; }
       setState({ enabled: res.data.enabled, payAtHotel: res.data.payAtHotel });
       toast.success(key === "enabled"
-        ? (value ? "Booking from the QR is on." : "Booking from the QR is off — the QR still shows the hotel, and guests are asked to call reception.")
-        : (value ? "Guests may now book and pay later — the room is held only once it is paid." : "Pay later is off — guests pay online to book."));
+        ? (value ? t("Booking from the QR is on.") : t("Booking from the QR is off — the QR still shows the hotel, and guests are asked to call reception."))
+        : (value ? t("Guests may now book and pay later — the room is held only once it is paid.") : t("Pay later is off — guests pay online to book.")));
       router.refresh();
     });
   };
 
   // Said as it is (owner, 2026-10-05): paying is what reserves a room — a booking to pay later holds none.
-  const payAtHotelHint = "Guests may book now and pay later (online from their booking, or at the hotel). The room is not held until it is paid — whoever pays first gets it.";
+  const payAtHotelHint = t("Guests may book now and pay later (online from their booking, or at the hotel). The room is not held until it is paid — whoever pays first gets it.");
   const noWayToPay = state.enabled && !state.payAtHotel && !setup.payOnline;
 
   return (
     <div className="space-y-3">
       <ul className="divide-y divide-border/70 rounded-2xl border border-border/70">
         <li className="px-3.5 py-3">
-          <Toggle label="Booking from the QR" on={state.enabled} busy={saving === "enabled"} disabled={!canManage} onChange={(v) => flip("enabled", v)}
-            hint={state.enabled ? "Guests can book a room from any working QR." : "Off: the QR still shows the hotel and its rooms, but guests are asked to call reception to book."} />
+          <Toggle label={t("Booking from the QR")} on={state.enabled} busy={saving === "enabled"} disabled={!canManage} onChange={(v) => flip("enabled", v)}
+            hint={state.enabled ? t("Guests can book a room from any working QR.") : t("Off: the QR still shows the hotel and its rooms, but guests are asked to call reception to book.")} />
         </li>
         <li className="px-3.5 py-3">
-          <Toggle label="Pay later" on={state.payAtHotel} busy={saving === "payAtHotel"} disabled={!canManage} onChange={(v) => flip("payAtHotel", v)}
+          <Toggle label={t("Pay later")} on={state.payAtHotel} busy={saving === "payAtHotel"} disabled={!canManage} onChange={(v) => flip("payAtHotel", v)}
             hint={payAtHotelHint} />
         </li>
         <li className="flex items-start justify-between gap-3 px-3.5 py-3">
           <span className="min-w-0 leading-tight">
-            <span className="block text-sm font-medium">Pay online</span>
+            <span className="block text-sm font-medium">{t("Pay online")}</span>
             <span className="text-xs text-muted-foreground">
-              {!setup.ntzsConnected ? "NTZS is not connected yet."
-                : setup.onlinePaySwitchedOn ? `Secure payment by NTZS. The room is held ${setup.onlineHoldMinutes} minutes while the guest pays; the booking is confirmed only when NTZS confirms the money.`
-                  : "Switched off for room bookings in Online payments."}
+              {!setup.ntzsConnected ? t("NTZS is not connected yet.")
+                : setup.onlinePaySwitchedOn ? t("Secure payment by NTZS. The room is held {minutes} minutes while the guest pays; the booking is confirmed only when NTZS confirms the money.", { minutes: setup.onlineHoldMinutes })
+                  : t("Switched off for room bookings in Online payments.")}
             </span>
             {canOpenFinance && (
               <Link href="/staff/finance/online" className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-[oklch(0.55_0.11_75)] hover:underline dark:text-[oklch(0.84_0.11_82)]">
-                Change in Finance → Online payments<ArrowRight className="size-3" />
+                {t("Change in Finance → Online payments")}<ArrowRight className="size-3" />
               </Link>
             )}
           </span>
           <span className={cn("mt-0.5 inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold", setup.payOnline ? "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300" : "bg-muted text-muted-foreground")}>
-            <span className={cn("size-1.5 rounded-full", setup.payOnline ? "bg-emerald-500" : "bg-muted-foreground")} />{setup.payOnline ? "On" : "Off"}
+            <span className={cn("size-1.5 rounded-full", setup.payOnline ? "bg-emerald-500" : "bg-muted-foreground")} />{setup.payOnline ? t("On") : t("Off")}
           </span>
         </li>
       </ul>
       {noWayToPay && (
         <p className="flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
-          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />No way to pay is on — guests cannot finish a booking. Switch on Pay later, or online payment for room bookings.
+          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />{t("No way to pay is on — guests cannot finish a booking. Switch on Pay later, or online payment for room bookings.")}
         </p>
       )}
-      {!canManage && <p className="text-xs text-muted-foreground">Only the Admin changes these.</p>}
+      {!canManage && <p className="text-xs text-muted-foreground">{t("Only the Admin changes these.")}</p>}
     </div>
   );
 }

@@ -11,6 +11,7 @@ import {
   removeOccupant, updateGroup,
 } from "@/server/services/groups";
 import type { Actor } from "@/server/services/reservations";
+import { msg } from "@/i18n/msg";
 
 async function actor(user: CurrentUser): Promise<Actor> {
   const { ipAddress } = await requestMeta();
@@ -21,18 +22,18 @@ function refresh(groupId?: string) {
   if (groupId) revalidatePath(`/staff/groups/${groupId}`);
 }
 
-const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a date.");
+const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, msg("Choose a date."));
 const person = z.object({
   id: z.string().optional().nullable(),
   fullName: z.string().trim().max(120),
   phone: z.string().trim().max(30).optional(),
-  email: z.union([z.literal(""), z.string().trim().email("Enter a valid email.")]).optional(),
+  email: z.union([z.literal(""), z.string().trim().email(msg("Enter a valid email."))]).optional(),
   idType: z.string().trim().max(40).optional(),
   idNumber: z.string().trim().max(60).optional(),
   nationality: z.string().trim().max(60).optional(),
 });
 const room = z.object({
-  roomTypeId: z.string().min(1, "Choose a room type."),
+  roomTypeId: z.string().min(1, msg("Choose a room type.")),
   roomId: z.string().optional().nullable(),
   guest: person.nullable().optional(),
   occupants: z.array(person).max(10).default([]),
@@ -42,7 +43,7 @@ const room = z.object({
   discountReason: z.string().trim().max(200).optional().nullable(),
   ownBill: z.boolean().optional(),
   menuItems: z.array(z.object({ menuItemId: z.string().min(1), quantity: z.number().int().min(1).max(99) })).max(60).optional().nullable(),
-  charges: z.array(z.object({ type: z.string().max(30), item: z.string().trim().min(1, "Name each extra.").max(120), qty: z.number().int().min(1).max(99), unitPrice: z.number().int().min(1, "Give each extra a price.") })).max(40).optional().nullable(),
+  charges: z.array(z.object({ type: z.string().max(30), item: z.string().trim().min(1, msg("Name each extra.")).max(120), qty: z.number().int().min(1).max(99), unitPrice: z.number().int().min(1, msg("Give each extra a price.")) })).max(40).optional().nullable(),
   /** This room's own dates (default: the group's). */
   arrivalDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
   departureDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
@@ -55,25 +56,25 @@ const Profile = z.object({
   taxId: z.string().trim().max(40).optional(),
   vrn: z.string().trim().max(40).optional(),
   registrationNo: z.string().trim().max(60).optional(),
-  billingEmail: z.union([z.literal(""), z.string().trim().email("Enter a valid invoice email.")]).optional(),
+  billingEmail: z.union([z.literal(""), z.string().trim().email(msg("Enter a valid invoice email."))]).optional(),
   billingNotes: z.string().trim().max(500).optional(),
 });
 
 const CreateSchema = z.object({
-  name: z.string().trim().min(2, "Give the group a name.").max(120),
+  name: z.string().trim().min(2, msg("Give the group a name.")).max(120),
   type: GROUP_TYPE,
   profile: Profile.optional(),
   corporateCustomerId: z.string().optional().nullable(),
-  contact: person.extend({ fullName: z.string().trim().min(2, "Enter the contact person.").max(120) }),
-  sourceCode: z.string().min(1, "Choose how they booked."),
+  contact: person.extend({ fullName: z.string().trim().min(2, msg("Enter the contact person.")).max(120) }),
+  sourceCode: z.string().min(1, msg("Choose how they booked.")),
   billing: z.enum(["COMBINED", "SEPARATE"]),
   paymentTermDays: z.coerce.number().int().min(0).max(180).nullable().optional(),
   notes: z.string().trim().max(1000).optional(),
   arrivalDate: date,
   departureDate: date,
-  rooms: z.array(room).min(1, "Add at least one room.").max(60),
+  rooms: z.array(room).min(1, msg("Add at least one room.")).max(60),
   specialRequests: z.string().trim().max(1000).optional(),
-  creditOverride: z.object({ reason: z.string().trim().min(3, "Say why the company may go over its limit.").max(300) }).nullable().optional(),
+  creditOverride: z.object({ reason: z.string().trim().min(3, msg("Say why the company may go over its limit.")).max(300) }).nullable().optional(),
 });
 
 export async function createGroupAction(input: z.input<typeof CreateSchema>) {
@@ -86,7 +87,7 @@ export async function createGroupAction(input: z.input<typeof CreateSchema>) {
     }, await actor(user));
     refresh(g.id);
     return { id: g.id, reference: g.reference };
-  }, "Group booked.");
+  }, msg("Group booked."));
 }
 
 export async function addGroupRoomAction(input: { groupId: string } & z.input<typeof room>) {
@@ -96,7 +97,7 @@ export async function addGroupRoomAction(input: { groupId: string } & z.input<ty
     const res = await addRoomToGroup(input.groupId, { ...r, guest: r.guest?.fullName ? clean(r.guest) : null, occupants: r.occupants.filter((o) => o.fullName).map(clean) }, await actor(user));
     refresh(input.groupId);
     return { reference: res.reference };
-  }, "Room added to the group.");
+  }, msg("Room added to the group."));
 }
 
 export async function groupCheckInAction(input: { groupId: string; reservationIds?: string[] }) {
@@ -112,7 +113,7 @@ export async function groupCheckOutAction(input: { groupId: string; reservationI
   return runAction(async () => {
     const user = await authorize("reservations.check_out");
     if (input.allowBalance && !user.permissions.has("reservations.checkout_override")) throw new AppError("Only a manager can let a room leave owing money.", "FORBIDDEN");
-    if (input.allowBalance && !input.overrideReason?.trim()) throw new AppError("Give the reason for letting them leave owing.", "VALIDATION", { overrideReason: "Required" });
+    if (input.allowBalance && !input.overrideReason?.trim()) throw new AppError("Give the reason for letting them leave owing.", "VALIDATION", { overrideReason: msg("Required") });
     const res = await checkOutGroup(input.groupId, await actor(user), input.reservationIds, {
       allowBalance: !!input.allowBalance, overrideReason: input.overrideReason?.trim() || null, earlyReason: input.earlyReason?.trim() || null,
     });
@@ -140,7 +141,7 @@ export async function groupPaymentAction(input: { groupId: string; amount: numbe
     refresh(input.groupId);
     revalidatePath("/staff/payments");
     return res;
-  }, "Payment recorded.");
+  }, msg("Payment recorded."));
 }
 
 export async function updateGroupAction(input: {
@@ -163,7 +164,7 @@ export async function updateGroupAction(input: {
     }, await actor(user));
     refresh(input.groupId);
     return null;
-  }, "Group updated.");
+  }, msg("Group updated."));
 }
 
 /** Everyone has left: make the final group invoice from every room's bill. */
@@ -173,7 +174,7 @@ export async function finalizeGroupAction(input: { groupId: string }) {
     const res = await finalizeGroup(input.groupId, await actor(user));
     refresh(input.groupId);
     return res;
-  }, "Group bill finalized — the final invoice is ready.");
+  }, msg("Group bill finalized — the final invoice is ready."));
 }
 
 export async function cancelGroupAction(input: { groupId: string; reason: string }) {
@@ -192,7 +193,7 @@ export async function addOccupantAction(input: { reservationId: string } & z.inp
     await addOccupant(input.reservationId, clean(p), await actor(user));
     revalidatePath(`/staff/reservations/${input.reservationId}`);
     return null;
-  }, "Guest added to the room.");
+  }, msg("Guest added to the room."));
 }
 
 export async function removeOccupantAction(input: { reservationId: string; guestId: string }) {
@@ -201,5 +202,5 @@ export async function removeOccupantAction(input: { reservationId: string; guest
     await removeOccupant(input.reservationId, input.guestId, await actor(user));
     revalidatePath(`/staff/reservations/${input.reservationId}`);
     return null;
-  }, "Guest removed from the room.");
+  }, msg("Guest removed from the room."));
 }

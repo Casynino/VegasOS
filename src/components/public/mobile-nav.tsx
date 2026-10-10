@@ -11,6 +11,9 @@ import { telHref, whatsappHref } from "./contact";
 import { MENU_NAV, isNavActive } from "./site-config";
 import { StaffLink } from "./staff-link";
 import { ThemeToggle } from "./theme-toggle";
+import { LanguageSwitch } from "@/components/i18n/language-switch";
+import { useT } from "@/i18n/client";
+import { msg } from "@/i18n/msg";
 
 const focus = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold";
 /** Small quiet links under Book your stay (call, WhatsApp, staff door): text with a small icon, no pills. */
@@ -37,6 +40,7 @@ export function MobileNav({
   whatsapp: string | null;
   className?: string;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   // Close when the route changes (e.g. browser Back while the menu is open).
@@ -66,7 +70,7 @@ export function MobileNav({
           <span className="h-px w-[18px] bg-current" />
           <span className="h-px w-3 bg-current transition-[width] duration-300 ease-pub group-hover:w-[18px] motion-reduce:transition-none" />
         </span>
-        <span className="sr-only">Open menu</span>
+        <span className="sr-only">{t("Open menu")}</span>
       </Dialog.Trigger>
 
       <Dialog.Portal>
@@ -77,7 +81,7 @@ export function MobileNav({
             "transition-[clip-path] duration-500 ease-pub [clip-path:inset(0)] data-[ending-style]:duration-300 data-[ending-style]:[clip-path:inset(0_0_100%_0)] data-[starting-style]:[clip-path:inset(0_0_100%_0)] motion-reduce:transition-none",
           )}
         >
-          <Dialog.Title className="sr-only">Menu</Dialog.Title>
+          <Dialog.Title className="sr-only">{t("Menu")}</Dialog.Title>
 
           <div className="mx-auto flex h-16 w-full max-w-[90rem] shrink-0 items-center justify-between gap-4 px-4 sm:px-8">
             <Link href="/" onClick={close} className={cn("flex items-center gap-2.5 rounded-sm", focus)}>
@@ -96,13 +100,13 @@ export function MobileNav({
               }
             >
               <X className="size-5" strokeWidth={1.6} aria-hidden="true" />
-              <span className="sr-only">Close menu</span>
+              <span className="sr-only">{t("Close menu")}</span>
             </Dialog.Close>
           </div>
 
           <div className="mx-auto grid w-full max-w-[90rem] flex-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]">
             <div className="flex min-w-0 flex-col px-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-2 sm:px-8 sm:pt-8">
-              <nav aria-label="Menu">
+              <nav aria-label={t("Menu")}>
                 <ul className="border-t border-white/10">
                   {MENU_NAV.map((item, i) => {
                     const active = isNavActive(item, pathname);
@@ -121,7 +125,7 @@ export function MobileNav({
                             focus,
                           )}
                         >
-                          {item.label}
+                          {t(item.label)}
                         </Link>
                         {item.sub && (
                           <span className="flex shrink-0 items-center">
@@ -136,7 +140,7 @@ export function MobileNav({
                                   focus,
                                 )}
                               >
-                                {s.label}
+                                {t(s.label)}
                               </Link>
                             ))}
                           </span>
@@ -154,7 +158,7 @@ export function MobileNav({
                 {/* Book now: plain gold words and an arrow — no box (owner, 2026-10-06). */}
                 <Link href="/book" onClick={close}
                   className="group inline-flex min-h-12 items-center gap-2.5 rounded-sm font-display text-[1.9rem] leading-none text-gold transition-colors duration-200 hover:text-[#f0d6a0] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-gold motion-reduce:transition-none">
-                  Book now
+                  {t("Book now")}
                   <ArrowRight className="size-5 transition-transform duration-200 group-hover:translate-x-1 motion-reduce:transition-none" strokeWidth={1.5} aria-hidden="true" />
                 </Link>
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-x-5">
@@ -162,13 +166,13 @@ export function MobileNav({
                     <div className="flex items-center gap-5">
                       {phone && (
                         <a href={telHref(phone)} className={quiet}>
-                          <Phone className="size-3.5 text-gold" strokeWidth={1.6} aria-hidden="true" /> Call
+                          <Phone className="size-3.5 text-gold" strokeWidth={1.6} aria-hidden="true" /> {t("Call")}
                         </a>
                       )}
                       {whatsapp && (
                         <a href={whatsappHref(whatsapp)} target="_blank" rel="noopener noreferrer" className={quiet}>
                           <MessageCircle className="size-3.5 text-gold" strokeWidth={1.6} aria-hidden="true" /> WhatsApp
-                          <span className="sr-only"> (opens in a new tab)</span>
+                          <span className="sr-only"> {t("(opens in a new tab)")}</span>
                         </a>
                       )}
                     </div>
@@ -176,12 +180,13 @@ export function MobileNav({
                   <StaffLink
                     withIcon
                     onClick={close}
-                    labels={{ signedIn: "Staff dashboard", signedOut: "Staff login" }}
+                    labels={{ signedIn: msg("Staff dashboard"), signedOut: msg("Staff login") }}
                     className={cn(quiet, "ml-auto")}
                   />
                 </div>
-                <div className="mt-2 border-t border-white/10 pt-3">
+                <div className="mt-2 flex items-center justify-between gap-4 border-t border-white/10 pt-2">
                   <ThemeToggle withLabel />
+                  <LanguageSwitch variant="text" className="-mr-1.5 text-[13px]" />
                 </div>
               </div>
             </div>

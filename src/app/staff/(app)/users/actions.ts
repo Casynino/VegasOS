@@ -9,14 +9,15 @@ import { AppError, isUniqueViolation, runAction, type ActionResult } from "@/ser
 import { parseInput } from "@/server/validation";
 import { isRestaurantDevice, PERMISSIONS } from "@/lib/permissions";
 import { numberWaitersTx } from "@/server/services/waiter-number";
+import { msg } from "@/i18n/msg";
 
 const CreateUserSchema = z.object({
-  fullName: z.string().trim().min(2, "Full name is required.").max(100),
-  email: z.string().trim().toLowerCase().email("Enter a valid email."),
+  fullName: z.string().trim().min(2, msg("Full name is required.")).max(100),
+  email: z.string().trim().toLowerCase().email(msg("Enter a valid email.")),
   // Not asked for the restaurant screen's own login.
   phone: z.string().trim().max(30).optional().transform((v) => v || null),
-  roleId: z.string().min(1, "Choose a role."),
-  password: z.string().min(1, "Set a temporary password."),
+  roleId: z.string().min(1, msg("Choose a role.")),
+  password: z.string().min(1, msg("Set a temporary password.")),
 });
 
 /** "Online · nTZS" — the system account that records what customers pay online; never a person's role. */
@@ -58,12 +59,12 @@ export async function createUserAction(_prev: unknown, formData: FormData): Prom
         });
       });
     } catch (e) {
-      if (isUniqueViolation(e)) throw new AppError("A staff account with this email already exists.", "CONFLICT", { email: "Already in use" });
+      if (isUniqueViolation(e)) throw new AppError("A staff account with this email already exists.", "CONFLICT", { email: msg("Already in use") });
       throw e;
     }
     revalidatePath("/staff/users");
     return null;
-  }, "Staff account created. They must change the temporary password at first sign-in.");
+  }, msg("Staff account created. They must change the temporary password at first sign-in."));
 }
 
 const UpdateUserSchema = z.object({
@@ -113,10 +114,10 @@ export async function updateUserAction(_prev: unknown, formData: FormData): Prom
     });
     revalidatePath("/staff/users");
     return null;
-  }, "Staff member updated.");
+  }, msg("Staff member updated."));
 }
 
-const ResetSchema = z.object({ userId: z.string().min(1), password: z.string().min(1, "Enter a temporary password.") });
+const ResetSchema = z.object({ userId: z.string().min(1), password: z.string().min(1, msg("Enter a temporary password.")) });
 
 export async function resetPasswordAction(_prev: unknown, formData: FormData): Promise<ActionResult<null>> {
   return runAction(async () => {
@@ -142,12 +143,12 @@ export async function resetPasswordAction(_prev: unknown, formData: FormData): P
       });
     });
     return null;
-  }, "Password reset. Share the temporary password with the staff member privately.");
+  }, msg("Password reset. Share the temporary password with the staff member privately."));
 }
 
 const PermissionToggleSchema = z.object({
   roleId: z.string().min(1),
-  permission: z.string().refine((p) => p in PERMISSIONS, "Unknown permission."),
+  permission: z.string().refine((p) => p in PERMISSIONS, msg("Unknown permission.")),
   granted: z.boolean(),
 });
 
@@ -199,5 +200,5 @@ export async function signOutScreenSessionAction(_prev: unknown, formData: FormD
     });
     revalidatePath("/staff/users");
     return null;
-  }, "That screen is signed out.");
+  }, msg("That screen is signed out."));
 }

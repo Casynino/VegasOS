@@ -11,16 +11,17 @@ import { normalizePhone } from "@/server/services/guests";
 import { AppError, runAction, type ActionResult } from "@/server/errors";
 import { parseInput } from "@/server/validation";
 import { rateLimit } from "@/server/rate-limit";
+import { msg } from "@/i18n/msg";
 
 const Schema = z
   .object({
     // Not asked the first time (they just signed in with the temporary one) — asked for every later change.
     currentPassword: z.string().optional().transform((v) => v || ""),
-    newPassword: z.string().min(1, "Enter a new password."),
+    newPassword: z.string().min(1, msg("Enter a new password.")),
     confirmPassword: z.string(),
   })
-  .refine((d) => d.newPassword === d.confirmPassword, { message: "Passwords do not match.", path: ["confirmPassword"] })
-  .refine((d) => !d.currentPassword || d.newPassword !== d.currentPassword, { message: "Choose a different password.", path: ["newPassword"] });
+  .refine((d) => d.newPassword === d.confirmPassword, { message: msg("Passwords do not match."), path: ["confirmPassword"] })
+  .refine((d) => !d.currentPassword || d.newPassword !== d.currentPassword, { message: msg("Choose a different password."), path: ["newPassword"] });
 
 export async function changePasswordAction(_prev: unknown, formData: FormData): Promise<ActionResult<null>> {
   const result = await runAction(async () => {
@@ -32,11 +33,11 @@ export async function changePasswordAction(_prev: unknown, formData: FormData): 
     const user = await db.user.findUniqueOrThrow({ where: { id: actor.id } });
     if (user.mustChangePassword) {
       // First sign-in: they just typed the temporary password — only a new, different one is asked.
-      if (await verifyPassword(user.passwordHash, input.newPassword)) throw new AppError("Choose a password different from the temporary one.", "VALIDATION", { newPassword: "Same" });
+      if (await verifyPassword(user.passwordHash, input.newPassword)) throw new AppError("Choose a password different from the temporary one.", "VALIDATION", { newPassword: msg("Same") });
     } else if (!input.currentPassword) {
-      throw new AppError("Enter your current password.", "VALIDATION", { currentPassword: "Required" });
+      throw new AppError("Enter your current password.", "VALIDATION", { currentPassword: msg("Required") });
     } else if (!(await verifyPassword(user.passwordHash, input.currentPassword))) {
-      throw new AppError("Current password is incorrect.", "VALIDATION", { currentPassword: "Incorrect" });
+      throw new AppError("Current password is incorrect.", "VALIDATION", { currentPassword: msg("Incorrect") });
     }
     const { ipAddress } = await requestMeta();
     await db.$transaction(async (tx) => {
@@ -52,14 +53,14 @@ export async function changePasswordAction(_prev: unknown, formData: FormData): 
       });
     });
     return null;
-  }, "Password changed.");
+  }, msg("Password changed."));
   if (result.ok && formData.get("first") === "1") redirect("/staff");
   return result;
 }
 
 const ProfileSchema = z.object({
-  fullName: z.string().trim().min(2, "Enter your full name.").max(80, "Name is too long."),
-  email: z.string().trim().toLowerCase().email("Enter a valid email address.").max(120),
+  fullName: z.string().trim().min(2, msg("Enter your full name.")).max(80, msg("Name is too long.")),
+  email: z.string().trim().toLowerCase().email(msg("Enter a valid email address.")).max(120),
   phone: z.string().trim().max(30).optional().transform((v) => v || undefined),
   currentPassword: z.string().optional(),
 });
@@ -71,17 +72,17 @@ export async function updateProfileAction(_prev: unknown, formData: FormData): P
     const input = parseInput(ProfileSchema, formData);
     const user = await db.user.findUniqueOrThrow({ where: { id: actor.id } });
     const phone = normalizePhone(input.phone);
-    if (phone && !/^\+?\d{9,15}$/.test(phone)) throw new AppError("Enter a valid phone number.", "VALIDATION", { phone: "Enter a valid phone number." });
+    if (phone && !/^\+?\d{9,15}$/.test(phone)) throw new AppError("Enter a valid phone number.", "VALIDATION", { phone: msg("Enter a valid phone number.") });
 
     const emailChanged = input.email !== user.email;
     if (emailChanged) {
       await rateLimit(`emailchange:${actor.id}`, 10, 15 * 60);
-      if (!input.currentPassword) throw new AppError("Enter your password to change your email.", "VALIDATION", { currentPassword: "Needed to change your email" });
+      if (!input.currentPassword) throw new AppError("Enter your password to change your email.", "VALIDATION", { currentPassword: msg("Needed to change your email") });
       if (!(await verifyPassword(user.passwordHash, input.currentPassword))) {
-        throw new AppError("Password is incorrect.", "VALIDATION", { currentPassword: "Incorrect" });
+        throw new AppError("Password is incorrect.", "VALIDATION", { currentPassword: msg("Incorrect") });
       }
       const taken = await db.user.findUnique({ where: { email: input.email } });
-      if (taken) throw new AppError("Another staff account already uses this email.", "VALIDATION", { email: "Already in use" });
+      if (taken) throw new AppError("Another staff account already uses this email.", "VALIDATION", { email: msg("Already in use") });
     }
 
     const changed = [
@@ -102,7 +103,7 @@ export async function updateProfileAction(_prev: unknown, formData: FormData): P
     });
     revalidatePath("/", "layout");
     return null;
-  }, "Profile saved.");
+  }, msg("Profile saved."));
 }
 
 /** Sign this account out everywhere except this browser. */
@@ -121,6 +122,6 @@ export async function signOutOtherDevicesAction(): Promise<ActionResult<null>> {
     });
     revalidatePath("/staff/account");
     return null;
-  }, "Other devices signed out.");
+  }, msg("Other devices signed out."));
 }
 

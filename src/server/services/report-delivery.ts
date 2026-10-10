@@ -4,9 +4,20 @@ import { isUniqueViolation } from "../errors";
 import { getSettings } from "../settings";
 import { sendMessage } from "./messaging";
 import type { NotificationDelivery } from "@/generated/prisma/client";
+import { DEFAULT_LOCALE, LOCALE_META, toLocale, type Locale } from "@/i18n/config";
 
 /** Who receives the boss's reports (Settings → Report recipients). */
-export interface Recipient { name?: string; phone: string; channel?: string; apiKeyRef?: string | null }
+export interface Recipient {
+  name?: string; phone: string; channel?: string; apiKeyRef?: string | null;
+  /** The language their reports come in (English when not set). */
+  lang?: Locale | null;
+}
+
+/** A report link that opens in the reader's language (?lang=zh — the report pages follow it). */
+export const withLang = (url: string, lang: Locale) => (lang === DEFAULT_LOCALE ? url : `${url}${url.includes("?") ? "&" : "?"}lang=${LOCALE_META[lang].segment}`);
+
+/** A recipient's language (English when not set or unknown). */
+export const recipientLang = (r: { lang?: string | null }): Locale => toLocale(r.lang) ?? DEFAULT_LOCALE;
 
 /** At most this many tries per recipient for one report (then only a person's "Send again" tries more). */
 export const MAX_ATTEMPTS = 6;
@@ -27,7 +38,13 @@ export async function deliverToRecipients(o: {
   /** The report the deliveries belong to. */
   link: { dailyReportId: string } | { shiftReportId: string } | { staffReportId: string };
   purpose: "DAILY_REPORT" | "SHIFT_REPORT" | "STAFF_REPORT";
+  /** The message in English (as kept with the report). */
   text: string;
+  /**
+   * The same message in another language — rendered from the same report, so the numbers are the same. Made once per
+   * language per send (only when a recipient reads that language); English recipients get `text`.
+   */
+  textFor?: (lang: Locale) => Promise<string> | string;
   /** When this version was made: a send before it was for an earlier version. */
   generatedAt: Date;
   deliveries: NotificationDelivery[];
@@ -41,6 +58,15 @@ export async function deliverToRecipients(o: {
   const settings = await getSettings();
   const recipients = (settings.reportRecipients as unknown as Recipient[]) ?? [];
   const results: { recipient: string; status: string; error?: string }[] = [];
+  const texts = new Map<Locale, Promise<string>>();
+  const textOf = (lang: Locale) => {
+    if (lang === DEFAULT_LOCALE || !o.textFor) return Promise.resolve(o.text);
+    if (!texts.has(lang)) {
+      // A message that cannot be written in their language still goes out (in English) — the report always reaches them.
+      texts.set(lang, Promise.resolve().then(() => o.textFor!(lang)).catch((e) => { console.error("[report-delivery] could not write the message in", lang, e); return o.text; }));
+    }
+    return texts.get(lang)!;
+  };
 
   for (const r of recipients) {
     const channel = r.channel ?? "WHATSAPP_CALLMEBOT";
@@ -71,7 +97,7 @@ export async function deliverToRecipients(o: {
     });
     if (!claimed.count) { results.push({ recipient: r.phone, status: "BUSY" }); continue; }
 
-    const outcome = await sendMessage({ channel, to: r.phone, text: o.text, apiKeyRef: r.apiKeyRef ?? null });
+    const outcome = await sendMessage({ channel, to: r.phone, text: await textOf(recipientLang(r)), apiKeyRef: r.apiKeyRef ?? null });
     await db.notificationDelivery.update({
       where: { id: delivery.id },
       data: {

@@ -2,6 +2,7 @@ import "server-only";
 import { db } from "../db";
 import { audit } from "../audit";
 import { AppError } from "../errors";
+import { msg } from "@/i18n/msg";
 import { resolveAccountTx } from "./payment-accounts";
 import { getSettingsTx, stayConfig } from "../settings";
 import { businessDateOf, toDbDate } from "@/lib/time/business-date";
@@ -20,14 +21,14 @@ export async function recordSale(
   actor: Actor,
 ) {
   if (!actor.userId) throw new AppError("Sign in required.", "UNAUTHENTICATED");
-  if (!Number.isInteger(input.amount) || input.amount <= 0) throw new AppError("Enter a positive whole amount.", "VALIDATION", { amount: "Invalid" });
+  if (!Number.isInteger(input.amount) || input.amount <= 0) throw new AppError("Enter a positive whole amount.", "VALIDATION", { amount: msg("Invalid") });
   return db.$transaction(async (tx) => {
     const [category, { account, method }, settings] = await Promise.all([
       tx.revenueCategory.findUnique({ where: { id: input.categoryId } }),
       resolveAccountTx(tx, { accountId: input.accountId, methodId: input.paymentMethodId }),
       getSettingsTx(tx),
     ]);
-    if (!category || !category.isActive) throw new AppError("Choose a sales category.", "VALIDATION", { categoryId: "Required" });
+    if (!category || !category.isActive) throw new AppError("Choose a sales category.", "VALIDATION", { categoryId: msg("Required") });
     const occurredAt = input.occurredAt ?? new Date();
     if (occurredAt.getTime() > Date.now() + 5 * 60_000) throw new AppError("Sale time cannot be in the future.");
     const sale = await tx.revenueTransaction.create({
@@ -65,7 +66,7 @@ export async function correctSaleAccount(input: { id: string; accountId: string;
 
 export async function voidSale(id: string, reason: string, actor: Actor) {
   if (!actor.permissions?.has("revenue.void")) throw new AppError("Only a manager can void sales.", "FORBIDDEN");
-  if (!reason.trim()) throw new AppError("Give a reason.", "VALIDATION", { reason: "Required" });
+  if (!reason.trim()) throw new AppError("Give a reason.", "VALIDATION", { reason: msg("Required") });
   return db.$transaction(async (tx) => {
     const s = await tx.revenueTransaction.findUnique({ where: { id } });
     if (!s || s.isVoided) throw new AppError("Sale not found or already voided.");

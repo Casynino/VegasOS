@@ -11,7 +11,8 @@ import { findAvailableRooms, lockRoomTypes } from "./availability";
 import { channelFor, quoteStay } from "./pricing";
 import { recalculateReservation, syncRoomNights } from "./reservation-financials";
 import { recordPaymentTx } from "./payments";
-import { setRoomStatusTx } from "./rooms";
+import { readerT, roomStatusWord, setRoomStatusTx } from "./rooms";
+import { msgf } from "@/i18n/msg";
 import type { Actor } from "./reservations";
 import { notifyReservationGuestSoon } from "./guest-comms";
 
@@ -178,8 +179,11 @@ export async function changeRoomTx(tx: Tx, input: RoomChangeInput, actor: Actor,
     throw new AppError("A checked-in guest cannot change room on request. They check out and make a new booking. Only a problem in the room allows a (free) move.", "FORBIDDEN");
   }
   const free = await findAvailableRooms({ stay: moveWindow(rr, now, today), roomIds: [toRoom.id], excludeReservationRoomId: rr.id }, tx);
-  if (free.length === 0) throw new AppError(`Room ${toRoom.number} is no longer available for this stay. Choose another room.`, "UNAVAILABLE");
-  if (inHouse && !CHECK_IN_READY.includes(toRoom.status)) throw new AppError(`Room ${toRoom.number} is not ready (${toRoom.status.toLowerCase().replace("_", " ")}) — the guest cannot move in yet.`);
+  if (free.length === 0) throw new AppError(msgf("Room {room} is no longer available for this stay. Choose another room.", { room: toRoom.number }), "UNAVAILABLE");
+  if (inHouse && !CHECK_IN_READY.includes(toRoom.status)) {
+    const t = await readerT();
+    throw new AppError(msgf("Room {room} is not ready ({status}) — the guest cannot move in yet.", { room: toRoom.number, status: roomStatusWord(t, toRoom.status, toRoom.status.toLowerCase().replace("_", " ")) }));
+  }
 
   // Money: the system works it out.
   const q = await quoteTx(tx, rr.id, toRoom.id, now);
@@ -191,7 +195,7 @@ export async function changeRoomTx(tx: Tx, input: RoomChangeInput, actor: Actor,
   const compensation = hotel && q.difference > 0 ? q.difference : 0;
   if (upgrade && q.payNow) {
     // The guest pays the extra to change room.
-    if (!input.payment) throw new AppError(`The guest must pay the difference of TZS ${q.difference.toLocaleString("en-TZ")} to change room.`, "VALIDATION", { payment: "Required" });
+    if (!input.payment) throw new AppError(msgf("The guest must pay the difference of TZS {amount} to change room.", { amount: q.difference.toLocaleString("en-TZ") }), "VALIDATION", { payment: "Required" });
   }
 
   // Move the room.

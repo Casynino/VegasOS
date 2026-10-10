@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { requirePagePermission } from "@/server/auth";
 import { db } from "@/server/db";
 import { PERMISSIONS } from "@/lib/permissions";
-import { formatDateTime } from "@/lib/format";
 import { deviceLabel } from "@/lib/device-label";
 import { PageHeader } from "@/components/staff/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -12,11 +11,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CreateUserDialog, EditUserDialog } from "./user-dialogs";
 import { PermissionMatrix } from "./permission-matrix";
 import { ROLE_DEPARTMENT } from "@/lib/permissions";
+import { getT } from "@/i18n/server";
+import { msg } from "@/i18n/msg";
 
-export const metadata: Metadata = { title: "Staff & roles" };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT();
+  return { title: t("Staff & roles") };
+}
 
 export default async function UsersPage() {
   const actor = await requirePagePermission("users.manage");
+  const t = await getT();
   const [users, roles] = await Promise.all([
     // The PIN's state only (set / locked) — never its hash.
     // "Online · nTZS" (records what customers pay online themselves) is not a person — never listed or edited here.
@@ -43,20 +48,20 @@ export default async function UsersPage() {
   });
   const assignableRoles = roles
     .filter((r) => actor.roleCode === "OWNER" || r.code !== "OWNER")
-    .map((r) => ({ id: r.id, name: r.name, department: ROLE_DEPARTMENT[r.code] ?? "Other", screen: screenRoleIds.has(r.id) }));
+    .map((r) => ({ id: r.id, name: r.name, department: ROLE_DEPARTMENT[r.code] ?? msg("Other"), screen: screenRoleIds.has(r.id) }));
 
   return (
     <div className="w-full">
       <PageHeader
-        title="Staff & roles"
-        description="Accounts, roles and what each role is allowed to do. Permissions are enforced on the server."
+        title={t("Staff & roles")}
+        description={t("Accounts, roles and what each role is allowed to do. Permissions are enforced on the server.")}
         actions={<CreateUserDialog roles={assignableRoles}
           screenLogins={users.filter((u) => u.isActive && screenRoleIds.has(u.roleId)).map((u) => `${u.fullName} · ${u.email}`)} />}
       />
       <Tabs defaultValue="staff">
         <TabsList className="mb-4">
-          <TabsTrigger value="staff">Staff ({users.filter((u) => u.isActive).length} active)</TabsTrigger>
-          <TabsTrigger value="roles">Role permissions</TabsTrigger>
+          <TabsTrigger value="staff">{t("Staff ({n} active)", { n: users.filter((u) => u.isActive).length })}</TabsTrigger>
+          <TabsTrigger value="roles">{t("Role permissions")}</TabsTrigger>
         </TabsList>
         <TabsContent value="staff">
           <Card>
@@ -64,12 +69,12 @@ export default async function UsersPage() {
               <Table data-stack>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead className="hidden md:table-cell">Email</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead className="hidden lg:table-cell">Last sign-in</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="w-10"><span className="sr-only">Actions</span></TableHead>
+                    <TableHead>{t("Name")}</TableHead>
+                    <TableHead className="hidden md:table-cell">{t("Email")}</TableHead>
+                    <TableHead>{t("Role")}</TableHead>
+                    <TableHead className="hidden lg:table-cell">{t("Last sign-in")}</TableHead>
+                    <TableHead>{t("Status")}</TableHead>
+                    <TableHead className="w-10"><span className="sr-only">{t("Actions")}</span></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -79,20 +84,20 @@ export default async function UsersPage() {
                       <TableRow key={u.id}>
                         <TableCell className="font-medium">
                           {u.fullName}
-                          {u.id === actor.id && <span className="ml-1 text-xs text-muted-foreground">(you)</span>}
+                          {u.id === actor.id && <span className="ml-1 text-xs text-muted-foreground">{t("(you)")}</span>}
                           <span className="block text-xs text-muted-foreground md:hidden">{u.email}</span>
                         </TableCell>
                         <TableCell className="hidden md:table-cell">{u.email}</TableCell>
-                        <TableCell>{u.role.name}</TableCell>
+                        <TableCell>{t(u.role.name)}</TableCell>
                         <TableCell className="hidden lg:table-cell text-muted-foreground">
-                          {u.lastLoginAt ? formatDateTime(u.lastLoginAt) : "Never"}
+                          {u.lastLoginAt ? t.dateTime(u.lastLoginAt) : t("Never")}
                         </TableCell>
                         <TableCell>
                           <span className="flex flex-wrap gap-1">
                             {u.isActive ? (
-                              u.mustChangePassword ? <Badge variant="outline">Pending first login</Badge> : <Badge variant="secondary">Active</Badge>
+                              u.mustChangePassword ? <Badge variant="outline">{t("Pending first login")}</Badge> : <Badge variant="secondary">{t("Active")}</Badge>
                             ) : (
-                              <Badge variant="destructive">Inactive</Badge>
+                              <Badge variant="destructive">{t("Inactive")}</Badge>
                             )}
                           </span>
                         </TableCell>
@@ -102,7 +107,7 @@ export default async function UsersPage() {
                               roles={assignableRoles}
                               isSelf={u.id === actor.id}
                               user={{ id: u.id, fullName: u.fullName, phone: u.phone ?? "", roleId: u.roleId, isActive: u.isActive, email: u.email }}
-                              screens={screenRoleIds.has(u.roleId) ? screenSessions.filter((x) => x.userId === u.id).map((x) => ({ id: x.id, label: deviceLabel(x.userAgent).label, lastSeen: formatDateTime(x.lastSeenAt) })) : null}
+                              screens={screenRoleIds.has(u.roleId) ? screenSessions.filter((x) => x.userId === u.id).map((x) => ({ id: x.id, label: deviceLabel(x.userAgent, t).label, lastSeen: t.dateTime(x.lastSeenAt) })) : null}
                             />
                           )}
                         </TableCell>
@@ -117,9 +122,9 @@ export default async function UsersPage() {
         <TabsContent value="roles">
           <Card>
             <CardHeader>
-              <CardTitle>Role permissions</CardTitle>
+              <CardTitle>{t("Role permissions")}</CardTitle>
               <CardDescription>
-                The Owner role always has full access. Changes apply from the staff member&apos;s next page load and are audited.
+                {t("The Owner role always has full access. Changes apply from the staff member's next page load and are audited.")}
               </CardDescription>
             </CardHeader>
             <CardContent>

@@ -1,8 +1,13 @@
+"use client";
+
+import { useT } from "@/i18n/client";
+
 /** While the hotel loads after the scan: the opening's own shape (the dark photo, the words, the booking bar) — never a blank page. */
 export default function Loading() {
+  const t = useT();
   const block = "vlh-shimmer block rounded-2xl bg-white/[0.07]";
   return (
-    <main className="vr min-h-svh bg-(--vr-bg)" aria-busy="true" aria-label="Loading">
+    <main className="vr min-h-svh bg-(--vr-bg)" aria-busy="true" aria-label={t("Loading")}>
       <section className="relative bg-(--vr-dark)">
         <div className="h-[61svh] min-h-[380px] max-h-[640px] bg-linear-to-b from-white/[0.06] to-transparent lg:h-[min(90svh,880px)] lg:max-h-none" />
         <div className="absolute inset-x-0 top-0 mx-auto flex max-w-7xl items-center gap-2.5 px-4 pt-[max(0.9rem,env(safe-area-inset-top))] sm:px-6 lg:px-10 lg:pt-7">
