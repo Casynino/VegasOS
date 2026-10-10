@@ -217,7 +217,7 @@ const catalog: Catalog = {
   "Home": "首页",
   "Restaurant shift": "餐厅班次",
   "Reception shift": "前台班次",
-  "Open": "进行中",
+  "shift::Open": "进行中",
   "Started {when} · open, running for {duration}": "开始于 {when} · 进行中，已持续 {duration}",
   "worked {duration}": "工作了 {duration}",
   "Scheduled that day: <b>{name}</b>": "当天排班：<b>{name}</b>",

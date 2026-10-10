@@ -366,5 +366,7 @@ const catalog: Catalog = {
   "Latest meetings": "最近的会议",
   "No meeting yet.": "还没有会议。",
   "no-show": "未到店",
+  "Open your phone camera and point it here": "打开手机相机对准这里",
+  "We accept": "我们接受",
 };
 export default catalog;

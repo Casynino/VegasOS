@@ -44,7 +44,7 @@ const catalog: Catalog = {
   "No clean {type} room is ready right now.": "目前没有已清洁、可入住的{type}。",
   "Sorry — {type} is fully booked for these dates.": "抱歉 — {type}在这些日期已订满。",
   "Room {room} is {status} — it must be clean before check-in.": "{room} 号房当前状态为“{status}” — 入住前必须清洁完毕。",
-  "Choose what the company pays for.": "请选择公司支付的项目。",
+  "Choose what the company pays for.": "请选择公司承担的项目。",
   "Corporate account is not active.": "企业客户账户未启用。",
   "This booking request has already been handled by someone else.": "该预订请求已由他人处理。",
   "An item picked from the menu is no longer on it. Remove it and try again.": "所选的某个菜品已不在菜单上。请将其移除后重试。",

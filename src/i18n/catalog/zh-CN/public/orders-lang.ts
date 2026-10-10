@@ -53,7 +53,7 @@ const catalog: Catalog = {
   "Order more": "继续点餐",
   "New order": "新订单",
   "See the menu": "查看菜单",
-  "WhatsApp us": "WhatsApp 联系我们",
+  "WhatsApp us": "通过 WhatsApp 联系我们",
   "Call us": "致电我们",
   "Questions about your order? {phone}": "对订单有疑问？{phone}",
   "This page updates by itself.": "本页面会自动更新。",

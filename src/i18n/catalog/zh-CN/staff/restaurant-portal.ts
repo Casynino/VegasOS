@@ -57,7 +57,7 @@ const catalog: Catalog = {
   "None yet today": "今天暂无",
   "Still to collect": "待收款",
   "All paid": "全部已付",
-  "On room bills": "记入房间账单",
+  "On room bills": "记入房账",
   "None today": "今天暂无",
   "{busy} of {total}": "{busy} / {total}",
   "with customers": "有顾客",
@@ -116,7 +116,7 @@ const catalog: Catalog = {
   // How long ago, how it is paid
   "{h} h": "{h} 小时",
   "Payment not received · {amount} to give back": "付款未到账 · 需退还 {amount}",
-  "Payment not received": "付款未到账",
+  "Payment not received": "未收到付款",
   "Refunded": "已退款",
   "Paid · mobile money": "已付款 · 手机支付",
   "Paid online · {account}": "已在线支付 · {account}",
@@ -143,7 +143,7 @@ const catalog: Catalog = {
   "The order can be accepted now.": "现在可以接单了。",
   "Payment not received — order declined.": "付款未到账——订单已拒绝。",
   "Payment confirmed.": "付款已确认。",
-  "Payment reversed — the amount is due again.": "付款已冲销——该金额重新待付。",
+  "Payment reversed — the amount is due again.": "付款已撤销——该金额需重新支付。",
   "Served — on Room {room}'s bill.": "已上菜——记入 {room} 号房账单。",
 
   // The order card: the next step
@@ -228,7 +228,7 @@ const catalog: Catalog = {
   "Amount": "金额",
   "{n} × drink": "{n} × 饮品",
   "{n} × food": "{n} × 餐食",
-  "Payments": "付款记录",
+  "Payments": "付款",
   "sent by {name}": "由 {name} 发起",
   "from the customer's phone": "来自顾客的手机",
   "Recorded at the Restaurant Counter": "在餐厅收银台登记",
@@ -397,7 +397,7 @@ const catalog: Catalog = {
   "{waiting} waiting · {accepted} accepted": "{waiting} 单等待 · {accepted} 单已接",
   "Nothing waiting": "无待处理",
   "order": "单",
-  "orders": "单",
+  "orders": "订单",
   "{done} of {total} items done": "已完成 {done}/{total} 项",
   "Nothing on the stove": "灶上没有菜",
   "to serve": "待上菜",
@@ -479,7 +479,7 @@ const catalog: Catalog = {
   "{n} accepted": "接单 {n}",
   "{n} ready": "备好 {n}",
   "{n} brought out": "送出 {n}",
-  "{n} served": "上菜 {n}",
+  "{n} served": "已上菜 {n} 个",
   "min": "分钟",
   "none finished yet": "尚无完成",
   "Waiters today": "今日服务员",
@@ -492,6 +492,9 @@ const catalog: Catalog = {
   "{n} customer": "{n} 位顾客",
   "{n} customers": "{n} 位顾客",
   "{n} still going": "{n} 单进行中",
+  // Who placed the order, and the takeaway "Delivery" place (distinct from a report's delivery status).
+  "Customer · online": "顾客 · 在线",
+  "place::Delivery": "外送",
 };
 
 export default catalog;

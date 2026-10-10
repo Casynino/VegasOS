@@ -229,7 +229,7 @@ const catalog: Catalog = {
   "{promo} · website rate": "{promo} · 官网价",
   "Type {n}/{total}": "房型 {n}/{total}",
   "In the room": "房内设施",
-  "{n} items": "{n} 项",
+  "{n} items": "{n} 件",
   "Photos from across our rooms — fittings vary by room type.": "照片来自本酒店各类客房——具体设施因房型而异。",
   "Details from our rooms": "客房细节",
   "Open photo {n} of {total}": "打开第 {n} 张照片（共 {total} 张）",

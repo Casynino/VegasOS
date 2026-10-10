@@ -97,7 +97,7 @@ export default async function ReceivablesPage() {
               <li key={g.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
                 <div>
                   <Link href={`/staff/reservations/${g.id}`} className="font-medium hover:underline">{g.name}</Link>
-                  <p className="text-[11px] text-muted-foreground">{g.reference} · {g.meeting ? t("Room {rooms} — Meeting room", { rooms: g.rooms.join(", ") }) : t("room {rooms}", { rooms: g.rooms.join(", ") || "—" })} · {g.status === "CHECKED_OUT" ? (g.meeting ? t("completed") : t("left")) : g.status === "CHECKED_IN" ? (g.meeting ? t("in use") : t("in the hotel")) : t("coming")}{g.company ? ` · ${g.company}` : ""}{g.phone ? ` · ${g.phone}` : ""}</p>
+                  <p className="text-[11px] text-muted-foreground">{g.reference} · {g.meeting ? t("Room {rooms} — Meeting room", { rooms: g.rooms.join(", ") }) : t("room {rooms}", { rooms: g.rooms.join(", ") || "—" })} · {g.status === "CHECKED_OUT" ? (g.meeting ? t("completed") : t.ctx("stay", "left")) : g.status === "CHECKED_IN" ? (g.meeting ? t("in use") : t("in the hotel")) : t("coming")}{g.company ? ` · ${g.company}` : ""}{g.phone ? ` · ${g.phone}` : ""}</p>
                 </div>
                 <div className="text-right"><p className="font-semibold tabular-nums text-rose-600 dark:text-rose-400">{formatTZS(g.balance)}</p><p className="text-[11px] text-muted-foreground">{t("paid {paid} of {total}", { paid: formatTZS(g.paid), total: formatTZS(g.total) })}</p></div>
               </li>

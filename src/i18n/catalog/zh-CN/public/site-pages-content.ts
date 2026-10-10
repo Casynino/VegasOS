@@ -216,7 +216,7 @@ const catalog: Catalog = {
   "{n} dishes on the menu": "菜单上共有 {n} 道菜品",
   "See every dish and price": "查看所有菜品和价格",
   "On the menu": "菜单精选",
-  "Served": "供应时段",
+  "meals::Served": "供应时段",
   "Dietary options": "饮食选择",
   "Evening service": "晚间供餐",
   "The same menu, in your room": "同一份菜单，送到您的房间",

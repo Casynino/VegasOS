@@ -19,7 +19,7 @@ const catalog: Catalog = {
   "guests": "位客人",
   "{n} of {total} rooms · {pct}% full": "{n} / {total} 间房 · 入住率 {pct}%",
   "Free tonight": "今晚空房",
-  "room": "间房",
+  "room": "房间",
   "rooms": "间房",
   "{n} to clean": "{n} 间待清洁",
   "{n} under maintenance": "{n} 间维修中",
@@ -436,7 +436,7 @@ const catalog: Catalog = {
   // ── Every table right now (manager's home): tiles and a table's window ──
   "Seated": "已入座",
   "Open orders": "未完成订单",
-  "Waiting to pay": "等待付款",
+  "Waiting to pay": "待付款",
   "Paid · to clear": "已付款 · 待清台",
   "Reserved": "已预订",
   "Free": "空闲",

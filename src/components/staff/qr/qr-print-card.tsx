@@ -75,6 +75,7 @@ export function QrPreview({ card, hotel, phone, printHref, fileName, className }
  * screen, print and download are the same picture.
  */
 export function QrPrintCard({ card, hotel }: { card: Printable; hotel: string; phone?: string | null }) {
+  const t = useT();
   const c = cardCopy(card);
   return (
     <article id={`qr-${card.id}`} className="@container relative aspect-[105/148] w-full overflow-hidden rounded-[22px] bg-[#0c0806] text-center text-white shadow-[0_24px_50px_-28px_rgba(10,7,4,0.9)] [print-color-adjust:exact] print:rounded-none print:shadow-none">
@@ -108,14 +109,14 @@ export function QrPrintCard({ card, hotel }: { card: Printable; hotel: string; p
         </div>
         {/* How — very small */}
         <p className="mt-[2.6cqw] flex items-center justify-center gap-[1.2cqw] text-[2.05cqw] tracking-wide text-white/55">
-          <Camera className="size-[2.6cqw] shrink-0" style={{ color: GOLD }} strokeWidth={1.6} />Open your phone camera and point it here
+          <Camera className="size-[2.6cqw] shrink-0" style={{ color: GOLD }} strokeWidth={1.6} />{t("Open your phone camera and point it here")}
         </p>
 
         <div className="mt-auto w-full">
           <p className="flex items-center justify-center gap-[2cqw] text-[1.9cqw] font-semibold uppercase tracking-[0.42em] text-white/55">
-            <span aria-hidden className="h-px w-[8cqw] bg-[#e3bd6a]/45" />We accept<span aria-hidden className="h-px w-[8cqw] bg-[#e3bd6a]/45" />
+            <span aria-hidden className="h-px w-[8cqw] bg-[#e3bd6a]/45" />{t("We accept")}<span aria-hidden className="h-px w-[8cqw] bg-[#e3bd6a]/45" />
           </p>
-          <ul className="mt-[2.2cqw] flex items-center justify-center gap-[1.3cqw]" aria-label="Mobile-money networks">
+          <ul className="mt-[2.2cqw] flex items-center justify-center gap-[1.3cqw]" aria-label={t("Mobile-money networks")}>
             {NETWORK_MARKS.map((m) => (
               <li key={m.key} title={m.label}
                 className={cn("inline-flex h-[4.8cqw] shrink-0 items-center gap-[0.3em] whitespace-nowrap rounded-[1.1cqw] px-[1.6cqw] text-[2.45cqw] font-extrabold lowercase leading-none tracking-tight", m.className)}>

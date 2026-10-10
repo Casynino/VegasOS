@@ -116,7 +116,7 @@ export default async function IncomePage({ searchParams }: PageProps<"/staff/pay
       return (
         <>
           {perms.sale && <SaleEditButton sale={{ id: r.id, amount: r.amount, accountId: r.account.id, what: r.who, soldOn: t.date(r.businessDate), recordedBy: r.by }} accounts={receiving} />}
-          {perms.voidSale && <CancelButton kind="sale" id={r.id} label="this sale" />}
+          {perms.voidSale && <CancelButton kind="sale" id={r.id} label={t("this sale")} />}
         </>
       );
     }
@@ -128,7 +128,7 @@ export default async function IncomePage({ searchParams }: PageProps<"/staff/pay
           id: x.id, reservationId: x.reservationId, amount: x.amount, refund: x.kind === "REFUND", accountId: x.accountId, method: x.method.name, reference: x.reference ?? "",
           who: r.who, booking: x.reservation?.reference ?? null, invoice: x.invoice?.number ?? null, paidOn: t.date(r.businessDate), recordedBy: x.recordedBy.fullName,
         }} />}
-        {perms.reverse && x.reservationId && <CancelButton kind="payment" id={x.id} reservationId={x.reservationId} label="this payment" />}
+        {perms.reverse && x.reservationId && <CancelButton kind="payment" id={x.id} reservationId={x.reservationId} label={t("this payment")} />}
       </>
     );
   }

@@ -86,7 +86,7 @@ export default async function ShiftPage({ params }: { params: Promise<{ id: stri
             <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[oklch(0.62_0.11_78)] dark:text-[oklch(0.8_0.1_82)]">{mine ? t("My shift") : restaurant ? t("Restaurant shift") : t("Reception shift")} · {t(s.person.role)}</p>
             <h1 className="text-lg font-semibold leading-tight tracking-tight sm:text-xl">{s.person.name} · {t(s.label)} · {t.date(s.businessDate)}</h1>
             <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-              <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide", s.open ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "bg-muted text-muted-foreground")}>{s.open ? t("Open") : t("Closed")}</span>
+              <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide", s.open ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "bg-muted text-muted-foreground")}>{s.open ? t.ctx("shift", "Open") : t("Closed")}</span>
               {s.open
                 ? <span>{t("Started {when} · open, running for {duration}", { when: when(s.startedAt), duration: duration(s.minutes, t) })}</span>
                 : <span>{when(s.startedAt)} → {when(s.endedAt!)} · {t("worked {duration}", { duration: duration(s.minutes, t) })}</span>}

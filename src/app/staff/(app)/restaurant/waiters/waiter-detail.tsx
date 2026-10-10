@@ -119,7 +119,7 @@ export async function WaiterDetailView({ d, multiDay }: { d: WaiterDetail; multi
               {d.shifts.map((s) => (
                 <li key={s.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
                   <span className="tabular-nums">{t.dateTime(s.startedAt)} → {s.endedAt ? t.time(s.endedAt) : t("now")}</span>
-                  {s.endedAt ? <span className="text-xs tabular-nums text-muted-foreground">{mins((s.endedAt.getTime() - s.startedAt.getTime()) / 60000, t)}</span> : <Pill tone="emerald">{t("Open")}</Pill>}
+                  {s.endedAt ? <span className="text-xs tabular-nums text-muted-foreground">{mins((s.endedAt.getTime() - s.startedAt.getTime()) / 60000, t)}</span> : <Pill tone="emerald">{t.ctx("shift", "Open")}</Pill>}
                 </li>
               ))}
             </ul>

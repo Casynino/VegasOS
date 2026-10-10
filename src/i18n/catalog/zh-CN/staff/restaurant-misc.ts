@@ -30,7 +30,7 @@ const catalog: Catalog = {
   "Marked as not available.": "已标记为不可供应。",
   "Marked as sold out — customers can't order it now.": "已标记为售罄——顾客现在无法点这道菜。",
   "Say why you transfer it.": "请说明转交原因。",
-  "Your shift has started.": "班次已开始。",
+  "Your shift has started.": "您的班次已开始。",
   "Your shift is closed — your shift report is on its way.": "班次已结束——班次报告正在发送。",
   "Say why you close this shift.": "请说明结束此班次的原因。",
 
@@ -66,7 +66,7 @@ const catalog: Catalog = {
   "Customer: {name} · Room {room}": "顾客：{name} · {room} 号房",
   "{payer} for food on this stay": "本次入住的餐费：{payer}",
   "{room} — not this customer's room. Say why it goes there.": "{room} — 不是该顾客的房间。请说明记到此房间的原因。",
-  "Why? e.g. the guest in this room pays for their friend": "原因？例如：此房间的客人为朋友付款",
+  "Why? e.g. the guest in this room pays for their friend": "原因？例如：该房间的客人为朋友付款",
   "Charge {total} to {place}": "将 {total} 记入{place}",
   "Choose the room": "选择房间",
   "Only after the customer has agreed — it goes on the stay and is paid at check-out.": "需顾客同意后操作——费用记入住宿账单，退房时结算。",

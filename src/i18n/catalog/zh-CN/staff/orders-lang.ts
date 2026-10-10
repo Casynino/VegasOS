@@ -3,7 +3,7 @@ import type { Catalog } from "../../../translate";
 // Restaurant orders for staff: board / kitchen cards, the customer's requests and note, Take an order, slips.
 const catalog: Catalog = {
   // The customer's requests and own words
-  "Requests": "要求",
+  "Requests": "客人需求",
   "Customer's note": "顾客备注",
   "Written in Chinese": "中文书写",
   "Translate": "翻译",

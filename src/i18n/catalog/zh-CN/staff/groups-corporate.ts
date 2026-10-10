@@ -60,7 +60,7 @@ const catalog: Catalog = {
   "Printed on every invoice": "打印在每张发票上",
   "Billing address": "开票地址",
   "Income from these stays is counted once, night by night. Invoices and company payments only move what is owed — they never add income again.": "这些住宿的收入按晚只计一次。发票和公司付款只转移欠款——不会重复计入收入。",
-  "Due today": "今天到期",
+  "Due today": "今日到期",
   "Overdue {n} day": "逾期 {n} 天",
   "Overdue {n} days": "逾期 {n} 天",
   "Due in {n} day": "{n} 天后到期",

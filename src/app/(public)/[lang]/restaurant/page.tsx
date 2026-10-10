@@ -138,7 +138,7 @@ export default async function RestaurantPage({ params }: PageProps<"/[lang]/rest
         <div className={containers.default}>
           <div className="grid gap-14 lg:grid-cols-12 lg:items-center lg:gap-10">
             <Reveal className="min-w-0 lg:col-span-5">
-              <Eyebrow rule>{t("Served")}</Eyebrow>
+              <Eyebrow rule>{t.ctx("meals", "Served")}</Eyebrow>
               <Heading id="day-title" className={rhythm.afterEyebrow}>
                 {p.mealsTitle}
               </Heading>
