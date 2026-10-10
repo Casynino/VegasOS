@@ -66,6 +66,8 @@ export interface DailyReportData {
   restaurant?: { orders: number; food: number; drinks: number; roomService: number };
   /** New bookings that day by where they came from. */
   sources?: { name: string; count: number }[];
+  /** Room nights grouped by nightly rate — how many rooms at each price and what they earned. */
+  rateBreakdown?: { rate: number; rooms: number; expected: number; net: number }[];
   /** The stores that day (reports before Oct 2026 have none): received, used (and by recipes), waste, count corrections, alerts. */
   stores?: {
     receivedValue: number; receivedLines: number; usedValue: number; usedItems: number; soldValue: number; wasteValue: number; wasteLines: number;
@@ -95,7 +97,7 @@ export async function buildDailyReport(date: BusinessDate): Promise<DailyReportD
     db.reservation.aggregate({ where: { status: "CHECKED_IN", balanceAmount: { gt: 0 } }, _count: true, _sum: { balanceAmount: true } }),
   ]);
   const users = await db.user.findMany({ where: { id: { in: actions.map((a) => a.userId!).filter(Boolean) } }, select: { id: true, fullName: true } });
-  const [byMethod, people, roomStatus, companyNights, companyPays, counts, invoiced] = await Promise.all([
+  const [byMethod, people, roomStatus, companyNights, companyPays, counts, invoiced, rateNights] = await Promise.all([
     paymentsByMethod(date, date),
     staffActivity(date, date),
     db.room.groupBy({ by: ["status"], where: { isActive: true, roomType: { category: "GUEST_ROOM" } }, _count: true }),
@@ -107,6 +109,8 @@ export async function buildDailyReport(date: BusinessDate): Promise<DailyReportD
     db.payment.aggregate({ where: { businessDate: d, status: "POSTED", kind: "PAYMENT", invoiceId: { not: null }, corporateCustomerId: { not: null } }, _sum: { amount: true } }),
     db.cashCount.findMany({ where: { businessDate: d, difference: { not: 0 } }, include: { account: true, countedBy: { select: { fullName: true } } } }),
     db.invoice.aggregate({ where: { issueDate: d, reservationId: null, corporateCustomerId: { not: null }, status: { notIn: ["DRAFT", "CANCELLED", "VOID"] } }, _sum: { netAmount: true } }),
+    // Room nights grouped by nightly rate — for the rate breakdown table.
+    db.roomNight.groupBy({ by: ["grossAmount"], where: { businessDate: d, isDayUse: false, reservationRoom: { status: { in: ["CHECKED_IN", "CHECKED_OUT"] }, roomType: { category: "GUEST_ROOM" } } }, _count: true, _sum: { netAmount: true }, orderBy: { grossAmount: "asc" } }),
   ]);
   // Arrivals due today: checked in / still expected (late notice) / no-show.
   const due = await db.reservationRoom.findMany({ where: { arrivalDate: d, status: { notIn: ["CANCELLED", "INQUIRY"] } }, select: { status: true, reservation: { select: { lateArrivalNotedAt: true } } } });
@@ -229,6 +233,7 @@ export async function buildDailyReport(date: BusinessDate): Promise<DailyReportD
     })),
     restaurant: { orders: food._count, food: food._sum.foodSubtotal ?? 0, drinks: food._sum.drinksSubtotal ?? 0, roomService: food._sum.serviceFee ?? 0 },
     sources: bySource.map((x) => ({ name: sourceNames.find((n) => n.id === x.sourceId)?.name ?? msg("Other"), count: x._count })).sort((a, b) => b.count - a.count),
+    rateBreakdown: rateNights.map((rn) => ({ rate: rn.grossAmount, rooms: rn._count, expected: rn.grossAmount * rn._count, net: rn._sum.netAmount ?? 0 })),
     stores: {
       receivedValue: storesDay.receivedValue, receivedLines: storesDay.receivedLines, usedValue: storesDay.usedValue, usedItems: storesDay.usedItems,
       soldValue: storesDay.soldValue, wasteValue: storesDay.wasteValue, wasteLines: storesDay.wasteLines, countDifferenceValue: storesDay.countDifferenceValue,
@@ -279,6 +284,7 @@ export function renderReportText(r: DailyReportData, hotelName: string, link?: s
     `${bold(msg("Net operating result:"))} ${tz(r.profitLoss.estimated)}`,
     "",
     `${bold(msg("Occupancy:"))} ${rooms ? t("{sold} / {total} rooms — {pct}%", { sold, total: rooms.total, pct: r.hotel.occupancy }) : t("{sold} rooms — {pct}%", { sold, pct: r.hotel.occupancy })}${rooms?.adr ? ` · ${t("avg rate {amount}", { amount: fmt(rooms.adr) })}` : ""}`,
+    r.rateBreakdown?.length ? `  ${t("Rates:")} ${r.rateBreakdown.map((rb) => `${fmt(rb.rate)}×${rb.rooms}`).join(" · ")}` : null,
     `${bold(msg("Check-ins:"))} ${r.guests.checkIns} · ${bold(msg("Check-outs:"))} ${r.guests.checkOuts} · ${bold(msg("New bookings:"))} ${r.guests.newBookings}`,
     r.restaurant ? `${bold(msg("Restaurant & bar:"))} ${t.plural(r.restaurant.orders, "{n} order", "{n} orders")}` : null,
     r.sources?.length ? `${bold(msg("Bookings from:"))} ${r.sources.slice(0, 4).map((x) => `${t(x.name)} ${x.count}`).join(" · ")}` : null,

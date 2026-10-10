@@ -530,5 +530,6 @@ const catalog: Catalog = {
   "Reports count what was recorded in the system — facts, never a score. Updated {time}.": "报告统计的是系统中记录的内容——只是事实，从不评分。更新于 {time}。",
   "{n} person": "{n} 人",
   "{n} people": "{n} 人",
+  "Room rates": "房间价格",
 };
 export default catalog;

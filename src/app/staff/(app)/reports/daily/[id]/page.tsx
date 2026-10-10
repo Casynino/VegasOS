@@ -249,6 +249,14 @@ function ReportView({ d, t }: { d: DailyReportData; t: T }) {
           {d.rooms && <Row label={t("Free · cleaning · repair")} value={`${d.rooms.available} · ${d.rooms.cleaning} · ${d.rooms.outOfOrder}`} />}
           {d.rooms && <Row label={t("Average room rate")} value={amt(d.rooms.adr)} />}
           {d.rooms && d.rooms.companyCredit > 0 && <Row label={t("Company credit · paid now")} value={`${amt(d.rooms.companyCredit)} · ${amt(d.rooms.direct)}`} />}
+          {d.rateBreakdown && d.rateBreakdown.length > 0 && (
+            <>
+              <p className="mb-0.5 mt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t("Room rates")}</p>
+              {d.rateBreakdown.map((rb) => (
+                <Row key={rb.rate} label={`${amt(rb.rate)} × ${String(rb.rooms)}`} value={amt(rb.net)} />
+              ))}
+            </>
+          )}
         </Section>
 
         <Section icon={TrendingUp} title={t("Income")}>

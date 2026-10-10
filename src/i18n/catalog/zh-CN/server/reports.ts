@@ -544,6 +544,7 @@ const catalog: Catalog = {
   "Operations:": "运营：",
   "Money received:": "已收款项：",
   "Outstanding (all, today):": "未收款（全部，截至今天）：",
+  "Rates:": "价格：",
   "Extra towels": "加毛巾",
   "Room cleaning": "客房清洁",
   "Restaurant / food": "餐厅/餐食",
