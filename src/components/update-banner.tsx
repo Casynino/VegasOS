@@ -28,7 +28,7 @@ export function UpdateBanner() {
 
   if (!ready) return null;
   return (
-    <div role="status" className="fixed inset-x-0 bottom-4 z-[100] flex justify-center px-4 print:hidden">
+    <div role="status" className="fixed inset-x-0 top-3 z-[100] flex justify-center px-4 print:hidden">
       <div className="flex items-center gap-3 rounded-full border border-border bg-card py-2 pl-4 pr-2 text-sm text-foreground shadow-lg">
         <span className="font-medium">A new update is up.</span>
         <button type="button" onClick={() => window.location.reload()} className="inline-flex items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-xs font-semibold text-background">
