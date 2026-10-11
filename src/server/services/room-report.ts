@@ -24,9 +24,10 @@ export { dayText as roomReportDayText, whenText as roomReportWhenText, periodTex
 /** The short executive message the Boss gets on WhatsApp (with the secure link to the full report). */
 export function renderRoomReportText(r: RoomReportData, hotelName: string, link: string | null): string {
   const p = r.perf, m = r.money;
-  const byType = new Map<string, { rooms: number; nights: number; net: number }>();
-  for (const x of r.sales) { const t = byType.get(x.type) ?? { rooms: 0, nights: 0, net: 0 }; t.rooms += 1; t.nights += x.nights; t.net += x.total; byType.set(x.type, t); }
-  const typeLines = byType.size ? [...byType].map(([name, t]) => `  • ${name}: ${t.rooms} room${t.rooms === 1 ? "" : "s"} · ${t.nights} night${t.nights === 1 ? "" : "s"} · TZS ${fmt(t.net)}`).join("\n") : null;
+  const byType = new Map<string, { rooms: string[]; nights: number; net: number }>();
+  for (const x of r.sales) { const t = byType.get(x.type) ?? { rooms: [], nights: 0, net: 0 }; t.rooms.push(x.room); t.nights += x.nights; t.net += x.total; byType.set(x.type, t); }
+  const byNumber = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
+  const typeLines = byType.size ? [...byType].map(([name, t]) => `  • ${name}: ${t.rooms.length} room${t.rooms.length === 1 ? "" : "s"} (${t.rooms.sort(byNumber).join(", ")}) · ${t.nights} night${t.nights === 1 ? "" : "s"} · TZS ${fmt(t.net)}`).join("\n") : null;
   const rateLine = r.rates.length ? r.rates.map((g) => `  • TZS ${fmt(g.rate)} × ${g.nights} night${g.nights === 1 ? "" : "s"}`).join("\n") : null;
   const lines = [
     `*${hotelName.toUpperCase()}*`,

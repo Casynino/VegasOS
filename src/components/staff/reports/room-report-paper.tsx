@@ -41,13 +41,15 @@ function Table({ head, rows, foot, empty, right = [] }: { head: string[]; rows: 
   );
 }
 
-/** Group rows by room type, in the order the types first appear (the Boss reads types, never room numbers). */
+/** Group rows by room type, in the order the types first appear (the Boss reads the type and which rooms they were). */
 function groupByType<T extends { type: string }>(rows: T[]): [string, T[]][] {
   const m = new Map<string, T[]>();
   for (const r of rows) m.set(r.type, [...(m.get(r.type) ?? []), r]);
   return [...m.entries()];
 }
 const sumOf = <T,>(rows: T[], f: (r: T) => number) => rows.reduce((t, r) => t + f(r), 0);
+/** "101, 102, 105" — the room numbers of a group, in order. */
+const roomNos = (rows: { room: string }[]) => rows.map((x) => x.room).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).join(", ");
 
 function Card({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: boolean }) {
   return (
@@ -116,12 +118,12 @@ export function RoomReportPaper({ d, hotel, number, version }: { d: RoomReportDa
       {/* 2 · New room sales, by room type */}
       <Section no={2} title="New room sales — by room type" note="Rooms checked in during the period, grouped by room type and priced with the nightly rates they were sold at (each night keeps its own price; later price changes never alter it).">
         <Table empty="No room was checked in during this period."
-          head={["Room type", "Rooms sold", "Nights", "Gross", "Discounts", "Net", "Average rate"]} right={[1, 2, 3, 4, 5, 6]}
+          head={["Room type", "Rooms", "Rooms sold", "Nights", "Gross", "Discounts", "Net", "Average rate"]} right={[2, 3, 4, 5, 6, 7]}
           rows={groupByType(d.sales).map(([type, rs]) => {
             const nights = sumOf(rs, (x) => x.nights), net = sumOf(rs, (x) => x.total);
-            return [<b key="t">{type}</b>, rs.length, nights, n(sumOf(rs, (x) => x.gross)), n(sumOf(rs, (x) => x.discount)), n(net), nights ? n(Math.round(net / nights)) : "—"];
+            return [<b key="t">{type}</b>, roomNos(rs), rs.length, nights, n(sumOf(rs, (x) => x.gross)), n(sumOf(rs, (x) => x.discount)), n(net), nights ? n(Math.round(net / nights)) : "—"];
           })}
-          foot={["Total", d.sales.length, salesNights, n(sumOf(d.sales, (x) => x.gross)), n(sumOf(d.sales, (x) => x.discount)), n(sumOf(d.sales, (x) => x.total)), salesNights ? n(Math.round(sumOf(d.sales, (x) => x.total) / salesNights)) : "—"]} />
+          foot={["Total", "", d.sales.length, salesNights, n(sumOf(d.sales, (x) => x.gross)), n(sumOf(d.sales, (x) => x.discount)), n(sumOf(d.sales, (x) => x.total)), salesNights ? n(Math.round(sumOf(d.sales, (x) => x.total) / salesNights)) : "—"]} />
         {d.unknownRates > 0 && <p className="mt-2 text-[11px]" style={{ color: "#b45309" }}>{d.unknownRates} stay(s) have no nightly price on record — their totals are shown, their rate is not guessed.</p>}
         {d.sales.length > 0 && <p className="mt-2 text-[11px]" style={{ color: MUTED }}>Net reconciles to the new room revenue of {formatTZS(m.expected)} in the summary.</p>}
       </Section>
@@ -138,17 +140,17 @@ export function RoomReportPaper({ d, hotel, number, version }: { d: RoomReportDa
       {/* 4 · Continuing stays, by room type */}
       <Section no={4} title="Continuing stays — by room type" note="Guests who checked in before this period and are still in house at its end. They are occupancy, not new sales — their revenue was counted when they checked in.">
         <Table empty="No stay continued from before this period."
-          head={["Room type", "Rooms", "Nights booked", "Nights used so far", "Nights remaining"]} right={[1, 2, 3, 4]}
-          rows={groupByType(d.continuing).map(([type, rs]) => [<b key="t">{type}</b>, rs.length, sumOf(rs, (x) => x.nights), sumOf(rs, (x) => x.elapsed), sumOf(rs, (x) => x.remaining)])}
-          foot={["Total", d.continuing.length, sumOf(d.continuing, (x) => x.nights), sumOf(d.continuing, (x) => x.elapsed), sumOf(d.continuing, (x) => x.remaining)]} />
+          head={["Room type", "Rooms", "How many", "Nights booked", "Nights used so far", "Nights remaining"]} right={[2, 3, 4, 5]}
+          rows={groupByType(d.continuing).map(([type, rs]) => [<b key="t">{type}</b>, roomNos(rs), rs.length, sumOf(rs, (x) => x.nights), sumOf(rs, (x) => x.elapsed), sumOf(rs, (x) => x.remaining)])}
+          foot={["Total", "", d.continuing.length, sumOf(d.continuing, (x) => x.nights), sumOf(d.continuing, (x) => x.elapsed), sumOf(d.continuing, (x) => x.remaining)]} />
       </Section>
 
       {/* 5 · Check-outs + room status */}
       <Section no={5} title="Check-outs & room status" note="Charges, payments and balance are for the whole booking. A room that is checked out but dirty is not ready for sale. Room status is as at the time the report was generated.">
         <Table empty="Nobody checked out in this period."
-          head={["Room type", "Check-outs", "Final charges", "Paid", "Still owed"]} right={[1, 2, 3, 4]}
-          rows={groupByType(d.checkouts).map(([type, rs]) => [<b key="t">{type}</b>, rs.length, n(sumOf(rs, (x) => x.charges)), n(sumOf(rs, (x) => x.paid)), sumOf(rs, (x) => x.outstanding) ? <b key="o" style={{ color: "#be123c" }}>{n(sumOf(rs, (x) => x.outstanding))}</b> : "0"])}
-          foot={["Total", d.checkouts.length, n(sumOf(d.checkouts, (x) => x.charges)), n(sumOf(d.checkouts, (x) => x.paid)), n(sumOf(d.checkouts, (x) => x.outstanding))]} />
+          head={["Room type", "Rooms", "Check-outs", "Final charges", "Paid", "Still owed"]} right={[2, 3, 4, 5]}
+          rows={groupByType(d.checkouts).map(([type, rs]) => [<b key="t">{type}</b>, roomNos(rs), rs.length, n(sumOf(rs, (x) => x.charges)), n(sumOf(rs, (x) => x.paid)), sumOf(rs, (x) => x.outstanding) ? <b key="o" style={{ color: "#be123c" }}>{n(sumOf(rs, (x) => x.outstanding))}</b> : "0"])}
+          foot={["Total", "", d.checkouts.length, n(sumOf(d.checkouts, (x) => x.charges)), n(sumOf(d.checkouts, (x) => x.paid)), n(sumOf(d.checkouts, (x) => x.outstanding))]} />
         <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: LINE }}>
           <p className="mb-3 text-xs font-semibold">Guest rooms by status ({d.guestRooms} rooms; the meeting room is not included)</p>
           <Bars items={d.status.map((s) => ({ label: s.label, value: s.count, color: STATUS_COLOR[s.key] }))} />

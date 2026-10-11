@@ -747,9 +747,9 @@ async function rooms(r: Range, c: Ctx): Promise<Body> {
     });
   }
   blocks.push(
-    { kind: "table", title: msg("Room types"), columns: [{ label: msg("Room type") }, { label: msg("Rooms sold"), align: "right" }, { label: msg("Nights"), align: "right" }, { label: msg("Gross"), align: "right", money: true, muted: true }, { label: msg("Discounts"), align: "right", money: true, muted: true }, { label: msg("Net"), align: "right", money: true }, { label: msg("Average rate"), align: "right", money: true }],
-      rows: rev.byType.map((t) => [t.name, t.roomsSold, t.roomNights, t.gross, t.discount, t.net, t.averageRate || null]),
-      foot: [msg("Total"), occ.roomsSold, occ.roomNights, rev.rooms.gross, rev.rooms.discount, rev.rooms.net, adr || null] },
+    { kind: "table", title: msg("Room types"), columns: [{ label: msg("Room type") }, { label: msg("Rooms") }, { label: msg("Rooms sold"), align: "right" }, { label: msg("Nights"), align: "right" }, { label: msg("Gross"), align: "right", money: true, muted: true }, { label: msg("Discounts"), align: "right", money: true, muted: true }, { label: msg("Net"), align: "right", money: true }, { label: msg("Average rate"), align: "right", money: true }],
+      rows: rev.byType.map((t) => [t.name, t.roomNumbers.join(", ") || "—", t.roomsSold, t.roomNights, t.gross, t.discount, t.net, t.averageRate || null]),
+      foot: [msg("Total"), "", occ.roomsSold, occ.roomNights, rev.rooms.gross, rev.rooms.discount, rev.rooms.net, adr || null] },
     { kind: "table", title: msg("Where bookings come from"), subtitle: msg("Bookings made in the period · room nights earned"), half: true, empty: msg("No bookings in this period."),
       columns: [{ label: msg("Source") }, { label: msg("Bookings"), align: "right" }, { label: msg("Cancelled / no-show"), align: "right", muted: true }, { label: msg("Nights"), align: "right" }, { label: msg("Room income"), align: "right", money: true }],
       rows: sourceRows },

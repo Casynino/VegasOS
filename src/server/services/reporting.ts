@@ -89,7 +89,7 @@ export async function revenue(r: Range) {
   // Room revenue is guest rooms only; the meeting room is its own line (same ledger, other category).
   const nightWhere = { ...where, ...EARNED_NIGHT, roomTypeId: { notIn: meetingIds } };
   const meetingWhere = { ...where, ...EARNED_NIGHT, roomTypeId: { in: meetingIds } };
-  const [roomAgg, roomByDay, roomByType, roomBySource, other, charges, meetings, refunds, collected, types, sources] = await Promise.all([
+  const [roomAgg, roomByDay, roomByType, roomBySource, other, charges, meetings, refunds, collected, types, sources, roomsUsed, roomList] = await Promise.all([
     db.roomNight.aggregate({ where: nightWhere, _sum: { grossAmount: true, discountAmount: true, netAmount: true }, _count: true }),
     db.roomNight.groupBy({ by: ["businessDate"], where: nightWhere, _sum: { netAmount: true } }),
     db.roomNight.groupBy({ by: ["roomTypeId", "isDayUse"], where: nightWhere, _sum: { grossAmount: true, discountAmount: true, netAmount: true }, _count: true }),
@@ -101,6 +101,8 @@ export async function revenue(r: Range) {
     db.payment.groupBy({ by: ["kind", "methodId"], where: { ...where, status: "POSTED" }, _sum: { amount: true } }),
     db.roomType.findMany({ where: { category: "GUEST_ROOM" }, select: { id: true, name: true, sortOrder: true }, orderBy: { sortOrder: "asc" } }),
     db.bookingSource.findMany({ select: { id: true, name: true, code: true } }),
+    db.roomNight.groupBy({ by: ["roomTypeId", "roomId"], where: nightWhere }),
+    db.room.findMany({ select: { id: true, number: true } }),
   ]);
 
   const sumKind = (k: string) =>
@@ -140,7 +142,9 @@ export async function revenue(r: Range) {
     const discount = rows.reduce((s, x) => s + (x._sum.discountAmount ?? 0), 0);
     const net = rows.reduce((s, x) => s + (x._sum.netAmount ?? 0), 0);
     const sold = nights + dayUse;
-    return { roomTypeId: t.id, name: t.name, roomsSold: sold, roomNights: nights, gross, discount, net, averageRate: sold ? Math.round(net / sold) : 0 };
+    const numberOf = new Map(roomList.map((x) => [x.id, x.number]));
+    const roomNumbers = roomsUsed.filter((x) => x.roomTypeId === t.id).map((x) => numberOf.get(x.roomId) ?? "").filter(Boolean).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    return { roomTypeId: t.id, name: t.name, roomNumbers, roomsSold: sold, roomNights: nights, gross, discount, net, averageRate: sold ? Math.round(net / sold) : 0 };
   });
   const sourceName = new Map(sources.map((s) => [s.id, s.name]));
   const bySource = roomBySource

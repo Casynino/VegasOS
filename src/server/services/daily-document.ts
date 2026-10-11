@@ -16,6 +16,7 @@ const clock = (d: Date) => new Intl.DateTimeFormat("en-GB", { hour: "2-digit", m
 const noBrackets = (s: string) => s.replace(/\s*\(.*\)/, "");
 const TRIP: Record<string, string> = { AIRPORT_PICKUP: msg("Airport pickup"), AIRPORT_DROPOFF: msg("Airport drop-off"), HOTEL_TRANSFER: msg("Transfer"), GUEST_TRANSPORT: msg("Guest transport"), OTHER: msg("Other") };
 const TRIP_STATUS: Record<string, string> = { REQUESTED: msg("Requested"), CONFIRMED: msg("Confirmed"), ASSIGNED: msg("Driver set"), EN_ROUTE: msg("On the way"), PICKED_UP: msg("Picked up"), COMPLETED: msg("Completed"), CANCELLED: msg("Cancelled"), NO_SHOW: msg("No-show") };
+const ROOM_STATE: Record<string, string> = { AVAILABLE: msg("Available"), READY: msg("Ready"), RESERVED: msg("Reserved"), OCCUPIED: msg("Occupied"), DIRTY: msg("To clean"), CLEANING: msg("Cleaning"), MAINTENANCE: msg("Maintenance"), OUT_OF_SERVICE: msg("Out of service") };
 const STAY: Record<string, string> = { RESERVED: msg("Expected"), CONFIRMED: msg("Expected"), CHECKED_IN: msg("In house"), CHECKED_OUT: msg("Left"), NO_SHOW: msg("No-show"), CANCELLED: msg("Cancelled") };
 
 /** Blocks of an existing report whose titles are listed (in that order). */
@@ -120,6 +121,16 @@ export async function buildDailyDocument(date: BusinessDate, d: DailyReportData)
   // ── Guests ──
   const returning = new Set([...bookedToday, ...orderedToday].filter((x) => x.guestId && x.guest && x.guest.createdAt < bounds.start).map((x) => x.guestId!)).size;
 
+  // ── Room by room ──
+  const roomRows = guestRooms.concat(roomsNow.filter((r) => r.roomType.category !== "GUEST_ROOM"))
+    .map((r) => {
+      const mine = nights.filter((n) => n.roomId === r.id);
+      const who = mine[0]?.reservationRoom.reservation;
+      return { r, earned: mine.reduce((t, n) => t + n.netAmount, 0), guest: who ? who.companyName ?? who.guest.fullName : null, nights: mine.filter((n) => !n.isDayUse).length, short: mine.some((n) => n.isDayUse) };
+    })
+    .filter((x) => x.earned > 0 || x.r.status === "OCCUPIED")
+    .sort((a, b) => b.earned - a.earned || a.r.number.localeCompare(b.r.number, undefined, { numeric: true }));
+
   // ── Staff by role ──
   const users = await db.user.findMany({ select: { id: true, fullName: true, role: { select: { name: true } } } });
   const staffRows = users.map((u) => {
@@ -192,14 +203,20 @@ export async function buildDailyDocument(date: BusinessDate, d: DailyReportData)
       ],
     },
     {
+      kind: "table", title: msg("Room by room"), subtitle: msg("Rooms that earned today or have a guest now"), empty: msg("No room earned anything today."),
+      columns: [{ label: msg("Room") }, { label: msg("Type") }, { label: msg("Status now") }, { label: msg("Guest") }, { label: msg("Nights"), align: "right" }, { label: msg("Revenue"), align: "right", money: true }],
+      rows: roomRows.map((x) => [x.r.number, x.r.roomType.name, ROOM_STATE[x.r.status] ?? x.r.status, x.guest ?? "—", x.short ? msg("short time") : x.nights, x.earned]),
+      foot: roomRows.length ? [msg("Total"), "", "", "", roomRows.reduce((t, x) => t + x.nights, 0), roomRows.reduce((t, x) => t + x.earned, 0)] : undefined,
+    },
+    {
       kind: "table", title: msg("Arrivals"), subtitle: L(msg("{due} due · {checkedIn} checked in"), { due: arrivals.length, checkedIn: arrivals.filter((a) => a.status === "CHECKED_IN" || a.status === "CHECKED_OUT").length }), half: true, empty: msg("No arrivals were due."),
-      columns: [{ label: msg("Guest") }, { label: msg("Source"), muted: true }, { label: msg("Status") }],
-      rows: arrivals.map((a) => [a.reservation.guest.fullName, a.reservation.source.name, STAY[a.status] ?? a.status]),
+      columns: [{ label: msg("Guest") }, { label: msg("Room") }, { label: msg("Source"), muted: true }, { label: msg("Status") }],
+      rows: arrivals.map((a) => [a.reservation.guest.fullName, a.room?.number ?? "—", a.reservation.source.name, STAY[a.status] ?? a.status]),
     },
     {
       kind: "table", title: msg("Departures"), subtitle: L(msg("{n} due to leave"), { n: departures.length }), half: true, empty: msg("No departures were due."),
-      columns: [{ label: msg("Guest") }, { label: msg("Status") }, { label: msg("Balance"), align: "right", money: true }],
-      rows: departures.map((x) => [x.reservation.guest.fullName, x.status === "CHECKED_OUT" ? msg("Left") : msg("Still in (overdue)"), x.reservation.balanceAmount]),
+      columns: [{ label: msg("Guest") }, { label: msg("Room") }, { label: msg("Status") }, { label: msg("Balance"), align: "right", money: true }],
+      rows: departures.map((x) => [x.reservation.guest.fullName, x.room?.number ?? "—", x.status === "CHECKED_OUT" ? msg("Left") : msg("Still in (overdue)"), x.reservation.balanceAmount]),
     },
     {
       kind: "highlights", title: msg("Customers"),
