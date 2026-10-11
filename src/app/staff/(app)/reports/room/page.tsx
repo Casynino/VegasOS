@@ -68,7 +68,7 @@ export default async function RoomReportsPage() {
                 <span className="grid size-10 place-items-center rounded-2xl bg-muted/60 text-muted-foreground"><BedDouble className="size-5" /></span>
                 <div className="min-w-0 flex-1 leading-tight">
                   <p className="font-medium tabular-nums">{date}{r.version > 1 && <span className="ml-1.5 rounded-full bg-muted px-1.5 text-[10px] font-semibold text-muted-foreground">v{r.version}</span>}{r.revokedAt && <span className="ml-1.5 rounded-full bg-rose-500/15 px-1.5 text-[10px] font-semibold text-rose-600">link off</span>}</p>
-                  <p className="truncate text-xs text-muted-foreground">{d.perf.occupied}/{d.guestRooms} occupied · {d.perf.newSales} new · {d.perf.continuing} continuing · {d.perf.checkedOut} out · {formatTZS(d.money.expected)} new revenue</p>
+                  <p className="truncate text-xs text-muted-foreground">{d.perf.occupied}/{d.guestRooms} occupied · {d.perf.newSales} new · {d.perf.continuing} continuing · {d.perf.checkedOut} out · {d.day ? `income ${formatTZS(d.day.income.total)} · net profit ${d.day.profit < 0 ? "− " : ""}${formatTZS(Math.abs(d.day.profit))}` : `room income ${formatTZS(d.money.recognized)}`}</p>
                   {failed && <p className="truncate text-xs text-rose-600">{failed.lastError ?? "Not delivered"} (attempt {failed.attempts})</p>}
                 </div>
                 <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold", sent ? "bg-emerald-500/15 text-emerald-600" : failed ? "bg-rose-500/15 text-rose-600" : "bg-muted text-muted-foreground")}>{sent ? "Sent" : failed ? "Failed" : "Not sent"}</span>

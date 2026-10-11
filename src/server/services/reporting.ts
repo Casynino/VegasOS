@@ -209,6 +209,22 @@ export async function outstanding() {
   };
 }
 
+/** Restaurant orders not paid and not on a room bill — owed to the hotel too (any date). */
+export async function unpaidOrders() {
+  const rows = await db.restaurantOrder.findMany({
+    where: { status: { not: "CANCELLED" }, settlement: { not: "ROOM" } },
+    select: { total: true, paidAmount: true },
+  });
+  const open = rows.filter((o) => o.paidAmount < o.total);
+  return { count: open.length, amount: open.reduce((t, o) => t + o.total - o.paidAmount, 0) };
+}
+
+/** Everything still owed to the hotel right now: guests, companies, the meeting room and unpaid restaurant orders. */
+export async function owedToHotel() {
+  const [owed, orders] = await Promise.all([outstanding(), unpaidOrders()]);
+  return owed.total + orders.amount;
+}
+
 // ─────────────────────────── Profit & loss ───────────────────────────
 
 export async function profitLoss(r: Range) {

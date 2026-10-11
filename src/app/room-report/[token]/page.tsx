@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { Clock } from "lucide-react";
 import { db } from "@/server/db";
 import { getSettings } from "@/server/settings";
-import type { RoomReportData } from "@/server/services/room-report-data";
+import { withDayMoney, type RoomReportData } from "@/server/services/room-report-data";
 import { RoomReportPaper, ReceptionistRoomReport } from "@/components/staff/reports/room-report-paper";
 import { ReportActions } from "@/app/staff/(app)/reports/report-actions";
 
@@ -31,7 +31,8 @@ export default async function SharedRoomReportPage({ params, searchParams }: { p
       </section>,
     );
   }
-  const d = r.data as unknown as RoomReportData;
+  // A report made before the day's money was kept with it shows it from the books.
+  const d = await withDayMoney(r.data as unknown as RoomReportData);
   const hotel = {
     name: s.hotelName, tagline: s.tagline,
     address: [s.postalAddress, s.addressLine, s.city, s.country].filter(Boolean).join(", "),

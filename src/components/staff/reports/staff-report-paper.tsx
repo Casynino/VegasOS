@@ -405,10 +405,10 @@ function BusinessSection({ b, kind, live = false, t }: { b: BusinessPeriod; kind
   const label = (date: string) => kind === "WEEK" ? new Date(`${date}T12:00:00Z`).toLocaleDateString(t.intl, { weekday: "short", day: "numeric", timeZone: "UTC" }) : String(Number(date.slice(8)));
   const k = (n: number) => (Math.abs(n) >= 1_000_000 ? `${Math.round(n / 100_000) / 10}M` : Math.abs(n) >= 1000 ? `${Math.round(n / 1000)}k` : num(n));
   const figures: { icon: LucideIcon; label: string; value: string; note?: string | null }[] = [
-    { icon: Landmark, label: t("Revenue (net)"), value: tzs(b.revenue.total), note: vs(b.revenue.total, b.revenue.prev, kind, t) },
-    { icon: Wallet, label: t("Money received"), value: tzs(b.received), note: vs(b.received, b.prevReceived, kind, t) },
+    { icon: Landmark, label: t("Income"), value: tzs(b.revenue.total), note: vs(b.revenue.total, b.revenue.prev, kind, t) },
     { icon: Receipt, label: t("Expenses"), value: tzs(b.expenses), note: vs(b.expenses, b.prevExpenses, kind, t) },
-    { icon: Scale, label: t("Net operating result"), value: `${b.result < 0 ? "−" : ""}${tzs(Math.abs(b.result))}`, note: t("revenue − expenses") },
+    { icon: Scale, label: t("Net profit"), value: `${b.result < 0 ? "−" : ""}${tzs(Math.abs(b.result))}`, note: t("income − expenses") },
+    { icon: Wallet, label: t("Money received"), value: tzs(b.received), note: vs(b.received, b.prevReceived, kind, t) },
     { icon: BedDouble, label: t("Occupancy"), value: `${b.rooms.occupancy}%`, note: b.rooms.prevOccupancy || b.rooms.occupancy ? (week ? t("{n}% last week", { n: b.rooms.prevOccupancy }) : t("{n}% last month", { n: b.rooms.prevOccupancy })) : null },
     { icon: UtensilsCrossed, label: t("Restaurant & bar orders"), value: num(b.restaurant.orders), note: vs(b.restaurant.orders, b.restaurant.prevOrders, kind, t) },
   ];
@@ -434,10 +434,10 @@ function BusinessSection({ b, kind, live = false, t }: { b: BusinessPeriod; kind
         ))}
       </div>
       <div className="grid gap-3 lg:grid-cols-2">
-        <Bars title={t("Revenue")} sub={t("TZS per day")} items={b.days.map((x) => ({ label: label(x.date), value: x.total }))} fmt={k} t={t} />
+        <Bars title={t("Income")} sub={t("TZS per day")} items={b.days.map((x) => ({ label: label(x.date), value: x.total }))} fmt={k} t={t} />
         <div className="rounded-3xl bg-white p-5 ring-1 ring-[#eee4d2]" data-break>
-          <p className="mb-3 text-sm font-semibold">{t("Revenue by department")}</p>
-          {depts.length ? <HBars items={depts} fmt={tzs} /> : <p className="rounded-2xl bg-[#f6f1e7] px-4 py-8 text-center text-xs text-[#8c8173]">{t("No revenue recorded.")}</p>}
+          <p className="mb-3 text-sm font-semibold">{t("Income by department")}</p>
+          {depts.length ? <HBars items={depts} fmt={tzs} /> : <p className="rounded-2xl bg-[#f6f1e7] px-4 py-8 text-center text-xs text-[#8c8173]">{t("No income recorded.")}</p>}
           {(b.revenue.discounts > 0 || b.revenue.refunds > 0) && <p className="mt-3 text-[11px] text-[#8c8173]">{b.revenue.discounts > 0 && t("Room discounts given {amount}", { amount: tzs(b.revenue.discounts) })}{b.revenue.discounts > 0 && b.revenue.refunds > 0 && " · "}{b.revenue.refunds > 0 && t("refunds {amount}", { amount: tzs(b.revenue.refunds) })}</p>}
         </div>
         <Bars title={t("Occupancy")} sub={t("% of rooms, per night")} items={b.days.map((x) => ({ label: label(x.date), value: x.occupancy }))} fmt={(n) => `${n}%`} tone="bg-[#38bdf8]" t={t} />

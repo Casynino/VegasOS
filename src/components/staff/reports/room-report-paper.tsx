@@ -23,12 +23,12 @@ function Section({ no, title, note, children }: { no: number; title: string; not
   );
 }
 
-function Table({ head, rows, foot, empty, right = [] }: { head: string[]; rows: ReactNode[][]; foot?: ReactNode[]; empty: string; right?: number[] }) {
+function Table({ head, rows, foot, empty, right = [], narrow }: { head: string[]; rows: ReactNode[][]; foot?: ReactNode[]; empty: string; right?: number[]; narrow?: boolean }) {
   if (!rows.length) return <p className="rounded-xl bg-[#f6f2ea] px-4 py-3 text-sm" style={{ color: MUTED }}>{empty}</p>;
   const cell = (i: number) => `px-2.5 py-2 ${right.includes(i) ? "text-right tabular-nums" : "text-left"}`;
   return (
     <div className="report-scroll overflow-x-auto rounded-xl border" style={{ borderColor: LINE }}>
-      <table className="w-full min-w-[640px] border-collapse text-[12.5px]">
+      <table className={`w-full border-collapse text-[12.5px] ${narrow ? "" : "min-w-[640px]"}`}>
         <thead>
           <tr className="bg-[#f6f2ea]" style={{ color: MUTED }}>{head.map((h, i) => <th key={h} className={`${cell(i)} text-[10.5px] font-semibold uppercase tracking-wider`}>{h}</th>)}</tr>
         </thead>
@@ -75,12 +75,23 @@ function Bars({ items, money }: { items: { label: string; value: number; color?:
   );
 }
 
+const RED = "#be123c", GREEN = "#047857";
+/** "− 20,000" for money that goes out; "0" when there is none. */
+const less = (v: number) => (v ? `− ${n(v)}` : "0");
+/** An amount that may be below zero, written the way a person reads it. */
+const signed = (v: number) => (v < 0 ? `− ${formatTZS(-v)}` : formatTZS(v));
+
 const STATUS_COLOR: Record<string, string> = { READY: "#10b981", OCCUPIED: "#8b5cf6", RESERVED: "#0ea5e9", DIRTY: "#f59e0b", CLEANING: "#f97316", MAINTENANCE: "#64748b", OUT_OF_SERVICE: "#f43f5e" };
 
 /** The Daily Room Report as a printable document (A4, PDF) — the same on the Boss's link and in the staff app. */
 export function RoomReportPaper({ d, hotel, number, version }: { d: RoomReportData; hotel: Hotel; number: string; version: number }) {
   const tz = d.timezone;
-  const p = d.perf, m = d.money;
+  const p = d.perf, m = d.money, today = d.day;
+  // Income by department — the big three always, the rest only when they earned something.
+  const departments = today ? [
+    { label: "Rooms", value: today.income.rooms }, { label: "Restaurant", value: today.income.restaurant }, { label: "Bar", value: today.income.bar },
+    ...[{ label: "Room service", value: today.income.roomService }, { label: "Meeting room", value: today.income.meeting }, { label: "Transport", value: today.income.transport }, { label: "Other services", value: today.income.other }].filter((x) => x.value !== 0),
+  ] : [];
   const salesNights = d.sales.reduce((t, s) => t + (s.dayUse ? 0 : s.nights), 0);
   const realTrend = d.trend.filter((t) => t.occupied > 0 || t.sold > 0).length >= 2;
   const trendMax = Math.max(1, ...d.trend.map((t) => Math.max(t.occupied, t.sold)));
@@ -101,44 +112,57 @@ export function RoomReportPaper({ d, hotel, number, version }: { d: RoomReportDa
         </div>
       </header>
 
-      {/* 1 · Executive summary */}
-      <Section no={1} title="Executive summary" note="Occupied = every room that had a guest at any time in the period. New check-ins are the rooms actually sold (checked in) in the period — a multi-night stay is counted once, on its check-in day only.">
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+      {/* 1 · Summary */}
+      <Section no={1} title="Summary" note="Occupied = every room that had a guest at any time in the period. New check-ins are the rooms sold (checked in) in the period — a guest staying several nights is counted once, on the check-in day only.">
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
           <Card accent label="Occupied" value={`${p.occupied} / ${d.guestRooms}`} sub={`${p.occupancyPct}% occupancy`} />
-          <Card label="New check-ins" value={n(p.newSales)} sub="new room sales" />
+          <Card label="New check-ins" value={n(p.newSales)} sub="rooms sold today" />
           <Card label="Continuing stays" value={n(p.continuing)} sub="checked in before, still in house" />
           <Card label="Checked out" value={n(p.checkedOut)} />
           <Card label="Available now" value={n(p.available)} sub="ready for sale" />
           <Card label="Room nights sold" value={n(p.nightsSold)} sub="by the new check-ins" />
-          <Card accent label="New room revenue" value={formatTZS(m.expected)} sub="expected, full stays" />
-          <Card label="Collected today" value={formatTZS(m.collected)} sub={`Outstanding ${formatTZS(m.outstanding)}`} />
+        </div>
+        <div className="mt-2.5 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+          {today ? (
+            <>
+              <Card label="Income today" value={formatTZS(today.income.total)} sub={`Rooms ${formatTZS(today.income.rooms)}`} />
+              <Card label="Expenses" value={formatTZS(today.expenses.total)} sub="spent today" />
+              <Card accent label="Net profit" value={signed(today.profit)} sub={today.profit < 0 ? "more was spent than earned" : "income − expenses"} />
+              <Card label="Money received" value={formatTZS(today.received)} sub={`Still owed ${formatTZS(today.owed)}`} />
+            </>
+          ) : (
+            <>
+              <Card accent label="Room income today" value={formatTZS(m.recognized)} sub="tonight, every room with a guest" />
+              <Card label="Money received" value={formatTZS(m.collected)} sub="from guests today" />
+              <Card label="Still owed" value={formatTZS(m.outstanding)} sub="by these guests" />
+            </>
+          )}
         </div>
       </Section>
 
       {/* 2 · New room sales, by room type */}
-      <Section no={2} title="New room sales — by room type" note="Rooms checked in during the period, grouped by room type and priced with the nightly rates they were sold at (each night keeps its own price; later price changes never alter it).">
+      <Section no={2} title="Rooms sold today — by room type" note="Rooms checked in during the period, by room type. The amounts are for the whole stay — all the nights the guest booked — at the price each night was sold for.">
         <Table empty="No room was checked in during this period."
-          head={["Room type", "Rooms", "Rooms sold", "Nights", "Gross", "Discounts", "Net", "Average rate"]} right={[2, 3, 4, 5, 6, 7]}
+          head={["Room type", "Rooms", "Rooms sold", "Nights", "Full price", "Discount", "Sold for", "Average per night"]} right={[2, 3, 4, 5, 6, 7]}
           rows={groupByType(d.sales).map(([type, rs]) => {
             const nights = sumOf(rs, (x) => x.nights), net = sumOf(rs, (x) => x.total);
             return [<b key="t">{type}</b>, roomNos(rs), rs.length, nights, n(sumOf(rs, (x) => x.gross)), n(sumOf(rs, (x) => x.discount)), n(net), nights ? n(Math.round(net / nights)) : "—"];
           })}
           foot={["Total", "", d.sales.length, salesNights, n(sumOf(d.sales, (x) => x.gross)), n(sumOf(d.sales, (x) => x.discount)), n(sumOf(d.sales, (x) => x.total)), salesNights ? n(Math.round(sumOf(d.sales, (x) => x.total) / salesNights)) : "—"]} />
-        {d.unknownRates > 0 && <p className="mt-2 text-[11px]" style={{ color: "#b45309" }}>{d.unknownRates} stay(s) have no nightly price on record — their totals are shown, their rate is not guessed.</p>}
-        {d.sales.length > 0 && <p className="mt-2 text-[11px]" style={{ color: MUTED }}>Net reconciles to the new room revenue of {formatTZS(m.expected)} in the summary.</p>}
+        {d.unknownRates > 0 && <p className="mt-2 text-[11px]" style={{ color: "#b45309" }}>{d.unknownRates} stay(s) have no price per night on record — their totals are shown, their price is not guessed.</p>}
       </Section>
 
-      {/* 3 · Revenue by nightly rate */}
-      <Section no={3} title="Revenue by nightly rate" note="Grouped by the price of ONE night, not the whole stay: a 3-night stay at TZS 60,000 a night is three nights in the 60,000 group.">
+      {/* 3 · Rooms sold, by price per night */}
+      <Section no={3} title="Rooms sold by price per night" note="Grouped by the price of ONE night, not the whole stay: a 3-night stay at TZS 60,000 a night is three nights in the 60,000 group.">
         <Table empty="No new sales to group."
-          head={["Rate per night", "Stays", "Room nights", "Expected revenue"]} right={[0, 1, 2, 3]}
+          head={["Price per night", "Stays", "Room nights", "Amount"]} right={[0, 1, 2, 3]}
           rows={d.rates.map((g) => [g.rate === 0 ? "Complimentary (0)" : n(g.rate), g.stays, g.nights, n(g.expected)])}
           foot={["Total", "", d.rates.reduce((t, g) => t + g.nights, 0), n(d.rates.reduce((t, g) => t + g.expected, 0))]} />
-        {d.rates.length > 0 && <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: LINE }}><p className="mb-3 text-xs font-semibold">Room nights sold, by nightly rate</p><Bars items={d.rates.map((g) => ({ label: `TZS ${n(g.rate)}`, value: g.nights, sub: `${g.nights === 1 ? "night" : "nights"}` }))} /></div>}
+        {d.rates.length > 0 && <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: LINE }}><p className="mb-3 text-xs font-semibold">Room nights sold, by price per night</p><Bars items={d.rates.map((g) => ({ label: `TZS ${n(g.rate)}`, value: g.nights, sub: `${g.nights === 1 ? "night" : "nights"}` }))} /></div>}
       </Section>
 
       {/* 4 · Continuing stays, by room type */}
-      <Section no={4} title="Continuing stays — by room type" note="Guests who checked in before this period and are still in house at its end. They are occupancy, not new sales — their revenue was counted when they checked in.">
+      <Section no={4} title="Continuing stays — by room type" note="Guests who checked in before this period and are still in house at its end. They are not new sales; tonight's price of their room is part of today's room income.">
         <Table empty="No stay continued from before this period."
           head={["Room type", "Rooms", "How many", "Nights booked", "Nights used so far", "Nights remaining"]} right={[2, 3, 4, 5]}
           rows={groupByType(d.continuing).map(([type, rs]) => [<b key="t">{type}</b>, roomNos(rs), rs.length, sumOf(rs, (x) => x.nights), sumOf(rs, (x) => x.elapsed), sumOf(rs, (x) => x.remaining)])}
@@ -157,24 +181,54 @@ export function RoomReportPaper({ d, hotel, number, version }: { d: RoomReportDa
         </div>
       </Section>
 
-      {/* 6 · Reconciliation */}
-      <Section no={6} title="Financial reconciliation" note="A multi-night booking is never counted again as new revenue: expected is the value of the stays sold today; recognized is the room income earned for this night; collected is cash and mobile money received today.">
-        <Table empty="" head={["Line", "Amount (TZS)"]} right={[1]}
-          rows={[
-            ["Expected charges — new stays at full price", n(m.gross)],
-            ["Less discounts & adjustments", m.discounts ? `− ${n(m.discounts)}` : "0"],
-            [<b key="a">Expected room revenue — new sales</b>, <b key="b">{n(m.expected)}</b>],
-            ["Room income recognized for this night (all in-house guests)", n(m.recognized)],
-            ["Payments collected on guest bookings today", n(m.collected)],
-            ["Refunds paid today", m.refunds ? `− ${n(m.refunds)}` : "0"],
-            ["Payments reversed today", m.reversed ? `− ${n(m.reversed)}` : "0"],
-            [<b key="c">Outstanding on these stays</b>, <b key="d" style={{ color: m.outstanding ? "#be123c" : INK }}>{n(m.outstanding)}</b>],
-          ]} />
-        <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: LINE }}>
-          <p className="mb-3 text-xs font-semibold">Expected vs recognized vs collected</p>
-          <Bars money items={[{ label: "Expected (new sales)", value: m.expected, color: GOLD }, { label: "Recognized (this night)", value: m.recognized, color: "#8b5cf6" }, { label: "Collected (today)", value: m.collected, color: "#10b981" }]} />
-        </div>
-      </Section>
+      {/* 6 · Money today — income, expenses, net profit */}
+      {today ? (
+        <Section no={6} title="Money today" note="Income is what the hotel earned today. Expenses are what was spent today. Net profit is income minus expenses.">
+          <Table narrow empty="" head={["Income", "Amount (TZS)"]} right={[1]}
+            rows={[
+              ...departments.map((x) => [x.label, n(x.value)]),
+              ...(today.income.refunds ? [["Less money given back to guests (refunds)", less(today.income.refunds)]] : []),
+              [<b key="a">Total income</b>, <b key="b">{n(today.income.total)}</b>],
+              ["Expenses", less(today.expenses.total)],
+            ]}
+            foot={["Net profit", <span key="p" style={{ color: today.profit < 0 ? RED : GREEN }}>{today.profit < 0 ? `− ${n(-today.profit)}` : n(today.profit)}</span>]} />
+          <p className="mt-2 text-[11px] leading-relaxed" style={{ color: MUTED }}>Room income is tonight&apos;s price of every room with a guest. A guest staying 3 nights is counted one night each day — never three nights at once.</p>
+
+          {today.expenses.byCategory.length > 0 && (
+            <div className="mt-4">
+              <Table narrow empty="" head={["Where the expenses went", "Amount (TZS)"]} right={[1]}
+                rows={today.expenses.byCategory.map((c) => [c.name, n(c.amount)])}
+                foot={["Total expenses", n(today.expenses.total)]} />
+            </div>
+          )}
+
+          <div className="mt-4">
+            <Table narrow empty="" head={["Money in hand", "Amount (TZS)"]} right={[1]}
+              rows={[
+                ["Money received today — cash, mobile money, bank, card", n(today.received)],
+                ["Still owed to the hotel — all guests and companies", today.owed ? <b key="o" style={{ color: RED }}>{n(today.owed)}</b> : "0"],
+              ]} />
+            <p className="mt-2 text-[11px] leading-relaxed" style={{ color: MUTED }}>Money received is not the same as income: a guest may pay today for other nights, or pay later.</p>
+          </div>
+
+          {departments.filter((x) => x.value > 0).length > 1 && (
+            <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: LINE }}>
+              <p className="mb-3 text-xs font-semibold">Where the income came from</p>
+              <Bars money items={departments.filter((x) => x.value > 0)} />
+            </div>
+          )}
+        </Section>
+      ) : (
+        <Section no={6} title="Money today" note="Room money only.">
+          <Table narrow empty="" head={["Rooms", "Amount (TZS)"]} right={[1]}
+            rows={[
+              ["Room income tonight — every room with a guest", n(m.recognized)],
+              ["Money received from guests today", n(m.collected)],
+              ["Money given back to guests (refunds)", less(m.refunds)],
+              [<b key="c">Still owed by these guests</b>, <b key="d" style={{ color: m.outstanding ? RED : INK }}>{n(m.outstanding)}</b>],
+            ]} />
+        </Section>
+      )}
 
       {/* 7 · Trend */}
       {realTrend && (
@@ -198,7 +252,7 @@ export function RoomReportPaper({ d, hotel, number, version }: { d: RoomReportDa
       {/* 8 · Reception */}
       <Section no={realTrend ? 8 : 7} title="Reception summary" note="Each check-in, check-out and payment is credited to the person who recorded it — never to two people.">
         <Table empty="No reception activity was recorded."
-          head={["Receptionist", "Shift", "Check-ins", "Walk-ins", "Check-outs", "Payments", "Collected"]} right={[2, 3, 4, 5, 6]}
+          head={["Receptionist", "Shift", "Check-ins", "Walk-ins", "Check-outs", "Payments", "Money received"]} right={[2, 3, 4, 5, 6]}
           rows={d.staff.map((s, i) => [<a key="n" href={`?r=${i}`} className="font-bold underline decoration-dotted print:no-underline">{s.name.replace(/\s*\(.*\)/, "")}</a>, s.shift ?? "—", s.checkIns, s.walkIns, s.checkOuts, s.payments, n(s.collected)])} />
       </Section>
 
@@ -247,7 +301,7 @@ export function ReceptionistRoomReport({ d, index, hotel, number, version }: { d
           {card("Check-ins", s.checkIns, `${s.walkIns} walk-in${s.walkIns === 1 ? "" : "s"} · ${share(s.checkIns, total.ci)} of the hotel's`)}
           {card("Check-outs", s.checkOuts, `${share(s.checkOuts, total.co)} of the hotel's`)}
           {card("Payments recorded", s.payments, `${share(s.payments, total.pay)} of the hotel's`)}
-          {card("Money collected", `TZS ${n(s.collected)}`, `${share(s.collected, total.cash)} of the hotel's`)}
+          {card("Money received", `TZS ${n(s.collected)}`, `${share(s.collected, total.cash)} of the hotel's`)}
         </div>
       </Section>
       <Section no={2} title="The hotel that day">
@@ -255,7 +309,7 @@ export function ReceptionistRoomReport({ d, index, hotel, number, version }: { d
           {card("Occupancy", `${d.perf.occupancyPct}%`, `${d.perf.occupied} of ${d.guestRooms} rooms`)}
           {card("New check-ins", d.perf.newSales)}
           {card("Check-outs", d.perf.checkedOut)}
-          {card("Collected", `TZS ${n(d.money.collected)}`)}
+          {card("Money received", `TZS ${n(d.money.collected)}`, "from guests")}
         </div>
       </Section>
       <footer className="mt-10 border-t pt-4 text-center text-[11px] leading-relaxed" style={{ borderColor: LINE, color: MUTED }}>

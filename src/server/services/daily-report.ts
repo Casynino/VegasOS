@@ -5,7 +5,7 @@ import { audit } from "../audit";
 import { getSettings, businessDayConfig } from "../settings";
 import { addDays, businessDateOf, businessDayBounds, fromDbDate, localParts, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import { assetSummary, inventoryAlerts, inventoryDay } from "./inventory";
-import { guestMovement, meetingRoomStats, occupancy, outstanding, profitLoss } from "./reporting";
+import { guestMovement, meetingRoomStats, occupancy, outstanding, profitLoss, unpaidOrders as unpaidOrderTotals } from "./reporting";
 import { paymentsByMethod, staffActivity } from "./finance";
 import { deliverToRecipients } from "./report-delivery";
 import { Prisma } from "@/generated/prisma/client";
@@ -125,9 +125,9 @@ export async function buildDailyReport(date: BusinessDate): Promise<DailyReportD
     db.reservation.groupBy({ by: ["sourceId"], where: { businessDate: d, status: { notIn: ["CANCELLED", "INQUIRY"] } }, _count: true }),
     db.bookingSource.findMany({ select: { id: true, name: true } }),
     // Restaurant orders not paid (not on a room bill) — owed to the hotel too.
-    db.restaurantOrder.findMany({ where: { status: { not: "CANCELLED" }, settlement: { not: "ROOM" } }, select: { total: true, paidAmount: true } }),
+    unpaidOrderTotals(),
   ]);
-  const unpaidOrders = openOrders.reduce((t, o) => t + Math.max(0, o.total - o.paidAmount), 0);
+  const unpaidOrders = openOrders.amount;
   const st = (xs: string[]) => roomStatus.filter((r) => xs.includes(r.status)).reduce((n, r) => n + r._count, 0);
   const settings = await getSettings();
   const threshold = settings.expenseApprovalThreshold;
@@ -269,7 +269,7 @@ export function renderReportText(r: DailyReportData, hotelName: string, link?: s
   const rooms = r.rooms;
   const sold = rooms ? rooms.occupied : r.hotel.roomNights;
 
-  // Revenue breakdown: only depts that earned, all on one line
+  // Income by department: only those that earned, all on one line
   const dept = ([
     [msg("Rooms"), r.revenue.roomNet], [msg("Restaurant"), r.revenue.restaurant], [msg("Bar"), r.revenue.bar],
     [msg("Room service"), r.revenue.roomService ?? 0], [msg("Meeting room"), r.revenue.meeting],
@@ -282,10 +282,11 @@ export function renderReportText(r: DailyReportData, hotelName: string, link?: s
     `*${t("Daily business report")}* · ${date}`,
     link ? `${t("Full report:")} ${link}` : null,
     "",
-    `*${t("Revenue {amount}", { amount: tz(r.revenue.total) })}*${deptSuffix}`,
+    `*${t("Income {amount}", { amount: tz(r.revenue.total) })}*${deptSuffix}`,
     r.revenue.roomDiscounts ? `  ${t("(room discounts given: {amount})", { amount: fmt(r.revenue.roomDiscounts) })}` : null,
-    `${bold(msg("Payments collected:"))} ${tz(r.money.collected)} · ${bold(msg("Outstanding (all):"))} ${tz(r.money.outstanding)}`,
-    r.expenses.total ? `${bold(msg("Expenses:"))} ${tz(r.expenses.total)} · ${bold(msg("Net operating result:"))} ${tz(r.profitLoss.estimated)}` : null,
+    // Income, expenses and what is left — always all three, also on a day with no expenses.
+    `${bold(msg("Expenses:"))} ${tz(r.expenses.total)} · ${bold(msg("Net profit:"))} ${tz(r.profitLoss.estimated)}`,
+    `${bold(msg("Money received:"))} ${tz(r.money.collected)} · ${bold(msg("Still owed:"))} ${tz(r.money.outstanding)}`,
     "",
     `${bold(msg("Occupancy:"))} ${rooms ? t("{sold} / {total} rooms — {pct}%", { sold, total: rooms.total, pct: r.hotel.occupancy }) : t("{sold} rooms — {pct}%", { sold, pct: r.hotel.occupancy })}${rooms?.adr ? ` · ${t("avg rate {amount}", { amount: fmt(rooms.adr) })}` : ""}`,
     `${bold(msg("Check-ins:"))} ${r.guests.checkIns} · ${bold(msg("Check-outs:"))} ${r.guests.checkOuts} · ${bold(msg("New bookings:"))} ${r.guests.newBookings}`,

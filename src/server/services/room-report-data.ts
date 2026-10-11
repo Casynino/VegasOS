@@ -3,6 +3,8 @@ import { db } from "../db";
 import { businessDayConfig, getSettings } from "../settings";
 import { addDays, businessDayBounds, diffDays, fromDbDate, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import { EARNED_NIGHT } from "./reservation-financials";
+import { owedToHotel, profitLoss } from "./reporting";
+import { paymentsByMethod } from "./finance";
 
 /**
  * The DAILY ROOM REPORT's figures for one business day (04:00 → 04:00), from the real reservation, check-in and
@@ -13,6 +15,35 @@ import { EARNED_NIGHT } from "./reservation-financials";
  * CHECK-OUT left in the period. OCCUPIED = every room that had a guest at any time in the period. Room NIGHTS are
  * the nights those new sales cover. The meeting room is never counted.
  */
+
+/** The whole hotel's money for one day, in the Boss's words: what it earned, what it spent, what is left. */
+export type DayMoney = {
+  income: { rooms: number; restaurant: number; bar: number; roomService: number; meeting: number; transport: number; other: number; refunds: number; total: number };
+  expenses: { total: number; byCategory: { name: string; amount: number }[] };
+  /** Income minus expenses. */
+  profit: number;
+  /** Money that came in that day (payments and on-the-spot sales, less refunds) and what is still owed to the hotel. */
+  received: number; owed: number;
+};
+
+/**
+ * Income, expenses and net profit of one business day — the same services as the daily report and the Boss's
+ * dashboard, so the two reports can never disagree. Nothing is calculated here.
+ */
+export async function dayMoney(date: BusinessDate): Promise<DayMoney> {
+  const [pl, received, owed] = await Promise.all([profitLoss({ from: date, to: date }), paymentsByMethod(date, date), owedToHotel()]);
+  const r = pl.revenue;
+  return {
+    income: { rooms: r.rooms.net, restaurant: r.restaurant, bar: r.bar, roomService: r.roomService, meeting: r.meeting, transport: r.transport, other: r.other, refunds: r.refunds, total: pl.netRevenue },
+    expenses: { total: pl.expenses, byCategory: pl.expenseSummary.byCategory.filter((c) => c.amount > 0).map((c) => ({ name: c.name, amount: c.amount })) },
+    profit: pl.estimatedProfit, received: received.total, owed,
+  };
+}
+
+/** A report made before the day's money was kept with it reads those figures from the books now. */
+export async function withDayMoney(d: RoomReportData): Promise<RoomReportData> {
+  return d.day ? d : { ...d, day: await dayMoney(d.date) };
+}
 
 export type SaleRow = {
   room: string; type: string; checkedInAt: string; nights: number; dayUse: boolean;
@@ -36,6 +67,8 @@ export type RoomReportData = {
   guestRooms: number;
   perf: { occupied: number; newSales: number; continuing: number; checkedOut: number; available: number; occupancyPct: number; nightsSold: number };
   money: { expected: number; gross: number; discounts: number; recognized: number; collected: number; refunds: number; reversed: number; outstanding: number };
+  /** The whole hotel's money for the day. Reports made before 11 Oct 2026 have none — it is then read from the books when shown. */
+  day?: DayMoney;
   sales: SaleRow[];
   rates: RateGroup[];
   continuing: ContinuingRow[];
@@ -193,6 +226,7 @@ export async function buildRoomReportData(date: BusinessDate): Promise<RoomRepor
   });
 
   const guestRooms = rooms.length;
+  const dayFigures = await dayMoney(date);
   return {
     date, periodStart: start.toISOString(), periodEnd: end.toISOString(), generatedAt: new Date().toISOString(), timezone: settings.timezone, guestRooms,
     perf: {
@@ -200,6 +234,6 @@ export async function buildRoomReportData(date: BusinessDate): Promise<RoomRepor
       occupancyPct: guestRooms ? Math.round((occupiedRooms.size / guestRooms) * 100) : 0,
       nightsSold: sum(sales, (s) => (s.dayUse ? 0 : s.nights)),
     },
-    money, sales, rates, continuing, checkouts, status, trend, staff: [...people.values()].map(({ id: _id, ...r }) => r), unknownRates,
+    money, day: dayFigures, sales, rates, continuing, checkouts, status, trend, staff: [...people.values()].map(({ id: _id, ...r }) => r), unknownRates,
   };
 }

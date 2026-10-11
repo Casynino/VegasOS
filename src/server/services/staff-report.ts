@@ -15,7 +15,7 @@ import { getTFor } from "@/i18n/server";
 import { englishT, type T } from "@/i18n/translate";
 import type { Locale } from "@/i18n/config";
 import type { TextBook } from "@/lib/report-i18n";
-import { dailyByKind, dailyMoney, guestMovement, occupancy, outstanding, profitLoss, restaurantSummary, type Range } from "./reporting";
+import { dailyByKind, dailyMoney, guestMovement, occupancy, owedToHotel, profitLoss, restaurantSummary, type Range } from "./reporting";
 
 /**
  * WEEKLY AND MONTHLY STAFF REPORTS — one person's work over a week (Monday → Sunday hotel days) or a calendar month,
@@ -238,7 +238,7 @@ export async function buildBusinessPeriod(kind: PeriodKind, from: BusinessDate, 
   const r: Range = { from, to };
   const p: Range = previousPeriod(kind, from, to);
   const [pl, prevPl, occ, prevOcc, moves, food, prevFood, byKind, money, prevMoney, owed] = await Promise.all([
-    profitLoss(r), profitLoss(p), occupancy(r), occupancy(p), guestMovement(r), restaurantSummary(r), restaurantSummary(p), dailyByKind(r), dailyMoney(r), dailyMoney(p), outstanding(),
+    profitLoss(r), profitLoss(p), occupancy(r), occupancy(p), guestMovement(r), restaurantSummary(r), restaurantSummary(p), dailyByKind(r), dailyMoney(r), dailyMoney(p), owedToHotel(),
   ]);
   const rev = pl.revenue;
   const sum = <T,>(xs: T[], f: (x: T) => number) => xs.reduce((t, x) => t + f(x), 0);
@@ -249,7 +249,7 @@ export async function buildBusinessPeriod(kind: PeriodKind, from: BusinessDate, 
       meeting: rev.meeting, transport: rev.transport, other: rev.other, discounts: rev.discounts, refunds: rev.refunds,
     },
     received, prevReceived: sum(prevMoney, (x) => x.received),
-    expenses: pl.expenses, prevExpenses: prevPl.expenses, result: pl.estimatedProfit, prevResult: prevPl.estimatedProfit, outstanding: owed.total,
+    expenses: pl.expenses, prevExpenses: prevPl.expenses, result: pl.estimatedProfit, prevResult: prevPl.estimatedProfit, outstanding: owed,
     rooms: { occupancy: Math.round(occ.occupancy * 10) / 10, prevOccupancy: Math.round(prevOcc.occupancy * 10) / 10, roomNights: occ.roomNights, sellable: occ.sellableNights, adr: occ.roomsSold ? Math.round(rev.rooms.net / occ.roomsSold) : 0 },
     guests: { checkIns: moves.checkIns, checkOuts: moves.checkOuts, newBookings: moves.newBookings, cancellations: moves.cancellations, noShows: moves.noShows },
     restaurant: { orders: food.orders, prevOrders: prevFood.orders, sales: food.sales, averageOrder: food.averageOrder, best: food.best },
@@ -279,16 +279,16 @@ export function renderTeamText(d: TeamPeriodData, hotelName: string, link?: stri
   ] as const).filter(([, v]) => v !== 0).map(([k, v]) => `  ${t("{what}: {amount}", { what: t(k), amount: fmtN(v) })}`) : [];
   const bold = (label: string, value: string) => `*${t(label)}* ${value}`;
   const business = b ? [
-    `*${t("Revenue {amount}", { amount: tz(b.revenue.total) })}*${vsPrev(b.revenue.total, b.revenue.prev)}`,
-    ...(deptLines.length ? deptLines : [`  ${t("No revenue recorded")}`]),
+    `*${t("Income {amount}", { amount: tz(b.revenue.total) })}*${vsPrev(b.revenue.total, b.revenue.prev)}`,
+    ...(deptLines.length ? deptLines : [`  ${t("No income recorded")}`]),
     ...(b.revenue.refunds ? [`  ${t("(refunds: −{amount})", { amount: fmtN(b.revenue.refunds) })}`] : []),
-    bold(msg("Money received:"), tz(b.received)),
     bold(msg("Expenses:"), tz(b.expenses)),
-    bold(msg("Net operating result:"), tz(b.result)),
+    bold(msg("Net profit:"), tz(b.result)),
+    bold(msg("Money received:"), tz(b.received)),
     `${bold(msg("Occupancy:"), `${b.rooms.occupancy}%`)} · ${t("{n} room nights", { n: b.rooms.roomNights })}${b.rooms.adr ? ` · ${t("avg rate {amount}", { amount: fmtN(b.rooms.adr) })}` : ""}`,
     `${bold(msg("Check-ins:"), String(b.guests.checkIns))} · ${bold(msg("Check-outs:"), String(b.guests.checkOuts))} · ${bold(msg("New bookings:"), String(b.guests.newBookings))}`,
     `${bold(msg("Restaurant & bar:"), t.plural(b.restaurant.orders, "{n} order", "{n} orders"))} · ${tz(b.restaurant.sales)}`,
-    bold(msg("Outstanding (all, today):"), tz(b.outstanding)),
+    bold(msg("Still owed (today):"), tz(b.outstanding)),
     "",
   ] : [];
   const dept = (k: "RECEPTION" | "RESTAURANT", title: string) => {

@@ -84,7 +84,8 @@ describe("the daily report message", () => {
   it("keeps its English", () => {
     const text = renderReportText(data, "Vegas Luxury Hotel", "https://x.test/staff/reports/daily/r1");
     expect(text).toContain("*Daily business report* · Mon, 12 Oct 2026");
-    expect(text).toContain("*Revenue TZS 2,570,000*");
+    expect(text).toContain("*Income TZS 2,570,000*");
+    expect(text).toContain("*Expenses:* TZS 300,000 · *Net profit:* TZS 2,270,000");
     expect(text).toContain("*Occupancy:* 18 rooms — 62.1%");
     expect(text).toContain("• 2 guest(s) past checkout time");
     expect(text).toContain("*Restaurant & bar:* 14 orders");
@@ -95,7 +96,8 @@ describe("the daily report message", () => {
     expect(text).toContain("*每日业务报告*");
     expect(text).toContain("*收入 TZS 2,570,000*");
     expect(text).toContain("• 2 位客人已过退房时间");
-    expect(text).toContain("• 没有记录前台班次");
+    expect(text).toContain("*支出：* TZS 300,000 · *净利润：* TZS 2,270,000");
+    expect(text).toContain("• ……完整报告中还有 1 项");
     expect(text).toContain("*餐厅与酒吧：* 14 个订单");
     const en = renderReportText(data, "Vegas Luxury Hotel", null);
     for (const n of ["2,570,000", "1,900,000", "640,000", "300,000", "2,270,000", "62.1"]) { expect(en).toContain(n); expect(text).toContain(n); }

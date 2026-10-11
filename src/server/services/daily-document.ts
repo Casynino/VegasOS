@@ -25,7 +25,7 @@ const asGlance = (title: string, figures: Figure[]): Block => ({ kind: "highligh
 
 /**
  * The Boss's daily business report as one document (frozen with the day's snapshot): the executive
- * figures, what needs attention, plain facts about the day, then money (revenue ≠ money in ≠ owed),
+ * figures, what needs attention, plain facts about the day, then money (income − expenses = net profit; income ≠ money in ≠ owed),
  * rooms (room by room), guests, bookings, the restaurant & bar, tables, best sellers, the meeting
  * room, transport, the staff and the expenses. Every figure comes from the same services as Finance.
  */
@@ -71,11 +71,12 @@ export async function buildDailyDocument(date: BusinessDate, d: DailyReportData)
   const soldNights = nights.filter((n) => guestRoomIds.has(n.roomId) && !n.isDayUse).length;
   const net = d.profitLoss.estimated;
   const figures: Figure[] = [
-    { label: msg("Revenue (earned)"), value: tzs(d.revenue.total), raw: d.revenue.total, tone: "gold", sub: msg("every department, net") },
-    { label: msg("Payments collected"), value: tzs(d.money.collected), raw: d.money.collected, tone: "emerald", sub: msg("money actually received") },
-    { label: msg("Outstanding"), value: tzs(d.money.outstanding), raw: d.money.outstanding, tone: d.money.outstanding ? "amber" : undefined, sub: msg("owed to the hotel, all dates") },
+    // Income, expenses and what is left — the Boss's three figures, in that order; then money in hand and money owed.
+    { label: msg("Income"), value: tzs(d.revenue.total), raw: d.revenue.total, tone: "gold", sub: msg("what the hotel earned today") },
     { label: msg("Expenses"), value: tzs(d.expenses.total), raw: d.expenses.total, tone: "rose", sub: P(d.expenses.byCategory.length, msg("{n} category"), msg("{n} categories")) },
-    { label: msg("Net operating result"), value: `${net < 0 ? "− " : ""}${tzs(Math.abs(net))}`, raw: net, tone: net >= 0 ? "emerald" : "rose", sub: msg("revenue − expenses (not full profit)") },
+    { label: msg("Net profit"), value: `${net < 0 ? "− " : ""}${tzs(Math.abs(net))}`, raw: net, tone: net >= 0 ? "emerald" : "rose", sub: msg("income − expenses") },
+    { label: msg("Money received"), value: tzs(d.money.collected), raw: d.money.collected, tone: "emerald", sub: msg("cash, mobile money, bank and card today") },
+    { label: msg("Still owed"), value: tzs(d.money.outstanding), raw: d.money.outstanding, tone: d.money.outstanding ? "amber" : undefined, sub: msg("owed to the hotel, all dates") },
     { label: msg("Occupancy"), value: `${d.hotel.occupancy}%`, raw: d.hotel.occupancy, tone: "violet", sub: L(msg("{n} of {total} guest rooms"), { n: soldNights, total: guestRooms.length }) },
   ];
 
@@ -100,7 +101,7 @@ export async function buildDailyDocument(date: BusinessDate, d: DailyReportData)
     d.rooms?.adr
       ? L(msg("{n} of {total} guest rooms were occupied — {pct}% occupancy, at an average of {rate} a room."), { n: soldNights, total: guestRooms.length, pct: d.hotel.occupancy, rate: tzs(d.rooms.adr) })
       : L(msg("{n} of {total} guest rooms were occupied — {pct}% occupancy."), { n: soldNights, total: guestRooms.length, pct: d.hotel.occupancy }),
-    L(msg("Rooms earned {rooms} ({roomsPct}% of revenue); the restaurant & bar {fnb} ({fnbPct}%)."), { rooms: tzs(d.revenue.roomNet), roomsPct: pct(d.revenue.roomNet, d.revenue.total), fnb: tzs(fnb), fnbPct: pct(fnb, d.revenue.total) }),
+    L(msg("Rooms earned {rooms} ({roomsPct}% of income); the restaurant & bar {fnb} ({fnbPct}%)."), { rooms: tzs(d.revenue.roomNet), roomsPct: pct(d.revenue.roomNet, d.revenue.total), fnb: tzs(fnb), fnbPct: pct(fnb, d.revenue.total) }),
     L(msg("{received} was received today; {owed} is still owed to the hotel across guests, companies and orders."), { received: tzs(d.money.collected), owed: tzs(d.money.outstanding) }),
     food?.raw
       ? food.sub ? L(msg("The restaurant & bar had {orders} ({detail})."), { orders: n_(food.raw, msg("{n} order"), msg("{n} orders")), detail: word(food.sub) }) : L(msg("The restaurant & bar had {orders}."), { orders: n_(food.raw, msg("{n} order"), msg("{n} orders")) })
@@ -144,9 +145,9 @@ export async function buildDailyDocument(date: BusinessDate, d: DailyReportData)
       ],
     },
 
-    { kind: "section", title: msg("Money"), subtitle: msg("Revenue is what the hotel earned today · payments are money actually received · outstanding is what is still owed") },
+    { kind: "section", title: msg("Money"), subtitle: msg("Income is what the hotel earned today · expenses are what was spent · net profit is income minus expenses") },
     {
-      kind: "statement", title: msg("Revenue recognised"), subtitle: msg("Earned on this hotel day"), half: true,
+      kind: "statement", title: msg("Income, expenses and net profit"), subtitle: msg("Earned and spent on this hotel day"), half: true,
       rows: [
         { label: msg("Rooms (before discounts)"), value: d.revenue.roomGross },
         { label: msg("Less room discounts"), value: -d.revenue.roomDiscounts, style: "less" },
@@ -155,17 +156,17 @@ export async function buildDailyDocument(date: BusinessDate, d: DailyReportData)
         { label: msg("Room service fees"), value: d.revenue.roomService ?? 0 }, { label: msg("Meeting room"), value: d.revenue.meeting },
         { label: msg("Transport"), value: d.revenue.transport ?? 0 }, { label: msg("Other services"), value: d.revenue.other },
         { label: msg("Less refunds"), value: -d.revenue.refunds, style: "less" },
-        { label: msg("Total revenue"), value: d.revenue.total, style: "total" },
+        { label: msg("Total income"), value: d.revenue.total, style: "total" },
         { label: msg("Less expenses"), value: -d.expenses.total, style: "less" },
-        { label: msg("Net operating result"), value: net, style: "grand" },
+        { label: msg("Net profit"), value: net, style: "grand" },
       ],
     },
     {
-      kind: "bars", title: msg("Revenue · collected · owed"), subtitle: msg("Three different things — never added together"), money: true, half: true, noTotal: true,
+      kind: "bars", title: msg("Income · received · owed"), subtitle: msg("Three different things — never added together"), money: true, half: true, noTotal: true,
       items: [
-        { label: msg("Revenue earned today"), value: d.revenue.total, color: "#c9a24a" },
-        { label: msg("Payments collected today"), value: d.money.collected, color: "#10b981" },
-        { label: msg("Outstanding (all dates)"), value: d.money.outstanding, color: "#f43f5e" },
+        { label: msg("Income today"), value: d.revenue.total, color: "#c9a24a" },
+        { label: msg("Money received today"), value: d.money.collected, color: "#10b981" },
+        { label: msg("Still owed (all dates)"), value: d.money.outstanding, color: "#f43f5e" },
       ],
     },
     ...pick(payments, ["By payment method", "By account (where the money is)", "Collected by"]),
@@ -183,7 +184,7 @@ export async function buildDailyDocument(date: BusinessDate, d: DailyReportData)
         { label: msg("Cleaning"), value: num(guestRooms.filter((r) => r.status === "DIRTY" || r.status === "CLEANING").length) },
         { label: msg("Maintenance · out of service"), value: `${guestRooms.filter((r) => r.status === "MAINTENANCE").length} · ${guestRooms.filter((r) => r.status === "OUT_OF_SERVICE").length}` },
         { label: msg("Average room rate"), value: d.rooms?.adr ? tzs(d.rooms.adr) : "—" },
-        { label: msg("Room revenue"), value: tzs(d.revenue.roomNet), sub: d.rooms?.companyCredit ? L(msg("{amount} on company credit"), { amount: tzs(d.rooms.companyCredit) }) : undefined },
+        { label: msg("Room income"), value: tzs(d.revenue.roomNet), sub: d.rooms?.companyCredit ? L(msg("{amount} on company credit"), { amount: tzs(d.rooms.companyCredit) }) : undefined },
       ],
     },
     {
@@ -209,12 +210,12 @@ export async function buildDailyDocument(date: BusinessDate, d: DailyReportData)
       items: d.meetingRoom ? [
         { label: msg("Bookings"), value: num(d.meetingRoom.bookings), sub: L(msg("{n} completed"), { n: d.meetingRoom.completed }) },
         { label: msg("Hours used"), value: L(msg("{n} h"), { n: d.meetingRoom.bookedHours }), sub: L(msg("{pct}% of open hours"), { pct: d.meetingRoom.utilisation }) },
-        { label: msg("Revenue"), value: tzs(d.meetingRoom.revenue) },
+        { label: msg("Income"), value: tzs(d.meetingRoom.revenue) },
         { label: msg("Cancelled · no-shows"), value: `${d.meetingRoom.cancelled} · ${d.meetingRoom.noShows}` },
       ] : [{ label: msg("Meeting room"), value: msg("No meeting room set up") }],
     },
     {
-      kind: "table", title: msg("Transport"), subtitle: L(msg("{trips} · {done} completed · revenue {amount}"), { trips: n_(trips.length, msg("{n} trip"), msg("{n} trips")), done: tripsDone.length, amount: tzs(d.revenue.transport ?? 0) }), empty: msg("No transport today."),
+      kind: "table", title: msg("Transport"), subtitle: L(msg("{trips} · {done} completed · income {amount}"), { trips: n_(trips.length, msg("{n} trip"), msg("{n} trips")), done: tripsDone.length, amount: tzs(d.revenue.transport ?? 0) }), empty: msg("No transport today."),
       columns: [{ label: msg("Trip") }, { label: msg("Time") }, { label: msg("Passenger") }, { label: msg("To"), muted: true }, { label: msg("Status") }, { label: msg("Charge"), align: "right", money: true }, { label: msg("Billing"), muted: true }],
       rows: trips.map((t) => [TRIP[t.type] ?? t.type, clock(t.pickupAt), t.passengerName, t.destination, TRIP_STATUS[t.status] ?? t.status, t.charge ?? 0, t.reservationId ? msg("Room bill") : t.paidAt ? msg("Paid") : t.charge ? msg("Not paid") : msg("Free")] as Cell[]),
     },
@@ -234,7 +235,7 @@ export async function buildDailyDocument(date: BusinessDate, d: DailyReportData)
     },
     ...pick(staff, ["Work by person"]),
     ...(voids.figures.some((f) => f.raw) ? [asGlance("Cancellations & voids", voids.figures)] : []),
-    { kind: "note", text: L(msg("Hotel day {date} 04:00 → next day 04:00. Revenue is counted when earned (room nights night by night; food, drinks and extras when sold or put on a room bill). Payments collected are money in (payments and on-the-spot sales, less refunds). Outstanding is everything still owed at the time of the report. The net operating result is revenue less recorded expenses — it is not a full profit (no salaries, depreciation or tax unless recorded as expenses)."), { date: hotelDay(date) }) },
+    { kind: "note", text: L(msg("Hotel day {date} 04:00 → next day 04:00. Income is counted when earned (room nights night by night; food, drinks and extras when sold or put on a room bill). Money received is money in (payments and on-the-spot sales, less refunds). Still owed is everything owed to the hotel at the time of the report. Net profit is income less the expenses recorded in the system — salaries, tax and other costs count only when they are recorded as expenses."), { date: hotelDay(date) }) },
   ];
 
   return {

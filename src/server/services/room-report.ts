@@ -4,7 +4,7 @@ import { db } from "../db";
 import { getSettings, businessDayConfig } from "../settings";
 import { addDays, businessDateOf, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import { buildDailyReport } from "./daily-report";
-import { buildRoomReportData, type RoomReportData } from "./room-report-data";
+import { buildRoomReportData, withDayMoney, type RoomReportData } from "./room-report-data";
 import { deliverToRecipients } from "./report-delivery";
 import { Prisma } from "@/generated/prisma/client";
 
@@ -23,7 +23,10 @@ export { dayText as roomReportDayText, whenText as roomReportWhenText, periodTex
 
 /** The short executive message the Boss gets on WhatsApp (with the secure link to the full report). */
 export function renderRoomReportText(r: RoomReportData, hotelName: string, link: string | null): string {
-  const p = r.perf, m = r.money;
+  const p = r.perf, m = r.money, day = r.day;
+  // Income by department, only those that earned something.
+  const income = day ? [["Rooms", day.income.rooms], ["Restaurant", day.income.restaurant], ["Bar", day.income.bar], ["Room service", day.income.roomService], ["Meeting room", day.income.meeting], ["Transport", day.income.transport], ["Other", day.income.other]] as const : [];
+  const incomeLines = income.filter(([, v]) => v !== 0).map(([name, v]) => `  • ${name}: TZS ${fmt(v)}`).join("\n") || null;
   const byType = new Map<string, { rooms: string[]; nights: number; net: number }>();
   for (const x of r.sales) { const t = byType.get(x.type) ?? { rooms: [], nights: 0, net: 0 }; t.rooms.push(x.room); t.nights += x.nights; t.net += x.total; byType.set(x.type, t); }
   const byNumber = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
@@ -36,24 +39,33 @@ export function renderRoomReportText(r: RoomReportData, hotelName: string, link:
     "",
     "*ROOM PERFORMANCE*",
     `Rooms occupied during the period: ${p.occupied} of ${r.guestRooms}`,
-    `New check-ins (new room sales): ${p.newSales}`,
+    `New check-ins (rooms sold today): ${p.newSales}`,
     `Previous stays continuing: ${p.continuing}`,
     `Checked out: ${p.checkedOut}`,
     `Currently available: ${p.available}`,
     `Occupancy: ${p.occupancyPct}%`,
     "",
-    "*ROOM REVENUE*",
-    `Expected room revenue (new sales): TZS ${fmt(m.expected)}`,
-    `Collected: TZS ${fmt(m.collected)}`,
-    `Outstanding: TZS ${fmt(m.outstanding)}`,
+    "*MONEY TODAY*",
+    ...(day ? [
+      `Income: TZS ${fmt(day.income.total)}`,
+      incomeLines,
+      day.income.refunds ? `  • Less refunds: TZS ${fmt(day.income.refunds)}` : null,
+      `Expenses: TZS ${fmt(day.expenses.total)}`,
+      `*Net profit: ${day.profit < 0 ? "− " : ""}TZS ${fmt(Math.abs(day.profit))}*`,
+      `Money received: TZS ${fmt(day.received)}`,
+      `Still owed to the hotel: TZS ${fmt(day.owed)}`,
+    ] : [
+      `Room income tonight: TZS ${fmt(m.recognized)}`,
+      `Money received from guests: TZS ${fmt(m.collected)}`,
+      `Still owed by these guests: TZS ${fmt(m.outstanding)}`,
+    ]),
     "",
-    "*ROOM SALES BREAKDOWN*",
+    "*ROOMS SOLD TODAY*",
     `Room nights sold: ${p.nightsSold}`,
     typeLines ? "By room type:" : null,
     typeLines,
-    `Different rates sold: ${r.rates.length}`,
+    rateLine ? "By price per night:" : null,
     rateLine,
-    `Total new room revenue: TZS ${fmt(m.expected)}`,
     "",
     "*REPORT*",
     `Generated: ${whenText(r.generatedAt, r.timezone)}`,
@@ -118,7 +130,7 @@ export async function deliverRoomReportByDate(date: BusinessDate, opts: { force?
     getSettings(), ensureRoomReport(date, { automatic: opts.automatic, by: opts.by }), deliveryAnchor(date),
   ]);
   if (report.revokedAt) await db.roomReport.update({ where: { id: report.id }, data: { revokedAt: null } });
-  const text = renderRoomReportText(report.data as unknown as RoomReportData, settings.hotelName, roomReportLink(report.shareToken));
+  const text = renderRoomReportText(await withDayMoney(report.data as unknown as RoomReportData), settings.hotelName, roomReportLink(report.shareToken));
   return deliverToRecipients({
     link: { dailyReportId: anchor.id }, purpose: "ROOM_REPORT", text, generatedAt: report.generatedAt, deliveries: anchor.deliveries,
     force: opts.force, manual: opts.manual, deadline: opts.deadline,

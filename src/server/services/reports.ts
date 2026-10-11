@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "../db";
 import {
-  change, dailyByKind, dailyMoney, expenseSummary, guestMovement, meetingRoomStats, occupancy, onTheBooks, outstanding, previousRange, profitLoss, stayPatterns, topCustomers,
+  change, dailyByKind, dailyMoney, expenseSummary, guestMovement, meetingRoomStats, occupancy, onTheBooks, outstanding, previousRange, profitLoss, stayPatterns, topCustomers, unpaidOrders,
   type Range,
 } from "./reporting";
 import { tablesOnHome } from "./table-performance";
@@ -186,16 +186,6 @@ async function received(r: Range) {
   const inn = pays.find((p) => p.kind === "PAYMENT")?._sum.amount ?? 0;
   const out = pays.find((p) => p.kind === "REFUND")?._sum.amount ?? 0;
   return { payments: inn, refunds: out, sales: sales._sum.amount ?? 0, total: inn - out + (sales._sum.amount ?? 0) };
-}
-
-/** Unpaid restaurant orders (not on a room bill) — any date. */
-async function unpaidOrders() {
-  const rows = await db.restaurantOrder.findMany({
-    where: { status: { not: "CANCELLED" }, settlement: { not: "ROOM" } },
-    select: { total: true, paidAmount: true },
-  });
-  const open = rows.filter((o) => o.paidAmount < o.total);
-  return { count: open.length, amount: open.reduce((t, o) => t + o.total - o.paidAmount, 0) };
 }
 
 // 1 · The whole business
