@@ -369,5 +369,12 @@ const catalog: Catalog = {
   "This person has records in the system (shifts, payments, etc.). Deactivate their account instead.": "此人在系统中有相关记录（班次、付款等）。请改为停用其账户。",
   "You cannot delete your own account.": "不能删除自己的账户。",
   "Only an owner can delete an owner account.": "只有老板才能删除老板账户。",
+
+  // ── Hotel settings: housekeeping rule for occupied rooms ──
+  "Housekeeping for rooms where the guest is staying on": "客人续住房间的清洁安排",
+  "Daily service — every occupied room gets a light service each day": "每日整理 — 每间已入住房间每天简单整理一次",
+  "On request — an occupied room is serviced only when the guest asks": "按需整理 — 仅在客人要求时整理已入住房间",
+  "Used on the Daily Housekeeping Checklist that reception prints.": "用于前台打印的每日客房清洁清单。",
 };
+
 export default catalog;

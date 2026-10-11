@@ -2,7 +2,7 @@ import Link from "next/link";
 import { billMenu } from "@/server/services/restaurant";
 import { recentChargeItems } from "@/server/services/payments";
 import { discountLimit } from "@/lib/discounts";
-import { AlertTriangle, ArrowRight, Banknote, BedDouble, BedSingle, CalendarPlus, Car, CheckCircle2, ChevronRight, Clock, ConciergeBell, Inbox, KeyRound, LogIn, LogOut, Luggage, NotebookTabs, Plane, QrCode, Receipt, Sunrise, Users, Wallet, Wrench } from "lucide-react";
+import { AlertTriangle, ArrowRight, Banknote, BedDouble, BedSingle, CalendarPlus, Car, CheckCircle2, ChevronRight, ClipboardCheck, Clock, Coffee, ConciergeBell, Inbox, KeyRound, LogIn, LogOut, Luggage, NotebookTabs, Plane, Printer, QrCode, Receipt, Sunrise, Users, Wallet, Wrench } from "lucide-react";
 import { REQUEST_TYPE_LABEL } from "@/lib/request-meta";
 import { mobilePaymentsNeedingAttention } from "@/server/services/mobile-payments";
 import { can, getMyOpenShift, requireUser } from "@/server/auth";
@@ -194,6 +194,22 @@ export async function FrontDeskToday() {
       </div>
 
       <TodayStrip parts={todayParts} />
+
+      {/* The two sheets reception prints: what housekeeping cleans, who the breakfast team prepares for. */}
+      {(can(user, "rooms.view") || can(user, "reservations.view")) && (
+        <div>
+          <SectionLabel title={t("Daily guest & room lists")} t={t} />
+          <section className="flex flex-wrap items-center gap-3 rounded-3xl border border-border/70 bg-card px-4 py-3.5 sm:px-5">
+            <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-[oklch(0.72_0.12_80/0.16)] text-[oklch(0.62_0.11_78)] dark:text-[oklch(0.8_0.11_82)]"><Printer className="size-5" /></span>
+            <div className="min-w-0 flex-1 basis-40 text-sm">
+              <p className="font-semibold">{t.date(today, true)}</p>
+              <p className="text-xs text-muted-foreground">{[t("{n} to clean", { n: toClean }), t.plural(roomsInHouse, "{n} room with guests", "{n} rooms with guests")].join(" · ")}</p>
+            </div>
+            {can(user, "rooms.view") && <Link href="/staff/lists/housekeeping" className={buttonVariants({ variant: "outline", className: "w-full sm:w-auto" })}><ClipboardCheck /> {t("Print Housekeeping Checklist")}</Link>}
+            {can(user, "reservations.view") && <Link href="/staff/lists/guests" className={buttonVariants({ variant: "outline", className: "w-full sm:w-auto" })}><Coffee /> {t("Print In-House Guest & Breakfast List")}</Link>}
+          </section>
+        </div>
+      )}
 
       <div>
         <SectionLabel title={t("Needs your attention")} count={attention.length} t={t} />

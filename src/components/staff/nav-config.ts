@@ -78,6 +78,8 @@ export const NAV: NavSection[] = [
     title: msg("Hotel services"), icon: "BedDouble",
     items: [
       { href: "/staff/rooms", label: msg("Rooms"), icon: "BedDouble", anyOf: ["rooms.view"] },
+      // The printable Housekeeping Checklist and In-House Guest & Breakfast List (also on reception's dashboard).
+      { href: "/staff/lists", label: msg("Daily lists"), icon: "ClipboardList", anyOf: ["dashboard.front_desk"] },
       { href: "/staff/requests", label: msg("Requests"), icon: "ClipboardCheck", anyOf: ["requests.view"] },
       { href: "/staff/transport", label: msg("Transport"), icon: "BusFront", anyOf: ["transport.view", "transport.manage"] },
       { href: "/staff/meeting-room", label: msg("Meetings"), icon: "Presentation", anyOf: ["meeting.view"] },

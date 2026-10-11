@@ -223,6 +223,14 @@ export function SettingsForm({ defaults: d }: { defaults: Defaults }) {
                   <option value="REFUND_DUE">{t("Refund due — the money is shown as owed back to the guest")}</option>
                 </select>
               </div>
+              <div className="space-y-1.5 sm:col-span-3">
+                <Label htmlFor="occupiedRoomService">{t("Housekeeping for rooms where the guest is staying on")}</Label>
+                <select id="occupiedRoomService" name="occupiedRoomService" defaultValue={String(d.occupiedRoomService)} className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm">
+                  <option value="DAILY">{t("Daily service — every occupied room gets a light service each day")}</option>
+                  <option value="ON_REQUEST">{t("On request — an occupied room is serviced only when the guest asks")}</option>
+                </select>
+                <p className="text-xs text-muted-foreground">{t("Used on the Daily Housekeeping Checklist that reception prints.")}</p>
+              </div>
               <Field name="lateCheckoutFee" label={t("Default late-checkout fee")} type="number" min={0} step={1000} d={d} errors={e} />
               <Field name="roomServiceFee" label={t("Room-service delivery fee (per order)")} type="number" min={0} step={500} d={d} errors={e} />
               <Field name="airportTransferPrice" label={t("Airport transfer price (blank = quote)")} type="number" min={0} step={1000} d={d} errors={e} />

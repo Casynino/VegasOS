@@ -100,6 +100,7 @@ export default async function SettingsPage() {
               lateCheckoutFee: s.lateCheckoutFee,
               roomServiceFee: s.roomServiceFee,
               earlyDeparturePolicy: s.earlyDeparturePolicy,
+              occupiedRoomService: s.occupiedRoomService,
               unpaidHoldHours: s.unpaidHoldHours,
               noShowCutoff: formatMinutes(s.noShowCutoffMinutes),
               noShowAutoRelease: s.noShowAutoRelease,

@@ -256,6 +256,8 @@ model HotelSettings {
   barHours                   String?
   // Stay policies (configurable, never hard-coded)
   lateCheckoutFee            Int      @default(0)
+  /// Housekeeping for rooms where the guest is staying on: DAILY (light service every day) | ON_REQUEST (only when the guest asks).
+  occupiedRoomService        String   @default("DAILY")
   /// Added to every room-service order (delivery to the room).
   roomServiceFee             Int      @default(2000)
   earlyDeparturePolicy       String   @default("CHARGE_USED_NIGHTS") // CHARGE_USED_NIGHTS | CHARGE_ONE_EXTRA_NIGHT | CHARGE_FULL_STAY
@@ -1408,6 +1410,22 @@ model DailyReport {
   versions     DailyReportVersion[]
 
   @@map("daily_reports")
+}
+
+/// A printed copy of a daily list (housekeeping checklist or in-house guest & breakfast list): what the sheet said
+/// when it was printed. Never rebuilt — a reprint shows the same rooms, guests and time.
+model DailyList {
+  id           String   @id @default(cuid())
+  kind         String // HOUSEKEEPING | GUESTS
+  businessDate DateTime @db.Date
+  copyNo       Int // 1, 2, 3 … per kind and day
+  data         Json
+  generatedAt  DateTime @default(now())
+  generatedBy  String // name (role) at the time
+
+  @@unique([kind, businessDate, copyNo])
+  @@index([businessDate])
+  @@map("daily_lists")
 }
 
 /// The DAILY ROOM REPORT — new room sales vs continuing stays vs check-outs for one business day (04:00 → 04:00),
