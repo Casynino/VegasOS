@@ -44,7 +44,7 @@ const WORDS: Record<string, string> = {
   "hotel_qr.created": msg("made a Hotel QR"), "hotel_qr.renamed": msg("renamed a Hotel QR"), "hotel_qr.regenerated": msg("made a new Hotel QR code (the old card stopped working)"),
   "hotel_qr.enabled": msg("switched a Hotel QR on"), "hotel_qr.disabled": msg("switched a Hotel QR off"), "hotel_qr.archived": msg("archived a Hotel QR"),
   "hotel_qr.settings": msg("changed the Hotel QR switches"),
-  "spin.won": msg("won a Spin to Win gift"), "spin.claimed": msg("chose where to enjoy a Spin to Win gift"), "spin.no_gift": msg("could not spin — no gift was available"),
+  "spin.won": msg("won a Spin to Win gift"), "spin.claimed": msg("chose where to enjoy a Spin to Win gift"), "spin.declined": msg("said no, thank you to a Spin to Win gift"), "spin.no_gift": msg("could not spin — no gift was available"),
   "spin.settings": msg("changed the Spin to Win numbers"), "spin.enabled": msg("switched Spin to Win on"), "spin.disabled": msg("switched Spin to Win off"),
   "spin.tier": msg("changed a room's Spin to Win tier"), "spin.prize": msg("changed which menu items are Spin to Win gifts"),
   "spin_qr.regenerated": msg("made a new Spin to Win code (the old card stopped working)"), "spin_qr.enabled": msg("switched a Spin to Win card on"), "spin_qr.disabled": msg("switched a Spin to Win card off"),

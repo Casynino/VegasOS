@@ -106,5 +106,7 @@ const catalog: Catalog = {
   "Nothing to pay · worth {amount}": "无需付款 · 价值 {amount}",
   "Nothing to pay": "无需付款",
   "Spin to Win (Admin): switch it on or off, spins and budgets, which menu items are gifts, the room cards": "幸运转盘（管理员）：开关、次数和预算、哪些菜品是礼物、房间卡",
+  "Not taken": "未领取",
+  "said no, thank you to a Spin to Win gift": "谢绝了一份幸运转盘礼物",
 };
 export default catalog;

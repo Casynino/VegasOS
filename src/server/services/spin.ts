@@ -5,13 +5,13 @@ import type { HotelSettings, SpinSession } from "@/generated/prisma/client";
 import { audit } from "../audit";
 import { AppError, isUniqueViolation } from "../errors";
 import { getSettings, getSettingsTx, stayConfig } from "../settings";
-import { addDays, businessDateOf, businessDayBounds, businessRangeBounds, fromDbDate, toDbDate, type BusinessDate } from "@/lib/time/business-date";
+import { addDays, businessDateOf, businessDayBounds, businessRangeBounds, fromDbDate, localParts, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import { convertQty } from "@/lib/inventory";
 import { msg } from "@/i18n/msg";
 import { mediaUrl } from "./media";
 import { createGiftOrderTx } from "./restaurant";
 import { menuNamesNow } from "./translations";
-import { pickPrize, spinBudgetOf, spinRunsOn, spinTierOf, wheelFor, type Prize, type SpinTierChoice, type SpinWhere } from "@/lib/spin";
+import { GIFT_DECLINED, dayPartOf, greetingName, pickPrize, spinBudgetOf, spinRunsOn, spinTierOf, wheelFor, wheelSpent, type DayPart, type Prize, type SpinTierChoice, type SpinWhere } from "@/lib/spin";
 
 /**
  * Spin to Win — a little something extra for a guest staying in a room.
@@ -27,6 +27,9 @@ import { pickPrize, spinBudgetOf, spinRunsOn, spinTierOf, wheelFor, type Prize, 
  * The prize is chosen and saved before the wheel moves; the phone only plays back where it stopped. All the gifts of
  * one stay together never cost more than the stay's budget (`lib/spin.ts`), and the database refuses it too.
  * A gift is a real menu item sent through the restaurant's own orders — never a charge, a payment or income.
+ *
+ * A guest may also say "no, thank you" to a gift: nothing is ordered, the spin stays used, and the gift is not
+ * counted among the gifts given.
  */
 
 type Actor = { userId?: string | null; label?: string; ipAddress?: string | null; permissions?: ReadonlySet<string> };
@@ -135,8 +138,10 @@ export type Segment = { id: string; name: string; nameI18n: Record<string, strin
 const segment = (g: Gift): Segment => ({ id: g.id, name: g.name, nameI18n: g.nameI18n, image: g.image });
 
 /** The wheel of one spin of a stay — the same on every phone and every reload, only gifts that can be won now. */
-function wheelOf(gifts: Gift[], session: Pick<SpinSession, "id" | "budget" | "spinsAllowed">, before: { menuItemId: string; value: number }[]) {
-  const left = { budget: session.budget - before.reduce((t, r) => t + r.value, 0), spins: session.spinsAllowed - before.length };
+function wheelOf(gifts: Gift[], session: Pick<SpinSession, "id" | "budget" | "spinsAllowed">, before: { menuItemId: string; value: number; fulfilment: string | null }[]) {
+  // A gift the guest refused is not spent, but on the wheel it counts as the smallest gift: refusing never wins a bigger one.
+  const given = wheelSpent(before.map((r) => ({ value: r.value, declined: r.fulfilment === GIFT_DECLINED })), gifts);
+  const left = { budget: session.budget - given, spins: session.spinsAllowed - before.length };
   const wheel = wheelFor(gifts, left, new Set(before.map((r) => r.menuItemId)), `${session.id}:${before.length + 1}`);
   const byId = new Map(gifts.map((g) => [g.id, g]));
   return wheel.map((p) => byId.get(p.id)!);
@@ -157,17 +162,21 @@ async function alertNoGiftTx(tx: Client, session: Pick<SpinSession, "id" | "room
 export type Won = {
   id: string; spinNumber: number; name: string; nameI18n: Record<string, string>; image: string | null;
   where: SpinWhere | null; orderNumber: string | null; orderStatus: string | null;
+  /** The guest said "no, thank you" — nothing was ordered. */
+  declined: boolean;
 };
 export type SpinView =
   | { open: false }
   | {
     open: true; firstName: string; roomNumber: string; spinsAllowed: number; spinsUsed: number; introSeen: boolean;
+    /** Morning, afternoon or evening at the hotel — for the greeting. */
+    dayPart: DayPart;
     /** Switched off (or outside its dates) after the guest began: what they won stays, no new spins. */
     paused: boolean;
     /** Nothing can be given right now (staff have been told). */
     noGift: boolean;
     wheel: Segment[]; results: Won[];
-    /** A gift won and not yet asked for: where would the guest like it? */
+    /** A gift won and not yet asked for (or refused): where would the guest like it? */
     pending: Won | null;
     allowRoom: boolean; allowRestaurant: boolean; sameForAll: SpinWhere | null;
   };
@@ -178,7 +187,7 @@ const won = (r: ResultRow): Won => ({
   id: r.id, spinNumber: r.spinNumber, name: r.name, nameI18n: (r.nameI18n ?? {}) as Record<string, string>,
   image: r.menuItem.image ? mediaUrl(r.menuItem.image) : null,
   where: r.fulfilment === "ROOM" || r.fulfilment === "RESTAURANT" ? r.fulfilment : null,
-  orderNumber: r.order?.number ?? null, orderStatus: r.order?.status ?? null,
+  orderNumber: r.order?.number ?? null, orderStatus: r.order?.status ?? null, declined: r.fulfilment === GIFT_DECLINED,
 });
 
 /** The page behind the room's Spin QR. Closed (one quiet page, no reasons given) unless a guest is checked in. */
@@ -209,9 +218,9 @@ export async function spinView(token: string, now = new Date(), opts: { count?: 
   if (noGift) await alertNoGiftTx(db, session, now).catch(() => null);
   const results = rows.map(won);
   return {
-    open: true, firstName: session.guestName.trim().split(/\s+/)[0] || session.guestName, roomNumber: session.roomNumber,
+    open: true, firstName: greetingName(session.guestName), roomNumber: session.roomNumber, dayPart: dayPartOf(localParts(now, settings.timezone).hour),
     spinsAllowed: session.spinsAllowed, spinsUsed: session.spinsUsed, introSeen: !!session.introSeenAt || session.spinsUsed > 0,
-    paused: !running, noGift, wheel: wheel.map(segment), results, pending: results.find((r) => !r.orderNumber) ?? null,
+    paused: !running, noGift, wheel: wheel.map(segment), results, pending: results.find((r) => !r.orderNumber && !r.declined) ?? null,
     allowRoom: settings.spinAllowRoom, allowRestaurant: settings.spinAllowRestaurant,
     sameForAll: session.fulfilment === "ROOM" || session.fulfilment === "RESTAURANT" ? session.fulfilment : null,
   };
@@ -244,7 +253,7 @@ async function spinTx(tx: Tx, room: SpinRoom, clientKey: string, now: Date, ip?:
   const prior = await tx.spinResult.findUnique({ where: { clientKey }, include: { ...RESULT, session: true } });
   if (prior) {
     if (prior.session.reservationRoomId !== stay.id) throw closed();
-    const before = await tx.spinResult.findMany({ where: { sessionId: prior.sessionId, spinNumber: { lt: prior.spinNumber } }, select: { menuItemId: true, value: true } });
+    const before = await tx.spinResult.findMany({ where: { sessionId: prior.sessionId, spinNumber: { lt: prior.spinNumber } }, select: { menuItemId: true, value: true, fulfilment: true } });
     const wheel = wheelOf(await giftsNow(tx, settings), prior.session, before).map(segment);
     let index = wheel.findIndex((g) => g.id === prior.menuItemId);
     if (index < 0) { index = 0; wheel.splice(0, wheel.length ? 1 : 0, { id: prior.menuItemId, name: prior.name, nameI18n: (prior.nameI18n ?? {}) as Record<string, string>, image: prior.menuItem.image ? mediaUrl(prior.menuItem.image) : null }); }
@@ -255,8 +264,8 @@ async function spinTx(tx: Tx, room: SpinRoom, clientKey: string, now: Date, ip?:
   const session = await sessionTx(tx, stay, room, settings);
   if (!session) throw closed();
   if (session.spinsUsed >= session.spinsAllowed) throw new AppError("You have used all your spins for this stay.", "CONFLICT");
-  const before = await tx.spinResult.findMany({ where: { sessionId: session.id }, orderBy: { spinNumber: "asc" }, select: { menuItemId: true, value: true, orderId: true } });
-  if (before.some((r) => !r.orderId)) throw new AppError("First choose where you would like your last gift.", "CONFLICT");
+  const before = await tx.spinResult.findMany({ where: { sessionId: session.id }, orderBy: { spinNumber: "asc" }, select: { menuItemId: true, value: true, orderId: true, fulfilment: true } });
+  if (before.some((r) => !r.orderId && r.fulfilment !== GIFT_DECLINED)) throw new AppError("First choose where you would like your last gift.", "CONFLICT");
 
   // Checked again at this very moment: on the menu, available, in stock, and inside what the stay has left.
   const gifts = wheelOf(await giftsNow(tx, settings), session, before);
@@ -284,7 +293,7 @@ async function spinTx(tx: Tx, room: SpinRoom, clientKey: string, now: Date, ip?:
     after: { room: room.number, guest: session.guestName, reservation: stay.reservation.reference, spin: spinNumber, of: session.spinsAllowed, gift: gift.name, value: gift.value, usedOfBudget: `${session.valueUsed + gift.value} / ${session.budget}`, order: order?.number ?? null },
   });
   return {
-    result: { id: row.id, spinNumber, name: gift.name, nameI18n: gift.nameI18n, image: gift.image, where: order ? where : null, orderNumber: order?.number ?? null, orderStatus: order?.status ?? null },
+    result: { id: row.id, spinNumber, name: gift.name, nameI18n: gift.nameI18n, image: gift.image, where: order ? where : null, orderNumber: order?.number ?? null, orderStatus: order?.status ?? null, declined: false },
     wheel: gifts.map(segment), index: gifts.findIndex((g) => g.id === gift.id), spinsUsed: spinNumber, spinsAllowed: session.spinsAllowed,
   };
 }
@@ -314,6 +323,7 @@ export async function claimGift(token: string, resultId: string, where: SpinWher
     if (!r || r.session.reservationRoomId !== stay.id) throw new AppError("That gift was not found.", "NOT_FOUND");
     // Already asked for (a second tap): the same order, not a second one.
     if (r.orderId) return { where: (r.fulfilment === "RESTAURANT" ? "RESTAURANT" : "ROOM") as SpinWhere, orderNumber: r.order?.number ?? null };
+    if (r.fulfilment === GIFT_DECLINED) throw new AppError("You chose not to take this gift.", "CONFLICT");
     const settings = await getSettingsTx(tx);
     if (!(where === "ROOM" ? settings.spinAllowRoom : settings.spinAllowRestaurant)) throw new AppError("That choice is not available right now — please pick the other one.", "VALIDATION");
     const order = await createGiftOrderTx(tx, { reservationId: stay.reservationId, roomNumber: code.room.number, menuItemId: r.menuItemId, value: r.value, where, clientKey: r.clientKey }, now);
@@ -324,6 +334,35 @@ export async function claimGift(token: string, resultId: string, where: SpinWher
       after: { room: code.room.number, guest: r.session.guestName, gift: r.name, value: r.value, where, order: order.number, sameForAll },
     });
     return { where, orderNumber: order.number as string | null };
+  });
+}
+
+/**
+ * "No, thank you": the guest does not want a gift they won. Nothing is prepared and nothing is ordered. The spin
+ * stays used — a refused gift is never swapped for another — and what it was worth goes back to the stay's budget:
+ * the hotel gives away only what a guest takes, so the spins still to come are not made smaller by a "no".
+ */
+export async function declineGift(token: string, resultId: string, now = new Date(), ip?: string | null) {
+  const code = await roomForSpinQr(token);
+  if (!code) throw closed();
+  return db.$transaction(async (tx) => {
+    const stay = await lockStayTx(tx, code.room.id);
+    if (!stay) throw closed();
+    const r = await tx.spinResult.findUnique({ where: { id: resultId }, include: { session: true } });
+    if (!r || r.session.reservationRoomId !== stay.id) throw new AppError("That gift was not found.", "NOT_FOUND");
+    // Said twice (a second tap): still just the one "no".
+    if (r.fulfilment === GIFT_DECLINED) return { declined: true };
+    // Already asked for — the kitchen may be making it. Reception can help.
+    if (r.orderId) throw new AppError("This gift is already being prepared — please ask reception if you no longer want it.", "CONFLICT");
+    const done = await tx.spinResult.updateMany({ where: { id: r.id, orderId: null, fulfilment: null }, data: { fulfilment: GIFT_DECLINED, claimedAt: now } });
+    if (done.count !== 1) throw new AppError("Please try again.", "CONFLICT");
+    // Not given, so not spent: the stay's budget gets it back (read under the stay's lock, so no other spin is in between).
+    await tx.spinSession.update({ where: { id: r.sessionId }, data: { valueUsed: Math.max(0, r.session.valueUsed - r.value) } });
+    await audit(tx, guestActor(ip), {
+      action: "spin.declined", entityType: "SpinSession", entityId: r.sessionId,
+      after: { room: code.room.number, guest: r.session.guestName, reservation: stay.reservation.reference, spin: r.spinNumber, of: r.session.spinsAllowed, gift: r.name, value: r.value },
+    });
+    return { declined: true };
   });
 }
 
@@ -430,6 +469,8 @@ export async function spinBoard(now = new Date()) {
   const day = businessDayBounds(today, cfg);
   const month = businessRangeBounds(`${today.slice(0, 7)}-01`, today, cfg);
   const since = new Date(now.getTime() - 24 * 3600_000);
+  // Given = won and not refused. (A plain "not DECLINED" would also drop the gifts still waiting for a choice.)
+  const given = { OR: [{ fulfilment: null }, { fulfilment: { not: GIFT_DECLINED } }] };
   const [gifts, types, recent, dayTotal, monthTotal, noGift, unclaimed] = await Promise.all([
     giftsNow(db, s),
     db.roomType.findMany({ where: { category: "GUEST_ROOM", isActive: true }, select: { id: true, name: true, code: true, category: true, spinTier: true }, orderBy: { sortOrder: "asc" } }),
@@ -437,11 +478,11 @@ export async function spinBoard(now = new Date()) {
       orderBy: { createdAt: "desc" }, take: 60,
       select: { id: true, createdAt: true, spinNumber: true, name: true, value: true, fulfilment: true, session: { select: { roomNumber: true, guestName: true, spinsAllowed: true } }, order: { select: { number: true, status: true } } },
     }),
-    db.spinResult.aggregate({ where: { createdAt: { gte: day.start, lt: day.end } }, _count: true, _sum: { value: true } }),
-    db.spinResult.aggregate({ where: { createdAt: { gte: month.start, lt: month.end } }, _count: true, _sum: { value: true } }),
+    db.spinResult.aggregate({ where: { createdAt: { gte: day.start, lt: day.end }, ...given }, _count: true, _sum: { value: true } }),
+    db.spinResult.aggregate({ where: { createdAt: { gte: month.start, lt: month.end }, ...given }, _count: true, _sum: { value: true } }),
     db.auditLog.findMany({ where: { action: "spin.no_gift", createdAt: { gte: since } }, orderBy: { createdAt: "desc" }, take: 10, select: { id: true, createdAt: true, after: true } }),
     db.spinResult.findMany({
-      where: { orderId: null, session: { reservationRoom: { status: "CHECKED_IN" } } }, orderBy: { createdAt: "desc" }, take: 20,
+      where: { orderId: null, fulfilment: null, session: { reservationRoom: { status: "CHECKED_IN" } } }, orderBy: { createdAt: "desc" }, take: 20,
       select: { id: true, createdAt: true, name: true, session: { select: { roomNumber: true, guestName: true } } },
     }),
   ]);

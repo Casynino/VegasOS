@@ -27,5 +27,7 @@ const catalog: Catalog = {
   "Spin to Win gifts are for guests checked in to the room.": "幸运转盘礼物仅供已入住该房间的客人。",
   "That gift is no longer on the menu — please ask reception.": "该礼物已不在菜单上 — 请咨询前台。",
   "This is a complimentary Spin to Win gift — start a new order for anything else.": "这是幸运转盘的免费礼物 — 其他需要请另下新单。",
+  "You chose not to take this gift.": "您已选择不要这份礼物。",
+  "This gift is already being prepared — please ask reception if you no longer want it.": "这份礼物已在准备中 — 如不需要，请联系前台。",
 };
 export default catalog;

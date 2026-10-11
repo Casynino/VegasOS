@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { awardable, pickPrize, spinRunsOn, spinTierOf, wheelFor, type Prize } from "./spin";
+import { awardable, dayPartOf, greetingName, pickPrize, spinRunsOn, spinTierOf, wheelFor, wheelSpent, type Prize } from "./spin";
 
 const P = (id: string, value: number, weight = 1): Prize => ({ id, name: id, value, weight });
 const MENU = [P("water", 1500), P("soda", 2500), P("tea", 3000), P("juice", 4000), P("soup", 5000), P("pizza", 9000)];
@@ -78,5 +78,51 @@ describe("tiers and dates", () => {
     expect(spinRunsOn("2026-10-11", { spinEnabled: true, spinStartsOn: "2026-10-12", spinEndsOn: null })).toBe(false);
     expect(spinRunsOn("2026-10-11", { spinEnabled: true, spinStartsOn: "2026-10-01", spinEndsOn: "2026-10-10" })).toBe(false);
     expect(spinRunsOn("2026-10-11", { spinEnabled: true, spinStartsOn: "2026-10-11", spinEndsOn: "2026-10-11" })).toBe(true);
+  });
+});
+
+describe("a gift the guest did not take", () => {
+  const biggest = (before: { value: number; declined: boolean }[]) =>
+    Math.max(...awardable(MENU, { budget: 10000 - wheelSpent(before, MENU), spins: 5 - before.length }).map((p) => p.value));
+  it("leaves more than water on the wheel", () => {
+    // Tea (3,000) refused, soda (2,500) taken: three spins left, and still gifts up to 3,000.
+    expect(biggest([{ value: 3000, declined: true }, { value: 2500, declined: false }])).toBe(3000);
+  });
+  it("never makes a later gift bigger than the first spin could give", () => {
+    const first = biggest([]);
+    const no = { value: 4000, declined: true };
+    for (let n = 1; n <= 4; n++) expect(biggest(Array.from({ length: n }, () => no))).toBeLessThanOrEqual(first);
+  });
+  it("is never counted for more than it was worth", () => {
+    expect(wheelSpent([{ value: 1000, declined: true }], MENU)).toBe(1000);
+    expect(wheelSpent([{ value: 3000, declined: true }], [])).toBe(0);
+  });
+});
+
+describe("how the guest is greeted", () => {
+  it("uses the first name, as a name is written", () => {
+    expect(greetingName("Peter Kimaro")).toBe("Peter");
+    expect(greetingName("PETER KIMARO")).toBe("Peter");
+    expect(greetingName("peter kimaro")).toBe("Peter");
+    expect(greetingName("  Asha   Mohamed ")).toBe("Asha");
+    expect(greetingName("Peter Kimaro (test)")).toBe("Peter");
+    expect(greetingName("McDonald James")).toBe("McDonald");
+    expect(greetingName("ANNE-MARIE O'NEIL")).toBe("Anne-Marie");
+  });
+  it("leaves a title out, but never leaves the guest without a name", () => {
+    expect(greetingName("Mr. John Mushi")).toBe("John");
+    expect(greetingName("DR JANE DOE")).toBe("Jane");
+    expect(greetingName("Mrs Asha")).toBe("Asha");
+    expect(greetingName("Dr")).toBe("Dr");
+    expect(greetingName("王伟")).toBe("王伟");
+    expect(greetingName("Mohamed,")).toBe("Mohamed");
+  });
+  it("keeps a very long name on one line", () => {
+    expect(greetingName("Wolfeschlegelsteinhausenbergerdorff Smith").length).toBeLessThanOrEqual(22);
+  });
+  it("knows the time of day on the hotel's clock", () => {
+    expect([5, 11].map(dayPartOf)).toEqual(["morning", "morning"]);
+    expect([12, 16].map(dayPartOf)).toEqual(["afternoon", "afternoon"]);
+    expect([17, 23, 0, 4].map(dayPartOf)).toEqual(["evening", "evening", "evening", "evening"]);
   });
 });

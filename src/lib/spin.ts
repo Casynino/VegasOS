@@ -16,6 +16,21 @@ export type SpinWhere = "ROOM" | "RESTAURANT";
 export const GIFT_LABEL = "SPIN TO WIN — COMPLIMENTARY GIFT";
 /** The source of a gift order (next to ROOM_QR, WAITER_MANUAL…). */
 export const GIFT_SOURCE = "SPIN";
+/**
+ * A gift the guest said "no, thank you" to (kept where ROOM / RESTAURANT is kept). Nothing is prepared or ordered;
+ * the spin stays used and the gift is not replaced. What it was worth is not spent, so it stays in the stay's budget.
+ */
+export const GIFT_DECLINED = "DECLINED";
+
+/**
+ * What the gifts so far take from the budget when the wheel of the next spin is drawn. A refused gift costs the
+ * hotel nothing, but here it counts as the smallest gift — so saying "no, thank you" never makes a later gift bigger.
+ */
+export function wheelSpent(before: { value: number; declined: boolean }[], prizes: Prize[]): number {
+  const ok = prizes.filter((p) => p.value >= 0 && p.weight > 0);
+  const cheapest = ok.length ? Math.min(...ok.map((p) => p.value)) : 0;
+  return before.reduce((t, r) => t + (r.declined ? Math.min(r.value, cheapest) : r.value), 0);
+}
 
 /** Room types that are Premium until the Admin says otherwise (the hotel's larger rooms). */
 const PREMIUM_TYPES = new Set(["EXECUTIVE", "EXECUTIVE_SUITE", "TWIN"]);
@@ -91,3 +106,27 @@ export function spinRunsOn(today: string, s: { spinEnabled: boolean; spinStartsO
   if (s.spinEndsOn && today > s.spinEndsOn) return false;
   return true;
 }
+
+// ───────────────────────── How the guest is greeted ─────────────────────────
+
+const TITLES = /^(mr|mrs|ms|miss|mx|dr|prof|eng|hon|sir|madam|mme|mlle|bw|bi|bibi|ndugu|mhe|mzee)\.?$/i;
+const nameCase = (w: string) => w.toLocaleLowerCase().replace(/(^|[-'’])(\p{L})/gu, (_, sep: string, c: string) => sep + c.toLocaleUpperCase());
+
+/**
+ * The name the wheel greets a guest by — their first name, the way they would write it: no title ("Mr"), no note
+ * in brackets, and "PETER" or "peter" (as typed at the desk) shown as "Peter". A name already in mixed case is left
+ * exactly as it is.
+ */
+export function greetingName(fullName: string): string {
+  const words = fullName.replace(/\(.*?\)/g, " ").trim().split(/\s+/).filter(Boolean);
+  while (words.length > 1 && TITLES.test(words[0])) words.shift();
+  const first = (words[0] ?? "").replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
+  if (!first) return fullName.trim();
+  const typed = first === first.toLocaleUpperCase() || first === first.toLocaleLowerCase();
+  const name = typed && first.toLocaleUpperCase() !== first.toLocaleLowerCase() ? nameCase(first) : first;
+  return name.length > 22 ? `${name.slice(0, 21)}…` : name;
+}
+
+export type DayPart = "morning" | "afternoon" | "evening";
+/** Morning, afternoon or evening, by the hour on the hotel's clock (0–23). */
+export const dayPartOf = (hour: number): DayPart => (hour >= 5 && hour < 12 ? "morning" : hour >= 12 && hour < 17 ? "afternoon" : "evening");

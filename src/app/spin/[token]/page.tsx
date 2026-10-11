@@ -46,13 +46,13 @@ export default async function SpinPage({ params }: { params: Promise<{ token: st
           <img src="/brand/logo-192.png" alt="" className="size-12 rounded-full" />
         </span>
         <p className="mt-4 text-[10.5px] font-semibold uppercase tracking-[0.24em] text-white/55">{s.hotelName}</p>
-        <h1 className="mt-3 font-display text-[32px] font-semibold leading-[1.05]">{t("Spin to Win is for our checked-in guests")}</h1>
+        <h1 className="mt-3 font-display text-[30px] font-semibold leading-[1.08] text-balance">{t("Spin to Win is for our checked-in guests")}</h1>
         <p className="mx-auto mt-3 max-w-xs text-[14px] leading-relaxed text-white/70">
           {t("Once you have checked in to this room, scan this code again to spin for complimentary treats from our restaurant.")}
         </p>
         {phone && (
-          <a href={telHref(phone)} className="mt-7 inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-white/[0.08] text-[14px] font-semibold ring-1 ring-white/20 transition hover:bg-white/[0.14]">
-            <Phone className="size-4 text-(--vr-gold)" />{t("Call reception · {phone}", { phone })}
+          <a href={telHref(phone)} className="mt-6 inline-flex h-10 items-center justify-center gap-2 rounded-full bg-white/[0.07] px-5 text-[13px] font-semibold ring-1 ring-white/20 transition hover:bg-white/[0.13]">
+            <Phone className="size-3.5 text-(--vr-gold)" />{t("Call reception · {phone}", { phone })}
           </a>
         )}
         <WebsiteLine hotel={s.hotelName} className="mt-8 text-white/85" link="text-(--vr-gold)" />

@@ -95,9 +95,9 @@ export function SpinBoard({ canManage, settings, running, today, given, giftsNow
                         <td className="py-2 pr-3 whitespace-nowrap text-muted-foreground">{when(r.at)}</td>
                         <td className="py-2 pr-3"><span className="font-semibold">{r.room}</span> <span className="text-muted-foreground">· {r.guest}</span></td>
                         <td className="py-2 pr-3">{r.name} <span className="text-xs text-muted-foreground">· {t("spin {n} of {total}", { n: r.spin, total: r.of })}</span></td>
-                        <td className="py-2 pr-3">{r.where === "ROOM" ? t("To the room") : r.where === "RESTAURANT" ? t("At the restaurant") : <span className="text-amber-700 dark:text-amber-300">{t("Not chosen yet")}</span>}</td>
+                        <td className="py-2 pr-3">{r.where === "ROOM" ? t("To the room") : r.where === "RESTAURANT" ? t("At the restaurant") : r.where === "DECLINED" ? <span className="text-muted-foreground">{t("Not taken")}</span> : <span className="text-amber-700 dark:text-amber-300">{t("Not chosen yet")}</span>}</td>
                         <td className="py-2 pr-3 whitespace-nowrap">{r.order ? <>{r.order} <span className="text-xs text-muted-foreground">· {t(orderWord(r.status))}</span></> : "—"}</td>
-                        <td className="py-2 text-right tabular-nums">{formatTZS(r.value)}</td>
+                        <td className="py-2 text-right tabular-nums">{r.where === "DECLINED" ? "—" : formatTZS(r.value)}</td>
                       </tr>
                     ))}
                   </tbody>

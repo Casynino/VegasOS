@@ -2664,7 +2664,7 @@ model SpinResult {
   nameI18n   Json?
   /// What the gift is worth (the menu price, or the Admin's value) when it was won.
   value      Int
-  /// ROOM | RESTAURANT — once the guest has chosen.
+  /// ROOM | RESTAURANT — once the guest has chosen. DECLINED — the guest said "no, thank you": no order.
   fulfilment String?
   orderId    String?          @unique
   order      RestaurantOrder? @relation(fields: [orderId], references: [id])
