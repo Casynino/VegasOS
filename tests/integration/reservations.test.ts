@@ -209,6 +209,33 @@ describe("reservation engine", () => {
     expect((await db.room.findUniqueOrThrow({ where: { id: r.rooms[0].roomId } })).status).toBe("OCCUPIED");
   });
 
+  it("payment first, check-in last: a walk-in who pays now is saved, not checked in — check-in is its own step", async () => {
+    const st = await roomType("STANDARD");
+    const cash = await db.paymentMethod.findUniqueOrThrow({ where: { code: "CASH" } });
+    const actor = await receptionistActor();
+    const at = eat("2026-10-05T15:00:00");
+    const walkIn = { sourceCode: "WALK_IN", stay: { kind: "walkIn" as const, nights: 1 }, rooms: [{ roomTypeId: st.id, adults: 1, children: 0 }], checkInLater: true };
+    // Paid at the desk: the booking is confirmed and the room is theirs, but nobody is in it yet.
+    const r = await createReservation({ ...walkIn, guest, payment: { amount: 60_000, methodId: cash.id } }, actor, at);
+    expect(r.status).toBe("CONFIRMED");
+    expect(r.rooms[0].status).not.toBe("CHECKED_IN");
+    expect((await db.reservation.findUniqueOrThrow({ where: { id: r.id } })).paidAmount).toBe(60_000);
+    expect((await db.room.findUniqueOrThrow({ where: { id: r.rooms[0].roomId } })).status).not.toBe("OCCUPIED");
+    // Still counted as a walk-in once they are in.
+    const log = await db.auditLog.findFirstOrThrow({ where: { entityId: r.id, action: "reservation.created" } });
+    expect((log.after as { walkIn?: boolean }).walkIn).toBe(true);
+    expect(await db.auditLog.count({ where: { entityId: r.id, action: "reservation.walk_in" } })).toBe(0);
+    // The last step.
+    await checkIn(r.id, actor, null, at);
+    expect((await db.reservation.findUniqueOrThrow({ where: { id: r.id } })).status).toBe("CHECKED_IN");
+    expect((await db.room.findUniqueOrThrow({ where: { id: r.rooms[0].roomId } })).status).toBe("OCCUPIED");
+    // A prompt sent to the phone is not money yet: the room is held, and the guest is not checked in.
+    const waiting = await createReservation({ ...walkIn, guest: { fullName: "Phone Payer", phone: "0710 000 002" } }, actor, at);
+    expect(waiting.status).toBe("RESERVED");
+    expect(waiting.holdUntil).not.toBeNull();
+    expect((await db.room.findUniqueOrThrow({ where: { id: waiting.rooms[0].roomId } })).status).not.toBe("OCCUPIED");
+  });
+
   it("check-in → payment → check-out → room goes to DIRTY, never straight to available", async () => {
     const ex = await roomType("EXECUTIVE");
     const actor = await receptionistActor();

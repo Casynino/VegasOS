@@ -77,6 +77,11 @@ export interface CreateReservationInput {
   status?: "INQUIRY" | "RESERVED" | "CONFIRMED";
   checkInNow?: boolean;
   /**
+   * PAYMENT FIRST, CHECK-IN LAST (owner, 2026-10-11): the guest is here now (a walk-in), but the booking is saved
+   * without checking them in — check-in is its own step, once the payment is in. The room must still be ready.
+   */
+  checkInLater?: boolean;
+  /**
    * ONE GUEST, ONE ROOM. `false` — the desk is booking: refused when this customer already holds another room for
    * these dates, with the room named, so the desk can say whether it really is the same person. `true` — they said
    * yes. Left out (a public page, a group, an import): not asked.
@@ -229,14 +234,16 @@ export async function createReservationTx(tx: Tx, input: CreateReservationInput,
 
   const stay = buildStay(input.stay, settings, now);
   const today = businessDateOf(now, stayConfig(settings));
-  const checkInNow = input.checkInNow || input.stay.kind === "walkIn";
+  // Here now (a room that is ready today) — and checked in by this same save unless check-in comes after the payment.
+  const arriving = input.checkInNow || input.stay.kind === "walkIn";
+  const checkInNow = arriving && !input.checkInLater;
 
   const meeting = input.stay.kind === "meeting";
   if (input.stay.kind !== "walkIn" && stay.arrivalDate < today) {
     throw new AppError(meeting ? msg("The meeting date cannot be in the past.") : msg("Arrival date cannot be in the past."), "VALIDATION", { arrivalDate: msg("In the past") });
   }
   if (meeting && stay.endAt <= now) throw new AppError("That meeting time has already passed.", "VALIDATION", { startAt: msg("In the past") });
-  if (checkInNow && stay.arrivalDate !== today) {
+  if (arriving && stay.arrivalDate !== today) {
     throw new AppError("Only stays starting today can be checked in immediately.");
   }
   if (stay.arrivalDate > addDays(today, settings.maxAdvanceBookingDays)) {
@@ -279,17 +286,17 @@ export async function createReservationTx(tx: Tx, input: CreateReservationInput,
       room = free.find((f) => f.id === r.roomId && f.roomTypeId === r.roomTypeId && !taken.has(f.id));
       if (!room) throw new AppError(meeting ? msgf("{type} is already booked for part of that time. Choose another time.", { type: tr(t.name) }) : msgf("The selected {type} room is no longer available for these dates.", { type: tr(t.name) }), "UNAVAILABLE");
     } else {
-      room = free.find((f) => f.roomTypeId === r.roomTypeId && !taken.has(f.id) && (!checkInNow || CHECK_IN_READY.includes(f.status)));
+      room = free.find((f) => f.roomTypeId === r.roomTypeId && !taken.has(f.id) && (!arriving || CHECK_IN_READY.includes(f.status)));
       if (!room) {
         throw new AppError(
-          checkInNow
+          arriving
             ? msgf("No clean {type} room is ready right now.", { type: tr(t.name) })
             : meeting ? msgf("{type} is already booked for part of that time. Choose another time.", { type: tr(t.name) }) : msgf("Sorry — {type} is fully booked for these dates.", { type: tr(t.name) }),
           "UNAVAILABLE",
         );
       }
     }
-    if (checkInNow && !CHECK_IN_READY.includes(room.status)) {
+    if (arriving && !CHECK_IN_READY.includes(room.status)) {
       throw new AppError(msgf("Room {room} is {status} — it must be clean before check-in.", { room: room.number, status: roomStatusWord(tr, room.status, room.status.toLowerCase().replace("_", " ")) }));
     }
     taken.add(room.id);
@@ -482,6 +489,8 @@ export async function createReservationTx(tx: Tx, input: CreateReservationInput,
       ...(meeting && { start: stay.startAt.toISOString(), end: stay.endAt.toISOString(), attendees: result.adults, company: result.companyName }),
       net: result.netAmount,
       status: result.status,
+      // A walk-in whose check-in comes after the payment: still a walk-in in the shift's numbers once they are in.
+      ...(arriving && !checkInNow && !meeting && { walkIn: true }),
     },
   });
   return result;

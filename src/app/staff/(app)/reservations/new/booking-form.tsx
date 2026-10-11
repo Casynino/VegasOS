@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { NetworkMarks } from "@/components/payments/networks";
 import {
-  ArrowRight, BadgePercent, BedDouble, Building2, CalendarCheck, CalendarDays, Check, CheckCircle2, Circle, Clock, DoorOpen, Loader2, LogIn, LogOut, Minus, Plus, Presentation, Search, Smartphone, Trash2, UserCheck, Users, UsersRound, Wallet, X,
+  ArrowRight, BadgePercent, Banknote, BedDouble, Building2, CalendarCheck, CalendarDays, Check, CheckCircle2, Circle, Clock, DoorOpen, Loader2, LogIn, LogOut, Minus, Plus, Presentation, Search, Smartphone, Trash2, UserCheck, Users, UsersRound, Wallet, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatTZS } from "@/lib/format";
@@ -22,6 +22,8 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { validPhone } from "@/lib/guest-messages";
 import { IdPicker, NationalityPicker } from "@/components/staff/id-nationality";
 import { SameGuestAsk } from "@/components/staff/same-guest";
+import { CheckInLast } from "@/components/staff/check-in-last";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { checkAvailabilityAction, createReservationAction, searchGuestsAction, type AvailabilityResult } from "../actions";
 import type { PayAccount } from "@/lib/pay-account";
 import type { BillMenu } from "@/server/services/restaurant";
@@ -129,6 +131,8 @@ export function BookingForm(props: {
   const [saving, startSaving] = useTransition();
   // "This guest is already in room X" — the desk says whether it is the same person taking another room.
   const [sameAsk, setSameAsk] = useState<string | null>(null);
+  // PAYMENT FIRST, CHECK-IN LAST (owner, 2026-10-11): the booking is saved with its payment — check-in is the next step, here.
+  const [held, setHeld] = useState<{ reservationId: string; reference: string; rooms: string; amount: number; phone: string; paid: boolean; prompt: { id: string; amount: number; phone: string } | null; error: string | null } | null>(null);
   // Payment taken now (walk-in / short time, or a deposit). null method = not paying now.
   // Pay now is picked first (owner, 2026-10-05) — by mobile money when it is set up; "Pay later" is one tap away.
   const [payMethod, setPayMethod] = useState<string | null>(() => (props.methods.length > 0 ? (props.mobilePay ? PROMPT : props.methods[0]?.id ?? null) : null));
@@ -216,7 +220,11 @@ export function BookingForm(props: {
   }, { gross: 0, promo: 0, manual: 0, net: 0, promotions: [] as string[] });
   const menuTotal = picksTotal(menuPicks);
   // Room service to a guest checking in now adds the delivery fee (one order).
-  const menuFee = menuPicks.length && roomService && checkInNow ? props.menu?.fee ?? 0 : 0;
+  // A payment taken now comes first and the check-in after it — so this save sends nothing to the kitchen (a room
+  // order is only for a guest who is checked in): the food is a pre-order on the bill.
+  const payFirst = checkInNow && !!payMethod && !(company && billTo !== "GUEST");
+  const kitchenNow = checkInNow && !payFirst;
+  const menuFee = menuPicks.length && roomService && kitchenNow ? props.menu?.fee ?? 0 : 0;
   const extrasTotal = extras.reduce((sum, x) => sum + x.qty * (Number(x.unitPrice) || 0), 0) + menuTotal + menuFee;
   const estimate = { ...rooms$, extras: extrasTotal, net: rooms$.net + extrasTotal };
   // Empty amount = the full total (it follows the total when rooms or nights change).
@@ -257,14 +265,20 @@ export function BookingForm(props: {
         })),
         charges: extras.length ? extras.map((x) => ({ type: x.type, item: x.item.trim(), qty: x.qty, unitPrice: Math.round(Number(x.unitPrice)) })) : null,
         menuItems: menuPicks.length ? picksPayload(menuPicks) : null,
-        menuRoomService: roomService && checkInNow,
+        menuRoomService: roomService && kitchenNow,
         payment: payMethod && payMethod !== PROMPT && payNow > 0 ? { amount: payNow, accountId: payMethod, reference: payRef || undefined } : null,
         prompt: payMethod === PROMPT && payNow > 0 ? { amount: payNow, phone: (promptPhone ?? guest.phone).trim() } : null,
         specialRequests: requests || undefined,
         internalNotes: notes || undefined,
         companyName: meetingMode ? companyName.trim() || undefined : undefined,
       });
-      if (res.ok) {
+      if (res.ok && checkInNow && !res.data.checkedIn) {
+        // Saved, not checked in: the payment step and then the check-in, right here.
+        setSameAsk(null);
+        const paid = payMethod !== PROMPT;
+        toast.success(paid ? t("Payment recorded — now check the guest in.") : res.data.prompt ? t("Prompt sent to their phone — check in once it is paid.") : t("Room {room} is held — take the payment, then check in.", { room: res.data.rooms.join(", ") }));
+        setHeld({ reservationId: res.data.id, reference: res.data.reference, rooms: res.data.rooms.join(", "), amount: payNow, phone: (promptPhone ?? guest.phone).trim(), paid, prompt: res.data.prompt ? { id: res.data.prompt.id, amount: payNow, phone: (promptPhone ?? guest.phone).trim() } : null, error: res.data.promptError });
+      } else if (res.ok) {
         setSameAsk(null);
         toast.success(`${checkInNow ? t("Checked in") : t("Reserved")} — ${res.data.reference}${res.data.prompt ? ` · ${t("payment request sent to their phone")}` : ""}`);
         if (res.data.promptError) toast.error(t("The payment request was not sent: {error} Send it again from the booking.", { error: res.data.promptError }), { duration: 10000 });
@@ -744,15 +758,15 @@ export function BookingForm(props: {
                 <div className="mb-5 space-y-3">
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("Food & drinks from the menu")}</p>
                   <MenuOrder menu={props.menu} picks={menuPicks} onChange={setMenuPicks} extraLine={menuFee > 0 ? { label: t("Room service delivery"), amount: menuFee } : null} />
-                  {menuPicks.length > 0 && (checkInNow ? (
+                  {menuPicks.length > 0 && (kitchenNow ? (
                     <label className="flex items-center gap-2 text-xs">
                       <input type="checkbox" checked={roomService} onChange={(e) => setRoomService(e.target.checked)} />
                       {props.menu.fee ? t("Deliver to the room (room service · + {fee}) — otherwise served in the restaurant / bar", { fee: formatTZS(props.menu.fee) }) : t("Deliver to the room (room service) — otherwise served in the restaurant / bar")}
                     </label>
                   ) : (
-                    <p className="text-[11px] text-muted-foreground">{t("The guest arrives later: these go on the bill now as a pre-order at menu prices — tell the kitchen when they arrive.")}</p>
+                    <p className="text-[11px] text-muted-foreground">{payFirst ? t("Payment first: these go on the bill now at menu prices — tell the kitchen once the guest is checked in.") : t("The guest arrives later: these go on the bill now as a pre-order at menu prices — tell the kitchen when they arrive.")}</p>
                   ))}
-                  {menuPicks.length > 0 && checkInNow && <p className="text-[11px] text-muted-foreground">{t("Saved with the booking: the kitchen & bar get the order, and it goes on the room's bill.")}</p>}
+                  {menuPicks.length > 0 && kitchenNow && <p className="text-[11px] text-muted-foreground">{t("Saved with the booking: the kitchen & bar get the order, and it goes on the room's bill.")}</p>}
                 </div>
               )}
               <div className="mb-5 space-y-3">
@@ -909,6 +923,20 @@ export function BookingForm(props: {
               )}
             </div>
 
+            {/* Step 2 of a walk-in that pays now: the payment, then the check-in — on this page. Closing keeps the room held. */}
+            <Dialog open={!!held} onOpenChange={(o) => { if (!o && held) router.push(`/staff/reservations/${held.reservationId}`); }}>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader icon={<DoorOpen />} eyebrow={t("Walk-in")} tone="emerald">
+                  <DialogTitle>{t("Payment first, then check in")}</DialogTitle>
+                  <DialogDescription>{t("The booking is saved. Check the guest in once the payment is in.")}</DialogDescription>
+                </DialogHeader>
+                {held && (
+                  <CheckInLast reservationId={held.reservationId} reference={held.reference} guestName={guest.fullName} roomLabel={held.rooms} amount={held.amount} phone={held.phone}
+                    paid={held.paid} prompt={held.prompt} promptError={held.error}
+                    onDone={(checkedIn) => router.push(`/staff/reservations/${held.reservationId}${checkedIn ? "?sent=welcome" : ""}`)} />
+                )}
+              </DialogContent>
+            </Dialog>
             <QuickCompanyDialog open={newCompany} onOpenChange={setNewCompany} onSaved={(c) => { setAddedCompanies((a) => [c, ...a]); setCorporateId(c.id); setBillTo("COMPANY"); setTerms(null); }} />
             {/* Payment type: pay now · pay at the hotel · company invoice */}
             {lines.length > 0 && (
@@ -987,15 +1015,17 @@ export function BookingForm(props: {
                 onOther={() => { setSameAsk(null); setGuest({ ...guest, id: null, createNew: true, fullName: "" }); document.getElementById("g-name")?.focus(); }} />
             )}
             <Button className={cn("h-12 w-full rounded-2xl text-sm font-semibold", sameAsk && "hidden")} onClick={() => submit()} disabled={saving || lines.length === 0 || payNow > guestPart || (overCredit && !props.canApproveCredit)}>
-              {saving ? <Loader2 className="animate-spin" /> : checkInNow ? <LogIn /> : <CalendarCheck />}
+              {saving ? <Loader2 className="animate-spin" /> : checkInNow && payNow > 0 ? (payMethod === PROMPT ? <Smartphone /> : <Banknote />) : checkInNow ? <LogIn /> : <CalendarCheck />}
+              {/* Guest at the desk: the payment is its own press — check-in comes after it (never both by one button). */}
               {payNow > 0 && payMethod === PROMPT
-                ? (checkInNow ? t("Check in & request {amount}", { amount: formatTZS(payNow) }) : t("Save & request {amount}", { amount: formatTZS(payNow) }))
+                ? (checkInNow ? t("Send prompt to their phone · {amount}", { amount: formatTZS(payNow) }) : t("Save & request {amount}", { amount: formatTZS(payNow) }))
                 : payNow > 0
-                ? (checkInNow ? t("Receive {amount} & check in", { amount: formatTZS(payNow) }) : t("Receive {amount} & save", { amount: formatTZS(payNow) }))
-                : checkInNow ? t("Check in now") : t("Save reservation")}
+                ? (checkInNow ? t("Record payment · {amount}", { amount: formatTZS(payNow) }) : t("Receive {amount} & save", { amount: formatTZS(payNow) }))
+                : checkInNow ? (guestPart > 0 ? t("Check in now — pays at check-out") : t("Check in now")) : t("Save reservation")}
             </Button>
             <p className="text-center text-[11px] text-muted-foreground">
-              {payMethod === PROMPT ? (checkInNow ? t("The guest gets a payment request on their phone and confirms it with their PIN. Once paid, it is recorded automatically.") : t("The guest gets a payment request on their phone and confirms it with their PIN. Once paid, it is recorded automatically and the booking is confirmed."))
+              {checkInNow && payNow > 0 ? (payMethod === PROMPT ? t("Payment first: the guest confirms it on their phone with their PIN — then you check them in.") : t("Payment first: record it — then you check the guest in."))
+                : payMethod === PROMPT ? (checkInNow ? t("The guest gets a payment request on their phone and confirms it with their PIN. Once paid, it is recorded automatically.") : t("The guest gets a payment request on their phone and confirms it with their PIN. Once paid, it is recorded automatically and the booking is confirmed."))
                 : payMethod ? t("Booking and payment are saved together — the booking is confirmed.")
                 : checkInNow ? t("You can also receive the payment later on the stay screen.")
                   : companyPart > 0 ? t("Billed to the company — the booking is confirmed.")

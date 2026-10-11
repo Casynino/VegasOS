@@ -34,7 +34,7 @@ type Waiting = { id: string; amount: number; phone: string; status: string; note
  * They approve it on their phone; the payment is recorded by itself (on the guest's bill, or the order / table bill)
  * and the screen updates. Shown only where nTZS is set up and to those who take payments.
  */
-export function SendToPhone({ target, amount, phone = "", editableAmount = false, who, onPaid, className, resume = null, primary = false }: {
+export function SendToPhone({ target, amount, phone = "", editableAmount = false, who, onPaid, onChange, className, resume = null, primary = false }: {
   target: Target;
   /** The amount to ask for (a guest's bill: up to what they owe, changeable when `editableAmount`). */
   amount: number;
@@ -44,6 +44,8 @@ export function SendToPhone({ target, amount, phone = "", editableAmount = false
   /** "Asha" — used in the waiting line. */
   who?: string | null;
   onPaid?: () => void;
+  /** The prompt being followed (its id and status), or null when none is — for a screen that waits on it. */
+  onChange?: (prompt: { id: string; status: string } | null) => void;
   className?: string;
   /** A prompt already sent (e.g. as the booking was made): followed from the start. */
   resume?: { id: string; amount: number; phone: string } | null;
@@ -99,6 +101,11 @@ export function SendToPhone({ target, amount, phone = "", editableAmount = false
     timer = setTimeout(tick, POLL_MS);
     return () => { stopped = true; if (timer) clearTimeout(timer); };
   }, [waitingId, router]);
+
+  const onChangeRef = useRef(onChange);
+  useEffect(() => { onChangeRef.current = onChange; });
+  const liveId = waiting?.id ?? null, liveStatus = waiting?.status ?? null;
+  useEffect(() => { onChangeRef.current?.(liveId && liveStatus ? { id: liveId, status: liveStatus } : null); }, [liveId, liveStatus]);
 
   if (!available) return null;
   const amt = Number(ask) || 0;

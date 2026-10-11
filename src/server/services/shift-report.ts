@@ -202,7 +202,9 @@ async function receptionFacts(s: Subject, opts: { period?: boolean } = {}) {
   const checkOuts = distinct("reservation.checked_out", "meeting.completed");
   const handled = distinct(...RES_TOUCH);
   const created = distinct("reservation.created", "meeting.booked");
-  const walkIns = distinct("reservation.walk_in");
+  // A walk-in checked in by one press — or booked with a payment first and checked in after it (same shift).
+  const checkedIn = new Set(logs.filter((l) => l.action === "reservation.checked_in").map((l) => l.entityId));
+  const walkIns = new Set(logs.filter((l) => l.action === "reservation.walk_in" || (l.action === "reservation.created" && after(l).walkIn === true && checkedIn.has(l.entityId))).map((l) => l.entityId)).size;
   const requestsAccepted = distinct("request.accepted");
   const finished = (l: (typeof logs)[number]) => (l.action === "request.updated" && after(l).status === "COMPLETED") || l.action === "complaint.resolved";
   const requestsDone = new Set(logs.filter(finished).map((l) => l.entityId)).size;

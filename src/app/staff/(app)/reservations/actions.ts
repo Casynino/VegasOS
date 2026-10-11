@@ -295,17 +295,23 @@ const CreateSchema = z.object({
   internalNotes: z.string().trim().max(1000).optional(),
 });
 
-export async function createReservationAction(input: z.input<typeof CreateSchema>): Promise<ActionResult<{ id: string; reference: string; prompt: { id: string } | null; promptError: string | null }>> {
+export async function createReservationAction(input: z.input<typeof CreateSchema>): Promise<ActionResult<{ id: string; reference: string; rooms: string[]; checkedIn: boolean; prompt: { id: string } | null; promptError: string | null }>> {
   return runAction(async () => {
     const user = await authorize("reservations.create");
     const { prompt, ...data } = parseInput(CreateSchema, input);
     if (data.checkInNow && !user.permissions.has("reservations.check_in")) throw new AppError("You cannot check guests in.", "FORBIDDEN");
     if ((data.payment || prompt) && !user.permissions.has("payments.record")) throw new AppError("You cannot record payments.", "FORBIDDEN");
     if (prompt && data.payment) throw new AppError("Choose one way to pay — mobile money or another payment method.", "VALIDATION");
+    // PAYMENT FIRST, CHECK-IN LAST (owner, 2026-10-11): a payment recorded here, or asked for on the guest's phone,
+    // never checks the guest in by the same press — the booking is saved and check-in is its own step, once the money
+    // is in. Only a guest who pays at check-out is checked in straight away. Decided here, whatever the screen sent.
+    const arriving = data.checkInNow || data.stay.kind === "walkIn";
+    const checkInLater = arriving && !!(data.payment || prompt);
     const actor = await actorFor(user);
     const r = await createReservation(
       {
         ...data,
+        checkInLater,
         stay: await toStayRequest(data.stay),
         guest: { ...data.guest, email: data.guest.email || null },
         sameGuest: data.sameGuest ?? false,
@@ -326,7 +332,7 @@ export async function createReservationAction(input: z.input<typeof CreateSchema
       }
     }
     refresh();
-    return { id: r.id, reference: r.reference, prompt: sent, promptError };
+    return { id: r.id, reference: r.reference, rooms: r.rooms.map((x) => x.room.number), checkedIn: arriving && !checkInLater, prompt: sent, promptError };
   }, msg("Booking saved."));
 }
 

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CalendarPlus, Check, CheckCircle2, DoorOpen, Loader2, Minus, Plus, Presentation, Smartphone, TriangleAlert, XCircle } from "lucide-react";
+import { Banknote, CalendarPlus, Check, CheckCircle2, DoorOpen, Loader2, Minus, Plus, Presentation, Smartphone, TriangleAlert, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { validPhone } from "@/lib/guest-messages";
 import { formatTZS } from "@/lib/format";
@@ -15,6 +15,7 @@ import { NetworkMarks } from "@/components/payments/networks";
 import { SendToPhone, useMobilePayAvailable } from "@/components/staff/mobile-pay";
 import { KnownCustomerNote, useKnownCustomer } from "@/components/staff/known-customer";
 import { SameGuestAsk } from "@/components/staff/same-guest";
+import { CheckInLast } from "@/components/staff/check-in-last";
 import { checkAvailabilityAction, createReservationAction, type AvailabilityResult } from "@/app/staff/(app)/reservations/actions";
 import { useT } from "@/i18n/client";
 import { msg } from "@/i18n/msg";
@@ -59,8 +60,9 @@ export function QuickBook({ room, mode, today, from, methods, canPay, onDone }: 
   const pick = (way: string) => { picked.current = true; setPayWay(way); };
   const [promptPhone, setPromptPhone] = useState<string | null>(null);
   const [ref, setRef] = useState("");
-  // Saved with a mobile money request: followed right here until the guest pays.
-  const [sent, setSent] = useState<{ reservationId: string; reference: string; prompt: { id: string; amount: number; phone: string } | null; error: string | null } | null>(null);
+  // Saved with a payment (a walk-in: check-in comes after it, right here) or with a mobile money request, followed
+  // here until the guest pays.
+  const [sent, setSent] = useState<{ reservationId: string; reference: string; paid: boolean; prompt: { id: string; amount: number; phone: string } | null; error: string | null } | null>(null);
 
   // The phone is the customer's key: a number already on file brings back who they are (their name fills in) — no
   // retyping, no second profile. "Someone else" keeps the typed details as a new customer.
@@ -96,6 +98,7 @@ export function QuickBook({ room, mode, today, from, methods, canPay, onDone }: 
     if (guest.fullName.trim().length < 2) return toast.error(mode === "meeting" ? t("Enter who is booking.") : t("Enter the guest's name."));
     if (!validPhone(guest.phone)) return toast.error(t("Enter the phone number — the booking details are sent to it."));
     const viaPhone = payWay === PROMPT && total > 0;
+    const atDesk = canPay && !!payWay && !viaPhone && total > 0;
     const promptNumber = (promptPhone ?? guest.phone).trim();
     if (viaPhone && !validPhone(promptNumber)) return toast.error(t("Enter the guest's phone number to send the payment request."));
     const done = mode === "walkIn" ? t("Checked in to room {room}", { room: room.number }) : mode === "meeting" ? t("Meeting booked") : t("Room {room} reserved", { room: room.number });
@@ -110,13 +113,21 @@ export function QuickBook({ room, mode, today, from, methods, canPay, onDone }: 
         rooms: [{ roomTypeId: room.typeId, roomId: room.id, adults, children: mode === "meeting" ? 0 : children }],
         companyName: mode === "meeting" ? company.trim() || undefined : undefined,
         specialRequests: needs.trim() || undefined,
-        payment: canPay && payWay && !viaPhone && total > 0 ? { amount: total, accountId: payWay, reference: ref.trim() || undefined } : null,
+        payment: atDesk ? { amount: total, accountId: payWay, reference: ref.trim() || undefined } : null,
         prompt: viaPhone ? { amount: total, phone: promptNumber } : null,
       });
+      if (res.ok && mode === "walkIn" && !res.data.checkedIn) {
+        // PAYMENT FIRST, CHECK-IN LAST: the room is held and the payment is in (or on its way to their phone) —
+        // check-in is the next press, right here.
+        toast.success(atDesk ? t("Payment recorded — now check the guest in.") : res.data.prompt ? t("Prompt sent to their phone — check in once it is paid.") : t("Room {room} is held — take the payment, then check in.", { room: room.number }));
+        setSent({ reservationId: res.data.id, reference: res.data.reference, paid: atDesk, prompt: res.data.prompt ? { id: res.data.prompt.id, amount: total, phone: promptNumber } : null, error: res.data.promptError });
+        router.refresh();
+        return;
+      }
       if (res.ok && viaPhone) {
         // Stay here and follow the payment until the guest pays (it is recorded by itself, even if this is closed).
         toast.success(`${done} — ${res.data.reference}${res.data.prompt ? ` · ${t("payment request sent")}` : ""}`);
-        setSent({ reservationId: res.data.id, reference: res.data.reference, prompt: res.data.prompt ? { id: res.data.prompt.id, amount: total, phone: promptNumber } : null, error: res.data.promptError });
+        setSent({ reservationId: res.data.id, reference: res.data.reference, paid: false, prompt: res.data.prompt ? { id: res.data.prompt.id, amount: total, phone: promptNumber } : null, error: res.data.promptError });
         return;
       }
       if (res.ok) {
@@ -132,15 +143,23 @@ export function QuickBook({ room, mode, today, from, methods, canPay, onDone }: 
   // "No — it is someone else": their own name, saved as their own customer with this number.
   const notTheSame = () => { setSameAsk(null); setSomeoneElse(true); setGuest((g) => ({ ...g, fullName: "" })); requestAnimationFrame(() => nameRef.current?.focus()); };
 
+  // A walk-in paying now (on their phone, or recorded at the desk): that press is the payment — check-in follows.
+  const payFirst = canPay && !!payWay && total > 0;
   const Icon = mode === "walkIn" ? DoorOpen : mode === "meeting" ? Presentation : CalendarPlus;
   const title = mode === "walkIn" ? t("Walk-in — check in to room {room} now", { room: room.number }) : mode === "meeting" ? t("Book a meeting") : t("Reserve room {room}", { room: room.number });
   const close = () => { onDone(); router.refresh(); };
 
+  if (sent && mode === "walkIn") {
+    return (
+      <CheckInLast reservationId={sent.reservationId} reference={sent.reference} guestName={guest.fullName} roomLabel={room.number} amount={total}
+        phone={promptPhone ?? guest.phone} paid={sent.paid} prompt={sent.prompt} promptError={sent.error} onDone={close} />
+    );
+  }
   if (sent) {
     return (
       <div className="space-y-3 rounded-2xl border border-border/70 bg-muted/30 p-4 text-sm">
         <p className="flex items-center gap-2 font-semibold"><CheckCircle2 className="size-4 text-emerald-600 dark:text-emerald-400" />
-          {mode === "walkIn" ? t("{name} is checked in to room {room}", { name: guest.fullName.trim().split(" ")[0], room: room.number }) : mode === "meeting" ? t("Meeting booked") : t("Room {room} reserved", { room: room.number })} · {sent.reference}</p>
+          {mode === "meeting" ? t("Meeting booked") : t("Room {room} reserved", { room: room.number })} · {sent.reference}</p>
         {sent.error && <p className="rounded-xl bg-rose-500/10 px-3 py-2 text-xs text-rose-700 dark:text-rose-300">{t("The payment request was not sent: {error} Send it again below.", { error: sent.error })}</p>}
         <SendToPhone target={{ kind: "stay", reservationId: sent.reservationId }} amount={total} editableAmount phone={promptPhone ?? guest.phone} who={guest.fullName}
           resume={sent.prompt} onPaid={close} primary />
@@ -261,16 +280,21 @@ export function QuickBook({ room, mode, today, from, methods, canPay, onDone }: 
           </div>
           {payWay && payWay !== PROMPT && <Input value={ref} onChange={(e) => setRef(e.target.value)} placeholder={t("Reference (M-Pesa code, receipt…) — optional")} aria-label={t("Reference")} className="h-9" />}
           {!payWay && <p className="text-[11px] text-muted-foreground">{mode === "walkIn" ? t("Checked in now — the bill is paid at check-out.") : t("Not paid: the room is held as a pending booking until it is paid.")}</p>}
-          {payWay === PROMPT && <p className="text-[11px] text-muted-foreground">{t("The guest confirms it on their phone with their PIN — it is recorded automatically.")}</p>}
+          {payWay === PROMPT && <p className="text-[11px] text-muted-foreground">{mode === "walkIn" ? t("Payment first: the guest confirms it on their phone with their PIN — then you check them in.") : t("The guest confirms it on their phone with their PIN — it is recorded automatically.")}</p>}
+          {payWay && payWay !== PROMPT && mode === "walkIn" && <p className="text-[11px] text-muted-foreground">{t("Payment first: record it — then you check the guest in.")}</p>}
         </div>
       )}
 
       {sameAsk && <SameGuestAsk message={sameAsk} pending={saving} onSame={() => save(true)} onOther={notTheSame} />}
       <Button className={cn("h-11 w-full", sameAsk && "hidden")} disabled={saving || !free} onClick={() => save()}>
-        {saving ? <Loader2 className="animate-spin" /> : <Icon />}
-        {payWay === PROMPT && total > 0
-          ? (mode === "walkIn" ? t("Check in & request {amount}", { amount: formatTZS(total) }) : mode === "meeting" ? t("Book & request {amount}", { amount: formatTZS(total) }) : t("Reserve & request {amount}", { amount: formatTZS(total) }))
-          : mode === "walkIn" ? (total ? t("Check in now · {amount}", { amount: formatTZS(total) }) : t("Check in now")) : mode === "meeting" ? t("Book the meeting") : t("Reserve the room")}
+        {saving ? <Loader2 className="animate-spin" /> : mode === "walkIn" && payFirst ? (payWay === PROMPT ? <Smartphone /> : <Banknote />) : <Icon />}
+        {/* A walk-in: the payment is one press and the check-in the next — never both by one button. */}
+        {mode === "walkIn"
+          ? (payFirst ? (payWay === PROMPT ? t("Send prompt to their phone · {amount}", { amount: formatTZS(total) }) : t("Record payment · {amount}", { amount: formatTZS(total) }))
+            : total ? t("Check in now — pays at check-out") : t("Check in now"))
+          : payWay === PROMPT && total > 0
+            ? (mode === "meeting" ? t("Book & request {amount}", { amount: formatTZS(total) }) : t("Reserve & request {amount}", { amount: formatTZS(total) }))
+            : mode === "meeting" ? t("Book the meeting") : t("Reserve the room")}
       </Button>
       <p className="text-center text-[11px] text-muted-foreground">
         {t.rich("Need more (several rooms, discount, company invoice, extras)? <link>Full booking form</link>", {
