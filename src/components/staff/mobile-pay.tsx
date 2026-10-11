@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Check, ChevronDown, Loader2, Smartphone, X } from "lucide-react";
+import { Check, Loader2, Smartphone, X } from "lucide-react";
 import { NetworkMarks } from "@/components/payments/networks";
 import { cancelPromptAction, mobilePayAvailableAction, promptStatusAction, sendOrdersPromptAction, sendStayPromptAction } from "@/app/staff/(app)/mobile-pay/actions";
 import { cn } from "@/lib/utils";
@@ -155,23 +155,25 @@ export function SendToPhone({ target, amount, phone = "", editableAmount = false
     return (
       <button type="button" onClick={() => setOpen(true)}
         className={cn("flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-sky-500/50 px-3 py-2 text-sm font-medium text-sky-700 transition-colors hover:bg-sky-500/[0.06] dark:text-sky-300", className)}>
-        <Smartphone className="size-4" />{t("Request mobile money")}{amount > 0 ? ` · ${fmt(editableAmount ? amt : amount)}` : ""}
+        <Smartphone className="size-4" />{t("Take payment on the customer's phone")}{amount > 0 ? ` · ${fmt(editableAmount ? amt : amount)}` : ""}
       </button>
     );
   }
 
   return (
-    // Compact (owner, 2026-10-05: "nice, not too big"): one line saying what it is, then the number and the button.
+    // Compact (owner, 2026-10-05: "nice, not too big"). It says what it does in the desk's words (owner, 2026-10-11):
+    // the customer pays on their own phone — then the number and the button.
     <div className={cn("space-y-2 rounded-xl border border-sky-500/30 bg-sky-500/[0.04] p-2.5", className)}>
       <div className="flex items-center gap-2">
         <Smartphone className="size-4 shrink-0 text-sky-500" />
-        <span className="text-sm font-semibold">{t("Mobile money")}</span>
+        <span className="text-sm font-semibold">{t("Take payment on the customer's phone")}</span>
         {/* A definite width, so the marks shrink inside it (container query) instead of spilling out. */}
         <div className="ml-auto w-44 min-w-0 max-w-[55%]"><NetworkMarks label={null} compact className="justify-end" /></div>
         {!primary && <button type="button" onClick={() => setOpen(false)} aria-label={t("Close")} className="grid size-7 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"><X className="size-4" /></button>}
       </div>
+      <p className="text-xs leading-snug text-muted-foreground">{t("Type their mobile money number. A prompt opens on their phone, they enter their PIN, and the payment is recorded by itself.")}</p>
       <div className="flex flex-wrap gap-2">
-        <input value={number} onChange={(e) => setNumber(e.target.value)} type="tel" inputMode="tel" placeholder={t("Phone, e.g. 0712 345 678")} aria-label={t("Customer's phone number")}
+        <input value={number} onChange={(e) => setNumber(e.target.value)} type="tel" inputMode="tel" placeholder={t("Their mobile money number, e.g. 0712 345 678")} aria-label={t("Customer's phone number")}
           className="h-9 min-w-[10rem] flex-1 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-sky-500/30" />
         {editableAmount && (
           <input value={ask} onChange={(e) => setAsk(e.target.value.replace(/\D/g, ""))} inputMode="numeric" aria-label={t("Amount (TZS)")}
@@ -179,7 +181,7 @@ export function SendToPhone({ target, amount, phone = "", editableAmount = false
         )}
         <button type="button" onClick={send} disabled={pending || (!number.trim() && target.kind === "orders") || (editableAmount && amt <= 0)}
           className="flex h-9 shrink-0 grow items-center justify-center gap-1.5 rounded-lg bg-sky-600 px-3.5 text-sm font-semibold text-white transition hover:bg-sky-500 disabled:opacity-60 sm:grow-0">
-          {pending ? <Loader2 className="size-4 animate-spin" /> : <Smartphone className="size-4" />}{t("Send request · {amount}", { amount: fmt(editableAmount ? amt : amount) })}
+          {pending ? <Loader2 className="size-4 animate-spin" /> : <Smartphone className="size-4" />}{t("Send prompt to their phone · {amount}", { amount: fmt(editableAmount ? amt : amount) })}
         </button>
       </div>
     </div>
@@ -187,8 +189,8 @@ export function SendToPhone({ target, amount, phone = "", editableAmount = false
 }
 
 /**
- * The other ways to take the money (cash, LIPA, bank…) — under "Send to phone", folded away while nTZS is the main way
- * (owner, 2026-10-05). Where nTZS is not set up they show as before.
+ * The other ways to take the money (cash, LIPA, bank…) — under "Send to phone", always in view under their own heading:
+ * nothing to press to find them (owner, 2026-10-11). Where nTZS is not set up they show as before.
  */
 export function OtherWays({ children, label = msg("Other payment methods"), className, fold = true }: {
   children: React.ReactNode; label?: string; className?: string;
@@ -197,15 +199,13 @@ export function OtherWays({ children, label = msg("Other payment methods"), clas
 }) {
   const t = useT();
   const available = useMobilePayAvailable();
-  const [open, setOpen] = useState(false);
   if (!available || !fold) return <div className={className}>{children}</div>;
   return (
     <div className={className}>
-      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open}
-        className="flex w-full items-center gap-2 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground transition hover:text-foreground">
-        <span className="h-px flex-1 bg-border" />{t(label)}<ChevronDown className={cn("size-3.5 transition", open && "rotate-180")} /><span className="h-px flex-1 bg-border" />
-      </button>
-      {open && <div className="mt-2">{children}</div>}
+      <p className="flex items-center gap-2 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+        <span className="h-px flex-1 bg-border" />{t(label)}<span className="h-px flex-1 bg-border" />
+      </p>
+      <div className="mt-1.5">{children}</div>
     </div>
   );
 }

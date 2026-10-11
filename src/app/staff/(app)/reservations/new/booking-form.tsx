@@ -934,11 +934,11 @@ export function BookingForm(props: {
                   <div className={cn("rounded-xl border p-2.5 transition", payMethod === PROMPT ? "border-sky-500/60 bg-sky-500/[0.09]" : "border-border hover:bg-muted")}>
                     <button type="button" aria-pressed={payMethod === PROMPT} onClick={() => setPayMethod(PROMPT)} className="flex w-full items-center gap-2.5 text-left">
                       <span className={cn("grid size-9 shrink-0 place-items-center rounded-lg", payMethod === PROMPT ? "bg-sky-600 text-white" : "bg-sky-500/12 text-sky-600 dark:text-sky-300")}><Smartphone className="size-4" /></span>
-                      <span className="min-w-0 flex-1 leading-tight"><span className="block text-sm font-semibold">{t("Mobile money")}</span><NetworkMarks label={null} compact className="mt-1" /></span>
+                      <span className="min-w-0 flex-1 leading-tight"><span className="block text-sm font-semibold">{t("Pay on the customer's phone")}</span><span className="mt-0.5 block text-[11px] text-muted-foreground">{t("They get a prompt and enter their PIN — recorded by itself.")}</span><NetworkMarks label={null} compact className="mt-1" /></span>
                       {payMethod === PROMPT && <CheckCircle2 className="size-4 shrink-0 text-sky-600 dark:text-sky-300" />}
                     </button>
                     {payMethod === PROMPT && (
-                      <Input aria-label={t("Guest's phone number")} type="tel" inputMode="tel" value={promptPhone ?? guest.phone} onChange={(e) => setPromptPhone(e.target.value)} placeholder={t("Phone number, e.g. 0712 345 678")} className="mt-2.5 h-10 text-sm tabular-nums" />
+                      <Input aria-label={t("Guest's phone number")} type="tel" inputMode="tel" value={promptPhone ?? guest.phone} onChange={(e) => setPromptPhone(e.target.value)} placeholder={t("Their mobile money number, e.g. 0712 345 678")} className="mt-2.5 h-10 text-sm tabular-nums" />
                     )}
                   </div>
                 )}

@@ -515,12 +515,12 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
                     <div className={cn("rounded-2xl border p-3 transition", viaPhone ? "border-sky-500/60 bg-sky-500/[0.08]" : "border-border")}>
                       <button type="button" onClick={() => { pickedAccount.current = true; setAccountId(PROMPT); }} aria-pressed={viaPhone} className="flex w-full items-center gap-2.5 text-left">
                         <span className={cn("grid size-9 shrink-0 place-items-center rounded-xl", viaPhone ? "bg-sky-600 text-white" : "bg-sky-500/12 text-sky-600 dark:text-sky-300")}><Smartphone className="size-4" /></span>
-                        <span className="min-w-0 flex-1 leading-tight"><span className="block text-sm font-semibold">{t("Mobile money")}</span><NetworkMarks label={null} compact className="mt-1" /></span>
+                        <span className="min-w-0 flex-1 leading-tight"><span className="block text-sm font-semibold">{t("Pay on the customer's phone")}</span><span className="mt-0.5 block text-[11px] text-muted-foreground">{t("They get a prompt and enter their PIN — recorded by itself.")}</span><NetworkMarks label={null} compact className="mt-1" /></span>
                         {viaPhone && <Check className="size-4 shrink-0 text-sky-600 dark:text-sky-300" />}
                       </button>
                       {viaPhone && (
                         <input value={promptPhone ?? (sameCustomer ? tableCustomer?.phone ?? "" : phone)} onChange={(e) => setPromptPhone(e.target.value)} type="tel" inputMode="tel" aria-label={t("Customer's phone number")}
-                          placeholder={t("Phone number, e.g. 0712 345 678")} className={cn(field, "mt-2.5 h-10 tabular-nums")} />
+                          placeholder={t("Their mobile money number, e.g. 0712 345 678")} className={cn(field, "mt-2.5 h-10 tabular-nums")} />
                       )}
                     </div>
                   )}
