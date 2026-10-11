@@ -42,7 +42,7 @@ export async function sendRoomReportByDateAction(input: { date: string; force?: 
     if (res.recipients === 0) return { message: t("No report recipients configured in Settings.") };
     const busy = res.results.filter((r) => r.status === "BUSY");
     const failed = res.results.filter((r) => r.status === "FAILED" || r.status === "SKIPPED");
-    return { message: failed.length ? t("{failed} of {total} failed: {error}", { failed: failed.length, total: res.recipients, error: failed[0].error ?? t("unknown error") }) : busy.length ? t("Being sent right now — refresh in a moment.") : t("Room report sent to {n} recipient(s).", { n: res.recipients }) };
+    return { message: failed.length ? t("{failed} of {total} failed: {error}", { failed: failed.length, total: res.recipients, error: failed[0].error ?? t("unknown error") }) : busy.length ? t("Being sent right now — refresh in a moment.") : t("Room report sent to {n} recipient(s).", { n: res.recipients }) + (res.results[0]?.response ? ` — CallMeBot: ${res.results[0].response}` : "") };
   });
 }
 
@@ -55,7 +55,7 @@ export async function sendRoomReportAction(input: { reportId: string; force?: bo
     if (res.recipients === 0) return { message: t("No report recipients configured in Settings.") };
     const busy = res.results.filter((r) => r.status === "BUSY");
     const failed = res.results.filter((r) => r.status === "FAILED" || r.status === "SKIPPED");
-    return { message: failed.length ? t("{failed} of {total} failed: {error}", { failed: failed.length, total: res.recipients, error: failed[0].error ?? t("unknown error") }) : busy.length ? t("Being sent right now — refresh in a moment.") : t("Room report sent to {n} recipient(s).", { n: res.recipients }) };
+    return { message: failed.length ? t("{failed} of {total} failed: {error}", { failed: failed.length, total: res.recipients, error: failed[0].error ?? t("unknown error") }) : busy.length ? t("Being sent right now — refresh in a moment.") : t("Room report sent to {n} recipient(s).", { n: res.recipients }) + (res.results[0]?.response ? ` — CallMeBot: ${res.results[0].response}` : "") };
   });
 }
 
@@ -68,6 +68,6 @@ export async function sendReportAction(input: { reportId: string; force?: boolea
     if (res.recipients === 0) return { message: t("No report recipients configured in Settings.") };
     const busy = res.results.filter((r) => r.status === "BUSY");
     const failed = res.results.filter((r) => r.status === "FAILED" || r.status === "SKIPPED");
-    return { message: failed.length ? t("{failed} of {total} failed: {error}", { failed: failed.length, total: res.recipients, error: failed[0].error ?? t("unknown error") }) : busy.length ? t("Being sent right now — refresh in a moment.") : t("Sent to {n} recipient(s).", { n: res.recipients }) };
+    return { message: failed.length ? t("{failed} of {total} failed: {error}", { failed: failed.length, total: res.recipients, error: failed[0].error ?? t("unknown error") }) : busy.length ? t("Being sent right now — refresh in a moment.") : t("Sent to {n} recipient(s).", { n: res.recipients }) + (res.results[0]?.response ? ` — CallMeBot: ${res.results[0].response}` : "") };
   });
 }

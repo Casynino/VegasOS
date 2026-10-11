@@ -57,7 +57,7 @@ export async function deliverToRecipients(o: {
 }) {
   const settings = await getSettings();
   const recipients = (settings.reportRecipients as unknown as Recipient[]) ?? [];
-  const results: { recipient: string; status: string; error?: string }[] = [];
+  const results: { recipient: string; status: string; error?: string; response?: string }[] = [];
   const texts = new Map<Locale, Promise<string>>();
   const textOf = (lang: Locale) => {
     if (lang === DEFAULT_LOCALE || !o.textFor) return Promise.resolve(o.text);
@@ -108,7 +108,7 @@ export async function deliverToRecipients(o: {
         claimedAt: null,
       },
     });
-    results.push({ recipient: r.phone, status: outcome.ok ? "SENT" : "FAILED", error: outcome.error });
+    results.push({ recipient: r.phone, status: outcome.ok ? "SENT" : "FAILED", error: outcome.error, response: outcome.response });
   }
   return { recipients: recipients.length, results };
 }
