@@ -272,6 +272,7 @@ export function renderReportText(r: DailyReportData, hotelName: string, link?: s
     `*${hotelName.toUpperCase()}*`,
     `*${t("Daily business report")}* · ${date}`,
     `_${t("hotel day 04:00 → 04:00")}_`,
+    link ? `${t("Full report:")} ${link}` : null,
     "",
     `*${t("Revenue {amount}", { amount: tz(r.revenue.total) })}*`,
     ...(dept.length ? dept.map(([k, v]) => `  ${t("{what}: {amount}", { what: t(k), amount: fmt(v) })}`) : [`  ${t("No revenue recorded")}`]),
@@ -298,7 +299,6 @@ export function renderReportText(r: DailyReportData, hotelName: string, link?: s
     r.attention.length ? `*${t("Attention ({n})", { n: r.attention.length })}*` : `*${t("Nothing needs attention.")}*`,
     ...r.attention.slice(0, 5).map((a) => `• ${tr(a)}`),
     r.attention.length > 5 ? `• ${t("…and {n} more in the full report", { n: r.attention.length - 5 })}` : null,
-    link ? `\n*${t("Full report:")}* ${link}` : null,
   ];
   return lines.filter((l) => l !== null).join("\n").replace(/\n{3,}/g, "\n\n").slice(0, 3500);
 }
