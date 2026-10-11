@@ -206,6 +206,111 @@ describe("the daily room report message", () => {
     expect(tight).toContain("*Still owed:* TZS 688,000");
   });
 
+  /** The stay-by-stay room money a report made today carries: what room guests paid and still owed. */
+  const withRooms = (r: RoomReportData): RoomReportData => ({
+    ...r,
+    rooms: {
+      sold: [], staying: [], payments: [], owing: [], notes: [],
+      received: { total: 2_000_000, today: 800_000, staying: 900_000, left: 300_000, advance: 0, earlier: 1_200_000, refunds: 0 },
+      owed: 1_450_000, checkIns: { walkIns: 4, reservations: r.sales.length - 4 }, income: { sold: 1_800_000, staying: 800_000, other: 0 },
+    },
+  });
+
+  it("says what room guests paid and how much of it was for earlier days — never as a new sale", () => {
+    const text = renderRoomReportText(withRooms(report([["104", "Double Deluxe"], ["103", "Double Deluxe"], ["201", "Executive Suite"]])), "Vegas Luxury Hotel", LINK);
+    expect(text).toContain([
+      "*Still owed:* TZS 688,000",
+      "",
+      "*Room guests paid:* TZS 2,000,000 (TZS 1,200,000 for earlier days)",
+      "",
+      "*Rooms sold today* · TZS 2,600,000",
+      "• Double Deluxe (2): 103, 104",
+      "• Executive Suite (1): 201",
+      "",
+      "*Full report:*",
+    ].join("\n"));
+    expect(fitsWhatsApp(text)).toBe(true);
+    expect(text.endsWith(tail("Full report:"))).toBe(true);
+    // Nothing paid for an earlier day: no bracket.
+    const plain = withRooms(report([["103", "Double Deluxe"]]));
+    plain.rooms!.received.earlier = 0;
+    expect(renderRoomReportText(plain, "Vegas", LINK)).toContain("*Room guests paid:* TZS 2,000,000\n\n*Rooms sold today*");
+  });
+
+  it("says money given back beside what room guests paid — never taken off silently", () => {
+    const r = withRooms(report([["103", "Double Deluxe"]]));
+    r.rooms!.received = { ...r.rooms!.received, total: 300_000, earlier: 0, refunds: 50_000 };
+    expect(renderRoomReportText(r, "Vegas", LINK)).toContain("*Room guests paid:* TZS 300,000 (TZS 50,000 given back)\n\n*Rooms sold today*");
+    r.rooms!.received.earlier = 120_000;
+    const both = renderRoomReportText(r, "Vegas", LINK);
+    expect(both).toContain("*Room guests paid:* TZS 300,000 (TZS 120,000 for earlier days, TZS 50,000 given back)\n\n*Rooms sold today*");
+    expect(fitsWhatsApp(both)).toBe(true);
+    expect(both.endsWith(tail("Full report:"))).toBe(true);
+  });
+
+  // The hotel's own rooms.
+  const all: [string, string][] = [
+    ...["103", "104", "105", "106", "107", "203", "204", "205", "206", "207", "305", "306", "307", "308", "309", "405", "406", "407", "408", "409"].map((r): [string, string] => [r, "Double Deluxe"]),
+    ...["302", "402"].map((r): [string, string] => [r, "Executive"]),
+    ...["201", "202", "303", "304", "403", "404"].map((r): [string, string] => [r, "Executive Suite"]),
+    ...["301", "401"].map((r): [string, string] => [r, "Standard Single"]),
+    ["101", "Twin"],
+  ];
+  /** A day with large amounts on every line — the longest the figures get. */
+  const big = (rooms: [string, string][]) => {
+    const r = withRooms(report(rooms));
+    r.money.expected = 28_750_000; r.rooms!.received = { ...r.rooms!.received, total: 21_405_000, earlier: 12_980_000 };
+    r.day = { ...r.day!, income: { ...r.day!.income, total: 32_545_000 }, expenses: { total: 11_120_000, byCategory: [] }, profit: 21_425_000, received: 22_605_000, owed: 19_688_000 };
+    return r;
+  };
+  /** Every room sold is in the message by its number (alone, or inside a range). */
+  const missingRooms = (text: string, rooms: [string, string][]) => {
+    const numbers = text.slice(text.indexOf("*Rooms sold today*"), text.indexOf("*Full report:*"));
+    const ranges = [...numbers.matchAll(/(\d+)-(\d+)/g)];
+    return rooms.map(([room]) => room).filter((room) =>
+      !ranges.some(([, a, b]) => Number(room) >= Number(a) && Number(room) <= Number(b)) && !new RegExp(`\\b${room}\\b`).test(numbers));
+  };
+
+  it("keeps every room number on any day — whichever rooms were sold, however scattered", () => {
+    // A near-full day with gaps in every floor: the hardest to write short.
+    const gaps = new Set(["105", "205", "206", "307", "407", "303", "401"]);
+    const scattered = all.filter(([room]) => !gaps.has(room));
+    const hard = renderRoomReportText(big(scattered), "Vegas Luxury Hotel", LINK);
+    expect(fitsWhatsApp(hard)).toBe(true);
+    expect(hard.endsWith(tail("Full report:"))).toBe(true);
+    expect(missingRooms(hard, scattered)).toEqual([]);
+
+    // Many different days: every mix of rooms keeps its numbers, fits, and ends with the link.
+    let seed = 20261011;
+    const next = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+    for (let i = 0; i < 600; i++) {
+      const share = 0.15 + next() * 0.85;
+      const rooms = all.filter(() => next() < share);
+      if (!rooms.length) continue;
+      const text = renderRoomReportText(big(rooms), "Vegas Luxury Hotel", LINK);
+      expect(fitsWhatsApp(text), rooms.map(([r]) => r).join(" ")).toBe(true);
+      expect(text.endsWith(tail("Full report:"))).toBe(true);
+      expect(missingRooms(text, rooms), rooms.map(([r]) => r).join(" ")).toEqual([]);
+      expect(text).toContain("*Net profit:* TZS 21,425,000");
+    }
+  });
+
+  it("keeps the room numbers and the link on the fullest day, whatever else has to go", () => {
+    for (const n of [1, 5, 10, 12, 15, 18, 22, 26, all.length]) {
+      // Scattered rooms, so the numbers do not fold into a few ranges.
+      const rooms = n === all.length ? all : all.filter((_, i) => (i * 7) % all.length < n);
+      const text = renderRoomReportText(big(rooms), "Vegas Luxury Hotel", LINK);
+      expect(fitsWhatsApp(text)).toBe(true);
+      expect(text.endsWith(tail("Full report:"))).toBe(true);
+      expect(text).toContain("*Net profit:* TZS 21,425,000");
+      expect(text).toContain("*Rooms sold today* · TZS 28,750,000");
+      expect(missingRooms(text, rooms)).toEqual([]);
+      // Up to a busy day (15 rooms sold) the room guests' money is there too.
+      if (rooms.length <= 15) expect(text).toContain("*Room guests paid:* TZS 21,405,000 (TZS 12,980,000 for earlier days)");
+    }
+    expect(renderRoomReportText(big(all), "Vegas Luxury Hotel", LINK)).toContain("• Double Deluxe (20): 103-107, 203-207, 305-309, 405-409");
+  });
+
   it("shows a loss with its sign, and an older report without the day's money", () => {
     const loss = report([["103", "Double Deluxe"]]);
     loss.day!.profit = -80_000;

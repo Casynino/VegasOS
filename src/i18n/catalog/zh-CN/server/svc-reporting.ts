@@ -59,6 +59,7 @@ const catalog: Catalog = {
   "{n} sold · {amount}": "售出 {n} · {amount}",
   "Nothing sold": "无销售",
   "Best room type": "最佳房型",
+  "{nights} sold · {amount}": "售出 {nights} · {amount}",
   "{rooms} sold · {amount}": "售出 {rooms} · {amount}",
   "No rooms sold": "未售出客房",
   "Top customer": "最高消费顾客",
@@ -75,6 +76,7 @@ const catalog: Catalog = {
   "Owed to the hotel now": "目前欠酒店的款项",
   "{guests} · {invoices} · {orders}": "{guests} · {invoices} · {orders}",
   "Room occupancy": "客房入住率",
+  "{nights} sold": "售出 {nights}",
   "{rooms} sold": "售出 {rooms}",
 
   // 2 · Daily sales
@@ -213,6 +215,7 @@ const catalog: Catalog = {
     "一位顾客 = 在一张餐桌入座的一组客人（扫 QR 或由服务员安排入座），直到清台为止。每天翻台 = 顾客数 ÷ 本期天数。收银台不安排入座，因此只显示订单。",
 
   // 8 · Rooms & bookings
+  "Rooms occupied each night (guest rooms)": "每晚已入住的客房（仅客房）",
   "Rooms sold each night (guest rooms)": "每晚售出的客房（仅客房）",
   "No nights.": "没有房晚。",
   "Gross": "总额",
@@ -228,6 +231,7 @@ const catalog: Catalog = {
   "Room income (net)": "客房收入（净额）",
   "after {amount} discounts": "已扣除 {amount} 折扣",
   "no discounts": "无折扣",
+  "income ÷ nights sold": "收入 ÷ 已售晚数",
   "income ÷ rooms sold": "收入 ÷ 售出客房",
   "income ÷ rooms available": "收入 ÷ 可售客房",
 

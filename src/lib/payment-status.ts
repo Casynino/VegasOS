@@ -24,3 +24,21 @@ export const PAYMENT_STATUS_META: Record<PaymentStatus, { label: string; classNa
   CREDIT: { label: msg("Credit (overpaid)"), className: "bg-sky-500/12 text-sky-700 dark:text-sky-300" },
   GROUP_PAYS: { label: msg("Group pays"), className: "bg-violet-500/12 text-violet-700 dark:text-violet-300" },
 };
+
+/**
+ * How a report states a bill — the same words as above, with one more: a bill that was only moved onto a company
+ * invoice is "Company invoice", never "Paid" (an invoice is not money received).
+ */
+export type BillState = PaymentStatus | "COMPANY_INVOICE";
+
+export function billState(b: { total: number; paid: number; company: number; owed: number; billTo?: string }): BillState {
+  if (b.owed < 0) return "CREDIT";
+  if (b.billTo === "GROUP" && b.owed > 0) return "GROUP_PAYS";
+  if (b.total <= 0) return "NOTHING_DUE";
+  if (b.owed === 0) return b.company > 0 && b.paid < b.total ? "COMPANY_INVOICE" : "PAID";
+  return b.paid > 0 ? "PART_PAID" : "UNPAID";
+}
+
+export const BILL_STATE_LABEL: Record<BillState, string> = {
+  NOTHING_DUE: "Nothing due", UNPAID: "Unpaid", PART_PAID: "Part paid", PAID: "Paid", CREDIT: "Overpaid", GROUP_PAYS: "Group pays", COMPANY_INVOICE: "Company invoice",
+};

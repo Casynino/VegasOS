@@ -222,12 +222,12 @@ export async function OwnerOverview({ searchParams, basePath }: {
               { label: t("Not paid yet (guests owe)"), value: owedNow, color: "#f59e0b" },
             ]}
             cells={[
-              { label: t("Earned today"), icon: <Banknote />, tint: "bg-violet-500/15 text-violet-400", value: formatTZS(plToday.netRevenue), sub: t("rooms sold + food served — paid or not"), href: `/staff/payments?from=${today}&to=${today}` },
+              { label: t("Earned today"), icon: <Banknote />, tint: "bg-violet-500/15 text-violet-400", value: formatTZS(plToday.netRevenue), sub: t("room nights + food served — paid or not"), href: `/staff/payments?from=${today}&to=${today}` },
               { label: t.ctx("money", "Spent"), icon: <Receipt />, tint: "bg-rose-500/15 text-rose-400", value: formatTZS(plToday.expenses), sub: t.plural(plToday.expenseSummary.count, "{n} expense", "{n} expenses"), href: "/staff/expenses" },
               { label: profitToday >= 0 ? t("Profit (estimate)") : t("Loss (estimate)"), icon: <TrendingUp />, tint: "bg-[oklch(0.72_0.12_80/0.18)] text-[oklch(0.8_0.11_82)]", value: formatTZS(Math.abs(profitToday)), sub: t("earned − spent · on paper"), tone: profitToday >= 0 ? "good" : "bad" },
               { label: t("Not paid yet"), icon: <Wallet />, tint: "bg-amber-500/15 text-amber-400", value: formatTZS(owedNow), sub: owedNow ? (departuresOwing.length ? t("guests owe · {n} leaving today", { n: departuresOwing.length }) : t("guests owe · {n} staying", { n: inHouse.summary.owingCount })) : t("guests have paid"), tone: owedNow ? "warn" : undefined, href: "/staff/finance/receivables" },
               { label: t("Income per room"), icon: <BedDouble />, tint: "bg-violet-500/15 text-violet-400", value: formatTZS(rooms.total ? Math.round(revToday.rooms.net / rooms.total) : 0), sub: t("across {n} rooms", { n: rooms.total }) },
-              { label: t("Average room rate"), icon: <Tag />, tint: "bg-sky-500/15 text-sky-400", value: rateToday ? formatTZS(rateToday) : t("None yet"), sub: t.plural(occToday.roomsSold, "{n} room sold today", "{n} rooms sold today") },
+              { label: t("Average room rate"), icon: <Tag />, tint: "bg-sky-500/15 text-sky-400", value: rateToday ? formatTZS(rateToday) : t("None yet"), sub: t.plural(occToday.roomsSold, "{n} room occupied today", "{n} rooms occupied today") },
             ]} />
         </div>
         <div className="mt-4"><RoomsOnHome today={today} rooms={allRooms} discountMax={discountLimit(user.permissions, await getSettings())} /></div>

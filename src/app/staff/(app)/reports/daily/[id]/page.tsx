@@ -239,14 +239,14 @@ function ReportView({ d, t }: { d: DailyReportData; t: T }) {
           { label: t("Expenses"), icon: <Receipt />, tint: "bg-rose-500/15 text-rose-400", value: formatTZS(d.expenses.total), sub: t.plural(d.expenses.byCategory.length, "{n} category", "{n} categories") },
           { label: result >= 0 ? t("Result") : t("Loss"), icon: <TrendingUp />, tint: "bg-[oklch(0.72_0.12_80/0.18)] text-[oklch(0.8_0.11_82)]", value: formatTZS(Math.abs(result)), tone: result >= 0 ? "good" : "bad", sub: t("income − expenses") },
           { label: t("Owed to the hotel"), icon: <Wallet />, tint: "bg-amber-500/15 text-amber-400", value: formatTZS(d.money.outstanding), tone: d.money.outstanding ? "warn" : undefined, sub: t("all dates") },
-          { label: t("Occupancy"), icon: <Percent />, tint: "bg-violet-500/15 text-violet-400", value: `${d.hotel.occupancy}%`, sub: t.plural(d.hotel.roomsSold, "{n} room sold", "{n} rooms sold") },
+          { label: t("Occupancy"), icon: <Percent />, tint: "bg-violet-500/15 text-violet-400", value: `${d.hotel.occupancy}%`, sub: t.plural(d.hotel.roomsSold, "{n} room occupied", "{n} rooms occupied") },
           { label: t("Guests in · out"), icon: <UsersRound />, tint: "bg-sky-500/15 text-sky-400", value: `${d.guests.checkIns} · ${d.guests.checkOuts}`, sub: t("checked in · out") },
         ]} />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <Section icon={BedDouble} title={t("Rooms")}>
           {d.rooms && <Row label={t("Rooms in the hotel")} value={String(d.rooms.total)} />}
-          <Row label={t("Rooms sold")} value={String(d.hotel.roomsSold)} />
+          <Row label={t("Rooms occupied")} value={String(d.hotel.roomsSold)} />
           <Row label={t("Occupancy")} value={`${d.hotel.occupancy}%`} />
           {d.rooms && <Row label={t("Free · cleaning · repair")} value={`${d.rooms.available} · ${d.rooms.cleaning} · ${d.rooms.outOfOrder}`} />}
           {d.rooms && <Row label={t("Average room rate")} value={amt(d.rooms.adr)} />}

@@ -248,7 +248,7 @@ async function summary(r: Range, c: Ctx): Promise<Body> {
     items: [
       ...(c.days > 1 && bestDay && bestDay.total > 0 ? [{ label: msg("Best day"), value: c.s.day(bestDay.date), sub: tzs(bestDay.total) }] : []),
       { label: msg("Best-selling item"), value: bestItem[0]?.name ?? "—", sub: bestItem[0] ? L(msg("{n} sold · {amount}"), { n: num(bestItem[0]._sum.quantity ?? 0), amount: tzs(bestItem[0]._sum.lineTotal ?? 0) }) : msg("Nothing sold") },
-      { label: msg("Best room type"), value: bestType && bestType.net > 0 ? bestType.name : "—", sub: bestType && bestType.net > 0 ? L(msg("{rooms} sold · {amount}"), { rooms: count(bestType.roomsSold, msg("{n} room"), msg("{n} rooms")), amount: tzs(bestType.net) }) : msg("No rooms sold") },
+      { label: msg("Best room type"), value: bestType && bestType.net > 0 ? bestType.name : "—", sub: bestType && bestType.net > 0 ? (bestType.roomNights ? L(msg("{nights} sold · {amount}"), { nights: count(bestType.roomNights, msg("{n} night"), msg("{n} nights")), amount: tzs(bestType.net) }) : tzs(bestType.net)) : msg("No rooms sold") },
       { label: msg("Top customer"), value: top[0] ? c.s.asIs(top[0].name) : "—", sub: top[0] ? tzs(top[0].total) : msg("No sales yet") },
       { label: msg("Occupancy"), value: `${occ.occupancy.toFixed(1)}%`, sub: L(msg("{nights} of {total}"), { nights: count(occ.roomNights, msg("{n} room night"), msg("{n} room nights")), total: num(occ.sellableNights) }) },
       { label: msg("Kept as profit"), value: pl.netRevenue > 0 ? `${pct(Math.max(0, pl.estimatedProfit), pl.netRevenue)}%` : "—", sub: msg("of net income") },
@@ -275,7 +275,7 @@ async function summary(r: Range, c: Ctx): Promise<Body> {
         label: msg("Owed to the hotel now"), value: tzs(owedNow), raw: owedNow, tone: owedNow ? "amber" : undefined,
         sub: L(msg("{guests} · {invoices} · {orders}"), { guests: count(owed.reservations.count, msg("{n} guest"), msg("{n} guests")), invoices: count(owed.invoices.count, msg("{n} invoice"), msg("{n} invoices")), orders: count(unpaid.count, msg("{n} order"), msg("{n} orders")) }),
       },
-      { label: msg("Room occupancy"), value: `${occ.occupancy.toFixed(1)}%`, raw: Math.round(occ.occupancy * 10) / 10, sub: L(msg("{rooms} sold"), { rooms: count(occ.roomsSold, msg("{n} room"), msg("{n} rooms")) }), tone: "violet" },
+      { label: msg("Room occupancy"), value: `${occ.occupancy.toFixed(1)}%`, raw: Math.round(occ.occupancy * 10) / 10, sub: L(msg("{nights} sold"), { nights: count(occ.roomNights, msg("{n} night"), msg("{n} nights")) }), tone: "violet" },
     ],
     blocks,
   };
@@ -732,12 +732,12 @@ async function rooms(r: Range, c: Ctx): Promise<Body> {
   const blocks: Block[] = [];
   if (c.days > 1) {
     blocks.push({
-      kind: "columns", title: msg("Occupancy by day"), subtitle: msg("Rooms sold each night (guest rooms)"), empty: msg("No nights."),
+      kind: "columns", title: msg("Occupancy by day"), subtitle: msg("Rooms occupied each night (guest rooms)"), empty: msg("No nights."),
       points: groupPoints(occ.series, (xs) => [{ name: msg("Nights sold"), value: sum(xs, (x) => x.roomNights), color: DEPT.rooms.color }, { name: msg("Short time"), value: sum(xs, (x) => x.dayUse), color: "#c4b5fd" }]),
     });
   }
   blocks.push(
-    { kind: "table", title: msg("Room types"), columns: [{ label: msg("Room type") }, { label: msg("Rooms") }, { label: msg("Rooms sold"), align: "right" }, { label: msg("Nights"), align: "right" }, { label: msg("Gross"), align: "right", money: true, muted: true }, { label: msg("Discounts"), align: "right", money: true, muted: true }, { label: msg("Net"), align: "right", money: true }, { label: msg("Average rate"), align: "right", money: true }],
+    { kind: "table", title: msg("Room types"), columns: [{ label: msg("Room type") }, { label: msg("Rooms") }, { label: msg("Nights + short time"), align: "right" }, { label: msg("Nights"), align: "right" }, { label: msg("Gross"), align: "right", money: true, muted: true }, { label: msg("Discounts"), align: "right", money: true, muted: true }, { label: msg("Net"), align: "right", money: true }, { label: msg("Average rate"), align: "right", money: true }],
       rows: rev.byType.map((t) => [t.name, t.roomNumbers.join(", ") || "—", t.roomsSold, t.roomNights, t.gross, t.discount, t.net, t.averageRate || null]),
       foot: [msg("Total"), "", occ.roomsSold, occ.roomNights, rev.rooms.gross, rev.rooms.discount, rev.rooms.net, adr || null] },
     { kind: "table", title: msg("Where bookings come from"), subtitle: msg("Bookings made in the period · room nights earned"), half: true, empty: msg("No bookings in this period."),
@@ -768,8 +768,8 @@ async function rooms(r: Range, c: Ctx): Promise<Body> {
     figures: [
       { label: msg("Occupancy"), value: `${occ.occupancy.toFixed(1)}%`, raw: Math.round(occ.occupancy * 10) / 10, delta: occPrev.sellableNights ? occ.occupancy - occPrev.occupancy : null, sub: L(msg("{nights} of {total}"), { nights: count(occ.roomNights, msg("{n} night"), msg("{n} nights")), total: num(occ.sellableNights) }), tone: "violet" },
       { label: msg("Room income (net)"), value: tzs(rev.rooms.net), raw: rev.rooms.net, sub: rev.rooms.discount ? L(msg("after {amount} discounts"), { amount: tzs(rev.rooms.discount) }) : msg("no discounts"), tone: "gold" },
-      { label: msg("Rooms sold"), value: num(occ.roomsSold), raw: occ.roomsSold, sub: L(msg("{nights} nights · {short} short time"), { nights: num(occ.roomNights), short: num(occ.dayUse) }) },
-      { label: msg("Average room rate"), value: adr ? tzs(adr) : "—", raw: adr, sub: msg("income ÷ rooms sold") },
+      { label: msg("Nights sold"), value: num(occ.roomsSold), raw: occ.roomsSold, sub: L(msg("{nights} nights · {short} short time"), { nights: num(occ.roomNights), short: num(occ.dayUse) }) },
+      { label: msg("Average room rate"), value: adr ? tzs(adr) : "—", raw: adr, sub: msg("income ÷ nights sold") },
       { label: msg("Income per room"), value: revpar ? tzs(revpar) : "—", raw: revpar, sub: msg("income ÷ rooms available") },
       { label: msg("Check-ins · outs"), value: `${num(moves.checkIns)} · ${num(moves.checkOuts)}`, sub: P(moves.newBookings, msg("{n} new booking"), msg("{n} new bookings")) },
     ],

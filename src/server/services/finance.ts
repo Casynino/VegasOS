@@ -3,8 +3,9 @@ import { timeRange } from "@/lib/meeting";
 import { db, type Tx } from "../db";
 import { audit, type AuditActor } from "../audit";
 import { AppError } from "../errors";
-import { getSettingsTx, businessDayConfig } from "../settings";
-import { addDays, businessDateOf, fromDbDate, toDbDate, type BusinessDate } from "@/lib/time/business-date";
+import { getSettings, getSettingsTx, businessDayConfig } from "../settings";
+import { addDays, businessDateOf, businessRangeBounds, fromDbDate, toDbDate, type BusinessDate } from "@/lib/time/business-date";
+import { checkedInWithin, checkedOutWithin } from "./room-sales";
 import { CHARGE_LABELS } from "@/lib/charge-types";
 import { EARNED_NIGHT } from "./reservation-financials";
 import { COUNTED_EXPENSE_STATUSES, RECEIPT_MAX_BYTES, RECEIPT_TYPES } from "./expenses";
@@ -540,12 +541,17 @@ export async function receivables(today: BusinessDate) {
 
 // ───────────────────────── Staff activity ─────────────────────────
 
-/** What each staff member did in a period: check-ins, check-outs, bookings, money taken, expenses. */
+/**
+ * What each staff member did in a period: check-ins, check-outs, bookings, money taken, expenses.
+ * Check-ins and check-outs are the guest rooms that person checked in or out — the same rooms the Daily Room Report
+ * counts (room-sales.ts), so the people add up to the hotel's check-ins of the period.
+ */
 export async function staffActivity(from: BusinessDate, to: BusinessDate) {
   const bd = { gte: toDbDate(from), lte: toDbDate(to) };
+  const { start, end } = businessRangeBounds(from, to, businessDayConfig(await getSettings()));
   const [ins, outs, bookings, pays, exps, sales, users] = await Promise.all([
-    db.auditLog.groupBy({ by: ["userId"], where: { businessDate: bd, action: { in: ["reservation.checked_in", "reservation.walk_in"] }, userId: { not: null } }, _count: true }),
-    db.auditLog.groupBy({ by: ["userId"], where: { businessDate: bd, action: "reservation.checked_out", userId: { not: null } }, _count: true }),
+    db.reservationRoom.groupBy({ by: ["checkedInById"], where: { ...checkedInWithin(start, end), checkedInById: { not: null } }, _count: true }),
+    db.reservationRoom.groupBy({ by: ["checkedOutById"], where: { ...checkedOutWithin(start, end), checkedOutById: { not: null } }, _count: true }),
     db.reservation.groupBy({ by: ["createdById"], where: { businessDate: bd, createdById: { not: null } }, _count: true }),
     db.payment.groupBy({ by: ["recordedById", "kind"], where: { businessDate: bd, status: "POSTED" }, _sum: { amount: true }, _count: true }),
     db.expense.groupBy({ by: ["createdById"], where: { businessDate: bd, status: { in: COUNTED_EXPENSE_STATUSES } }, _sum: { amount: true }, _count: true }),
@@ -560,8 +566,8 @@ export async function staffActivity(from: BusinessDate, to: BusinessDate) {
     }
     return map.get(id)!;
   };
-  for (const r of ins) get(r.userId!).checkIns += r._count;
-  for (const r of outs) get(r.userId!).checkOuts += r._count;
+  for (const r of ins) get(r.checkedInById!).checkIns += r._count;
+  for (const r of outs) get(r.checkedOutById!).checkOuts += r._count;
   for (const r of bookings) get(r.createdById!).bookings += r._count;
   for (const r of pays) {
     const s = get(r.recordedById);

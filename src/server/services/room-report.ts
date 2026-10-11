@@ -33,9 +33,10 @@ export function renderRoomReportText(r: RoomReportData, hotelName: string, link:
   for (const x of r.sales) byType.set(x.type, [...(byType.get(x.type) ?? []), x.room]);
   const byNumber = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
   const types = [...byType].map(([name, rooms]) => ({ name, rooms: [...rooms].sort(byNumber) }));
-  const sold = (rooms: (list: string[]) => string | null) => (types.length ? [
+  const rm = r.rooms;
+  const sold = (rooms: (list: string[]) => string | null, amount = true) => (types.length ? [
     "",
-    "*Rooms sold today*",
+    rm && amount ? `*Rooms sold today* · ${tz(m.expected)}` : "*Rooms sold today*",
     ...types.map((t) => { const list = rooms(t.rooms); return list ? `• ${t.name} (${t.rooms.length}): ${list}` : `• ${t.name}: ${t.rooms.length} room${t.rooms.length === 1 ? "" : "s"}`; }),
   ] : []);
   const head = [
@@ -59,10 +60,22 @@ export function renderRoomReportText(r: RoomReportData, hotelName: string, link:
       `*Still owed:* ${tz(m.outstanding)}`,
     ]),
   ];
+  // What room guests paid, kept apart from the hotel's money: a payment for an earlier day's room is said so, never
+  // shown as a new sale. Money given back is said beside it, never taken off silently. One line — what each guest
+  // still owes is in the full report, with the rooms.
+  const beside = rm ? [
+    rm.received.earlier ? `${tz(rm.received.earlier)} for earlier days` : null,
+    rm.received.refunds ? `${tz(rm.received.refunds)} given back` : null,
+  ].filter(Boolean).join(", ") : "";
+  const guests = rm ? ["", `*Room guests paid:* ${tz(rm.received.total)}${beside ? ` (${beside})` : ""}`] : [];
   return reportMessage([
-    [...head, ...sold((list) => list.join(", "))],
+    [...head, ...guests, ...sold((list) => list.join(", "))],
+    [...head, ...guests, ...sold(roomRanges)],
+    // The Boss reads rooms by number: on the fullest days the room numbers stay before anything else.
     [...head, ...sold(roomRanges)],
-    [...head, ...sold(() => null)],
+    [...head, ...sold(roomRanges, false)],
+    [...head, ...guests, ...sold(() => null)],
+    [...head, ...guests],
     head,
   ], link, "Full report:");
 }

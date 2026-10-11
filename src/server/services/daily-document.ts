@@ -1,6 +1,7 @@
 import "server-only";
 import { db } from "../db";
 import { buildReport } from "./reports";
+import { billsAsOf, checkedOutWithin } from "./room-sales";
 import type { DailyReportData } from "./daily-report";
 import { businessRangeBounds, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import { formatBusinessDate, formatTZS } from "@/lib/format";
@@ -43,9 +44,10 @@ export async function buildDailyDocument(date: BusinessDate, d: DailyReportData)
       select: { roomId: true, netAmount: true, isDayUse: true, reservationRoom: { select: { reservation: { select: { guest: { select: { fullName: true } }, companyName: true } } } } },
     }),
     db.room.findMany({ where: { isActive: true }, select: { id: true, number: true, status: true, roomType: { select: { name: true, category: true } } } }),
-    db.reservationRoom.findMany({
-      where: { departureDate: day, status: { in: ["CHECKED_IN", "CHECKED_OUT"] }, roomType: { category: "GUEST_ROOM" } }, orderBy: { endAt: "asc" },
-      select: { status: true, room: { select: { number: true } }, reservation: { select: { reference: true, balanceAmount: true, guest: { select: { fullName: true } } } } },
+    // Guests who really checked out in this hotel day (not the ones only planned to), each booking once.
+    db.reservation.findMany({
+      where: { kind: "STAY", rooms: { some: checkedOutWithin(bounds.start, bounds.end) } },
+      select: { id: true, rooms: { where: { roomType: { category: "GUEST_ROOM" }, status: { in: ["CHECKED_IN", "CHECKED_OUT"] } }, select: { checkedOutAt: true } } },
     }),
     db.guest.count({ where: { createdAt: at, deletedAt: null } }),
     db.reservation.findMany({ where: { businessDate: day }, select: { guestId: true, guest: { select: { createdAt: true } } } }),
@@ -81,11 +83,15 @@ export async function buildDailyDocument(date: BusinessDate, d: DailyReportData)
   ];
 
   // ── Attention: only real things ──
-  const leftOwing = departures.filter((x) => x.status === "CHECKED_OUT" && x.reservation.balanceAmount > 0);
+  // Left owing = the whole booking has gone and its bill was not settled when the day closed (a payment made on a
+  // later day shows in that day's report and does not change this one).
+  const gone = departures.filter((x) => x.rooms.every((room) => room.checkedOutAt && room.checkedOutAt < bounds.end));
+  const billsAtClose = await billsAsOf(gone.map((x) => x.id), date);
+  const leftOwing = gone.map((x) => ({ owed: billsAtClose.get(x.id)?.owed ?? 0 })).filter((x) => x.owed > 0);
   const cancelledOrders = voids.figures.find((f) => f.label === "Cancelled orders");
   const attention = [
     ...d.attention,
-    ...(leftOwing.length ? [L(msg("{guests} checked out still owing {amount}"), { guests: n_(leftOwing.length, msg("{n} guest"), msg("{n} guests")), amount: tzs(leftOwing.reduce((t, x) => t + x.reservation.balanceAmount, 0)) })] : []),
+    ...(leftOwing.length ? [L(msg("{guests} checked out still owing {amount}"), { guests: n_(leftOwing.length, msg("{n} guest"), msg("{n} guests")), amount: tzs(leftOwing.reduce((t, x) => t + x.owed, 0)) })] : []),
     ...(reversals._count ? [L(msg("{payments} reversed today ({amount})"), { payments: n_(reversals._count, msg("{n} payment"), msg("{n} payments")), amount: tzs(reversals._sum.amount ?? 0) })] : []),
     ...(d.revenue.refunds ? [L(msg("Refunds given: {amount}"), { amount: tzs(d.revenue.refunds) })] : []),
     ...(cancelledOrders?.raw ? [L(msg("{orders} cancelled ({detail})"), { orders: n_(cancelledOrders.raw, msg("{n} restaurant order"), msg("{n} restaurant orders")), detail: word(cancelledOrders.sub ?? "") })] : []),
@@ -134,7 +140,7 @@ export async function buildDailyDocument(date: BusinessDate, d: DailyReportData)
     {
       kind: "highlights", title: msg("At a glance"),
       items: [
-        { label: msg("Rooms sold"), value: num(d.hotel.roomsSold), sub: L("{x}", { x: word(d.hotel.roomNights === 1 ? msg("{n} night") : msg("{n} nights"), { n: d.hotel.roomNights }) }) },
+        { label: msg("Rooms occupied"), value: num(d.hotel.roomsSold), sub: L("{x}", { x: word(d.hotel.roomNights === 1 ? msg("{n} night") : msg("{n} nights"), { n: d.hotel.roomNights }) }) },
         { label: msg("New bookings"), value: num(d.guests.newBookings), sub: L(msg("{cancelled} cancelled · {noShows} no-show"), { cancelled: d.guests.cancellations, noShows: d.guests.noShows }) },
         { label: msg("Check-ins · outs"), value: `${d.guests.checkIns} · ${d.guests.checkOuts}` },
         { label: msg("Restaurant (food)"), value: tzs(d.revenue.restaurant), sub: food?.raw ? P(food.raw, msg("{n} order"), msg("{n} orders")) : msg("no orders") },

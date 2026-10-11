@@ -1,6 +1,8 @@
 import "server-only";
 import { db } from "../db";
-import { addDays, diffDays, eachDate, fromDbDate, toDbDate, type BusinessDate } from "@/lib/time/business-date";
+import { addDays, businessRangeBounds, diffDays, eachDate, fromDbDate, toDbDate, type BusinessDate } from "@/lib/time/business-date";
+import { businessDayConfig, getSettings } from "../settings";
+import { checkedInWithin, checkedOutWithin } from "./room-sales";
 import { COUNTED_EXPENSE_STATUSES } from "./expenses";
 import { EARNED_NIGHT } from "./reservation-financials";
 import { MEETING_OPEN_HOURS } from "@/lib/meeting";
@@ -26,6 +28,9 @@ import { msg } from "@/i18n/msg";
  *   utilisation (booked hours ÷ open hours) — meetingRoomStats().
  * - Net revenue = gross revenue − discounts − refunds.
  * - Payments collected is cash received (payments − refunds); it is NOT revenue.
+ * - A room SALE, the room INCOME of a night, a PAYMENT and what is STILL OWED are four different things. Their rules
+ *   are written once in room-sales.ts (a sale = an actual check-in, counted on its hotel day; a payment belongs to the
+ *   day it was received; a late payment is never a new sale). Check-ins and check-outs here are counted the same way.
  * - Estimated profit/loss = net revenue − counted expenses (recorded + approved).
  */
 
@@ -247,14 +252,19 @@ export function change(current: number, previous: number): number | null {
   return ((current - previous) / previous) * 100;
 }
 
-/** Guest movement for a range: check-ins, check-outs, new bookings, cancellations, no-shows. */
+/**
+ * Guest movement for a range: check-ins, check-outs, new bookings, cancellations, no-shows.
+ * Check-ins and check-outs are guest rooms counted by the moment they really happened, inside the hotel days of the
+ * range — the same count as the Daily Room Report (a guest who arrives a day late, or leaves a day early, is counted
+ * on the day they did it, not on the day that was planned).
+ */
 export async function guestMovement(r: Range) {
   const where = dbRange(r);
   // Guests (guest rooms) only — meeting room bookings have their own figures (meetingRoomStats).
-  const guestRoom = { roomType: { category: "GUEST_ROOM" as const } };
+  const { start, end } = businessRangeBounds(r.from, r.to, businessDayConfig(await getSettings()));
   const [checkIns, checkOuts, newBookings, cancellations, noShows, inHouse] = await Promise.all([
-    db.reservationRoom.count({ where: { checkedInAt: { not: null }, arrivalDate: where, ...guestRoom } }),
-    db.reservationRoom.count({ where: { status: "CHECKED_OUT", departureDate: where, ...guestRoom } }),
+    db.reservationRoom.count({ where: checkedInWithin(start, end) }),
+    db.reservationRoom.count({ where: checkedOutWithin(start, end) }),
     db.reservation.count({ where: { businessDate: where, kind: "STAY" } }),
     db.reservation.count({ where: { status: "CANCELLED", cancelledAt: { not: null }, arrivalDate: where, kind: "STAY" } }),
     db.reservation.count({ where: { status: "NO_SHOW", arrivalDate: where, kind: "STAY" } }),

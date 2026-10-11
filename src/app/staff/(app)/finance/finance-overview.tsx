@@ -174,9 +174,9 @@ export async function BusinessDetail({ p, today, full = false, chrome }: { p: Pe
       {/* ── 2 · The hotel's key numbers, one strip ── */}
       <section className="grid grid-cols-2 overflow-hidden rounded-3xl border border-border/70 bg-card sm:grid-cols-3 xl:grid-cols-6 [&>div]:border-border/60 [&>div]:p-4 [&>div]:border-b xl:[&>div]:border-b-0 [&>div:not(:last-child)]:border-r">
         <Figure label={t("Occupancy")} value={`${Math.round(occ.occupancy)}%`} sub={t("{n} of {total} room-nights", { n: occ.roomNights, total: occ.sellableNights })} delta={occPrev.sellableNights ? occ.occupancy - occPrev.occupancy : null} unit={` ${t("pts")}`} />
-        <Figure label={t("Average room rate")} value={money(adr)} sub={t("Room income ÷ rooms sold")} delta={adrPrev > 0 ? change(adr, adrPrev) : null} />
+        <Figure label={t("Average room rate")} value={money(adr)} sub={t("Room income ÷ nights sold")} delta={adrPrev > 0 ? change(adr, adrPrev) : null} />
         <Figure label={t("Income per room")} value={money(revpar)} sub={t("Room income ÷ rooms available (RevPAR)")} delta={revparPrev > 0 ? change(revpar, revparPrev) : null} />
-        <Figure label={t("Rooms sold")} value={String(occ.roomsSold)} sub={t("{nights} nights · {short} short time", { nights: occ.roomNights, short: occ.dayUse })} delta={occPrev.roomsSold > 0 ? change(occ.roomsSold, occPrev.roomsSold) : null} />
+        <Figure label={t("Nights sold")} value={String(occ.roomsSold)} sub={t("{nights} nights · {short} short time", { nights: occ.roomNights, short: occ.dayUse })} delta={occPrev.roomsSold > 0 ? change(occ.roomsSold, occPrev.roomsSold) : null} />
         <Figure label={t("Restaurant orders")} value={String(food.orders)} sub={food.orders ? t("average order {amount}", { amount: money(food.averageOrder) }) : t("none in this period")} delta={foodPrev.orders > 0 ? change(food.orders, foodPrev.orders) : null} />
         <Figure label={t("Discounts & refunds")} value={money(giveaways)} sub={giveaways ? t("{pct}% of gross income", { pct: pct(giveaways, grossStreams) }) : t("none given")} />
       </section>

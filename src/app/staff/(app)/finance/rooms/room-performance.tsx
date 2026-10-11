@@ -77,8 +77,8 @@ export async function RoomPerformance({ p }: { p: { key: string; from: BusinessD
       {/* The period in one strip */}
       <section className="grid grid-cols-2 overflow-hidden rounded-3xl border border-border/70 bg-card sm:grid-cols-3 xl:grid-cols-6 [&>div]:border-border/60 [&>div]:p-4 [&>div]:border-b xl:[&>div]:border-b-0 [&>div:not(:last-child)]:border-r">
         <Figure label={t("Room income")} value={formatTZS(total)} tone="text-emerald-600 dark:text-emerald-400" />
-        <Figure label={t("Rooms sold")} value={String(sold)} sub={`${t.plural(soldNights, "{n} night", "{n} nights")}${sold - soldNights ? ` · ${t("{n} short time", { n: sold - soldNights })}` : ""}`} />
-        <Figure label={t("Average rate")} value={sold ? formatTZS(Math.round(total / sold)) : "—"} sub={t("Income ÷ rooms sold")} />
+        <Figure label={t("Nights sold")} value={String(sold)} sub={`${t.plural(soldNights, "{n} night", "{n} nights")}${sold - soldNights ? ` · ${t("{n} short time", { n: sold - soldNights })}` : ""}`} />
+        <Figure label={t("Average rate")} value={sold ? formatTZS(Math.round(total / sold)) : "—"} sub={t("Income ÷ nights sold")} />
         <Figure label={t("Occupancy")} value={`${occupancy}%`} sub={t("{n} of {total} room-nights", { n: soldNights, total: guestRooms.length * days })} />
         <Figure label={t("Best room")} value={best && best.income > 0 ? best.number : "—"} sub={best && best.income > 0 ? `${t(best.type)} · ${formatTZS(best.income)}` : t("nothing sold yet")} />
         <Figure label={t("Not sold")} value={String(idle)} sub={t.plural(idle, "guest room with no night", "guest rooms with no night")} tone={idle ? "text-amber-600 dark:text-amber-300" : undefined} />
