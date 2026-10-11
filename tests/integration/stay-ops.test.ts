@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { randomUUID } from "node:crypto";
 import { db } from "@/server/db";
 import {
   approveLateCheckout, checkIn, checkInWithDetails, createReservation, extendStay, previewExtension, reassignRoom,
@@ -17,6 +18,9 @@ beforeEach(async () => {
   await db.vehicle.deleteMany();
 });
 const NOW = eat("2026-10-05T10:00:00");
+// The dates in this file are fixed. The hotel's clock is held on the same day, so they never fall into the past.
+beforeAll(() => { vi.useFakeTimers({ toFake: ["Date"], now: NOW }); });
+afterAll(() => { vi.useRealTimers(); });
 const guest = { fullName: "Stay Guest", phone: "0711000002" };
 
 async function inHouse(code = "DOUBLE_DELUXE", arrival = "2026-10-05", departure = "2026-10-06", roomNumber?: string) {
@@ -128,8 +132,10 @@ describe("transport & requests", () => {
     expect(trip).toMatchObject({ status: "REQUESTED", type: "AIRPORT_PICKUP", flightNumber: "TC 101", passengers: 2, charge: 40_000, standardPrice: 40_000 });
     expect(trip.reference).toMatch(/^TRN-2026-\d{5}$/);
     const driverRole = await db.role.findUniqueOrThrow({ where: { code: "DRIVER" } });
-    const driver = await db.user.create({ data: { email: `drv${Date.now()}@test.local`, fullName: "Driver D", passwordHash: "x", roleId: driverRole.id } });
-    const van = await db.vehicle.create({ data: { name: "Van", plateNumber: `T${Date.now() % 100000} ABC`, capacity: 1 } });
+    // The clock is held still in this file, so a random tag keeps these two unique from run to run.
+    const tag = randomUUID().slice(0, 8);
+    const driver = await db.user.create({ data: { email: `drv${tag}@test.local`, fullName: "Driver D", passwordHash: "x", roleId: driverRole.id } });
+    const van = await db.vehicle.create({ data: { name: "Van", plateNumber: `T${tag} ABC`, capacity: 1 } });
     await expect(recordDriver(trip.id, { driverId: driver.id }, mgr)).rejects.toThrow(/Confirm the request first/);
     await confirmTrip(trip.id, mgr);
     await expect(recordDriver(trip.id, { driverId: driver.id, vehicleId: van.id }, mgr)).rejects.toThrow(/seats 1/);

@@ -109,10 +109,10 @@ describe("the boss's weekly report", () => {
     expect(own.key).toBe(`WEEK:${from}:${recep.userId}`);
     // The message: the business first, then the team, then the link.
     expect(r!.summaryText).toContain("*Weekly report*");
-    expect(r!.summaryText).toContain("*Revenue TZS");
+    expect(r!.summaryText).toContain("*Income:* TZS");
     expect(r!.summaryText).toContain("*Money received:*");
     expect(r!.summaryText).toContain("*Reception*");
-    expect(r!.summaryText).toMatch(/\*Full report:\* https:\/\/\S+\/staff-report\/[A-Za-z0-9_-]{24,}/);
+    expect(r!.summaryText).toMatch(/\n\n\*Full report:\*\nhttps:\/\/\S+\/staff-report\/[A-Za-z0-9_-]{24,}$/);
     // Made once.
     const again = await generateTeamPeriodReport("WEEK", from, to);
     expect(again!.id).toBe(r!.id);

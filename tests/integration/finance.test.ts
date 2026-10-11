@@ -7,6 +7,7 @@ import { recordSale } from "@/server/services/outlets";
 import { createInvoiceForReservation, issueInvoice } from "@/server/services/invoices";
 import { occupancy, profitLoss, revenue } from "@/server/services/reporting";
 import { buildDailyReport, renderReportText } from "@/server/services/daily-report";
+import { fitsWhatsApp } from "@/lib/wa-fit";
 import { eat, managerActor, resetBusinessData, roomType } from "../support/helpers";
 
 beforeEach(resetBusinessData);
@@ -95,14 +96,16 @@ describe("financial source of truth", () => {
     expect(report.revenue).toMatchObject({ roomGross: 100_000, roomDiscounts: 20_000, roomNet: 80_000, total: 80_000 });
     expect(report.hotel.roomsSold).toBe(1);
     const text = renderReportText(report, "Vegas Luxury Hotel", "https://example.test/staff/reports/daily/r1");
-    expect(text).toContain("*Revenue TZS 80,000*");
-    expect(text).toContain("  Rooms: 80,000");
+    // Income, expenses and what is left — the same numbers as the books; the link on its own line at the bottom.
+    expect(text).toContain("*Income:* TZS 80,000");
     expect(text).toContain("(room discounts given: 20,000)");
-    expect(text).toContain("*Net operating result:* TZS 80,000");
-    expect(text).toContain("*Full report:* https://example.test/staff/reports/daily/r1");
-    // Only departments that earned something are listed.
-    expect(text).not.toContain("Transport:");
+    expect(text).toContain("*Expenses:* TZS 0");
+    expect(text).toContain("*Net profit:* TZS 80,000");
+    expect(text).toContain("*Still owed:* TZS 80,000");
+    expect(text.endsWith("\n\n*Full report:*\nhttps://example.test/staff/reports/daily/r1")).toBe(true);
+    // Only departments that earned something are named.
+    expect(text).not.toContain("Transport");
     expect(report.rooms).toMatchObject({ adr: 80_000, income: 80_000 });
-    expect(text.length).toBeLessThan(3500);
+    expect(fitsWhatsApp(text)).toBe(true);
   });
 });

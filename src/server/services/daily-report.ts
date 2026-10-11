@@ -307,17 +307,6 @@ export function renderReportText(r: DailyReportData, hotelName: string, link?: s
   ], link, t("Full report:"));
 }
 
-/** "Reception: Sarah 12h 12m · John 10h 45m" — who worked the day, each department on its line (their shift reports are linked in the full report). */
-function staffLines(r: DailyReportData, t: T) {
-  if (!r.shifts?.length) return [];
-  const dur = (m: number) => `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`;
-  const line = (dept: "RECEPTION" | "RESTAURANT", label: string) => {
-    const xs = r.shifts!.filter((s) => s.department === dept);
-    return xs.length ? `  ${t(label)}: ${xs.map((s) => `${s.name.split(" ")[0]} ${dur(s.minutes)}${s.end ? "" : ` (${t("on shift")})`}`).join(" · ")}` : null;
-  };
-  return [`*${t("Staff on shift:")}*`, line("RECEPTION", msg("Reception")), line("RESTAURANT", msg("Restaurant"))].filter((x): x is string => !!x);
-}
-
 const newToken = () => randomBytes(24).toString("base64url");
 
 /** The report's own link token — made once, the first time the link is needed (reports from before had none). */

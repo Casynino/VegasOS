@@ -1,9 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/server/db";
 import { createReservation, extendStay } from "@/server/services/reservations";
 import { eat, receptionistActor, resetBusinessData, roomType } from "../support/helpers";
 
 const NOW = eat("2026-10-05T10:00:00");
+// The dates in this file are fixed. The hotel's clock is held on the same day, so they never fall into the past.
+beforeAll(() => { vi.useFakeTimers({ toFake: ["Date"], now: NOW }); });
+afterAll(() => { vi.useRealTimers(); });
 const guest = { fullName: "Price Guest", phone: "0711000077" };
 
 beforeEach(resetBusinessData);

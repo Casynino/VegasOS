@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/server/db";
 import { changeStayDates, createReservation, previewDateChange } from "@/server/services/reservations";
 import { quoteStay } from "@/server/services/pricing";
@@ -14,6 +14,9 @@ afterEach(async () => {
   await db.hotelSettings.update({ where: { id: 1 }, data: { dateChangeExcessPolicy: "NO_REFUND", dateChangePayNow: true } });
 });
 const BOOKED = eat("2026-10-01T10:00:00");
+// The dates in this file are fixed. The hotel's clock is held on the same day, so they never fall into the past.
+beforeAll(() => { vi.useFakeTimers({ toFake: ["Date"], now: BOOKED }); });
+afterAll(() => { vi.useRealTimers(); });
 const d = (s: string) => new Date(`${s}T00:00:00Z`);
 
 async function exec() { return roomType("EXECUTIVE"); } // normal price 100,000

@@ -49,7 +49,8 @@ describe("the daily report goes to each recipient in their language", () => {
     expect(en.text).toContain("*Daily business report*");
     expect(zh.text).toContain("*每日业务报告*");
     expect(zh.text).not.toContain("*Daily business report*");
-    expect(zh.text).toMatch(/\/staff\/reports\/daily\/\S+\?lang=zh/);
+    // The link opens the report's own page (no sign-in), in Chinese — the last line of the message.
+    expect(zh.text).toMatch(/\n\S+\/daily-report\/[A-Za-z0-9_-]{24,}\?lang=zh$/);
     expect(amounts(zh.text)).toEqual(amounts(en.text));
     // The report itself (its version and figures) is untouched by the language.
     expect((await db.dailyReport.findUniqueOrThrow({ where: { id: report.id } })).summaryText).toBe(report.summaryText);

@@ -214,7 +214,7 @@ describe("the boss's message never holds a shift up", () => {
 });
 
 describe("the daily report keeps its own place — with the day's shifts", () => {
-  it("lists reception and waiter shifts with their durations, and one staff line in the message", async () => {
+  it("lists reception and waiter shifts with their durations; the WhatsApp message stays short, without a staff list", async () => {
     const recep = await receptionistActor();
     await startShift(recep, {});
     await endShift(recep, "");
@@ -223,7 +223,8 @@ describe("the daily report keeps its own place — with the day's shifts", () =>
     const data = await buildDailyReport(today());
     expect(data.shifts?.map((s) => s.department).sort()).toEqual(["RECEPTION", "RESTAURANT"]);
     const text = renderReportText(data, "Vegas Luxury Hotel");
-    expect(text).toContain("*Staff on shift:*");
-    expect(text).toMatch(/Restaurant: .*\(on shift\)/);
+    expect(data.shifts!.find((s) => s.department === "RESTAURANT")!.end).toBeNull(); // still on shift
+    expect(text).toContain("*Daily business report*");
+    expect(text).not.toContain("Staff on shift");
   });
 });
