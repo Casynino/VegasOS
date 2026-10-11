@@ -13,6 +13,14 @@ import { deliverRoomReport, deliverRoomReportByDate, ensureRoomReport } from "@/
 import { msg } from "@/i18n/msg";
 import { getT } from "@/i18n/server";
 
+/** What to tell staff after a send: honest when nothing new went out because it was already delivered. */
+function sentNote(res: { recipients: number; results: { response?: string; already?: boolean; at?: Date | null }[] }, what: string) {
+  const r = res.results[0];
+  const reply = r?.response ? ` CallMeBot said: ${r.response}` : " CallMeBot gave no reply text.";
+  if (r?.already) return `${what} was already delivered${r.at ? ` at ${r.at.toISOString().slice(11, 16)} UTC` : ""} — nothing new was sent. Press the "again" button to send it once more.${reply}`;
+  return `${what} sent to ${res.recipients} recipient(s) just now.${reply}`;
+}
+
 /**
  * Make a day's report by hand. The system makes it every day at 21:00, so this is for exceptions:
  * a missing report (managers may make it), or regenerating one that exists — only the MD or the
@@ -42,7 +50,7 @@ export async function sendRoomReportByDateAction(input: { date: string; force?: 
     if (res.recipients === 0) return { message: t("No report recipients configured in Settings.") };
     const busy = res.results.filter((r) => r.status === "BUSY");
     const failed = res.results.filter((r) => r.status === "FAILED" || r.status === "SKIPPED");
-    return { message: failed.length ? t("{failed} of {total} failed: {error}", { failed: failed.length, total: res.recipients, error: failed[0].error ?? t("unknown error") }) : busy.length ? t("Being sent right now — refresh in a moment.") : t("Room report sent to {n} recipient(s).", { n: res.recipients }) + (res.results[0]?.response ? ` — CallMeBot: ${res.results[0].response}` : "") };
+    return { message: failed.length ? t("{failed} of {total} failed: {error}", { failed: failed.length, total: res.recipients, error: failed[0].error ?? t("unknown error") }) : busy.length ? t("Being sent right now — refresh in a moment.") : sentNote(res, "Room report") };
   });
 }
 
@@ -55,7 +63,7 @@ export async function sendRoomReportAction(input: { reportId: string; force?: bo
     if (res.recipients === 0) return { message: t("No report recipients configured in Settings.") };
     const busy = res.results.filter((r) => r.status === "BUSY");
     const failed = res.results.filter((r) => r.status === "FAILED" || r.status === "SKIPPED");
-    return { message: failed.length ? t("{failed} of {total} failed: {error}", { failed: failed.length, total: res.recipients, error: failed[0].error ?? t("unknown error") }) : busy.length ? t("Being sent right now — refresh in a moment.") : t("Room report sent to {n} recipient(s).", { n: res.recipients }) + (res.results[0]?.response ? ` — CallMeBot: ${res.results[0].response}` : "") };
+    return { message: failed.length ? t("{failed} of {total} failed: {error}", { failed: failed.length, total: res.recipients, error: failed[0].error ?? t("unknown error") }) : busy.length ? t("Being sent right now — refresh in a moment.") : sentNote(res, "Room report") };
   });
 }
 
@@ -68,7 +76,7 @@ export async function sendReportAction(input: { reportId: string; force?: boolea
     if (res.recipients === 0) return { message: t("No report recipients configured in Settings.") };
     const busy = res.results.filter((r) => r.status === "BUSY");
     const failed = res.results.filter((r) => r.status === "FAILED" || r.status === "SKIPPED");
-    return { message: failed.length ? t("{failed} of {total} failed: {error}", { failed: failed.length, total: res.recipients, error: failed[0].error ?? t("unknown error") }) : busy.length ? t("Being sent right now — refresh in a moment.") : t("Sent to {n} recipient(s).", { n: res.recipients }) + (res.results[0]?.response ? ` — CallMeBot: ${res.results[0].response}` : "") };
+    return { message: failed.length ? t("{failed} of {total} failed: {error}", { failed: failed.length, total: res.recipients, error: failed[0].error ?? t("unknown error") }) : busy.length ? t("Being sent right now — refresh in a moment.") : sentNote(res, "Report") };
   });
 }
 

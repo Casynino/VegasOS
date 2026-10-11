@@ -57,7 +57,7 @@ export async function deliverToRecipients(o: {
 }) {
   const settings = await getSettings();
   const recipients = (settings.reportRecipients as unknown as Recipient[]) ?? [];
-  const results: { recipient: string; status: string; error?: string; response?: string }[] = [];
+  const results: { recipient: string; status: string; error?: string; response?: string; already?: boolean; at?: Date | null }[] = [];
   const texts = new Map<Locale, Promise<string>>();
   const textOf = (lang: Locale) => {
     if (lang === DEFAULT_LOCALE || !o.textFor) return Promise.resolve(o.text);
@@ -82,7 +82,7 @@ export async function deliverToRecipients(o: {
     }
     // Sent already for this version of the report → never twice (a regenerated report goes out again).
     const sentThisVersion = delivery.status === "SENT" && delivery.sentAt && delivery.sentAt >= o.generatedAt;
-    if (sentThisVersion && !o.force) { results.push({ recipient: r.phone, status: "SENT" }); continue; }
+    if (sentThisVersion && !o.force) { results.push({ recipient: r.phone, status: "SENT", already: true, at: delivery.sentAt, response: delivery.providerResponse ?? undefined }); continue; }
     if (delivery.attempts >= MAX_ATTEMPTS && !o.force && !o.manual) { results.push({ recipient: r.phone, status: "SKIPPED", error: "max attempts" }); continue; }
     if (o.deadline && o.deadline - Date.now() < SEND_WINDOW_MS) { results.push({ recipient: r.phone, status: "SKIPPED", error: "out of time — the next run sends it" }); continue; }
     // Claim this send: only if nobody is sending it now (or that run died), and — unless forced — not sent for this version.
