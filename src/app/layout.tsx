@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, Cormorant_Garamond, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
+import { UpdateBanner } from "@/components/update-banner";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
 const cormorant = Cormorant_Garamond({
@@ -43,6 +44,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         {/* Public-site visitor theme, applied before first paint (saved choice, else device setting). */}
         <Script id="vlh-theme" strategy="beforeInteractive">{THEME_SCRIPT}</Script>
         {children}
+        <UpdateBanner />
       </body>
     </html>
   );

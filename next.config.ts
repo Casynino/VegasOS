@@ -4,6 +4,8 @@ const nextConfig: NextConfig = {
   // Native argon2 binding must not be bundled.
   serverExternalPackages: ["@node-rs/argon2"],
   poweredByHeader: false,
+  // The version this page was built from: the update banner compares it with the live one.
+  env: { NEXT_PUBLIC_BUILD_VERSION: process.env.VERCEL_DEPLOYMENT_ID ?? process.env.VERCEL_GIT_COMMIT_SHA ?? "dev" },
   // Photos uploaded on the live site are kept in Vercel Blob.
   images: { remotePatterns: [{ protocol: "https", hostname: "*.public.blob.vercel-storage.com" }] },
   // Development only: open the dev server from a phone or tablet on the same Wi-Fi (e.g. http://192.168.1.155:3000).
