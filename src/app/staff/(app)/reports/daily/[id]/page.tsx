@@ -10,7 +10,7 @@ import { db } from "@/server/db";
 import { formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { MoneyCard } from "@/components/dashboard/money-card";
-import { RegenerateReportButton, SendReportButton } from "../report-buttons";
+import { RegenerateReportButton, SendReportButton, SendRoomReportButton } from "../report-buttons";
 import { ReportDocument } from "../../report-document";
 import { ReportActions } from "../../report-actions";
 import { getSettings } from "@/server/settings";
@@ -45,6 +45,7 @@ export default async function DailyReportPage({ params }: PageProps<"/staff/repo
   const user = await requirePagePermission("reports.view");
   const { id } = await params;
   const r = await db.dailyReport.findUnique({ where: { id }, include: { deliveries: { orderBy: { createdAt: "asc" } }, versions: { orderBy: { version: "desc" } } } });
+  const roomDeliveries = r?.deliveries.filter((d) => d.purpose === "ROOM_REPORT") ?? [];
   if (!r) notFound();
   const [s, t] = await Promise.all([getSettings(), getT()]);
   const date = r.businessDate.toISOString().slice(0, 10);
@@ -105,6 +106,7 @@ export default async function DailyReportPage({ params }: PageProps<"/staff/repo
             {doc && <ReportActions fileName={`${s.hotelName.replace(/[^\w]+/g, "-")}-daily-report-${date}`.toLowerCase()} share={(texts.get(t.locale) ?? r.summaryText).replace(/\*/g, "")} />}
             {manage && (status === "PENDING" || status === "FAILED") && <SendReportButton reportId={r.id} label={status === "FAILED" ? t("Retry send") : t("Send now")} className="h-9 text-xs" />}
             {manage && status === "SENT" && <SendReportButton reportId={r.id} force label={t("Send again")} className="h-9 text-xs" />}
+            {manage && <SendRoomReportButton reportId={r.id} force={roomDeliveries.some((d) => d.status === "SENT")} className="h-9 text-xs" />}
             {regenerate && <RegenerateReportButton date={date} className="h-9 text-xs" />}
           </div>
         </div>

@@ -7,7 +7,7 @@ import { Loader2, RefreshCw, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { generateReportAction, sendReportAction } from "./actions";
+import { generateReportAction, sendReportAction, sendRoomReportAction } from "./actions";
 import { useT } from "@/i18n/client";
 
 export function GenerateReportButton({ date, label, variant = "default", className }: { date: string; label: string; variant?: "default" | "outline"; className?: string }) {
@@ -30,6 +30,18 @@ export function SendReportButton({ reportId, force, label, className }: { report
       const r = await sendReportAction({ reportId, force });
       if (r.ok) { toast.info(r.data.message, { duration: 8000 }); router.refresh(); } else toast.error(r.error);
     })}>{pending ? <Loader2 className="animate-spin" /> : <Send />}{label ?? (force ? t("Send again") : t("Send / retry failed"))}</Button>
+  );
+}
+
+export function SendRoomReportButton({ reportId, force, className }: { reportId: string; force?: boolean; className?: string }) {
+  const router = useRouter();
+  const t = useT();
+  const [pending, start] = useTransition();
+  return (
+    <Button variant="outline" disabled={pending} className={className} onClick={() => start(async () => {
+      const r = await sendRoomReportAction({ reportId, force });
+      if (r.ok) { toast.info(r.data.message, { duration: 8000 }); router.refresh(); } else toast.error(r.error);
+    })}>{pending ? <Loader2 className="animate-spin" /> : <Send />}{force ? t("Room report again") : t("Send room report")}</Button>
   );
 }
 

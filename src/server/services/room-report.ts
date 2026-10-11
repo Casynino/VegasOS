@@ -42,6 +42,26 @@ function roomReportLink(date: string): string {
   return `${base}/staff/reports?r=rooms&from=${date}&to=${date}`;
 }
 
+/** Send (or resend) the room report for an already-stored daily report record. */
+export async function deliverRoomReport(reportId: string, opts: { force?: boolean; manual?: boolean; deadline?: number } = {}) {
+  const [report, settings] = await Promise.all([
+    db.dailyReport.findUniqueOrThrow({ where: { id: reportId }, include: { deliveries: { where: { purpose: "ROOM_REPORT" } } } }),
+    getSettings(),
+  ]);
+  const link = roomReportLink(report.businessDate.toISOString().slice(0, 10));
+  const text = renderRoomReportText(report.data as unknown as DailyReportData, settings.hotelName, link);
+  return deliverToRecipients({
+    link: { dailyReportId: report.id },
+    purpose: "ROOM_REPORT",
+    text,
+    generatedAt: report.generatedAt,
+    deliveries: report.deliveries,
+    force: opts.force,
+    manual: opts.manual,
+    deadline: opts.deadline,
+  });
+}
+
 export async function runRoomReportJob(now = new Date(), deadline?: number) {
   const settings = await getSettings();
   const cfg = businessDayConfig(settings);

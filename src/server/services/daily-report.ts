@@ -360,9 +360,19 @@ export async function generateDailyReport(date: BusinessDate, who: string | { by
 
 /** Create delivery rows for each configured recipient (if missing) and attempt sending those not yet sent. */
 export async function deliverDailyReport(reportId: string, opts: { force?: boolean; manual?: boolean; deadline?: number } = {}) {
-  const report = await db.dailyReport.findUniqueOrThrow({ where: { id: reportId }, include: { deliveries: { where: { purpose: "DAILY_REPORT" } } } });
+  const [report, settings] = await Promise.all([
+    db.dailyReport.findUniqueOrThrow({ where: { id: reportId }, include: { deliveries: { where: { purpose: "DAILY_REPORT" } } } }),
+    getSettings(),
+  ]);
+  // Always render fresh — ensures the link is present even if the stored summaryText was generated with old code.
+  const link = await reportLink(report.id);
+  const text = renderReportText(report.data as unknown as DailyReportData, settings.hotelName, link);
+  // Keep the stored copy current so "Send again" and the UI always reflect the live format.
+  if (report.summaryText !== text) {
+    await db.dailyReport.update({ where: { id: report.id }, data: { summaryText: text } });
+  }
   return deliverToRecipients({
-    link: { dailyReportId: report.id }, purpose: "DAILY_REPORT", text: report.summaryText, generatedAt: report.generatedAt, deliveries: report.deliveries, force: opts.force, manual: opts.manual, deadline: opts.deadline,
+    link: { dailyReportId: report.id }, purpose: "DAILY_REPORT", text, generatedAt: report.generatedAt, deliveries: report.deliveries, force: opts.force, manual: opts.manual, deadline: opts.deadline,
     textFor: (lang) => dailyReportTextIn(report, lang),
   });
 }
