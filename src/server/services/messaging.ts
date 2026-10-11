@@ -27,9 +27,10 @@ async function sendCallMeBot(req: SendRequest): Promise<SendOutcome> {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS), cache: "no-store" });
     const body = (await res.text()).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-    // CallMeBot returns 200 with a human-readable page; success text mentions "queued" or "sent".
-    const ok = res.ok && /queued|sent|will receive/i.test(body) && !/error|invalid|not allowed/i.test(body);
-    return ok ? { ok: true, response: body.slice(0, 300) } : { ok: false, error: `CallMeBot: ${body.slice(0, 200) || res.status}`, response: body.slice(0, 300) };
+    // CallMeBot echoes the message first ("Message to: … Text to send: …") and says what it did at the END — judge on the end only.
+    const tail = body.slice(-220);
+    const ok = res.ok && /queued|sent|will receive/i.test(tail) && !/error|invalid|not allowed|not found|blocked/i.test(tail);
+    return ok ? { ok: true, response: tail } : { ok: false, error: `CallMeBot: ${tail || res.status}`, response: tail };
   } catch (e) {
     return { ok: false, error: `CallMeBot request failed: ${(e as Error).message}` };
   }

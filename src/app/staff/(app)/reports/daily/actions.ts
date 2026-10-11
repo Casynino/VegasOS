@@ -101,3 +101,15 @@ export async function revokeRoomReportAction(input: { date: string }) {
     return { ok: true };
   }, msg("Link switched off."));
 }
+
+/** Turn the automatic 06:30 room report on or off (MD / owner). */
+export async function setRoomReportEnabledAction(input: { enabled: boolean }) {
+  return runAction(async () => {
+    const user = await authorize("reports.daily.manage");
+    if (!can(user, "dashboard.admin") && !can(user, "dashboard.owner")) throw new AppError("Only the MD or the owner can switch the automatic room report.", "FORBIDDEN");
+    const { enabled } = parseInput(z.object({ enabled: z.boolean() }), input);
+    await db.hotelSettings.update({ where: { id: 1 }, data: { roomReportEnabled: enabled } });
+    revalidatePath("/staff/reports", "layout");
+    return { ok: true };
+  }, msg("Saved."));
+}

@@ -7,7 +7,7 @@ import { Loader2, RefreshCw, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { generateReportAction, regenerateRoomReportAction, revokeRoomReportAction, sendReportAction, sendRoomReportAction, sendRoomReportByDateAction } from "./actions";
+import { generateReportAction, regenerateRoomReportAction, revokeRoomReportAction, sendReportAction, sendRoomReportAction, sendRoomReportByDateAction, setRoomReportEnabledAction } from "./actions";
 import { useT } from "@/i18n/client";
 
 export function GenerateReportButton({ date, label, variant = "default", className }: { date: string; label: string; variant?: "default" | "outline"; className?: string }) {
@@ -108,5 +108,17 @@ export function RegenerateReportButton({ date, className }: { date: string; clas
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+export function RoomReportSwitch({ enabled, canChange }: { enabled: boolean; canChange: boolean }) {
+  const router = useRouter();
+  const t = useT();
+  const [pending, start] = useTransition();
+  return (
+    <Button variant={enabled ? "outline" : "default"} disabled={!canChange || pending} className="h-9 text-xs" onClick={() => start(async () => {
+      const r = await setRoomReportEnabledAction({ enabled: !enabled });
+      if (r.ok) { toast.info(!enabled ? t("Automatic room report is on.") : t("Automatic room report is off.")); router.refresh(); } else toast.error(r.error);
+    })}>{pending ? <Loader2 className="animate-spin" /> : null}{enabled ? t("Switch automatic report off") : t("Switch automatic report on")}</Button>
   );
 }

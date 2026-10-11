@@ -190,13 +190,67 @@ export function RoomReportPaper({ d, hotel, number, version }: { d: RoomReportDa
       <Section no={realTrend ? 8 : 7} title="Reception summary" note="Each check-in, check-out and payment is credited to the person who recorded it — never to two people.">
         <Table empty="No reception activity was recorded."
           head={["Receptionist", "Shift", "Check-ins", "Walk-ins", "Check-outs", "Payments", "Collected"]} right={[2, 3, 4, 5, 6]}
-          rows={d.staff.map((s) => [<b key="n">{s.name.replace(/\s*\(.*\)/, "")}</b>, s.shift ?? "—", s.checkIns, s.walkIns, s.checkOuts, s.payments, n(s.collected)])} />
+          rows={d.staff.map((s, i) => [<a key="n" href={`?r=${i}`} className="font-bold underline decoration-dotted print:no-underline">{s.name.replace(/\s*\(.*\)/, "")}</a>, s.shift ?? "—", s.checkIns, s.walkIns, s.checkOuts, s.payments, n(s.collected)])} />
       </Section>
 
       <footer className="mt-10 border-t pt-4 text-center text-[11px] leading-relaxed" style={{ borderColor: LINE, color: MUTED }}>
         <p className="font-semibold" style={{ color: INK }}>{hotel.name} · Automated Management Report</p>
         {hotel.address && <p>{hotel.address}</p>}
         {hotel.contact && <p>{hotel.contact}</p>}
+        <p className="mt-1">Prepared automatically from the hotel&apos;s reservation, check-in and payment records.</p>
+      </footer>
+    </article>
+  );
+}
+
+/** One receptionist's own report for the day — their check-ins, check-outs and money, and their share of the hotel's day. */
+export function ReceptionistRoomReport({ d, index, hotel, number, version }: { d: RoomReportData; index: number; hotel: Hotel; number: string; version: number }) {
+  const s = d.staff[index];
+  const tz = d.timezone;
+  const name = s.name.replace(/\s*\(.*\)/, "");
+  const role = /\((.*)\)/.exec(s.name)?.[1];
+  const total = d.staff.reduce((t, x) => ({ ci: t.ci + x.checkIns, co: t.co + x.checkOuts, pay: t.pay + x.payments, cash: t.cash + x.collected }), { ci: 0, co: 0, pay: 0, cash: 0 });
+  const share = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)}%` : "—");
+  const card = (label: string, value: ReactNode, sub?: string) => (
+    <div className="rounded-2xl border px-4 py-3" style={{ borderColor: LINE }}>
+      <p className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: MUTED }}>{label}</p>
+      <p className="mt-1 font-display text-2xl font-semibold tabular-nums">{value}</p>
+      {sub && <p className="text-[11px]" style={{ color: MUTED }}>{sub}</p>}
+    </div>
+  );
+  return (
+    <article id="report" className="mx-auto w-full max-w-[1000px] rounded-3xl bg-white p-5 shadow-sm sm:p-9 print:rounded-none print:p-0 print:shadow-none" style={{ color: INK }}>
+      <header className="flex flex-wrap items-start justify-between gap-4 border-b-2 pb-5" style={{ borderColor: INK }}>
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.24em]" style={{ color: GOLD }}>{hotel.name}</p>
+          <h1 className="mt-1 font-display text-3xl font-semibold leading-tight">Receptionist report</h1>
+          <p className="mt-1 text-sm font-medium">{name}{role ? ` · ${role}` : ""} — {day(d.date)}</p>
+          {s.shift && <p className="text-xs" style={{ color: MUTED }}>Shift {s.shift}</p>}
+        </div>
+        <div className="text-right text-[11px] leading-relaxed" style={{ color: MUTED }}>
+          <p className="font-semibold tabular-nums" style={{ color: INK }}>{number}-R{index + 1}{version > 1 ? ` · v${version}` : ""}</p>
+          <p>Business day {stamp(d.periodStart, tz)}</p>
+          <p>→ {stamp(d.periodEnd, tz)}</p>
+        </div>
+      </header>
+      <Section no={1} title="Their day" note="Each check-in, check-out and payment is credited to the person who recorded it — never to two people.">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {card("Check-ins", s.checkIns, `${s.walkIns} walk-in${s.walkIns === 1 ? "" : "s"} · ${share(s.checkIns, total.ci)} of the hotel's`)}
+          {card("Check-outs", s.checkOuts, `${share(s.checkOuts, total.co)} of the hotel's`)}
+          {card("Payments recorded", s.payments, `${share(s.payments, total.pay)} of the hotel's`)}
+          {card("Money collected", `TZS ${n(s.collected)}`, `${share(s.collected, total.cash)} of the hotel's`)}
+        </div>
+      </Section>
+      <Section no={2} title="The hotel that day">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {card("Occupancy", `${d.perf.occupancyPct}%`, `${d.perf.occupied} of ${d.guestRooms} rooms`)}
+          {card("New check-ins", d.perf.newSales)}
+          {card("Check-outs", d.perf.checkedOut)}
+          {card("Collected", `TZS ${n(d.money.collected)}`)}
+        </div>
+      </Section>
+      <footer className="mt-10 border-t pt-4 text-center text-[11px] leading-relaxed" style={{ borderColor: LINE, color: MUTED }}>
+        <p className="font-semibold" style={{ color: INK }}>{hotel.name} · Automated Management Report</p>
         <p className="mt-1">Prepared automatically from the hotel&apos;s reservation, check-in and payment records.</p>
       </footer>
     </article>

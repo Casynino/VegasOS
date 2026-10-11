@@ -227,6 +227,8 @@ model HotelSettings {
   taxRatePercent             Decimal? @db.Decimal(5, 2)
   taxIncludedInRates         Boolean  @default(true)
   reportEnabled              Boolean  @default(true)
+  /// The Daily Room Report (06:30 WhatsApp + secure link) — its own on/off switch.
+  roomReportEnabled          Boolean  @default(true)
   /// Each waiter's / receptionist's shift report goes to the report recipients by WhatsApp when the shift ends.
   shiftReportEnabled         Boolean  @default(true)
   /// "Pay online" for customers (nTZS) — the master switch and one switch per service (owner, 2026-10-04).

@@ -5,15 +5,15 @@ import { Clock } from "lucide-react";
 import { db } from "@/server/db";
 import { getSettings } from "@/server/settings";
 import type { RoomReportData } from "@/server/services/room-report-data";
-import { RoomReportPaper } from "@/components/staff/reports/room-report-paper";
+import { RoomReportPaper, ReceptionistRoomReport } from "@/components/staff/reports/room-report-paper";
 import { ReportActions } from "@/app/staff/(app)/reports/report-actions";
 
 export const metadata: Metadata = { title: "Daily Room Report", robots: { index: false, follow: false }, referrer: "no-referrer" };
 export const dynamic = "force-dynamic";
 
 /** The Boss's secure link to the Daily Room Report (WhatsApp): opens without signing in; random token, can be revoked. */
-export default async function SharedRoomReportPage({ params }: { params: Promise<{ token: string }> }) {
-  const { token } = await params;
+export default async function SharedRoomReportPage({ params, searchParams }: { params: Promise<{ token: string }>; searchParams: Promise<{ r?: string }> }) {
+  const [{ token }, { r: who }] = await Promise.all([params, searchParams]);
   const [r, s] = await Promise.all([db.roomReport.findUnique({ where: { shareToken: token } }), getSettings()]);
   if (!r) notFound();
   const shell = (children: React.ReactNode) => (
@@ -38,6 +38,8 @@ export default async function SharedRoomReportPage({ params }: { params: Promise
     contact: [s.phone, s.email, s.website].filter(Boolean).join("  ·  "),
   };
   const number = `RR-${d.date.replaceAll("-", "")}`;
+  const one = who !== undefined && /^\d+$/.test(who) ? Number(who) : -1;
+  const person = one >= 0 && one < d.staff.length ? one : -1;
   return shell(
     <>
       <header className="flex flex-wrap items-center justify-between gap-3 rounded-3xl bg-[#15110c] px-4 py-3 text-white print:hidden sm:px-5">
@@ -47,7 +49,12 @@ export default async function SharedRoomReportPage({ params }: { params: Promise
         </div>
         <ReportActions fileName={`${s.hotelName}-room-report-${d.date}`.replace(/[^\w]+/g, "-").toLowerCase()} share={`${s.hotelName} — Daily Room Report ${d.date}`} />
       </header>
-      <RoomReportPaper d={d} hotel={hotel} number={number} version={r.version} />
+      {person >= 0 ? (
+        <>
+          <a href="?" className="block text-xs font-semibold text-[#8a6a25] underline print:hidden">← Back to the full report</a>
+          <ReceptionistRoomReport d={d} index={person} hotel={hotel} number={number} version={r.version} />
+        </>
+      ) : <RoomReportPaper d={d} hotel={hotel} number={number} version={r.version} />}
     </>,
   );
 }

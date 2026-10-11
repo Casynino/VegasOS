@@ -129,7 +129,7 @@ export async function deliverRoomReport(dailyReportId: string, opts: { force?: b
 export async function runRoomReportJob(now = new Date(), deadline?: number) {
   const settings = await getSettings();
   const cfg = businessDayConfig(settings);
-  if (!settings.reportEnabled) return { skipped: "disabled" };
+  if (!settings.reportEnabled || !settings.roomReportEnabled) return { skipped: "disabled" };
   const reportDate = addDays(businessDateOf(now, cfg), -1);
   return deliverRoomReportByDate(reportDate, { automatic: true, deadline });
 }
