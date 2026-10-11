@@ -154,8 +154,8 @@ export function StayTop({ stay, info }: { stay: GuestStay; info: StayInfo }) {
             : info.contact.mapHref && !inHouse ? <QuickLink icon={MapPin} label={t("Directions")} href={info.contact.mapHref} external /> : null}
           <QuickLink icon={ConciergeBell} label={t("Reception")} onClick={() => setSheet("reception")} />
         </QuickRow>
-      {/* Breakfast comes with the room: said once, up here, with the hours — not tucked into the menu. */}
-      {info.breakfast && <BreakfastCard breakfast={info.breakfast} hotel={info.hotel} onMore={() => setSheet("breakfast")} className="mt-5 lg:max-w-xl" />}
+      {/* Breakfast comes with the room: one slim line with the hours — the bill stays right below it. */}
+      {info.breakfast && <BreakfastCard breakfast={info.breakfast} onMore={() => setSheet("breakfast")} className="mt-2.5 lg:max-w-xl" />}
       {/* In the room: the Wi-Fi right away — no tapping around for it (owner, 2026-10-06). */}
       <PhotoViewer photos={info.photos} start={viewing} title={info.room ? place : info.types || info.hotel} onClose={() => setViewing(null)} />
 

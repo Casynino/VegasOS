@@ -2,11 +2,11 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Coffee } from "lucide-react";
 import type { BreakfastNow } from "@/lib/breakfast";
 import { cn } from "@/lib/utils";
 import { useT } from "@/i18n/client";
-import { caps, card, SheetHead } from "./parts";
+import { SheetHead } from "./parts";
 
 /**
  * The stay's complimentary breakfast as the guest's page shows it — worked out on the server from the hotel's breakfast
@@ -25,27 +25,6 @@ export type BreakfastInfo = {
   location: string | null; note: string | null;
 };
 
-/** A cup in the morning sun — line art in the hotel's gold, the steam drifting gently. */
-function BreakfastArt({ className }: { className?: string }) {
-  return (
-    <div aria-hidden className={cn("grid shrink-0 place-items-center rounded-[22px] bg-(--vr-gold-soft) text-(--vr-gold-ink)", className)}>
-      <svg viewBox="0 0 96 96" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="size-[82%]">
-        <circle cx="48" cy="50" r="19" fill="var(--vr-gold)" fillOpacity="0.32" stroke="none" />
-        <g opacity="0.7">
-          <path d="M48 23v-6M28.5 31.5l-4.2-4.2M67.5 31.5l4.2-4.2M21 50h-6M75 50h6" />
-        </g>
-        <g className="motion-safe:animate-[vlh-float_5s_ease-in-out_infinite]">
-          <path d="M42 45c-2.6-3 2.6-5.2 0-8.4" />
-          <path d="M53 45c-2.6-3 2.6-5.2 0-8.4" />
-        </g>
-        <path d="M31 53h34v7.5A13.5 13.5 0 0 1 51.500 74h-7A13.5 13.5 0 0 1 31 60.500z" fill="var(--vr-card)" />
-        <path d="M65 56.500h2.800a5.200 5.200 0 0 1 0 10.400H64" />
-        <path d="M25 80h46" />
-      </svg>
-    </div>
-  );
-}
-
 /** The few words about today, in hotel time. */
 function useToday(b: BreakfastInfo) {
   const t = useT();
@@ -56,12 +35,15 @@ function useToday(b: BreakfastInfo) {
     : null;
 }
 
-/** Breakfast on the guest's room page: included with the stay, and exactly when — easy to find, nothing to pay. */
-export function BreakfastCard({ breakfast: b, hotel, onMore, className }: { breakfast: BreakfastInfo; hotel: string; onMore: () => void; className?: string }) {
+/**
+ * Breakfast on the guest's room page: one slim line under the quick links — included, and when. A tap opens the
+ * rest. Kept small on purpose so the bill stays right below (owner, 2026-10-11).
+ */
+export function BreakfastCard({ breakfast: b, onMore, className }: { breakfast: BreakfastInfo; onMore: () => void; className?: string }) {
   const t = useT();
   const router = useRouter();
   const serving = b.now === "NOW";
-  // "Now being served" comes from the server: ask again when the serving window opens or closes.
+  // "Being served now" comes from the server: ask again when the serving window opens or closes.
   useEffect(() => {
     if (b.now === null) return;
     const id = window.setTimeout(() => router.refresh(), b.changesInMs + 5_000);
@@ -69,33 +51,17 @@ export function BreakfastCard({ breakfast: b, hotel, onMore, className }: { brea
   }, [b.now, b.changesInMs, router]);
 
   return (
-    <section id="breakfast" aria-labelledby="breakfast-title" className={cn(card, "scroll-mt-3 overflow-hidden", className)}>
-      <div className="flex items-center gap-4 p-4 sm:gap-5 sm:p-5">
-        <BreakfastArt className="size-[88px] sm:size-[104px]" />
-        <div className="min-w-0 flex-1">
-          <p className={cn(caps, "text-(--vr-gold-ink)")}>{t("Included with your stay")}</p>
-          <h2 id="breakfast-title" className="mt-1.5 font-display text-[25px] font-semibold leading-[1.02] sm:text-[29px]">{t("Your breakfast is on us")}</h2>
-          <p className="mt-1.5 text-[13px] leading-snug text-(--vr-muted)">
-            {b.note ? t(b.note) : t("Start your morning with complimentary breakfast at {hotel}.", { hotel })}
-          </p>
-        </div>
-      </div>
-
-      <div className="border-t border-(--vr-line) px-4 pb-1.5 pt-3.5 sm:px-5">
-        <p className={cn(caps, "flex items-center gap-1.5", serving && "text-emerald-700")}>
-          {serving && <span className="size-1.5 rounded-full bg-emerald-500 motion-safe:animate-[vlh-glow_2.4s_ease-in-out_infinite]" />}
-          {serving ? t("Breakfast is now being served") : t("Breakfast hours")}
-        </p>
-        <p className="mt-1.5 font-display text-[31px] font-semibold leading-none tabular-nums lining-nums sm:text-[36px]">{b.hours}</p>
-        <p className="mt-1.5 text-[13px] text-(--vr-muted)">
-          {serving ? t("Today") : b.days}{b.location && <> · {t(b.location)}</>}
-        </p>
-        <p className="mt-3 text-[13px] leading-snug text-(--vr-ink)/80">{t("Already included in your room stay — no separate payment.")}</p>
-        <button type="button" onClick={onMore} className="mt-0.5 flex min-h-11 w-full items-center justify-between gap-3 text-left text-[13px] font-medium text-(--vr-gold-ink)">
-          {t("View breakfast information")}<ChevronRight className="size-4" />
-        </button>
-      </div>
-    </section>
+    <button type="button" id="breakfast" onClick={onMore} className={cn("flex min-h-14 w-full scroll-mt-3 items-center gap-3 rounded-2xl bg-(--vr-card) px-3 py-2 text-left ring-1 ring-(--vr-line) transition active:scale-[0.99]", className)}>
+      <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-full bg-(--vr-gold-soft) text-(--vr-gold-ink)"><Coffee className="size-[17px]" /></span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[13.5px] font-semibold leading-tight">{t("Your breakfast is on us")}</span>
+        <span className={cn("mt-0.5 flex items-center gap-1.5 text-[12px] leading-tight text-(--vr-muted)", serving && "text-emerald-700")}>
+          {serving && <span className="size-1.5 shrink-0 rounded-full bg-emerald-500 motion-safe:animate-[vlh-glow_2.4s_ease-in-out_infinite]" />}
+          <span className="truncate tabular-nums">{serving ? t("Being served now, until {time}", { time: b.end }) : <>{b.hours} · {b.days}</>}</span>
+        </span>
+      </span>
+      <ChevronRight className="size-4 shrink-0 text-(--vr-muted)" />
+    </button>
   );
 }
 
