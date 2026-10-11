@@ -29,6 +29,44 @@ export interface GuestInput {
    * changed from there: what they typed stays on the booking, for reception to check and save.
    */
   selfService?: boolean;
+  /**
+   * A room booking taken by staff: a clearly different name on a number already on file is ANOTHER person (a
+   * relative's phone, the driver's, the desk's own) — they get their own customer, and the one on file keeps their
+   * name. Without this, one phone number would put the same customer into every room booked with it.
+   */
+  ownPerson?: boolean;
+}
+
+/** A name as compared: no accents, no case, no punctuation. */
+const nameKey = (name: string) => name.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+
+function typoDistance(a: string, b: string): number {
+  const row = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = row[0];
+    row[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const keep = row[j];
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = keep;
+    }
+  }
+  return row[b.length];
+}
+
+/**
+ * The same person written two ways? "Asha" / "Asha Mrema" (part of the name), "Mrema Asha" (the other order),
+ * "Asha Mrmea" (a slip of the finger) — yes. "Asha Mrema" / "John Peter" — no: two people.
+ */
+export function sameName(a: string | null | undefined, b: string | null | undefined): boolean {
+  const x = nameKey(a ?? ""), y = nameKey(b ?? "");
+  if (!x || !y) return false;
+  if (x === y) return true;
+  const xs = x.split(" "), ys = y.split(" ");
+  const [few, many] = xs.length <= ys.length ? [xs, ys] : [ys, xs];
+  if (few.every((w) => many.includes(w))) return true;
+  const longest = Math.max(x.length, y.length);
+  return longest >= 5 && typoDistance(x, y) <= (longest >= 10 ? 2 : 1);
 }
 
 /**
@@ -92,6 +130,12 @@ export async function resolveGuest(tx: Tx, input: GuestInput): Promise<string> {
       ?? (phone ? await tx.guest.findFirst({ where: { deletedAt: null, altPhone: phone }, orderBy: { updatedAt: "desc" } }) : null)
       ?? (email && !input.selfService ? await tx.guest.findFirst({ where: { deletedAt: null, email }, orderBy: { updatedAt: "desc" } }) : null);
   }
+  // A room booking at the desk: another name on a number we know is another person — see `ownPerson`.
+  if (existing && input.ownPerson && !input.selfService && !isPlaceholderName(existing.fullName) && !isPlaceholderName(clean.fullName) && !sameName(existing.fullName, clean.fullName)) {
+    const found = existing;
+    const sharing = phone ? await tx.guest.findMany({ where: { deletedAt: null, id: { not: found.id }, OR: [{ phone }, { altPhone: phone }] }, orderBy: { updatedAt: "desc" } }) : [];
+    existing = sharing.find((g) => sameName(g.fullName, clean.fullName)) ?? null;
+  }
   if (!existing) {
     const created = await tx.guest.create({ data: clean });
     return created.id;
@@ -105,7 +149,8 @@ export async function resolveGuest(tx: Tx, input: GuestInput): Promise<string> {
   for (const [k, v] of Object.entries(clean)) {
     if (v && !existing[k as keyof typeof existing]) fill[k] = v;
   }
-  if (input.id && clean.fullName !== existing.fullName) fill.fullName = clean.fullName; // explicit edit by staff
+  // Picked by staff and written out in full ("Asha" → "Asha Mrema"): the fuller name is kept. Never a shorter one.
+  if (input.id && clean.fullName !== existing.fullName && (!input.ownPerson || nameKey(clean.fullName).length >= nameKey(existing.fullName).length)) fill.fullName = clean.fullName;
   // Saved as "Restaurant customer" / "Table guest" before: their real name replaces it.
   if (!input.id && isPlaceholderName(existing.fullName) && !isPlaceholderName(clean.fullName)) fill.fullName = clean.fullName;
   if (Object.keys(fill).length) await tx.guest.update({ where: { id: existing.id }, data: fill });
@@ -128,6 +173,31 @@ export async function typedDifferences(tx: Tx, guestId: string, input: GuestInpu
     email && email !== g.email?.toLowerCase() ? `email ${email}` : null,
   ].filter(Boolean);
   return diff.length ? `Booked as ${diff.join(", ")} — found by their phone; check with the guest before changing their profile.` : null;
+}
+
+/**
+ * Details typed at the desk for a booking's guest (check-in). Another name altogether, on a customer who has other
+ * bookings, is another person: this booking moves to a customer of their own. The one on file is never renamed —
+ * that would put the new name on every room ever booked under them.
+ */
+export async function deskGuestTx(tx: Tx, reservationId: string, guestId: string, typed: { fullName?: string | null; phone?: string | null }, actor: AuditActor): Promise<string> {
+  const name = typed.fullName?.trim();
+  if (!name) return guestId;
+  const g = await tx.guest.findUniqueOrThrow({ where: { id: guestId } });
+  if (isPlaceholderName(g.fullName) || isPlaceholderName(name) || sameName(g.fullName, name)) return guestId;
+  const elsewhere = await tx.reservation.count({ where: { id: { not: reservationId }, OR: [{ guestId }, { guests: { some: { guestId } } }] } });
+  if (!elsewhere) return guestId; // only this booking is theirs: the name is being corrected
+  const phone = normalizePhone(typed.phone) ?? g.phone;
+  const sharing = phone ? await tx.guest.findMany({ where: { deletedAt: null, id: { not: guestId }, OR: [{ phone }, { altPhone: phone }] }, orderBy: { updatedAt: "desc" } }) : [];
+  const own = sharing.find((x) => sameName(x.fullName, name)) ?? await tx.guest.create({ data: { fullName: name, phone } });
+  await tx.reservationGuest.deleteMany({ where: { reservationId, guestId: own.id } });
+  await tx.reservationGuest.updateMany({ where: { reservationId, guestId }, data: { guestId: own.id } });
+  await tx.reservation.update({ where: { id: reservationId }, data: { guestId: own.id } });
+  await audit(tx, actor, {
+    action: "guest.separated_at_checkin", entityType: "Reservation", entityId: reservationId,
+    before: { guestId, fullName: g.fullName }, after: { guestId: own.id, fullName: own.fullName },
+  });
+  return own.id;
 }
 
 /** Names saved when the customer gave only a number (a table QR, a quick order). */

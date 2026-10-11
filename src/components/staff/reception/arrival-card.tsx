@@ -15,6 +15,7 @@ import { ROOM_STATUS_META } from "@/lib/room-status";
 import { RESERVATION_STATUS_META } from "@/lib/reservation-status";
 import { cn } from "@/lib/utils";
 import { IdPicker, NationalityPicker } from "@/components/staff/id-nationality";
+import { SameGuestAsk } from "@/components/staff/same-guest";
 import { Initials } from "@/components/dashboard/kit";
 import { DiscountEditor } from "./discount-editor";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -212,6 +213,7 @@ export function ArrivalCard({ a, today, canAssign, canOverride, canEditDates = f
   const [changing, setChanging] = useState<string | null>(null);
   const [allRooms, setAllRooms] = useState<Record<string, boolean>>({});
   const [pending, start] = useTransition();
+  const [sameAsk, setSameAsk] = useState<string | null>(null);
   const [choice, setChoice] = useState<Record<string, string>>(() => Object.fromEntries(a.rooms.map((r) => [r.id, initialChoice(r)])));
   const [g, setG] = useState({
     fullName: a.guest.fullName, phone: a.guest.phone ?? "", email: a.guest.email ?? "",
@@ -244,15 +246,15 @@ export function ArrivalCard({ a, today, canAssign, canOverride, canEditDates = f
   const earlyOut = early ? checkInDates().reduce((m, x) => (x.departureDate > m ? x.departureDate : m), "") : "";
   const missing = [
     !g.fullName.trim() && t("full name"),
-    !g.idNumber.trim() && t("ID number"),
     !reschedule && notReady.length > 0 && canOverride && !blockedByRoom && !overrideReason.trim() && t("override reason"),
   ].filter(Boolean) as string[];
 
-  function submit() {
+  function submit(sameGuest = false) {
     start(async () => {
       const moves = checkInDates();
       const res = await quickCheckInAction({
         reservationId: a.id,
+        sameGuest,
         assignments: selected.filter(({ r, opt }) => opt.id !== r.current.id).map(({ r, opt }) => ({ reservationRoomId: r.id, roomId: opt.id })),
         guest: g,
         notReadyOverride: notReady.length ? overrideReason : undefined,
@@ -267,7 +269,8 @@ export function ArrivalCard({ a, today, canAssign, canOverride, canEditDates = f
         for (const w of res.data.warnings ?? []) toast.warning(t(w), { duration: 9000 });
         // Stay with this guest: "Checked in" — order food & drinks for them right here, send the welcome, or next guest.
         router.push(`/staff/check-in?done=${encodeURIComponent(a.id)}#workspace`, { scroll: false });
-      } else toast.error(res.error, { duration: 9000 });
+      } else if (res.fieldErrors?.sameGuest) setSameAsk(res.error);
+      else toast.error(res.error, { duration: 9000 });
     });
   }
 
@@ -410,9 +413,8 @@ export function ArrivalCard({ a, today, canAssign, canOverride, canEditDates = f
               <Input id={`email-${a.id}`} type="email" value={g.email} onChange={set("email")} placeholder={t("Optional")} />
             </div>
             <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor={`idno-${a.id}`} className="text-xs">{t("ID *")}</Label>
-              <IdPicker size="sm" numberId={`idno-${a.id}`} type={g.idType} number={g.idNumber} invalid={!g.idNumber.trim()}
-                onType={(v) => setG((x) => ({ ...x, idType: v }))} onNumber={(v) => setG((x) => ({ ...x, idNumber: v }))} />
+              <Label className="text-xs">{t("ID")}</Label>
+              <IdPicker size="sm" type={g.idType} onType={(v) => setG((x) => ({ ...x, idType: v }))} />
             </div>
             <div className="space-y-1.5 sm:col-span-2">
               <Label className="text-xs">{t("Nationality")}</Label>
@@ -447,7 +449,13 @@ export function ArrivalCard({ a, today, canAssign, canOverride, canEditDates = f
       </Section>
 
       {/* Actions */}
-      <footer className="flex flex-col gap-3 border-t border-border/70 bg-muted/30 px-4 py-4 sm:flex-row sm:items-center sm:px-6">
+      {sameAsk && (
+        <div className="border-t border-border/70 px-4 py-4 sm:px-6">
+          <SameGuestAsk message={sameAsk} pending={pending} onSame={() => submit(true)}
+            onOther={() => { setSameAsk(null); setG((x) => ({ ...x, fullName: "" })); }} />
+        </div>
+      )}
+      <footer className={cn("flex flex-col gap-3 border-t border-border/70 bg-muted/30 px-4 py-4 sm:flex-row sm:items-center sm:px-6", sameAsk && "hidden")}>
         <p className={cn("flex-1 text-xs", (!reschedule && (missing.length || blockedByRoom)) || (startsLater && !canEditDates) ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground")}>
           {startsLater && !canEditDates ? t("Booked for {date} — ask a manager to move it to today.", { date: t.date(firstArrival) })
             : reschedule ? t("New dates: {date}. Save them — the guest checks in on that day (or tap Today to check in now).", { date: t.date(dates[changedDates[0].id].arrival) })
@@ -467,7 +475,7 @@ export function ArrivalCard({ a, today, canAssign, canOverride, canEditDates = f
               {pending ? <Loader2 className="animate-spin" /> : <CalendarDays />}{t("Save new dates")}
             </Button>
           ) : (
-            <Button className="h-11 flex-1 px-6 text-base font-semibold sm:flex-none" disabled={pending || blockedByRoom || missing.length > 0 || (startsLater && !canEditDates)} onClick={submit}>
+            <Button className="h-11 flex-1 px-6 text-base font-semibold sm:flex-none" disabled={pending || blockedByRoom || missing.length > 0 || (startsLater && !canEditDates)} onClick={() => submit()}>
               {pending ? <Loader2 className="animate-spin" /> : <LogIn />}
               {early ? (moving ? t("Change room & check in today") : t("Check in today")) : moving ? t("Change room & check in") : t("Check in")}
             </Button>

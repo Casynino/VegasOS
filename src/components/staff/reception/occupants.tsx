@@ -40,7 +40,7 @@ export function Occupants({ reservationId, occupants, canEdit }: { reservationId
         {occupants.map((o) => (
           <li key={o.id} className="flex items-center gap-2 rounded-xl bg-muted/50 px-3 py-2 text-sm">
             <span className="min-w-0 flex-1 truncate font-medium">{o.fullName}</span>
-            <span className="truncate text-xs text-muted-foreground">{[o.phone, o.idNumber, o.nationality].filter(Boolean).join(" · ")}</span>
+            <span className="truncate text-xs text-muted-foreground">{[o.phone, o.nationality].filter(Boolean).join(" · ")}</span>
             {canEdit && <button type="button" aria-label={t("Remove {name}", { name: o.fullName })} disabled={pending} onClick={() => remove(o)} className="grid size-6 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-rose-600"><X className="size-3.5" /></button>}
           </li>
         ))}
@@ -49,7 +49,6 @@ export function Occupants({ reservationId, occupants, canEdit }: { reservationId
         <div className="grid gap-2 rounded-xl border border-border/70 p-3 sm:grid-cols-2">
           <Input aria-label={t("Full name")} placeholder={t("Full name *")} value={f.fullName} onChange={set("fullName")} autoFocus />
           <Input aria-label={t("Phone")} placeholder={t("Phone (optional)")} value={f.phone} onChange={set("phone")} inputMode="tel" />
-          <Input aria-label={t("ID / passport")} placeholder={t("ID / passport (optional)")} value={f.idNumber} onChange={set("idNumber")} />
           <Input aria-label={t("Nationality")} placeholder={t("Nationality (optional)")} value={f.nationality} onChange={set("nationality")} />
           <div className="flex gap-2 sm:col-span-2">
             <Button size="sm" disabled={pending || f.fullName.trim().length < 2} onClick={add}>{pending ? <Loader2 className="animate-spin" /> : <Plus />}{t("Add to room")}</Button>

@@ -404,13 +404,12 @@ export function GroupForm(props: {
                         <label className="min-w-0 space-y-1"><span className={label}>{t("Phone")}</span>
                           <Input value={m.phone} onChange={(e) => set({ phone: e.target.value })} placeholder="07XX XXX XXX" inputMode="tel" className="h-10 rounded-xl" /></label>
                         <div className="min-w-0 space-y-1"><span className={cn(label, "flex items-center gap-1.5")}>{t("ID")} <span className="font-normal normal-case tracking-normal">{t("(optional)")}</span>{m.id && <span className="rounded-full bg-muted px-1.5 py-px text-[9px] normal-case tracking-normal">{t("on file")}</span>}</span>
-                          <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-1.5">
+                          <div className="grid gap-1.5">
                             <select value={m.idType} onChange={(e) => set({ idType: e.target.value })} aria-label={t("Guest {n} — ID type", { n: i + 1 })}
                               className="h-10 min-w-0 rounded-xl border border-input bg-transparent px-2 text-sm outline-none dark:bg-input/30">
                               <option value="">{t("Type")}</option>
                               {ID_TYPES.map(([v, lb]) => <option key={v} value={v}>{t(lb)}</option>)}
                             </select>
-                            <Input value={m.idNumber} onChange={(e) => set({ idNumber: e.target.value })} placeholder={t.ctx("id", "Number")} aria-label={t("Guest {n} — ID number", { n: i + 1 })} className="h-10 rounded-xl" />
                           </div>
                         </div>
                       </div>

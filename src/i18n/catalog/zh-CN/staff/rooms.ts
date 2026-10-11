@@ -368,5 +368,11 @@ const catalog: Catalog = {
   "no-show": "未到店",
   "Open your phone camera and point it here": "打开手机相机对准这里",
   "We accept": "我们接受",
+  "Is the person at the desk the same guest, taking another room? If it is someone else, write their own name — they are saved as their own customer.": "前台这位是同一位客人、要再开一间房吗？如果是另一个人，请填写其本人姓名——系统会将其保存为单独的客户。",
+  "No — it is someone else": "不是——是另一个人",
+  "Yes — same guest, another room": "是——同一位客人，再开一间房",
+  "This number belongs to {name}, who is in room {room} now. If the guest at the desk is someone else, write their own name.": "该号码属于 {name}，目前住在 {room} 号房。如果前台的客人是另一个人，请填写其本人姓名。",
+  "Add the guest's name to check in.": "请填写客人姓名后再办理入住。",
+  "ID shown: {type}": "出示的证件：{type}",
 };
 export default catalog;

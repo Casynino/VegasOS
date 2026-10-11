@@ -33,21 +33,9 @@ export function Chips({ options, value, onChange, size = "md", label }: {
   );
 }
 
-/** ID: the type as chips (NIDA, Passport…), then the number. */
-export function IdPicker({ type, number, onType, onNumber, size = "md", invalid, numberId }: {
-  type: string; number: string; onType: (v: string) => void; onNumber: (v: string) => void;
-  size?: "md" | "sm"; invalid?: boolean; numberId?: string;
-}) {
-  const t = useT();
-  const word = ID_TYPES.find(([v]) => v === type)?.[1];
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <Chips label={msg("ID type")} options={ID_TYPES} value={type} onChange={onType} size={size} />
-      <Input id={numberId} aria-label={t("ID number")} value={number} onChange={(e) => onNumber(e.target.value)} aria-invalid={invalid}
-        placeholder={word && word !== "Other" ? t("{type} number", { type: t(word) }) : t("ID number")}
-        className={cn("min-w-[12rem] flex-1 bg-card", size === "md" ? "h-11 rounded-xl text-base" : "h-9")} />
-    </div>
-  );
+/** ID: which document the guest showed (NIDA, Passport…) — picked, never typed. No number is written down. */
+export function IdPicker({ type, onType, size = "md" }: { type: string; onType: (v: string) => void; size?: "md" | "sm" }) {
+  return <Chips label={msg("ID type")} options={ID_TYPES} value={type} onChange={onType} size={size} />;
 }
 
 /** Nationality: the usual ones as chips; "Other…" opens a box to type it. */

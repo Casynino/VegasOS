@@ -24,17 +24,16 @@ export function PersonRow({ p, onChange, onRemove, label, autoFocus }: {
 }) {
   const t = useT();
   return (
-    <div className="grid grid-cols-[1fr_auto] gap-1.5 @[34rem]:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_7.5rem_minmax(0,1fr)_auto]">
+    <div className="grid grid-cols-[1fr_auto] gap-1.5 @[34rem]:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_9rem_auto]">
       <Input autoFocus={autoFocus} value={p.fullName} onChange={(e) => onChange({ ...p, fullName: e.target.value })} placeholder={t("Full name")} aria-label={t("{label} — name", { label })} className="h-10 rounded-xl" />
       <button type="button" aria-label={t("Remove {label}", { label })} onClick={onRemove} disabled={!onRemove} className="grid size-10 place-items-center rounded-xl text-muted-foreground hover:bg-muted hover:text-rose-600 disabled:invisible @[34rem]:order-last"><X className="size-4" /></button>
-      <div className="col-span-2 grid grid-cols-2 gap-1.5 @[24rem]:grid-cols-[minmax(0,1fr)_7.5rem_minmax(0,1fr)] @[34rem]:contents">
+      <div className="col-span-2 grid grid-cols-2 gap-1.5 @[24rem]:grid-cols-[minmax(0,1fr)_9rem] @[34rem]:contents">
         <Input value={p.phone} onChange={(e) => onChange({ ...p, phone: e.target.value })} placeholder={t("Phone")} inputMode="tel" aria-label={t("{label} — phone", { label })} className="col-span-2 h-10 rounded-xl @[24rem]:col-span-1" />
         <select value={p.idType} onChange={(e) => onChange({ ...p, idType: e.target.value })} aria-label={t("{label} — ID type (optional)", { label })}
           className="h-10 min-w-0 rounded-xl border border-input bg-transparent px-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/50 dark:bg-input/30">
           <option value="">{t("ID (optional)")}</option>
           {ID_TYPES.map(([v, l]) => <option key={v} value={v}>{t(l)}</option>)}
         </select>
-        <Input value={p.idNumber} onChange={(e) => onChange({ ...p, idNumber: e.target.value })} placeholder={t("ID number (optional)")} aria-label={t("{label} — ID number (optional)", { label })} className="h-10 rounded-xl" />
       </div>
     </div>
   );

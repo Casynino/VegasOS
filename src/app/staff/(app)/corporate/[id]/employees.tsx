@@ -37,7 +37,7 @@ export function Employees({ companyId, staff, canEdit, canBook }: { companyId: s
                 <span className="block truncate text-sm font-medium">{s.fullName}</span>
                 <span className="flex flex-wrap gap-x-2 text-[11px] text-muted-foreground">
                   {s.phone && <span className="inline-flex items-center gap-0.5"><Phone className="size-3" />{s.phone}</span>}
-                  {s.idNumber ? <span className="inline-flex items-center gap-0.5"><IdCard className="size-3" />{t(idLabel(s.idType))} {s.idNumber}</span> : <span>{t("no ID yet")}</span>}
+                  {s.idType && <span className="inline-flex items-center gap-0.5"><IdCard className="size-3" />{t(idLabel(s.idType))}</span>}
                   <span>· {t.plural(s.stays, "{n} stay", "{n} stays")}</span>
                 </span>
               </Link>

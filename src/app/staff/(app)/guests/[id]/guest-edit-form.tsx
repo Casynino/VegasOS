@@ -43,10 +43,9 @@ export function GuestEditForm({ guest, canEdit, full = false, canVip = false, on
             {full && <div className="space-y-1"><Label htmlFor="altPhone">{t("Other phone")}</Label><Input id="altPhone" name="altPhone" type="tel" defaultValue={guest.altPhone ?? ""} readOnly={lockIdentity && !!guest.altPhone} className={lockIdentity && guest.altPhone ? "opacity-70" : undefined} /><FieldError message={e?.altPhone} /></div>}
           </div>
           <div className="space-y-1"><Label htmlFor="email">{t("Email")}</Label><Input id="email" name="email" defaultValue={guest.email} /><FieldError message={e?.email} /></div>
-          <div className="space-y-1"><Label htmlFor={`idNumber-${guest.id}`}>{t("ID")}</Label>
+          <div className="space-y-1"><Label>{t("ID")}</Label>
             <input type="hidden" name="idType" value={id.type} /><input type="hidden" name="idNumber" value={id.number} />
-            <IdPicker size="sm" numberId={`idNumber-${guest.id}`} type={id.type} number={id.number}
-              onType={(v) => setId((x) => ({ ...x, type: v }))} onNumber={(v) => setId((x) => ({ ...x, number: v }))} /></div>
+            <IdPicker size="sm" type={id.type} onType={(v) => setId((x) => ({ ...x, type: v }))} /></div>
           <div className="space-y-1"><Label>{t("Nationality")}</Label>
             <input type="hidden" name="nationality" value={nationality} />
             <NationalityPicker size="sm" value={nationality} onChange={setNationality} /></div>

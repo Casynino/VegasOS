@@ -16,6 +16,7 @@ import { DESK_DISCOUNT_MAX } from "@/lib/discounts";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { IdPicker, NationalityPicker } from "@/components/staff/id-nationality";
+import { SameGuestAsk } from "@/components/staff/same-guest";
 import { formatTZS } from "@/lib/format";
 import { MANUAL_TRANSITIONS, ROOM_STATUS_META, BLOCKED_STATUSES } from "@/lib/room-status";
 import type { RoomBoardRoom } from "@/server/services/rooms";
@@ -706,12 +707,13 @@ function CheckInHere({ booking, room, today, occupiedBy, canEditDates, canClean,
   const notClean = room.status === "DIRTY" || room.status === "CLEANING";
   const cleanAndIn = notClean && canClean && !occupiedBy;
   const blocked = !!occupiedBy || (notClean && !canClean) || (early && !canEditDates) || room.status === "MAINTENANCE" || room.status === "OUT_OF_SERVICE";
-  const missing = !g.fullName.trim() || !g.idNumber.trim();
-  const set = (k: keyof typeof g) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setG({ ...g, [k]: e.target.value });
+  const missing = !g.fullName.trim();
+  const [sameAsk, setSameAsk] = useState<string | null>(null);
+  const set = (k: keyof typeof g) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => { setSameAsk(null); setG({ ...g, [k]: e.target.value }); };
 
-  function go() {
+  function go(sameGuest = false) {
     start(async () => {
-      const res = await checkInHereAction({ reservationId: booking.reservationId, reservationRoomId: booking.reservationRoomId, moveArrivalToToday: early, markReady: cleanAndIn, guest: g });
+      const res = await checkInHereAction({ reservationId: booking.reservationId, reservationRoomId: booking.reservationRoomId, moveArrivalToToday: early, markReady: cleanAndIn, guest: g, sameGuest });
       if (res.ok) {
         toast.success(t("{name} checked in to room {room}.", { name: g.fullName, room: room.number }), {
           description: t("Checkout {date} at 11:00", { date: t.date(booking.departureDate) }), duration: 12000,
@@ -719,6 +721,7 @@ function CheckInHere({ booking, room, today, occupiedBy, canEditDates, canClean,
         });
         onDone();
       }
+      else if (res.fieldErrors?.sameGuest) setSameAsk(res.error);
       else toast.error(res.error, { duration: 9000 });
     });
   }
@@ -750,16 +753,19 @@ function CheckInHere({ booking, room, today, occupiedBy, canEditDates, canClean,
         <div className="col-span-2 space-y-1"><Label className="text-[11px]">{t("Full name *")}</Label><Input value={g.fullName} onChange={set("fullName")} className="h-9" /></div>
         <div className="col-span-2 space-y-1"><Label className="text-[11px]">{t("Phone")}</Label><Input value={g.phone} onChange={set("phone")} className="h-9" /></div>
         <div className="col-span-2 space-y-1"><Label className="text-[11px]">{t("ID *")}</Label>
-          <IdPicker size="sm" type={g.idType} number={g.idNumber} invalid={!g.idNumber.trim()}
-            onType={(v) => setG((x) => ({ ...x, idType: v }))} onNumber={(v) => setG((x) => ({ ...x, idNumber: v }))} /></div>
+          <IdPicker size="sm" type={g.idType} onType={(v) => setG((x) => ({ ...x, idType: v }))} /></div>
         <div className="col-span-2 space-y-1"><Label className="text-[11px]">{t("Nationality")}</Label>
           <NationalityPicker size="sm" value={g.nationality} onChange={(v) => setG((x) => ({ ...x, nationality: v }))} /></div>
       </div>
-      <Button className="h-10 w-full" disabled={pending || blocked || missing} onClick={go}>
+      {sameAsk && (
+        <SameGuestAsk message={sameAsk} pending={pending} onSame={() => go(true)}
+          onOther={() => { setSameAsk(null); setG((x) => ({ ...x, fullName: "" })); }} />
+      )}
+      <Button className={cn("h-10 w-full", sameAsk && "hidden")} disabled={pending || blocked || missing} onClick={() => go()}>
         {pending ? <Loader2 className="animate-spin" /> : cleanAndIn ? <BrushCleaning /> : <LogIn />}
         {cleanAndIn ? (early ? t("Room is clean — check in early now") : t("Room is clean — check in now")) : early ? t("Check in early — now") : t("Check in now")}
       </Button>
-      {missing && !blocked && <p className="text-center text-[11px] text-amber-700 dark:text-amber-400">{t("Add the ID number to check in.")}</p>}
+      {missing && !blocked && <p className="text-center text-[11px] text-amber-700 dark:text-amber-400">{t("Add the guest's name to check in.")}</p>}
     </div>
   );
 }

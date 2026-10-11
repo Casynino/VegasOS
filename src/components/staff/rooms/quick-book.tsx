@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CalendarPlus, Check, CheckCircle2, DoorOpen, Loader2, Minus, Plus, Presentation, Smartphone, XCircle } from "lucide-react";
+import { CalendarPlus, Check, CheckCircle2, DoorOpen, Loader2, Minus, Plus, Presentation, Smartphone, TriangleAlert, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { validPhone } from "@/lib/guest-messages";
 import { formatTZS } from "@/lib/format";
@@ -14,6 +14,7 @@ import type { PayAccount } from "@/lib/pay-account";
 import { NetworkMarks } from "@/components/payments/networks";
 import { SendToPhone, useMobilePayAvailable } from "@/components/staff/mobile-pay";
 import { KnownCustomerNote, useKnownCustomer } from "@/components/staff/known-customer";
+import { SameGuestAsk } from "@/components/staff/same-guest";
 import { checkAvailabilityAction, createReservationAction, type AvailabilityResult } from "@/app/staff/(app)/reservations/actions";
 import { useT } from "@/i18n/client";
 import { msg } from "@/i18n/msg";
@@ -41,7 +42,10 @@ export function QuickBook({ room, mode, today, from, methods, canPay, onDone }: 
   const [nights, setNights] = useState(1);
   const [dates, setDates] = useState(() => ({ arrival: from && from > today ? from : today, departure: plusDays(from && from > today ? from : today, 1) }));
   const [meet, setMeet] = useState({ date: today, start: "09:00", end: "13:00" });
-  const [guest, setGuest] = useState({ fullName: "", phone: "", idNumber: "" });
+  const [guest, setGuest] = useState({ fullName: "", phone: "" });
+  // ONE GUEST, ONE ROOM: the server found this customer in another room — the desk says who is really here.
+  const [sameAsk, setSameAsk] = useState<string | null>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
   const [company, setCompany] = useState("");
   const [needs, setNeeds] = useState("");
   const [adults, setAdults] = useState(mode === "meeting" ? 6 : 1);
@@ -61,7 +65,7 @@ export function QuickBook({ room, mode, today, from, methods, canPay, onDone }: 
   // The phone is the customer's key: a number already on file brings back who they are (their name fills in) — no
   // retyping, no second profile. "Someone else" keeps the typed details as a new customer.
   const [someoneElse, setSomeoneElse] = useState(false);
-  const lookup = useKnownCustomer(someoneElse ? "" : guest.phone, (c) => setGuest((g) => ({ ...g, fullName: g.fullName.trim() ? g.fullName : c.name })));
+  const lookup = useKnownCustomer(someoneElse ? "" : guest.phone, (c) => setGuest((g) => ({ ...g, fullName: g.fullName.trim() || (c.room && mode !== "meeting") ? g.fullName : c.name })));
   const known = someoneElse ? null : lookup.customer;
   const phoneDigits = guest.phone.replace(/\D/g, "");
   const [avail, setAvail] = useState<AvailabilityResult | null>(null);
@@ -87,7 +91,7 @@ export function QuickBook({ room, mode, today, from, methods, canPay, onDone }: 
   const total = free ? free.grossTotal != null ? free.grossTotal - (free.promoTotal ?? 0) : type!.totalNet : 0;
   const maxAdults = type?.maxAdults ?? 2;
 
-  function save() {
+  function save(sameGuest = false) {
     if (!free) return toast.error(t("Room {room} is not free for that time.", { room: room.number }));
     if (guest.fullName.trim().length < 2) return toast.error(mode === "meeting" ? t("Enter who is booking.") : t("Enter the guest's name."));
     if (!validPhone(guest.phone)) return toast.error(t("Enter the phone number — the booking details are sent to it."));
@@ -101,7 +105,8 @@ export function QuickBook({ room, mode, today, from, methods, canPay, onDone }: 
         status: "RESERVED",
         checkInNow: mode === "walkIn",
         stay,
-        guest: { id: known?.id, createNew: someoneElse || undefined, fullName: guest.fullName.trim(), phone: guest.phone.trim(), idNumber: guest.idNumber.trim() || undefined, idType: guest.idNumber.trim() ? "NATIONAL_ID" : undefined },
+        sameGuest,
+        guest: { id: known?.id, createNew: someoneElse || undefined, fullName: guest.fullName.trim(), phone: guest.phone.trim() },
         rooms: [{ roomTypeId: room.typeId, roomId: room.id, adults, children: mode === "meeting" ? 0 : children }],
         companyName: mode === "meeting" ? company.trim() || undefined : undefined,
         specialRequests: needs.trim() || undefined,
@@ -120,9 +125,12 @@ export function QuickBook({ room, mode, today, from, methods, canPay, onDone }: 
         });
         onDone();
         router.refresh();
-      } else toast.error(res.error, { duration: 9000 });
+      } else if (res.fieldErrors?.sameGuest) setSameAsk(res.error);
+      else toast.error(res.error, { duration: 9000 });
     });
   }
+  // "No — it is someone else": their own name, saved as their own customer with this number.
+  const notTheSame = () => { setSameAsk(null); setSomeoneElse(true); setGuest((g) => ({ ...g, fullName: "" })); requestAnimationFrame(() => nameRef.current?.focus()); };
 
   const Icon = mode === "walkIn" ? DoorOpen : mode === "meeting" ? Presentation : CalendarPlus;
   const title = mode === "walkIn" ? t("Walk-in — check in to room {room} now", { room: room.number }) : mode === "meeting" ? t("Book a meeting") : t("Reserve room {room}", { room: room.number });
@@ -194,7 +202,7 @@ export function QuickBook({ room, mode, today, from, methods, canPay, onDone }: 
       {/* Who — the phone first: a number already on file brings the customer back */}
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <Input value={guest.phone} onChange={(e) => { setGuest({ ...guest, phone: e.target.value }); setSomeoneElse(false); }} placeholder={t("Phone (WhatsApp) *")} type="tel" inputMode="tel" aria-label={t("Phone")} required className="h-10" />
-        <Input value={guest.fullName} onChange={(e) => setGuest({ ...guest, fullName: e.target.value })} placeholder={mode === "meeting" ? t("Person booking *") : t("Guest's full name *")} aria-label={t("Name")} className="h-10" />
+        <Input ref={nameRef} value={guest.fullName} onChange={(e) => { setGuest({ ...guest, fullName: e.target.value }); setSameAsk(null); }} placeholder={mode === "meeting" ? t("Person booking *") : t("Guest's full name *")} aria-label={t("Name")} className="h-10" />
         {!someoneElse && (
           <KnownCustomerNote phone={guest.phone} lookup={lookup} className="min-w-0 sm:col-span-2"
             action={known && <button type="button" onClick={() => setSomeoneElse(true)} className="shrink-0 rounded-lg px-2 py-1 text-[11px] font-medium text-muted-foreground ring-1 ring-border hover:bg-muted hover:text-foreground">{t("Someone else")}</button>} />
@@ -205,9 +213,13 @@ export function QuickBook({ room, mode, today, from, methods, canPay, onDone }: 
             <button type="button" className="font-medium text-foreground underline underline-offset-2" onClick={() => setSomeoneElse(false)}>{t("Undo")}</button>
           </p>
         )}
-        {mode === "meeting"
-          ? <Input value={company} onChange={(e) => setCompany(e.target.value)} placeholder={t("Company (optional)")} aria-label={t("Company")} className="h-10" />
-          : <Input value={guest.idNumber} onChange={(e) => setGuest({ ...guest, idNumber: e.target.value })} placeholder={t("ID / passport no. (optional)")} aria-label={t("ID number")} className="h-10" />}
+        {!someoneElse && known?.room && mode !== "meeting" && (
+          <p className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-950 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100 sm:col-span-2">
+            <TriangleAlert className="mt-px size-3.5 shrink-0" />
+            <span>{t("This number belongs to {name}, who is in room {room} now. If the guest at the desk is someone else, write their own name.", { name: known.name, room: known.room })}</span>
+          </p>
+        )}
+        {mode === "meeting" && <Input value={company} onChange={(e) => setCompany(e.target.value)} placeholder={t("Company (optional)")} aria-label={t("Company")} className="h-10" />}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 sm:col-span-2">
           <span className="inline-flex items-center gap-2"><span className="text-xs text-muted-foreground">{mode === "meeting" ? t("People") : t("Adults")}</span><Step value={adults} min={1} max={maxAdults} onChange={setAdults} label={mode === "meeting" ? t("people") : t("adults")} /></span>
           {mode !== "meeting" && (type?.maxChildren ?? 0) > 0 && <span className="inline-flex items-center gap-2"><span className="text-xs text-muted-foreground">{t("Kids")}</span><Step value={children} min={0} max={type?.maxChildren ?? 0} onChange={setChildren} label={t("kids")} /></span>}
@@ -253,7 +265,8 @@ export function QuickBook({ room, mode, today, from, methods, canPay, onDone }: 
         </div>
       )}
 
-      <Button className="h-11 w-full" disabled={saving || !free} onClick={save}>
+      {sameAsk && <SameGuestAsk message={sameAsk} pending={saving} onSame={() => save(true)} onOther={notTheSame} />}
+      <Button className={cn("h-11 w-full", sameAsk && "hidden")} disabled={saving || !free} onClick={() => save()}>
         {saving ? <Loader2 className="animate-spin" /> : <Icon />}
         {payWay === PROMPT && total > 0
           ? (mode === "walkIn" ? t("Check in & request {amount}", { amount: formatTZS(total) }) : mode === "meeting" ? t("Book & request {amount}", { amount: formatTZS(total) }) : t("Reserve & request {amount}", { amount: formatTZS(total) }))

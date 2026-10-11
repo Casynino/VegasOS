@@ -718,7 +718,7 @@ export default async function ReservationPage({ params, searchParams }: PageProp
               <p className="font-medium"><Link className="underline-offset-4 hover:underline" href={`/staff/guests/${r.guest.id}`}>{r.guest.fullName}</Link></p>
               {r.guest.phone && <p><a className="underline-offset-4 hover:underline" href={`tel:${r.guest.phone}`}>{r.guest.phone}</a></p>}
               {r.guest.email && <p>{r.guest.email}</p>}
-              <p className={cn(!r.guest.idNumber && "text-amber-700 dark:text-amber-400")}>{r.guest.idNumber ? `${t.locale === DEFAULT_LOCALE ? r.guest.idType?.replace("_", " ").toLowerCase() ?? "ID" : t(idLabel(r.guest.idType))} ${r.guest.idNumber}` : t("No ID on file")}</p>
+              {r.guest.idType && <p className="text-muted-foreground">{t("ID shown: {type}", { type: t(idLabel(r.guest.idType)) })}</p>}
               {r.guest.nationality && <p className="text-muted-foreground">{r.guest.nationality}</p>}
               {r.specialRequests && <p className="mt-2 rounded-xl bg-muted p-2.5">{t("Guest asked: {text}", { text: r.specialRequests })}</p>}
               {r.internalNotes && <p className="mt-2 rounded-xl border border-amber-500/40 bg-amber-500/10 p-2.5">{t("Staff note: {text}", { text: r.internalNotes })}</p>}

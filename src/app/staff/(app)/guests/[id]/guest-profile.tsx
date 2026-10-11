@@ -155,7 +155,7 @@ export async function GuestProfile({ id, user }: { id: string; user: CurrentUser
     { label: t("Phone"), value: g.phone, warn: !g.phone },
     { label: t("Other phone"), value: g.altPhone },
     { label: t("Email"), value: g.email },
-    { label: t("ID"), value: g.idNumber ? `${t(ID_WORD[g.idType ?? ""] ?? "ID")} · ${g.idNumber}` : t("No ID on file"), warn: !g.idNumber },
+    { label: t("ID"), value: g.idType ? t(ID_WORD[g.idType] ?? "ID") : null },
     { label: t("Nationality"), value: g.nationality },
     { label: t("Birthday"), value: g.dateOfBirth ? day(g.dateOfBirth) : null },
     { label: t("Address"), value: g.address },

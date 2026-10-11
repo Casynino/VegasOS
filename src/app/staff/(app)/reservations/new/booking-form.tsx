@@ -21,6 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect } from "@/components/ui/native-select";
 import { validPhone } from "@/lib/guest-messages";
 import { IdPicker, NationalityPicker } from "@/components/staff/id-nationality";
+import { SameGuestAsk } from "@/components/staff/same-guest";
 import { checkAvailabilityAction, createReservationAction, searchGuestsAction, type AvailabilityResult } from "../actions";
 import type { PayAccount } from "@/lib/pay-account";
 import type { BillMenu } from "@/server/services/restaurant";
@@ -126,6 +127,8 @@ export function BookingForm(props: {
   const [requests, setRequests] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, startSaving] = useTransition();
+  // "This guest is already in room X" — the desk says whether it is the same person taking another room.
+  const [sameAsk, setSameAsk] = useState<string | null>(null);
   // Payment taken now (walk-in / short time, or a deposit). null method = not paying now.
   // Pay now is picked first (owner, 2026-10-05) — by mobile money when it is set up; "Pay later" is one tap away.
   const [payMethod, setPayMethod] = useState<string | null>(() => (props.methods.length > 0 ? (props.mobilePay ? PROMPT : props.methods[0]?.id ?? null) : null));
@@ -225,7 +228,7 @@ export function BookingForm(props: {
   const payNow = payMethod ? (payAmount === "" ? guestPart : Math.round(Number(payAmount) || 0)) : 0;
 
 
-  function submit() {
+  function submit(sameGuest = false) {
     if (!guest.fullName.trim()) return toast.error(t("Enter the guest's name."));
     if (!validPhone(guest.phone)) { document.getElementById("g-phone")?.focus(); return toast.error(t("Enter the guest's phone number — the booking details are sent to it.")); }
     if (lines.length === 0) return toast.error(t("Add at least one room."));
@@ -240,6 +243,7 @@ export function BookingForm(props: {
         externalReference: externalRef || undefined,
         status,
         checkInNow,
+        sameGuest,
         // "Now" means the moment the button is pressed.
         stay: mode === "dayUse" && shortNow ? { ...stay, ...darNow() } : stay,
         guest: { ...guest, id: guest.id || null },
@@ -261,6 +265,7 @@ export function BookingForm(props: {
         companyName: meetingMode ? companyName.trim() || undefined : undefined,
       });
       if (res.ok) {
+        setSameAsk(null);
         toast.success(`${checkInNow ? t("Checked in") : t("Reserved")} — ${res.data.reference}${res.data.prompt ? ` · ${t("payment request sent to their phone")}` : ""}`);
         if (res.data.promptError) toast.error(t("The payment request was not sent: {error} Send it again from the booking.", { error: res.data.promptError }), { duration: 10000 });
         // Straight to the booking with the WhatsApp message ready (booking details, or the welcome for a walk-in) —
@@ -268,6 +273,8 @@ export function BookingForm(props: {
         const q = new URLSearchParams(meetingMode ? {} : { sent: checkInNow ? "welcome" : "new" });
         if (res.data.prompt) q.set("paying", res.data.prompt.id);
         router.push(`/staff/reservations/${res.data.id}${q.size ? `?${q}` : ""}`);
+      } else if (res.fieldErrors?.sameGuest) {
+        setSameAsk(res.error);
       } else {
         toast.error(res.error);
         if (res.code === "UNAVAILABLE") {
@@ -975,7 +982,11 @@ export function BookingForm(props: {
               </p>
             )}
 
-            <Button className="h-12 w-full rounded-2xl text-sm font-semibold" onClick={submit} disabled={saving || lines.length === 0 || payNow > guestPart || (overCredit && !props.canApproveCredit)}>
+            {sameAsk && (
+              <SameGuestAsk message={sameAsk} pending={saving} onSame={() => submit(true)}
+                onOther={() => { setSameAsk(null); setGuest({ ...guest, id: null, createNew: true, fullName: "" }); document.getElementById("g-name")?.focus(); }} />
+            )}
+            <Button className={cn("h-12 w-full rounded-2xl text-sm font-semibold", sameAsk && "hidden")} onClick={() => submit()} disabled={saving || lines.length === 0 || payNow > guestPart || (overCredit && !props.canApproveCredit)}>
               {saving ? <Loader2 className="animate-spin" /> : checkInNow ? <LogIn /> : <CalendarCheck />}
               {payNow > 0 && payMethod === PROMPT
                 ? (checkInNow ? t("Check in & request {amount}", { amount: formatTZS(payNow) }) : t("Save & request {amount}", { amount: formatTZS(payNow) }))
@@ -1208,7 +1219,7 @@ function GuestCard({ guest, setGuest, meeting, staff }: {
                       <span className="grid size-8 shrink-0 place-items-center rounded-full bg-sky-500/12 text-[11px] font-bold text-sky-700 dark:text-sky-300">{initials(g.fullName)}</span>
                       <span className="min-w-0 flex-1 leading-tight">
                         <span className="flex items-center gap-1.5 font-medium">{g.fullName}{g.vip && <span className="rounded-full bg-[oklch(0.75_0.13_80)]/20 px-1.5 text-[9px] font-bold text-[oklch(0.5_0.12_75)] dark:text-[#f0cf86]">VIP</span>}</span>
-                        <span className="block truncate text-xs text-muted-foreground">{[g.reference, g.phone, g.idNumber].filter(Boolean).join(" · ")}</span>
+                        <span className="block truncate text-xs text-muted-foreground">{[g.reference, g.phone].filter(Boolean).join(" · ")}</span>
                       </span>
                       <span className="shrink-0 text-[11px] text-muted-foreground">{g.stays ? t.plural(g.stays, "{n} stay", "{n} stays") : t("New")}</span>
                     </button>
@@ -1261,8 +1272,7 @@ function GuestCard({ guest, setGuest, meeting, staff }: {
             ) : (
               <>
                 <div className="space-y-2 @[36rem]:col-span-2"><span className={LBL}>{t("ID")} <span className="font-normal normal-case tracking-normal">{t("(optional until check-in)")}</span></span>
-                  <IdPicker type={guest.idType} number={guest.idNumber} numberId="g-idno"
-                    onType={(v) => setGuest({ ...guest, idType: v })} onNumber={(v) => setGuest({ ...guest, idNumber: v })} />
+                  <IdPicker type={guest.idType} onType={(v) => setGuest({ ...guest, idType: v })} />
                 </div>
                 <div className="space-y-2 @[36rem]:col-span-2"><span className={LBL}>{t("Nationality")}</span>
                   <NationalityPicker value={guest.nationality} onChange={(v) => setGuest({ ...guest, nationality: v })} />

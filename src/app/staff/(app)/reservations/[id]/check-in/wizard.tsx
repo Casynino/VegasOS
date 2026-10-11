@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { AlertCircle, ArrowLeft, ArrowRight, BedDouble, Check, Loader2, LogIn } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { IdPicker, NationalityPicker } from "@/components/staff/id-nationality";
+import { SameGuestAsk } from "@/components/staff/same-guest";
 import { formatTZS } from "@/lib/format";
 import { ROOM_STATUS_META } from "@/lib/room-status";
 import type { RoomStatus } from "@/generated/prisma/enums";
@@ -47,18 +48,20 @@ export function CheckInWizard({ reservation: r, guest: initial }: { reservation:
   });
   const [showMore, setShowMore] = useState(!initial.address);
   const [pending, start] = useTransition();
-  const missing = (["phone", "idType", "idNumber", "nationality"] as const).filter((k) => !guest[k]);
+  const [sameAsk, setSameAsk] = useState<string | null>(null);
+  const missing = (["phone", "idType", "nationality"] as const).filter((k) => !guest[k]);
   const roomNotReady = r.rooms.filter((x) => !["AVAILABLE", "READY", "RESERVED"].includes(x.roomStatus));
   const set = (k: keyof Guest) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setGuest({ ...guest, [k]: e.target.value });
 
-  function submit() {
+  function submit(sameGuest = false) {
     start(async () => {
-      const res = await checkInWizardAction({ reservationId: r.id, eta, guest, checklist: checks });
+      const res = await checkInWizardAction({ reservationId: r.id, eta, guest, checklist: checks, sameGuest });
       if (res.ok) {
         toast.success(res.message);
         res.data.warnings.forEach((w) => toast.warning(t(w), { duration: 10000 }));
         router.push(`/staff/reservations/${r.id}/welcome`);
-      } else toast.error(res.error, { duration: 8000 });
+      } else if (res.fieldErrors?.sameGuest) setSameAsk(res.error);
+      else toast.error(res.error, { duration: 8000 });
     });
   }
 
@@ -93,10 +96,9 @@ export function CheckInWizard({ reservation: r, guest: initial }: { reservation:
               <Field label={msg("Full name")} value={guest.fullName} onChange={set("fullName")} span />
               <Field label={msg("Phone")} value={guest.phone} onChange={set("phone")} missing={!guest.phone} type="tel" />
               <Field label={msg("Email")} value={guest.email} onChange={set("email")} type="email" />
-              <div className={cn("space-y-1.5 rounded-lg sm:col-span-2", (!guest.idType || !guest.idNumber) && "ring-2 ring-amber-400/60 ring-offset-2 ring-offset-card")}>
-                <Label htmlFor="idNumber">{t("ID")}</Label>
-                <IdPicker type={guest.idType} number={guest.idNumber} numberId="idNumber" size="sm"
-                  onType={(v) => setGuest((g) => ({ ...g, idType: v }))} onNumber={(v) => setGuest((g) => ({ ...g, idNumber: v }))} />
+              <div className={cn("space-y-1.5 rounded-lg sm:col-span-2", !guest.idType && "ring-2 ring-amber-400/60 ring-offset-2 ring-offset-card")}>
+                <Label>{t("ID")}</Label>
+                <IdPicker type={guest.idType} size="sm" onType={(v) => setGuest((g) => ({ ...g, idType: v }))} />
               </div>
               <div className="space-y-1.5 sm:col-span-2">
                 <Label>{t("Nationality")}</Label>
@@ -174,9 +176,13 @@ export function CheckInWizard({ reservation: r, guest: initial }: { reservation:
                 </label>
               ))}
             </div>
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-4">
+            {sameAsk && (
+              <SameGuestAsk message={sameAsk} pending={pending} onSame={() => submit(true)}
+                onOther={() => { setSameAsk(null); setGuest({ ...guest, fullName: "" }); setStep(1); }} />
+            )}
+            <div className={cn("flex flex-wrap items-center justify-between gap-2 border-t pt-4", sameAsk && "hidden")}>
               <Button variant="outline" onClick={() => setStep(2)}><ArrowLeft /> {t("Back")}</Button>
-              <Button size="lg" className="h-12 px-6 text-base" disabled={pending || !checks.guestVerified || roomNotReady.length > 0} onClick={submit}>
+              <Button size="lg" className="h-12 px-6 text-base" disabled={pending || !checks.guestVerified || roomNotReady.length > 0} onClick={() => submit()}>
                 {pending ? <Loader2 className="animate-spin" /> : <LogIn />} {t("CHECK IN GUEST")}
               </Button>
             </div>

@@ -9,7 +9,7 @@ import { AppError, isExclusionViolation, isUniqueViolation } from "../errors";
 import { getSettingsTx, stayConfig } from "../settings";
 import { findAvailableRooms, lockRoomTypes } from "./availability";
 import { recalculateReservation, syncRoomNights, ACTIVE_STATUSES } from "./reservation-financials";
-import { normalizePhone, resolveGuest, typedDifferences, type GuestInput } from "./guests";
+import { deskGuestTx, normalizePhone, resolveGuest, typedDifferences, type GuestInput } from "./guests";
 import { thankYouAfterCheckout } from "./thank-you";
 import { notifyReservationGuestSoon } from "./guest-comms";
 import { readerT, roomStatusWord, setRoomStatusTx } from "./rooms";
@@ -76,6 +76,12 @@ export interface CreateReservationInput {
   rooms: RoomRequest[];
   status?: "INQUIRY" | "RESERVED" | "CONFIRMED";
   checkInNow?: boolean;
+  /**
+   * ONE GUEST, ONE ROOM. `false` — the desk is booking: refused when this customer already holds another room for
+   * these dates, with the room named, so the desk can say whether it really is the same person. `true` — they said
+   * yes. Left out (a public page, a group, an import): not asked.
+   */
+  sameGuest?: boolean | null;
   specialRequests?: string | null;
   internalNotes?: string | null;
   externalReference?: string | null;
@@ -171,6 +177,45 @@ export async function createReservation(input: CreateReservationInput, actor: Ac
 }
 
 /** Inside an open transaction (group bookings create all their rooms in one). */
+/**
+ * Rooms this customer already holds that a new stay would sit beside: in the house now (a check-out that is overdue
+ * still counts), or booked for the same dates. Rooms of the same booking or the same group are theirs on purpose.
+ */
+async function roomsHeldBy(tx: Tx, guestId: string, span: { startAt: Date; endAt: Date }, now: Date, except: { reservationId?: string | null; groupId?: string | null } = {}) {
+  // Two desks booking the same customer at once: one waits for the other, then sees their room.
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`guest-room:${guestId}`}))::text`;
+  const rows = await tx.reservationRoom.findMany({
+    where: {
+      status: { in: ["CHECKED_IN", "RESERVED", "CONFIRMED"] },
+      roomType: { category: "GUEST_ROOM" },
+      startAt: { lt: span.endAt },
+      reservation: {
+        guestId,
+        ...(except.reservationId ? { id: { not: except.reservationId } } : {}),
+        ...(except.groupId ? { OR: [{ groupId: null }, { groupId: { not: except.groupId } }] } : {}),
+      },
+    },
+    orderBy: { room: { number: "asc" } },
+    select: { status: true, endAt: true, room: { select: { number: true } }, reservation: { select: { guest: { select: { fullName: true } } } } },
+  });
+  const stillIn = new Date(now.getTime() + 12 * 3_600_000);
+  return rows
+    .filter((x) => (x.status === "CHECKED_IN" && x.endAt < stillIn ? stillIn : x.endAt) > span.startAt)
+    .map((x) => ({ room: x.room.number, inHouse: x.status === "CHECKED_IN", name: x.reservation.guest.fullName }));
+}
+
+/** Said to the desk, with the room named — they answer "same guest, another room" or "someone else". */
+function sameGuestRefusal(held: { room: string; inHouse: boolean; name: string }[]) {
+  const inHouse = held.filter((h) => h.inHouse);
+  const rooms = [...new Set((inHouse.length ? inHouse : held).map((h) => h.room))].join(", ");
+  return new AppError(
+    inHouse.length
+      ? msgf("{name} is already checked in to room {room}.", { name: held[0].name, room: rooms })
+      : msgf("{name} already has room {room} booked for these dates.", { name: held[0].name, room: rooms }),
+    "CONFLICT", { sameGuest: rooms },
+  );
+}
+
 export async function createReservationTx(tx: Tx, input: CreateReservationInput, actor: Actor, now: Date) {
   const settings = await getSettingsTx(tx);
   const source = await tx.bookingSource.findUnique({ where: { code: input.sourceCode } });
@@ -267,7 +312,11 @@ export async function createReservationTx(tx: Tx, input: CreateReservationInput,
     return { request: r, room, type: t, rate: t.baseRate, manual, promotion: q.promotion, promoPerNight: q.promoPerNight, overridden: manual > 0, net: q.net };
   });
 
-  const guestId = await resolveGuest(tx, input.guest);
+  const guestId = await resolveGuest(tx, { ...input.guest, ownPerson: true });
+  if (input.sameGuest === false && !meeting && !input.groupId) {
+    const held = await roomsHeldBy(tx, guestId, stay, now);
+    if (held.length) throw sameGuestRefusal(held);
+  }
   // Booked on a public page by a customer found by their phone: what they typed differently goes in the notes.
   const typed = await typedDifferences(tx, guestId, input.guest);
   // A group room billed to the group (its company or contact person); otherwise a company, or the guest.
@@ -502,9 +551,9 @@ export async function confirmReservation(reservationId: string, actor: Actor) {
   });
 }
 
-export async function checkIn(reservationId: string, actor: Actor, reservationRoomIds?: string[] | null, now = new Date()) {
+export async function checkIn(reservationId: string, actor: Actor, reservationRoomIds?: string[] | null, now = new Date(), opts: { sameGuest?: boolean | null } = {}) {
   await expireHoldsBeforeTaking({ reservationId }, now);
-  const res = await run((tx) => checkInTx(tx, reservationId, actor, reservationRoomIds, now));
+  const res = await run((tx) => checkInTx(tx, reservationId, actor, reservationRoomIds, now, opts));
   // The guest's welcome on WhatsApp — room, Wi-Fi, check-out, their stay link (only with a provider; never blocks).
   notifyReservationGuestSoon(reservationId, "WELCOME");
   return res;
@@ -515,7 +564,7 @@ const OVERRIDABLE_NOT_READY = ["DIRTY", "CLEANING"];
 
 async function checkInTx(
   tx: Tx, reservationId: string, actor: Actor, reservationRoomIds?: string[] | null, now = new Date(),
-  opts: { notReadyOverride?: string | null } = {},
+  opts: { notReadyOverride?: string | null; sameGuest?: boolean | null } = {},
 ) {
   {
     const settings = await getSettingsTx(tx);
@@ -524,6 +573,12 @@ async function checkInTx(
     const r = await loadForUpdate(tx, reservationId);
     const targets = pickRooms(r.rooms, reservationRoomIds).filter((x) => x.status === "RESERVED" || x.status === "CONFIRMED" || x.status === "INQUIRY");
     if (targets.length === 0) throw new AppError("There are no rooms waiting for check-in on this booking.");
+    // ONE GUEST, ONE ROOM: already in the house in another room → the desk says whether it is the same person.
+    if (opts.sameGuest === false && r.kind === "STAY" && !r.groupId) {
+      const endAt = targets.reduce((d, x) => (x.endAt > d ? x.endAt : d), now);
+      const held = (await roomsHeldBy(tx, r.guestId, { startAt: now, endAt }, now, { reservationId: r.id })).filter((h) => h.inHouse);
+      if (held.length) throw sameGuestRefusal(held);
+    }
     // A booking that held no room (pay later): its room may have gone to a guest who paid first — then another room is chosen.
     const notHeld = targets.filter((x) => x.status === "INQUIRY");
     if (notHeld.length) await lockRoomTypes(tx, notHeld.map((x) => x.roomTypeId));
@@ -1099,6 +1154,7 @@ export async function assignAndCheckIn(
     assignments?: { reservationRoomId: string; roomId: string }[];
     guest?: { fullName?: string | null; phone?: string | null; email?: string | null; idType?: string | null; idNumber?: string | null; nationality?: string | null };
     notReadyOverride?: string | null;
+    sameGuest?: boolean | null;
   },
   actor: Actor,
   now = new Date(),
@@ -1115,7 +1171,8 @@ export async function assignAndCheckIn(
     // Details confirmed or corrected at the desk. Blank fields never wipe stored data.
     const g = input.guest;
     if (g) {
-      const guest = await tx.guest.findUniqueOrThrow({ where: { id: r.guestId } });
+      // Another name altogether on a customer with other bookings: their own customer, nobody is renamed.
+      const guest = await tx.guest.findUniqueOrThrow({ where: { id: await deskGuestTx(tx, r.id, r.guestId, g, actor) } });
       const want = {
         fullName: g.fullName?.trim() || undefined,
         phone: normalizePhone(g.phone) ?? undefined,
@@ -1131,7 +1188,7 @@ export async function assignAndCheckIn(
         await audit(tx, actor, { action: "guest.updated_at_checkin", entityType: "Guest", entityId: guest.id, before, after: patch });
       }
     }
-    return checkInTx(tx, reservationId, actor, null, now, { notReadyOverride: input.notReadyOverride });
+    return checkInTx(tx, reservationId, actor, null, now, { notReadyOverride: input.notReadyOverride, sameGuest: input.sameGuest });
   });
   notifyReservationGuestSoon(reservationId, "WELCOME");
   return res;
@@ -1767,10 +1824,16 @@ export interface WelcomeChecklist {
 /** Check-in wizard: fill missing guest details, save the welcome checklist, then check in — one transaction chain. */
 export async function checkInWithDetails(
   reservationId: string,
-  input: { guest: { fullName: string; phone?: string | null; email?: string | null; idType?: string | null; idNumber?: string | null; nationality?: string | null; address?: string | null }; checklist: WelcomeChecklist; eta?: string | null },
+  input: { guest: { fullName: string; phone?: string | null; email?: string | null; idType?: string | null; idNumber?: string | null; nationality?: string | null; address?: string | null }; checklist: WelcomeChecklist; eta?: string | null; sameGuest?: boolean | null },
   actor: Actor,
   now = new Date(),
 ) {
+  if (!input.guest.fullName?.trim()) throw new AppError("Guest name is required.", "VALIDATION", { fullName: "Required" });
+  // Another name altogether on a customer with other bookings: their own customer, nobody is renamed.
+  await db.$transaction(async (tx) => {
+    const b = await tx.reservation.findUnique({ where: { id: reservationId }, select: { guestId: true } });
+    if (b) await deskGuestTx(tx, reservationId, b.guestId, input.guest, actor);
+  });
   const r = await db.reservation.findUnique({ where: { id: reservationId }, include: { guest: true } });
   if (!r) throw new AppError("Reservation not found.", "NOT_FOUND");
   if (!input.guest.fullName?.trim()) throw new AppError("Guest name is required.", "VALIDATION", { fullName: "Required" });
@@ -1793,5 +1856,5 @@ export async function checkInWithDetails(
       await audit(tx, actor, { action: "guest.updated_at_checkin", entityType: "Guest", entityId: r.guestId, before, after: next });
     }
   });
-  return checkIn(reservationId, actor, null, now);
+  return checkIn(reservationId, actor, null, now, { sameGuest: input.sameGuest });
 }

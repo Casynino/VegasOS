@@ -238,6 +238,8 @@ const CreateSchema = z.object({
   externalReference: z.string().trim().max(60).optional(),
   status: z.enum(["INQUIRY", "RESERVED", "CONFIRMED"]).default("RESERVED"),
   checkInNow: z.boolean().default(false),
+  /** ONE GUEST, ONE ROOM: true once the desk said "same guest, another room" (see sameGuest on the booking). */
+  sameGuest: z.boolean().optional(),
   stay: StaySchema,
   guest: z.object({
     id: z.string().optional().nullable(),
@@ -306,6 +308,7 @@ export async function createReservationAction(input: z.input<typeof CreateSchema
         ...data,
         stay: await toStayRequest(data.stay),
         guest: { ...data.guest, email: data.guest.email || null },
+        sameGuest: data.sameGuest ?? false,
       },
       actor,
     );
@@ -426,6 +429,8 @@ const HereSchema = z.object({
   moveArrivalToToday: z.boolean().default(false),
   /** Housekeeping has just finished: mark the room clean & ready first (one step for the desk). */
   markReady: z.boolean().default(false),
+  /** ONE GUEST, ONE ROOM: true once the desk said "same guest, another room" (see sameGuest on the booking). */
+  sameGuest: z.boolean().optional(),
   guest: z.object({
     fullName: z.string().trim().max(120).optional(),
     phone: z.string().trim().max(30).optional(),
@@ -464,7 +469,7 @@ export async function checkInHereAction(input: z.input<typeof HereSchema>) {
       await changeStayDates(rr.id, { arrivalDate: today, departureDate: original.departureDate }, actor);
     }
     try {
-      const res = await assignAndCheckIn(d.reservationId, { guest: d.guest }, actor);
+      const res = await assignAndCheckIn(d.reservationId, { guest: d.guest, sameGuest: d.sameGuest ?? false }, actor);
       refresh(d.reservationId);
       revalidatePath("/staff/rooms");
       return res;
@@ -522,6 +527,8 @@ const QuickCheckInSchema = z.object({
     nationality: z.string().trim().max(60).optional(),
   }).optional(),
   notReadyOverride: z.string().trim().max(300).optional(),
+  /** ONE GUEST, ONE ROOM: true once the desk said "same guest, another room" (see sameGuest on the booking). */
+  sameGuest: z.boolean().optional(),
   /** New stay dates set on the check-in screen (an early guest moved to today, a stay made longer…) — applied first. */
   dates: z.array(z.object({
     reservationRoomId: z.string().min(1),
@@ -561,7 +568,7 @@ export async function quickCheckInAction(input: z.input<typeof QuickCheckInSchem
         moved.push({ id: rr.id, roomId: rr.roomId, original: { arrivalDate: iso(rr.arrivalDate), departureDate: iso(rr.departureDate) } });
         if (to) assignments = assignments.filter((y) => y !== to);
       }
-      const res = await assignAndCheckIn(d.reservationId, { assignments, guest: d.guest, notReadyOverride: d.notReadyOverride || null }, actor);
+      const res = await assignAndCheckIn(d.reservationId, { assignments, guest: d.guest, notReadyOverride: d.notReadyOverride || null, sameGuest: d.sameGuest ?? false }, actor);
       const warnings = [...(res.warnings ?? [])];
       for (const x of changes.filter(sameArrival)) {
         try { await changeStayDates(x.reservationRoomId, { arrivalDate: x.arrivalDate, departureDate: x.departureDate }, actor); }
@@ -865,6 +872,8 @@ const WizardSchema = z.object({
     address: z.string().trim().max(200).optional(),
   }),
   checklist: z.record(z.string(), z.boolean()),
+  /** ONE GUEST, ONE ROOM: true once the desk said "same guest, another room" (see sameGuest on the booking). */
+  sameGuest: z.boolean().optional(),
 });
 
 export async function checkInWizardAction(input: z.input<typeof WizardSchema>) {
@@ -872,7 +881,7 @@ export async function checkInWizardAction(input: z.input<typeof WizardSchema>) {
     const user = await authorize("reservations.check_in");
     const d = parseInput(WizardSchema, input);
     await requireGuestPhone(d.reservationId, d.guest?.phone);
-    const res = await checkInWithDetails(d.reservationId, { guest: d.guest, checklist: d.checklist, eta: d.eta || null }, await actorFor(user));
+    const res = await checkInWithDetails(d.reservationId, { guest: d.guest, checklist: d.checklist, eta: d.eta || null, sameGuest: d.sameGuest ?? false }, await actorFor(user));
     refresh(d.reservationId);
     return res;
   }, msg("Guest checked in. Welcome!"));

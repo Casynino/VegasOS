@@ -155,5 +155,7 @@ const catalog: Catalog = {
   "Room service · Order {number}": "客房送餐 · 订单 {number}",
   "Restaurant — {table} · Order {number}": "餐厅 — {table} · 订单 {number}",
   "Restaurant · Order {number}": "餐厅 · 订单 {number}",
+  "{name} is already checked in to room {room}.": "{name} 已入住 {room} 号房。",
+  "{name} already has room {room} booked for these dates.": "{name} 在这些日期已预订 {room} 号房。",
 };
 export default catalog;
