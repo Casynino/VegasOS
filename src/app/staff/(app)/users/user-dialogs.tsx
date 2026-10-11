@@ -138,6 +138,26 @@ export function EditUserDialog({ user, roles, isSelf, screens = null }: {
                 </>
               )}
             </ActionForm>
+            <Separator />
+            {!confirmDelete ? (
+              <button type="button" onClick={() => setConfirmDelete(true)} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-rose-600 transition-colors hover:bg-rose-500/10 dark:text-rose-400">
+                <Trash2 className="size-3.5 shrink-0" />{t("Remove this account")}
+              </button>
+            ) : (
+              <ActionForm action={deleteUserAction} onSuccess={() => setOpen(false)} className="space-y-2">
+                {({ pending }) => (
+                  <>
+                    <input type="hidden" name="userId" value={user.id} />
+                    <p className="text-sm font-medium text-rose-600 dark:text-rose-400">{t("Remove {name}?", { name: user.fullName })}</p>
+                    <p className="text-xs text-muted-foreground">{t("This cannot be undone. If they have records in the system the delete will be blocked — deactivate instead.")}</p>
+                    <div className="flex gap-2">
+                      <Button type="submit" variant="destructive" size="sm" disabled={pending}>{pending && <Loader2 className="animate-spin" />}<Trash2 />{t("Yes, remove")}</Button>
+                      <Button type="button" variant="ghost" size="sm" onClick={() => setConfirmDelete(false)}>{t("Cancel")}</Button>
+                    </div>
+                  </>
+                )}
+              </ActionForm>
+            )}
           </>
         )}
         {screens && (
@@ -164,30 +184,6 @@ export function EditUserDialog({ user, roles, isSelf, screens = null }: {
               )}
               <p className="text-xs text-muted-foreground">{t("A screen stays signed in while it is used. Sign one out here if it is lost or replaced — the others keep working.")}</p>
             </div>
-          </>
-        )}
-        {!isSelf && (
-          <>
-            <Separator />
-            {!confirmDelete ? (
-              <button type="button" onClick={() => setConfirmDelete(true)} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-rose-600 transition-colors hover:bg-rose-500/10 dark:text-rose-400">
-                <Trash2 className="size-3.5 shrink-0" />{t("Remove this account")}
-              </button>
-            ) : (
-              <ActionForm action={deleteUserAction} onSuccess={() => setOpen(false)} className="space-y-2">
-                {({ pending }) => (
-                  <>
-                    <input type="hidden" name="userId" value={user.id} />
-                    <p className="text-sm font-medium text-rose-600 dark:text-rose-400">{t("Remove {name}?", { name: user.fullName })}</p>
-                    <p className="text-xs text-muted-foreground">{t("This cannot be undone. If they have records in the system the delete will be blocked — deactivate instead.")}</p>
-                    <div className="flex gap-2">
-                      <Button type="submit" variant="destructive" size="sm" disabled={pending}>{pending && <Loader2 className="animate-spin" />}<Trash2 />{t("Yes, remove")}</Button>
-                      <Button type="button" variant="ghost" size="sm" onClick={() => setConfirmDelete(false)}>{t("Cancel")}</Button>
-                    </div>
-                  </>
-                )}
-              </ActionForm>
-            )}
           </>
         )}
       </DialogContent>
