@@ -31,10 +31,7 @@ export async function changePasswordAction(_prev: unknown, formData: FormData): 
     const weak = validatePasswordStrength(input.newPassword);
     if (weak) throw new AppError(weak, "VALIDATION", { newPassword: weak });
     const user = await db.user.findUniqueOrThrow({ where: { id: actor.id } });
-    if (user.mustChangePassword) {
-      // First sign-in: they just typed the temporary password — only a new, different one is asked.
-      if (await verifyPassword(user.passwordHash, input.newPassword)) throw new AppError("Choose a password different from the temporary one.", "VALIDATION", { newPassword: msg("Same") });
-    } else if (!input.currentPassword) {
+    if (!input.currentPassword) {
       throw new AppError("Enter your current password.", "VALIDATION", { currentPassword: msg("Required") });
     } else if (!(await verifyPassword(user.passwordHash, input.currentPassword))) {
       throw new AppError("Current password is incorrect.", "VALIDATION", { currentPassword: msg("Incorrect") });

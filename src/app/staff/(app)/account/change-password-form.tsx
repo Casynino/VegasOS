@@ -8,21 +8,17 @@ import { Label } from "@/components/ui/label";
 import { changePasswordAction } from "./actions";
 import { useT } from "@/i18n/client";
 
-export function ChangePasswordForm({ first }: { first: boolean }) {
+export function ChangePasswordForm() {
   const t = useT();
   return (
     <ActionForm action={changePasswordAction} resetOnSuccess className="space-y-3">
       {({ pending, fieldErrors: e }) => (
         <>
-          {first && <input type="hidden" name="first" value="1" />}
-          {/* The first time: only the new password (they just signed in with the temporary one). */}
-          {!first && (
-            <div className="space-y-1.5">
-              <Label htmlFor="currentPassword">{t("Current password")}</Label>
-              <Input id="currentPassword" name="currentPassword" type="password" autoComplete="current-password" required />
-              <FieldError message={e?.currentPassword} />
-            </div>
-          )}
+          <div className="space-y-1.5">
+            <Label htmlFor="currentPassword">{t("Current password")}</Label>
+            <Input id="currentPassword" name="currentPassword" type="password" autoComplete="current-password" required />
+            <FieldError message={e?.currentPassword} />
+          </div>
           <div className="space-y-1.5">
             <Label htmlFor="newPassword">{t("New password")}</Label>
             <Input id="newPassword" name="newPassword" type="password" autoComplete="new-password" required />

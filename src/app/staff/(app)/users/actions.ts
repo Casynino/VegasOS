@@ -49,7 +49,7 @@ export async function createUserAction(_prev: unknown, formData: FormData): Prom
         const user = await tx.user.create({
           data: {
             fullName: input.fullName, email: input.email, phone: input.phone, roleId: role.id,
-            passwordHash: await hashPassword(input.password), mustChangePassword: !screen,
+            passwordHash: await hashPassword(input.password), mustChangePassword: false,
           },
         });
         await numberWaitersTx(tx); // a new waiter gets the next WTR number
@@ -141,7 +141,7 @@ export async function resetPasswordAction(_prev: unknown, formData: FormData): P
     await db.$transaction(async (tx) => {
       await tx.user.update({
         where: { id: target.id },
-        data: { passwordHash: await hashPassword(input.password), mustChangePassword: actor.id !== target.id },
+        data: { passwordHash: await hashPassword(input.password), mustChangePassword: false },
       });
       await tx.session.deleteMany({ where: { userId: target.id } });
       await audit(tx, { userId: actor.id, label: actor.fullName, ipAddress }, {

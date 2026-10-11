@@ -7,7 +7,6 @@ import { audit } from "@/server/audit";
 import { createSession, destroySession, getCurrentUser, hashPassword, requestMeta, verifyPassword } from "@/server/auth";
 import { rateLimit } from "@/server/rate-limit";
 import { AppError } from "@/server/errors";
-import { isRestaurantDevice } from "@/lib/permissions";
 import { msg } from "@/i18n/msg";
 import { getT } from "@/i18n/server";
 
@@ -50,9 +49,7 @@ export async function loginAction(_prev: LoginState, formData: FormData): Promis
     action: "auth.login", entityType: "User", entityId: user.id,
   });
 
-  // A person chooses their own password first; the restaurant screen (its password is the MD's) goes straight in.
-  const perms = user.mustChangePassword ? await db.permission.findMany({ where: { roles: { some: { roleId: user.roleId } } }, select: { code: true } }) : [];
-  redirect(user.mustChangePassword && !isRestaurantDevice(new Set(perms.map((p) => p.code))) ? "/staff/account?first=1" : "/staff");
+  redirect("/staff");
 }
 
 export async function logoutAction(): Promise<void> {

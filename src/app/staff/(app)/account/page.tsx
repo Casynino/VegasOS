@@ -29,8 +29,6 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function AccountPage() {
   const user = await requireUser();
   const t = await getT();
-  // A person's first sign-in: choose their own password (the restaurant screen's login never is — it is the MD's).
-  const first = user.mustChangePassword && !isRestaurantDevice(user.permissions);
   const [me, sessions, current] = await Promise.all([
     db.user.findUniqueOrThrow({ where: { id: user.id }, select: { phone: true, createdAt: true, lastLoginAt: true } }),
     db.session.findMany({ where: { userId: user.id, expiresAt: { gt: new Date() } }, orderBy: { lastSeenAt: "desc" } }),
@@ -39,12 +37,6 @@ export default async function AccountPage() {
 
   return (
     <div className="w-full space-y-6">
-      {first && (
-        <p className="rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
-          {t("Please choose your own password before continuing.")}
-        </p>
-      )}
-
       {/* Profile header */}
       <section className="relative isolate overflow-hidden rounded-[1.75rem] bg-linear-to-br from-[#1b1611] via-[#2a2016] to-[#3a2a17] p-5 text-white shadow-[0_24px_60px_-30px_rgba(40,25,5,0.75)] sm:p-7">
         <div aria-hidden className="absolute -right-16 -top-24 -z-10 size-72 rounded-full bg-[radial-gradient(circle,oklch(0.78_0.13_80/0.35),transparent_65%)]" />
@@ -84,7 +76,7 @@ export default async function AccountPage() {
           <ProfileForm fullName={user.fullName} email={user.email} phone={me.phone} />
         </Panel>
         <Panel title={<span className="flex items-center gap-2"><KeyRound className="size-4 text-muted-foreground" />{t("Password")}</span>} subtitle={t("Changing it signs you out on your other devices")}>
-          <ChangePasswordForm first={first} />
+          <ChangePasswordForm />
         </Panel>
       </div>
 

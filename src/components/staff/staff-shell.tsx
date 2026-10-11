@@ -36,11 +36,6 @@ import { LanguageSwitch } from "@/components/i18n/language-switch";
 export async function StaffShell({ children }: { children: ReactNode }) {
   const user = await requireUser();
   const pathname = (await headers()).get("x-pathname") ?? "";
-  // A person chooses their own password at first sign-in; the restaurant screen's login is the MD's own — never asked.
-  if (user.mustChangePassword && !isRestaurantDevice(user.permissions) && !pathname.startsWith("/staff/account")) {
-    redirect("/staff/account?first=1");
-  }
-
   // Stock requests to review and purchases to approve: counted for the managers who decide them.
   const reviewsStock = can(user, "expenses.approve");
   const [settings, today, newRequests, newStock, myShift] = await Promise.all([
