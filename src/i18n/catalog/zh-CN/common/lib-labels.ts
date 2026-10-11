@@ -679,5 +679,6 @@ const catalog: Catalog = {
   "Pending": "待处理",
   "Driver assigned": "已指派司机",
   "In progress": "处理中",
+  "Every day": "每天",
 };
 export default catalog;

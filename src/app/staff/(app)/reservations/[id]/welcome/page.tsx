@@ -12,6 +12,7 @@ import { getSettings } from "@/server/settings";
 import { formatMinutesLabel } from "@/lib/format";
 import { fromDbDate } from "@/lib/time/business-date";
 import { prettyPhone } from "@/lib/guest-messages";
+import { breakfastDays, breakfastHours, breakfastSchedule, stayHasBreakfast } from "@/lib/breakfast";
 import { buttonVariants } from "@/components/ui/button";
 import { ensureGuestToken, guestMessage } from "@/server/services/guest-comms";
 import { siteOrigin } from "@/server/site-origin";
@@ -58,6 +59,9 @@ export default async function WelcomeCardPage({ params }: PageProps<"/staff/rese
 
   const first = r.guest.fullName.trim().split(/\s+/)[0];
   const short = r.rooms.length > 0 && r.rooms.every((x) => x.isDayUse);
+  // Breakfast comes with a night stay in a guest room, when the hotel includes it — the same answer the guest's page gives.
+  const breakfast = stayHasBreakfast({ shortTime: short, meeting: r.kind === "MEETING" }, has("BREAKFAST"));
+  const meal = breakfastSchedule(s);
   const arrival = fromDbDate(r.arrivalDate), departure = fromDbDate(r.departureDate);
   const nights = r.rooms.reduce((m, x) => Math.max(m, x.isDayUse ? 0 : x.nights), 0);
   const roomNumbers = r.rooms.map((x) => x.room.number);
@@ -80,8 +84,23 @@ export default async function WelcomeCardPage({ params }: PageProps<"/staff/rese
         </section>
       )}
 
+      {/* What reception says at the desk — breakfast is part of the stay, never a charge. */}
+      {breakfast && (
+        <section className="flex items-start gap-3 rounded-3xl border border-amber-500/30 bg-amber-500/[0.06] p-4 print:hidden">
+          <Coffee className="mt-0.5 size-5 shrink-0 text-amber-600 dark:text-amber-400" />
+          <div className="min-w-0 text-sm">
+            <p className="font-semibold">{t("Tell {name}: breakfast is included with the room", { name: first })}</p>
+            <p className="mt-0.5 text-muted-foreground">
+              {breakfastDays(meal, t)} · <span className="font-semibold text-foreground">{breakfastHours(meal, t.locale)}</span>
+              {meal.location ? ` · ${t(meal.location)}` : ""}
+            </p>
+            <p className="mt-1 text-[12px] text-muted-foreground">{t("Complimentary — nothing is added to the bill. The hours are on the room QR page too.")}</p>
+          </div>
+        </section>
+      )}
+
       {/* ── The card (what is printed and downloaded) — in the guest's language ── */}
-      <WelcomeCard t={gt} r={r} s={s} has={has} short={short} arrival={arrival} departure={departure} nights={nights}
+      <WelcomeCard t={gt} r={r} s={s} has={has} short={short} breakfast={breakfast} arrival={arrival} departure={departure} nights={nights}
         roomNumbers={roomNumbers} first={first} phone={phone} whatsapp={whatsapp} qr={qr} />
     </div>
   );
@@ -94,14 +113,16 @@ type CardReservation = {
 type CardSettings = Awaited<ReturnType<typeof getSettings>>;
 
 /** The card itself (what is printed and downloaded), written with `t` — the guest's language. */
-function WelcomeCard({ t, r, s, has, short, arrival, departure, nights, roomNumbers, first, phone, whatsapp, qr }: {
-  t: T; r: CardReservation; s: CardSettings; has: (code: string) => boolean; short: boolean; arrival: string; departure: string;
+function WelcomeCard({ t, r, s, has, short, breakfast, arrival, departure, nights, roomNumbers, first, phone, whatsapp, qr }: {
+  t: T; r: CardReservation; s: CardSettings; has: (code: string) => boolean; short: boolean;
+  /** This stay comes with breakfast (a night stay in a guest room, and the hotel includes it). */
+  breakfast: boolean; arrival: string; departure: string;
   nights: number; roomNumbers: string[]; first: string; phone: string; whatsapp: string; qr: string;
 }) {
   const roomTypes = [...new Set(r.rooms.map((x) => x.roomType.name))].map((x) => t(x)).join(" · ");
 
   const serviceTiles = [
-    ...(has("BREAKFAST") && !short ? [{ icon: Coffee, label: t("Breakfast"), value: s.breakfastHours ? t("Included · {hours}", { hours: s.breakfastHours }) : t("Included") }] : []),
+    ...(breakfast ? [{ icon: Coffee, label: t("Breakfast"), value: t("Included · {hours}", { hours: breakfastHours(breakfastSchedule(s), t.locale) }) }] : []),
     ...(has("RESTAURANT") ? [{ icon: UtensilsCrossed, label: t("Restaurant"), value: s.restaurantHours ?? t("Open daily") }] : []),
     ...(has("BAR") ? [{ icon: Wine, label: t("Bar & lounge"), value: s.barHours ?? t("Open daily") }] : []),
     { icon: Soup, label: t("Room service"), value: s.roomServiceFee ? t("Order by QR · TZS {fee} delivery", { fee: s.roomServiceFee.toLocaleString("en-US") }) : t("Order by QR") },
@@ -166,7 +187,7 @@ function WelcomeCard({ t, r, s, has, short, arrival, departure, nights, roomNumb
             <Chip icon={Moon}>{short ? t("Short stay") : t.plural(nights, "{n} night", "{n} nights")}</Chip>
             <Chip icon={Users}>{t.plural(r.adults, "{n} adult", "{n} adults")}{r.children ? ` · ${t.plural(r.children, "{n} child", "{n} children")}` : ""}</Chip>
             <Chip icon={BedDouble}>{roomTypes}</Chip>
-            {has("BREAKFAST") && !short && <Chip icon={Coffee}>{t("Breakfast included")}</Chip>}
+            {breakfast && <Chip icon={Coffee}>{t("Breakfast included")}</Chip>}
           </div>
 
           {/* Wi-Fi */}

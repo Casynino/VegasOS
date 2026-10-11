@@ -1,4 +1,6 @@
 import "server-only";
+import { breakfastHours, breakfastSchedule } from "@/lib/breakfast";
+import { breakfastIncluded } from "@/server/services/breakfast";
 import { db } from "../db";
 import { audit } from "../audit";
 import { isUniqueViolation } from "../errors";
@@ -105,8 +107,8 @@ export async function buildGuestList(now: Date = new Date()): Promise<GuestList>
         },
       },
     }),
-    // The same test the guest's welcome card uses, so the list says what the guest was told.
-    db.hotelService.findFirst({ where: { code: "BREAKFAST", isActive: true, isPublic: true }, select: { id: true } }),
+    // The same test the guest's own page and welcome card use, so the list says what the guest was told.
+    breakfastIncluded(),
   ]);
 
   const rows: GuestRow[] = stays.map((rr) => {
@@ -126,14 +128,14 @@ export async function buildGuestList(now: Date = new Date()): Promise<GuestList>
       arrival: fromDbDate(rr.arrivalDate), nights: rr.nights, shortTime: rr.isDayUse,
       leavesOn: fromDbDate(rr.departureDate), leavesAt: rr.endAt.toISOString(),
       stay: stayState([rr], today, now),
-      breakfast: breakfastFor({ shortTime: rr.isDayUse }, !!breakfast),
+      breakfast: breakfastFor({ shortTime: rr.isDayUse }, breakfast),
       request: r.specialRequests?.trim() || null,
     };
   });
 
   return {
     kind: "GUESTS", date: today, generatedAt: now.toISOString(), timezone: settings.timezone,
-    breakfastHours: settings.breakfastHours?.trim() || null, breakfastService: !!breakfast, rows: sortGuestRows(rows),
+    breakfastHours: breakfastHours(breakfastSchedule(settings)), breakfastService: breakfast, rows: sortGuestRows(rows),
   };
 }
 

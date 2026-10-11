@@ -14,6 +14,8 @@ import { englishT, type T } from "@/i18n/translate";
 import { stayBill } from "./stay-bill";
 import { ensureGuestToken } from "./guest-comms";
 import { isPayLater } from "./booking-holds";
+import { breakfastIncluded } from "./breakfast";
+import { breakfastDays, breakfastHours, breakfastSchedule, stayHasBreakfast } from "@/lib/breakfast";
 
 /**
  * The facts every guest message is written from — read from the system's own records (the booking and its folio, the
@@ -41,7 +43,7 @@ export type ReservationMessageType =
 
 /** Everything a stay's messages say, from the booking and its folio. */
 async function reservationFacts(reservationId: string, origin: string) {
-  const [bill, r, s] = await Promise.all([
+  const [bill, r, s, breakfastOn] = await Promise.all([
     stayBill(reservationId),
     db.reservation.findUnique({
       where: { id: reservationId },
@@ -53,6 +55,7 @@ async function reservationFacts(reservationId: string, origin: string) {
       },
     }),
     getSettings(),
+    breakfastIncluded(),
   ]);
   if (!bill || !r) return null;
   const [token, t] = await Promise.all([ensureGuestToken(db, reservationId), guestT(r.guest.preferredLanguage)]);
@@ -111,7 +114,17 @@ async function reservationFacts(reservationId: string, origin: string) {
   const wifi = s.wifiNetwork
     ? `${t("Network: {network}", { network: s.wifiNetwork })}${s.wifiPassword ? ` · ${t("Password: {password}", { password: s.wifiPassword })}` : ""}`
     : null;
-  return { r, t, bill, hotel, stay, money, rate, kind, links, meeting, wifi };
+  // Complimentary breakfast — said only when this stay really comes with it (the hotel includes it, a night stay in a
+  // guest room), with the hours from the one schedule in Settings. Nothing is promised otherwise.
+  const meal = breakfastSchedule(s);
+  const breakfast = stayHasBreakfast({ shortTime: dayUse, meeting: r.kind === "MEETING" }, breakfastOn)
+    ? [
+      t("Complimentary — included with your room stay."),
+      `${breakfastDays(meal, t)}: ${breakfastHours(meal, t.locale)}`,
+      meal.location ? t("Where: {place}", { place: t(meal.location) }) : null,
+    ].filter(Boolean).join("\n")
+    : null;
+  return { r, t, bill, hotel, stay, money, rate, kind, links, meeting, wifi, breakfast };
 }
 
 /**
@@ -141,7 +154,7 @@ export async function reservationMessage(reservationId: string, type: Reservatio
       subject = t("Your booking {ref} — {hotel}", { ref, hotel: hotel.name });
       break;
     case "WELCOME":
-      text = welcomeMessage({ hotel, name, stay, money, wifi: f.wifi, stayUrl: links.stay }, t);
+      text = welcomeMessage({ hotel, name, stay, money, breakfast: f.breakfast, wifi: f.wifi, stayUrl: links.stay }, t);
       subject = t("Welcome to {hotel}", { hotel: hotel.name });
       break;
     case "CHECKOUT":

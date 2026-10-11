@@ -5,6 +5,8 @@ import { onlinePayAvailable, stayBillPayOnline } from "@/server/services/online-
 import { guestRequestNotes } from "@/server/services/room-qr-page";
 import { payRoomBillOnlineAction } from "@/app/r/[token]/actions";
 import { payStayBillOnlineAction } from "@/app/stay/[token]/actions";
+import { breakfastChangesIn, breakfastClock, breakfastDays, breakfastHours, breakfastNow, breakfastSchedule, everyDay, stayHasBreakfast } from "@/lib/breakfast";
+import { breakfastIncluded } from "@/server/services/breakfast";
 import { formatMinutes, localCalendarDate } from "@/lib/time/business-date";
 import { requestLabel } from "@/components/room-qr/asks";
 import { hotelInfo } from "@/components/room-qr/contact";
@@ -42,11 +44,18 @@ export async function StayPage({ stay, s, target, via }: {
   // booking reference, phone, email or company (they would otherwise travel in the page's data).
   const shown: GuestStay = via === "room" ? { ...stay, guestName: first, reference: "", phone: null, email: null, company: null } : stay;
 
-  const [menu, online, bill, notes] = await Promise.all([
+  const [menu, online, bill, notes, breakfastOn] = await Promise.all([
     restaurantMenu(), onlinePayAvailable("roomService", s),
     stayBillPayOnline(target.kind === "room" ? { roomQrToken: target.token } : { guestToken: target.token }),
     ask ? guestRequestNotes(stay.requests.map((q) => q.id)) : Promise.resolve({} as Record<string, string>),
+    breakfastIncluded(),
   ]);
+  // Breakfast: only for a night stay that is on now or still to come, and only when the hotel includes it — said in
+  // the hotel's own time, from the one schedule in Settings.
+  const now = new Date();
+  const meal = breakfastSchedule(s);
+  const hasBreakfast = (inHouse || stay.status === "CONFIRMED" || stay.status === "RESERVED")
+    && stayHasBreakfast({ shortTime: !rooms.some((r) => r.nights > 0), meeting }, breakfastOn);
 
   const info: StayInfo = {
     hotel: s.hotelName,
@@ -59,6 +68,13 @@ export async function StayPage({ stay, s, target, via }: {
     checkInTime: formatMinutes(s.standardCheckInMinutes), checkoutTime: formatMinutes(s.checkoutMinutes), checkoutMinutes: s.checkoutMinutes,
     meetingTimes: meeting && stay.meeting ? { start: t.time(stay.meeting.start, s.timezone), end: t.time(stay.meeting.end, s.timezone) } : null,
     lateFee: s.lateCheckoutFee,
+    breakfast: hasBreakfast ? {
+      hours: breakfastHours(meal, t.locale), start: breakfastClock(meal.start, t.locale), end: breakfastClock(meal.end, t.locale),
+      days: breakfastDays(meal, t), everyDay: everyDay(meal),
+      now: inHouse ? breakfastNow(meal, now, s.timezone) : null,
+      changesInMs: breakfastChangesIn(meal, now, s.timezone) * 60_000,
+      location: meal.location, note: meal.note,
+    } : null,
     wifi: inHouse && !meeting ? { network: s.wifiNetwork || null, password: s.wifiPassword || null } : null,
     ask,
     requests: stay.requests.map((q) => ({ id: q.id, label: t(requestLabel(q.type, notes[q.id])), status: q.status, at: q.at })),
@@ -70,7 +86,7 @@ export async function StayPage({ stay, s, target, via }: {
     // Written in the guest's language, like the room card's own message (/r/[token]).
     contact: hotelInfo(s, via === "room"
       ? t("Hello, this is {name} in {place}.", { name: first, place: meeting ? t("the meeting room") : t("Room {room}", { room }) })
-      : t("Hello, this is {name} (booking {reference}).", { name: first, reference: stay.reference })),
+      : t("Hello, this is {name} (booking {reference}).", { name: first, reference: stay.reference }), t.locale),
     bookHref: "/book",
   };
   const { status } = restaurantShell(s);

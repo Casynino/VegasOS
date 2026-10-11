@@ -239,6 +239,38 @@ export function SettingsForm({ defaults: d }: { defaults: Defaults }) {
 
           <Card>
             <CardHeader>
+              <CardTitle>{t("Complimentary breakfast")}</CardTitle>
+              <CardDescription>{t("One place for breakfast. The room QR page, the welcome message, the welcome card and the printed lists all read it from here.")}</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4 sm:grid-cols-2">
+              <NativeCheckbox name="breakfastIncluded" defaultChecked={Boolean(d.breakfastIncluded)} className="sm:col-span-2"
+                label={t("Breakfast is included with room stays (night stays in guest rooms — not short-time stays or the meeting room). Never a charge on the bill.")} />
+              <Field name="breakfastStart" label={t("Breakfast starts")} type="time" d={d} errors={e} />
+              <Field name="breakfastEnd" label={t("Breakfast ends")} type="time" d={d} errors={e} />
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label>{t("Serving days")}</Label>
+                <div className="flex flex-wrap gap-x-5 gap-y-2">
+                  {/* 4 January 1970 was a Sunday. */}
+                  {[0, 1, 2, 3, 4, 5, 6].map((day) => (
+                    <NativeCheckbox key={day} name={`breakfastDay${day}`} defaultChecked={Boolean(d[`breakfastDay${day}`])}
+                      label={new Intl.DateTimeFormat(t.intl, { weekday: "long", timeZone: "UTC" }).format(new Date(Date.UTC(1970, 0, 4 + day)))} />
+                  ))}
+                </div>
+                <FieldError message={e?.breakfastDays} />
+              </div>
+              <div className="sm:col-span-2">
+                <Field name="breakfastLocation" label={t("Where breakfast is served")} d={d} errors={e} hint={t("Leave blank and no place is shown to guests.")} />
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="breakfastNote">{t("A line for guests (optional)")}</Label>
+                <Textarea id="breakfastNote" name="breakfastNote" rows={2} maxLength={400} defaultValue={String(d.breakfastNote ?? "")} />
+                <p className="text-xs text-muted-foreground">{t("Shown under the breakfast hours on the guest's page. Leave blank to show only the hours.")}</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle>{t("Guest information (welcome card)")}</CardTitle>
               <CardDescription>{t("Shown on the digital welcome card. Leave blank to hide a line.")}</CardDescription>
             </CardHeader>
@@ -246,7 +278,6 @@ export function SettingsForm({ defaults: d }: { defaults: Defaults }) {
               <Field name="wifiNetwork" label={t("Wi-Fi network name")} d={d} errors={e} />
               <Field name="wifiPassword" label={t("Wi-Fi password")} d={d} errors={e} />
               <Field name="receptionHours" label={t("Reception hours")} d={d} errors={e} placeholder={t("24 hours")} />
-              <Field name="breakfastHours" label={t("Breakfast hours")} d={d} errors={e} placeholder={t("e.g. 06:30 – 10:30")} />
               <Field name="restaurantHours" label={t("Restaurant hours")} d={d} errors={e} />
               <Field name="barHours" label={t("Bar hours")} d={d} errors={e} />
             </CardContent>

@@ -6,6 +6,8 @@ import { requirePagePermission } from "@/server/auth";
 import { db } from "@/server/db";
 import { getSettings } from "@/server/settings";
 import { formatMinutes } from "@/lib/time/business-date";
+import { ALL_DAYS, breakfastSchedule } from "@/lib/breakfast";
+import { breakfastIncluded } from "@/server/services/breakfast";
 import { PageHeader } from "@/components/staff/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SettingsForm } from "./settings-form";
@@ -25,8 +27,9 @@ const CHANNEL_LABEL: Record<string, string> = { WHATSAPP: msg("whatsapp"), SMS: 
 export default async function SettingsPage() {
   await requirePagePermission("settings.manage");
   const t = await getT();
-  const [s, sources, methods, expenseCats, revenueCats, messages] = await Promise.all([
+  const [s, included, sources, methods, expenseCats, revenueCats, messages] = await Promise.all([
     getSettings(),
+    breakfastIncluded(),
     db.bookingSource.findMany({ orderBy: { sortOrder: "asc" } }),
     db.paymentMethod.findMany({ orderBy: { sortOrder: "asc" } }),
     db.expenseCategory.findMany({ orderBy: { sortOrder: "asc" } }),
@@ -94,7 +97,12 @@ export default async function SettingsPage() {
               wifiNetwork: s.wifiNetwork ?? "",
               wifiPassword: s.wifiPassword ?? "",
               receptionHours: s.receptionHours ?? "",
-              breakfastHours: s.breakfastHours ?? "",
+              breakfastIncluded: included,
+              breakfastStart: formatMinutes(s.breakfastStartMinutes),
+              breakfastEnd: formatMinutes(s.breakfastEndMinutes),
+              ...Object.fromEntries(ALL_DAYS.map((day) => [`breakfastDay${day}`, breakfastSchedule(s).days.includes(day)])),
+              breakfastLocation: s.breakfastLocation ?? "",
+              breakfastNote: s.breakfastNote ?? "",
               restaurantHours: s.restaurantHours ?? "",
               barHours: s.barHours ?? "",
               lateCheckoutFee: s.lateCheckoutFee,

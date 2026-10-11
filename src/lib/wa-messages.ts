@@ -225,12 +225,14 @@ export function roomChangedMessage(v: { hotel: Hotel; name: string; ref: string;
   ]);
 }
 
-export function welcomeMessage(v: { hotel: Hotel; name: string; stay: StayFacts; money: Money; wifi?: string | null; stayUrl: string | null }, t: T = englishT) {
+/** `breakfast`: the stay's complimentary breakfast (when and where) — only when this stay really comes with it. */
+export function welcomeMessage(v: { hotel: Hotel; name: string; stay: StayFacts; money: Money; breakfast?: string | null; wifi?: string | null; stayUrl: string | null }, t: T = englishT) {
   return compose([
     hello(v.name, t),
     t("Welcome to {hotel}! You’re checked in.", { hotel: v.hotel.name }),
     section(t("YOUR STAY"), stayLines(v.stay, t)),
     section(t("PAYMENT"), [...moneyLines(v.money, t, { totalSoFar: true }), t("Status: {status}", { status: payStatus(v.money, t) })]),
+    v.breakfast ? block(t("BREAKFAST"), v.breakfast) : null,
     v.wifi ? block(t("WI-FI"), v.wifi) : null,
     v.stayUrl ? block(t("EXPLORE VEGAS"), `${t("See our menu, order food & drinks to your room, ask for anything and see your bill:")}\n${v.stayUrl}`) : null,
     contact(v.hotel, t("Need anything during your stay? Call or WhatsApp Reception:")),

@@ -252,6 +252,13 @@ model HotelSettings {
   wifiPassword               String?
   receptionHours             String?  @default("24 hours")
   breakfastHours             String?
+  /// Complimentary breakfast: when it is served (minutes after midnight, hotel time), on which days (0 = Sunday … 6 = Saturday),
+  /// where, and a line for guests. The one source for every page and message — see src/lib/breakfast.ts.
+  breakfastStartMinutes Int     @default(360)
+  breakfastEndMinutes   Int     @default(630)
+  breakfastDays         Int[]   @default([0, 1, 2, 3, 4, 5, 6])
+  breakfastLocation     String?
+  breakfastNote         String?
   restaurantHours            String?
   barHours                   String?
   // Stay policies (configurable, never hard-coded)

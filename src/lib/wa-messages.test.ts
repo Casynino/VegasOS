@@ -2,7 +2,8 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { englishT, makeT, type T } from "@/i18n/translate";
 import { ALL_BUNDLES, loadCatalog } from "@/i18n/catalog";
 import CONTENT_ZH from "@/i18n/content/zh-CN";
-import { bookingMessage, checkoutMessage, guestsText, langLink, orderReceivedMessage, type Hotel, type Money, type StayFacts } from "./wa-messages";
+import { bookingMessage, checkoutMessage, guestsText, langLink, orderReceivedMessage, welcomeMessage, type Hotel, type Money, type StayFacts } from "./wa-messages";
+import { breakfastDays, breakfastHours, breakfastSchedule } from "./breakfast";
 import { orderFacts, orderMessageText } from "./order-messages";
 import { invoiceMessage } from "./invoice-message";
 
@@ -134,5 +135,33 @@ describe("guest messages in the guest's language", () => {
     expect(langLink("https://x/booking/R?token=t#pay", zh)).toBe("https://x/booking/R?token=t&lang=zh#pay");
     expect(langLink(null, zh)).toBeNull();
     expect(langLink("https://x/stay/abc?lang=zh", zh)).toBe("https://x/stay/abc?lang=zh");
+  });
+});
+
+describe("complimentary breakfast in the welcome message", () => {
+  const meal = breakfastSchedule({ breakfastStartMinutes: 360, breakfastEndMinutes: 630, breakfastDays: [0, 1, 2, 3, 4, 5, 6], breakfastLocation: null, breakfastNote: null });
+  const lines = (t: T) => [t("Complimentary — included with your room stay."), `${breakfastDays(meal, t)}: ${breakfastHours(meal, t.locale)}`].join("\n");
+  const paid: Money = { ...money, paid: 160000, balance: 0 };
+
+  it("tells an eligible guest breakfast is included and when — once, between the payment and the Wi-Fi", () => {
+    const text = welcomeMessage({ hotel, name: "Asha Juma", stay, money: paid, breakfast: lines(englishT), wifi: "Vegas-Guest", stayUrl: "https://vegas.example/stay/tok" });
+    expect(text).toContain("*BREAKFAST*\nComplimentary — included with your room stay.\nEvery day: 6:00 AM – 10:30 AM");
+    expect(text.match(/BREAKFAST/g)).toHaveLength(1);
+    expect(text.indexOf("*PAYMENT*")).toBeLessThan(text.indexOf("*BREAKFAST*"));
+    expect(text.indexOf("*BREAKFAST*")).toBeLessThan(text.indexOf("*WI-FI*"));
+    // Breakfast is never money: nothing about it in the bill lines.
+    expect(text.slice(text.indexOf("*PAYMENT*"), text.indexOf("*BREAKFAST*"))).not.toMatch(/breakfast/i);
+  });
+
+  it("says nothing about breakfast when the stay does not come with it", () => {
+    const text = welcomeMessage({ hotel, name: "Asha Juma", stay, money: paid, breakfast: null, stayUrl: null });
+    expect(text).not.toMatch(/breakfast/i);
+  });
+
+  it("writes it in Chinese with the same hours", () => {
+    const text = welcomeMessage({ hotel, name: "Asha Juma", stay: { ...stay, roomType: zh("Double Deluxe"), checkIn: zh.date("2026-10-12"), checkOut: zh.date("2026-10-14"), guests: guestsText(2, 0, zh) },
+      money: paid, breakfast: lines(zh), stayUrl: null }, zh);
+    expect(text).toContain("06:00 – 10:30");
+    expect(englishLeft(text, ["Asha", "VLH"])).toEqual([]);
   });
 });

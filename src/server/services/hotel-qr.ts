@@ -1,4 +1,5 @@
 import "server-only";
+import { breakfastHours, breakfastSchedule } from "@/lib/breakfast";
 import { createHash } from "node:crypto";
 import { db } from "../db";
 import { AppError } from "../errors";
@@ -295,7 +296,7 @@ export async function qrLanding(token: string): Promise<QrLanding | QrInactive> 
     hotel: {
       ...hotelContact(settings), tagline: settings.tagline, email: settings.email,
       address: [settings.addressLine, settings.city].filter(Boolean).join(", ") || null,
-      checkInTime: w.checkInTime, checkoutTime: w.checkoutTime, receptionHours: settings.receptionHours, breakfastHours: settings.breakfastHours,
+      checkInTime: w.checkInTime, checkoutTime: w.checkoutTime, receptionHours: settings.receptionHours, breakfastHours: breakfastHours(breakfastSchedule(settings)),
       hero: { src: hero.image.src, alt: hero.image.alt },
       slides: hero.slides.map((x) => ({ src: x.src, mobileSrc: x.mobileSrc ?? null, alt: x.alt, caption: x.caption ?? null })),
       photos: (content.gallery as GalleryImage[]).map((g) => ({ src: g.src, alt: g.alt, width: g.width, height: g.height, category: g.category })),

@@ -331,5 +331,12 @@ const catalog: Catalog = {
   "For more than 10 children, please call us.": "超过 10 名儿童请致电我们。",
   "Choose a room.": "请选择房间。",
   "Keep the request under 500 characters.": "请求内容请控制在 500 字以内。",
+  "BREAKFAST": "早餐",
+  "Complimentary — included with your room stay.": "免费——已含在您的住宿内。",
+  "Where: {place}": "地点：{place}",
+  "Breakfast must end after it starts.": "早餐结束时间必须晚于开始时间。",
+  "Must be after the start": "必须晚于开始时间",
+  "Pick at least one day breakfast is served.": "请至少选择一天供应早餐。",
+  "Pick at least one day": "请至少选择一天",
 };
 export default catalog;

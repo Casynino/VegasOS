@@ -19,6 +19,7 @@ import {
   BottomSheet, card, ContactButtons, goldButton, goldDot, HotelFooter, HoursList, PhotoViewer, QuickLink, QuickRow, RoomCard, SheetHead, sectionTitle,
   type HotelInfo,
 } from "@/components/room-qr/parts";
+import { BreakfastCard, BreakfastPanel, type BreakfastInfo } from "@/components/room-qr/breakfast";
 import { RoomOptions, type RoomRequests } from "@/components/room-qr/room-options";
 
 /** What the guest's page shows besides the booking itself — prepared on the server from the hotel settings. */
@@ -35,6 +36,8 @@ export type StayInfo = {
   /** "14:00", "11:00" — and a meeting's start and end. */
   checkInTime: string; checkoutTime: string; checkoutMinutes: number; meetingTimes: { start: string; end: string } | null;
   lateFee: number;
+  /** Complimentary breakfast — only when this stay comes with it (a night stay, and the hotel includes breakfast). */
+  breakfast: BreakfastInfo | null;
   /** Only while the guest is staying. */
   wifi: { network: string | null; password: string | null } | null;
   /** Where the guest's requests go (towels, cleaning…) — only while they are staying in a room. */
@@ -84,7 +87,7 @@ const ORDER_WORD: Record<string, { label: string; tone: string }> = {
 export function StayTop({ stay, info }: { stay: GuestStay; info: StayInfo }) {
   const t = useT();
   const reduce = useReducedMotion();
-  const [sheet, setSheet] = useState<"wifi" | "reception" | "pay" | null>(null);
+  const [sheet, setSheet] = useState<"wifi" | "reception" | "pay" | "breakfast" | null>(null);
   const [viewing, setViewing] = useState<number | null>(null);
   const first = nice(stay.guestName.split(/\s+/)[0] ?? "");
   const inHouse = stay.status === "CHECKED_IN";
@@ -151,6 +154,8 @@ export function StayTop({ stay, info }: { stay: GuestStay; info: StayInfo }) {
             : info.contact.mapHref && !inHouse ? <QuickLink icon={MapPin} label={t("Directions")} href={info.contact.mapHref} external /> : null}
           <QuickLink icon={ConciergeBell} label={t("Reception")} onClick={() => setSheet("reception")} />
         </QuickRow>
+      {/* Breakfast comes with the room: said once, up here, with the hours — not tucked into the menu. */}
+      {info.breakfast && <BreakfastCard breakfast={info.breakfast} hotel={info.hotel} onMore={() => setSheet("breakfast")} className="mt-5 lg:max-w-xl" />}
       {/* In the room: the Wi-Fi right away — no tapping around for it (owner, 2026-10-06). */}
       <PhotoViewer photos={info.photos} start={viewing} title={info.room ? place : info.types || info.hotel} onClose={() => setViewing(null)} />
 
@@ -178,8 +183,9 @@ export function StayTop({ stay, info }: { stay: GuestStay; info: StayInfo }) {
       </div>
 
       {/* ── Wi-Fi, reception, paying ── */}
-      <BottomSheet open={sheet !== null} onClose={() => setSheet(null)} label={sheet === "wifi" ? "Wi-Fi" : sheet === "pay" ? t("Pay your bill") : t("Reception")}>
+      <BottomSheet open={sheet !== null} onClose={() => setSheet(null)} label={sheet === "wifi" ? "Wi-Fi" : sheet === "pay" ? t("Pay your bill") : sheet === "breakfast" ? t("Breakfast") : t("Reception")}>
         {sheet === "wifi" ? <WifiPanel info={info} />
+          : sheet === "breakfast" && info.breakfast ? <BreakfastPanel breakfast={info.breakfast} />
           : sheet === "pay" && info.pay ? <PayPanel pay={info.pay} />
           : <ReceptionPanel contact={info.contact} />}
       </BottomSheet>

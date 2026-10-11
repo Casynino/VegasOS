@@ -1,3 +1,4 @@
+import { breakfastHours, breakfastSchedule } from "@/lib/breakfast";
 import type { HotelSettings } from "@/generated/prisma/client";
 import type { InfoItem } from "../kit/info-list";
 import { msg } from "@/i18n/msg";
@@ -5,7 +6,7 @@ import { msg } from "@/i18n/msg";
 type Place = "breakfast" | "restaurant" | "bar";
 
 const HOURS: Record<Place, { label: string; icon: string; of: (s: HotelSettings) => string | null }> = {
-  breakfast: { label: msg("Breakfast"), icon: "Coffee", of: (s) => s.breakfastHours },
+  breakfast: { label: msg("Breakfast"), icon: "Coffee", of: (s) => breakfastHours(breakfastSchedule(s)) },
   restaurant: { label: msg("Restaurant"), icon: "UtensilsCrossed", of: (s) => s.restaurantHours },
   bar: { label: msg("Bar"), icon: "Wine", of: (s) => s.barHours },
 };

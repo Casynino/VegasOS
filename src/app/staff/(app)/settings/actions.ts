@@ -64,7 +64,13 @@ const SettingsSchema = z.object({
   wifiNetwork: optionalText,
   wifiPassword: optionalText,
   receptionHours: optionalText,
-  breakfastHours: optionalText,
+  breakfastIncluded: checkbox,
+  breakfastStart: time,
+  breakfastEnd: time,
+  breakfastDay0: checkbox, breakfastDay1: checkbox, breakfastDay2: checkbox, breakfastDay3: checkbox,
+  breakfastDay4: checkbox, breakfastDay5: checkbox, breakfastDay6: checkbox,
+  breakfastLocation: optionalText,
+  breakfastNote: z.string().trim().max(400).transform((v) => v || null),
   restaurantHours: optionalText,
   barHours: optionalText,
   lateCheckoutFee: money,
@@ -106,6 +112,9 @@ export async function updateSettingsAction(_prev: unknown, formData: FormData): 
     const user = await authorize("settings.manage");
     const input = parseInput(SettingsSchema, formData);
     const recipients = parseRecipients(input.reportRecipients);
+    // 0 = Sunday … 6 = Saturday.
+    const breakfastDays = [input.breakfastDay0, input.breakfastDay1, input.breakfastDay2, input.breakfastDay3, input.breakfastDay4, input.breakfastDay5, input.breakfastDay6]
+      .flatMap((on, day) => (on ? [day] : []));
 
     const data = {
       hotelName: input.hotelName,
@@ -148,7 +157,11 @@ export async function updateSettingsAction(_prev: unknown, formData: FormData): 
       wifiNetwork: input.wifiNetwork,
       wifiPassword: input.wifiPassword,
       receptionHours: input.receptionHours,
-      breakfastHours: input.breakfastHours,
+      breakfastStartMinutes: input.breakfastStart,
+      breakfastEndMinutes: input.breakfastEnd,
+      breakfastDays,
+      breakfastLocation: input.breakfastLocation,
+      breakfastNote: input.breakfastNote,
       restaurantHours: input.restaurantHours,
       barHours: input.barHours,
       lateCheckoutFee: input.lateCheckoutFee,
@@ -175,15 +188,30 @@ export async function updateSettingsAction(_prev: unknown, formData: FormData): 
       throw new AppError("Checkout time must be after the business-day start.", "VALIDATION", { checkout: msg("Must be after business-day start") });
     }
 
+    if (data.breakfastEndMinutes <= data.breakfastStartMinutes) {
+      throw new AppError("Breakfast must end after it starts.", "VALIDATION", { breakfastEnd: msg("Must be after the start") });
+    }
+    if (breakfastDays.length === 0) {
+      throw new AppError("Pick at least one day breakfast is served.", "VALIDATION", { breakfastDays: msg("Pick at least one day") });
+    }
+
     const { ipAddress } = await requestMeta();
     await db.$transaction(async (tx) => {
       const before = await tx.hotelSettings.findUniqueOrThrow({ where: { id: 1 } });
       const after = await tx.hotelSettings.update({ where: { id: 1 }, data });
-      const changed = Object.fromEntries(
+      const changed: Record<string, unknown[]> = Object.fromEntries(
         Object.keys(data)
           .filter((k) => k !== "updatedById" && JSON.stringify(before[k as keyof typeof before]) !== JSON.stringify(after[k as keyof typeof after]))
           .map((k) => [k, [before[k as keyof typeof before], after[k as keyof typeof after]]]),
       );
+      // "Breakfast is included with room stays" is the hotel's Breakfast service, switched on or off — never a charge.
+      const service = await tx.hotelService.findUnique({ where: { code: "BREAKFAST" } });
+      const wasIncluded = !!service && service.isActive && service.isPublic;
+      if (wasIncluded !== input.breakfastIncluded) {
+        if (service) await tx.hotelService.update({ where: { id: service.id }, data: { isActive: input.breakfastIncluded, isPublic: input.breakfastIncluded } });
+        else await tx.hotelService.create({ data: { code: "BREAKFAST", name: "Breakfast included", description: "Breakfast is included with every room booking.", category: "DINING", icon: "Coffee", isChargeable: false } });
+        changed.breakfastIncluded = [wasIncluded, input.breakfastIncluded];
+      }
       if (Object.keys(changed).length === 0) return;
       await audit(tx, { userId: user.id, label: user.fullName, ipAddress }, {
         action: "settings.updated",

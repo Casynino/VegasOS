@@ -375,6 +375,18 @@ const catalog: Catalog = {
   "Daily service — every occupied room gets a light service each day": "每日整理 — 每间已入住房间每天简单整理一次",
   "On request — an occupied room is serviced only when the guest asks": "按需整理 — 仅在客人要求时整理已入住房间",
   "Used on the Daily Housekeeping Checklist that reception prints.": "用于前台打印的每日客房清洁清单。",
+  "Tell {name}: breakfast is included with the room": "请告诉{name}：房费已含早餐",
+  "Complimentary — nothing is added to the bill. The hours are on the room QR page too.": "免费——不会记入账单。供应时间也显示在客房二维码页面上。",
+  "Complimentary breakfast": "免费早餐",
+  "One place for breakfast. The room QR page, the welcome message, the welcome card and the printed lists all read it from here.": "早餐信息统一在此设置。客房二维码页面、欢迎消息、欢迎卡和打印清单都从这里读取。",
+  "Breakfast is included with room stays (night stays in guest rooms — not short-time stays or the meeting room). Never a charge on the bill.": "住宿含早餐（客房过夜住宿——不含钟点房和会议室）。绝不记入账单。",
+  "Breakfast starts": "早餐开始时间",
+  "Breakfast ends": "早餐结束时间",
+  "Serving days": "供应日",
+  "Where breakfast is served": "早餐供应地点",
+  "Leave blank and no place is shown to guests.": "留空则不向客人显示地点。",
+  "A line for guests (optional)": "给客人的一句话（可选）",
+  "Shown under the breakfast hours on the guest's page. Leave blank to show only the hours.": "显示在客人页面的早餐时间下方。留空则只显示时间。",
 };
 
 export default catalog;
