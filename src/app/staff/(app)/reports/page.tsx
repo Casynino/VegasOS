@@ -3,15 +3,18 @@ import Link from "next/link";
 import {
   Ban, BedDouble, Coins, FileClock, HandCoins, LayoutDashboard, type LucideIcon, Receipt, Store, Trophy, UsersRound, UtensilsCrossed, Wallet, CalendarDays, Boxes,
 } from "lucide-react";
-import { requirePagePermission } from "@/server/auth";
+import { can, requirePagePermission } from "@/server/auth";
+import { db } from "@/server/db";
 import { businessToday, getSettings } from "@/server/settings";
 import { buildReport } from "@/server/services/reports";
+import { toDbDate } from "@/lib/time/business-date";
 import { PeriodPicker, readPeriod } from "@/components/staff/finance/finance-nav";
 import { REPORTS, type ReportKey } from "@/lib/report-types";
 import { cn } from "@/lib/utils";
 import { formatDateRange } from "@/lib/format";
 import { ReportDocument } from "./report-document";
 import { ReportActions } from "./report-actions";
+import { SendRoomReportByDateButton } from "./daily/report-buttons";
 import { getT } from "@/i18n/server";
 import { localizeReport } from "@/lib/report-i18n";
 
@@ -40,6 +43,13 @@ export default async function ReportsPage({ searchParams }: PageProps<"/staff/re
   const report = await buildReport(key, { from: p.from, to: p.to }, today);
   const t = await getT();
   const shown = localizeReport(report, t);
+
+  const canManage = can(user, "reports.daily.manage");
+  const isSingleDayRooms = key === "rooms" && p.from === p.to;
+  const roomDelivery = isSingleDayRooms && canManage
+    ? await db.dailyReport.findUnique({ where: { businessDate: toDbDate(p.from) }, select: { deliveries: { where: { purpose: "ROOM_REPORT" } } } })
+    : null;
+  const roomSent = roomDelivery?.deliveries.some((d) => d.status === "SENT") ?? false;
 
   const now = new Date();
   const preparedAt = new Intl.DateTimeFormat(t.intl, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: s.timezone }).format(now);
@@ -98,6 +108,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/staff/re
       <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
         <PeriodPicker current={p.key} from={p.from} to={p.to} keep={{ r: key }} />
         {key === "outstanding" && <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Coins className="size-3.5" />{t("Outstanding is always as of now — the period does not change it.")}</p>}
+        {isSingleDayRooms && canManage && <SendRoomReportByDateButton date={p.from} force={roomSent} className="h-9 text-xs" />}
       </div>
 
       <ReportDocument report={report} hotel={hotel} preparedBy={`${user.fullName.replace(/\s*\(.*\)/, "")} · ${t(user.roleName)}`} preparedAt={preparedAt} number={number} />

@@ -62,6 +62,34 @@ export async function deliverRoomReport(reportId: string, opts: { force?: boolea
   });
 }
 
+/** Send (or resend) the room report for a specific business date. Creates the daily report record if needed. */
+export async function deliverRoomReportByDate(date: string, opts: { force?: boolean; manual?: boolean; deadline?: number } = {}) {
+  const [settings, data] = await Promise.all([getSettings(), buildDailyReport(date)]);
+  let report = await db.dailyReport.findUnique({
+    where: { businessDate: toDbDate(date) },
+    include: { deliveries: { where: { purpose: "ROOM_REPORT" } } },
+  });
+  if (!report) {
+    const json = (v: unknown) => v as Prisma.InputJsonValue;
+    report = await db.dailyReport.create({
+      data: { businessDate: toDbDate(date), data: json(data), summaryText: "", generatedBy: "room-report" },
+      include: { deliveries: { where: { purpose: "ROOM_REPORT" } } },
+    });
+  }
+  const link = roomReportLink(date);
+  const text = renderRoomReportText(data, settings.hotelName, link);
+  return deliverToRecipients({
+    link: { dailyReportId: report.id },
+    purpose: "ROOM_REPORT",
+    text,
+    generatedAt: report.generatedAt,
+    deliveries: report.deliveries,
+    force: opts.force,
+    manual: opts.manual,
+    deadline: opts.deadline,
+  });
+}
+
 export async function runRoomReportJob(now = new Date(), deadline?: number) {
   const settings = await getSettings();
   const cfg = businessDayConfig(settings);

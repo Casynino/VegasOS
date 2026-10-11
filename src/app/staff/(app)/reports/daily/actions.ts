@@ -9,7 +9,7 @@ import { toDbDate } from "@/lib/time/business-date";
 import { runAction } from "@/server/errors";
 import { parseInput } from "@/server/validation";
 import { deliverDailyReport, generateDailyReport } from "@/server/services/daily-report";
-import { deliverRoomReport } from "@/server/services/room-report";
+import { deliverRoomReport, deliverRoomReportByDate } from "@/server/services/room-report";
 import { msg } from "@/i18n/msg";
 import { getT } from "@/i18n/server";
 
@@ -31,6 +31,19 @@ export async function generateReportAction(input: { date: string; reason?: strin
     revalidatePath("/staff/reports/daily", "layout");
     return { id: r.id };
   }, msg("Report made."));
+}
+
+export async function sendRoomReportByDateAction(input: { date: string; force?: boolean }) {
+  return runAction(async () => {
+    await authorize("reports.daily.manage");
+    const res = await deliverRoomReportByDate(input.date, { force: !!input.force, manual: true });
+    revalidatePath("/staff/reports", "layout");
+    const t = await getT();
+    if (res.recipients === 0) return { message: t("No report recipients configured in Settings.") };
+    const busy = res.results.filter((r) => r.status === "BUSY");
+    const failed = res.results.filter((r) => r.status === "FAILED" || r.status === "SKIPPED");
+    return { message: failed.length ? t("{failed} of {total} failed: {error}", { failed: failed.length, total: res.recipients, error: failed[0].error ?? t("unknown error") }) : busy.length ? t("Being sent right now — refresh in a moment.") : t("Room report sent to {n} recipient(s).", { n: res.recipients }) };
+  });
 }
 
 export async function sendRoomReportAction(input: { reportId: string; force?: boolean }) {
