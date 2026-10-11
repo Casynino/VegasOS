@@ -84,7 +84,8 @@ export function ReportActions({ fileName, csv, share, target = "report" }: {
     window.open(`https://wa.me/?text=${encodeURIComponent(share ?? "")}`, "_blank", "noopener");
   };
 
-  const btn = "inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl border border-border/70 bg-card px-3 text-xs font-semibold transition-colors hover:bg-muted disabled:opacity-60 sm:flex-none";
+  // Its own text colour: these buttons also sit in the dark header of a shared report link, where the text is white.
+  const btn = "inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl border border-border/70 bg-card px-3 text-xs font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-60 sm:flex-none";
   return (
     <div className="flex w-full items-center gap-2 sm:w-auto print:hidden">
       <button type="button" onClick={() => window.print()} className={cn(btn, "border-transparent bg-linear-to-b from-[oklch(0.87_0.085_86)] to-[oklch(0.7_0.12_76)] text-[oklch(0.2_0.03_60)] hover:brightness-105")}><Printer className="size-3.5" />{t("Print")}</button>
