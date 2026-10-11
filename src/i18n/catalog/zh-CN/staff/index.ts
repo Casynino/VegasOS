@@ -26,6 +26,7 @@ import m_restaurant_tables from "./restaurant-tables";
 import m_rooms from "./rooms";
 import m_settings_people from "./settings-people";
 import m_shifts_requests from "./shifts-requests";
+import m_spin from "./spin";
 import m_staff_shell from "./staff-shell";
 import m_stock_assets from "./stock-assets";
 import m_svc_reporting from "./svc-reporting";
@@ -57,6 +58,7 @@ const catalog: Catalog = {
   ...m_rooms,
   ...m_settings_people,
   ...m_shifts_requests,
+  ...m_spin,
   ...m_staff_shell,
   ...m_stock_assets,
   ...m_svc_reporting,

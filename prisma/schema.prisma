@@ -135,6 +135,7 @@ model User {
   restaurantPaysHandedOver  RestaurantOrderPayment[] @relation("RestaurantPaymentHandedOverBy")
   restaurantLocationsQr     RestaurantLocation[]     @relation("RestaurantLocationQrBy")
   roomQrCodesGenerated      RoomQrCode[]             @relation("RoomQrGeneratedBy")
+  spinQrCodesGenerated      SpinQrCode[]             @relation("SpinQrGeneratedBy")
   bookingQrCodesGenerated   BookingQrCode[]          @relation("BookingQrGeneratedBy")
   stockRequests             StockRequest[]           @relation("StockRequestBy")
   stockRequestsDecided      StockRequest[]           @relation("StockRequestDecidedBy")
@@ -193,98 +194,112 @@ model RateLimitBucket {
 
 // Single-row table (id = 1). Read only through HotelSettingsService.
 model HotelSettings {
-  id                         Int      @id @default(1)
-  hotelName                  String   @default("Vegas Luxury Hotel")
-  tagline                    String?  @default("Comfort • Style • Excellence")
-  addressLine                String?  @default("Mlimani City Roundabout, behind Mwenge Tower")
-  postalAddress              String?  @default("P.O. Box 40081")
-  city                       String?  @default("Dar es Salaam")
-  country                    String?  @default("Tanzania")
-  phone                      String?  @default("+255 710 223 344")
-  email                      String?  @default("vegasluxuryhotel@gmail.com")
-  website                    String?  @default("www.vegashoteltz.com")
-  whatsapp                   String?  @default("+255710223344")
+  id                         Int       @id @default(1)
+  hotelName                  String    @default("Vegas Luxury Hotel")
+  tagline                    String?   @default("Comfort • Style • Excellence")
+  addressLine                String?   @default("Mlimani City Roundabout, behind Mwenge Tower")
+  postalAddress              String?   @default("P.O. Box 40081")
+  city                       String?   @default("Dar es Salaam")
+  country                    String?   @default("Tanzania")
+  phone                      String?   @default("+255 710 223 344")
+  email                      String?   @default("vegasluxuryhotel@gmail.com")
+  website                    String?   @default("www.vegashoteltz.com")
+  whatsapp                   String?   @default("+255710223344")
   mapUrl                     String?
-  currency                   String   @default("TZS")
-  timezone                   String   @default("Africa/Dar_es_Salaam")
-  businessDayStartMinutes    Int      @default(240) // 04:00
-  standardCheckInMinutes     Int      @default(840) // 14:00
-  checkoutMinutes            Int      @default(660) // 11:00
-  lateArrivalMinutes         Int      @default(960) // 16:00
-  defaultDiscountPerNight    Int      @default(20000) // legacy: replaced by promotions (see Promotion)
+  currency                   String    @default("TZS")
+  timezone                   String    @default("Africa/Dar_es_Salaam")
+  businessDayStartMinutes    Int       @default(240) // 04:00
+  standardCheckInMinutes     Int       @default(840) // 14:00
+  checkoutMinutes            Int       @default(660) // 11:00
+  lateArrivalMinutes         Int       @default(960) // 16:00
+  defaultDiscountPerNight    Int       @default(20000) // legacy: replaced by promotions (see Promotion)
   // Manual discounts given by staff to one guest (per room, per night).
-  manualDiscountMax          Int      @default(20000)
-  receptionCanDiscount       Boolean  @default(true)
-  managerCanDiscount         Boolean  @default(true)
-  applyDiscountToWebsite     Boolean  @default(true)
-  expenseApprovalThreshold   Int      @default(200000)
+  manualDiscountMax          Int       @default(20000)
+  receptionCanDiscount       Boolean   @default(true)
+  managerCanDiscount         Boolean   @default(true)
+  applyDiscountToWebsite     Boolean   @default(true)
+  expenseApprovalThreshold   Int       @default(200000)
   /// Stock purchases: the final approval must be by someone other than the buyer.
-  purchaseApproverMustDiffer Boolean  @default(false)
-  invoicePrefix              String   @default("VLH-INV-")
-  invoiceNextNumber          Int      @default(1)
-  invoiceDefaultDueDays      Int      @default(14)
+  purchaseApproverMustDiffer Boolean   @default(false)
+  invoicePrefix              String    @default("VLH-INV-")
+  invoiceNextNumber          Int       @default(1)
+  invoiceDefaultDueDays      Int       @default(14)
   taxName                    String?
-  taxRatePercent             Decimal? @db.Decimal(5, 2)
-  taxIncludedInRates         Boolean  @default(true)
-  reportEnabled              Boolean  @default(true)
+  taxRatePercent             Decimal?  @db.Decimal(5, 2)
+  taxIncludedInRates         Boolean   @default(true)
+  reportEnabled              Boolean   @default(true)
   /// The Daily Room Report (06:30 WhatsApp + secure link) — its own on/off switch.
-  roomReportEnabled          Boolean  @default(true)
+  roomReportEnabled          Boolean   @default(true)
   /// Each waiter's / receptionist's shift report goes to the report recipients by WhatsApp when the shift ends.
-  shiftReportEnabled         Boolean  @default(true)
+  shiftReportEnabled         Boolean   @default(true)
   /// "Pay online" for customers (nTZS) — the master switch and one switch per service (owner, 2026-10-04).
-  onlinePayEnabled           Boolean  @default(true)
-  onlinePayRestaurant        Boolean  @default(true)
-  onlinePayRoomService       Boolean  @default(true)
-  onlinePayStayBill          Boolean  @default(true)
-  onlinePayBooking           Boolean  @default(true)
-  onlinePayMeeting           Boolean  @default(true)
-  onlinePayTransport         Boolean  @default(true)
-  onlinePayInvoices          Boolean  @default(true)
+  onlinePayEnabled           Boolean   @default(true)
+  onlinePayRestaurant        Boolean   @default(true)
+  onlinePayRoomService       Boolean   @default(true)
+  onlinePayStayBill          Boolean   @default(true)
+  onlinePayBooking           Boolean   @default(true)
+  onlinePayMeeting           Boolean   @default(true)
+  onlinePayTransport         Boolean   @default(true)
+  onlinePayInvoices          Boolean   @default(true)
   /// The Hotel booking QR ("Scan to book your stay", owner 2026-10-05): booking from it on/off, and whether a guest may
   /// reserve there and pay at the hotel (held by the hotel's hold rules) — paying online (nTZS) follows onlinePayBooking.
-  hotelQrEnabled             Boolean  @default(true)
-  hotelQrPayAtHotel          Boolean  @default(true)
-  reportRecipients           Json     @default("[]") // [{ name, phone, channel }]
-  publicBookingEnabled       Boolean  @default(true)
-  maxAdvanceBookingDays      Int      @default(365)
+  hotelQrEnabled             Boolean   @default(true)
+  hotelQrPayAtHotel          Boolean   @default(true)
+  reportRecipients           Json      @default("[]") // [{ name, phone, channel }]
+  publicBookingEnabled       Boolean   @default(true)
+  maxAdvanceBookingDays      Int       @default(365)
   // Guest-facing operational info (welcome card, website) — null = not shown.
   wifiNetwork                String?
   wifiPassword               String?
-  receptionHours             String?  @default("24 hours")
+  receptionHours             String?   @default("24 hours")
   breakfastHours             String?
   /// Complimentary breakfast: when it is served (minutes after midnight, hotel time), on which days (0 = Sunday … 6 = Saturday),
   /// where, and a line for guests. The one source for every page and message — see src/lib/breakfast.ts.
-  breakfastStartMinutes Int     @default(360)
-  breakfastEndMinutes   Int     @default(630)
-  breakfastDays         Int[]   @default([0, 1, 2, 3, 4, 5, 6])
-  breakfastLocation     String?
-  breakfastNote         String?
+  breakfastStartMinutes      Int       @default(360)
+  breakfastEndMinutes        Int       @default(630)
+  breakfastDays              Int[]     @default([0, 1, 2, 3, 4, 5, 6])
+  breakfastLocation          String?
+  breakfastNote              String?
+  // ── Spin to Win (a little thank-you for guests staying with us; never a charge, never revenue) ──
+  spinEnabled                Boolean   @default(false)
+  /// Spins one stay gets (the room's QR card stays; the spins belong to the stay).
+  spinsPerStay               Int       @default(5)
+  /// The most all the gifts of one stay may be worth together (TZS, by the menu price).
+  spinBudgetStandard         Int       @default(10000)
+  spinBudgetPremium          Int       @default(15000)
+  /// Menu items priced at or below this can be gifts (others only when the Admin adds them).
+  spinMaxItemPrice           Int       @default(10000)
+  spinAllowRoom              Boolean   @default(true)
+  spinAllowRestaurant        Boolean   @default(true)
+  /// The promotion's dates (business dates; empty = no limit).
+  spinStartsOn               DateTime? @db.Date
+  spinEndsOn                 DateTime? @db.Date
   restaurantHours            String?
   barHours                   String?
   // Stay policies (configurable, never hard-coded)
-  lateCheckoutFee            Int      @default(0)
+  lateCheckoutFee            Int       @default(0)
   /// Housekeeping for rooms where the guest is staying on: DAILY (light service every day) | ON_REQUEST (only when the guest asks).
-  occupiedRoomService        String   @default("DAILY")
+  occupiedRoomService        String    @default("DAILY")
   /// Added to every room-service order (delivery to the room).
-  roomServiceFee             Int      @default(2000)
-  earlyDeparturePolicy       String   @default("CHARGE_USED_NIGHTS") // CHARGE_USED_NIGHTS | CHARGE_ONE_EXTRA_NIGHT | CHARGE_FULL_STAY
+  roomServiceFee             Int       @default(2000)
+  earlyDeparturePolicy       String    @default("CHARGE_USED_NIGHTS") // CHARGE_USED_NIGHTS | CHARGE_ONE_EXTRA_NIGHT | CHARGE_FULL_STAY
   airportTransferPrice       Int? // null = free / quoted separately
   // A booking without payment holds its room only this long (0 = until the arrival day), then the room is free again.
-  unpaidHoldHours            Int      @default(24)
+  unpaidHoldHours            Int       @default(24)
   // Paid booking that is cancelled or does not arrive: RETAIN_PAYMENT (non-refundable) | REFUND_DUE
-  noShowPolicy               String   @default("RETAIN_PAYMENT")
+  noShowPolicy               String    @default("RETAIN_PAYMENT")
   // No-show cut-off (minutes after midnight; before the business-day start = the night after arrival, e.g. 60 = 01:00).
-  noShowCutoffMinutes        Int      @default(60)
+  noShowCutoffMinutes        Int       @default(60)
   // At the cut-off: also release the room automatically (otherwise a manager presses "Release room").
-  noShowAutoRelease          Boolean  @default(false)
+  noShowAutoRelease          Boolean   @default(false)
   // Guest moves to a cheaper room: NO_REFUND (keeps the price paid) | CREDIT (difference owed back; a refund is separate) | CHOOSE (staff pick, credit needs a manager)
-  roomDowngradePolicy        String   @default("CHOOSE")
+  roomDowngradePolicy        String    @default("CHOOSE")
   // Paid booking moves to dates that cost more: the extra is paid at the change.
-  dateChangePayNow           Boolean  @default(true)
+  dateChangePayNow           Boolean   @default(true)
   // Moves to cheaper dates than what was paid: CREDIT (owed back / used later; a refund is separate) | NO_REFUND (price stays as paid)
-  dateChangeExcessPolicy     String   @default("NO_REFUND")
+  dateChangeExcessPolicy     String    @default("NO_REFUND")
   // Arrival-day reminder to the guest. Channel "MANUAL" = reception sends it (WhatsApp button); others are providers in messaging.ts.
-  arrivalReminderChannel     String   @default("MANUAL")
+  arrivalReminderChannel     String    @default("MANUAL")
   arrivalReminderTemplate    String?
   // Invoice "Pay into" details and terms — shown on every invoice (null = not shown).
   bankName                   String?
@@ -305,31 +320,31 @@ model HotelSettings {
   // Guest messages: the hotel's own wording (null = built-in) and which events are sent automatically when a provider is connected.
   bookingMessageTemplate     String?
   welcomeMessageTemplate     String?
-  guestNotifications         Json     @default("{}")
+  guestNotifications         Json      @default("{}")
   // Online ordering (menu QR / website)
-  publicOrderingEnabled      Boolean  @default(true)
+  publicOrderingEnabled      Boolean   @default(true)
   /// Minutes the kitchen usually needs — shown to customers only when set.
   orderPrepMinutes           Int?
   /// Restaurant portal sounds: a new order (for the cook) and a ready order (for waiters).
-  orderSoundsEnabled         Boolean  @default(true)
-  orderSoundVolume           Int      @default(80)
-  newOrderSound              String   @default("bell")
-  readyOrderSound            String   @default("chime")
+  orderSoundsEnabled         Boolean   @default(true)
+  orderSoundVolume           Int       @default(80)
+  newOrderSound              String    @default("bell")
+  readyOrderSound            String    @default("chime")
   /// ONCE = one sound per order | REPEAT = repeat until someone acts on it
-  orderSoundMode             String   @default("REPEAT")
-  orderSoundEverySeconds     Int      @default(20)
+  orderSoundMode             String    @default("REPEAT")
+  orderSoundEverySeconds     Int       @default(20)
   /// Payments a waiter collects wait for reception (or a manager) to confirm them.
-  orderPaymentConfirm        Boolean  @default(true)
+  orderPaymentConfirm        Boolean   @default(true)
   instagramUrl               String?
   facebookUrl                String?
   tiktokUrl                  String?
   /// Languages offered to guests and staff (English is always on and is the fallback).
-  enabledLanguages           String[] @default(["en", "zh-CN"])
+  enabledLanguages           String[]  @default(["en", "zh-CN"])
   /// The language a first-time visitor sees.
-  defaultLanguage            String   @default("en")
-  updatedAt                  DateTime @updatedAt
+  defaultLanguage            String    @default("en")
+  updatedAt                  DateTime  @updatedAt
   updatedById                String?
-  updatedBy                  User?    @relation(fields: [updatedById], references: [id])
+  updatedBy                  User?     @relation(fields: [updatedById], references: [id])
 
   @@map("hotel_settings")
 }
@@ -413,6 +428,8 @@ model RoomType {
   media            MediaAsset[]
   bookingRequests  BookingRequest[]
   translations     RoomTypeTranslation[]
+  /// Spin to Win: STANDARD | PREMIUM | NONE (empty = by the room type's kind — see lib/spin.ts).
+  spinTier         String?
 
   @@map("room_types")
 }
@@ -462,6 +479,10 @@ model Room {
   movesTo          RoomAssignment[]    @relation("MoveTo")
   serviceRequests  ServiceRequest[]
   qrCode           RoomQrCode?
+  spinQr           SpinQrCode?
+  /// Spin to Win tier of this very room (empty = its room type's).
+  spinTier         String?
+  spinSessions     SpinSession[]
 
   @@index([roomTypeId])
   @@index([status])
@@ -779,6 +800,7 @@ model Reservation {
   guestMessages    GuestMessage[]
   thankYouNotes    ThankYouNote[]
   restaurantOrders RestaurantOrder[]
+  spinSessions     SpinSession[]
   invoiceItems     InvoiceItem[]
   trips            TransportTrip[]
   requests         ServiceRequest[]
@@ -864,6 +886,7 @@ model ReservationRoom {
   updatedAt             DateTime          @updatedAt
   nightsLedger          RoomNight[]
   assignments           RoomAssignment[]
+  spinSession           SpinSession?
 
   @@index([reservationId])
   @@index([roomId, startAt])
@@ -2382,6 +2405,8 @@ model MenuItem {
   /// What one of this dish uses from the stores (configurable; empty = nothing tracked).
   recipe       RecipeLine[]
   translations MenuItemTranslation[]
+  spinPrize    SpinPrize?
+  spinResults  SpinResult[]
 
   @@index([categoryId, sortOrder])
   @@map("menu_items")
@@ -2489,6 +2514,11 @@ model RestaurantOrder {
   assignedTo         User?                    @relation("RestaurantOrderAssignedTo", fields: [assignedToId], references: [id])
   complaints         ServiceRequest[]
   assignments        WaiterAssignment[]
+  /// A complimentary gift (Spin to Win): nothing to pay, never on the room bill, never a sale, never revenue.
+  isGift             Boolean                  @default(false)
+  /// What the gift is worth by the menu (TZS) — the reward's value, kept apart from every money total.
+  giftValue          Int                      @default(0)
+  spinResult         SpinResult?
 
   @@index([businessDate, status])
   @@index([locationId, status])
@@ -2566,6 +2596,100 @@ model RoomQrCode {
   updatedAt     DateTime  @updatedAt
 
   @@map("room_qr_codes")
+}
+
+/// The room's own "Spin to Win" card — a QR apart from the room-service one. The card belongs to the room;
+/// the spins and the gifts belong to the stay checked in to it (found on the server at every scan and spin).
+model SpinQrCode {
+  id            String    @id @default(cuid())
+  roomId        String    @unique
+  room          Room      @relation(fields: [roomId], references: [id])
+  token         String    @unique
+  active        Boolean   @default(true)
+  generatedById String?
+  generatedBy   User?     @relation("SpinQrGeneratedBy", fields: [generatedById], references: [id])
+  regeneratedAt DateTime?
+  scanCount     Int       @default(0)
+  lastScannedAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("spin_qr_codes")
+}
+
+/// One stay's Spin to Win: how many spins it has, its budget, and what is used. One per stay in a room
+/// (a move to another room keeps it — the same stay; a new guest starts their own).
+model SpinSession {
+  id                String          @id @default(cuid())
+  reservationRoomId String          @unique
+  reservationRoom   ReservationRoom @relation(fields: [reservationRoomId], references: [id])
+  reservationId     String
+  reservation       Reservation     @relation(fields: [reservationId], references: [id])
+  /// The room the spins started in (the stay may move).
+  roomId            String
+  room              Room            @relation(fields: [roomId], references: [id])
+  roomNumber        String
+  guestName         String
+  /// STANDARD | PREMIUM — fixed when the stay first opens the wheel.
+  tier              String
+  spinsAllowed      Int
+  /// TZS for all the gifts together.
+  budget            Int
+  spinsUsed         Int             @default(0)
+  valueUsed         Int             @default(0)
+  /// "Same for all my gifts": ROOM | RESTAURANT (empty = the guest chooses each time).
+  fulfilment        String?
+  introSeenAt       DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  results           SpinResult[]
+
+  @@index([reservationId])
+  @@index([createdAt])
+  @@map("spin_sessions")
+}
+
+/// One spin and the gift it won — committed on the server before the wheel turns.
+model SpinResult {
+  id         String           @id @default(cuid())
+  sessionId  String
+  session    SpinSession      @relation(fields: [sessionId], references: [id])
+  /// 1…spinsAllowed
+  spinNumber Int
+  /// The phone's key for this very spin: asked twice, answered once.
+  clientKey  String           @unique
+  menuItemId String
+  menuItem   MenuItem         @relation(fields: [menuItemId], references: [id])
+  name       String
+  nameI18n   Json?
+  /// What the gift is worth (the menu price, or the Admin's value) when it was won.
+  value      Int
+  /// ROOM | RESTAURANT — once the guest has chosen.
+  fulfilment String?
+  orderId    String?          @unique
+  order      RestaurantOrder? @relation(fields: [orderId], references: [id])
+  createdAt  DateTime         @default(now())
+  claimedAt  DateTime?
+
+  @@unique([sessionId, spinNumber])
+  @@index([createdAt])
+  @@map("spin_results")
+}
+
+/// What the Admin decided about one menu item as a gift (no row = the default rule).
+model SpinPrize {
+  id            String   @id @default(cuid())
+  menuItemId    String   @unique
+  menuItem      MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  /// true = always a gift (even above the price limit); false = never a gift.
+  enabled       Boolean  @default(true)
+  /// The gift's value when it is not the menu price (TZS).
+  valueOverride Int?
+  /// How often it comes up next to the others (1 = normal).
+  weight        Int      @default(1)
+  updatedAt     DateTime @updatedAt
+
+  @@map("spin_prizes")
 }
 
 /// Every step of an order (new → preparing → ready → delivered…), who moved it and when.

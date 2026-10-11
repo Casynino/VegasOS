@@ -1,9 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import {
-  Armchair, BedDouble, BookOpenText, Boxes, ChefHat, ChevronRight, ClipboardList, FileChartColumn, Globe, History, Hotel, KeyRound, Landmark, Languages, Layers, Bell,
-  NotebookText, Percent, QrCode, ScrollText, ShieldCheck, Sofa, Tags, UserCheck, UserCog, type LucideIcon,
-} from "lucide-react";
+import { Armchair, BedDouble, BookOpenText, Boxes, ChefHat, ChevronRight, ClipboardList, FileChartColumn, Globe, History, Hotel, KeyRound, Landmark, Languages, Layers, Bell, NotebookText, Percent, QrCode, ScrollText, ShieldCheck, Sofa, Tags, UserCheck, UserCog, type LucideIcon, Gift } from "lucide-react";
 import { can, requirePagePermission } from "@/server/auth";
 import { db } from "@/server/db";
 import { businessToday, getSettings } from "@/server/settings";
@@ -93,6 +90,7 @@ export default async function ControlCentrePage() {
         { href: "/staff/restaurant/tables", icon: Armchair, title: t("Tables & table QR codes"), sub: t("Add or switch off tables; print their QR cards"), stat: t("{n} places", { n: tables }), show: can(user, "restaurant.menu") || can(user, "restaurant.orders") },
         { href: "/staff/rooms/qr", icon: QrCode, title: t("Room QR codes"), sub: t("The card in each room for ordering and the guest's stay"), show: can(user, "rooms.view") },
         { href: "/staff/hotel-qr", icon: QrCode, title: t("Hotel booking QR"), sub: t("The card guests scan to book a room and pay — codes, switches, numbers"), stat: `${s.hotelQrEnabled ? t("Booking on") : t("Booking off")} · ${t.plural(qrCodes, "{n} code", "{n} codes")} · ${t.plural(qrBookings30, "{n} booking (30 days)", "{n} bookings (30 days)")}`, warn: !s.hotelQrEnabled || qrCodes === 0, show: can(user, "hotel_qr.manage") },
+        { href: "/staff/spin-to-win", icon: Gift, title: t("Spin to Win"), sub: t("Gifts for checked-in guests: the switch, spins and budgets, which menu items are gifts, the room cards"), stat: s.spinEnabled ? t("On · {n} spins a stay", { n: s.spinsPerStay }) : t("Off"), show: can(user, "spin.manage") },
       ],
     },
     {

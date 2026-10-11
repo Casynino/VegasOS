@@ -22,6 +22,7 @@ import { isRestaurantDevice, worksWaiterShift } from "@/lib/permissions";
 import { cleanRequestCodes } from "@/lib/order-requests";
 import { menuNamesNow } from "./translations";
 import { msg, msgf } from "@/i18n/msg";
+import { GIFT_LABEL, GIFT_SOURCE, type SpinWhere } from "@/lib/spin";
 
 /**
  * Restaurant & bar — menu, orders and how their money is counted.
@@ -262,7 +263,7 @@ export const ORDER_SOURCE: Record<string, string> = {
   ROOM_QR: msg("Room QR"), TABLE_QR: msg("Table QR"), COUNTER_QR: msg("Counter QR"), RESTAURANT_QR: msg("Restaurant QR"),
   WAITER_MANUAL: msg("Waiter"), STAFF_MANUAL: msg("Staff"), RECEPTION: msg("Reception"),
   PUBLIC_QR: msg("Public menu QR"), WEBSITE: msg("Website menu"), GUEST_LINK: msg("Guest's stay link"), GUEST: msg("Guest's stay link"),
-  RESTAURANT: msg("Waiter"), BAR: msg("Bar"), STAFF: msg("Staff"),
+  RESTAURANT: msg("Waiter"), BAR: msg("Bar"), STAFF: msg("Staff"), SPIN: msg("Spin to Win"),
 };
 /** The source of an order from a restaurant place's QR. */
 export const LOCATION_SOURCE: Record<string, string> = { TABLE: "TABLE_QR", COUNTER: "COUNTER_QR", MAIN: "RESTAURANT_QR" };
@@ -622,6 +623,47 @@ export async function createRestaurantOrderTx(tx: Tx, input: OrderInput, actor: 
   return order;
 }
 
+const GIFT_NOTHING_TO_PAY = msg("This is a complimentary Spin to Win gift — there is nothing to pay and it never goes on a bill.");
+
+/**
+ * A complimentary gift (Spin to Win) as an order in the same workflow — the kitchen prepares it, a waiter serves it —
+ * with nothing to pay: its line and its total are zero, it is never on the room bill, never a sale, never a payment
+ * and never revenue. What the gift is worth is kept apart (`giftValue`). Only for a guest checked in right now.
+ */
+export async function createGiftOrderTx(tx: Tx, input: { reservationId: string; roomNumber: string; menuItemId: string; value: number; where: SpinWhere; clientKey: string }, now: Date) {
+  const r = await tx.reservation.findUnique({ where: { id: input.reservationId }, include: { guest: { select: { fullName: true, phone: true } } } });
+  if (!r || r.status !== "CHECKED_IN") throw new AppError("Spin to Win gifts are for guests checked in to the room.", "VALIDATION");
+  const m = await tx.menuItem.findUnique({ where: { id: input.menuItemId }, include: { category: true } });
+  if (!m) throw new AppError("That gift is no longer on the menu — please ask reception.", "NOT_FOUND");
+  const names = await menuNamesNow(tx, [m]);
+  const settings = await getSettingsTx(tx);
+  const businessDate = businessDateOf(now, stayConfig(settings));
+  const toRoom = input.where === "ROOM";
+  // To the room: the waiter who looks after that room's room service gets it, like any room-service order.
+  const waiterId = toRoom ? (await tx.room.findUnique({ where: { number: input.roomNumber }, select: { serviceWaiterId: true } }))?.serviceWaiterId ?? null : null;
+  const guest: Actor = { userId: null, label: "Guest" };
+  const order = await tx.restaurantOrder.create({
+    data: {
+      number: await nextOrderNumber(tx, businessDate.slice(0, 4)), type: toRoom ? "ROOM_SERVICE" : "DINE_IN",
+      // Nothing is due and nothing ever will be: not unpaid, not on the room — a gift.
+      settlement: "UNPAID", paymentStatus: "PAID", isGift: true, giftValue: Math.max(0, input.value),
+      reservationId: r.id, roomNumber: input.roomNumber, customerName: r.guest.fullName, notes: GIFT_LABEL,
+      assignedToId: waiterId, guestId: r.guestId, customerPhone: r.guest.phone,
+      foodSubtotal: 0, drinksSubtotal: 0, serviceFee: 0, total: 0, paidAmount: 0,
+      businessDate: toDbDate(businessDate), createdById: null, source: GIFT_SOURCE,
+      trackToken: randomBytes(12).toString("base64url"), clientKey: `spin:${input.clientKey}`, createdAt: now, statusChangedAt: now,
+      items: { create: [{ menuItemId: m.id, name: m.name, nameI18n: names.get(m.id) ?? {}, unitPrice: 0, quantity: 1, lineTotal: 0, type: m.type, revenueKind: m.category.revenueKind, round: 1, addedAt: now, addedById: null }] },
+      events: { create: { to: "PENDING", byId: null, byLabel: "Guest", byRole: "Customer", at: now, note: `${GIFT_LABEL} · ${toRoom ? "deliver to the room" : "enjoyed at the restaurant"}` } },
+    },
+  });
+  if (waiterId) await assignmentRowTx(tx, { scope: "ORDER", orderId: order.id, locationId: null, roomNumber: order.roomNumber, toUserId: waiterId, kind: "ROUTED", via: "ROOM" }, guest, now);
+  await audit(tx, guest, {
+    action: "restaurant_order.gift", entityType: "RestaurantOrder", entityId: order.id,
+    after: { number: order.number, type: order.type, room: order.roomNumber, customer: order.customerName, reservation: r.reference, gift: m.name, giftValue: order.giftValue, total: 0, source: GIFT_SOURCE },
+  });
+  return order;
+}
+
 /** Order lines priced from the menu now (never from the screen); unavailable or removed items are refused. */
 async function priceLinesTx(tx: Tx, wanted: { menuItemId: string; quantity: number }[]) {
   const items = wanted.filter((w) => w.quantity > 0);
@@ -650,12 +692,12 @@ async function storedLines(tx: Tx, orderId: string): Promise<Line[]> {
  * waiting for reception's confirmation counts — it was collected). A delivered order with
  * money still due waits for its payment.
  */
-async function completeIfSettledTx(tx: Tx, o: { id: string; status: RestaurantOrderStatus; settlement: string; total: number; paidAmount: number }, actor: Actor, now: Date) {
+async function completeIfSettledTx(tx: Tx, o: { id: string; status: RestaurantOrderStatus; settlement: string; total: number; paidAmount: number; isGift?: boolean }, actor: Actor, now: Date) {
   if (o.status !== "DELIVERED") return false;
   if (o.settlement !== "ROOM" && o.paidAmount < o.total) return false;
   await tx.restaurantOrder.update({ where: { id: o.id }, data: { status: "COMPLETED", completedAt: now, statusChangedAt: now } });
   await consumeRecipesTx(tx, o.id, actor, now);
-  await tx.restaurantOrderEvent.create({ data: { orderId: o.id, from: "DELIVERED", to: "COMPLETED", ...by(actor), note: o.settlement === "ROOM" ? "On the room bill" : "Paid", at: now } });
+  await tx.restaurantOrderEvent.create({ data: { orderId: o.id, from: "DELIVERED", to: "COMPLETED", ...by(actor), note: o.isGift ? "Complimentary gift — nothing to pay" : o.settlement === "ROOM" ? "On the room bill" : "Paid", at: now } });
   return true;
 }
 
@@ -674,6 +716,8 @@ async function outstandingTx(tx: Tx, orderId: string) {
 /** Work out the order's payment status from its payments (never typed in): unpaid, part-paid, waiting for confirmation, paid, refunded. */
 async function refreshPaymentTx(tx: Tx, orderId: string) {
   const o = await tx.restaurantOrder.findUniqueOrThrow({ where: { id: orderId }, include: { payments: { select: { amount: true, status: true, confirmedAt: true, notReceived: true } } } });
+  // A gift has no payments and owes nothing — it never turns "unpaid".
+  if (o.isGift) return o;
   const posted = o.payments.filter((p) => p.status === "POSTED");
   const paid = posted.reduce((t, p) => t + p.amount, 0);
   // Cancelled after money was taken: refunded — but an online payment that never arrived was never money.
@@ -695,6 +739,7 @@ async function refreshPaymentTx(tx: Tx, orderId: string) {
 async function payOrderTx(tx: Tx, id: string, input: PayInput, actor: Actor, now: Date, opts: { online?: boolean; noCollector?: boolean; viaNtzs?: boolean } = {}) {
   const { o, unpaid, fee, amount } = await outstandingTx(tx, id);
   if (o.status === "CANCELLED") throw new AppError("This order was cancelled.");
+  if (o.isGift) throw new AppError(GIFT_NOTHING_TO_PAY);
   if (o.settlement === "ROOM") throw new AppError("This order is on the guest's room bill — it is paid at check-out.");
   if (amount <= 0) throw new AppError("This order is already paid.");
   // Paid online (the customer sent their payment): a waiter never collects it again — reception checks the account and records it.
@@ -934,6 +979,7 @@ export async function chargeOrderToRoomTx(tx: Tx, id: string, reservationId: str
   const o = await tx.restaurantOrder.findUnique({ where: { id } });
   if (!o) throw new AppError("Order not found.", "NOT_FOUND");
   if (o.status === "CANCELLED") throw new AppError("This order was cancelled.");
+  if (o.isGift) throw new AppError(GIFT_NOTHING_TO_PAY);
   if (o.settlement === "ROOM") throw new AppError("This order is already on a room bill.");
   if (o.paidAmount > 0) throw new AppError("Part of this order is already paid — receive the rest as a payment.");
   if ((await awaitingOnlineTx(tx, [id])).length) throw new AppError("The customer paid this order online — it cannot go on a room. Confirm their payment, or decline the order.", "CONFLICT");
@@ -987,6 +1033,7 @@ export async function changeOrderBilling(id: string, to: string | null, reason: 
     const o = await tx.restaurantOrder.findUnique({ where: { id } });
     if (!o) throw new AppError("Order not found.", "NOT_FOUND");
     if (o.status === "CANCELLED") throw new AppError("This order was cancelled.");
+    if (o.isGift) throw new AppError(GIFT_NOTHING_TO_PAY);
     const from = o.settlement === "ROOM" ? `Room ${o.roomNumber ?? ""}`.trim() : "Restaurant";
     if (o.settlement === "ROOM") {
       if (to && to === o.reservationId) throw new AppError("It is already on that room's bill.");
@@ -1021,6 +1068,7 @@ export async function addOrderItemsTx(tx: Tx, id: string, items: { menuItemId: s
   await tx.$queryRaw`SELECT "id" FROM "restaurant_orders" WHERE "id" = ${id} FOR UPDATE`;
   const o = await tx.restaurantOrder.findUnique({ where: { id } });
   if (!o) throw new AppError("Order not found.", "NOT_FOUND");
+  if (o.isGift) throw new AppError("This is a complimentary Spin to Win gift — start a new order for anything else.");
   if (CLOSED_STATUSES.includes(o.status)) throw new AppError(o.status === "CANCELLED" ? msg("This order was cancelled.") : msg("This order is closed — start a new order."));
   if (o.status === "READY" || o.status === "OUT_FOR_DELIVERY") throw new AppError("This order is already on its way — add the new items once it is served.");
   // Take out never starts unpaid: once the kitchen has it (paid), or once it was paid with the customer's proof, more
@@ -1241,7 +1289,7 @@ export async function discountOrders(orderIds: string[], input: { amount?: numbe
     if ((await awaitingOnlineTx(tx, ids)).length) throw new AppError("An order on this bill was paid online and its payment is not checked yet — confirm or decline it first.", "CONFLICT");
     if ((await payingByPhoneTx(tx, ids, now)).size) throw new AppError(PAYING_BY_PHONE, "CONFLICT");
     const orders = (await tx.restaurantOrder.findMany({ where: { id: { in: ids } }, include: { items: { orderBy: { id: "asc" } } } }))
-      .filter((o) => !CLOSED_STATUSES.includes(o.status) || o.paidAmount < o.total);
+      .filter((o) => !o.isGift && (!CLOSED_STATUSES.includes(o.status) || o.paidAmount < o.total));
     // Room orders of a guest who has checked out were settled at check-out — the discount leaves them as they are.
     const gone = new Set((await tx.reservation.findMany({ where: { id: { in: orders.filter((o) => o.settlement === "ROOM" && o.reservationId).map((o) => o.reservationId!) }, status: { not: "CHECKED_IN" } }, select: { id: true } })).map((r) => r.id));
     orders.splice(0, orders.length, ...orders.filter((o) => !(o.settlement === "ROOM" && o.reservationId && gone.has(o.reservationId))));

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { motion } from "motion/react";
-import { ArrowRight, ArrowRightLeft, Ban, Banknote, BanknoteX, BedDouble, Bike, Check, CircleMinus, Plus, Printer, ShieldCheck, Undo2, CheckCheck, CircleCheck, CreditCard, HandCoins, HandPlatter, History, Landmark, Loader2, MessageCircle, Phone, Receipt, ShoppingBag, Smartphone, Store, UtensilsCrossed, UserRoundCheck, Wallet, Wine, X, MapPin, Download, Eye, Image as ImageIcon } from "lucide-react";
+import { ArrowRight, ArrowRightLeft, Ban, Banknote, BanknoteX, BedDouble, Bike, Check, Gift, CircleMinus, Plus, Printer, ShieldCheck, Undo2, CheckCheck, CircleCheck, CreditCard, HandCoins, HandPlatter, History, Landmark, Loader2, MessageCircle, Phone, Receipt, ShoppingBag, Smartphone, Store, UtensilsCrossed, UserRoundCheck, Wallet, Wine, X, MapPin, Download, Eye, Image as ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -43,6 +43,17 @@ export const since = (min: number, t: T = englishT) => (min < 1 ? t("now") : min
 export const shortNo = (n: string) => `#${n.replace(/^ORD-\d{4}-0*/, "")}`;
 /** Where it goes, in the reader's language — the same words as `o.place` ("Room 305", "Table 7", "Take out — …", "Counter"). */
 export const placeText = (o: PortalOrder, t: T) => deliveryPlace({ type: o.type as RestaurantOrderType, roomNumber: o.room, tableLabel: o.table, deliveryAddress: o.address }, t);
+/** A Spin to Win gift, said plainly on the order: complimentary, nothing to pay. Those who see money also see what it is worth. */
+export function GiftStrip({ value, className }: { value: number | null; className?: string }) {
+  const t = useT();
+  return (
+    <p className={cn("flex items-start gap-1.5 rounded-lg bg-[oklch(0.87_0.09_84)]/15 px-2.5 py-1.5 text-[11px] font-semibold text-amber-900 dark:text-[oklch(0.87_0.09_84)]", className)}>
+      <Gift className="mt-px size-3.5 shrink-0" />
+      <span>{t("SPIN TO WIN — COMPLIMENTARY GIFT")}<span className="block font-normal opacity-80">{value != null ? t("Nothing to pay · worth {amount}", { amount: `TZS ${value.toLocaleString("en-US")}` }) : t("Nothing to pay")}</span></span>
+    </p>
+  );
+}
+
 /** Where the order came from ("Room QR", "Reception · Room 402"), in the reader's language. */
 export const sourceText = (o: PortalOrder, t: T) => {
   const at = o.sourceLabel.indexOf(" · Room ");
@@ -535,7 +546,7 @@ export function OrderCard({ o, perms, now, fresh, accounts, rooms, drag, roomy, 
           </button>
         )}
         {o.address && <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-sky-500/10 px-2.5 py-1.5 text-[11px] font-medium text-sky-900 dark:text-sky-200"><MapPin className="mt-px size-3 shrink-0" /><span><span className="font-semibold">{t("Deliver to:")}</span> {o.address}</span></p>}
-        <OrderNote codes={o.noteCodes} notes={o.notes} t={t} className="mt-2" />
+        {o.gift ? <GiftStrip value={o.giftValue} className="mt-2" /> : <OrderNote codes={o.noteCodes} notes={o.notes} t={t} className="mt-2" />}
         {o.cancelReason && <p className="mt-2 rounded-lg bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-800 dark:text-rose-200">{t("Cancelled: {reason}", { reason: o.cancelReason })}</p>}
 
         {(showPay || deskIcons || (showSecondary && !roomy)) && (
@@ -679,7 +690,7 @@ export function OrderCard({ o, perms, now, fresh, accounts, rooms, drag, roomy, 
                 }),
               ])}
             </ul>
-            <OrderNote codes={o.noteCodes} notes={o.notes} t={t} tone="sheet" className="mt-1" />
+            {o.gift ? <GiftStrip value={o.giftValue} className="mt-2" /> : <OrderNote codes={o.noteCodes} notes={o.notes} t={t} tone="sheet" className="mt-1" />}
             {o.total != null && (
               <dl className="ml-auto mt-3 max-w-[280px] space-y-1 text-sm">
                 {food.length > 0 && drinks.length > 0 && <>

@@ -44,6 +44,11 @@ const WORDS: Record<string, string> = {
   "hotel_qr.created": msg("made a Hotel QR"), "hotel_qr.renamed": msg("renamed a Hotel QR"), "hotel_qr.regenerated": msg("made a new Hotel QR code (the old card stopped working)"),
   "hotel_qr.enabled": msg("switched a Hotel QR on"), "hotel_qr.disabled": msg("switched a Hotel QR off"), "hotel_qr.archived": msg("archived a Hotel QR"),
   "hotel_qr.settings": msg("changed the Hotel QR switches"),
+  "spin.won": msg("won a Spin to Win gift"), "spin.claimed": msg("chose where to enjoy a Spin to Win gift"), "spin.no_gift": msg("could not spin — no gift was available"),
+  "spin.settings": msg("changed the Spin to Win numbers"), "spin.enabled": msg("switched Spin to Win on"), "spin.disabled": msg("switched Spin to Win off"),
+  "spin.tier": msg("changed a room's Spin to Win tier"), "spin.prize": msg("changed which menu items are Spin to Win gifts"),
+  "spin_qr.regenerated": msg("made a new Spin to Win code (the old card stopped working)"), "spin_qr.enabled": msg("switched a Spin to Win card on"), "spin_qr.disabled": msg("switched a Spin to Win card off"),
+  "restaurant_order.gift": msg("sent a Spin to Win gift to the kitchen"),
 };
 
 /** What an action was, in plain words ("checked a guest in"). */
@@ -58,7 +63,7 @@ export function activityArea(a: string): ActivityArea {
   if (a.startsWith("reservation.") || a.startsWith("booking_request.") || a.startsWith("table_reservation.") || a.startsWith("hotel_qr.")) return msg("Bookings");
   if (/^(payment|revenue|expense|invoice)\./.test(a)) return msg("Money");
   if (a.startsWith("stock_request.")) return msg("Stores");
-  if (a.startsWith("restaurant_order.") || a.startsWith("dining_session.")) return msg("Restaurant");
+  if (a.startsWith("restaurant_order.") || a.startsWith("dining_session.") || a.startsWith("spin.") || a.startsWith("spin_qr.")) return msg("Restaurant");
   if (a.startsWith("room.")) return msg("Rooms");
   if (a.startsWith("guest.") || a.startsWith("corporate.")) return msg("Customers");
   if (a.startsWith("shift.") || a.startsWith("report.shift")) return msg("Shifts");

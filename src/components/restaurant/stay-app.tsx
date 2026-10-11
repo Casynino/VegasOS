@@ -307,7 +307,7 @@ function OrdersCard({ orders, className }: { orders: GuestStay["orders"]; classN
               <span className="w-9 shrink-0 text-[13px] font-semibold tabular-nums text-(--vr-muted)">#{o.number.replace(/^ORD-\d{4}-0*/, "")}</span>
               <span className="min-w-0 flex-1 leading-tight">
                 <span className="block truncate text-[14px] font-medium">{o.items.map((i) => `${i.quantity} × ${orderItemName(i, t)}`).join(t.locale === "zh-CN" ? "、" : ", ")}</span>
-                <span className="mt-0.5 block text-[12.5px] tabular-nums text-(--vr-muted)">{tzs(o.total)}</span>
+                <span className="mt-0.5 block text-[12.5px] tabular-nums text-(--vr-muted)">{o.gift ? t("Complimentary gift") : tzs(o.total)}</span>
               </span>
               <span className={cn("shrink-0 text-[12.5px] font-semibold", w.tone)}>{t(w.label)}</span>
             </>

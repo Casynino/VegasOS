@@ -11,7 +11,7 @@ type Role = { id: string; code: string; name: string; locked: boolean; granted: 
 /** Each permission group's heading — its code prefix in words (shown in capitals); an unknown prefix shows as before. */
 const GROUP_LABEL: Record<string, string> = {
   assets: msg("Assets"), bar: msg("Bar"), booking_requests: msg("Booking requests"), contact: msg("Contact"), corporate: msg("Corporate"),
-  dashboard: msg("Dashboard"), expenses: msg("Expenses"), finance: msg("Finance"), guests: msg("Guests"), hotel_qr: msg("Hotel QR"),
+  dashboard: msg("Dashboard"), expenses: msg("Expenses"), finance: msg("Finance"), guests: msg("Guests"), hotel_qr: msg("Hotel QR"), spin: msg("Spin to Win"),
   inventory: msg("Inventory"), invoices: msg("Invoices"), kitchen: msg("Kitchen"), ledger: msg("Ledger"), meeting: msg("Meeting"),
   payments: msg("Payments"), pricing: msg("Pricing"), reports: msg("Reports"), requests: msg("Requests"), reservations: msg("Reservations"),
   restaurant: msg("Restaurant"), revenue: msg("Revenue"), rooms: msg("Rooms"), settings: msg("Settings"), shifts: msg("Shifts"),

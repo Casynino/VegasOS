@@ -196,7 +196,7 @@ export async function stayView(where: { guestToken: string } | { id: string }) {
       },
       restaurantOrders: {
         where: { status: { not: "CANCELLED" } }, orderBy: { createdAt: "desc" }, take: 12,
-        select: { number: true, status: true, total: true, createdAt: true, trackToken: true, items: { select: { name: true, nameI18n: true, quantity: true } } },
+        select: { number: true, status: true, total: true, isGift: true, createdAt: true, trackToken: true, items: { select: { name: true, nameI18n: true, quantity: true } } },
       },
     },
   });
@@ -237,7 +237,7 @@ export async function stayView(where: { guestToken: string } | { id: string }) {
     payer,
     canOrder: r.status === "CHECKED_IN",
     requests: r.requests.map((q) => ({ id: q.id, type: q.type, status: q.status, at: q.createdAt.toISOString() })),
-    orders: r.restaurantOrders.map((o) => ({ number: o.number, status: o.status, total: o.total, at: o.createdAt.toISOString(), track: o.trackToken, items: o.items.map((i) => ({ name: i.name, nameI18n: i.nameI18n, quantity: i.quantity })) })),
+    orders: r.restaurantOrders.map((o) => ({ number: o.number, status: o.status, total: o.total, gift: o.isGift, at: o.createdAt.toISOString(), track: o.trackToken, items: o.items.map((i) => ({ name: i.name, nameI18n: i.nameI18n, quantity: i.quantity })) })),
   };
 }
 export type GuestStay = NonNullable<Awaited<ReturnType<typeof stayView>>>;

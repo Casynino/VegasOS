@@ -13,6 +13,7 @@ import m_site_pages_content from "./site-pages-content";
 import m_site_pages_forms from "./site-pages-forms";
 import m_site_services_dining from "./site-services-dining";
 import m_site_shell from "./site-shell";
+import m_spin from "./spin";
 import m_stay_wifi from "./stay-wifi";
 import m_svc_booking from "./svc-booking";
 
@@ -30,6 +31,7 @@ const catalog: Catalog = {
   ...m_site_pages_forms,
   ...m_site_services_dining,
   ...m_site_shell,
+  ...m_spin,
   ...m_stay_wifi,
   ...m_svc_booking,
 };

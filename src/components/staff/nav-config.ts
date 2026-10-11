@@ -83,6 +83,8 @@ export const NAV: NavSection[] = [
       { href: "/staff/requests", label: msg("Requests"), icon: "ClipboardCheck", anyOf: ["requests.view"] },
       { href: "/staff/transport", label: msg("Transport"), icon: "BusFront", anyOf: ["transport.view", "transport.manage"] },
       { href: "/staff/meeting-room", label: msg("Meetings"), icon: "Presentation", anyOf: ["meeting.view"] },
+      // Gifts for checked-in guests (a wheel on the room's own card): the Admin sets it up; managers follow what was given.
+      { href: "/staff/spin-to-win", label: msg("Spin to Win"), icon: "Gift", anyOf: ["spin.manage", "reports.view"] },
     ],
   },
   {

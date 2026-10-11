@@ -14,6 +14,7 @@ import m_svc_ops from "./svc-ops";
 import m_svc_reporting from "./svc-reporting";
 import m_svc_reservations from "./svc-reservations";
 import m_svc_restaurant from "./svc-restaurant";
+import m_svc_spin from "./svc-spin";
 import m_whatsapp from "./whatsapp";
 
 const catalog: Catalog = {
@@ -31,6 +32,7 @@ const catalog: Catalog = {
   ...m_svc_reporting,
   ...m_svc_reservations,
   ...m_svc_restaurant,
+  ...m_svc_spin,
   ...m_whatsapp,
 };
 export default catalog;

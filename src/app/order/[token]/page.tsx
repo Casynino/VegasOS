@@ -14,6 +14,7 @@ import { getT, guestLocale } from "@/i18n/server";
 import { orderItemName } from "@/i18n/content";
 import { msg } from "@/i18n/msg";
 import { RequestList } from "@/components/ordering/order-note";
+import { LanguageSwitch } from "@/components/i18n/language-switch";
 
 export async function generateMetadata(): Promise<Metadata> {
   await guestLocale();
@@ -57,7 +58,10 @@ export default async function TrackOrderPage({ params, searchParams }: PageProps
     ? await Promise.all([onlinePayAvailable(roomService ? "roomService" : "restaurant", s), livePaymentForOrder(token)]) : [false, null];
   // Take out ordered with Pay online starts once it is paid.
   const waitsForPay = !!o.payOnlineAt && o.status === "PENDING" && due > 0 && (o.type === "TAKEAWAY" || o.type === "PICKUP");
-  const pay = o.status === "CANCELLED" ? (o.paymentStatus === "REFUNDED" ? t("Cancelled — your payment will be given back") : t("Cancelled — nothing to pay"))
+  // A Spin to Win gift: nothing to pay, nothing to add to, no bill — said so, never "pay on delivery".
+  const gift = o.isGift;
+  const pay = gift ? t("Complimentary gift — nothing to pay")
+    : o.status === "CANCELLED" ? (o.paymentStatus === "REFUNDED" ? t("Cancelled — your payment will be given back") : t("Cancelled — nothing to pay"))
     : o.settlement === "ROOM" ? t("On your Room {room} bill", { room: o.roomNumber })
     : due === 0 && o.paidAmount > 0 ? t("Paid — thank you")
     : o.paidAmount > 0 ? t("{amount} still to pay", { amount: tzs(due) })
@@ -67,7 +71,7 @@ export default async function TrackOrderPage({ params, searchParams }: PageProps
     : room || delivery ? t("Pay on delivery") : o.type === "DINE_IN" ? t("Pay after your meal") : t("Pay at the counter");
   // Take out never starts unpaid: once the kitchen has it, more is a new order (paid first too).
   const takeOutStarted = (o.type === "TAKEAWAY" || o.type === "PICKUP") && (o.status !== "PENDING" || (!!o.customerPaidAt && !o.payOnlineAt));
-  const canAdd = ["PENDING", "ACCEPTED", "PREPARING", "DELIVERED"].includes(o.status) && !takeOutStarted;
+  const canAdd = ["PENDING", "ACCEPTED", "PREPARING", "DELIVERED"].includes(o.status) && !takeOutStarted && !gift;
   const phone = prettyPhone(s.whatsapp || s.phone);
 
   // The headline: where the order is now, in plain words.
@@ -85,7 +89,8 @@ export default async function TrackOrderPage({ params, searchParams }: PageProps
     <main className="vr relative min-h-svh overflow-x-clip bg-(--vr-bg) px-4 pb-16 pt-5 text-(--vr-ink)">
       <LiveRefresh active={!CLOSED.includes(o.status)} />
       <div className="relative mx-auto max-w-lg">
-        <Link href="/order" className="flex items-center gap-2.5">
+        <div className="flex items-center justify-between gap-3">
+        <Link href="/order" className="flex min-w-0 items-center gap-2.5">
           <span className="grid size-10 shrink-0 place-items-center rounded-full bg-(--vr-dark) ring-2 ring-(--vr-gold)/50">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/brand/logo-192.png" alt="" className="size-8 rounded-full" />
@@ -95,6 +100,8 @@ export default async function TrackOrderPage({ params, searchParams }: PageProps
             <span className="block text-[11px] uppercase tracking-[0.18em] text-(--vr-muted)">{t("Restaurant & bar")}</span>
           </span>
         </Link>
+        <LanguageSwitch variant="toggle" tone="light" languages={s.enabledLanguages} own={{ order: token }} className="shrink-0 text-(--vr-ink) hover:text-(--vr-gold-ink)" />
+        </div>
 
         {/* Where it is */}
         <section className="mt-6 overflow-hidden rounded-[28px] bg-(--vr-card) shadow-[0_24px_50px_-34px_rgba(29,23,18,0.7)] ring-1 ring-(--vr-line)">
@@ -143,19 +150,19 @@ export default async function TrackOrderPage({ params, searchParams }: PageProps
             {o.items.map((i, n) => (
               <li key={`${n}-${i.name}`} className="flex justify-between gap-3 py-2.5">
                 <span><span className="font-semibold tabular-nums">{i.quantity} ×</span> {orderItemName(i, t)}{o.round > 1 && i.round === o.round && <span className="ml-1.5 rounded-full bg-(--vr-gold-soft) px-1.5 py-px text-[10px] font-semibold text-(--vr-gold-ink)">{t("new")}</span>}</span>
-                <span className="tabular-nums text-(--vr-muted)">{i.lineTotal.toLocaleString("en-US")}</span>
+                {!gift && <span className="tabular-nums text-(--vr-muted)">{i.lineTotal.toLocaleString("en-US")}</span>}
               </li>
             ))}
             {o.serviceFee > 0 && <li className="flex justify-between gap-3 py-2.5 text-(--vr-muted)"><span>{t("Room service delivery")}</span><span className="tabular-nums">{o.serviceFee.toLocaleString("en-US")}</span></li>}
           </ul>
           <div className="mt-2 flex items-center justify-between rounded-2xl bg-(--vr-bg) px-4 py-3">
             <span className="text-sm text-(--vr-muted)">{pay}</span>
-            <span className="text-lg font-semibold tabular-nums">{tzs(o.total)}</span>
+            {!gift && <span className="text-lg font-semibold tabular-nums">{tzs(o.total)}</span>}
           </div>
           {/* What they asked for: the requests they ticked (in their language), then their own words as typed. */}
           <RequestList codes={o.noteCodes} t={t} className="mt-3" chipClass="rounded-full bg-(--vr-gold-soft) px-2.5 py-1 text-xs font-medium text-(--vr-gold-ink)" />
-          {o.notes && <p className="mt-2 rounded-xl bg-(--vr-gold-soft) px-3 py-2 text-xs text-(--vr-gold-ink)">“{o.notes}”</p>}
-          {!cancelled && (
+          {o.notes && !gift && <p className="mt-2 rounded-xl bg-(--vr-gold-soft) px-3 py-2 text-xs text-(--vr-gold-ink)">“{o.notes}”</p>}
+          {!cancelled && !gift && (
             <Link href={`/order/${token}/receipt`} className="mt-3 flex h-12 items-center justify-center gap-2 rounded-full ring-1 ring-(--vr-line) text-sm font-semibold transition hover:ring-(--vr-gold)">
               <Receipt className="size-4 text-(--vr-gold-ink)" />{due > 0 ? t("Your bill — print or download") : t("Your receipt — print or download")}
             </Link>

@@ -177,7 +177,7 @@ export async function orderByTrackToken(token: string) {
   const o = await db.restaurantOrder.findUnique({
     where: { trackToken: token },
     select: {
-      source: true, payOnlineAt: true,
+      source: true, payOnlineAt: true, isGift: true,
       number: true, type: true, status: true, settlement: true, paymentStatus: true, paidAmount: true, round: true, roomNumber: true, customerName: true, tableLabel: true, deliveryAddress: true, customerPaidAt: true, notes: true, noteCodes: true,
       total: true, serviceFee: true, createdAt: true, acceptedAt: true, readyAt: true, takenAt: true, deliveredAt: true, completedAt: true, cancelledAt: true, statusChangedAt: true,
       items: { select: { name: true, nameI18n: true, quantity: true, lineTotal: true, round: true }, orderBy: { id: "asc" } },

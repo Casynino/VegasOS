@@ -11,9 +11,10 @@ import { useT } from "@/i18n/client";
 
 /**
  * A room / the meeting room / the public menu card — or a restaurant place: a table, the counter, the main restaurant QR —
- * or a Hotel booking QR ("Scan to book your stay"; its place, e.g. Entrance, stays off the card).
+ * or a Hotel booking QR ("Scan to book your stay"; its place, e.g. Entrance, stays off the card) — or a room's Spin to Win
+ * card (gifts for the guest checked in to that room; nothing to pay, so no "We accept" line).
  */
-export type Printable = { id: string; kind: "room" | "meeting" | "public" | "table" | "counter" | "restaurant" | "booking"; title: string; url: string; qr: string; table?: string; area?: string };
+export type Printable = { id: string; kind: "room" | "meeting" | "public" | "table" | "counter" | "restaurant" | "booking" | "spin"; title: string; url: string; qr: string; table?: string; area?: string };
 const GOLD = "#e3bd6a";
 
 /** A card as a sharp JPEG, whatever size it is shown at (≈1240 px wide ≈ A6 at 300 dpi). The background colour is the
@@ -112,6 +113,11 @@ export function QrPrintCard({ card, hotel }: { card: Printable; hotel: string; p
           <Camera className="size-[2.6cqw] shrink-0" style={{ color: GOLD }} strokeWidth={1.6} />{t("Open your phone camera and point it here")}
         </p>
 
+        {card.kind === "spin" ? (
+          <p className="mt-auto flex w-full items-center justify-center gap-[2cqw] text-[1.9cqw] font-semibold uppercase tracking-[0.42em] text-white/55">
+            <span aria-hidden className="h-px w-[8cqw] bg-[#e3bd6a]/45" />{t("Complimentary for our guests")}<span aria-hidden className="h-px w-[8cqw] bg-[#e3bd6a]/45" />
+          </p>
+        ) : (
         <div className="mt-auto w-full">
           <p className="flex items-center justify-center gap-[2cqw] text-[1.9cqw] font-semibold uppercase tracking-[0.42em] text-white/55">
             <span aria-hidden className="h-px w-[8cqw] bg-[#e3bd6a]/45" />{t("We accept")}<span aria-hidden className="h-px w-[8cqw] bg-[#e3bd6a]/45" />
@@ -125,6 +131,7 @@ export function QrPrintCard({ card, hotel }: { card: Printable; hotel: string; p
             ))}
           </ul>
         </div>
+        )}
       </div>
     </article>
   );
@@ -140,6 +147,7 @@ function titleSize(title: string) {
 function cardCopy(card: Printable): { eyebrow: string | null; title: string; call: string } {
   switch (card.kind) {
     case "booking": return { eyebrow: null, title: "Book your stay", call: "Scan to book" };
+    case "spin": return { eyebrow: `Room ${card.title}`, title: "Spin to Win", call: "Scan to spin" };
     case "room": return { eyebrow: null, title: `Room ${card.title}`, call: "Scan to order" };
     case "meeting": return { eyebrow: null, title: "Meeting Room", call: "Scan to order" };
     case "table": return { eyebrow: card.area ?? null, title: card.title, call: "Scan to order" };

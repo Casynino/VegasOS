@@ -97,9 +97,11 @@ export function toPortalOrders(orders: BoardOrder[], ctx: {
       items: o.items.map((i) => ({ id: i.id, menuItemId: i.menuItemId, name: i.name, nameI18n: namesOf(i.nameI18n), quantity: i.quantity, type: i.type, image: i.menuItem?.image?.isActive ? mediaUrl(i.menuItem.image) : null, prepared: !!i.preparedAt,
         unitPrice: seesMoney ? i.unitPrice : null, lineTotal: seesMoney ? i.lineTotal : null,
         round: i.round, addedAt: i.addedAt.toISOString(), addedBy: i.addedBy?.fullName ?? null, paid: !!i.paymentId })),
-      total: seesMoney ? o.total : null, serviceFee: seesMoney ? o.serviceFee : null, paidTo: seesMoney ? o.account?.name ?? null : null,
-      paid: seesMoney ? o.paidAmount : null, due: seesMoney ? (o.settlement === "ROOM" || o.status === "CANCELLED" ? 0 : Math.max(0, o.total - o.paidAmount)) : null,
-      payment: seesMoney ? o.paymentStatus : null,
+      // A Spin to Win gift has no money on it at all — nothing to pay, nothing to record; what it is worth is kept apart.
+      gift: o.isGift, giftValue: seesMoney && o.isGift ? o.giftValue : null,
+      total: seesMoney && !o.isGift ? o.total : null, serviceFee: seesMoney && !o.isGift ? o.serviceFee : null, paidTo: seesMoney ? o.account?.name ?? null : null,
+      paid: seesMoney ? o.paidAmount : null, due: seesMoney ? (o.isGift || o.settlement === "ROOM" || o.status === "CANCELLED" ? 0 : Math.max(0, o.total - o.paidAmount)) : null,
+      payment: seesMoney && !o.isGift ? o.paymentStatus : null,
       payments: seesMoney ? o.payments.map((p) => ({
         id: p.id, amount: p.amount, account: p.account.name, reference: p.reference, status: p.status,
         collectedBy: p.collectedBy?.fullName ?? null, collectedRole: p.collectedByRole, collectedAt: p.collectedAt.toISOString(),

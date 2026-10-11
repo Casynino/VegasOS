@@ -57,6 +57,8 @@ export type PortalOrder = {
   acceptedBy: string | null; readyBy: string | null; takenBy: string | null; deliveredBy: string | null;
   items: PortalItem[];
   /** Money — null for the cook. */
+  /** A Spin to Win complimentary gift: no money on it (total, payment and due are empty); `giftValue` = what it is worth. */
+  gift: boolean; giftValue: number | null;
   total: number | null; serviceFee: number | null; paidTo: string | null;
   /** Paid so far and still due (direct orders; 0 due on a room bill) — null for the cook. */
   paid: number | null; due: number | null;
