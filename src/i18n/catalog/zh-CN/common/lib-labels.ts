@@ -680,5 +680,8 @@ const catalog: Catalog = {
   "Driver assigned": "已指派司机",
   "In progress": "处理中",
   "Every day": "每天",
+  "won the Spin to Win bonus spin": "赢得了幸运转盘的奖励转盘",
+  "spun — no gift this time": "转动了转盘 — 这次没有礼物",
+  "sent their Spin to Win gifts to the restaurant": "将幸运转盘礼物送到了餐厅",
 };
 export default catalog;

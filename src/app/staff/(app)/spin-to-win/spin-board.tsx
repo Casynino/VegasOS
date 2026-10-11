@@ -16,12 +16,12 @@ import { formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useT } from "@/i18n/client";
 import type { GiftChoice, SpinSettingsInput } from "@/server/services/spin";
-import type { SpinTier } from "@/lib/spin";
+import { giftOutlook, type SpinTier } from "@/lib/spin";
 import { regenerateSpinQrAction, saveSpinSettingsAction, setSpinPrizeAction, setSpinQrActiveAction, setSpinTierAction } from "./actions";
 
-type Card = { id: string; number: string; type: string; tier: SpinTier | null; url: string; qr: string; active: boolean; scans: number; lastScan: string | null; guest: string | null; used: number | null; allowed: number | null };
+type Card = { id: string; number: string; type: string; tier: SpinTier | null; url: string; qr: string; active: boolean; scans: number; lastScan: string | null; guest: string | null; used: number | null; allowed: number | null; won: number | null; finished: boolean };
 type GiftRow = { id: string; name: string; category: string; price: number; choice: GiftChoice; value: number; valueOverride: number | null; weight: number; gift: boolean; why: "NEVER" | "PRICE" | "OFF_MENU" | "NO_STOCK" | null };
-type Recent = { id: string; at: string; spin: number; of: number; name: string; value: number; where: string | null; room: string; guest: string; order: string | null; status: string | null };
+type Recent = { id: string; at: string; gift: number; of: number; name: string; value: number; where: string | null; room: string; guest: string; order: string | null; status: string | null };
 type Total = { count: number; value: number };
 
 const box = "rounded-3xl border border-border/70 bg-card p-4 sm:p-5";
@@ -34,7 +34,7 @@ const label = "text-xs font-medium text-muted-foreground";
 export function SpinBoard({ canManage, settings, running, today, given, giftsNow, types, gifts, recent, unclaimed, noGift, cards, hotel }: {
   canManage: boolean; settings: SpinSettingsInput; running: boolean; today: string; given: { today: Total; month: Total }; giftsNow: number;
   types: { id: string; name: string; chosen: string | null; tier: SpinTier | null }[]; gifts: GiftRow[]; recent: Recent[];
-  unclaimed: { id: string; at: string; name: string; room: string; guest: string }[]; noGift: { id: string; at: string; room: string | null; guest: string | null }[]; cards: Card[]; hotel: string;
+  unclaimed: { id: string; at: string; gifts: string[]; room: string; guest: string }[]; noGift: { id: string; at: string; room: string | null; guest: string | null }[]; cards: Card[]; hotel: string;
 }) {
   const t = useT();
   const when = (iso: string) => new Date(iso).toLocaleString(t.intl, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -50,7 +50,7 @@ export function SpinBoard({ canManage, settings, running, today, given, giftsNow
         <div>
           <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground"><Gift className="size-4" />{t("Gifts for checked-in guests")}</p>
           <h1 className="font-display text-3xl font-semibold">{t("Spin to Win")}</h1>
-          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{t("Each room has its own Spin to Win card. A guest checked in to the room scans it and wins treats from the restaurant menu — nothing to pay, never on the bill. When nobody is checked in, the card gives nothing.")}</p>
+          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{t("Each room has its own Spin to Win card. A guest checked in to the room scans it and spins: up to two treats from the restaurant menu a stay — nothing to pay, never on the bill. When they have finished, all their gifts come to the restaurant as one order. When nobody is checked in, the card gives nothing.")}</p>
         </div>
         <span className={cn("rounded-full px-3 py-1 text-xs font-semibold", running ? "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300" : "bg-muted text-muted-foreground")}>{state}</span>
       </div>
@@ -76,7 +76,7 @@ export function SpinBoard({ canManage, settings, running, today, given, giftsNow
               <p className="flex items-center gap-2 font-semibold"><CircleAlert className="size-4 text-amber-600" />{t("Needs a look")}</p>
               <ul className="mt-2 space-y-1.5 text-sm">
                 {noGift.map((n) => <li key={n.id}>{t("Room {room} could not spin — no gift was available ({when}). Check the menu and the stores; the guest's spin was not used.", { room: n.room ?? "—", when: when(n.at) })}</li>)}
-                {unclaimed.map((u) => <li key={u.id}>{t("Room {room} · {guest} won {gift} and has not yet chosen where to enjoy it ({when}).", { room: u.room, guest: u.guest, gift: u.name, when: when(u.at) })}</li>)}
+                {unclaimed.map((u) => <li key={u.id}>{t("Room {room} · {guest} won {gift} and has not sent it to the restaurant yet ({when}). They send it from the same card — a kind reminder helps.", { room: u.room, guest: u.guest, gift: u.gifts.join(" + "), when: when(u.at) })}</li>)}
               </ul>
             </section>
           )}
@@ -94,10 +94,10 @@ export function SpinBoard({ canManage, settings, running, today, given, giftsNow
                       <tr key={r.id}>
                         <td className="py-2 pr-3 whitespace-nowrap text-muted-foreground">{when(r.at)}</td>
                         <td className="py-2 pr-3"><span className="font-semibold">{r.room}</span> <span className="text-muted-foreground">· {r.guest}</span></td>
-                        <td className="py-2 pr-3">{r.name} <span className="text-xs text-muted-foreground">· {t("spin {n} of {total}", { n: r.spin, total: r.of })}</span></td>
-                        <td className="py-2 pr-3">{r.where === "ROOM" ? t("To the room") : r.where === "RESTAURANT" ? t("At the restaurant") : r.where === "DECLINED" ? <span className="text-muted-foreground">{t("Not taken")}</span> : <span className="text-amber-700 dark:text-amber-300">{t("Not chosen yet")}</span>}</td>
+                        <td className="py-2 pr-3">{r.name} <span className="text-xs text-muted-foreground">· {t("gift {n} of {total}", { n: r.gift, total: r.of })}</span></td>
+                        <td className="py-2 pr-3">{r.where === "ROOM" ? t("To the room") : r.where === "RESTAURANT" ? t("At the restaurant") : r.where === "DECLINED" ? <span className="text-muted-foreground">{t("Not taken")}</span> : r.where === "LEFT" ? <span className="text-muted-foreground">{t("Not sent — guest left")}</span> : <span className="text-amber-700 dark:text-amber-300">{t("Not sent yet")}</span>}</td>
                         <td className="py-2 pr-3 whitespace-nowrap">{r.order ? <>{r.order} <span className="text-xs text-muted-foreground">· {t(orderWord(r.status))}</span></> : "—"}</td>
-                        <td className="py-2 text-right tabular-nums">{r.where === "DECLINED" ? "—" : formatTZS(r.value)}</td>
+                        <td className="py-2 text-right tabular-nums">{r.where === "DECLINED" || r.where === "LEFT" ? "—" : formatTZS(r.value)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -145,7 +145,7 @@ function SettingsForm({ settings, canManage }: { settings: SpinSettingsInput; ca
   const [f, setF] = useState(settings);
   const [pending, start] = useTransition();
   const set = <K extends keyof SpinSettingsInput>(k: K, v: SpinSettingsInput[K]) => setF((x) => ({ ...x, [k]: v }));
-  const num = (k: "spinsPerStay" | "budgetStandard" | "budgetPremium" | "maxItemPrice") => ({
+  const num = (k: "spinsPerStay" | "budgetStandard" | "budgetPremium" | "maxItemPrice" | "giftChance" | "freeSpinChance") => ({
     type: "number" as const, inputMode: "numeric" as const, min: 0, value: Number.isFinite(f[k]) ? f[k] : "", disabled: !canManage,
     onChange: (e: React.ChangeEvent<HTMLInputElement>) => set(k, e.target.value === "" ? NaN : Number(e.target.value)),
   });
@@ -154,6 +154,10 @@ function SettingsForm({ settings, canManage }: { settings: SpinSettingsInput; ca
     if (res.ok) { toast.success(res.message ?? t("Saved.")); router.refresh(); } else toast.error(res.error);
   });
   const dirty = JSON.stringify(f) !== JSON.stringify(settings);
+  // What the chances mean for a guest, in plain numbers.
+  const gift = Math.min(100, Math.max(0, Math.round(f.giftChance) || 0));
+  const bonus = Math.min(100 - gift, Math.max(0, Math.round(f.freeSpinChance) || 0));
+  const [none, one, two] = giftOutlook({ gift, freeSpin: bonus }, f.spinsPerStay);
   return (
     <section className={box}>
       <div className="flex items-start justify-between gap-4">
@@ -165,7 +169,7 @@ function SettingsForm({ settings, canManage }: { settings: SpinSettingsInput; ca
         <Switch checked={f.enabled} disabled={!canManage || pending} aria-label={t("Spin to Win on or off")} onCheckedChange={(v) => { set("enabled", v); save({ ...settings, enabled: v }); }} />
       </div>
       <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Field title={t("Spins for each stay")} hint={t("Every spin wins a gift.")}><Input {...num("spinsPerStay")} max={10} /></Field>
+        <Field title={t("Spins for each stay")} hint={t("A stay wins two gifts at most.")}><Input {...num("spinsPerStay")} max={10} /></Field>
         <Field title={t("Gift budget · Standard rooms")} hint={t("All the gifts of one stay together, TZS.")}><Input {...num("budgetStandard")} step={500} /></Field>
         <Field title={t("Gift budget · Premium rooms")} hint={t("All the gifts of one stay together, TZS.")}><Input {...num("budgetPremium")} step={500} /></Field>
         <Field title={t("Menu items up to this price are gifts")} hint={t("TZS. Change single items under Gifts.")}><Input {...num("maxItemPrice")} step={500} /></Field>
@@ -175,6 +179,14 @@ function SettingsForm({ settings, canManage }: { settings: SpinSettingsInput; ca
         <Field title={t("Last day")} hint={t("Empty = no end.")}><Input type="date" value={f.endsOn ?? ""} disabled={!canManage} onChange={(e) => set("endsOn", e.target.value || null)} /></Field>
         <Toggle title={t("Guests may have a gift brought to the room")} checked={f.allowRoom} disabled={!canManage} onChange={(v) => set("allowRoom", v)} />
         <Toggle title={t("Guests may enjoy a gift at the restaurant")} checked={f.allowRestaurant} disabled={!canManage} onChange={(v) => set("allowRestaurant", v)} />
+      </div>
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Field title={t("Spins that win a gift")} hint={t("Out of every 100 spins.")}><Input {...num("giftChance")} max={100} step={5} /></Field>
+        <Field title={t("Spins that win the bonus spin")} hint={t("Out of every 100 spins. One bonus spin a stay.")}><Input {...num("freeSpinChance")} max={50} step={5} /></Field>
+        <p className="self-center rounded-2xl bg-muted/60 px-3 py-2.5 text-xs leading-relaxed text-muted-foreground sm:col-span-2">
+          {t("Out of 100 spins: {gift} win a gift, {bonus} win the bonus spin, {again} say try again.", { gift, bonus, again: 100 - gift - bonus })}{" "}
+          {t("So of 100 guests who play to the end, about {two} win two gifts, {one} win one and {none} win none.", { two, one, none })}
+        </p>
       </div>
       <p className="mt-4 text-xs text-muted-foreground">{t("These numbers are for stays that start spinning from now on. A guest who has already begun keeps the spins and budget they started with — changing a booking or moving rooms never adds spins.")}</p>
       {canManage
@@ -372,7 +384,7 @@ function Cards({ cards, canManage, hotel }: { cards: Card[]; canManage: boolean;
                 <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 font-semibold text-muted-foreground">{c.tier === "PREMIUM" ? t("Premium") : c.tier === "STANDARD" ? t("Standard") : t("No spins")}</span>
               </div>
               <p className="text-[11px] text-muted-foreground">
-                {c.guest ? (c.used === null ? t("In use · {name} · has not spun yet", { name: c.guest }) : t("In use · {name} · {used} of {total} spins used", { name: c.guest, used: c.used, total: c.allowed ?? 0 })) : t("Nobody checked in — the card gives nothing")}
+                {c.guest ? (c.used === null ? t("In use · {name} · has not spun yet", { name: c.guest }) : `${t("In use · {name} · {used} of {total} spins used", { name: c.guest, used: c.used, total: c.allowed ?? 0 })} · ${t.plural(c.won ?? 0, "{n} gift", "{n} gifts")}${c.finished ? ` · ${t("finished")}` : ""}`) : t("Nobody checked in — the card gives nothing")}
                 {" · "}{t.plural(c.scans, "{n} scan", "{n} scans")}
               </p>
               <div className="flex flex-wrap gap-1">

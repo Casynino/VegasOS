@@ -28,7 +28,7 @@ export default async function SpinToWinPage() {
     return {
       id: r.id, number: r.number, type: t(r.type), tier: r.tier, url, qr: await svg(url), active: r.qr!.active, scans: r.qr!.scanCount,
       lastScan: r.qr!.lastScannedAt?.toISOString() ?? null, guest: r.guest ? r.guest.split(/\s+/)[0] : null,
-      used: r.session?.spinsUsed ?? null, allowed: r.session?.spinsAllowed ?? null,
+      used: r.session?.spinsUsed ?? null, allowed: r.session?.spinsAllowed ?? null, won: r.session?.gifts ?? null, finished: !!r.session?.endedAt,
     };
   }));
   return (
@@ -39,10 +39,12 @@ export default async function SpinToWinPage() {
       types={board.types.map((x) => ({ ...x, name: t(x.name) }))}
       gifts={gifts}
       recent={board.recent.map((r) => ({
-        id: r.id, at: r.createdAt.toISOString(), spin: r.spinNumber, of: r.session.spinsAllowed, name: r.name, value: r.value, where: r.fulfilment,
+        id: r.id, at: r.createdAt.toISOString(), gift: r.prizeNumber ?? r.spinNumber, of: Math.max(r.session.prizesAllowed, r.prizeNumber ?? 0), name: r.name, value: r.value,
+        // Won, never sent, and the guest has checked out: nothing was ordered or served.
+        where: r.fulfilment ?? (r.session.reservationRoom.status === "CHECKED_IN" ? null : "LEFT"),
         room: r.session.roomNumber, guest: r.session.guestName, order: r.order?.number ?? null, status: r.order?.status ?? null,
       }))}
-      unclaimed={board.unclaimed.map((u) => ({ id: u.id, at: u.createdAt.toISOString(), name: u.name, room: u.session.roomNumber, guest: u.session.guestName }))}
+      unclaimed={board.unclaimed.map((u) => ({ id: u.id, at: u.at.toISOString(), gifts: u.gifts, room: u.room, guest: u.guest }))}
       noGift={board.noGift.map((n) => ({ id: n.id, at: n.at.toISOString(), room: n.room ?? null, guest: n.guest ?? null }))}
       cards={cards} hotel={hotel.hotelName}
     />

@@ -534,5 +534,17 @@ const catalog: Catalog = {
   // The Boss's daily report link opens without signing in (owner, 2026-10-11).
   "Daily Room Report for this day": "当天的每日客房报告",
   "Private link — anyone who has it can open this report without signing in.": "私密链接——持有此链接的人无需登录即可打开此报告。",
+  "Link switched off.": "链接已关闭。",
+  "Only the MD or the owner can switch the automatic room report.": "只有总经理或业主可以开关自动房间报告。",
+  "Made automatically every day at 07:00 and sent to the Boss by WhatsApp. Kept here as a record.": "每天 07:00 自动生成，并通过 WhatsApp 发送给老板。此处留存记录。",
+  "Made automatically at 07:00, every day": "每天 07:00 自动生成",
+  "Today's comes at 07:00": "今天的报告将在 07:00 生成",
+  "The first report is made automatically tomorrow at 07:00.": "第一份报告将在明天 07:00 自动生成。",
+  "Room report again": "再次发送房间报告",
+  "Send room report": "发送房间报告",
+  "Automatic room report is on.": "自动房间报告已开启。",
+  "Automatic room report is off.": "自动房间报告已关闭。",
+  "Switch automatic report off": "关闭自动报告",
+  "Switch automatic report on": "开启自动报告",
 };
 export default catalog;

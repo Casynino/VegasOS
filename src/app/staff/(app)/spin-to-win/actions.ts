@@ -29,6 +29,8 @@ const Settings = z.object({
   enabled: z.boolean(),
   spinsPerStay: z.coerce.number().int().min(1, msg("At least one spin.")).max(10, msg("At most ten spins a stay.")),
   budgetStandard: Money(1_000_000), budgetPremium: Money(1_000_000), maxItemPrice: Money(1_000_000),
+  giftChance: z.coerce.number().int().min(5, msg("At least 5.")).max(100, msg("At most 100.")),
+  freeSpinChance: z.coerce.number().int().min(0, msg("Not below zero.")).max(50, msg("At most 50.")),
   allowRoom: z.boolean(), allowRestaurant: z.boolean(), startsOn: Day, endsOn: Day,
 });
 

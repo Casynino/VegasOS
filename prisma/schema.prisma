@@ -269,6 +269,9 @@ model HotelSettings {
   spinBudgetPremium          Int       @default(15000)
   /// Menu items priced at or below this can be gifts (others only when the Admin adds them).
   spinMaxItemPrice           Int       @default(10000)
+  /// The chance of one spin, in percent: a gift, and the bonus spin (once a stay). The rest is "try again".
+  spinGiftChance             Int       @default(45)
+  spinFreeSpinChance         Int       @default(10)
   spinAllowRoom              Boolean   @default(true)
   spinAllowRestaurant        Boolean   @default(true)
   /// The promotion's dates (business dates; empty = no limit).
@@ -2520,7 +2523,8 @@ model RestaurantOrder {
   isGift             Boolean                  @default(false)
   /// What the gift is worth by the menu (TZS) — the reward's value, kept apart from every money total.
   giftValue          Int                      @default(0)
-  spinResult         SpinResult?
+  /// The gifts of one stay travel together: one order, one result per gift.
+  spinResults        SpinResult[]
 
   @@index([businessDate, status])
   @@index([locationId, status])
@@ -2637,11 +2641,22 @@ model SpinSession {
   spinsAllowed      Int
   /// TZS for all the gifts together.
   budget            Int
+  /// The stay's own spins that were played (the bonus spin is counted apart, in bonusUsed).
   spinsUsed         Int             @default(0)
+  /// What the gifts won so far are worth together (TZS).
   valueUsed         Int             @default(0)
-  /// "Same for all my gifts": ROOM | RESTAURANT (empty = the guest chooses each time).
+  /// The most gifts this stay can win, and how many it has won.
+  prizesAllowed     Int             @default(2)
+  prizesWon         Int             @default(0)
+  /// The bonus spin: it came up (once a stay), and it was played.
+  bonusAwarded      Boolean         @default(false)
+  bonusUsed         Boolean         @default(false)
+  /// Where the stay's gifts were sent: ROOM | RESTAURANT (empty until the guest sends them).
   fulfilment        String?
   introSeenAt       DateTime?
+  /// The game is over: PRIZES (both gifts won) | SPINS (no spin left) | BUDGET (no gift fits) | GUEST (finished early).
+  endedAt           DateTime?
+  endedWhy          String?
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
   results           SpinResult[]
@@ -2656,24 +2671,36 @@ model SpinResult {
   id         String           @id @default(cuid())
   sessionId  String
   session    SpinSession      @relation(fields: [sessionId], references: [id])
-  /// 1…spinsAllowed
+  /// 1, 2, 3 … in the order the stay played them (the bonus spin included).
   spinNumber Int
+  /// GIFT | FREE_SPIN (one more spin, once a stay) | TRY_AGAIN (nothing this time).
+  kind       String           @default("GIFT")
+  /// This spin was the stay's bonus spin.
+  bonus      Boolean          @default(false)
+  /// 1 or 2 for a gift (the stay's first or second); empty otherwise.
+  prizeNumber Int?
   /// The phone's key for this very spin: asked twice, answered once.
   clientKey  String           @unique
-  menuItemId String
-  menuItem   MenuItem         @relation(fields: [menuItemId], references: [id])
+  menuItemId String?
+  menuItem   MenuItem?        @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
   name       String
   nameI18n   Json?
-  /// What the gift is worth (the menu price, or the Admin's value) when it was won.
+  /// What the gift is worth (the menu price, or the Admin's value) when it was won. 0 when nothing was won.
   value      Int
-  /// ROOM | RESTAURANT — once the guest has chosen. DECLINED — the guest said "no, thank you": no order.
+  /// The wheel this spin showed and the segment it stopped on — so the same spin, asked again, plays back the same.
+  wheel      Json?
+  stopIndex  Int?
+  /// ROOM | RESTAURANT — once the guest has sent the stay's gifts. DECLINED — the guest said "no, thank you": no order.
   fulfilment String?
-  orderId    String?          @unique
+  /// The stay's one gift order (all its gifts together).
+  orderId    String?
   order      RestaurantOrder? @relation(fields: [orderId], references: [id])
   createdAt  DateTime         @default(now())
   claimedAt  DateTime?
 
   @@unique([sessionId, spinNumber])
+  @@unique([sessionId, prizeNumber])
+  @@index([orderId])
   @@index([createdAt])
   @@map("spin_results")
 }

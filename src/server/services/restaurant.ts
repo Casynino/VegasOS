@@ -628,14 +628,19 @@ const GIFT_NOTHING_TO_PAY = msg("This is a complimentary Spin to Win gift — th
 /**
  * A complimentary gift (Spin to Win) as an order in the same workflow — the kitchen prepares it, a waiter serves it —
  * with nothing to pay: its line and its total are zero, it is never on the room bill, never a sale, never a payment
- * and never revenue. What the gift is worth is kept apart (`giftValue`). Only for a guest checked in right now.
+ * and never revenue. What the gifts are worth is kept apart (`giftValue`). Only for a guest checked in right now.
+ * All the gifts of one stay go together, as ONE order: the same dish won twice is one line with a quantity of two.
  */
-export async function createGiftOrderTx(tx: Tx, input: { reservationId: string; roomNumber: string; menuItemId: string; value: number; where: SpinWhere; clientKey: string }, now: Date) {
+export async function createGiftOrderTx(tx: Tx, input: { reservationId: string; roomNumber: string; gifts: { menuItemId: string; value: number }[]; where: SpinWhere; clientKey: string }, now: Date) {
   const r = await tx.reservation.findUnique({ where: { id: input.reservationId }, include: { guest: { select: { fullName: true, phone: true } } } });
   if (!r || r.status !== "CHECKED_IN") throw new AppError("Spin to Win gifts are for guests checked in to the room.", "VALIDATION");
-  const m = await tx.menuItem.findUnique({ where: { id: input.menuItemId }, include: { category: true } });
-  if (!m) throw new AppError("That gift is no longer on the menu — please ask reception.", "NOT_FOUND");
-  const names = await menuNamesNow(tx, [m]);
+  const ids = [...new Set(input.gifts.map((g) => g.menuItemId))];
+  const menu = await tx.menuItem.findMany({ where: { id: { in: ids } }, include: { category: true } });
+  if (!ids.length || menu.length !== ids.length) throw new AppError("That gift is no longer on the menu — please ask reception.", "NOT_FOUND");
+  const names = await menuNamesNow(tx, menu);
+  // In the order the gifts were won.
+  const lines = ids.map((id) => ({ m: menu.find((x) => x.id === id)!, quantity: input.gifts.filter((g) => g.menuItemId === id).length }));
+  const giftValue = input.gifts.reduce((t, g) => t + Math.max(0, g.value), 0);
   const settings = await getSettingsTx(tx);
   const businessDate = businessDateOf(now, stayConfig(settings));
   const toRoom = input.where === "ROOM";
@@ -646,20 +651,20 @@ export async function createGiftOrderTx(tx: Tx, input: { reservationId: string; 
     data: {
       number: await nextOrderNumber(tx, businessDate.slice(0, 4)), type: toRoom ? "ROOM_SERVICE" : "DINE_IN",
       // Nothing is due and nothing ever will be: not unpaid, not on the room — a gift.
-      settlement: "UNPAID", paymentStatus: "PAID", isGift: true, giftValue: Math.max(0, input.value),
+      settlement: "UNPAID", paymentStatus: "PAID", isGift: true, giftValue,
       reservationId: r.id, roomNumber: input.roomNumber, customerName: r.guest.fullName, notes: GIFT_LABEL,
       assignedToId: waiterId, guestId: r.guestId, customerPhone: r.guest.phone,
       foodSubtotal: 0, drinksSubtotal: 0, serviceFee: 0, total: 0, paidAmount: 0,
       businessDate: toDbDate(businessDate), createdById: null, source: GIFT_SOURCE,
       trackToken: randomBytes(12).toString("base64url"), clientKey: `spin:${input.clientKey}`, createdAt: now, statusChangedAt: now,
-      items: { create: [{ menuItemId: m.id, name: m.name, nameI18n: names.get(m.id) ?? {}, unitPrice: 0, quantity: 1, lineTotal: 0, type: m.type, revenueKind: m.category.revenueKind, round: 1, addedAt: now, addedById: null }] },
+      items: { create: lines.map(({ m, quantity }) => ({ menuItemId: m.id, name: m.name, nameI18n: names.get(m.id) ?? {}, unitPrice: 0, quantity, lineTotal: 0, type: m.type, revenueKind: m.category.revenueKind, round: 1, addedAt: now, addedById: null })) },
       events: { create: { to: "PENDING", byId: null, byLabel: "Guest", byRole: "Customer", at: now, note: `${GIFT_LABEL} · ${toRoom ? "deliver to the room" : "enjoyed at the restaurant"}` } },
     },
   });
   if (waiterId) await assignmentRowTx(tx, { scope: "ORDER", orderId: order.id, locationId: null, roomNumber: order.roomNumber, toUserId: waiterId, kind: "ROUTED", via: "ROOM" }, guest, now);
   await audit(tx, guest, {
     action: "restaurant_order.gift", entityType: "RestaurantOrder", entityId: order.id,
-    after: { number: order.number, type: order.type, room: order.roomNumber, customer: order.customerName, reservation: r.reference, gift: m.name, giftValue: order.giftValue, total: 0, source: GIFT_SOURCE },
+    after: { number: order.number, type: order.type, room: order.roomNumber, customer: order.customerName, reservation: r.reference, gift: lines.map((l) => (l.quantity > 1 ? `${l.quantity} × ${l.m.name}` : l.m.name)).join(", "), giftValue: order.giftValue, total: 0, source: GIFT_SOURCE },
   });
   return order;
 }
