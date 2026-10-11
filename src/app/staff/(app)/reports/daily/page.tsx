@@ -25,28 +25,29 @@ export default async function DailyReportsPage() {
   return (
     <div className="w-full space-y-4">
       {can(user, "finance.view") ? <FinanceTabs active="/staff/reports/daily" actions={make} /> : (
-        <PageHeader eyebrow={t("Automation")} title={t("Daily business reports")} description={t("Made automatically every day at 21:00 and sent to the Boss by WhatsApp. Kept here as a record.")} actions={make} />
+        <PageHeader eyebrow={t("Automation")} title={t("Daily business reports")} description={t("Made automatically every day at 07:00 and sent to the Boss by WhatsApp. Kept here as a record.")} actions={make} />
       )}
 
       {/* How it works, and today's */}
       <section className="flex flex-wrap items-center gap-3 rounded-3xl border border-border/70 bg-card px-4 py-3.5 sm:px-5">
         <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-[oklch(0.72_0.12_80/0.16)] text-[oklch(0.62_0.11_78)] dark:text-[oklch(0.8_0.11_82)]"><Clock9 className="size-5" /></span>
         <div className="min-w-0 flex-1 text-sm">
-          <p className="font-semibold">{t("Made automatically at 21:00, every day")}</p>
+          <p className="font-semibold">{t("Made automatically at 07:00, every day")}</p>
           <p className="text-xs text-muted-foreground">{t("Nobody needs to make it: the system builds the day's report (hotel day 04:00 → 04:00), keeps it here and sends the summary to the Boss.")}</p>
         </div>
-        <span className={cn("rounded-full px-2.5 py-1 text-[11px] font-semibold", todays ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-muted text-muted-foreground")}>{todays ? t("Today's report is ready") : t("Today's comes at 21:00")}</span>
+        <span className={cn("rounded-full px-2.5 py-1 text-[11px] font-semibold", todays ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-muted text-muted-foreground")}>{todays ? t("Today's report is ready") : t("Today's comes at 07:00")}</span>
       </section>
 
       {reports.length === 0 ? (
-        <EmptyState icon={<MessageSquareText />} title={t("No reports yet")} description={t("The first report is made automatically tonight at 21:00.")} />
+        <EmptyState icon={<MessageSquareText />} title={t("No reports yet")} description={t("The first report is made automatically tomorrow at 07:00.")} />
       ) : (
         <ul className="divide-y divide-border/60 overflow-hidden rounded-3xl border border-border/70 bg-card">
           {reports.map((r) => {
             const d = r.data as unknown as DailyReportData;
             const date = r.businessDate.toISOString().slice(0, 10);
-            const sent = r.deliveries.some((x) => x.status === "SENT" && x.sentAt && x.sentAt >= r.generatedAt);
-            const failed = !sent && r.deliveries.some((x) => x.status === "FAILED");
+            const dailyDeliveries = r.deliveries.filter((x) => x.purpose === "DAILY_REPORT");
+            const sent = dailyDeliveries.some((x) => x.status === "SENT" && x.sentAt && x.sentAt >= r.generatedAt);
+            const failed = !sent && dailyDeliveries.some((x) => x.status === "FAILED");
             return (
               <li key={r.id}>
                 <Link href={`/staff/reports/daily/${r.id}`} className="grid grid-cols-[3.25rem_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/40 sm:grid-cols-[3.25rem_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] sm:px-5">
