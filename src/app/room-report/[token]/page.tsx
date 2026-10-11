@@ -48,7 +48,7 @@ export default async function SharedRoomReportPage({ params, searchParams }: { p
           <Image src="/brand/logo-192.png" alt="" width={36} height={36} className="rounded-xl" />
           <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#f0cf86]">{s.hotelName} · Daily Room Report</p>
         </div>
-        <ReportActions fileName={`${s.hotelName}-room-report-${d.date}`.replace(/[^\w]+/g, "-").toLowerCase()} share={`${s.hotelName} — Daily Room Report ${d.date}`} />
+        <ReportActions download fileName={`${s.hotelName}-room-report-${d.date}`.replace(/[^\w]+/g, "-").toLowerCase()} share={`${s.hotelName} — Daily Room Report ${d.date}`} />
       </header>
       {person >= 0 ? (
         <>

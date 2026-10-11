@@ -531,5 +531,8 @@ const catalog: Catalog = {
   "{n} person": "{n} 人",
   "{n} people": "{n} 人",
   "Room rates": "房间价格",
+  // The Boss's daily report link opens without signing in (owner, 2026-10-11).
+  "Daily Room Report for this day": "当天的每日客房报告",
+  "Private link — anyone who has it can open this report without signing in.": "私密链接——持有此链接的人无需登录即可打开此报告。",
 };
 export default catalog;

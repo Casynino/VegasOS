@@ -1,4 +1,5 @@
 import "server-only";
+import { randomBytes } from "node:crypto";
 import { inHouseBalances } from "./guest-balances";
 import { db } from "../db";
 import { audit } from "../audit";
@@ -310,15 +311,37 @@ function staffLines(r: DailyReportData, t: T) {
   return [`*${t("Staff on shift:")}*`, line("RECEPTION", msg("Reception")), line("RESTAURANT", msg("Restaurant"))].filter((x): x is string => !!x);
 }
 
-/** Where the full report opens (the live site; this computer's address while testing). */
-async function reportLink(id: string) {
+const newToken = () => randomBytes(24).toString("base64url");
+
+/** The report's own link token — made once, the first time the link is needed (reports from before had none). */
+async function shareTokenOf(id: string) {
+  const now = await db.dailyReport.findUnique({ where: { id }, select: { shareToken: true } });
+  if (!now) return null;
+  if (now.shareToken) return now.shareToken;
+  await db.dailyReport.updateMany({ where: { id, shareToken: null }, data: { shareToken: newToken() } });
+  return (await db.dailyReport.findUnique({ where: { id }, select: { shareToken: true } }))?.shareToken ?? null;
+}
+
+/**
+ * Where the full report opens — the Boss's own link: no sign-in (random, not guessable), print it or save the PDF.
+ * (The live site; this computer's address while testing.)
+ */
+export async function reportLink(id: string) {
+  const token = await shareTokenOf(id);
+  if (!token) return null;
   try {
     const { siteOrigin } = await import("../site-origin");
-    return `${await siteOrigin()}/staff/reports/daily/${id}`;
+    return `${await siteOrigin()}/daily-report/${token}`;
   } catch {
     const base = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
-    return base ? `${base}/staff/reports/daily/${id}` : null;
+    return base ? `${base}/daily-report/${token}` : null;
   }
+}
+
+/** The report behind a Boss's link (null = no such link). */
+export async function dailyReportByToken(token: string) {
+  if (!/^[\w-]{20,}$/.test(token)) return null;
+  return db.dailyReport.findUnique({ where: { shareToken: token } });
 }
 
 /**
@@ -347,7 +370,7 @@ export async function generateDailyReport(date: BusinessDate, who: string | { by
         data: { data: json(data), document: json(document), summaryText: "", generatedAt: new Date(), generatedBy: o.by, automatic: o.automatic, reason: o.reason, version: existing.version + 1 },
       });
     }
-    return tx.dailyReport.create({ data: { businessDate: toDbDate(date), data: json(data), document: json(document), summaryText: "", generatedBy: o.by, automatic: o.automatic, reason: o.reason } });
+    return tx.dailyReport.create({ data: { businessDate: toDbDate(date), data: json(data), document: json(document), summaryText: "", generatedBy: o.by, automatic: o.automatic, reason: o.reason, shareToken: newToken() } });
   });
   const summaryText = renderReportText(data, settings.hotelName, await reportLink(report.id));
   const saved = await db.dailyReport.update({ where: { id: report.id }, data: { summaryText } });

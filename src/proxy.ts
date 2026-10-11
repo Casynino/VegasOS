@@ -82,6 +82,6 @@ export const config = {
     "/en", "/en/:path*", "/zh", "/zh/:path*",
     // Guest pages and report links: only for ?lang= (their language: the visitor's choice, then the guest's saved one).
     "/b/:path*", "/order/:path*", "/order", "/pay/:path*", "/stay/:path*", "/r/:path*", "/spin/:path*", "/t/:path*", "/thanks/:path*",
-    "/staff-report/:path*", "/shift-report/:path*",
+    "/staff-report/:path*", "/shift-report/:path*", "/daily-report/:path*",
   ],
 };

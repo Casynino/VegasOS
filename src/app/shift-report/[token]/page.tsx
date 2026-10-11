@@ -63,7 +63,7 @@ export default async function SharedShiftReportPage({ params }: PageProps<"/shif
       </header>
       {/* Print or save the PDF (on the light page, under the header) */}
       <div className="flex justify-end print:hidden">
-        <ReportActions fileName={`${s.hotelName}-shift-report-${d.person.name}-${d.shift.businessDate}`.replace(/[^\w]+/g, "-").toLowerCase()} share={`${t("Shift report — {name}", { name: d.person.name })} · ${day}`} />
+        <ReportActions download fileName={`${s.hotelName}-shift-report-${d.person.name}-${d.shift.businessDate}`.replace(/[^\w]+/g, "-").toLowerCase()} share={`${t("Shift report — {name}", { name: d.person.name })} · ${day}`} />
       </div>
       <ShiftReportPaper d={d} hotel={hotel} number={`SR-${date}-${r.shiftId.slice(-5).toUpperCase()}-v${r.version}`} timezone={s.timezone}
         preparedBy={r.automatic ? t("System · automatic shift report") : r.generatedBy} preparedAt={`${when(r.generatedAt)}${r.version > 1 ? ` · ${t("version {n}", { n: r.version })}` : ""}`} />

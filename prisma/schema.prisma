@@ -1436,6 +1436,8 @@ model DailyReport {
   version      Int                    @default(1)
   /// Why it was regenerated (required when a person regenerates it).
   reason       String?
+  /// The Boss's link (no sign-in): random and unguessable. Made the first time the link is needed.
+  shareToken   String?                @unique
   deliveries   NotificationDelivery[]
   versions     DailyReportVersion[]
 

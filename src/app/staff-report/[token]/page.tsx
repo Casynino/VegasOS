@@ -67,7 +67,7 @@ export default async function SharedStaffReportPage({ params }: PageProps<"/staf
         </div>
       </header>
       <div className="flex justify-end print:hidden">
-        <ReportActions fileName={`${s.hotelName}-${what}-${name}-${label}`.replace(/[^\w]+/g, "-").toLowerCase()} share={`${t(what)} — ${t(name)} · ${shownLabel}`} />
+        <ReportActions download fileName={`${s.hotelName}-${what}-${name}-${label}`.replace(/[^\w]+/g, "-").toLowerCase()} share={`${t(what)} — ${t(name)} · ${shownLabel}`} />
       </div>
       {team
         ? <TeamPeriodPaper d={{ ...team, label: shownLabel }} hotel={hotel} number={number} preparedAt={when(r.generatedAt)} personHref={(p) => `/staff-report/${p.token}`} />

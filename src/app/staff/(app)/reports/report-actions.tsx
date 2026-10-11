@@ -22,8 +22,10 @@ function save(href: string, name: string) {
  * Print the report (A4), save it as a PDF (pages cut between parts and table rows, never
  * through a line), download the CSV, or share the summary (WhatsApp or the phone's share sheet).
  */
-export function ReportActions({ fileName, csv, share, target = "report" }: {
+export function ReportActions({ fileName, csv, share, target = "report", download = false }: {
   fileName: string; csv?: string;
+  /** A report link opened from WhatsApp: saving the PDF is the main button, and it says so ("Download PDF"). */
+  download?: boolean;
   /** The summary to share (WhatsApp / the phone's share sheet) — no Share button without it. */
   share?: string;
   /** The id of the document on the page that becomes the PDF. */
@@ -85,11 +87,13 @@ export function ReportActions({ fileName, csv, share, target = "report" }: {
   };
 
   // Its own text colour: these buttons also sit in the dark header of a shared report link, where the text is white.
-  const btn = "inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl border border-border/70 bg-card px-3 text-xs font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-60 sm:flex-none";
+  const btn = "inline-flex h-9 flex-auto items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-border/70 bg-card px-3 text-xs font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-60 sm:flex-none";
+  const main = "border-transparent bg-linear-to-b from-[oklch(0.87_0.085_86)] to-[oklch(0.7_0.12_76)] text-[oklch(0.2_0.03_60)] hover:brightness-105 hover:bg-transparent";
+  const printBtn = <button key="print" type="button" onClick={() => window.print()} className={cn(btn, !download && main)}><Printer className="size-3.5" />{t("Print")}</button>;
+  const pdfBtn = <button key="pdf" type="button" onClick={pdf} disabled={busy} className={cn(btn, download && main)}>{busy ? <Loader2 className="size-3.5 animate-spin" /> : <FileDown className="size-3.5" />}{download ? t("Download PDF") : "PDF"}</button>;
   return (
     <div className="flex w-full items-center gap-2 sm:w-auto print:hidden">
-      <button type="button" onClick={() => window.print()} className={cn(btn, "border-transparent bg-linear-to-b from-[oklch(0.87_0.085_86)] to-[oklch(0.7_0.12_76)] text-[oklch(0.2_0.03_60)] hover:brightness-105")}><Printer className="size-3.5" />{t("Print")}</button>
-      <button type="button" onClick={pdf} disabled={busy} className={btn}>{busy ? <Loader2 className="size-3.5 animate-spin" /> : <FileDown className="size-3.5" />}PDF</button>
+      {download ? [pdfBtn, printBtn] : [printBtn, pdfBtn]}
       {csv && <a href={csv} className={btn}><FileSpreadsheet className="size-3.5" />{t("Excel")}<span className="hidden sm:inline"> (CSV)</span></a>}
       {share && <button type="button" onClick={shareIt} className={btn}><Share2 className="size-3.5" />{t("Share")}</button>}
     </div>
