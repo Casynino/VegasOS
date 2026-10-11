@@ -4,7 +4,7 @@ import { BedDouble, ExternalLink } from "lucide-react";
 import { can, requirePagePermission } from "@/server/auth";
 import { db } from "@/server/db";
 import { businessToday, getSettings } from "@/server/settings";
-import { addDays, toDbDate } from "@/lib/time/business-date";
+import { addDays } from "@/lib/time/business-date";
 import { formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/staff/page-header";

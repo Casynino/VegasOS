@@ -197,7 +197,7 @@ export function RoomReportPaper({ d, hotel, number, version }: { d: RoomReportDa
         <p className="font-semibold" style={{ color: INK }}>{hotel.name} · Automated Management Report</p>
         {hotel.address && <p>{hotel.address}</p>}
         {hotel.contact && <p>{hotel.contact}</p>}
-        <p className="mt-1">Prepared automatically from the hotel's reservation, check-in and payment records.</p>
+        <p className="mt-1">Prepared automatically from the hotel&apos;s reservation, check-in and payment records.</p>
       </footer>
     </article>
   );
