@@ -41,6 +41,9 @@ export function SpinBoard({ canManage, settings, running, today, given, giftsNow
   const state = running ? t("Running") : settings.enabled ? (settings.startsOn && today < settings.startsOn ? t("Starts {date}", { date: settings.startsOn }) : t("Ended {date}", { date: settings.endsOn ?? "" })) : t("Switched off");
   const look = unclaimed.length + noGift.length;
 
+  // The tab the page opens on is chosen once — switching the promotion on must not move the Admin to another tab.
+  const [firstTab] = useState(() => (canManage && !running && !look ? "setup" : "given"));
+
   return (
     <div className="w-full space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3 print:hidden">
@@ -59,7 +62,7 @@ export function SpinBoard({ canManage, settings, running, today, given, giftsNow
         <Stat title={t("Can be won right now")} main={t.plural(giftsNow, "{n} menu item", "{n} menu items")} sub={t("Gifts are a cost of the promotion — they are not counted as sales or income.")} warn={running && giftsNow === 0} />
       </div>
 
-      <Tabs defaultValue={canManage && !running && !look ? "setup" : "given"} className="print:block">
+      <Tabs defaultValue={firstTab} className="print:block">
         <TabsList className="print:hidden">
           <TabsTrigger value="given">{t("Given")}{look > 0 && <span className="ml-1.5 rounded-full bg-amber-500/15 px-1.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300">{look}</span>}</TabsTrigger>
           <TabsTrigger value="setup">{t("Set-up")}</TabsTrigger>
