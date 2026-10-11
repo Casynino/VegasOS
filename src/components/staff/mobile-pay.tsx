@@ -3,12 +3,12 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Check, Loader2, Smartphone, X } from "lucide-react";
+import { Banknote, Check, CreditCard, Hash, Landmark, Loader2, Smartphone, X } from "lucide-react";
 import { NetworkMarks } from "@/components/payments/networks";
 import { cancelPromptAction, mobilePayAvailableAction, promptStatusAction, sendOrdersPromptAction, sendStayPromptAction } from "@/app/staff/(app)/mobile-pay/actions";
+import { accountDetail, type PayAccount } from "@/lib/pay-account";
 import { cn } from "@/lib/utils";
 import { useT } from "@/i18n/client";
-import { msg } from "@/i18n/msg";
 
 const fmt = (n: number) => `TZS ${Math.round(n).toLocaleString("en-US")}`;
 const POLL_MS = 4000;
@@ -195,24 +195,65 @@ export function SendToPhone({ target, amount, phone = "", editableAmount = false
   );
 }
 
+const wayIcon = (name: string) => (/cash/i.test(name) ? Banknote : /m-?pesa|tigo|airtel|halo|mixx|mobile|lipa/i.test(name) ? Hash : /card|pos|visa|master/i.test(name) ? CreditCard : Landmark);
+
 /**
- * The other ways to take the money (cash, LIPA, bank…) — under "Send to phone", always in view under their own heading:
- * nothing to press to find them (owner, 2026-10-11). Where nTZS is not set up they show as before.
+ * HOW THE MONEY COMES IN — every way in one row at the top, picked with one tap (owner, 2026-10-11: "the other payments
+ * should be shown there too, just to pick them easily — not until I find them down"): the customer's phone first, then
+ * cash, LIPA, bank… The picked way's form opens right under the row. Where nTZS is not set up, or no prompt is offered
+ * (nothing owed), the row holds the hotel's accounts only.
  */
-export function OtherWays({ children, label = msg("Other payment methods"), className, fold = true }: {
-  children: React.ReactNode; label?: string; className?: string;
-  /** False when no prompt is offered above (nothing owed): the ways by hand are shown as they are. */
-  fold?: boolean;
+export function PayWays({ accounts, account, onAccount, byHand: handProp, onByHand, phone, children, className }: {
+  accounts: PayAccount[];
+  /** The account the money is received through, when the screen keeps it itself. Left out, the row keeps its own. */
+  account?: string; onAccount?: (id: string) => void;
+  /** Phone or by hand, when the screen needs to know which (e.g. a button that must not record cash on its own). */
+  byHand?: boolean; onByHand?: (byHand: boolean) => void;
+  /** The prompt to the customer's phone (`<SendToPhone primary />`) — null where it is not offered. */
+  phone: React.ReactNode;
+  /** What is filled in by hand for the picked account — a function is given its id (for a form field). */
+  children: React.ReactNode | ((accountId: string) => React.ReactNode);
+  className?: string;
 }) {
   const t = useT();
   const available = useMobilePayAvailable();
-  if (!available || !fold) return <div className={className}>{children}</div>;
+  const offered = available && !!phone;
+  const [own, setOwn] = useState(accounts[0]?.id ?? "");
+  const [ownHand, setOwnHand] = useState(false);
+  const byHand = handProp ?? ownHand;
+  const setByHand = (v: boolean) => { setOwnHand(v); onByHand?.(v); };
+  const accountId = account ?? own;
+  const onPhone = offered && !byHand;
+  const detail = accountDetail(accounts.find((a) => a.id === accountId));
+  const chip = "inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-sm font-medium transition-colors";
   return (
-    <div className={className}>
-      <p className="flex items-center gap-2 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-        <span className="h-px flex-1 bg-border" />{t(label)}<span className="h-px flex-1 bg-border" />
-      </p>
-      <div className="mt-1.5">{children}</div>
+    <div className={cn("space-y-2", className)}>
+      <div role="group" aria-label={t("How are they paying?")} className="flex flex-wrap gap-1.5">
+        {offered && (
+          <button type="button" aria-pressed={onPhone} onClick={() => setByHand(false)}
+            className={cn(chip, onPhone ? "border-sky-600 bg-sky-600 text-white" : "border-sky-500/40 bg-card text-sky-700 hover:bg-sky-500/[0.08] dark:text-sky-300")}>
+            <Smartphone className="size-4" />{t("Customer's phone")}
+          </button>
+        )}
+        {accounts.map((a) => {
+          const Icon = wayIcon(a.name);
+          const on = !onPhone && a.id === accountId;
+          return (
+            <button key={a.id} type="button" aria-pressed={on} onClick={() => { setOwn(a.id); onAccount?.(a.id); setByHand(true); }}
+              className={cn(chip, on ? "border-foreground bg-foreground text-background" : "border-border bg-card hover:bg-muted")}>
+              <Icon className="size-4" />{t(a.name)}
+            </button>
+          );
+        })}
+      </div>
+      {/* Kept in place while another way is looked at: a prompt already sent goes on being followed. */}
+      {offered && <div className={onPhone ? undefined : "hidden"}>{phone}</div>}
+      {!onPhone && (
+        <>
+          {detail && <p className="truncate text-[11px] text-muted-foreground">{detail}</p>}
+          {typeof children === "function" ? children(accountId) : children}
+        </>
+      )}
     </div>
   );
 }

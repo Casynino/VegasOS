@@ -27,13 +27,12 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } fr
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { CARD_META, FLOOR_ITEM, RoomFlow, RoomTile, type CardState } from "./room-card";
-import { AccountSelect } from "@/components/staff/finance/account-select";
 import type { PayAccount } from "@/lib/pay-account";
 import { ChargeComposer, type RecentItem } from "@/components/staff/reception/room-charges";
 import type { BillMenu } from "@/server/services/restaurant";
 import { MeetingButtons } from "@/app/staff/(app)/reservations/[id]/panels";
 import { QuickBook } from "./quick-book";
-import { OtherWays, SendToPhone } from "@/components/staff/mobile-pay";
+import { PayWays, SendToPhone, useMobilePayAvailable } from "@/components/staff/mobile-pay";
 import { RoomHistoryInline, TransportInline } from "./room-panels";
 import { InsightHeader, InsightHistory, InsightRows, MeetingInsightBody, MeetingInsightHeader, useMeetingInsight, useRoomInsight } from "./room-insight";
 import { RoomDecisions } from "@/components/staff/manager-decisions";
@@ -549,14 +548,18 @@ export function CheckOutHere({ stay, roomNumber, methods, canPay, canCharge, can
   const short = owes && paying < bill!.balance;
   // A manager allowed the guest to leave owing: check out without the full payment (any payment taken is recorded).
   const approvedOwing = owes && !!stay.leaveOwing && bill!.balance <= stay.leaveOwing.upTo;
-  const ready = !!bill && (!owes || approvedOwing || (canPay && !short && !!accountId)) && (!bill.early || !!reason.trim());
+  // The way picked in the row: on the customer's phone (it records itself — nothing is taken by hand here), or by hand.
+  const mobile = useMobilePayAvailable();
+  const [byHand, setByHand] = useState(false);
+  const viaPhone = mobile && owes && canPay && methods.length > 0 && stay.balance > 0 && !byHand;
+  const ready = !!bill && (!owes || approvedOwing || (canPay && !viaPhone && !short && !!accountId)) && (!bill.early || !!reason.trim());
 
   function go() {
     if (!bill) return;
     start(async () => {
       const res = await settleCheckOutAction({
         reservationId: stay.reservationId, chargeOverstay: true, earlyReason: bill.early ? reason : undefined,
-        payment: owes && (!approvedOwing || (paying > 0 && accountId)) ? { amount: approvedOwing ? Math.min(paying, bill.balance) : bill.balance, accountId, reference: reference || undefined } : null,
+        payment: owes && !viaPhone && (!approvedOwing || (paying > 0 && accountId)) ? { amount: approvedOwing ? Math.min(paying, bill.balance) : bill.balance, accountId, reference: reference || undefined } : null,
         ...(approvedOwing && { allowBalance: true }),
         invoiceMode: bill.company && !bill.group ? invoiceMode ?? (bill.company.consolidate ? "OPEN" : "ISSUE") : null,
       });
@@ -633,29 +636,28 @@ export function CheckOutHere({ stay, roomNumber, methods, canPay, canCharge, can
 
           {owes && (canPay && methods.length ? (
             <div className="space-y-2">
-              {/* The guest pays by mobile money from their phone: once recorded, the bill above updates — then check out. */}
-              {stay.balance > 0 && <SendToPhone target={{ kind: "stay", reservationId: stay.reservationId }} amount={Math.min(bill.balance, stay.balance)} editableAmount phone={stay.guestPhone} who={stay.guestName} primary />}
-              {stay.balance > 0 && bill.balance > stay.balance && <p className="text-[11px] text-muted-foreground">{t.plural(bill.overstayNights, "The mobile money request covers up to {amount} — the extra night ({extra}) are received at check-out.", "The mobile money request covers up to {amount} — the extra nights ({extra}) are received at check-out.", { amount: formatTZS(stay.balance), extra: formatTZS(bill.balance - stay.balance) })}</p>}
-              <OtherWays label={t("Or receive cash, LIPA or bank")} fold={stay.balance > 0}>
-              <div className="flex flex-wrap gap-1.5">
-                {methods.map((m) => (
-                  <button key={m.id} type="button" onClick={() => setAccountId(m.id)} aria-pressed={accountId === m.id}
-                    className={cn("rounded-lg border px-2.5 py-1 text-xs font-medium", accountId === m.id ? "border-foreground bg-foreground text-background" : "border-border bg-card hover:bg-muted")}>{t(m.name)}</button>
-                ))}
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <Input aria-label={t("Amount received")} type="number" min={0} step={1000} value={amount} onChange={(e) => setAmount(e.target.value)} className="h-9" />
-                <Input aria-label={t("Reference")} value={reference} onChange={(e) => setReference(e.target.value)} placeholder={t("M-Pesa code, receipt…")} className="h-9" />
-              </div>
-              </OtherWays>
+              {/* Every way to pay in one row. On their phone: once recorded, the bill above updates — then check out. */}
+              <PayWays accounts={methods} account={accountId} onAccount={setAccountId} byHand={byHand} onByHand={setByHand}
+                phone={stay.balance > 0 ? (
+                  <div className="space-y-2">
+                    <SendToPhone target={{ kind: "stay", reservationId: stay.reservationId }} amount={Math.min(bill.balance, stay.balance)} editableAmount phone={stay.guestPhone} who={stay.guestName} primary />
+                    {bill.balance > stay.balance && <p className="text-[11px] text-muted-foreground">{t.plural(bill.overstayNights, "The mobile money request covers up to {amount} — the extra night ({extra}) are received at check-out.", "The mobile money request covers up to {amount} — the extra nights ({extra}) are received at check-out.", { amount: formatTZS(stay.balance), extra: formatTZS(bill.balance - stay.balance) })}</p>}
+                  </div>
+                ) : null}>
+                <div className="grid grid-cols-2 gap-2">
+                  <Input aria-label={t("Amount received")} type="number" min={0} step={1000} value={amount} onChange={(e) => setAmount(e.target.value)} className="h-9" />
+                  <Input aria-label={t("Reference")} value={reference} onChange={(e) => setReference(e.target.value)} placeholder={t("M-Pesa code, receipt…")} className="h-9" />
+                </div>
+              </PayWays>
               {approvedOwing && <p className="rounded-lg bg-emerald-500/10 px-2.5 py-1.5 text-[11px] text-emerald-800 dark:text-emerald-300">{t("A manager allowed {name} to leave owing — {reason}. Receive what they can pay (or nothing); the rest stays on their account.", { name: first, reason: stay.leaveOwing!.reason })}</p>}
-              {short && !approvedOwing && <p className="text-[11px] text-amber-700 dark:text-amber-400">{t.rich("Receive the full {amount} to check out here. Company bills or leaving a balance: use the <link>full checkout screen</link>.", { link: (c) => <Link href={`/staff/check-out?id=${stay.reservationId}#workspace`} className="underline">{c}</Link> }, { amount: formatTZS(bill.balance) })}</p>}
+              {viaPhone && !approvedOwing && <p className="text-[11px] text-muted-foreground">{t("Check-out opens when the payment arrives — or pick cash, LIPA or bank above.")}</p>}
+              {short && !viaPhone && !approvedOwing && <p className="text-[11px] text-amber-700 dark:text-amber-400">{t.rich("Receive the full {amount} to check out here. Company bills or leaving a balance: use the <link>full checkout screen</link>.", { link: (c) => <Link href={`/staff/check-out?id=${stay.reservationId}#workspace`} className="underline">{c}</Link> }, { amount: formatTZS(bill.balance) })}</p>}
             </div>
           ) : <p className="text-xs text-amber-700 dark:text-amber-400">{t("The guest still owes {amount} — someone who can receive payments must settle it first.", { amount: formatTZS(bill.balance) })}</p>)}
 
           <Button type="button" className="h-10 w-full" disabled={!ready || pending} onClick={go}>
-            {pending ? <Loader2 className="animate-spin" /> : owes ? <Wallet /> : bill.company?.billedNow ? <FileText /> : <LogOut />}
-            {owes && approvedOwing ? t("Check out {name} · leaves owing {amount}", { name: first, amount: formatTZS(Math.max(0, bill.balance - (accountId ? paying : 0))) }) : owes ? t("Receive {amount} & check out {name}", { amount: formatTZS(bill.balance), name: first }) : bill.group ? (bill.group.last ? t("Final group check-out") : t("Check out {name} · bill to group", { name: first })) : bill.company?.billedNow ? ((invoiceMode ?? (bill.company.consolidate ? "OPEN" : "ISSUE")) === "ISSUE" ? t("Check out & issue invoice") : t("Check out & bill company")) : t("Check out {name}", { name: first })}
+            {pending ? <Loader2 className="animate-spin" /> : viaPhone ? <LogOut /> : owes ? <Wallet /> : bill.company?.billedNow ? <FileText /> : <LogOut />}
+            {owes && approvedOwing ? t("Check out {name} · leaves owing {amount}", { name: first, amount: formatTZS(Math.max(0, bill.balance - (accountId && !viaPhone ? paying : 0))) }) : viaPhone ? t("Check out {name}", { name: first }) : owes ? t("Receive {amount} & check out {name}", { amount: formatTZS(bill.balance), name: first }) : bill.group ? (bill.group.last ? t("Final group check-out") : t("Check out {name} · bill to group", { name: first })) : bill.company?.billedNow ? ((invoiceMode ?? (bill.company.consolidate ? "OPEN" : "ISSUE")) === "ISSUE" ? t("Check out & issue invoice") : t("Check out & bill company")) : t("Check out {name}", { name: first })}
           </Button>
           <p className="text-center text-[11px] text-muted-foreground">{nextGuest ? t("Room {room} goes to cleaning; then check in {name} here.", { room: roomNumber, name: nextGuest }) : t("Room {room} goes to cleaning.", { room: roomNumber })}</p>
         </>
@@ -900,28 +902,24 @@ function PayHere({ reservationId, balance, methods, phone = null, who = null, on
   const t = useT();
   const router = useRouter();
   return (
-    <div className="space-y-2">
-    {/* The main way: a prompt to the guest's phone (nTZS) — recorded by itself when they approve. */}
-    {balance > 0 && <SendToPhone target={{ kind: "stay", reservationId }} amount={balance} editableAmount phone={phone} who={who} onPaid={onDone} primary />}
-    <OtherWays fold={balance > 0}>
-    {/* Re-mounts when the balance changes (e.g. after a discount) so the amount is always the full balance. */}
+    // Every way to pay in one row at the top; the picked one opens under it.
+    <PayWays accounts={methods} phone={balance > 0 ? <SendToPhone target={{ kind: "stay", reservationId }} amount={balance} editableAmount phone={phone} who={who} onPaid={onDone} primary /> : null}>
+      {(accountId) => (
+    /* Re-mounts when the balance changes (e.g. after a discount) so the amount is always the full balance. */
     <ActionForm key={balance} action={recordPaymentAction} resetOnSuccess onSuccess={() => { onDone(); router.refresh(); }} className="space-y-3 rounded-2xl border border-border/70 bg-muted/30 p-4">
       {({ pending: saving, fieldErrors: e }) => (
         <>
           <input type="hidden" name="reservationId" value={reservationId} />
-          <div className="grid gap-2 sm:grid-cols-[1fr_1fr]">
-            <div className="space-y-1"><Label htmlFor="pay-amt" className="text-xs">{t("Amount (TZS)")}</Label>
-              <Input id="pay-amt" name="amount" type="number" min={1} step={1000} defaultValue={balance} className="h-10" /><FieldError message={e?.amount} /></div>
-            <div className="space-y-1"><Label htmlFor="pay-m" className="text-xs">{t("Received through")}</Label>
-              <AccountSelect id="pay-m" name="accountId" accounts={methods} /></div>
-          </div>
+          <input type="hidden" name="accountId" value={accountId} />
+          <div className="space-y-1"><Label htmlFor="pay-amt" className="text-xs">{t("Amount (TZS)")}</Label>
+            <Input id="pay-amt" name="amount" type="number" min={1} step={1000} defaultValue={balance} className="h-10" /><FieldError message={e?.amount} /></div>
           <Input name="reference" placeholder={t("Reference (M-Pesa code, receipt…)")} className="h-10" />
-          <Button type="submit" className="h-10 w-full" disabled={saving}>{saving ? <Loader2 className="animate-spin" /> : <Wallet />}{t("Save payment")}</Button>
+          <Button type="submit" className="h-10 w-full" disabled={saving || !accountId}>{saving ? <Loader2 className="animate-spin" /> : <Wallet />}{t("Save payment")}</Button>
         </>
       )}
     </ActionForm>
-    </OtherWays>
-    </div>
+      )}
+    </PayWays>
   );
 }
 

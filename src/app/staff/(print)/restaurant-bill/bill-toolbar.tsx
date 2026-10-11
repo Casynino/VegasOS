@@ -8,8 +8,7 @@ import { ArrowLeft, Loader2, ShieldCheck, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { AccountSelect } from "@/components/staff/finance/account-select";
-import { OtherWays, SendToPhone } from "@/components/staff/mobile-pay";
+import { PayWays, SendToPhone } from "@/components/staff/mobile-pay";
 import { BroughtBySelect } from "@/components/staff/brought-by-select";
 import { ReceiptActions } from "@/components/ordering/receipt-actions";
 import type { PayAccount } from "@/lib/pay-account";
@@ -85,15 +84,14 @@ export function BillToolbar({ orderId, scope, can, place, placeLabel, room, coun
             <DialogDescription>{t.plural(unpaid.length, "Pays {n} unpaid order on this bill — recorded as restaurant and bar income into the account you choose.", "Pays {n} unpaid orders on this bill — recorded as restaurant and bar income into the account you choose.")}</DialogDescription>
           </DialogHeader>
           {/* The main way: a prompt to the customer's phone for the whole bill — recorded by itself when they approve. */}
-          {unpaid.length > 0 && due > 0 && <SendToPhone target={{ kind: "orders", orderIds: unpaid, handedOverById: broughtBy || null }} amount={due} onPaid={() => setPaying(false)} primary />}
-          <OtherWays>
+          <PayWays accounts={pay ?? []} account={account} onAccount={setAccount}
+            phone={unpaid.length > 0 && due > 0 ? <SendToPhone target={{ kind: "orders", orderIds: unpaid, handedOverById: broughtBy || null }} amount={due} onPaid={() => setPaying(false)} primary /> : null}>
             <div className="grid gap-3">
-              {pay && <AccountSelect accounts={pay} value={account} onChange={setAccount} />}
               <Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder={t("Reference (M-Pesa code / card slip) — optional")} />
               {paying && <BroughtBySelect value={broughtBy} onChange={setBroughtBy} prefill={waiterId} />}
               <Button disabled={pending || !account} onClick={record}>{pending && <Loader2 className="animate-spin" />}{t("Record TZS {amount}", { amount: due.toLocaleString("en-US") })}</Button>
             </div>
-          </OtherWays>
+          </PayWays>
         </DialogContent>
       </Dialog>
     </div>

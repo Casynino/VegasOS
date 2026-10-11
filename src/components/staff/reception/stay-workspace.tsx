@@ -15,7 +15,7 @@ import { ActionForm, FieldError } from "@/components/staff/action-form";
 import { Initials } from "@/components/dashboard/kit";
 import { DiscountChips, DiscountEditor } from "./discount-editor";
 import { DESK_DISCOUNT_MAX } from "@/lib/discounts";
-import { OtherWays, SendToPhone } from "@/components/staff/mobile-pay";
+import { PayWays, SendToPhone } from "@/components/staff/mobile-pay";
 import { ChargeComposer, GuestTab, type RecentItem, type TabCharge } from "./room-charges";
 import type { BillMenu } from "@/server/services/restaurant";
 import { CompanyBillBox } from "./company-bill-box";
@@ -437,24 +437,23 @@ export function StayWorkspace({ s, methods, perms, recent, menu = null, menuPayN
             </div>
           )}
           {panel === "pay" && (<>
-            {/* The main way: a prompt to the guest's phone (nTZS, outside any form). Cash, LIPA or bank folded below. */}
-            {s.balance > 0 && <SendToPhone target={{ kind: "stay", reservationId: s.id }} amount={s.balance} editableAmount phone={s.phone} who={s.guest} onPaid={() => setPanel(null)} className="mt-4" primary />}
-            <OtherWays className="mt-2" fold={s.balance > 0}>
+            {/* Every way to pay in one row: the guest's phone (nTZS, outside any form), cash, LIPA, bank. */}
+            <PayWays className="mt-4" accounts={methods} phone={s.balance > 0 ? <SendToPhone target={{ kind: "stay", reservationId: s.id }} amount={s.balance} editableAmount phone={s.phone} who={s.guest} onPaid={() => setPanel(null)} primary /> : null}>
+              {(accountId) => (
             <ActionForm action={recordPaymentAction} resetOnSuccess onSuccess={() => { setPanel(null); router.refresh(); }} className="space-y-2 rounded-2xl border border-border/70 p-3">
               {({ pending: p, fieldErrors: e }) => (
                 <>
                   <input type="hidden" name="reservationId" value={s.id} />
+                  <input type="hidden" name="accountId" value={accountId} />
                   <p className="text-sm font-semibold">{t("Record a payment")}</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div><Input name="amount" type="number" min={1} step={1000} defaultValue={s.balance} aria-label={t("Amount")} /><FieldError message={e?.amount} /></div>
-                    <AccountSelect name="accountId" accounts={methods} />
-                  </div>
+                  <div><Input name="amount" type="number" min={1} step={1000} defaultValue={s.balance} aria-label={t("Amount")} /><FieldError message={e?.amount} /></div>
                   <Input name="reference" placeholder={t("Reference (M-Pesa code, receipt…)")} aria-label={t("Reference")} />
-                  <Button type="submit" className="w-full" disabled={p}>{p && <Loader2 className="animate-spin" />}{t("Save payment")}</Button>
+                  <Button type="submit" className="w-full" disabled={p || !accountId}>{p && <Loader2 className="animate-spin" />}{t("Save payment")}</Button>
                 </>
               )}
             </ActionForm>
-            </OtherWays>
+              )}
+            </PayWays>
           </>)}
 
           {s.tab.length > 0 && (

@@ -25,12 +25,11 @@ import { RemoveItemDialog } from "@/components/staff/remove-item-dialog";
 import { BlockedBody, TableAvailability, TableSetupButtons, TableWaiter } from "./table-setup";
 import { ChangeWhoPays, ChargeTableToRoom, onRoomBill, roomBill, roomsOnBill, stayRooms } from "./room-billing";
 import { BillDiscount } from "@/components/staff/manager-decisions";
-import { AccountPicker } from "../portal/order-card";
 import { useLiveOrders } from "@/components/staff/sounds";
 import { useIsRestaurantDevice, useWaiterPin, type WaiterPinValue } from "@/components/staff/waiter-pin";
 import { TransferDialog } from "@/components/staff/transfer-dialog";
 import { BroughtBySelect } from "@/components/staff/brought-by-select";
-import { OtherWays, SendToPhone } from "@/components/staff/mobile-pay";
+import { PayWays, SendToPhone } from "@/components/staff/mobile-pay";
 import { takeTableAction, transferTableAction } from "../waiter-actions";
 import { type HotelGuest, ReservationDialog, type TableOption } from "../reservations/reservation-form";
 import {
@@ -1139,11 +1138,10 @@ function PayPerson({ p, accounts, waiterId, onClose }: { p: Person; accounts: Pa
           <DialogDescription>{t.plural(p.orders.length, "At the counter · {n} order. Everything they still owe is paid into the account you choose.", "At the counter · {n} orders. Everything they still owe is paid into the account you choose.")}</DialogDescription>
         </DialogHeader>
         {/* The main way: a prompt to the customer's phone for everything they still owe (nTZS). */}
-        {p.due > 0 && <SendToPhone target={{ kind: "orders", orderIds: p.orders.filter((o) => o.due > 0).map((o) => o.id), handedOverById: broughtBy || null }}
-          amount={p.due} phone={p.phone} who={p.name} onPaid={onClose} primary />}
-        <OtherWays fold={p.due > 0}>
+        <PayWays accounts={accounts} account={accountId} onAccount={setAccountId}
+          phone={p.due > 0 ? <SendToPhone target={{ kind: "orders", orderIds: p.orders.filter((o) => o.due > 0).map((o) => o.id), handedOverById: broughtBy || null }}
+            amount={p.due} phone={p.phone} who={p.name} onPaid={onClose} primary /> : null}>
           <div className="space-y-3">
-            <AccountPicker accounts={accounts} value={accountId} onChange={setAccountId} />
             <Input value={reference} onChange={(e) => setReference(e.target.value)} maxLength={80} placeholder={t("Reference (M-Pesa / card slip) — optional")} className="font-mono uppercase placeholder:font-sans placeholder:normal-case" />
             <BroughtBySelect value={broughtBy} onChange={setBroughtBy} prefill={waiterId} />
             <div className="flex gap-2">
@@ -1151,7 +1149,7 @@ function PayPerson({ p, accounts, waiterId, onClose }: { p: Person; accounts: Pa
               <Button variant="ghost" className="h-10" onClick={onClose}>{t("Cancel")}</Button>
             </div>
           </div>
-        </OtherWays>
+        </PayWays>
       </DialogContent>
     </Dialog>
   );
@@ -1289,11 +1287,10 @@ function PayDialog({ s, accounts, waiterId, onClose }: { s: SessionView; account
           <DialogDescription>{s.customer.name} · {t(s.table)} · {t.plural(s.money.orders, "{n} order. Everything still due on the table is paid into the account you choose.", "{n} orders. Everything still due on the table is paid into the account you choose.")}</DialogDescription>
         </DialogHeader>
         {/* The main way: a prompt to the customer's phone for everything still due on the table (nTZS). */}
-        {s.money.due > 0 && <SendToPhone target={{ kind: "orders", orderIds: s.orders.filter((o) => o.due > 0 && !o.onRoom).map((o) => o.id), handedOverById: broughtBy || null }}
-          amount={s.money.due} phone={s.customer.phone} who={s.customer.name} onPaid={onClose} primary />}
-        <OtherWays fold={s.money.due > 0}>
+        <PayWays accounts={accounts} account={accountId} onAccount={setAccountId}
+          phone={s.money.due > 0 ? <SendToPhone target={{ kind: "orders", orderIds: s.orders.filter((o) => o.due > 0 && !o.onRoom).map((o) => o.id), handedOverById: broughtBy || null }}
+            amount={s.money.due} phone={s.customer.phone} who={s.customer.name} onPaid={onClose} primary /> : null}>
           <div className="space-y-3">
-            <AccountPicker accounts={accounts} value={accountId} onChange={setAccountId} />
             <Input value={reference} onChange={(e) => setReference(e.target.value)} maxLength={80} placeholder={t("Reference (M-Pesa / card slip) — optional")} className="font-mono uppercase placeholder:font-sans placeholder:normal-case" />
             <BroughtBySelect value={broughtBy} onChange={setBroughtBy} prefill={waiterId} />
             <div className="flex gap-2">
@@ -1301,7 +1298,7 @@ function PayDialog({ s, accounts, waiterId, onClose }: { s: SessionView; account
               <Button variant="ghost" className="h-10" onClick={onClose}>{t("Cancel")}</Button>
             </div>
           </div>
-        </OtherWays>
+        </PayWays>
       </DialogContent>
     </Dialog>
   );

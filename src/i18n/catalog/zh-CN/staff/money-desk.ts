@@ -433,5 +433,7 @@ const catalog: Catalog = {
   "Check-in opens as soon as the payment is confirmed.": "付款确认后即可办理入住。",
   "The guest will pay at check-out — check in now": "客人退房时付款——立即办理入住",
   "Close — the room stays held, check in from the room later": "关闭——房间继续保留，稍后从该房间办理入住",
+  "Customer's phone": "客人手机",
+  "Check-out opens when the payment arrives — or pick cash, LIPA or bank above.": "收到付款后即可办理退房——或在上方选择现金、LIPA 或银行。",
 };
 export default catalog;

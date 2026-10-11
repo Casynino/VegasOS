@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect } from "@/components/ui/native-select";
-import { AccountSelect } from "@/components/staff/finance/account-select";
 import { BroughtBySelect } from "@/components/staff/brought-by-select";
 import type { PayAccount } from "@/lib/pay-account";
 import { logGuestMessageAction } from "@/app/staff/(app)/guests/actions";
@@ -17,7 +16,7 @@ import { cn } from "@/lib/utils";
 import { useT } from "@/i18n/client";
 import { cancelOrderAction, chargeOrderToRoomAction, recordOrderPaymentAction, setOrderStatusAction } from "./actions";
 import { IconAction, WhatsAppGlyph } from "./portal/icon-action";
-import { OtherWays, SendToPhone } from "@/components/staff/mobile-pay";
+import { PayWays, SendToPhone } from "@/components/staff/mobile-pay";
 import type { PortalStay, RoomChoice } from "./portal/types";
 
 const waDigits = (phone: string) => { const d = phone.replace(/\D/g, ""); return d.startsWith("0") ? `255${d.slice(1)}` : d; };
@@ -121,17 +120,14 @@ export function OrderCardActions({ id, number, total, next, nextLabel, unpaid, c
           {/* Mobile money first (a request to the customer's phone, recorded by itself when they pay); cash, card and the
               rest folded under "Other payment methods" (owner, 2026-10-05). */}
           <DialogHeader icon={<Wallet />} eyebrow={t("Payment")} tone="emerald"><DialogTitle>{t("{total} to pay", { total })}</DialogTitle><DialogDescription>{t("Order {number}", { number: number.replace(/^ORD-\d{4}-0*/, "#") })}</DialogDescription></DialogHeader>
-          {pay?.due ? (
-            <SendToPhone target={{ kind: "orders", orderIds: [id], handedOverById: broughtBy || null }} amount={pay.due} phone={pay.phone ?? ""} who={pay.customer ?? undefined} primary onPaid={() => done(t("Paid by mobile money."))} />
-          ) : null}
-          <OtherWays fold={!!pay?.due}>
+          <PayWays accounts={pay?.accounts ?? []} account={account} onAccount={setAccount}
+            phone={pay?.due ? <SendToPhone target={{ kind: "orders", orderIds: [id], handedOverById: broughtBy || null }} amount={pay.due} phone={pay.phone ?? ""} who={pay.customer ?? undefined} primary onPaid={() => done(t("Paid by mobile money."))} /> : null}>
             <div className="space-y-2.5 pt-1">
-              {pay && <AccountSelect accounts={pay.accounts} value={account} onChange={setAccount} />}
               <Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder={t("Reference (card slip…) — optional")} />
               {dialog === "pay" && <BroughtBySelect value={broughtBy} onChange={setBroughtBy} prefill={pay?.waiterId} />}
               <Button className="w-full" disabled={pending || !account} onClick={record}>{pending && <Loader2 className="animate-spin" />}{t("Mark as paid · {total}", { total })}</Button>
             </div>
-          </OtherWays>
+          </PayWays>
         </DialogContent>
       </Dialog>
 

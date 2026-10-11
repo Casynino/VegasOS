@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { TransferDialog } from "@/components/staff/transfer-dialog";
 import { useWaiterPin, type WaiterPinValue } from "@/components/staff/waiter-pin";
 import { BroughtBySelect } from "@/components/staff/brought-by-select";
-import { OtherWays, SendToPhone } from "@/components/staff/mobile-pay";
+import { PayWays, SendToPhone } from "@/components/staff/mobile-pay";
 import type { PayAccount } from "@/lib/pay-account";
 import { cn } from "@/lib/utils";
 import { IconAction, WhatsAppGlyph } from "./icon-action";
@@ -472,9 +472,7 @@ export function OrderCard({ o, perms, now, fresh, accounts, rooms, drag, roomy, 
   const prompt = !payingNow && unpaid;
   const byHand = (
     <>
-      <p className="mb-1.5 mt-3.5 text-xs font-semibold text-muted-foreground">{prompt ? t("Paid another way") : t("How are they paying?")}</p>
-      <AccountPicker accounts={accounts} value={account} onChange={setAccount} />
-      <label className="mb-1.5 mt-3.5 block text-xs font-semibold text-muted-foreground" htmlFor={`ref-${o.id}`}>{t("Reference (M-Pesa code, card slip) — optional")}</label>
+      <label className="mb-1.5 mt-2 block text-xs font-semibold text-muted-foreground" htmlFor={`ref-${o.id}`}>{t("Reference (M-Pesa code, card slip) — optional")}</label>
       <Input id={`ref-${o.id}`} value={reference} onChange={(e) => setReference(e.target.value)} placeholder={t("e.g. SGH4K2L9PQ")} className="h-10 font-mono text-sm uppercase placeholder:normal-case" />
       <BroughtBySelect value={broughtBy} onChange={setBroughtBy} prefill={o.assignedTo?.id} className="mt-3.5" />
       <div className="mt-3.5 flex items-center gap-3">
@@ -486,12 +484,13 @@ export function OrderCard({ o, perms, now, fresh, accounts, rooms, drag, roomy, 
       </div>
     </>
   );
-  const payForm = prompt ? (
-    <>
-      <SendToPhone target={{ kind: "orders", orderIds: [o.id], handedOverById: broughtBy || null }} amount={due} phone={o.phone} who={o.customer} primary />
-      <OtherWays className="mt-1">{byHand}</OtherWays>
-    </>
-  ) : byHand;
+  // Every way to pay in one row at the top — the customer's phone, cash, LIPA, bank: the picked one opens under it.
+  const payForm = (
+    <PayWays className="mt-3" accounts={accounts} account={account} onAccount={setAccount}
+      phone={prompt ? <SendToPhone target={{ kind: "orders", orderIds: [o.id], handedOverById: broughtBy || null }} amount={due} phone={o.phone} who={o.customer} primary /> : null}>
+      {byHand}
+    </PayWays>
+  );
   // Someone who does not record payments (a waiter, a manager watching): what is due, and who records it.
   const servedUnpaid = o.status === "DELIVERED" && perms.serve && !perms.watch;
   const notPaid = (

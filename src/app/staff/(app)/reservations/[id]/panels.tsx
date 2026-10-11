@@ -7,7 +7,7 @@ import { Ban, CalendarPlus, CalendarRange, Check, CheckCircle2, Clock, FileText,
 import type { ActionResult } from "@/server/errors";
 import { formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { OtherWays, SendToPhone } from "@/components/staff/mobile-pay";
+import { PayWays, SendToPhone } from "@/components/staff/mobile-pay";
 import { ActionForm, FieldError } from "@/components/staff/action-form";
 import { Button, buttonVariants } from "@/components/ui/button";
 import Link from "next/link";
@@ -27,7 +27,6 @@ import {
 } from "../actions";
 import type { DateChangePreview, ExtensionPreview } from "@/server/services/reservations";
 import { ChangeRoomDialog } from "@/components/staff/reception/change-room-dialog";
-import { AccountSelect } from "@/components/staff/finance/account-select";
 import type { PayAccount } from "@/lib/pay-account";
 import { useT } from "@/i18n/client";
 
@@ -343,33 +342,35 @@ export function PaymentPanel({ reservationId, balance, paid, methods, canRefund,
   const t = useT();
   const router = useRouter();
   const [refund, setRefund] = useState(false);
+  const [byHand, setByHand] = useState(false);
   if (balance <= 0 && !(canRefund && paid > 0)) return null;
   return (
     <>
-    {(balance > 0 || resume) && !refund && <SendToPhone target={{ kind: "stay", reservationId }} amount={balance} editableAmount phone={phone} who={who} resume={resume} className="mt-3" primary />}
-    <OtherWays label={t("Or record a payment or refund by hand")} className="mt-2" fold={balance > 0 || !!resume}>
+    {/* Every way to pay in one row: the guest's phone (nTZS), cash, LIPA, bank. A refund is always by hand. */}
+    <PayWays className="mt-3" accounts={methods} byHand={refund || byHand} onByHand={setByHand}
+      phone={(balance > 0 || resume) ? <SendToPhone target={{ kind: "stay", reservationId }} amount={balance} editableAmount phone={phone} who={who} resume={resume} primary /> : null}>
+      {(accountId) => (
     <ActionForm action={recordPaymentAction} resetOnSuccess onSuccess={() => { setRefund(false); router.refresh(); }} className="space-y-2">
       {({ pending, fieldErrors: e }) => (
         <>
           <input type="hidden" name="reservationId" value={reservationId} />
+          <input type="hidden" name="accountId" value={accountId} />
           <input type="hidden" name="kind" value={refund ? "REFUND" : "PAYMENT"} />
           <p className="font-medium">{refund ? t("Issue refund") : t("Record payment")}</p>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <Input name="amount" type="number" min={1} step={1000} key={`${balance}-${refund}`} defaultValue={refund ? "" : balance > 0 ? balance : ""} aria-label={t("Amount")} placeholder={t("Amount")} />
-              <FieldError message={e?.amount} />
-            </div>
-            <AccountSelect name="accountId" accounts={methods} />
+          <div className="space-y-1">
+            <Input name="amount" type="number" min={1} step={1000} key={`${balance}-${refund}`} defaultValue={refund ? "" : balance > 0 ? balance : ""} aria-label={t("Amount")} placeholder={t("Amount")} />
+            <FieldError message={e?.amount} />
           </div>
           <Input name="reference" placeholder={t("Reference (M-Pesa code, receipt…)")} />
           {canRefund && paid > 0 && <NativeCheckbox checked={refund} onChange={(ev) => setRefund(ev.target.checked)} label={t("This is a refund to the guest")} />}
-          <Button type="submit" className="w-full" variant={refund ? "destructive" : "default"} disabled={pending}>
+          <Button type="submit" className="w-full" variant={refund ? "destructive" : "default"} disabled={pending || !accountId}>
             {pending && <Loader2 className="animate-spin" />}{refund ? t("Record refund") : t("Record payment")}
           </Button>
         </>
       )}
     </ActionForm>
-    </OtherWays>
+      )}
+    </PayWays>
     </>
   );
 }
