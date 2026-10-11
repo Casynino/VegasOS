@@ -4,29 +4,12 @@
     "fra1"
   ],
   "crons": [
-    {
-      "path": "/api/cron/daily-report",
-      "schedule": "15 3 * * *"
-    },
-    {
-      "path": "/api/cron/daily-report",
-      "schedule": "5 1 * * *"
-    },
-    {
-      "path": "/api/cron/daily-report",
-      "schedule": "35 4 * * *"
-    },
-    {
-      "path": "/api/cron/daily-report",
-      "schedule": "0 7 * * *"
-    },
-    {
-      "path": "/api/cron/daily-report",
-      "schedule": "0 18 * * *"
-    },
-    {
-      "path": "/api/cron/daily-report",
-      "schedule": "20 18 * * *"
-    }
+    { "path": "/api/cron/daily-report", "schedule": "5 1 * * *" },
+    { "path": "/api/cron/daily-report", "schedule": "15 3 * * *" },
+    { "path": "/api/cron/daily-report", "schedule": "0 4 * * *" },
+    { "path": "/api/cron/daily-report", "schedule": "35 4 * * *" },
+    { "path": "/api/cron/daily-report", "schedule": "0 7 * * *" },
+    { "path": "/api/cron/daily-report", "schedule": "0 18 * * *" },
+    { "path": "/api/cron/daily-report", "schedule": "20 18 * * *" }
   ]
 }

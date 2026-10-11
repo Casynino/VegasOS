@@ -3,7 +3,7 @@ import { inHouseBalances } from "./guest-balances";
 import { db } from "../db";
 import { audit } from "../audit";
 import { getSettings, businessDayConfig } from "../settings";
-import { businessDateOf, businessDayBounds, fromDbDate, localParts, toDbDate, type BusinessDate } from "@/lib/time/business-date";
+import { addDays, businessDateOf, businessDayBounds, fromDbDate, localParts, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import { assetSummary, inventoryAlerts, inventoryDay } from "./inventory";
 import { guestMovement, meetingRoomStats, occupancy, outstanding, profitLoss } from "./reporting";
 import { paymentsByMethod, staffActivity } from "./finance";
@@ -257,50 +257,45 @@ const round1 = (n: number) => Math.round(n * 10) / 10;
  * short lines, TZS throughout, only what earned something, and a link to the full report.
  * Same numbers as the dashboard and Finance — in the reader's language (`t`, English by default).
  */
+/**
+ * Short WhatsApp message — link on line 3, key numbers only. Everything else is in the full report.
+ * Kept under ~800 chars so CallMeBot URL-encodes it safely without truncation.
+ */
 export function renderReportText(r: DailyReportData, hotelName: string, link?: string | null, t: T = englishT): string {
   const date = t.date(r.businessDate);
   const tr = reportTr(t, r.i18n);
   const tz = (v: number) => `TZS ${v < 0 ? "−" : ""}${fmt(Math.abs(v))}`;
-  const dept = ([
-    [msg("Rooms"), r.revenue.roomNet], [msg("Restaurant"), r.revenue.restaurant], [msg("Bar"), r.revenue.bar], [msg("Room service"), r.revenue.roomService ?? 0],
-    [msg("Meeting room"), r.revenue.meeting], [msg("Transport"), r.revenue.transport ?? 0], [msg("Other"), r.revenue.other],
-  ] as const).filter(([, v]) => v !== 0);
+  const bold = (label: string) => `*${t(label)}*`;
   const rooms = r.rooms;
   const sold = rooms ? rooms.occupied : r.hotel.roomNights;
-  const bold = (label: string) => `*${t(label)}*`;
+
+  // Revenue breakdown: only depts that earned, all on one line
+  const dept = ([
+    [msg("Rooms"), r.revenue.roomNet], [msg("Restaurant"), r.revenue.restaurant], [msg("Bar"), r.revenue.bar],
+    [msg("Room service"), r.revenue.roomService ?? 0], [msg("Meeting room"), r.revenue.meeting],
+    [msg("Transport"), r.revenue.transport ?? 0], [msg("Other"), r.revenue.other],
+  ] as const).filter(([, v]) => v !== 0);
+  const deptSuffix = dept.length > 1 ? ` (${dept.map(([k, v]) => `${t(k)} ${fmt(v)}`).join(" · ")})` : "";
+
   const lines = [
     `*${hotelName.toUpperCase()}*`,
     `*${t("Daily business report")}* · ${date}`,
-    `_${t("hotel day 04:00 → 04:00")}_`,
     link ? `${t("Full report:")} ${link}` : null,
     "",
-    `*${t("Revenue {amount}", { amount: tz(r.revenue.total) })}*`,
-    ...(dept.length ? dept.map(([k, v]) => `  ${t("{what}: {amount}", { what: t(k), amount: fmt(v) })}`) : [`  ${t("No revenue recorded")}`]),
+    `*${t("Revenue {amount}", { amount: tz(r.revenue.total) })}*${deptSuffix}`,
     r.revenue.roomDiscounts ? `  ${t("(room discounts given: {amount})", { amount: fmt(r.revenue.roomDiscounts) })}` : null,
-    r.revenue.refunds ? `  ${t("(refunds: −{amount})", { amount: fmt(r.revenue.refunds) })}` : null,
-    "",
-    `${bold(msg("Payments collected:"))} ${tz(r.money.collected)}`,
-    `${bold(msg("Outstanding (all):"))} ${tz(r.money.outstanding)}`,
-    `${bold(msg("Expenses:"))} ${tz(r.expenses.total)}`,
-    `${bold(msg("Net operating result:"))} ${tz(r.profitLoss.estimated)}`,
+    `${bold(msg("Payments collected:"))} ${tz(r.money.collected)} · ${bold(msg("Outstanding (all):"))} ${tz(r.money.outstanding)}`,
+    r.expenses.total ? `${bold(msg("Expenses:"))} ${tz(r.expenses.total)} · ${bold(msg("Net operating result:"))} ${tz(r.profitLoss.estimated)}` : null,
     "",
     `${bold(msg("Occupancy:"))} ${rooms ? t("{sold} / {total} rooms — {pct}%", { sold, total: rooms.total, pct: r.hotel.occupancy }) : t("{sold} rooms — {pct}%", { sold, pct: r.hotel.occupancy })}${rooms?.adr ? ` · ${t("avg rate {amount}", { amount: fmt(rooms.adr) })}` : ""}`,
-    r.rateBreakdown?.length ? `  ${t("Rates:")} ${r.rateBreakdown.map((rb) => `${fmt(rb.rate)}×${rb.rooms}`).join(" · ")}` : null,
     `${bold(msg("Check-ins:"))} ${r.guests.checkIns} · ${bold(msg("Check-outs:"))} ${r.guests.checkOuts} · ${bold(msg("New bookings:"))} ${r.guests.newBookings}`,
     r.restaurant ? `${bold(msg("Restaurant & bar:"))} ${t.plural(r.restaurant.orders, "{n} order", "{n} orders")}` : null,
-    r.sources?.length ? `${bold(msg("Bookings from:"))} ${r.sources.slice(0, 4).map((x) => `${t(x.name)} ${x.count}`).join(" · ")}` : null,
-    r.meetingRoom && (r.meetingRoom.bookings || r.meetingRoom.revenue) ? `${bold(msg("Meeting room:"))} ${t.plural(r.meetingRoom.bookings, "{n} booking", "{n} bookings")} · ${tz(r.meetingRoom.revenue)}` : null,
-    r.stores ? `${bold(msg("Stores:"))} ${t("received {amount}", { amount: tz(r.stores.receivedValue) })} · ${t("used {amount}", { amount: tz(r.stores.usedValue) })}${r.stores.wasteValue ? ` · ${t("waste {amount}", { amount: tz(r.stores.wasteValue) })}` : ""}` : null,
-    r.stores && (r.stores.low || r.stores.out) ? `  ${t("Low stock {low} · out of stock {out}", { low: r.stores.low, out: r.stores.out })}` : null,
-    r.assets && (r.assets.moved || r.assets.underRepair || r.assets.outOfOrder) ? `${bold(msg("Assets:"))} ${t("moved {moved} · in repair {repair}", { moved: r.assets.moved, repair: r.assets.underRepair + r.assets.outOfOrder })}` : null,
-    r.operations ? `${bold(msg("Operations:"))} ${t("late orders {late} · rooms to clean {clean} · maintenance {maintenance}", { late: r.operations.delayedOrders, clean: r.operations.roomsWaitingCleaning, maintenance: r.operations.maintenanceIssues })}` : null,
-    ...staffLines(r, t),
     "",
-    r.attention.length ? `*${t("Attention ({n})", { n: r.attention.length })}*` : `*${t("Nothing needs attention.")}*`,
-    ...r.attention.slice(0, 5).map((a) => `• ${tr(a)}`),
-    r.attention.length > 5 ? `• ${t("…and {n} more in the full report", { n: r.attention.length - 5 })}` : null,
+    r.attention.length
+      ? `*${t("Attention ({n})", { n: r.attention.length })}*\n• ${tr(r.attention[0])}${r.attention.length > 1 ? `\n• ${t("…and {n} more in the full report", { n: r.attention.length - 1 })}` : ""}`
+      : `*${t("Nothing needs attention.")}*`,
   ];
-  return lines.filter((l) => l !== null).join("\n").replace(/\n{3,}/g, "\n\n").slice(0, 3500);
+  return lines.filter((l) => l !== null).join("\n").replace(/\n{3,}/g, "\n\n").slice(0, 1500);
 }
 
 /** "Reception: Sarah 12h 12m · John 10h 45m" — who worked the day, each department on its line (their shift reports are linked in the full report). */
@@ -378,13 +373,13 @@ export async function dailyReportTextIn(report: { id: string; data: unknown }, l
   return renderReportText(report.data as unknown as DailyReportData, settings.hotelName, url ? withLang(url, lang) : null, t);
 }
 
-/** When the day's report is made and sent (hotel time). */
-export const REPORT_HOUR = 21;
+/** When the day's report is made and sent (hotel time). 7 AM covers the business day that just closed at 4 AM. */
+export const REPORT_HOUR = 7;
 
 /**
- * Cron entry point. At 21:00 (and any run until the 04:00 close) it makes the day's report once,
- * automatically, and sends it; later runs only retry sends that failed — never a second report or a
- * duplicate message. Runs earlier in the day only retry the last report's failed sends.
+ * Cron entry point. At 07:00 EAT it makes the report for the business day that ended at 04:00 (the
+ * previous calendar date), sends it to the Boss, and never makes a duplicate. Runs before 07:00 only
+ * retry failed sends from the last report.
  */
 export async function runDailyReportJob(now = new Date(), deadline?: number) {
   const settings = await getSettings();
@@ -394,12 +389,14 @@ export async function runDailyReportJob(now = new Date(), deadline?: number) {
   const hour = localParts(now, cfg.timezone).hour;
   if (hour < REPORT_HOUR && hour >= 4) {
     const last = await db.dailyReport.findFirst({ where: { businessDate: { lt: toDbDate(today) } }, orderBy: { businessDate: "desc" } });
-    if (!last) return { skipped: "not yet 21:00", businessDate: today };
+    if (!last) return { skipped: "not yet 07:00", businessDate: today };
     return { businessDate: fromDbDate(last.businessDate), reportId: last.id, generated: false, delivery: await deliverDailyReport(last.id, { deadline }) };
   }
-  const existing = await db.dailyReport.findUnique({ where: { businessDate: toDbDate(today) } });
+  // At 07:00+ the current business day started at 04:00; the report covers the one that just closed.
+  const reportDate = addDays(today, -1);
+  const existing = await db.dailyReport.findUnique({ where: { businessDate: toDbDate(reportDate) } });
   const report = existing?.automatic ? existing
-    : await generateDailyReport(today, { by: "system", automatic: true, reason: existing ? "The 21:00 automatic report" : null });
+    : await generateDailyReport(reportDate, { by: "system", automatic: true, reason: existing ? "The 07:00 automatic report" : null });
   const delivery = await deliverDailyReport(report.id, { deadline });
-  return { businessDate: today, reportId: report.id, generated: !existing?.automatic, delivery };
+  return { businessDate: reportDate, reportId: report.id, generated: !existing?.automatic, delivery };
 }
