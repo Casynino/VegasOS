@@ -360,7 +360,7 @@ export async function generateDailyReport(date: BusinessDate, who: string | { by
 
 /** Create delivery rows for each configured recipient (if missing) and attempt sending those not yet sent. */
 export async function deliverDailyReport(reportId: string, opts: { force?: boolean; manual?: boolean; deadline?: number } = {}) {
-  const report = await db.dailyReport.findUniqueOrThrow({ where: { id: reportId }, include: { deliveries: true } });
+  const report = await db.dailyReport.findUniqueOrThrow({ where: { id: reportId }, include: { deliveries: { where: { purpose: "DAILY_REPORT" } } } });
   return deliverToRecipients({
     link: { dailyReportId: report.id }, purpose: "DAILY_REPORT", text: report.summaryText, generatedAt: report.generatedAt, deliveries: report.deliveries, force: opts.force, manual: opts.manual, deadline: opts.deadline,
     textFor: (lang) => dailyReportTextIn(report, lang),

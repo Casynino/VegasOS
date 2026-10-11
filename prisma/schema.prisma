@@ -1535,7 +1535,7 @@ model NotificationDelivery {
 
   /// One delivery per recipient for a report (two runs at once cannot both make one).
   @@unique([shiftReportId, recipient, channel])
-  @@unique([dailyReportId, recipient, channel])
+  @@unique([dailyReportId, recipient, channel, purpose])
   @@unique([staffReportId, recipient, channel])
   @@index([status])
   @@index([dailyReportId])

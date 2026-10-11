@@ -37,7 +37,7 @@ const SEND_WINDOW_MS = 16_000;
 export async function deliverToRecipients(o: {
   /** The report the deliveries belong to. */
   link: { dailyReportId: string } | { shiftReportId: string } | { staffReportId: string };
-  purpose: "DAILY_REPORT" | "SHIFT_REPORT" | "STAFF_REPORT";
+  purpose: "DAILY_REPORT" | "SHIFT_REPORT" | "STAFF_REPORT" | "ROOM_REPORT";
   /** The message in English (as kept with the report). */
   text: string;
   /**
@@ -77,7 +77,7 @@ export async function deliverToRecipients(o: {
       } catch (e) {
         // Another run made it at the same moment — use that one.
         if (!isUniqueViolation(e)) throw e;
-        delivery = await db.notificationDelivery.findFirstOrThrow({ where: { ...o.link, recipient: r.phone, channel } });
+        delivery = await db.notificationDelivery.findFirstOrThrow({ where: { ...o.link, recipient: r.phone, channel, purpose: o.purpose } });
       }
     }
     // Sent already for this version of the report → never twice (a regenerated report goes out again).
