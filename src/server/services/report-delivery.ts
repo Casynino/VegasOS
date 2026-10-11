@@ -5,6 +5,7 @@ import { getSettings } from "../settings";
 import { sendMessage } from "./messaging";
 import type { NotificationDelivery } from "@/generated/prisma/client";
 import { DEFAULT_LOCALE, LOCALE_META, toLocale, type Locale } from "@/i18n/config";
+import { keepLink } from "@/lib/wa-fit";
 
 /** Who receives the boss's reports (Settings → Report recipients). */
 export interface Recipient {
@@ -97,7 +98,8 @@ export async function deliverToRecipients(o: {
     });
     if (!claimed.count) { results.push({ recipient: r.phone, status: "BUSY" }); continue; }
 
-    const outcome = await sendMessage({ channel, to: r.phone, text: await textOf(recipientLang(r)), apiKeyRef: r.apiKeyRef ?? null });
+    // The last check: a text the provider would cut is shortened here — its link always arrives.
+    const outcome = await sendMessage({ channel, to: r.phone, text: keepLink(await textOf(recipientLang(r))), apiKeyRef: r.apiKeyRef ?? null });
     await db.notificationDelivery.update({
       where: { id: delivery.id },
       data: {

@@ -6,6 +6,7 @@ import { addDays, businessDateOf, toDbDate, type BusinessDate } from "@/lib/time
 import { buildDailyReport } from "./daily-report";
 import { buildRoomReportData, withDayMoney, type RoomReportData } from "./room-report-data";
 import { deliverToRecipients } from "./report-delivery";
+import { reportMessage, roomRanges } from "@/lib/wa-fit";
 import { Prisma } from "@/generated/prisma/client";
 
 export const ROOM_REPORT_HOUR = 6;
@@ -21,63 +22,49 @@ const whenText = (iso: string, tz: string) => new Intl.DateTimeFormat("en-GB", {
 const periodText = (r: RoomReportData) => `${whenText(r.periodStart, r.timezone)} → ${whenText(r.periodEnd, r.timezone)}`;
 export { dayText as roomReportDayText, whenText as roomReportWhenText, periodText as roomReportPeriodText };
 
-/** The short executive message the Boss gets on WhatsApp (with the secure link to the full report). */
+/**
+ * The Boss's WhatsApp message: the day in a few lines, then the link to the full report at the bottom — short enough
+ * that the link always arrives (see `reportMessage`). Room numbers are written out while they fit, then as ranges.
+ */
 export function renderRoomReportText(r: RoomReportData, hotelName: string, link: string | null): string {
   const p = r.perf, m = r.money, day = r.day;
-  // Income by department, only those that earned something.
-  const income = day ? [["Rooms", day.income.rooms], ["Restaurant", day.income.restaurant], ["Bar", day.income.bar], ["Room service", day.income.roomService], ["Meeting room", day.income.meeting], ["Transport", day.income.transport], ["Other", day.income.other]] as const : [];
-  const incomeLines = income.filter(([, v]) => v !== 0).map(([name, v]) => `  • ${name}: TZS ${fmt(v)}`).join("\n") || null;
-  const byType = new Map<string, { rooms: string[]; nights: number; net: number }>();
-  for (const x of r.sales) { const t = byType.get(x.type) ?? { rooms: [], nights: 0, net: 0 }; t.rooms.push(x.room); t.nights += x.nights; t.net += x.total; byType.set(x.type, t); }
+  const tz = (v: number) => `${v < 0 ? "− " : ""}TZS ${fmt(Math.abs(v))}`;
+  const byType = new Map<string, string[]>();
+  for (const x of r.sales) byType.set(x.type, [...(byType.get(x.type) ?? []), x.room]);
   const byNumber = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
-  const typeLines = byType.size ? [...byType].map(([name, t]) => `  • ${name}: ${t.rooms.length} room${t.rooms.length === 1 ? "" : "s"} (${t.rooms.sort(byNumber).join(", ")}) · ${t.nights} night${t.nights === 1 ? "" : "s"} · TZS ${fmt(t.net)}`).join("\n") : null;
-  const rateLine = r.rates.length ? r.rates.map((g) => `  • TZS ${fmt(g.rate)} × ${g.nights} night${g.nights === 1 ? "" : "s"}`).join("\n") : null;
-  const lines = [
+  const types = [...byType].map(([name, rooms]) => ({ name, rooms: [...rooms].sort(byNumber) }));
+  const sold = (rooms: (list: string[]) => string | null) => (types.length ? [
+    "",
+    "*Rooms sold today*",
+    ...types.map((t) => { const list = rooms(t.rooms); return list ? `• ${t.name} (${t.rooms.length}): ${list}` : `• ${t.name}: ${t.rooms.length} room${t.rooms.length === 1 ? "" : "s"}`; }),
+  ] : []);
+  const head = [
     `*${hotelName.toUpperCase()}*`,
-    "*DAILY ROOM REPORT*",
-    `Reporting date: ${dayText(r.date)}`,
+    `*Daily room report* · ${dayText(r.date)}`,
     "",
-    "*ROOM PERFORMANCE*",
-    `Rooms occupied during the period: ${p.occupied} of ${r.guestRooms}`,
-    `New check-ins (rooms sold today): ${p.newSales}`,
-    `Previous stays continuing: ${p.continuing}`,
-    `Checked out: ${p.checkedOut}`,
-    `Currently available: ${p.available}`,
-    `Occupancy: ${p.occupancyPct}%`,
+    `*Rooms occupied:* ${p.occupied} of ${r.guestRooms} (${p.occupancyPct}%)`,
+    `*New check-ins:* ${p.newSales}`,
+    `*Continuing stays:* ${p.continuing}`,
+    `*Checked out:* ${p.checkedOut}`,
     "",
-    "*MONEY TODAY*",
     ...(day ? [
-      `Income: TZS ${fmt(day.income.total)}`,
-      incomeLines,
-      day.income.refunds ? `  • Less refunds: TZS ${fmt(day.income.refunds)}` : null,
-      `Expenses: TZS ${fmt(day.expenses.total)}`,
-      `*Net profit: ${day.profit < 0 ? "− " : ""}TZS ${fmt(Math.abs(day.profit))}*`,
-      `Money received: TZS ${fmt(day.received)}`,
-      `Still owed to the hotel: TZS ${fmt(day.owed)}`,
+      `*Income:* ${tz(day.income.total)}`,
+      `*Expenses:* ${tz(day.expenses.total)}`,
+      `*Net profit:* ${tz(day.profit)}`,
+      `*Money received:* ${tz(day.received)}`,
+      `*Still owed:* ${tz(day.owed)}`,
     ] : [
-      `Room income tonight: TZS ${fmt(m.recognized)}`,
-      `Money received from guests: TZS ${fmt(m.collected)}`,
-      `Still owed by these guests: TZS ${fmt(m.outstanding)}`,
+      `*Room income:* ${tz(m.recognized)}`,
+      `*Money received:* ${tz(m.collected)}`,
+      `*Still owed:* ${tz(m.outstanding)}`,
     ]),
-    "",
-    "*ROOMS SOLD TODAY*",
-    `Room nights sold: ${p.nightsSold}`,
-    typeLines ? "By room type:" : null,
-    typeLines,
-    rateLine ? "By price per night:" : null,
-    rateLine,
-    "",
-    "*REPORT*",
-    `Generated: ${whenText(r.generatedAt, r.timezone)}`,
-    `Period: ${periodText(r)}`,
-    link ? "" : null,
-    link ? "*VIEW FULL DAILY ROOM REPORT*" : null,
-    link,
-    "",
-    `${hotelName}`,
-    "Automated Management Report",
   ];
-  return lines.filter((l) => l !== null).join("\n").replace(/\n{3,}/g, "\n\n");
+  return reportMessage([
+    [...head, ...sold((list) => list.join(", "))],
+    [...head, ...sold(roomRanges)],
+    [...head, ...sold(() => null)],
+    head,
+  ], link, "Full report:");
 }
 
 export function roomReportLink(token: string): string {

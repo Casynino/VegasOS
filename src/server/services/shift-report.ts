@@ -14,10 +14,11 @@ import { Prisma } from "@/generated/prisma/client";
 import { ALL_SOURCES, collectionRows, collectionTotals } from "./collections";
 import { waiterActivity } from "./waiter-activity";
 import { deliverToRecipients, MAX_ATTEMPTS, withLang } from "./report-delivery";
+import { reportMessage } from "@/lib/wa-fit";
 import { msg } from "@/i18n/msg";
 import { getTFor } from "@/i18n/server";
 import { englishT, type T } from "@/i18n/translate";
-import type { Locale } from "@/i18n/config";
+import { DEFAULT_LOCALE, type Locale } from "@/i18n/config";
 import { day as hotelDay, mergeBooks, reportTr, textBook, word, type TextArg, type TextBook } from "@/lib/report-i18n";
 
 /**
@@ -609,25 +610,27 @@ export function renderShiftReportText(d: ShiftReportData, hotelName: string, tim
     : t.date(d.shift.businessDate);
   const tr = reportTr(t, d.i18n);
   const by = d.shift.closedBy ?? t("a manager");
-  const lines = [
+  const head = [
     `*${hotelName.toUpperCase()}*`,
     `*${t("Shift completed")}*`,
     "",
     `*${d.person.name}* — ${t(d.person.role)}`,
     t("Business date: {date}", { date }),
-    "",
-    `*${t("Shift:")}*`,
-    `${clock(d.shift.startedAt)} → ${clock(d.shift.endedAt)}`,
-    t("Duration: {duration}", { duration: shiftDuration(d.shift.minutes) }),
-    d.shift.byManager ? `_${d.shift.closeReason ? t("Closed by {name} — {reason}", { name: by, reason: d.shift.closeReason }) : t("Closed by {name}", { name: by })}_` : null,
+    `*${t("Shift:")}* ${clock(d.shift.startedAt)} → ${clock(d.shift.endedAt)} (${shiftDuration(d.shift.minutes)})`,
+    d.shift.byManager ? `_${d.shift.closeReason ? t("Closed by {name} — {reason}", { name: by, reason: oneLine(d.shift.closeReason, 80) }) : t("Closed by {name}", { name: by })}_` : null,
     "",
     `*${t("Performance:")}*`,
-    ...(d.headline.length ? d.headline.map((f) => `• ${factLine(f, t)}`) : [`• ${t("No recorded activity")}`]),
-    ...d.handover.slice(0, 2).map((h) => `_${oneLine(tr(h), 200)}_`),
   ];
-  // The link always fits whole: the body is shortened first, the link goes last.
-  const tail = link ? `\n\n*${t("Full shift report:")}* ${link}` : "";
-  return lines.filter((l) => l !== null).join("\n").replace(/\n{3,}/g, "\n\n").slice(0, 3500 - tail.length) + tail;
+  const facts = (n: number) => (d.headline.length ? d.headline.slice(0, n).map((f) => `• ${factLine(f, t)}`) : [`• ${t("No recorded activity")}`]);
+  const handover = (n: number, max: number) => d.handover.slice(0, n).map((h) => `_${oneLine(tr(h), max)}_`);
+  // Short, and the link last: when it would not all fit, the handover lines go first, then the smaller figures.
+  return reportMessage([
+    [...head, ...facts(8), ...handover(2, 140)],
+    [...head, ...facts(8), ...handover(1, 140)],
+    [...head, ...facts(6)],
+    [...head, ...facts(4)],
+    [...head, ...facts(2)],
+  ], link, t("Full shift report:"));
 }
 
 // ───────────────────────── Making, keeping and sending it ─────────────────────────
@@ -700,8 +703,11 @@ export async function deliverShiftReport(reportId: string, opts: { force?: boole
   const report = await db.shiftReport.findUniqueOrThrow({ where: { id: reportId }, include: { deliveries: true } });
   // A person sends one made while sending was off: from now on it is a normal report.
   if (opts.manual && report.sendSkipped) await db.shiftReport.update({ where: { id: report.id }, data: { sendSkipped: false } });
+  // Written fresh from the report's frozen figures, so a report made earlier also goes out short, with its link last.
+  const text = await shiftReportTextIn(report.data as unknown as ShiftReportData, report.shareToken, DEFAULT_LOCALE).catch(() => report.summaryText);
+  if (text !== report.summaryText) await db.shiftReport.update({ where: { id: report.id }, data: { summaryText: text } });
   return deliverToRecipients({
-    link: { shiftReportId: report.id }, purpose: "SHIFT_REPORT", text: report.summaryText, generatedAt: report.generatedAt, deliveries: report.deliveries, force: opts.force, manual: opts.manual, deadline: opts.deadline,
+    link: { shiftReportId: report.id }, purpose: "SHIFT_REPORT", text, generatedAt: report.generatedAt, deliveries: report.deliveries, force: opts.force, manual: opts.manual, deadline: opts.deadline,
     textFor: (lang) => shiftReportTextIn(report.data as unknown as ShiftReportData, report.shareToken, lang),
   });
 }

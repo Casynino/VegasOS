@@ -13,7 +13,8 @@ import { deliverToRecipients, MAX_ATTEMPTS, withLang } from "./report-delivery";
 import { msg } from "@/i18n/msg";
 import { getTFor } from "@/i18n/server";
 import { englishT, type T } from "@/i18n/translate";
-import type { Locale } from "@/i18n/config";
+import { DEFAULT_LOCALE, type Locale } from "@/i18n/config";
+import { reportMessage } from "@/lib/wa-fit";
 import type { TextBook } from "@/lib/report-i18n";
 import { dailyByKind, dailyMoney, guestMovement, occupancy, owedToHotel, profitLoss, restaurantSummary, type Range } from "./reporting";
 
@@ -189,13 +190,13 @@ export async function buildPersonPeriod(userId: string, kind: PeriodKind, from: 
 /** One person's week / month as a message, in the reader's language (`t`, English by default) — the same figures in every language. */
 export function renderPersonPeriodText(d: PersonPeriodData, hotelName: string, link?: string | null, t: T = englishT) {
   const what = d.kind === "WEEK" ? t("Weekly staff report") : t("Monthly staff report");
-  const lines = [
+  const head = [
     `*${hotelName.toUpperCase()}*`, `*${what}*`, "", `*${d.person.name}* — ${t(d.person.role)}`, periodLabelOf(d, t), "",
     t.plural(d.totals.shifts, "{n} shift · {duration} on shift", "{n} shifts · {duration} on shift", { duration: shiftDuration(d.totals.minutes) }),
-    ...d.headline.slice(2, 9).map((f) => `• ${factLine(f, t)}`),
   ];
-  const tail = link ? `\n\n*${t("Full report:")}* ${link}` : "";
-  return lines.join("\n").slice(0, 3500 - tail.length) + tail;
+  const facts = (n: number) => d.headline.slice(2, 2 + n).map((f) => `• ${factLine(f, t)}`);
+  // Short, and the link last: the smaller figures go first when it would not all fit.
+  return reportMessage([[...head, ...facts(7)], [...head, ...facts(5)], [...head, ...facts(3)], head], link, t("Full report:"));
 }
 
 // ───────────────────────── Making, keeping and sending ─────────────────────────
@@ -273,35 +274,43 @@ export function renderTeamText(d: TeamPeriodData, hotelName: string, link?: stri
   const what = d.kind === "WEEK" ? t("Weekly report") : t("Monthly report");
   const b = d.business;
   const tz = (v: number) => `TZS ${v < 0 ? "−" : ""}${fmtN(Math.abs(v))}`;
-  const deptLines = b ? ([
+  const depts = b ? ([
     [msg("Rooms"), b.revenue.rooms], [msg("Restaurant"), b.revenue.restaurant], [msg("Bar"), b.revenue.bar], [msg("Room service"), b.revenue.roomService],
     [msg("Meeting room"), b.revenue.meeting], [msg("Transport"), b.revenue.transport], [msg("Other"), b.revenue.other],
-  ] as const).filter(([, v]) => v !== 0).map(([k, v]) => `  ${t("{what}: {amount}", { what: t(k), amount: fmtN(v) })}`) : [];
+  ] as const).filter(([, v]) => v !== 0) : [];
   const bold = (label: string, value: string) => `*${t(label)}* ${value}`;
-  const business = b ? [
-    `*${t("Income {amount}", { amount: tz(b.revenue.total) })}*${vsPrev(b.revenue.total, b.revenue.prev)}`,
-    ...(deptLines.length ? deptLines : [`  ${t("No income recorded")}`]),
-    ...(b.revenue.refunds ? [`  ${t("(refunds: −{amount})", { amount: fmtN(b.revenue.refunds) })}`] : []),
+  // What the hotel earned, spent and has left — one figure a line.
+  const money = (detail: boolean) => (b ? [
+    `${bold(msg("Income:"), tz(b.revenue.total))}${vsPrev(b.revenue.total, b.revenue.prev)}`,
+    detail && depts.length > 1 ? `  ${depts.map(([k, v]) => `${t(k)} ${fmtN(v)}`).join(" · ")}` : null,
+    detail && b.revenue.refunds ? `  ${t("(refunds: −{amount})", { amount: fmtN(b.revenue.refunds) })}` : null,
     bold(msg("Expenses:"), tz(b.expenses)),
     bold(msg("Net profit:"), tz(b.result)),
     bold(msg("Money received:"), tz(b.received)),
+    bold(msg("Still owed (today):"), tz(b.outstanding)),
+  ] : []);
+  const activity = b ? [
+    "",
     `${bold(msg("Occupancy:"), `${b.rooms.occupancy}%`)} · ${t("{n} room nights", { n: b.rooms.roomNights })}${b.rooms.adr ? ` · ${t("avg rate {amount}", { amount: fmtN(b.rooms.adr) })}` : ""}`,
     `${bold(msg("Check-ins:"), String(b.guests.checkIns))} · ${bold(msg("Check-outs:"), String(b.guests.checkOuts))} · ${bold(msg("New bookings:"), String(b.guests.newBookings))}`,
     `${bold(msg("Restaurant & bar:"), t.plural(b.restaurant.orders, "{n} order", "{n} orders"))} · ${tz(b.restaurant.sales)}`,
-    bold(msg("Still owed (today):"), tz(b.outstanding)),
-    "",
   ] : [];
-  const dept = (k: "RECEPTION" | "RESTAURANT", title: string) => {
+  const dept = (k: "RECEPTION" | "RESTAURANT", title: string, facts: number) => {
     const xs = d.people.filter((p) => p.department === k);
     if (!xs.length) return [];
-    return [`*${t(title)}*`, ...xs.map((p) => `• ${p.name.replace(/\s*\(.*\)/, "")}: ${t.plural(p.shifts, "{n} shift", "{n} shifts")}, ${shiftDuration(p.minutes)}${p.headline.length ? ` — ${p.headline.slice(0, 2).map((f) => factLine(f, t)).join(t.locale === "en" ? ", " : "，")}` : ""}`), ""];
+    return [`*${t(title)}*`, ...xs.map((p) => `• ${p.name.replace(/\s*\(.*\)/, "")}: ${t.plural(p.shifts, "{n} shift", "{n} shifts")}, ${shiftDuration(p.minutes)}${facts && p.headline.length ? ` — ${p.headline.slice(0, facts).map((f) => factLine(f, t)).join(t.locale === "en" ? ", " : "，")}` : ""}`), ""];
   };
-  const lines = [
-    `*${hotelName.toUpperCase()}*`, `*${what}*`, periodLabelOf(d, t), "", ...business,
-    `*${t("The team")}*`, ...dept("RECEPTION", msg("Reception")), ...dept("RESTAURANT", msg("Restaurant")), d.people.length ? null : t("No shift was worked."),
-  ].filter((x): x is string => x !== null);
-  const tail = link ? `\n*${t("Full report:")}* ${link}` : "";
-  return lines.join("\n").replace(/\n{3,}/g, "\n\n").slice(0, 3500 - tail.length) + tail;
+  const team = (facts: number) => ["", `*${t("The team")}*`, ...dept("RECEPTION", msg("Reception"), facts), ...dept("RESTAURANT", msg("Restaurant"), facts), d.people.length ? null : t("No shift was worked.")];
+  const head = [`*${hotelName.toUpperCase()}*`, `*${what}*`, periodLabelOf(d, t), ""];
+  // Short, and the link last: when it would not all fit, each person's figures go first, then the team list (it is
+  // in the full report), then the day-to-day lines — the money always stays.
+  return reportMessage([
+    [...head, ...money(true), ...activity, ...team(2)],
+    [...head, ...money(false), ...activity, ...team(2)],
+    [...head, ...money(false), ...activity, ...team(0)],
+    b ? [...head, ...money(false), ...activity] : [...head, ...team(0)],
+    b ? [...head, ...money(false)] : [...head, ...team(0)],
+  ], link, t("Full report:"));
 }
 /**
  * The period's reports: one per person who worked a shift in it, and the team digest the boss gets. Made once; a later
@@ -346,8 +355,11 @@ export async function generateTeamPeriodReport(kind: PeriodKind, from: BusinessD
 
 export async function deliverStaffReport(reportId: string, opts: { force?: boolean; manual?: boolean; deadline?: number } = {}) {
   const r = await db.staffReport.findUniqueOrThrow({ where: { id: reportId }, include: { deliveries: true } });
+  // Written fresh from the report's frozen figures, so a report made earlier also goes out short, with its link last.
+  const text = await staffReportTextIn(r, DEFAULT_LOCALE).catch(() => r.summaryText);
+  if (text !== r.summaryText) await db.staffReport.update({ where: { id: r.id }, data: { summaryText: text } });
   return deliverToRecipients({
-    link: { staffReportId: r.id }, purpose: "STAFF_REPORT", text: r.summaryText, generatedAt: r.generatedAt, deliveries: r.deliveries, force: opts.force, manual: opts.manual, deadline: opts.deadline,
+    link: { staffReportId: r.id }, purpose: "STAFF_REPORT", text, generatedAt: r.generatedAt, deliveries: r.deliveries, force: opts.force, manual: opts.manual, deadline: opts.deadline,
     textFor: (lang) => staffReportTextIn(r, lang),
   });
 }

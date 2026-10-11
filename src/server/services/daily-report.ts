@@ -16,6 +16,7 @@ import { englishT, type T } from "@/i18n/translate";
 import type { Locale } from "@/i18n/config";
 import { reportTr, textBook, type TextBook } from "@/lib/report-i18n";
 import { withLang } from "./report-delivery";
+import { reportMessage } from "@/lib/wa-fit";
 
 /**
  * DailyReportService — builds the Boss's end-of-day report for a closed hotel
@@ -254,13 +255,10 @@ const fmt = (n: number) => Math.round(n).toLocaleString("en-TZ");
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
 /**
- * The Boss's phone message (CallMeBot / WhatsApp: *bold*, _italic_): the most important numbers first,
- * short lines, TZS throughout, only what earned something, and a link to the full report.
- * Same numbers as the dashboard and Finance — in the reader's language (`t`, English by default).
- */
-/**
- * Short WhatsApp message — link on line 3, key numbers only. Everything else is in the full report.
- * Kept under ~800 chars so CallMeBot URL-encodes it safely without truncation.
+ * The Boss's phone message (WhatsApp: *bold*, _italic_), in the reader's language (`t`, English by default): what the
+ * hotel earned, spent and has left — one figure a line — then the day in three lines, and the link to the full report
+ * at the bottom. Same numbers as the dashboard and Finance. Short enough that the link always arrives: when it would
+ * not fit, the details go first (see `reportMessage`), never the link.
  */
 export function renderReportText(r: DailyReportData, hotelName: string, link?: string | null, t: T = englishT): string {
   const date = t.date(r.businessDate);
@@ -276,28 +274,37 @@ export function renderReportText(r: DailyReportData, hotelName: string, link?: s
     [msg("Room service"), r.revenue.roomService ?? 0], [msg("Meeting room"), r.revenue.meeting],
     [msg("Transport"), r.revenue.transport ?? 0], [msg("Other"), r.revenue.other],
   ] as const).filter(([, v]) => v !== 0);
-  const deptSuffix = dept.length > 1 ? ` (${dept.map(([k, v]) => `${t(k)} ${fmt(v)}`).join(" · ")})` : "";
 
-  const lines = [
-    `*${hotelName.toUpperCase()}*`,
-    `*${t("Daily business report")}* · ${date}`,
-    link ? `${t("Full report:")} ${link}` : null,
-    "",
-    `*${t("Income {amount}", { amount: tz(r.revenue.total) })}*${deptSuffix}`,
-    r.revenue.roomDiscounts ? `  ${t("(room discounts given: {amount})", { amount: fmt(r.revenue.roomDiscounts) })}` : null,
-    // Income, expenses and what is left — always all three, also on a day with no expenses.
-    `${bold(msg("Expenses:"))} ${tz(r.expenses.total)} · ${bold(msg("Net profit:"))} ${tz(r.profitLoss.estimated)}`,
-    `${bold(msg("Money received:"))} ${tz(r.money.collected)} · ${bold(msg("Still owed:"))} ${tz(r.money.outstanding)}`,
+  const head = [`*${hotelName.toUpperCase()}*`, `*${t("Daily business report")}* · ${date}`, ""];
+  // Income, expenses and what is left — always all three, also on a day with no expenses.
+  const money = (detail: boolean) => [
+    `${bold(msg("Income:"))} ${tz(r.revenue.total)}`,
+    detail && dept.length > 1 ? `  ${dept.map(([k, v]) => `${t(k)} ${fmt(v)}`).join(" · ")}` : null,
+    detail && r.revenue.roomDiscounts ? `  ${t("(room discounts given: {amount})", { amount: fmt(r.revenue.roomDiscounts) })}` : null,
+    `${bold(msg("Expenses:"))} ${tz(r.expenses.total)}`,
+    `${bold(msg("Net profit:"))} ${tz(r.profitLoss.estimated)}`,
+    `${bold(msg("Money received:"))} ${tz(r.money.collected)}`,
+    `${bold(msg("Still owed:"))} ${tz(r.money.outstanding)}`,
+  ];
+  const activity = [
     "",
     `${bold(msg("Occupancy:"))} ${rooms ? t("{sold} / {total} rooms — {pct}%", { sold, total: rooms.total, pct: r.hotel.occupancy }) : t("{sold} rooms — {pct}%", { sold, pct: r.hotel.occupancy })}${rooms?.adr ? ` · ${t("avg rate {amount}", { amount: fmt(rooms.adr) })}` : ""}`,
     `${bold(msg("Check-ins:"))} ${r.guests.checkIns} · ${bold(msg("Check-outs:"))} ${r.guests.checkOuts} · ${bold(msg("New bookings:"))} ${r.guests.newBookings}`,
     r.restaurant ? `${bold(msg("Restaurant & bar:"))} ${t.plural(r.restaurant.orders, "{n} order", "{n} orders")}` : null,
-    "",
-    r.attention.length
-      ? `*${t("Attention ({n})", { n: r.attention.length })}*\n• ${tr(r.attention[0])}${r.attention.length > 1 ? `\n• ${t("…and {n} more in the full report", { n: r.attention.length - 1 })}` : ""}`
-      : `*${t("Nothing needs attention.")}*`,
   ];
-  return lines.filter((l) => l !== null).join("\n").replace(/\n{3,}/g, "\n\n").slice(0, 1500);
+  const attention = (detail: boolean) => (!r.attention.length ? ["", `*${t("Nothing needs attention.")}*`] : detail ? [
+    "",
+    `*${t("Attention ({n})", { n: r.attention.length })}*`,
+    `• ${tr(r.attention[0])}`,
+    r.attention.length > 1 ? `• ${t("…and {n} more in the full report", { n: r.attention.length - 1 })}` : null,
+  ] : ["", `${bold(msg("Attention:"))} ${t("{n} in the full report", { n: r.attention.length })}`]);
+  return reportMessage([
+    [...head, ...money(true), ...activity, ...attention(true)],
+    [...head, ...money(false), ...activity, ...attention(true)],
+    [...head, ...money(false), ...activity, ...attention(false)],
+    [...head, ...money(false), ...activity],
+    [...head, ...money(false)],
+  ], link, t("Full report:"));
 }
 
 /** "Reception: Sarah 12h 12m · John 10h 45m" — who worked the day, each department on its line (their shift reports are linked in the full report). */
