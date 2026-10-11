@@ -5,6 +5,8 @@
   ],
   "crons": [
     { "path": "/api/cron/room-report", "schedule": "30 3 * * *" },
+    { "path": "/api/cron/room-report", "schedule": "50 3 * * *" },
+    { "path": "/api/cron/room-report", "schedule": "0 5 * * *" },
     { "path": "/api/cron/daily-report", "schedule": "5 1 * * *" },
     { "path": "/api/cron/daily-report", "schedule": "15 3 * * *" },
     { "path": "/api/cron/daily-report", "schedule": "0 4 * * *" },

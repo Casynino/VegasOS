@@ -9,7 +9,7 @@ import { toDbDate } from "@/lib/time/business-date";
 import { runAction } from "@/server/errors";
 import { parseInput } from "@/server/validation";
 import { deliverDailyReport, generateDailyReport } from "@/server/services/daily-report";
-import { deliverRoomReport, deliverRoomReportByDate } from "@/server/services/room-report";
+import { deliverRoomReport, deliverRoomReportByDate, ensureRoomReport } from "@/server/services/room-report";
 import { msg } from "@/i18n/msg";
 import { getT } from "@/i18n/server";
 
@@ -70,4 +70,26 @@ export async function sendReportAction(input: { reportId: string; force?: boolea
     const failed = res.results.filter((r) => r.status === "FAILED" || r.status === "SKIPPED");
     return { message: failed.length ? t("{failed} of {total} failed: {error}", { failed: failed.length, total: res.recipients, error: failed[0].error ?? t("unknown error") }) : busy.length ? t("Being sent right now — refresh in a moment.") : t("Sent to {n} recipient(s).", { n: res.recipients }) + (res.results[0]?.response ? ` — CallMeBot: ${res.results[0].response}` : "") };
   });
+}
+
+/** Rebuild a day's room report from today's records (the earlier version is kept; the link stays the same). */
+export async function regenerateRoomReportAction(input: { date: string; reason: string }) {
+  return runAction(async () => {
+    const user = await authorize("reports.daily.manage");
+    const { date, reason } = parseInput(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), reason: z.string().trim().min(5).max(300) }), input);
+    await ensureRoomReport(date, { regenerate: true, by: `${user.fullName} (${user.roleName})`, reason });
+    revalidatePath("/staff/reports", "layout");
+    return { ok: true };
+  }, msg("New version made — the earlier one is kept."));
+}
+
+/** Switch a room report's link off (the report itself is kept; sending it again switches it back on). */
+export async function revokeRoomReportAction(input: { date: string }) {
+  return runAction(async () => {
+    await authorize("reports.daily.manage");
+    const { date } = parseInput(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }), input);
+    await db.roomReport.update({ where: { businessDate: toDbDate(date) }, data: { revokedAt: new Date() } });
+    revalidatePath("/staff/reports", "layout");
+    return { ok: true };
+  }, msg("Link switched off."));
 }

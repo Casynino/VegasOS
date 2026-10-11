@@ -1408,6 +1408,26 @@ model DailyReport {
   @@map("daily_reports")
 }
 
+/// The DAILY ROOM REPORT — new room sales vs continuing stays vs check-outs for one business day (04:00 → 04:00),
+/// frozen when made. The Boss's WhatsApp link opens it without signing in (random token, can be revoked); a
+/// regeneration keeps the earlier version in `history`.
+model RoomReport {
+  id           String    @id @default(cuid())
+  businessDate DateTime  @unique @db.Date
+  data         Json
+  version      Int       @default(1)
+  generatedAt  DateTime  @default(now())
+  generatedBy  String    @default("system")
+  automatic    Boolean   @default(false)
+  reason       String?
+  shareToken   String    @unique
+  revokedAt    DateTime?
+  /// Earlier versions: [{ version, generatedAt, generatedBy, reason, data }]
+  history      Json      @default("[]")
+
+  @@map("room_reports")
+}
+
 /// A waiter's or receptionist's END-OF-SHIFT REPORT — made automatically when the shift closes, from what they
 /// actually did in it (never typed in, never a score): the figures, the full document and the boss's message,
 /// frozen. One per shift (the shift id makes it idempotent); an authorized regeneration keeps the earlier version.

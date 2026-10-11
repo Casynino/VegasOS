@@ -1,127 +1,135 @@
 import "server-only";
+import { randomBytes } from "node:crypto";
 import { db } from "../db";
 import { getSettings, businessDayConfig } from "../settings";
-import { addDays, businessDateOf, toDbDate } from "@/lib/time/business-date";
-import { buildDailyReport, type DailyReportData } from "./daily-report";
+import { addDays, businessDateOf, toDbDate, type BusinessDate } from "@/lib/time/business-date";
+import { buildDailyReport } from "./daily-report";
+import { buildRoomReportData, type RoomReportData } from "./room-report-data";
 import { deliverToRecipients } from "./report-delivery";
-import { englishT } from "@/i18n/translate";
 import { Prisma } from "@/generated/prisma/client";
 
 export const ROOM_REPORT_HOUR = 6;
 export const ROOM_REPORT_MINUTE = 30;
 
-const fmt = (n: number) => Math.round(n).toLocaleString("en-TZ");
+const fmt = (n: number) => Math.round(n).toLocaleString("en-US");
+const newToken = () => randomBytes(24).toString("base64url");
+const json = (v: unknown) => v as Prisma.InputJsonValue;
 
-export function renderRoomReportText(r: DailyReportData, hotelName: string, link: string | null): string {
-  const date = englishT.date(r.businessDate);
-  const rooms = r.rooms;
-  const inHouse = r.guests.inHouse;
-  const checkIns = r.guests.checkIns;
-  const checkOuts = r.guests.checkOuts;
-  const continuing = Math.max(0, inHouse - checkIns);
-  const total = rooms?.total ?? null;
-  const pct = r.hotel.occupancy;
-  const adr = rooms?.adr;
+/** "11 Oct 2026" */
+const dayText = (d: string) => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${d}T00:00:00Z`));
+const whenText = (iso: string, tz: string) => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: tz }).format(new Date(iso));
+const periodText = (r: RoomReportData) => `${whenText(r.periodStart, r.timezone)} → ${whenText(r.periodEnd, r.timezone)}`;
+export { dayText as roomReportDayText, whenText as roomReportWhenText, periodText as roomReportPeriodText };
 
+/** The short executive message the Boss gets on WhatsApp (with the secure link to the full report). */
+export function renderRoomReportText(r: RoomReportData, hotelName: string, link: string | null): string {
+  const p = r.perf, m = r.money;
+  const rateLine = r.rates.length ? r.rates.map((g) => `  • TZS ${fmt(g.rate)} × ${g.nights} night${g.nights === 1 ? "" : "s"}`).join("\n") : null;
   const lines = [
     `*${hotelName.toUpperCase()}*`,
-    `*Room report* · ${date}`,
-    link ? `Full report: ${link}` : null,
+    "*DAILY ROOM REPORT*",
+    `Reporting date: ${dayText(r.date)}`,
     "",
-    `*Occupancy:* ${inHouse}${total ? `/${total}` : ""} rooms — ${pct}%${adr ? ` · avg TZS ${fmt(adr)}` : ""}`,
-    `*New check-ins:* ${checkIns} · *Continuing:* ${continuing} · *Check-outs:* ${checkOuts}`,
+    "*ROOM PERFORMANCE*",
+    `Rooms occupied during the period: ${p.occupied} of ${r.guestRooms}`,
+    `New check-ins (new room sales): ${p.newSales}`,
+    `Previous stays continuing: ${p.continuing}`,
+    `Checked out: ${p.checkedOut}`,
+    `Currently available: ${p.available}`,
+    `Occupancy: ${p.occupancyPct}%`,
     "",
-    `*Room revenue:* TZS ${fmt(r.revenue.roomNet)}`,
-    r.money.outstanding > 0 ? `*Outstanding:* TZS ${fmt(r.money.outstanding)}` : null,
+    "*ROOM REVENUE*",
+    `Expected room revenue (new sales): TZS ${fmt(m.expected)}`,
+    `Collected: TZS ${fmt(m.collected)}`,
+    `Outstanding: TZS ${fmt(m.outstanding)}`,
+    "",
+    "*ROOM SALES BREAKDOWN*",
+    `Room nights sold: ${p.nightsSold}`,
+    `Different rates sold: ${r.rates.length}`,
+    rateLine,
+    `Total new room revenue: TZS ${fmt(m.expected)}`,
+    "",
+    "*REPORT*",
+    `Generated: ${whenText(r.generatedAt, r.timezone)}`,
+    `Period: ${periodText(r)}`,
+    link ? "" : null,
+    link ? "*VIEW FULL DAILY ROOM REPORT*" : null,
+    link,
+    "",
+    `${hotelName}`,
+    "Automated Management Report",
   ];
-  return lines.filter((l) => l !== null).join("\n").replace(/\n{3,}/g, "\n\n").slice(0, 1200);
+  return lines.filter((l) => l !== null).join("\n").replace(/\n{3,}/g, "\n\n");
 }
 
-function roomReportLink(date: string): string {
+export function roomReportLink(token: string): string {
   const base = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "https://www.vegashoteltz.com";
-  return `${base}/staff/reports?r=rooms&from=${date}&to=${date}`;
+  return `${base}/room-report/${token}`;
 }
 
-/** Send (or resend) the room report for an already-stored daily report record. */
-export async function deliverRoomReport(reportId: string, opts: { force?: boolean; manual?: boolean; deadline?: number } = {}) {
-  const [report, settings] = await Promise.all([
-    db.dailyReport.findUniqueOrThrow({ where: { id: reportId }, include: { deliveries: { where: { purpose: "ROOM_REPORT" } } } }),
-    getSettings(),
-  ]);
-  const link = roomReportLink(report.businessDate.toISOString().slice(0, 10));
-  const text = renderRoomReportText(report.data as unknown as DailyReportData, settings.hotelName, link);
-  return deliverToRecipients({
-    link: { dailyReportId: report.id },
-    purpose: "ROOM_REPORT",
-    text,
-    generatedAt: report.generatedAt,
-    deliveries: report.deliveries,
-    force: opts.force,
-    manual: opts.manual,
-    deadline: opts.deadline,
-  });
-}
-
-/** Send (or resend) the room report for a specific business date. Creates the daily report record if needed. */
-export async function deliverRoomReportByDate(date: string, opts: { force?: boolean; manual?: boolean; deadline?: number } = {}) {
-  const [settings, data] = await Promise.all([getSettings(), buildDailyReport(date)]);
-  let report = await db.dailyReport.findUnique({
-    where: { businessDate: toDbDate(date) },
-    include: { deliveries: { where: { purpose: "ROOM_REPORT" } } },
-  });
-  if (!report) {
-    const json = (v: unknown) => v as Prisma.InputJsonValue;
-    report = await db.dailyReport.create({
-      data: { businessDate: toDbDate(date), data: json(data), summaryText: "", generatedBy: "room-report" },
-      include: { deliveries: { where: { purpose: "ROOM_REPORT" } } },
-    });
+/**
+ * Make (or, with a reason, re-make) the day's room report. One per business day: calling it again returns the stored
+ * report; regenerating keeps the earlier version in its history and the same link.
+ */
+export async function ensureRoomReport(date: BusinessDate, o: { by?: string; automatic?: boolean; regenerate?: boolean; reason?: string | null } = {}) {
+  const existing = await db.roomReport.findUnique({ where: { businessDate: toDbDate(date) } });
+  if (existing && !o.regenerate) return existing;
+  const data = await buildRoomReportData(date);
+  const generatedBy = o.by ?? "system";
+  if (!existing) {
+    try {
+      return await db.roomReport.create({
+        data: { businessDate: toDbDate(date), data: json(data), generatedBy, automatic: !!o.automatic, shareToken: newToken(), generatedAt: new Date(data.generatedAt) },
+      });
+    } catch {
+      return db.roomReport.findUniqueOrThrow({ where: { businessDate: toDbDate(date) } });
+    }
   }
-  const link = roomReportLink(date);
-  const text = renderRoomReportText(data, settings.hotelName, link);
-  return deliverToRecipients({
-    link: { dailyReportId: report.id },
-    purpose: "ROOM_REPORT",
-    text,
-    generatedAt: report.generatedAt,
-    deliveries: report.deliveries,
-    force: opts.force,
-    manual: opts.manual,
-    deadline: opts.deadline,
+  const history = [...(existing.history as unknown as unknown[]), { version: existing.version, generatedAt: existing.generatedAt, generatedBy: existing.generatedBy, reason: existing.reason, data: existing.data }];
+  return db.roomReport.update({
+    where: { id: existing.id },
+    data: { data: json(data), version: existing.version + 1, generatedAt: new Date(data.generatedAt), generatedBy, automatic: !!o.automatic, reason: o.reason ?? null, history: json(history), revokedAt: null },
   });
 }
 
+/** The delivery rows hang on the day's daily-report record (made empty here if the 07:00 job has not made it yet). */
+async function deliveryAnchor(date: BusinessDate) {
+  const key = { businessDate: toDbDate(date) };
+  const include = { deliveries: { where: { purpose: "ROOM_REPORT" } } } as const;
+  const found = await db.dailyReport.findUnique({ where: key, include });
+  if (found) return found;
+  const data = await buildDailyReport(date);
+  try {
+    return await db.dailyReport.create({ data: { ...key, data: json(data), summaryText: "", generatedBy: "room-report" }, include });
+  } catch {
+    return db.dailyReport.findUniqueOrThrow({ where: key, include });
+  }
+}
+
+/** Send (or resend) the room report for a business date. Makes the report first if it does not exist. */
+export async function deliverRoomReportByDate(date: BusinessDate, opts: { force?: boolean; manual?: boolean; deadline?: number; automatic?: boolean; by?: string } = {}) {
+  const [settings, report, anchor] = await Promise.all([
+    getSettings(), ensureRoomReport(date, { automatic: opts.automatic, by: opts.by }), deliveryAnchor(date),
+  ]);
+  if (report.revokedAt) await db.roomReport.update({ where: { id: report.id }, data: { revokedAt: null } });
+  const text = renderRoomReportText(report.data as unknown as RoomReportData, settings.hotelName, roomReportLink(report.shareToken));
+  return deliverToRecipients({
+    link: { dailyReportId: anchor.id }, purpose: "ROOM_REPORT", text, generatedAt: report.generatedAt, deliveries: anchor.deliveries,
+    force: opts.force, manual: opts.manual, deadline: opts.deadline,
+  });
+}
+
+/** Send the room report kept with a daily-report record (same day). */
+export async function deliverRoomReport(dailyReportId: string, opts: { force?: boolean; manual?: boolean; deadline?: number } = {}) {
+  const r = await db.dailyReport.findUniqueOrThrow({ where: { id: dailyReportId }, select: { businessDate: true } });
+  return deliverRoomReportByDate(r.businessDate.toISOString().slice(0, 10), opts);
+}
+
+/** The scheduled run (06:30 Dar es Salaam, and again to retry): builds yesterday's report once, sends it, never twice. */
 export async function runRoomReportJob(now = new Date(), deadline?: number) {
   const settings = await getSettings();
   const cfg = businessDayConfig(settings);
   if (!settings.reportEnabled) return { skipped: "disabled" };
-  const today = businessDateOf(now, cfg);
-  const reportDate = addDays(today, -1);
-
-  // Build the previous day's data fresh (the 7 AM daily report may not exist yet at 6:30 AM).
-  const data = await buildDailyReport(reportDate);
-
-  // Get or create a daily report record so deliveries have a row to link to.
-  // If the 7 AM job later runs, it regenerates this record in-place (same id, deliveries intact).
-  let report = await db.dailyReport.findUnique({
-    where: { businessDate: toDbDate(reportDate) },
-    include: { deliveries: { where: { purpose: "ROOM_REPORT" } } },
-  });
-  if (!report) {
-    const json = (v: unknown) => v as Prisma.InputJsonValue;
-    report = await db.dailyReport.create({
-      data: { businessDate: toDbDate(reportDate), data: json(data), summaryText: "", generatedBy: "room-report" },
-      include: { deliveries: { where: { purpose: "ROOM_REPORT" } } },
-    });
-  }
-
-  const link = roomReportLink(reportDate);
-  const text = renderRoomReportText(data, settings.hotelName, link);
-  return deliverToRecipients({
-    link: { dailyReportId: report.id },
-    purpose: "ROOM_REPORT",
-    text,
-    generatedAt: report.generatedAt,
-    deliveries: report.deliveries,
-    deadline,
-  });
+  const reportDate = addDays(businessDateOf(now, cfg), -1);
+  return deliverRoomReportByDate(reportDate, { automatic: true, deadline });
 }

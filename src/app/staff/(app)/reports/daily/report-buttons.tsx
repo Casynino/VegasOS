@@ -7,7 +7,7 @@ import { Loader2, RefreshCw, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { generateReportAction, sendReportAction, sendRoomReportAction, sendRoomReportByDateAction } from "./actions";
+import { generateReportAction, regenerateRoomReportAction, revokeRoomReportAction, sendReportAction, sendRoomReportAction, sendRoomReportByDateAction } from "./actions";
 import { useT } from "@/i18n/client";
 
 export function GenerateReportButton({ date, label, variant = "default", className }: { date: string; label: string; variant?: "default" | "outline"; className?: string }) {
@@ -54,6 +54,32 @@ export function SendRoomReportByDateButton({ date, force, className }: { date: s
       const r = await sendRoomReportByDateAction({ date, force });
       if (r.ok) { toast.info(r.data.message, { duration: 8000 }); router.refresh(); } else toast.error(r.error);
     })}>{pending ? <Loader2 className="animate-spin" /> : <Send />}{force ? t("Room report again") : t("Send room report")}</Button>
+  );
+}
+
+/** Resend, regenerate (with a reason) and switch off the link — for one day's room report. */
+export function RoomReportAdminButtons({ date, sent, revoked }: { date: string; sent: boolean; revoked: boolean }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [pending, start] = useTransition();
+  const done = (r: { ok: true; data: unknown; message?: string } | { ok: false; error: string }, ok: string) => { if (r.ok) { toast.success(ok); router.refresh(); } else toast.error(r.error); };
+  return (
+    <>
+      <SendRoomReportByDateButton date={date} force={sent} className="h-9 text-xs" />
+      <Button variant="outline" className="h-9 text-xs" disabled={pending} onClick={() => setOpen(true)}><RefreshCw />Regenerate</Button>
+      {!revoked && <Button variant="outline" className="h-9 text-xs" disabled={pending} onClick={() => start(async () => done(await revokeRoomReportAction({ date }), "Link switched off."))}>Switch link off</Button>}
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader icon={<RefreshCw />} eyebrow="Room report" tone="violet">
+            <DialogTitle>Regenerate this room report?</DialogTitle>
+            <DialogDescription>It is rebuilt from the records now. The current version is kept in its history and the link stays the same.</DialogDescription>
+          </DialogHeader>
+          <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} placeholder="Why? e.g. a late payment was recorded" />
+          <Button disabled={pending || reason.trim().length < 5} onClick={() => start(async () => { const r = await regenerateRoomReportAction({ date, reason }); done(r, "New version made."); if (r.ok) { setOpen(false); setReason(""); } })}>{pending && <Loader2 className="animate-spin" />}Make a new version</Button>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

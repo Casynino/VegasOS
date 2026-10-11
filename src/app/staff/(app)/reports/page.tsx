@@ -82,6 +82,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/staff/re
                 <span className="font-medium tabular-nums text-foreground/85">{t.locale === "en" ? formatDateRange(p.from, p.to) : t.dateRange(p.from, p.to)}</span>
                 <span className="hidden sm:inline">· {t("Print it, save it as a PDF, open it in Excel or share it")} ·</span>
                 <Link href="/staff/reports/daily" className="hidden font-medium text-foreground hover:underline sm:inline">{t("daily WhatsApp reports")}</Link>
+                <Link href="/staff/reports/room" className="hidden font-medium text-foreground hover:underline sm:inline">Daily room reports</Link>
               </p>
             </div>
           </div>

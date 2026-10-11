@@ -35,6 +35,7 @@ export default async function DailyReportsPage() {
           <p className="font-semibold">{t("Made automatically at 07:00, every day")}</p>
           <p className="text-xs text-muted-foreground">{t("Nobody needs to make it: the system builds the day's report (hotel day 04:00 → 04:00), keeps it here and sends the summary to the Boss.")}</p>
         </div>
+        <Link href="/staff/reports/room" className="rounded-full border border-border px-3 py-1 text-[11px] font-semibold hover:bg-muted">Daily room reports</Link>
         <span className={cn("rounded-full px-2.5 py-1 text-[11px] font-semibold", todays ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-muted text-muted-foreground")}>{todays ? t("Today's report is ready") : t("Today's comes at 07:00")}</span>
       </section>
 
