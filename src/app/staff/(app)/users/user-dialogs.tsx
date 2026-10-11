@@ -123,22 +123,24 @@ export function EditUserDialog({ user, roles, isSelf, screens = null }: {
             </>
           )}
         </ActionForm>
+        <>
+          <Separator />
+          <ActionForm action={resetPasswordAction} resetOnSuccess className="space-y-2">
+            {({ pending, fieldErrors: e }) => (
+              <>
+                <input type="hidden" name="userId" value={user.id} />
+                <Label htmlFor="reset-password">{isSelf ? t("Change password") : t("Reset password")}</Label>
+                <div className="flex gap-2">
+                  <Input id="reset-password" name="password" placeholder={isSelf ? t("New password") : t("New temporary password")} autoComplete="off" />
+                  <Button type="submit" variant="outline" disabled={pending}><KeyRound /> {t("Reset")}</Button>
+                </div>
+                <FieldError message={e?.password} />
+              </>
+            )}
+          </ActionForm>
+        </>
         {!isSelf && (
           <>
-            <Separator />
-            <ActionForm action={resetPasswordAction} resetOnSuccess className="space-y-2">
-              {({ pending, fieldErrors: e }) => (
-                <>
-                  <input type="hidden" name="userId" value={user.id} />
-                  <Label htmlFor="reset-password">{t("Reset password")}</Label>
-                  <div className="flex gap-2">
-                    <Input id="reset-password" name="password" placeholder={t("New temporary password")} autoComplete="off" />
-                    <Button type="submit" variant="outline" disabled={pending}><KeyRound /> {t("Reset")}</Button>
-                  </div>
-                  <FieldError message={e?.password} />
-                </>
-              )}
-            </ActionForm>
             <Separator />
             {!confirmDelete ? (
               <button type="button" onClick={() => setConfirmDelete(true)} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-rose-600 transition-colors hover:bg-rose-500/10 dark:text-rose-400">

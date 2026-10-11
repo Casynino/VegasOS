@@ -141,7 +141,7 @@ export async function resetPasswordAction(_prev: unknown, formData: FormData): P
     await db.$transaction(async (tx) => {
       await tx.user.update({
         where: { id: target.id },
-        data: { passwordHash: await hashPassword(input.password), mustChangePassword: true },
+        data: { passwordHash: await hashPassword(input.password), mustChangePassword: actor.id !== target.id },
       });
       await tx.session.deleteMany({ where: { userId: target.id } });
       await audit(tx, { userId: actor.id, label: actor.fullName, ipAddress }, {
