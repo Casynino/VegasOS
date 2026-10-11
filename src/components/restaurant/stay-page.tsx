@@ -91,7 +91,7 @@ export async function StayPage({ stay, s, target, via }: {
   };
   const { status } = restaurantShell(s);
   return (
-    <RestaurantApp brand={{ name: s.hotelName, hotel: s.hotelName, tagline: meeting ? t("Your meeting") : inHouse ? t("Your room") : t("Your booking") }}
+    <RestaurantApp brand={{ name: s.hotelName, hotel: s.hotelName, tagline: meeting ? t("Your meeting") : inHouse ? t("Your room") : t("Your booking"), languages: s.enabledLanguages, stay: target.kind === "stay" ? target.token : null }}
       status={status} menu={menu} canOrder={stay.canOrder}
       place={{
         kind: "room", room: room || "—", guest: first, meeting, fee: s.roomServiceFee, stayHref: info.billHref,

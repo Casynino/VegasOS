@@ -14,6 +14,7 @@ import { identifyCustomerAction } from "@/app/order/actions";
 import type { RestaurantEntry, RestaurantMenu, RestaurantOption } from "@/server/services/online-orders";
 import type { GuestTable } from "@/server/services/dining-sessions";
 import { WebsiteLine, WebsiteLink } from "@/components/ordering/website-link";
+import { LanguageSwitch } from "@/components/i18n/language-switch";
 import { Checkout, type CheckoutConfig } from "./checkout";
 import { TableSessionCard } from "./table-session";
 import { phoneLabel, useWho, useWhoForm, type Who } from "./who";
@@ -76,7 +77,7 @@ const PlaceIcon = ({ place, className }: { place: AppPlace; className?: string }
  * The menu, prices, photos and availability are live; orders go into the one restaurant system.
  */
 export function RestaurantApp({ brand, status, menu: english, place, checkout, canOrder, top, bottom, table }: {
-  brand: { name: string; hotel: string; tagline?: string }; status: AppStatus; menu: RestaurantMenu; place: AppPlace; checkout: CheckoutConfig; canOrder: boolean;
+  brand: { name: string; hotel: string; tagline?: string; /** The languages the hotel offers — the EN / 中文 switch at the top. */ languages?: readonly string[]; /** The guest's own stay link: their choice is kept on their record too. */ stay?: string | null }; status: AppStatus; menu: RestaurantMenu; place: AppPlace; checkout: CheckoutConfig; canOrder: boolean;
   /** Instead of the restaurant banner (e.g. a guest's stay: room, dates, bill), and more after the menu. */
   top?: React.ReactNode; bottom?: React.ReactNode;
   /** At a table: whose table it is — this phone's own (their session), someone else's, reserved or free. */
@@ -217,21 +218,23 @@ export function RestaurantApp({ brand, status, menu: english, place, checkout, c
   return (
     <main className="vr relative min-h-svh overflow-x-clip bg-(--vr-bg) pb-[calc(5.5rem+env(safe-area-inset-bottom))] text-(--vr-ink) lg:pb-16">
       {/* ── The restaurant ── */}
-      <header className="mx-auto flex max-w-[1560px] items-center justify-between gap-3 px-4 pt-3.5 sm:px-6 sm:pt-5 lg:px-8 xl:px-10">
+      <header className="mx-auto flex max-w-[1560px] items-center justify-between gap-2 px-4 pt-3.5 sm:px-6 sm:pt-5 lg:px-8 xl:px-10">
         <Link href="/" className="flex min-w-0 items-center gap-2.5">
           <span className="grid size-9 shrink-0 place-items-center rounded-full bg-(--vr-dark) ring-[1.5px] ring-(--vr-gold)/60">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/brand/logo-192.png" alt="" className="size-7 rounded-full" />
           </span>
           <span className="min-w-0 leading-none">
-            <span className="block truncate font-display text-[17px] font-semibold tracking-wide">{restaurantName(brand.name, t)}</span>
+            <span className="block truncate font-display text-[17px] font-semibold max-[379px]:text-[15px] sm:tracking-wide">{restaurantName(brand.name, t)}</span>
             <span className="mt-0.5 block truncate text-[10px] uppercase tracking-[0.2em] text-(--vr-muted)">{brand.tagline ? t(brand.tagline) : t("Restaurant & bar")}</span>
           </span>
         </Link>
-        <div className="flex shrink-0 items-center gap-2">
-          {/* The hotel's main website — said in words on every page, a guest's own room page too (owner, 2026-10-11);
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
+          {/* The guest's language, as on the website: a guest who only scanned a card changes it right here. Then the
+              hotel's main website — said in words on every page, a guest's own room page too (owner, 2026-10-11);
               in a new tab, so an order in progress is not lost. */}
-          <WebsiteLink hotel={brand.hotel} className="rounded-full bg-(--vr-card) px-2.5 ring-1 ring-(--vr-line) transition hover:ring-(--vr-gold) sm:px-3.5 [&>svg]:text-(--vr-gold-ink)" />
+          <LanguageSwitch variant="toggle" tone="light" languages={brand.languages} own={brand.stay ? { stay: brand.stay } : undefined} className="min-w-0 text-(--vr-ink) hover:text-(--vr-gold-ink) sm:min-w-9" />
+          <WebsiteLink hotel={brand.hotel} className="transition-colors hover:text-(--vr-gold-ink) [&>svg]:text-(--vr-gold-ink)" />
           {orderingOn && (
             <button type="button" onClick={() => count && setCheckingOut(true)} aria-label={t.plural(count, "Your order, {n} item", "Your order, {n} items")}
               className="relative grid size-10 shrink-0 place-items-center rounded-full bg-(--vr-card) ring-1 ring-(--vr-line) transition hover:ring-(--vr-gold) lg:hidden">

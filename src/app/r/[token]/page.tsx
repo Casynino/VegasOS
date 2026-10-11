@@ -80,7 +80,7 @@ export default async function RoomQrPage({ params, searchParams }: PageProps<"/r
     menuNote: t("Eat at the restaurant or take out · room service once you are checked in."),
   };
   return (
-    <RestaurantApp brand={{ name: s.hotelName, hotel: s.hotelName, tagline: msg("Welcome") }} {...app}
+    <RestaurantApp brand={{ name: s.hotelName, hotel: s.hotelName, tagline: msg("Welcome"), languages: s.enabledLanguages }} {...app}
       top={<FreeRoomTop key="room-top" room={free} />}
       bottom={<HotelFooter key="room-bottom" info={hotelInfo(s, t("Hello {hotel}, I have a question about {place}.", { hotel: s.hotelName, place: shown }), t.locale)} note={t("The card of {place}. Once you have checked in, it opens your own room page.", { place: shown })} />} />
   );

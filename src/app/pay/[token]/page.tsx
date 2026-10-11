@@ -5,6 +5,7 @@ import { getSettings } from "@/server/settings";
 import { customerPaymentByToken } from "@/server/services/online-pay";
 import { PayStatus } from "./pay-status";
 import { getT, guestLocale } from "@/i18n/server";
+import { LanguageSwitch } from "@/components/i18n/language-switch";
 
 export async function generateMetadata(): Promise<Metadata> {
   await guestLocale();
@@ -33,6 +34,7 @@ export default async function PayPage({ params }: PageProps<"/pay/[token]">) {
             <p className="font-display text-lg font-semibold">{s.hotelName}</p>
             <p className="text-[11px] uppercase tracking-[0.18em] text-(--vr-muted)">{t("Payment")}</p>
           </div>
+          <LanguageSwitch variant="toggle" tone="light" languages={s.enabledLanguages} className="ml-auto shrink-0 text-(--vr-ink) hover:text-(--vr-gold-ink)" />
         </header>
         <PayStatus initial={view} />
       </div>

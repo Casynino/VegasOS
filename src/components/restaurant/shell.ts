@@ -3,9 +3,9 @@ import type { T } from "@/i18n/translate";
 import type { AppStatus } from "./restaurant-app";
 
 /** The restaurant's name ("Vegas Restaurant") and whether it is taking orders, from the hotel settings. */
-export function restaurantShell(s: HotelSettings): { brand: { name: string; hotel: string }; status: AppStatus } {
+export function restaurantShell(s: HotelSettings): { brand: { name: string; hotel: string; languages: readonly string[] }; status: AppStatus } {
   return {
-    brand: { name: `${s.hotelName.split(/\s+/)[0]} Restaurant`, hotel: s.hotelName },
+    brand: { name: `${s.hotelName.split(/\s+/)[0]} Restaurant`, hotel: s.hotelName, languages: s.enabledLanguages },
     status: { open: s.publicOrderingEnabled, kitchenHours: s.restaurantHours || null, barHours: s.barHours || null, prepMinutes: s.orderPrepMinutes },
   };
 }
