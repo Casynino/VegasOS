@@ -70,6 +70,7 @@ export async function createUserAction(_prev: unknown, formData: FormData): Prom
 const UpdateUserSchema = z.object({
   userId: z.string().min(1),
   fullName: z.string().trim().min(2).max(100),
+  email: z.string().trim().toLowerCase().email(msg("Enter a valid email.")),
   phone: z.string().trim().max(30).transform((v) => v || null),
   roleId: z.string().min(1),
   isActive: z.preprocess((v) => v === "on" || v === "true", z.boolean()),
@@ -96,22 +97,27 @@ export async function updateUserAction(_prev: unknown, formData: FormData): Prom
     }
 
     const { ipAddress } = await requestMeta();
-    await db.$transaction(async (tx) => {
-      await tx.user.update({
-        where: { id: target.id },
-        data: { fullName: input.fullName, phone: input.phone, roleId: newRole.id, isActive: input.isActive },
+    try {
+      await db.$transaction(async (tx) => {
+        await tx.user.update({
+          where: { id: target.id },
+          data: { fullName: input.fullName, email: input.email, phone: input.phone, roleId: newRole.id, isActive: input.isActive },
+        });
+        if (!input.isActive || newRole.id !== target.roleId || input.email !== target.email) {
+          await tx.session.deleteMany({ where: { userId: target.id } }); // force re-login
+        }
+        if (newRole.id !== target.roleId) await numberWaitersTx(tx); // became a waiter: they get a WTR number
+        await audit(tx, { userId: actor.id, label: actor.fullName, ipAddress }, {
+          action: newRole.id !== target.roleId ? "user.role_changed" : "user.updated",
+          entityType: "User", entityId: target.id,
+          before: { fullName: target.fullName, email: target.email, phone: target.phone, role: target.role.code, isActive: target.isActive },
+          after: { fullName: input.fullName, email: input.email, phone: input.phone, role: newRole.code, isActive: input.isActive },
+        });
       });
-      if (!input.isActive || newRole.id !== target.roleId) {
-        await tx.session.deleteMany({ where: { userId: target.id } }); // force re-login with new rights
-      }
-      if (newRole.id !== target.roleId) await numberWaitersTx(tx); // became a waiter: they get a WTR number
-      await audit(tx, { userId: actor.id, label: actor.fullName, ipAddress }, {
-        action: newRole.id !== target.roleId ? "user.role_changed" : "user.updated",
-        entityType: "User", entityId: target.id,
-        before: { fullName: target.fullName, phone: target.phone, role: target.role.code, isActive: target.isActive },
-        after: { fullName: input.fullName, phone: input.phone, role: newRole.code, isActive: input.isActive },
-      });
-    });
+    } catch (e) {
+      if (isUniqueViolation(e)) throw new AppError("A staff account with this email already exists.", "CONFLICT", { email: msg("Already in use") });
+      throw e;
+    }
     revalidatePath("/staff/users");
     return null;
   }, msg("Staff member updated."));

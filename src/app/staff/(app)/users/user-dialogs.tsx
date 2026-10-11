@@ -107,6 +107,7 @@ export function EditUserDialog({ user, roles, isSelf, screens = null }: {
             <>
               <input type="hidden" name="userId" value={user.id} />
               <div className="space-y-1.5"><Label htmlFor="fullName">{t("Full name")}</Label><Input id="fullName" name="fullName" defaultValue={user.fullName} required /><FieldError message={e?.fullName} /></div>
+              <div className="space-y-1.5"><Label htmlFor="email">{t("Email")}</Label><Input id="email" name="email" type="email" defaultValue={user.email} required /><FieldError message={e?.email} /></div>
               <div className="space-y-1.5"><Label htmlFor="phone">{t("Phone")}</Label><Input id="phone" name="phone" defaultValue={user.phone} /></div>
               <div className="space-y-1.5">
                 <Label htmlFor="roleId">{t("Department & role")}</Label>

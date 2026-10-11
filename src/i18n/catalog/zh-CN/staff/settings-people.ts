@@ -295,6 +295,7 @@ const catalog: Catalog = {
   "All rooms": "全部房间",
 
   // ── Staff & roles: actions ──
+  "Enter a valid email.": "请输入有效的邮箱地址。",
   "Full name is required.": "请填写全名。",
   "Choose a role.": "请选择角色。",
   "Set a temporary password.": "请设置临时密码。",
@@ -333,6 +334,7 @@ const catalog: Catalog = {
   "Dashboard": "仪表板",
 
   // ── Staff & roles: dialogs ──
+  "Email": "邮箱",
   "Department…": "部门…",
   "Role…": "角色…",
   "Choose a department": "请选择部门",
