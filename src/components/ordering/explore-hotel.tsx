@@ -24,7 +24,7 @@ export function ExploreHotel({ hotel }: { hotel: string }) {
           <p className="text-[11px] font-semibold uppercase tracking-[0.3em]" style={{ color: GOLD }}>{t("Discover more")}</p>
           <h2 className="font-display text-2xl sm:text-3xl">{t("Explore {hotel}", { hotel })}</h2>
         </div>
-        <Link href="/" className="hidden shrink-0 items-center gap-1 text-sm font-medium text-white/75 hover:text-white sm:inline-flex">{t("Visit our website")}<ArrowUpRight className="size-4" /></Link>
+        <Link href="/" className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-white/75 hover:text-white">{t("Visit our website")}<ArrowUpRight className="size-4" /></Link>
       </div>
       <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3">
         {EXPLORE.map((e) => (

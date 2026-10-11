@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { CinematicHero, type HeroSlide } from "@/components/public/cinema/hero";
 import { containers, HOTEL_COORDS } from "@/components/public/kit";
 import { LanguageSwitch } from "@/components/i18n/language-switch";
+import { WebsiteLink } from "@/components/ordering/website-link";
 import { useT } from "@/i18n/client";
 import { telHref } from "./lib";
 
@@ -52,6 +53,7 @@ export function Opening({ hero, hotel, onBook, children }: {
           </span>
           <span className="flex shrink-0 items-center gap-2 sm:gap-3">
             <LanguageSwitch variant="toggle" languages={hero.languages} />
+            <WebsiteLink hotel={hotel.name} word={false} className="text-white/90 hover:text-white max-[359px]:hidden" />
             {hotel.phone && (
               <a href={telHref(hotel.phone)} aria-label={t("Call {name}", { name: hotel.name })} className={cn(quiet, "w-9 justify-center text-white/90 hover:text-white")}>
                 <Phone className="size-[18px]" strokeWidth={1.8} />

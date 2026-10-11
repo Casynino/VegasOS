@@ -3,7 +3,7 @@ import { englishT, makeT, type T } from "@/i18n/translate";
 import { ALL_BUNDLES, loadCatalog } from "@/i18n/catalog";
 import CONTENT_ZH from "@/i18n/content/zh-CN";
 import { bookingMessage, checkoutMessage, guestsText, langLink, orderReceivedMessage, welcomeMessage, type Hotel, type Money, type StayFacts } from "./wa-messages";
-import { breakfastDays, breakfastHours, breakfastSchedule } from "./breakfast";
+import { breakfastHours, breakfastSchedule } from "./breakfast";
 import { orderFacts, orderMessageText } from "./order-messages";
 import { invoiceMessage } from "./invoice-message";
 
@@ -140,17 +140,34 @@ describe("guest messages in the guest's language", () => {
 
 describe("complimentary breakfast in the welcome message", () => {
   const meal = breakfastSchedule({ breakfastStartMinutes: 360, breakfastEndMinutes: 630, breakfastDays: [0, 1, 2, 3, 4, 5, 6], breakfastLocation: null, breakfastNote: null });
-  const lines = (t: T) => [t("Complimentary — included with your room stay."), `${breakfastDays(meal, t)}: ${breakfastHours(meal, t.locale)}`].join("\n");
+  const lines = (t: T) => t("Free Breakfast: {hours} daily", { hours: breakfastHours(meal, t.locale) });
   const paid: Money = { ...money, paid: 160000, balance: 0 };
 
   it("tells an eligible guest breakfast is included and when — once, between the payment and the Wi-Fi", () => {
-    const text = welcomeMessage({ hotel, name: "Asha Juma", stay, money: paid, breakfast: lines(englishT), wifi: "Vegas-Guest", stayUrl: "https://vegas.example/stay/tok" });
-    expect(text).toContain("*BREAKFAST*\nComplimentary — included with your room stay.\nEvery day: 6:00 AM – 10:30 AM");
-    expect(text.match(/BREAKFAST/g)).toHaveLength(1);
-    expect(text.indexOf("*PAYMENT*")).toBeLessThan(text.indexOf("*BREAKFAST*"));
-    expect(text.indexOf("*BREAKFAST*")).toBeLessThan(text.indexOf("*WI-FI*"));
+    const text = welcomeMessage({ hotel, name: "Asha Juma", stay, money: paid, breakfast: lines(englishT), wifi: "Network: Hotel-Guest\nPassword: sample-pass", stayUrl: "https://vegas.example/stay/tok" });
+    expect(text).toContain("\n\nFree Breakfast: 6:00 AM – 10:30 AM daily\n\n");
+    expect(text.match(/breakfast/gi)).toHaveLength(1);
+    expect(text.indexOf("*PAYMENT*")).toBeLessThan(text.indexOf("Free Breakfast"));
+    expect(text.indexOf("Free Breakfast")).toBeLessThan(text.indexOf("*WI-FI*"));
     // Breakfast is never money: nothing about it in the bill lines.
-    expect(text.slice(text.indexOf("*PAYMENT*"), text.indexOf("*BREAKFAST*"))).not.toMatch(/breakfast/i);
+    expect(text.slice(text.indexOf("*PAYMENT*"), text.indexOf("Free Breakfast"))).not.toMatch(/breakfast/i);
+  });
+
+  it("reads the way the owner laid it out: room and type on one line, Wi-Fi a fact a line, the link on its own line", () => {
+    const text = welcomeMessage({ hotel, name: "Nino", stay: { ...stay, ref: "VLH-QZBSB2", rooms: "103", nights: 1, checkIn: "Sun, 11 Oct 2026 · from 14:00", checkOut: "Mon, 12 Oct 2026 · by 11:00" },
+      money: { lines: [{ label: "Room", amount: 80000 }], total: 80000, paid: 80000, balance: 0 }, breakfast: lines(englishT),
+      wifi: "Network: Hotel-Guest\nPassword: sample-pass", stayUrl: "https://www.vegashoteltz.com/stay/tok" });
+    expect(text).toBe([
+      "Hello Nino,",
+      "Welcome to Vegas Luxury Hotel! You’re checked in.",
+      "*YOUR STAY*\n• Booking Ref: VLH-QZBSB2\n• Room: 103 — Double Deluxe\n• Check-in: Sun, 11 Oct 2026 · from 14:00\n• Check-out: Mon, 12 Oct 2026 · by 11:00\n• Nights: 1\n• Guests: 2 adults",
+      "*PAYMENT*\n• Room: TZS 80,000\n• Total so far: TZS 80,000\n• Paid: TZS 80,000\n• Balance: TZS 0\n• Status: PAID",
+      "Free Breakfast: 6:00 AM – 10:30 AM daily",
+      "*WI-FI*\n• Network: Hotel-Guest\n• Password: sample-pass",
+      "*EXPLORE VEGAS*\nSee our menu, order food & drinks to your room, ask for anything and see your bill:\n\nhttps://www.vegashoteltz.com/stay/tok",
+      "*NEED ANYTHING?*\nCall or WhatsApp Reception:\n+255 710 223 344",
+      "Enjoy your stay at Vegas Luxury Hotel!",
+    ].join("\n\n"));
   });
 
   it("says nothing about breakfast when the stay does not come with it", () => {

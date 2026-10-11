@@ -15,7 +15,7 @@ import { stayBill } from "./stay-bill";
 import { ensureGuestToken } from "./guest-comms";
 import { isPayLater } from "./booking-holds";
 import { breakfastIncluded } from "./breakfast";
-import { breakfastDays, breakfastHours, breakfastSchedule, stayHasBreakfast } from "@/lib/breakfast";
+import { breakfastDays, breakfastHours, breakfastSchedule, everyDay, stayHasBreakfast } from "@/lib/breakfast";
 
 /**
  * The facts every guest message is written from — read from the system's own records (the booking and its folio, the
@@ -112,15 +112,16 @@ async function reservationFacts(reservationId: string, origin: string) {
     attendees: r.adults || null, company: r.corporateCustomer?.companyName ?? r.companyName ?? null,
   } : null;
   const wifi = s.wifiNetwork
-    ? `${t("Network: {network}", { network: s.wifiNetwork })}${s.wifiPassword ? ` · ${t("Password: {password}", { password: s.wifiPassword })}` : ""}`
+    ? [t("Network: {network}", { network: s.wifiNetwork }), s.wifiPassword ? t("Password: {password}", { password: s.wifiPassword }) : null].filter(Boolean).join("\n")
     : null;
   // Complimentary breakfast — said only when this stay really comes with it (the hotel includes it, a night stay in a
   // guest room), with the hours from the one schedule in Settings. Nothing is promised otherwise.
   const meal = breakfastSchedule(s);
   const breakfast = stayHasBreakfast({ shortTime: dayUse, meeting: r.kind === "MEETING" }, breakfastOn)
     ? [
-      t("Complimentary — included with your room stay."),
-      `${breakfastDays(meal, t)}: ${breakfastHours(meal, t.locale)}`,
+      everyDay(meal)
+        ? t("Free Breakfast: {hours} daily", { hours: breakfastHours(meal, t.locale) })
+        : t("Free Breakfast: {hours} · {days}", { hours: breakfastHours(meal, t.locale), days: breakfastDays(meal, t) }),
       meal.location ? t("Where: {place}", { place: t(meal.location) }) : null,
     ].filter(Boolean).join("\n")
     : null;

@@ -6,13 +6,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import {
-  ArrowRight, ArrowUpRight, BedDouble, Check, ChefHat, ChevronLeft, ChevronRight, Clock, Flame, Globe, Loader2, Minus, Phone, Plus, Receipt, Search, ShoppingBag, Store, Trash2, UtensilsCrossed, Wine, X,
+  ArrowRight, BedDouble, Check, ChefHat, ChevronLeft, ChevronRight, Clock, Flame, Loader2, Minus, Phone, Plus, Receipt, Search, ShoppingBag, Store, Trash2, UtensilsCrossed, Wine, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { identifyAtTableAction, startAtTableAction } from "@/app/t/[token]/actions";
 import { identifyCustomerAction } from "@/app/order/actions";
 import type { RestaurantEntry, RestaurantMenu, RestaurantOption } from "@/server/services/online-orders";
 import type { GuestTable } from "@/server/services/dining-sessions";
+import { WebsiteLine, WebsiteLink } from "@/components/ordering/website-link";
 import { Checkout, type CheckoutConfig } from "./checkout";
 import { TableSessionCard } from "./table-session";
 import { phoneLabel, useWho, useWhoForm, type Who } from "./who";
@@ -228,14 +229,9 @@ export function RestaurantApp({ brand, status, menu: english, place, checkout, c
           </span>
         </Link>
         <div className="flex shrink-0 items-center gap-2">
-          {/* The hotel's main website — in a new tab, so an order in progress is not lost. On a guest's own page (a room,
-              a stay: `top`) phones keep one quiet button, the order bag — reception and the hotel are on the page. */}
-          <a href="/" target="_blank" rel="noopener" aria-label={t("{hotel} website (opens in a new tab)", { hotel: brand.hotel })}
-            className={cn("h-10 items-center gap-1.5 rounded-full bg-(--vr-card) px-3 text-[13px] font-medium ring-1 ring-(--vr-line) transition hover:ring-(--vr-gold) sm:px-3.5", top ? "hidden lg:inline-flex" : "inline-flex")}>
-            <Globe className="size-4 text-(--vr-gold-ink)" />
-            <span className="hidden sm:inline">{t("Hotel website")}</span>
-            <ArrowUpRight className="hidden size-3.5 text-(--vr-muted) sm:block" />
-          </a>
+          {/* The hotel's main website — said in words on every page, a guest's own room page too (owner, 2026-10-11);
+              in a new tab, so an order in progress is not lost. */}
+          <WebsiteLink hotel={brand.hotel} className="rounded-full bg-(--vr-card) px-2.5 ring-1 ring-(--vr-line) transition hover:ring-(--vr-gold) sm:px-3.5 [&>svg]:text-(--vr-gold-ink)" />
           {orderingOn && (
             <button type="button" onClick={() => count && setCheckingOut(true)} aria-label={t.plural(count, "Your order, {n} item", "Your order, {n} items")}
               className="relative grid size-10 shrink-0 place-items-center rounded-full bg-(--vr-card) ring-1 ring-(--vr-line) transition hover:ring-(--vr-gold) lg:hidden">
@@ -341,6 +337,7 @@ export function RestaurantApp({ brand, status, menu: english, place, checkout, c
           )}
         </div>
         {bottom}
+        <WebsiteLine hotel={brand.hotel} className="mt-8 text-(--vr-ink)" link="text-(--vr-gold-ink)" />
       </div>
 
       {/* Phones: the order at the bottom */}

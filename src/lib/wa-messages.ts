@@ -112,8 +112,8 @@ export function guestsText(adults: number, children: number, t: T = englishT) {
 }
 const stayLines = (s: StayFacts, t: T, opts: { ref?: boolean } = {}): Line[] => [
   opts.ref === false ? null : t("Booking Ref: {ref}", { ref: s.ref }),
-  s.rooms ? t("Room: {room}", { room: s.rooms }) : null,
-  t("Room Type: {type}", { type: s.roomType }),
+  // The room and its type on one line once the room is the guest's ("Room: 103 — Double Deluxe").
+  s.rooms ? t("Room: {room} — {type}", { room: s.rooms, type: s.roomType }) : t("Room Type: {type}", { type: s.roomType }),
   t("Check-in: {date}", { date: s.checkIn }),
   t("Check-out: {date}", { date: s.checkOut }),
   s.nights ? t("Nights: {n}", { n: s.nights }) : null,
@@ -178,7 +178,7 @@ export function bookingPaymentPendingMessage(v: { hotel: Hotel; name: string; st
     hello(v.name, t),
     t("Your booking payment is pending — we have not received it yet."),
     section(t("BOOKING"), [
-      ...stayLines(v.stay, t).slice(0, 5), t("Total: {amount}", { amount: tzs(v.money.total) }),
+      ...stayLines(v.stay, t).slice(0, 4), t("Total: {amount}", { amount: tzs(v.money.total) }),
       t("Paid: {amount}", { amount: tzs(v.money.paid) }), t("Balance: {amount}", { amount: tzs(v.money.balance) }),
     ]),
     t("Your booking is treated as paid only once the payment is confirmed."),
@@ -191,7 +191,7 @@ export function bookingPaymentFailedMessage(v: { hotel: Hotel; name: string; sta
   return compose([
     hello(v.name, t),
     t("We could not confirm your mobile-money payment for your {hotel} booking.", { hotel: v.hotel.name }),
-    section(t("BOOKING"), [...stayLines(v.stay, t).slice(0, 5), t("Amount Due: {amount}", { amount: tzs(v.money.balance) }), t("Payment Status: NOT PAID")]),
+    section(t("BOOKING"), [...stayLines(v.stay, t).slice(0, 4), t("Amount Due: {amount}", { amount: tzs(v.money.balance) }), t("Payment Status: NOT PAID")]),
     link(t("You can try the payment again here:"), v.payUrl),
     contact(v.hotel, t("If you need assistance:")),
   ]);
@@ -225,17 +225,21 @@ export function roomChangedMessage(v: { hotel: Hotel; name: string; ref: string;
   ]);
 }
 
-/** `breakfast`: the stay's complimentary breakfast (when and where) — only when this stay really comes with it. */
+/**
+ * The welcome at check-in (the owner's own layout, 2026-10-11). `breakfast`: the stay's complimentary breakfast in one
+ * line ("Free Breakfast: 6:00 AM – 10:30 AM daily") — only when this stay really comes with it. `wifi`: one fact a
+ * line (the network, the password). The guest's link stands on a line of its own, easy to tap.
+ */
 export function welcomeMessage(v: { hotel: Hotel; name: string; stay: StayFacts; money: Money; breakfast?: string | null; wifi?: string | null; stayUrl: string | null }, t: T = englishT) {
   return compose([
     hello(v.name, t),
     t("Welcome to {hotel}! You’re checked in.", { hotel: v.hotel.name }),
     section(t("YOUR STAY"), stayLines(v.stay, t)),
     section(t("PAYMENT"), [...moneyLines(v.money, t, { totalSoFar: true }), t("Status: {status}", { status: payStatus(v.money, t) })]),
-    v.breakfast ? block(t("BREAKFAST"), v.breakfast) : null,
-    v.wifi ? block(t("WI-FI"), v.wifi) : null,
-    v.stayUrl ? block(t("EXPLORE VEGAS"), `${t("See our menu, order food & drinks to your room, ask for anything and see your bill:")}\n${v.stayUrl}`) : null,
-    contact(v.hotel, t("Need anything during your stay? Call or WhatsApp Reception:")),
+    v.breakfast || null,
+    v.wifi ? section(t("WI-FI"), v.wifi.split("\n")) : null,
+    v.stayUrl ? block(t("EXPLORE VEGAS"), `${t("See our menu, order food & drinks to your room, ask for anything and see your bill:")}\n\n${v.stayUrl}`) : null,
+    v.hotel.phone ? block(t("NEED ANYTHING?"), `${t("Call or WhatsApp Reception:")}\n${v.hotel.phone}`) : null,
     t("Enjoy your stay at {hotel}!", { hotel: v.hotel.name }),
   ]);
 }

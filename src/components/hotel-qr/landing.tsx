@@ -8,6 +8,7 @@ import { ArrowRight, ArrowUpRight, CalendarCheck, ChevronRight, Lock, MapPin, Me
 import { cn } from "@/lib/utils";
 import { msg } from "@/i18n/msg";
 import { NetworkMarks } from "@/components/payments/networks";
+import { WebsiteLine } from "@/components/ordering/website-link";
 import type { QrLanding, QrRoomType } from "@/server/services/hotel-qr";
 import type { ExplorePhoto, QrExplore } from "@/server/services/hotel-qr-explore";
 import { BrandMark, card, darkButton, lightButton, Photo, Rail, Reveal, SectionHead } from "./ui";
@@ -103,6 +104,8 @@ export function Landing({ landing, explore, hero, imagesOf, last, stay, onDates,
           { id: "meeting", label: t("Meetings"), src: explore.meeting?.photo?.src },
           { id: "find", label: t("Find us"), src: explore.hotel.filter((p) => p.label === "Outside").find((p) => p.width > p.height)?.src ?? explore.hotel[0]?.src },
         ]} />
+        {/* Phones: the way to the full website, in words, right under the opening (owner, 2026-10-11). */}
+        <WebsiteLine hotel={hotel.name} className="pt-5 text-(--vr-ink) lg:hidden" link="text-(--vr-gold-ink)" />
 
         {/* ── A booking made a moment ago in this tab ── */}
         {last && (
@@ -182,9 +185,7 @@ export function Landing({ landing, explore, hero, imagesOf, last, stay, onDates,
               <p className="flex items-center gap-1.5 text-[11.5px] font-medium text-(--vr-muted)"><Lock className="size-3 text-(--vr-gold-ink)" />{t.rich("Secure payment by <b>NTZS</b>", { b: (c) => <span className="font-semibold tracking-wide text-(--vr-ink)/80">{c}</span> })}</p>
             </div>
           )}
-          <a href="/" target="_blank" rel="noopener" className="mt-1 inline-flex items-center gap-1 text-[12px] text-(--vr-muted) underline-offset-4 hover:text-(--vr-ink) hover:underline">
-            {t("Our website")}<ArrowUpRight className="size-3.5" />
-          </a>
+          <WebsiteLine hotel={hotel.name} className="mt-1 text-(--vr-ink)" link="text-(--vr-gold-ink)" />
         </footer>
       </div>
 
