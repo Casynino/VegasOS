@@ -42,6 +42,8 @@ export function OrderReceipt({ bill, leadId, hotel, payTo, t = englishT }: {
   const servedBy = [...new Set(bill.orders.map((o) => (o.deliveredBy ?? o.createdBy)?.fullName.replace(/\s*\(.*\)/, "").split(" ")[0]).filter(Boolean))].join(", ");
   const paidWith = [...new Set(bill.orders.flatMap((o) => o.payments.map((p) => p.account.name)))];
   const roomStamp = sum.onRoom > 0 && sum.paid === 0;
+  // Spin to Win gifts: nothing was paid and nothing is owed — the paper says "gift", never "paid".
+  const allGift = bill.orders.every((o) => o.isGift);
   const details: [string, string][] = [
     [t("Guest"), guest],
     [bill.scope === "room" || lead.type === "ROOM_SERVICE" ? t("Room") : lead.type === "DINE_IN" ? t("Table") : t("Collect at"), bill.scope === "room" ? room ?? "—" : where.replace(/^(Room|Table)\s+/, "")],
@@ -51,7 +53,7 @@ export function OrderReceipt({ bill, leadId, hotel, payTo, t = englishT }: {
 
   return (
     <article id="bill" className="relative overflow-hidden bg-white font-sans text-[#1b1611] shadow-[0_30px_60px_-34px_rgba(40,25,5,0.6)] [print-color-adjust:exact] print:shadow-none">
-      <FolioHeader hotel={hotel} sub={t("Restaurant & Bar")} label={paidUp && sum.onRoom === 0 ? t("Receipt") : t("Bill")} number={billNo}
+      <FolioHeader hotel={hotel} sub={t("Restaurant & Bar")} label={allGift ? t("Complimentary gift") : paidUp && sum.onRoom === 0 ? t("Receipt") : t("Bill")} number={billNo}
         when={`${date(single ? lead.createdAt : new Date())} · ${time(single ? lead.createdAt : new Date())}`} />
       <FolioDetails items={details} />
 
@@ -76,8 +78,8 @@ export function OrderReceipt({ bill, leadId, hotel, payTo, t = englishT }: {
                   <td colSpan={4} className="pb-1 pt-4 text-[11px]">
                     <span className="font-semibold">{t("Order {number}", { number: short(o.number) })}</span><span className="text-black/50"> · {time(o.createdAt)}</span>
                     <span className="ml-2 rounded-full px-2 py-px text-[9.5px] font-semibold uppercase tracking-wider"
-                      style={o.settlement === "ROOM" ? { background: "#efeafc", color: "#5b3fc4" } : o.paidAmount >= o.total ? { background: "#e7f6ee", color: "#0f7a47" } : { background: "#fdecec", color: "#b42318" }}>
-                      {o.settlement === "ROOM" ? t("On room bill") : o.paidAmount >= o.total ? t("Paid") : o.paidAmount > 0 ? t("Part-paid") : t("To pay")}
+                      style={o.isGift ? { background: "#f6efdc", color: "#8a6a1f" } : o.settlement === "ROOM" ? { background: "#efeafc", color: "#5b3fc4" } : o.paidAmount >= o.total ? { background: "#e7f6ee", color: "#0f7a47" } : { background: "#fdecec", color: "#b42318" }}>
+                      {o.isGift ? t("Complimentary gift") : o.settlement === "ROOM" ? t("On room bill") : o.paidAmount >= o.total ? t("Paid") : o.paidAmount > 0 ? t("Part-paid") : t("To pay")}
                     </span>
                   </td>
                 </tr>,
@@ -88,8 +90,8 @@ export function OrderReceipt({ bill, leadId, hotel, payTo, t = englishT }: {
                   <tr key={i.id} className="border-b border-[#f1ece3]">
                     <td className="py-2 pr-2 align-top">{orderItemName(i, t)}</td>
                     <td className="py-2 text-center align-top tabular-nums">{i.quantity}</td>
-                    <td className="py-2 text-right align-top tabular-nums text-black/55">{money(i.unitPrice)}</td>
-                    <td className="py-2 text-right align-top font-medium tabular-nums">{money(i.lineTotal)}</td>
+                    <td className="py-2 text-right align-top tabular-nums text-black/55">{o.isGift ? "—" : money(i.unitPrice)}</td>
+                    <td className="py-2 text-right align-top font-medium tabular-nums">{o.isGift ? t("Gift") : money(i.lineTotal)}</td>
                   </tr>,
                 );
               }
@@ -107,7 +109,7 @@ export function OrderReceipt({ bill, leadId, hotel, payTo, t = englishT }: {
 
       {/* Totals (and a stamp once it is settled) */}
       <section className="relative flex justify-end px-5 pt-4 sm:px-8">
-        {paidUp && <Stamp title={roomStamp ? t("Room bill") : t("Paid")} sub={roomStamp ? t("Settle at check-out") : t("Thank you")} tone={roomStamp ? "violet" : "green"} />}
+        {paidUp && <Stamp title={allGift ? t("Gift") : roomStamp ? t("Room bill") : t("Paid")} sub={allGift ? t("Nothing to pay") : roomStamp ? t("Settle at check-out") : t("Thank you")} tone={roomStamp && !allGift ? "violet" : "green"} />}
         <dl className="w-full max-w-[290px] text-[13px]">
           {sum.food > 0 && <div className="flex justify-between py-0.5"><dt className="text-black/60">{t("Food")}</dt><dd className="tabular-nums">{money(sum.food)}</dd></div>}
           {sum.drinks > 0 && <div className="flex justify-between py-0.5"><dt className="text-black/60">{t("Drinks")}</dt><dd className="tabular-nums">{money(sum.drinks)}</dd></div>}
