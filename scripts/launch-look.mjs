@@ -2,7 +2,7 @@
 // (everything runs inside a read-only transaction).
 //
 //   node scripts/launch-look.mjs            the local database (.env)
-//   node scripts/launch-look.mjs --live     the LIVE database (.env.production.local)
+//   node scripts/launch-look.mjs --live     the LIVE database (its address in .env.reset.local — a file made on this computer, never in git)
 //
 // It answers: which tables hold set-up (stay), which hold what the hotel did while practising, and — the part only
 // the hotel can judge — whether any of it is real: guests in the house, bookings to come, website requests, real money.
@@ -66,17 +66,29 @@ function fail(msg) { console.error(`\nSTOPPED — ${msg}\n`); process.exit(1); }
 const n = (v) => Number(v).toLocaleString("en-US");
 const id = (s) => `"${s}"`;
 
+/** The address is read here and never shown — not even when it is wrong. */
+function address() {
+  if (!LIVE) return fs.existsSync(".env") ? fs.readFileSync(".env", "utf8").match(/^DATABASE_URL\s*=\s*["']?([^"'\n]+)/m)?.[1] : null;
+  // The live address: a file the owner makes on this computer (.env.reset.local — one line, the connection string), never typed into a command.
+  for (const file of [".env.reset.local", ".env.production.local"]) {
+    if (!fs.existsSync(file)) continue;
+    const text = fs.readFileSync(file, "utf8").trim();
+    const value = (text.match(/^DATABASE_URL\s*=\s*["']?([^"'\n]+)/m)?.[1] ?? text.split("\n")[0]).trim().replace(/^["']|["']$/g, "");
+    if (/^postgres(ql)?:\/\//.test(value)) return value;
+  }
+  return null;
+}
+
 function connection() {
-  const file = LIVE ? ".env.production.local" : ".env";
-  if (!fs.existsSync(file)) fail(`${file} is not here.`);
-  const m = fs.readFileSync(file, "utf8").match(/^DATABASE_URL\s*=\s*"?([^"\n]+)"?/m);
-  if (!m) fail(`no DATABASE_URL in ${file}.`);
-  const url = new URL(m[1]);
+  const value = address();
+  if (!value) fail(LIVE ? "the live database address is not on this computer. Copy the connection string from Neon, then run:  pbpaste > .env.reset.local" : "no DATABASE_URL in .env.");
+  let url;
+  try { url = new URL(value); } catch { fail("the database address cannot be read as an address."); }
   const local = ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
-  if (LIVE && local) fail("--live was asked for, but the address in .env.production.local is this computer.");
+  if (LIVE && local) fail("--live was asked for, but the address is this computer.");
   if (!LIVE && !local) fail("the address in .env is not this computer. The live database needs --live.");
   const host = local ? url.hostname : `${url.hostname.slice(0, 9)}…${url.hostname.split(".").slice(-2).join(".")}`;
-  return { connectionString: m[1], label: `${LIVE ? "LIVE" : "local"} · ${host} · ${url.pathname.slice(1)}` };
+  return { connectionString: value, label: `${LIVE ? "LIVE" : "local"} · ${host} · ${url.pathname.slice(1)}` };
 }
 
 const { connectionString, label } = connection();
@@ -215,4 +227,4 @@ async function main() {
   console.log(`\nNOTHING WAS CHANGED. This was only a look.\n`);
 }
 
-main().catch((e) => fail(e.message)).finally(() => client.end().catch(() => {}));
+main().catch((e) => fail(String(e.message).replace(/postgres(ql)?:\/\/\S+/g, "(address)"))).finally(() => client.end().catch(() => {}));
