@@ -34,7 +34,7 @@ async function main() {
   const gone = [...known].filter((t) => !tables.includes(t));
   const total = Object.fromEntries((await q(tables.map((t) => `SELECT '${t}' AS t, count(*)::int AS n FROM ${id(t)}`).join(" UNION ALL "))).map((r) => [r.t, r.n]));
   const hasLive = !!(await one(`SELECT 1 AS ok FROM information_schema.columns WHERE table_name = 'hotel_settings' AND column_name = 'liveSince'`));
-  const s = await one(`SELECT timezone, "businessDayStartMinutes" AS start, "invoiceNextNumber", "hotelName"${hasLive ? `, "liveSince"` : ""} FROM hotel_settings WHERE id = 1`);
+  const s = await one(`SELECT timezone, "businessDayStartMinutes" AS start, "invoiceNextNumber", "hotelName"${hasLive ? `, to_char(("liveSince" AT TIME ZONE 'UTC') AT TIME ZONE timezone, 'DD Mon YYYY HH24:MI') AS "liveSince"` : ""} FROM hotel_settings WHERE id = 1`);
   const today = (await one(`SELECT to_char((now() AT TIME ZONE $1) - make_interval(mins => $2), 'YYYY-MM-DD') AS d`, [s.timezone, s.start])).d;
 
   const fks = await q(`
@@ -44,7 +44,7 @@ async function main() {
   for (const f of fks) { f.t = f.t.replace(/"/g, ""); f.ref = f.ref.replace(/"/g, ""); }
 
   const L = [];
-  L.push(`\nDATABASE: ${label}   (${s.hotelName}, business day ${today})   clean-start field: ${hasLive ? (s.liveSince ? `set ${new Date(s.liveSince).toISOString()}` : "ready, not set") : "NOT deployed yet"}`);
+  L.push(`\nDATABASE: ${label}   (${s.hotelName}, business day ${today})   clean-start field: ${hasLive ? (s.liveSince ? `set ${s.liveSince} (hotel time)` : "ready, not set") : "NOT deployed yet"}`);
   if (unknown.length) L.push(`\n!! Tables this look does not know: ${unknown.join(", ")}`);
   if (gone.length) L.push(`\n!! Tables on the lists that are not in this database: ${gone.join(", ")}`);
 
