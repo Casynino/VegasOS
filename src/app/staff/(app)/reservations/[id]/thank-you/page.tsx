@@ -7,7 +7,7 @@ import { db } from "@/server/db";
 import { getSettings } from "@/server/settings";
 import { siteOrigin } from "@/server/site-origin";
 import { thankYouNotes } from "@/server/services/thank-you";
-import { reservationMessage } from "@/server/services/guest-message-data";
+import { reservationMessage, reservationMessageTexts } from "@/server/services/guest-message-data";
 import { formatDateTime } from "@/lib/format";
 import type { StaySnapshot } from "@/lib/thank-you";
 import { cn } from "@/lib/utils";
@@ -40,6 +40,8 @@ export default async function ThankYouPage({ params, searchParams }: PageProps<"
   const link = note ? `${await siteOrigin()}/thanks/${note.token}` : null;
   // The same message as at check-out: the final bill and the thank-you link, in the one Vegas format — in the guest's language.
   const sent = note ? await reservationMessage(r.id, "CHECKOUT", await siteOrigin(), { thanksUrl: link }) : null;
+  // The same message in each language: it opens in the guest's, and whoever sends it may change it.
+  const sentTexts = sent ? await reservationMessageTexts(r.id, "CHECKOUT", await siteOrigin(), { thanksUrl: link }) : undefined;
 
   return (
     <div className="w-full space-y-5 print:space-y-0">
@@ -54,7 +56,7 @@ export default async function ThankYouPage({ params, searchParams }: PageProps<"
               label={sent && sent.locale !== DEFAULT_LOCALE ? t("Send to guest ({language})", { language: LOCALE_META[sent.locale].short }) : t("Send to guest")}
               to={{ name: r.guest.fullName, phone: r.guest.phone, email: r.guest.email }}
               subject={sent?.subject ?? `Thank you for staying at ${s.hotelName}`}
-              text={sent?.text ?? ""}
+              text={sent?.text ?? ""} texts={sentTexts} locale={sent?.locale}
             />
             {canRemake && <MakeNote reservationId={r.id} again />}
           </div>

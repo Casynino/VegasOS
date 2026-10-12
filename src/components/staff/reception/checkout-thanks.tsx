@@ -1,15 +1,14 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { MessageSendPanel } from "./guest-messenger";
+import { MessageSendPanel, useGuestMessages } from "./guest-messenger";
 import type { CheckoutThanks } from "@/server/services/guest-comms";
 import { useT } from "@/i18n/client";
 import { msg } from "@/i18n/msg";
-import { LOCALE_META } from "@/i18n/config";
 
 /**
  * AFTER A CHECK-OUT DONE IN PLACE (the room's window, the guest list): a clear window opens by itself — the guest is
@@ -49,7 +48,7 @@ export function CheckoutThanksHost() {
 function CheckoutThanksWindow({ done, onClose }: { done: CheckoutDone; onClose: () => void }) {
   const t = useT();
   const { thanks } = done;
-  const [body, setBody] = useState(thanks.text);
+  const written = useGuestMessages(done.reservationId, { THANK_YOU: { text: thanks.text, subject: thanks.subject } }, thanks.locale);
   const note = `/staff/reservations/${done.reservationId}/thank-you`;
   const quiet = "font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline";
   return (
@@ -67,8 +66,8 @@ function CheckoutThanksWindow({ done, onClose }: { done: CheckoutDone; onClose: 
               : t("Opens WhatsApp, SMS or email with the message ready — it is sent when you press send there.")}
           </p>
         </div>
-        <MessageSendPanel reservationId={done.reservationId} type="THANK_YOU" label={msg("Check-out & thank you")} subject={thanks.subject} guest={thanks.guest}
-          hint={t("Messages in {language}", { language: LOCALE_META[thanks.locale].label })} body={body} onBody={setBody} rows={9} boxClass="max-h-[38svh] overflow-y-auto" />
+        <MessageSendPanel reservationId={done.reservationId} type="THANK_YOU" label={msg("Check-out & thank you")} guest={thanks.guest} written={written}
+          rows={9} boxClass="max-h-[38svh] overflow-y-auto" />
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-border/60 pt-3">
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
             {thanks.note && <Link href={note} target="_blank" className={quiet}>{t("View thank-you note")}</Link>}

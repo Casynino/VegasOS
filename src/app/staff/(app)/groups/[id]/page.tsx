@@ -19,7 +19,7 @@ import { addDays } from "@/lib/time/business-date";
 import { INVOICE_STATUS_META } from "@/lib/invoice-status";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
-import { getT, getTFor } from "@/i18n/server";
+import { getT, getTFor, inEveryLanguage } from "@/i18n/server";
 import { DEFAULT_LOCALE, LOCALE_META } from "@/i18n/config";
 import { langLink } from "@/lib/wa-messages";
 import { AddGroupRoom, CancelGroup, EditGroup, FinalizeGroup, GroupPayment, GroupRooms, PrintButton } from "./group-panels";
@@ -70,6 +70,17 @@ export default async function GroupPage({ params, searchParams }: PageProps<"/st
     getT(),
     finalInvoice ? db.guest.findUnique({ where: { id: g.contact.id }, select: { preferredLanguage: true } }).then((x) => getTFor(x?.preferredLanguage)) : null,
   ]);
+  // The final invoice's message, written once per language: it opens in the contact's, and whoever sends it may change it.
+  const verifyUrl = finalInvoice?.verifyToken ? `${await siteOrigin()}/verify/${finalInvoice.verifyToken}` : null;
+  const finalTexts = finalInvoice ? await inEveryLanguage((rt) => ({
+    subject: rt("{hotel} — invoice {number}", { hotel: settings.hotelName, number: finalInvoice.number }),
+    text: invoiceMessage({
+      hotelName: settings.hotelName, hotelPhone: settings.phone, greet: g.contact.fullName, number: finalInvoice.number, final: true,
+      group: { name: g.name, rooms: review.rooms.length }, net: finalInvoice.net, paid: finalInvoice.paid, balance: finalInvoice.balance,
+      due: finalInvoice.dueDate ? (rt.locale === DEFAULT_LOCALE ? formatBusinessDate(finalInvoice.dueDate) : rt.date(finalInvoice.dueDate)) : null, payTo: payToLine(settings, rt),
+      verifyUrl: langLink(verifyUrl, rt),
+    }, rt),
+  })) : null;
   const cp = g.companyProfile;
   const billing = g.company ? {
     name: g.company.name, address: cp?.billingAddress || cp?.address, tax: [cp?.taxId && t("TIN {tin}", { tin: cp.taxId }), cp?.vrn && t("VRN {vrn}", { vrn: cp.vrn }), cp?.registrationNo && t("Reg. No. {number}", { number: cp.registrationNo })].filter(Boolean).join(" · "),
@@ -182,13 +193,7 @@ export default async function GroupPage({ params, searchParams }: PageProps<"/st
                 <SendDocument
                   entity={{ type: "Invoice", id: finalInvoice.id }} what={`invoice ${finalInvoice.number}`}
                   to={{ name: g.payer, phone: g.contact.phone ?? g.companyProfile?.phone, email: g.profile.billingEmail ?? g.companyProfile?.email ?? g.contact.email }}
-                  subject={rt!("{hotel} — invoice {number}", { hotel: settings.hotelName, number: finalInvoice.number })}
-                  text={invoiceMessage({
-                    hotelName: settings.hotelName, hotelPhone: settings.phone, greet: g.contact.fullName, number: finalInvoice.number, final: true,
-                    group: { name: g.name, rooms: review.rooms.length }, net: finalInvoice.net, paid: finalInvoice.paid, balance: finalInvoice.balance,
-                    due: finalInvoice.dueDate ? (rt!.locale === DEFAULT_LOCALE ? formatBusinessDate(finalInvoice.dueDate) : rt!.date(finalInvoice.dueDate)) : null, payTo: payToLine(settings, rt!),
-                    verifyUrl: langLink(finalInvoice.verifyToken ? `${await siteOrigin()}/verify/${finalInvoice.verifyToken}` : null, rt!),
-                  }, rt!)}
+                  {...finalTexts![rt!.locale]} texts={finalTexts!} locale={rt!.locale}
                   label={rt!.locale === DEFAULT_LOCALE ? undefined : t("Send ({language})", { language: LOCALE_META[rt!.locale].short })}
                 />
               </div>

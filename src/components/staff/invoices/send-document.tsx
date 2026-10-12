@@ -8,7 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { logSendAction } from "@/app/staff/(app)/invoices/actions";
+import { MessageLanguage } from "@/components/staff/message-language";
 import { useT } from "@/i18n/client";
+import { DEFAULT_LOCALE, LOCALE_META, LOCALES, type Locale } from "@/i18n/config";
 import type { T } from "@/i18n/translate";
 
 /** WhatsApp wants the number as digits with the country code: 0712… → 255712…. */
@@ -33,18 +35,26 @@ function whatLabel(what: string, t: T) {
  * WhatsApp or email (opened on this device, with the print/PDF attached by
  * staff), or copy the text. Each send is written to the history.
  */
-export function SendDocument({ entity, what, to, subject, text, label }: {
+export function SendDocument({ entity, what, to, subject, text, label, texts, locale }: {
   entity: { type: "Invoice" | "BookingGroup" | "Reservation"; id: string }; what: string;
   /** Button label (default "Send"). */
   label?: string;
   to: { name: string; phone?: string | null; email?: string | null };
   subject: string; text: string;
+  /** The same message in each language, and the language it opens in (the contact's) — whoever sends it may change it. */
+  texts?: Partial<Record<Locale, { subject: string; text: string }>>; locale?: Locale;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const [phone, setPhone] = useState(to.phone ?? "");
   const [email, setEmail] = useState(to.email ?? "");
-  const [body, setBody] = useState(text);
+  const [lang, setLang] = useState<Locale>(locale ?? DEFAULT_LOCALE);
+  // What staff typed is kept per language, so changing the language and coming back loses nothing.
+  const [typed, setTyped] = useState<Partial<Record<Locale, string>>>({});
+  const body = typed[lang] ?? texts?.[lang]?.text ?? text;
+  const subjectNow = texts?.[lang]?.subject ?? subject;
+  const setBody = (v: string) => setTyped((all) => ({ ...all, [lang]: v }));
+  const choice = !!texts && LOCALES.filter((l) => texts[l]).length > 1;
   const log = (channel: "WHATSAPP" | "EMAIL" | "COPY", dest?: string) => { void logSendAction({ entityType: entity.type, entityId: entity.id, channel, to: dest, what, body }); };
   return (
     <>
@@ -56,14 +66,15 @@ export function SendDocument({ entity, what, to, subject, text, label }: {
             <DialogDescription>{t("Opens WhatsApp or your email with the message ready — nothing is sent until you press send there. To attach the full document, use Print → Save as PDF.")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
-            <Textarea rows={7} value={body} onChange={(e) => setBody(e.target.value)} aria-label={t("Message")} className="text-sm" />
+            {choice && <MessageLanguage value={lang} onChange={setLang} />}
+            <Textarea rows={7} value={body} onChange={(e) => setBody(e.target.value)} aria-label={t("Message")} lang={LOCALE_META[lang].html} className="text-sm" />
             <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
               <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t("WhatsApp number")} inputMode="tel" aria-label={t("WhatsApp number")} />
               <Button disabled={waDigits(phone).length < 9} onClick={() => { log("WHATSAPP", phone); window.open(`https://wa.me/${waDigits(phone)}?text=${encodeURIComponent(body)}`, "_blank", "noopener"); }}>
                 <MessageCircle />WhatsApp
               </Button>
               <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t("Email")} aria-label={t("Email")} />
-              <Button variant="outline" disabled={!/.+@.+\..+/.test(email)} onClick={() => { log("EMAIL", email); window.location.href = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`; }}>
+              <Button variant="outline" disabled={!/.+@.+\..+/.test(email)} onClick={() => { log("EMAIL", email); window.location.href = `mailto:${email}?subject=${encodeURIComponent(subjectNow)}&body=${encodeURIComponent(body)}`; }}>
                 <Mail />{t("Email")}
               </Button>
             </div>

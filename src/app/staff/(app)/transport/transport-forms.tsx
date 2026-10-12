@@ -24,6 +24,8 @@ import {
   saveTransportServiceAction, saveVehicleAction, tripHistoryAction, tripMessageAction, tripStatusAction,
 } from "./actions";
 import { TransportChinese } from "./transport-chinese";
+import { useSendLanguage, type MessageTexts } from "@/components/staff/message-language";
+import type { Locale } from "@/i18n/config";
 
 export type PackageOpt = { id: string; name: string; description: string | null; price: number; isActive?: boolean };
 export type ServiceOpt = { id: string; name: string; description?: string | null; type: string; price: number; isActive?: boolean; isPublic?: boolean; options: PackageOpt[] };
@@ -257,7 +259,9 @@ function TripCard({ trip, onClose, drivers, vehicles, accounts, staying, perms }
   const hasDriver = !!trip.driverName;
   const billed = trip.money === "ROOM" || trip.money === "PAID";
 
-  const [details, setDetails] = useState<{ text: string; to: string | null } | null>(null);
+  const [details, setDetails] = useState<{ text: string; to: string | null; locale: Locale; texts: MessageTexts } | null>(null);
+  // One tap sends the trip's details; the language is asked first (the guest's on top).
+  const sendIn = useSendLanguage(details?.texts, details?.locale, (text) => { window.open(`${wa(details?.to ?? trip.passengerPhone ?? "")}?text=${encodeURIComponent(text)}`, "_blank", "noopener"); });
   useEffect(() => { void tripHistoryAction({ tripId: trip.id }).then((r) => { if (r.ok) setHistory(r.data); }); }, [trip.id]);
   // The trip's full details, ready to send on WhatsApp in one tap (route, time, flight, price, the trip page).
   useEffect(() => { void tripMessageAction({ tripId: trip.id }).then((r) => { if (r.ok) setDetails(r.data); }); }, [trip.id]);
@@ -342,8 +346,14 @@ function TripCard({ trip, onClose, drivers, vehicles, accounts, staying, perms }
             {trip.passengerPhone && (
               <div className="flex shrink-0 gap-1.5">
                 <a href={`tel:${trip.passengerPhone}`} title={t("Call {phone}", { phone: trip.passengerPhone })} aria-label={t("Call {phone}", { phone: trip.passengerPhone })} className="grid size-9 place-items-center rounded-full border border-border hover:bg-muted"><Phone className="size-4" /></a>
-                <a href={details?.text ? `${wa(details.to ?? trip.passengerPhone)}?text=${encodeURIComponent(details.text)}` : wa(trip.passengerPhone)} target="_blank" rel="noreferrer"
-                  title={t("Send the trip details on WhatsApp")} aria-label={t("Send the trip details on WhatsApp")} className="grid size-9 place-items-center rounded-full bg-[#25D366] text-[#073b1f] hover:brightness-105"><MessageCircle className="size-4" /></a>
+                {details?.text ? (
+                  <button type="button" onClick={sendIn.ask} title={t("Send the trip details on WhatsApp")} aria-label={t("Send the trip details on WhatsApp")}
+                    className="grid size-9 place-items-center rounded-full bg-[#25D366] text-[#073b1f] hover:brightness-105"><MessageCircle className="size-4" /></button>
+                ) : (
+                  <a href={wa(trip.passengerPhone)} target="_blank" rel="noreferrer" title={t("Send the trip details on WhatsApp")} aria-label={t("Send the trip details on WhatsApp")}
+                    className="grid size-9 place-items-center rounded-full bg-[#25D366] text-[#073b1f] hover:brightness-105"><MessageCircle className="size-4" /></a>
+                )}
+                {sendIn.window}
               </div>
             )}
           </div>

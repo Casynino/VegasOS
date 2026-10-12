@@ -4,7 +4,7 @@ import { expireUnpaidHolds, refreshBookingStates } from "./booking-holds";
 import { db } from "../db";
 import { arrivalReminderMessage, guestsText, langLink, meetingReminderMessage } from "@/lib/wa-messages";
 import { getTFor } from "@/i18n/server";
-import { toLocale } from "@/i18n/config";
+import { LOCALES, toLocale, type Locale } from "@/i18n/config";
 import type { T } from "@/i18n/translate";
 import { prettyPhone } from "@/lib/guest-messages";
 import { siteOrigin } from "../site-origin";
@@ -250,27 +250,13 @@ export async function getArrivalsSummary(today: BusinessDate) {
   try { origin = await siteOrigin(); } catch { origin = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? ""; }
   const hotel = { name: settings.hotelName, phone: prettyPhone(settings.whatsapp || settings.phone) || null };
   // Each reminder in its guest's language (one translator per language).
-  const locales = [...new Set(expected.map((r) => toLocale(r.guest.preferredLanguage) ?? "en"))];
-  const translators = new Map(await Promise.all(locales.map(async (l) => [l, await getTFor(l)] as const)));
+  const translators = new Map(await Promise.all(LOCALES.map(async (l) => [l, await getTFor(l)] as const)));
   const people = expected.map((r) => {
     const t = translators.get(toLocale(r.guest.preferredLanguage) ?? "en")!;
-    const bookingUrl = origin ? langLink(`${origin}/booking/${encodeURIComponent(r.reference)}?token=${encodeURIComponent(r.manageToken)}`, t) : null;
-    return {
-    id: r.id, reference: r.reference, name: r.kind === "MEETING" ? r.companyName ?? r.guest.fullName : r.guest.fullName, phone: r.guest.phone, eta: r.eta, rooms: r.rooms.map((x) => x.room.number),
-    /** A meeting room booking: its time (Start meeting instead of check-in). */
-    meeting: r.kind === "MEETING" && r.rooms[0] ? { time: timeRange(r.rooms[0].startAt, r.rooms[0].endAt), contact: r.companyName ? r.guest.fullName : null } : null,
-    late: !!r.lateArrivalNotedAt, lateNote: r.lateArrivalNote, paid: r.paidAmount > 0, pending: r.status === "RESERVED",
-    /** Booked online to pay later: not paid, no room held (at the desk: any free room, and the payment). */
-    notHeld: r.status === "INQUIRY",
-    // For the "to check in" list on the front desk.
-    roomTypes: r.rooms.map((x) => ({ number: x.room.number, type: x.roomType.name, meeting: x.roomType.category === "MEETING_ROOM" })),
-    arrival: fromDbDate(r.arrivalDate), departure: fromDbDate(r.departureDate), nights: r.rooms.reduce((m, x) => Math.max(m, x.nights), 0),
-    source: r.source.name, company: r.group ? `Group: ${r.group.name}` : r.corporateCustomer?.companyName ?? null, bookedBy: r.createdBy?.fullName ?? null,
-    billTo: r.billTo, holdUntil: r.holdUntil, paidAmount: r.paidAmount, balance: r.balanceAmount, net: r.netAmount,
-    /** The language the reminder is written in (the guest's). */
-    reminderLocale: t.locale,
-    // The arrival-day reminder, always in the one Vegas format (owner, 2026-10-06: no old short texts anywhere).
-    reminder: r.kind === "MEETING" && r.rooms[0]
+    // The arrival-day reminder, always in the one Vegas format (owner, 2026-10-06: no old short texts anywhere) — one writer, any language.
+    const write = (t: T) => {
+      const bookingUrl = origin ? langLink(`${origin}/booking/${encodeURIComponent(r.reference)}?token=${encodeURIComponent(r.manageToken)}`, t) : null;
+      return r.kind === "MEETING" && r.rooms[0]
       ? meetingReminderMessage({
         hotel, name: r.guest.fullName, room: t(r.rooms[0].roomType.name), ref: r.reference, date: dateLabel(t),
         time: timeRange(r.rooms[0].startAt, r.rooms[0].endAt), attendees: r.adults || null,
@@ -288,7 +274,25 @@ export async function getArrivalsSummary(today: BusinessDate) {
           },
           money: { total: r.netAmount, paid: r.paidAmount, balance: r.balanceAmount, company: r.billTo !== "GUEST" ? r.corporateCustomer?.companyName ?? r.companyName ?? t("the company") : null },
           bookingUrl, payUrl: bookingUrl,
-        }, t),
+        }, t);
+    };
+    return {
+    id: r.id, reference: r.reference, name: r.kind === "MEETING" ? r.companyName ?? r.guest.fullName : r.guest.fullName, phone: r.guest.phone, eta: r.eta, rooms: r.rooms.map((x) => x.room.number),
+    /** A meeting room booking: its time (Start meeting instead of check-in). */
+    meeting: r.kind === "MEETING" && r.rooms[0] ? { time: timeRange(r.rooms[0].startAt, r.rooms[0].endAt), contact: r.companyName ? r.guest.fullName : null } : null,
+    late: !!r.lateArrivalNotedAt, lateNote: r.lateArrivalNote, paid: r.paidAmount > 0, pending: r.status === "RESERVED",
+    /** Booked online to pay later: not paid, no room held (at the desk: any free room, and the payment). */
+    notHeld: r.status === "INQUIRY",
+    // For the "to check in" list on the front desk.
+    roomTypes: r.rooms.map((x) => ({ number: x.room.number, type: x.roomType.name, meeting: x.roomType.category === "MEETING_ROOM" })),
+    arrival: fromDbDate(r.arrivalDate), departure: fromDbDate(r.departureDate), nights: r.rooms.reduce((m, x) => Math.max(m, x.nights), 0),
+    source: r.source.name, company: r.group ? `Group: ${r.group.name}` : r.corporateCustomer?.companyName ?? null, bookedBy: r.createdBy?.fullName ?? null,
+    billTo: r.billTo, holdUntil: r.holdUntil, paidAmount: r.paidAmount, balance: r.balanceAmount, net: r.netAmount,
+    /** The language the reminder is written in (the guest's). */
+    reminderLocale: t.locale,
+    reminder: write(t),
+    /** The same reminder in each language — whoever sends it by hand chooses (owner, 2026-10-12). */
+    reminders: Object.fromEntries(LOCALES.map((l) => [l, write(translators.get(l)!)])) as Record<Locale, string>,
     };
   });
   return {

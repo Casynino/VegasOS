@@ -80,7 +80,15 @@ export function toPortalOrders(orders: BoardOrder[], ctx: {
     // The customer's own language (their saved choice) for their update — the dishes named as they ordered them.
     const lang = toLocale(o.guest?.preferredLanguage);
     const gt = (lang && ctx.guestT?.[lang]) || englishT;
-    const zh = gt.locale === "zh-CN" ? "?lang=zh" : "";
+    // The customer's update for this step — one writer, any language (its links open in that language too).
+    const tell = (gt: T) => {
+      const zh = gt.locale === "zh-CN" ? "?lang=zh" : "";
+      return orderMessageText(event!, {
+        name: o.customerName, hotel: settings.hotelName, number: o.number, type: o.type, room: o.roomNumber, delivery: !!o.deliveryAddress,
+        track: o.trackToken ? `${origin}/order/${o.trackToken}${zh}` : null, menu: `${origin}/order${zh}`, prepMinutes: settings.orderPrepMinutes, phone: hotelPhone,
+        place: deliveryPlace(o), details: orderFacts(o, deliveryPlace(o), settings.timezone),
+      }, gt);
+    };
     return {
       id: o.id, number: o.number, type: o.type, status: o.status, settlement: o.settlement, source: o.source,
       customer: o.customerName ?? o.reservation?.guest.fullName ?? null, phone: seesMoney ? phone : null, room: o.roomNumber, table: o.tableLabel, place: deliveryPlace(o), address: o.deliveryAddress,
@@ -119,12 +127,9 @@ export function toPortalOrders(orders: BoardOrder[], ctx: {
       assignedTo: o.assignedTo ? { id: o.assignedTo.id, name: o.assignedTo.fullName } : null,
       complaints: { total: o.complaints.length, open: o.complaints.filter((c) => c.status !== "COMPLETED" && c.status !== "CANCELLED").length },
       update: ctx.waiter && phone && event ? {
-        to: phone, type: ORDER_EVENT_TYPE[event],
-        text: orderMessageText(event, {
-          name: o.customerName, hotel: settings.hotelName, number: o.number, type: o.type, room: o.roomNumber, delivery: !!o.deliveryAddress,
-          track: o.trackToken ? `${origin}/order/${o.trackToken}${zh}` : null, menu: `${origin}/order${zh}`, prepMinutes: settings.orderPrepMinutes, phone: hotelPhone,
-          place: deliveryPlace(o), details: orderFacts(o, deliveryPlace(o), settings.timezone),
-        }, gt),
+        to: phone, type: ORDER_EVENT_TYPE[event], text: tell(gt), locale: gt.locale,
+        // The same update in each language — whoever sends it chooses (owner, 2026-10-12).
+        texts: { en: tell(englishT), ...Object.fromEntries(Object.entries(ctx.guestT ?? {}).map(([l, lt]) => [l, tell(lt)])) } as Partial<Record<Locale, string>>,
       } : null,
       told: !!event && !!ctx.sent?.has(`${o.id}:${ORDER_EVENT_TYPE[event]}`),
       stays: seesMoney ? ctx.stays?.get(o.id) ?? [] : [],

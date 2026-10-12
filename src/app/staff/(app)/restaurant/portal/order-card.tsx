@@ -31,6 +31,7 @@ import { msg } from "@/i18n/msg";
 import { englishT, type T } from "@/i18n/translate";
 import { deliveryPlace } from "@/lib/delivery-place";
 import type { RestaurantOrderType } from "@/generated/prisma/enums";
+import { useSendLanguage } from "@/components/staff/message-language";
 
 export const TYPE: Record<string, { label: string; icon: typeof BedDouble }> = {
   ROOM_SERVICE: { label: msg("Room service"), icon: BedDouble }, DINE_IN: { label: msg("Restaurant"), icon: UtensilsCrossed },
@@ -1175,22 +1176,27 @@ const TELL: Record<string, string> = {
 
 /** Send the customer this step's update on WhatsApp (from this device) — logged, so it shows "Told". */
 export function TextCustomer({ o, icon }: { o: PortalOrder; icon?: boolean }) {
+  if (!o.update) return <AddPhone o={o} icon={icon} />;
+  return <TellCustomer o={o} u={o.update} icon={icon} />;
+}
+
+function TellCustomer({ o, u, icon }: { o: PortalOrder; u: NonNullable<PortalOrder["update"]>; icon?: boolean }) {
   const router = useRouter();
   const t = useT();
   const [pending, start] = useTransition();
-  if (!o.update) return <AddPhone o={o} icon={icon} />;
-  const u = o.update;
-  const send = () => {
-    window.open(`https://wa.me/${waDigits(u.to)}?text=${encodeURIComponent(u.text)}`, "_blank", "noopener");
+  // One tap, the language asked first (the customer's on top), then WhatsApp opens with the update ready.
+  const sendIn = useSendLanguage(u.texts, u.locale, (text) => {
+    window.open(`https://wa.me/${waDigits(u.to)}?text=${encodeURIComponent(text)}`, "_blank", "noopener");
     start(async () => {
-      const res = await logGuestMessageAction({ restaurantOrderId: o.id, type: u.type as never, channel: "WHATSAPP", to: u.to, body: u.text });
+      const res = await logGuestMessageAction({ restaurantOrderId: o.id, type: u.type as never, channel: "WHATSAPP", to: u.to, body: text });
       if (res.ok) router.refresh(); else toast.error(res.error);
     });
-  };
+  });
+  const send = sendIn.ask;
   const who = first(o.customer) ?? t("the customer");
   const tell = TELL[o.status];
   if (icon) {
-    return o.told ? (
+    return <>{sendIn.window}{o.told ? (
       <IconAction tip={t("Told on WhatsApp · send again to {name}", { name: who })} onClick={send}
         className="bg-emerald-500/10 text-emerald-300 ring-1 ring-inset ring-emerald-500/35 hover:bg-emerald-500/15">
         <WhatsAppGlyph /><span className="absolute -right-0.5 -top-0.5 grid size-3.5 place-items-center rounded-full bg-emerald-500 text-[#06240f] ring-2 ring-card"><Check className="size-2!" strokeWidth={4} /></span>
@@ -1200,9 +1206,9 @@ export function TextCustomer({ o, icon }: { o: PortalOrder; icon?: boolean }) {
         className="bg-[#25D366] text-white shadow-[0_8px_18px_-10px_#25D366] hover:brightness-105">
         {pending ? <Loader2 className="animate-spin" /> : <WhatsAppGlyph />}
       </IconAction>
-    );
+    )}</>;
   }
-  return o.told ? (
+  return <>{sendIn.window}{o.told ? (
     <button type="button" onClick={send} title={t("Told on WhatsApp · send again to {name}", { name: u.to })}
       className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/[0.07] text-xs font-semibold text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300 [&_svg]:size-3.5">
       <CheckCheck />{t("Told")}
@@ -1212,7 +1218,7 @@ export function TextCustomer({ o, icon }: { o: PortalOrder; icon?: boolean }) {
       className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-[#25D366] text-xs font-semibold text-[#073b1f] hover:brightness-105 disabled:opacity-60 [&_svg]:size-3.5">
       {pending ? <Loader2 className="animate-spin" /> : <MessageCircle />}{tell ? t(tell) : t("Text")}
     </motion.button>
-  );
+  )}</>;
 }
 
 /** An order without the customer's phone (older ones): reception adds it, then can text them. */

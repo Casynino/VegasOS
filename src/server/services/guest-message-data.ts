@@ -9,6 +9,7 @@ import {
   type BookingKind, type Hotel, type Money, type StayFacts,
 } from "@/lib/wa-messages";
 import { getTFor } from "@/i18n/server";
+import { LOCALES, type Locale } from "@/i18n/config";
 import { msg } from "@/i18n/msg";
 import { englishT, type T } from "@/i18n/translate";
 import { stayBill } from "./stay-bill";
@@ -42,7 +43,7 @@ export type ReservationMessageType =
   | "BOOKING" | "WELCOME" | "CHECKOUT" | "BALANCE" | "CANCELLED" | "UPDATED" | "REMINDER" | "PAID" | "PAYMENT_PENDING" | "PAYMENT_FAILED";
 
 /** Everything a stay's messages say, from the booking and its folio. */
-async function reservationFacts(reservationId: string, origin: string) {
+async function reservationFacts(reservationId: string, origin: string, lang?: string | null) {
   const [bill, r, s, breakfastOn] = await Promise.all([
     stayBill(reservationId),
     db.reservation.findUnique({
@@ -58,7 +59,7 @@ async function reservationFacts(reservationId: string, origin: string) {
     breakfastIncluded(),
   ]);
   if (!bill || !r) return null;
-  const [token, t] = await Promise.all([ensureGuestToken(db, reservationId), guestT(r.guest.preferredLanguage)]);
+  const [token, t] = await Promise.all([ensureGuestToken(db, reservationId), guestT(lang ?? r.guest.preferredLanguage)]);
   const hotel: Hotel = { name: s.hotelName, phone: prettyPhone(s.whatsapp || s.phone) || null, instagram: s.instagramUrl || null, tiktok: s.tiktokUrl || null };
   const tz = s.timezone;
   const time = (d: Date) => t.time(d, tz);
@@ -137,8 +138,10 @@ export async function reservationMessage(reservationId: string, type: Reservatio
   amount?: number; reference?: string | null;
   /** The thank-you note's page (check-out). */
   thanksUrl?: string | null;
+  /** Written in this language instead of the guest's own (whoever sends it chose) — the same message, other words. */
+  lang?: string | null;
 } = {}) {
-  const f = await reservationFacts(reservationId, origin);
+  const f = await reservationFacts(reservationId, origin, extra.lang);
   if (!f) return null;
   const { r, t, hotel, stay, money, links } = f;
   const name = r.guest.fullName;
@@ -197,6 +200,16 @@ export async function reservationMessage(reservationId: string, type: Reservatio
   };
 }
 
+/** A booking's message in every language of the platform — for the windows where whoever sends it chooses the language. */
+export async function reservationMessageTexts(reservationId: string, type: ReservationMessageType, origin: string, extra: Parameters<typeof reservationMessage>[3] = {}) {
+  const out: Partial<Record<Locale, { subject: string; text: string }>> = {};
+  await Promise.all(LOCALES.map(async (lang) => {
+    const m = await reservationMessage(reservationId, type, origin, { ...extra, lang });
+    if (m) out[lang] = { subject: m.subject, text: m.text };
+  }));
+  return out;
+}
+
 /** A guest moved to another room. */
 export async function roomChangeMessage(reservationId: string, from: string | null, to: string, effective: string, origin: string) {
   const f = await reservationFacts(reservationId, origin);
@@ -213,7 +226,7 @@ const TRIP_SERVICE: Record<string, string> = {
 };
 
 /** A transport booking: the trip and its price, from the trip itself — in its guest's language (the linked guest, else the booking's). */
-export async function tripMessage(tripId: string, origin: string) {
+export async function tripMessage(tripId: string, origin: string, lang?: string | null) {
   const [trip, s] = await Promise.all([
     db.transportTrip.findUnique({
       where: { id: tripId },
@@ -225,7 +238,7 @@ export async function tripMessage(tripId: string, origin: string) {
     getSettings(),
   ]);
   if (!trip) return null;
-  const t = await guestT(trip.guest?.preferredLanguage ?? trip.reservation?.guest.preferredLanguage);
+  const t = await guestT(lang ?? trip.guest?.preferredLanguage ?? trip.reservation?.guest.preferredLanguage);
   const hotel: Hotel = { name: s.hotelName, phone: prettyPhone(s.whatsapp || s.phone) || null, instagram: s.instagramUrl || null, tiktok: s.tiktokUrl || null };
   const when = `${weekdayDate(fromDbDate(trip.businessDate), t)} · ${t.time(trip.pickupAt, s.timezone)}`;
   const payment = trip.paidAt ? t("PAID") : trip.chargeId ? t("ON YOUR ROOM BILL") : trip.charge != null ? t("NOT PAID YET") : t("PRICE TO CONFIRM");

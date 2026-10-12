@@ -9,6 +9,7 @@ import { AppError, runAction, type ActionResult } from "@/server/errors";
 import { parseInput } from "@/server/validation";
 import { normalizePhone, removeCustomer, setGuestLanguage } from "@/server/services/guests";
 import { validPhone } from "@/lib/guest-messages";
+import { guestMessagesIn, STAFF_MESSAGE_TYPES } from "@/server/services/guest-comms";
 import { LOCALES } from "@/i18n/config";
 import { msg, msgf } from "@/i18n/msg";
 
@@ -96,6 +97,17 @@ export async function setGuestLanguageAction(input: z.input<typeof Language>): P
     revalidatePath(`/staff/guests/${d.id}`);
     return res;
   }, msg("Message language saved."));
+}
+
+const MessagesIn = z.object({ reservationId: z.string().min(1), types: z.array(z.enum(STAFF_MESSAGE_TYPES)).min(1).max(STAFF_MESSAGE_TYPES.length), lang: z.enum(LOCALES) });
+
+/** A booking's ready messages written in the chosen language (English / 中文) — the same messages, other words. */
+export async function guestMessagesInAction(input: z.input<typeof MessagesIn>) {
+  return runAction(async () => {
+    await authorize("reservations.view", "guests.manage");
+    const d = parseInput(MessagesIn, input);
+    return guestMessagesIn(d.reservationId, d.types, d.lang);
+  });
 }
 
 const MessageLog = z.object({

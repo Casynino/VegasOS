@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ArrowRight, BedDouble, CheckCircle2, Download, Eye, Printer, Search } from "lucide-react";
 import { siteOrigin } from "@/server/site-origin";
 import { SendDocument } from "@/components/staff/invoices/send-document";
-import { reservationMessage } from "@/server/services/guest-message-data";
+import { reservationMessage, reservationMessageTexts } from "@/server/services/guest-message-data";
 import { can, requirePagePermission } from "@/server/auth";
 import { db } from "@/server/db";
 import { accountOptions } from "@/server/services/payment-accounts";
@@ -75,6 +75,8 @@ export default async function CheckOutPage({ searchParams }: PageProps<"/staff/c
   const noteLink = note ? `${await siteOrigin()}/thanks/${note.token}` : null;
   // The departure summary sent to the guest: the stay, the final bill from the folio, the payment and the note's link.
   const checkoutMsg = done && note ? await reservationMessage(done.id, "CHECKOUT", await siteOrigin(), { thanksUrl: noteLink }) : null;
+  // The same message in each language: it opens in the guest's, and whoever sends it may change it.
+  const checkoutTexts = done && checkoutMsg ? await reservationMessageTexts(done.id, "CHECKOUT", await siteOrigin(), { thanksUrl: noteLink }) : undefined;
   const wanted = doneId ? undefined : typeof sp.id === "string" ? sp.id : (overdue[0] ?? dueToday[0] ?? all[0])?.id;
   const [stay, methods, recent, menu] = await Promise.all([
     wanted ? getStay(wanted, today, now) : null,
@@ -181,7 +183,7 @@ export default async function CheckOutPage({ searchParams }: PageProps<"/staff/c
                       label={checkoutMsg && checkoutMsg.locale !== DEFAULT_LOCALE ? t("Send to guest ({language})", { language: LOCALE_META[checkoutMsg.locale].short }) : t("Send to guest")}
                       to={{ name: done.guest.fullName, phone: done.guest.phone, email: done.guest.email }}
                       subject={checkoutMsg?.subject ?? `Thank you for staying at ${settings.hotelName}`}
-                      text={checkoutMsg?.text ?? ""}
+                      text={checkoutMsg?.text ?? ""} texts={checkoutTexts} locale={checkoutMsg?.locale}
                     />
                   </div>
                 </>

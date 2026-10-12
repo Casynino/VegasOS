@@ -1,3 +1,5 @@
+import type { Locale } from "@/i18n/config";
+
 /** What the Restaurant Portal shows of an order (built on the server; money is left out for the cook). */
 /** cook = Mpishi · waiter · desk = reception (tell customers, collect payment) · manager / admin. */
 export type PortalRole = "cook" | "waiter" | "desk" | "manager";
@@ -80,7 +82,7 @@ export type PortalOrder = {
   /** Complaints logged about this order (open ones need a manager). */
   complaints: { total: number; open: number };
   /** The customer's WhatsApp update for this step (waiters / reception). */
-  update: { to: string; text: string; type: string } | null;
+  update: { to: string; text: string; type: string; /** The customer's language, and the same update in each language. */ locale: Locale; texts: Partial<Record<Locale, string>> } | null;
   /** That update was already sent (WhatsApp from the desk, or automatically). */
   told: boolean;
   /**

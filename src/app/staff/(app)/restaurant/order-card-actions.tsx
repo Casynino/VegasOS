@@ -18,6 +18,8 @@ import { cancelOrderAction, chargeOrderToRoomAction, recordOrderPaymentAction, s
 import { IconAction, WhatsAppGlyph } from "./portal/icon-action";
 import { PayWays, SendToPhone } from "@/components/staff/mobile-pay";
 import type { PortalStay, RoomChoice } from "./portal/types";
+import { useSendLanguage, type MessageTexts } from "@/components/staff/message-language";
+import type { Locale } from "@/i18n/config";
 
 const waDigits = (phone: string) => { const d = phone.replace(/\D/g, ""); return d.startsWith("0") ? `255${d.slice(1)}` : d; };
 
@@ -38,7 +40,7 @@ export function OrderCardActions({ id, number, total, next, nextLabel, unpaid, c
   /** The rooms a pay-later order can go on (null: not now). A waiter gets only the customer's own. */
   room: RoomBill | null;
   /** The customer's update for this step (WhatsApp from this device). */
-  update: { to: string; text: string; type: string } | null;
+  update: { to: string; text: string; type: string; locale?: Locale; texts?: MessageTexts } | null;
   /** Show words next to the icons (when there is room, e.g. an order opened large). */
   labelled?: boolean;
 }) {
@@ -66,11 +68,13 @@ export function OrderCardActions({ id, number, total, next, nextLabel, unpaid, c
     const res = await recordOrderPaymentAction({ id, accountId: account, reference: reference || undefined, handedOverById: broughtBy || null });
     if (res.ok) { setReference(""); setBroughtBy(""); done(t("Payment recorded.")); } else toast.error(res.error);
   });
-  const whatsapp = () => {
+  // One tap, the language asked first (the customer's on top), then WhatsApp opens with the update ready.
+  const sendIn = useSendLanguage(update ? update.texts ?? { en: update.text } : null, update?.locale, (text) => {
     if (!update) return;
-    window.open(`https://wa.me/${waDigits(update.to)}?text=${encodeURIComponent(update.text)}`, "_blank", "noopener");
-    void logGuestMessageAction({ restaurantOrderId: id, type: update.type as never, channel: "WHATSAPP", to: update.to, body: update.text });
-  };
+    window.open(`https://wa.me/${waDigits(update.to)}?text=${encodeURIComponent(text)}`, "_blank", "noopener");
+    void logGuestMessageAction({ restaurantOrderId: id, type: update.type as never, channel: "WHATSAPP", to: update.to, body: text });
+  });
+  const whatsapp = sendIn.ask;
 
   // On the board: small round icons (their names on hover). Opened large: buttons with words.
   const icons = !labelled;
@@ -104,6 +108,7 @@ export function OrderCardActions({ id, number, total, next, nextLabel, unpaid, c
       </>
       )}
 
+      {sendIn.window}
       <Dialog open={dialog === "cancel"} onOpenChange={(o) => setDialog(o ? "cancel" : null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader icon={<Ban />} eyebrow={t("Restaurant")} tone="rose"><DialogTitle>{t("Cancel {number}?", { number })}</DialogTitle><DialogDescription>{cancelNote}</DialogDescription></DialogHeader>

@@ -1,17 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Check, Copy, Languages, Link2, Mail, MessageCircle, MessageSquareText, Send, Smartphone } from "lucide-react";
+import { MessageLanguage } from "@/components/staff/message-language";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { logGuestMessageAction } from "@/app/staff/(app)/guests/actions";
+import { guestMessagesInAction, logGuestMessageAction } from "@/app/staff/(app)/guests/actions";
 import { useT } from "@/i18n/client";
 import { msg } from "@/i18n/msg";
-import { hasCjk, LOCALE_META, toLocale } from "@/i18n/config";
+import { hasCjk, LOCALE_META, toLocale, type Locale } from "@/i18n/config";
 
 export type GuestMessageOption = {
   type: "BOOKING_CREATED" | "BOOKING_UPDATED" | "BOOKING_CANCELLED" | "WELCOME" | "THANK_YOU" | "PAYMENT" | "PAYMENT_RECEIVED";
@@ -27,31 +28,63 @@ const CHANNEL: Record<string, string> = { WHATSAPP: "WhatsApp", SMS: "SMS", EMAI
 /** The text without the guest's own name (a Chinese name in an English message is still English). */
 const withoutName = (text: string, name: string) => name.split(/\s+/).filter(Boolean).reduce((x, w) => x.replaceAll(w, ""), text);
 
+type Written = { text: string; subject: string };
+
 /**
- * A message ready to send: the text (reception may change it), then WhatsApp, SMS, email or copy — each opens that
- * app on this device with the message written; it is sent when reception presses send there. Every send is kept on
- * the guest's profile. One sending panel for every window that messages a guest.
+ * A window's messages and the language they are written in. They start in the guest's own language; whoever sends
+ * them may change it (English / 中文) — every message of the window changes together, fetched once per language, and
+ * what reception typed in one language is still there when they come back to it.
  */
-export function MessageSendPanel({ reservationId, type, label, subject, guest, hint, body, onBody, rows = 10, boxClass }: {
+export function useGuestMessages(reservationId: string, first: Record<string, Written>, locale: Locale) {
+  const [lang, setLang] = useState(locale);
+  const [messages, setMessages] = useState(first);
+  const kept = useRef<Partial<Record<Locale, Record<string, Written>>>>({});
+  const [pending, start] = useTransition();
+  const pick = (to: Locale) => {
+    if (to === lang || pending) return;
+    kept.current[lang] = messages;
+    const have = kept.current[to];
+    if (have) { setLang(to); setMessages(have); return; }
+    start(async () => {
+      const r = await guestMessagesInAction({ reservationId, types: Object.keys(messages) as GuestMessageOption["type"][], lang: to });
+      if (!r.ok) { toast.error(r.error); return; }
+      setLang(to);
+      setMessages({ ...messages, ...r.data });
+    });
+  };
+  const write = (type: string, text: string) => setMessages((all) => ({ ...all, [type]: { ...all[type], text } }));
+  return { lang, messages, pending, pick, write };
+}
+export type GuestMessages = ReturnType<typeof useGuestMessages>;
+
+/**
+ * A message ready to send: its language (English / 中文), the text (reception may change it), then WhatsApp, SMS,
+ * email or copy — each opens that app on this device with the message written; it is sent when reception presses
+ * send there. Every send is kept on the guest's profile. One sending panel for every window that messages a guest.
+ */
+export function MessageSendPanel({ reservationId, type, label, guest, written, rows = 10, boxClass }: {
   reservationId: string; type: GuestMessageOption["type"];
   /** What the message is, in English ("Welcome & menu") — said when it is logged. */
-  label: string; subject: string;
+  label: string;
   guest: { name: string; phone: string | null; email: string | null };
-  /** "Messages in 中文" — the language the text is written in. */
-  hint?: string | null;
-  body: string; onBody: (text: string) => void; rows?: number;
+  /** The window's messages and their language (useGuestMessages). */
+  written: GuestMessages;
+  rows?: number;
   /** Keeps a long message in a box of its own, so the send buttons stay in view. */
   boxClass?: string;
 }) {
   const t = useT();
+  const { text: body, subject } = written.messages[type] ?? { text: "", subject: "" };
+  const onBody = (text: string) => written.write(type, text);
   const [phone, setPhone] = useState(guest.phone ?? "");
   const [email, setEmail] = useState(guest.email ?? "");
   const log = (channel: "WHATSAPP" | "SMS" | "EMAIL" | "COPY", to?: string) =>
     void logGuestMessageAction({ reservationId, type, channel, to, body }).then((r) => { if (r.ok) toast.success(t("{message} — logged on {name}'s profile.", { message: t(label), name: guest.name })); });
   return (
     <>
-      {hint && <p className="-mb-2 flex items-center gap-1.5 text-xs text-muted-foreground"><Languages className="size-3.5" />{hint}</p>}
-      <Textarea rows={rows} value={body} onChange={(e) => onBody(e.target.value)} aria-label={t("Message")} className={cn("text-sm leading-relaxed", boxClass)} />
+      <MessageLanguage value={written.lang} onChange={written.pick} pending={written.pending} className="-mb-2" />
+      <Textarea rows={rows} value={body} onChange={(e) => onBody(e.target.value)} aria-label={t("Message")} lang={LOCALE_META[written.lang].html}
+        className={cn("text-sm leading-relaxed transition-opacity", written.pending && "opacity-50", boxClass)} />
       <div className="space-y-2">
         <div className="flex gap-2">
           <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t("Guest phone")} inputMode="tel" aria-label={t("Guest phone")} className="flex-1" />
@@ -92,14 +125,13 @@ export function GuestMessenger({ reservationId, guest, options, link, sent, auto
   const t = useT();
   const [open, setOpen] = useState(!!autoOpen && options.some((o) => o.type === autoOpen));
   const [type, setType] = useState<GuestMessageOption["type"]>(autoOpen && options.some((o) => o.type === autoOpen) ? autoOpen : options[0]?.type ?? "BOOKING_CREATED");
-  const [texts, setTexts] = useState<Record<string, string>>(() => Object.fromEntries(options.map((o) => [o.type, o.text])));
   const [copied, setCopied] = useState(false);
   const current = options.find((o) => o.type === type) ?? options[0];
-  const body = texts[type] ?? "";
   const last = (k: string) => sent.find((s) => s.type === k);
-  // "Messages in 中文" — the guest's language (or, when not given, what the text is written in).
-  const lang = toLocale(language) ?? (options.some((o) => hasCjk(withoutName(o.text, guest.name))) ? "zh-CN" : "en");
-  const langHint = t("Messages in {language}", { language: LOCALE_META[lang].label });
+  // The messages come in the guest's language (or, when not given, what the text is written in); the window may change it.
+  const written = useGuestMessages(reservationId, Object.fromEntries(options.map((o) => [o.type, { text: o.text, subject: o.subject }])),
+    toLocale(language) ?? (options.some((o) => hasCjk(withoutName(o.text, guest.name))) ? "zh-CN" : "en"));
+  const langHint = t("Messages in {language}", { language: LOCALE_META[written.lang].label });
   const pick = (t: GuestMessageOption["type"]) => { setType(t); setOpen(true); };
 
   return (
@@ -145,8 +177,7 @@ export function GuestMessenger({ reservationId, guest, options, link, sent, auto
               ))}
             </div>
           )}
-          <MessageSendPanel reservationId={reservationId} type={type} label={current.label} subject={current.subject} guest={guest} hint={langHint}
-            body={body} onBody={(text) => setTexts((all) => ({ ...all, [type]: text }))} />
+          <MessageSendPanel reservationId={reservationId} type={type} label={current.label} guest={guest} written={written} />
         </DialogContent>
       </Dialog>
     </>

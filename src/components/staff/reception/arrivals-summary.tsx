@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { MessageCircle } from "lucide-react";
-import { whatsAppLink } from "@/lib/arrival-reminder";
+import { WhatsAppIn } from "@/components/staff/message-language";
 import { formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Initials } from "@/components/dashboard/kit";
@@ -86,10 +86,10 @@ export async function ArrivalsSummary({ s, today, canCheckIn, show = 3 }: { s: S
                       </div>
                       <div className="relative z-10 flex items-center gap-1.5 pl-12 lg:justify-end lg:pl-0">
                         {p.phone && (
-                          <a href={whatsAppLink(p.phone, p.reminder)} target="_blank" rel="noreferrer" title={t("Send a WhatsApp reminder: {message}", { message: p.reminder })} aria-label={t("Remind {name} on WhatsApp", { name: p.name })}
+                          <WhatsAppIn phone={p.phone} texts={p.reminders} locale={p.reminderLocale} title={t("Send a WhatsApp reminder: {message}", { message: p.reminder })} label={t("Remind {name} on WhatsApp", { name: p.name })}
                             className="grid size-8 place-items-center rounded-lg border border-border hover:bg-muted">
                             <MessageCircle className="size-4 text-emerald-600" />
-                          </a>
+                          </WhatsAppIn>
                         )}
                         {canCheckIn && (p.meeting
                           ? <MeetingButtons reservationId={p.id} status={p.pending ? "RESERVED" : "CONFIRMED"} balance={p.balance} canStart canComplete={false} size="sm" />

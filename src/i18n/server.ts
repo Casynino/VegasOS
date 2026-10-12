@@ -2,7 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import { getCurrentUser } from "@/server/auth";
-import { DEFAULT_LOCALE, LOCALE_COOKIE, localeFromSegment, toLocale, type Locale } from "./config";
+import { DEFAULT_LOCALE, LOCALE_COOKIE, LOCALES, localeFromSegment, toLocale, type Locale } from "./config";
 import { loadCatalog, type Bundle } from "./catalog";
 import { makeT, type Catalog, type T } from "./translate";
 import { db } from "@/server/db";
@@ -129,6 +129,15 @@ export async function getT(): Promise<T> {
 export async function getTFor(locale: string | null | undefined, area: keyof typeof ORDER = "staff"): Promise<T> {
   const l = toLocale(locale) ?? DEFAULT_LOCALE;
   return makeT(l, await fullCatalog(l, ORDER[area]));
+}
+
+/**
+ * The same message written once in every language of the platform — for a window where whoever sends it chooses the
+ * language (owner, 2026-10-12). `write` is the message's one writer; only its translator changes, never its layout.
+ */
+export async function inEveryLanguage<V>(write: (t: T) => V | Promise<V>, area: keyof typeof ORDER = "staff"): Promise<Record<Locale, V>> {
+  const all = await Promise.all(LOCALES.map(async (l) => [l, await write(await getTFor(l, area))] as const));
+  return Object.fromEntries(all) as Record<Locale, V>;
 }
 
 /** The strings a browser needs for this language (for <I18nProvider>): only these bundles (+ the hotel's content), nothing for English. */

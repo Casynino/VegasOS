@@ -19,6 +19,7 @@ import { spotName } from "@/components/restaurant/shell";
 import { getT } from "@/i18n/server";
 import { englishT } from "@/i18n/translate";
 import { orderItemName } from "@/i18n/content";
+import type { Locale } from "@/i18n/config";
 
 type Actor = { userId?: string | null; label?: string; ipAddress?: string | null };
 
@@ -53,6 +54,37 @@ export async function guestMessage(reservationId: string, type: "BOOKING_CREATED
   if (!m) throw new AppError("Reservation not found.", "NOT_FOUND");
   const g = await db.guest.findUniqueOrThrow({ where: { id: m.guest.id }, select: { email: true, preferredChannel: true } });
   return { text: m.text, link: m.link, subject: m.subject, guest: { ...m.guest, email: g.email, preferredChannel: g.preferredChannel } };
+}
+
+/** The messages reception sends from a booking (the messenger's kinds), and the message each one is. */
+const STAFF_MESSAGE = {
+  BOOKING_CREATED: "BOOKING", BOOKING_UPDATED: "UPDATED", BOOKING_CANCELLED: "CANCELLED", WELCOME: "WELCOME", THANK_YOU: "CHECKOUT", PAYMENT: "BALANCE", PAYMENT_RECEIVED: "PAID",
+} as const;
+export type StaffMessageType = keyof typeof STAFF_MESSAGE;
+export const STAFF_MESSAGE_TYPES = Object.keys(STAFF_MESSAGE) as [StaffMessageType, ...StaffMessageType[]];
+
+/**
+ * A booking's ready messages in the language whoever sends them chose (owner, 2026-10-12: English or 中文 on every
+ * message) — the same facts in the same layout as the guest's own-language message, only the words change.
+ */
+export async function guestMessagesIn(reservationId: string, types: StaffMessageType[], lang: Locale) {
+  const origin = await siteOrigin();
+  const [note, pay] = await Promise.all([
+    types.includes("THANK_YOU") ? db.thankYouNote.findFirst({ where: { reservationId }, orderBy: { version: "desc" }, select: { token: true } }) : null,
+    types.includes("PAYMENT_RECEIVED")
+      ? db.payment.findFirst({ where: { reservationId, status: "POSTED", kind: "PAYMENT", method: { code: "NTZS" } }, orderBy: { receivedAt: "desc" }, select: { amount: true, reference: true } })
+      : null,
+  ]);
+  const out: Partial<Record<StaffMessageType, { text: string; subject: string }>> = {};
+  await Promise.all(types.map(async (type) => {
+    const m = await reservationMessage(reservationId, STAFF_MESSAGE[type], origin, {
+      lang,
+      thanksUrl: type === "THANK_YOU" && note ? `${origin}/thanks/${note.token}` : null,
+      ...(type === "PAYMENT_RECEIVED" && pay ? { amount: pay.amount, reference: pay.reference?.replace(/^nTZS\s+/, "") ?? null } : {}),
+    });
+    if (m) out[type] = { text: m.text, subject: m.subject };
+  }));
+  return out;
 }
 
 /** Log a message sent to a guest (from the staff screen or a provider). */

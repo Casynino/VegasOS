@@ -6,6 +6,8 @@ const catalog: Catalog = {
   // ── Message language ──
   "Messages in": "消息语言",
   "Message language": "消息语言",
+  "The same message — choose the language to send it in.": "同一条消息——请选择发送的语言。",
+  "Guest's language": "客人的语言",
   "Messages in {language}": "消息语言：{language}",
   "Not set": "未设置",
   "Message language saved.": "消息语言已保存。",

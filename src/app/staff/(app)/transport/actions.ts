@@ -15,6 +15,7 @@ import {
 import { saveTranslation, translationForms, type TranslationForm } from "@/server/services/translations";
 import { msg } from "@/i18n/msg";
 import { getT } from "@/i18n/server";
+import { LOCALES, type Locale } from "@/i18n/config";
 
 async function actor(user: CurrentUser) {
   const { ipAddress } = await requestMeta();
@@ -132,8 +133,13 @@ export async function tripHistoryAction(input: { tripId: string }) {
 export async function tripMessageAction(input: { tripId: string }) {
   return runAction(async () => {
     await authorize("transport.view", "transport.manage", "transport.request");
-    const m = await tripMessage(input.tripId, await siteOrigin());
-    return m ? { text: m.text, to: m.to } : null;
+    const origin = await siteOrigin();
+    const m = await tripMessage(input.tripId, origin);
+    if (!m) return null;
+    // The same message in the other languages too: whoever sends it chooses (it opens on the guest's).
+    const texts: Partial<Record<Locale, string>> = { [m.locale]: m.text };
+    await Promise.all(LOCALES.filter((l) => l !== m.locale).map(async (l) => { const o = await tripMessage(input.tripId, origin, l); if (o) texts[l] = o.text; }));
+    return { text: m.text, to: m.to, locale: m.locale, texts };
   });
 }
 

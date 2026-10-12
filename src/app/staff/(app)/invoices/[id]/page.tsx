@@ -17,7 +17,7 @@ import { SendDocument } from "@/components/staff/invoices/send-document";
 import { formatBusinessDate } from "@/lib/format";
 import { invoiceMessage, payToLine } from "@/lib/invoice-message";
 import { AutoPrint } from "@/components/staff/invoices/auto-print";
-import { getT, getTFor } from "@/i18n/server";
+import { getT, getTFor, inEveryLanguage } from "@/i18n/server";
 import { DEFAULT_LOCALE, LOCALE_META } from "@/i18n/config";
 import { langLink } from "@/lib/wa-messages";
 import { db } from "@/server/db";
@@ -48,11 +48,15 @@ export default async function InvoicePage({ params, searchParams }: PageProps<"/
   // Who it goes to: the group's / company's billing contact, or the guest.
   const to = g ? { name: doc.billTo.name, phone: g.contactGuest.phone ?? c?.phone, email: g.billingEmail ?? c?.email ?? g.contactGuest.email }
     : c ? { name: c.companyName, phone: c.phone, email: c.email } : { name: inv.guest?.fullName ?? t("Guest"), phone: inv.guest?.phone, email: inv.guest?.email };
-  const sendText = invoiceMessage({
-    hotelName: s.hotelName, hotelPhone: s.phone, greet: doc.billTo.person?.name ?? doc.billTo.attn ?? doc.billTo.name, number: inv.number, final: doc.group?.final,
-    group: g ? { name: g.name, rooms: doc.group?.rooms ?? 0 } : null, net: inv.netAmount, paid: inv.paidAmount, balance: inv.balanceAmount,
-    due: doc.dueDate ? (rt.locale === DEFAULT_LOCALE ? formatBusinessDate(doc.dueDate) : rt.date(doc.dueDate)) : null, payTo: payToLine(s, rt), verifyUrl: langLink(verifyUrl, rt),
-  }, rt);
+  // The invoice's message, written once per language: it opens in the contact's, and whoever sends it may change it.
+  const sendTexts = await inEveryLanguage((rt) => ({
+    subject: rt("{hotel} — invoice {number}", { hotel: s.hotelName, number: inv.number }),
+    text: invoiceMessage({
+      hotelName: s.hotelName, hotelPhone: s.phone, greet: doc.billTo.person?.name ?? doc.billTo.attn ?? doc.billTo.name, number: inv.number, final: doc.group?.final,
+      group: g ? { name: g.name, rooms: doc.group?.rooms ?? 0 } : null, net: inv.netAmount, paid: inv.paidAmount, balance: inv.balanceAmount,
+      due: doc.dueDate ? (rt.locale === DEFAULT_LOCALE ? formatBusinessDate(doc.dueDate) : rt.date(doc.dueDate)) : null, payTo: payToLine(s, rt), verifyUrl: langLink(verifyUrl, rt),
+    }, rt),
+  }));
 
   return (
     <div className="w-full space-y-5 print:space-y-0">
@@ -67,7 +71,7 @@ export default async function InvoicePage({ params, searchParams }: PageProps<"/
         <div className="flex flex-wrap gap-2">
           {inv.status !== "DRAFT" && inv.status !== "CANCELLED" && inv.status !== "VOID" && (
             <SendDocument
-              entity={{ type: "Invoice", id: inv.id }} what={`invoice ${inv.number}`} to={to} subject={rt("{hotel} — invoice {number}", { hotel: s.hotelName, number: inv.number })} text={sendText}
+              entity={{ type: "Invoice", id: inv.id }} what={`invoice ${inv.number}`} to={to} {...sendTexts[rt.locale]} texts={sendTexts} locale={rt.locale}
               label={rt.locale === DEFAULT_LOCALE ? undefined : t("Send ({language})", { language: LOCALE_META[rt.locale].short })}
             />
           )}

@@ -7,7 +7,8 @@ import { getRequestDetail, meetingRequestFree, requestAvailability } from "@/ser
 import { billMenu } from "@/server/services/restaurant";
 import { getSettings } from "@/server/settings";
 import { bookingRequestMessage, guestsText } from "@/lib/wa-messages";
-import { getT, getTFor } from "@/i18n/server";
+import { getT, getTFor, inEveryLanguage } from "@/i18n/server";
+import { WhatsAppIn } from "@/components/staff/message-language";
 import { msg } from "@/i18n/msg";
 import { DEFAULT_LOCALE, LOCALE_META } from "@/i18n/config";
 import { prettyPhone } from "@/lib/guest-messages";
@@ -63,14 +64,18 @@ export async function BookingRequestView({ id, user, inline = false }: { id: str
   // The WhatsApp reply, in the one Vegas format: what they asked for and where it stands — in the customer's language.
   const rt = await getTFor(r.guest?.preferredLanguage);
   const english = rt.locale === DEFAULT_LOCALE;
-  const waText = bookingRequestMessage({
-    hotel: { name: settings.hotelName, phone: prettyPhone(settings.whatsapp || settings.phone) || null }, name: r.fullName, ref: r.reference,
-    roomType: rt(r.roomType?.name ?? "Room"), rooms: r.roomCount,
-    checkIn: english ? formatBusinessDate(r.checkIn) : rt.date(r.checkIn), checkOut: meeting ? null : english ? formatBusinessDate(r.checkOut) : rt.date(r.checkOut),
-    nights: meeting ? null : nights, time: meeting?.time ?? null,
-    guests: guestsText(r.adults, r.children, rt),
-    estimate: r.estimatedNet || null, status: rt(meta.label).toUpperCase(),
-  }, rt);
+  // Written once per language: whoever sends it chooses (the customer's on top).
+  const waTexts = await inEveryLanguage((rt) => {
+    const english = rt.locale === DEFAULT_LOCALE;
+    return bookingRequestMessage({
+      hotel: { name: settings.hotelName, phone: prettyPhone(settings.whatsapp || settings.phone) || null }, name: r.fullName, ref: r.reference,
+      roomType: rt(r.roomType?.name ?? "Room"), rooms: r.roomCount,
+      checkIn: english ? formatBusinessDate(r.checkIn) : rt.date(r.checkIn), checkOut: meeting ? null : english ? formatBusinessDate(r.checkOut) : rt.date(r.checkOut),
+      nights: meeting ? null : nights, time: meeting?.time ?? null,
+      guests: guestsText(r.adults, r.children, rt),
+      estimate: r.estimatedNet || null, status: rt(meta.label).toUpperCase(),
+    }, rt);
+  });
   const people = [t.plural(r.adults, "{n} adult", "{n} adults"), r.children ? t.plural(r.children, "{n} child", "{n} children") : null].filter(Boolean).join(" · ");
   const free = !isOpen ? null
     : meeting ? (meetingFree == null ? { ok: false, text: t("time has passed") } : { ok: meetingFree, text: meetingFree ? t("free at that time") : t("already booked") })
@@ -134,7 +139,7 @@ export async function BookingRequestView({ id, user, inline = false }: { id: str
               </div>
               <div className="flex flex-wrap gap-2">
                 <a href={`tel:${r.phone}`} className={buttonVariants({ size: "sm", variant: "outline" })}><Phone />{r.phone}</a>
-                <a href={`https://wa.me/${waDigits}?text=${encodeURIComponent(waText)}`} target="_blank" rel="noopener noreferrer" className={buttonVariants({ size: "sm", variant: "outline" })}><MessageCircle className="text-emerald-500" />WhatsApp{english ? "" : ` · ${LOCALE_META[rt.locale].short}`}</a>
+                <WhatsAppIn phone={waDigits} texts={waTexts} locale={rt.locale} className={buttonVariants({ size: "sm", variant: "outline" })}><MessageCircle className="text-emerald-500" />WhatsApp{english ? "" : ` · ${LOCALE_META[rt.locale].short}`}</WhatsAppIn>
                 {r.email && <a href={`mailto:${r.email}?subject=${encodeURIComponent(rt("Your booking request {ref}", { ref: r.reference }))}`} className={buttonVariants({ size: "sm", variant: "outline" })}><Mail />{t("Email")}</a>}
               </div>
             </div>

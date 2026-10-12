@@ -10,7 +10,7 @@ import { groupStatementDoc } from "@/components/staff/invoices/group-statement";
 import { SendDocument } from "@/components/staff/invoices/send-document";
 import { groupStatementMessage } from "@/lib/wa-messages";
 import { prettyPhone } from "@/lib/guest-messages";
-import { getT, getTFor } from "@/i18n/server";
+import { getT, getTFor, inEveryLanguage } from "@/i18n/server";
 import { DEFAULT_LOCALE, LOCALE_META } from "@/i18n/config";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -28,6 +28,14 @@ export default async function GroupStatementPage({ params }: PageProps<"/staff/g
   const payer = g.corporateCustomer?.companyName ?? g.name;
   // The message in the group contact's language.
   const [t, rt] = await Promise.all([getT(), getTFor(g.contactGuest.preferredLanguage)]);
+  // Written once per language: it opens in the contact's, and whoever sends it may change it.
+  const sendTexts = await inEveryLanguage((rt) => ({
+    subject: rt("{hotel} — statement for {group}", { hotel: s.hotelName, group: g.name }),
+    text: groupStatementMessage({
+      hotel: { name: s.hotelName, phone: prettyPhone(s.whatsapp || s.phone) || null }, greet: g.contactGuest.fullName, group: g.name,
+      number: doc.number, rooms: doc.group?.rooms ?? 0, money: { total: doc.net, paid: doc.paid, balance: doc.balance },
+    }, rt),
+  }));
 
   return (
     <div className="w-full space-y-5 print:space-y-0">
@@ -37,11 +45,7 @@ export default async function GroupStatementPage({ params }: PageProps<"/staff/g
           <SendDocument
             entity={{ type: "BookingGroup", id: g.id }} what={`statement ${doc.number}`}
             to={{ name: payer, phone: g.contactGuest.phone, email: g.billingEmail ?? g.corporateCustomer?.email ?? g.contactGuest.email }}
-            subject={rt("{hotel} — statement for {group}", { hotel: s.hotelName, group: g.name })}
-            text={groupStatementMessage({
-              hotel: { name: s.hotelName, phone: prettyPhone(s.whatsapp || s.phone) || null }, greet: g.contactGuest.fullName, group: g.name,
-              number: doc.number, rooms: doc.group?.rooms ?? 0, money: { total: doc.net, paid: doc.paid, balance: doc.balance },
-            }, rt)}
+            {...sendTexts[rt.locale]} texts={sendTexts} locale={rt.locale}
             label={rt.locale === DEFAULT_LOCALE ? undefined : t("Send ({language})", { language: LOCALE_META[rt.locale].short })}
           />
           <ReportActions target="invoice-doc" fileName={`${s.hotelName}-group-statement-${doc.number}`.replace(/[^\w]+/g, "-").toLowerCase()} />
