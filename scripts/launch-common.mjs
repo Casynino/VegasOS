@@ -2,6 +2,10 @@
 // while practising, which hold both; and where the database address is read (it is never printed).
 import fs from "node:fs";
 
+// The database driver's notice about SSL wording is noise here (the connection is checked in full either way).
+process.removeAllListeners("warning");
+process.on("warning", () => {});
+
 export const LIVE = process.argv.includes("--live");
 
 /** Set-up of the hotel. */
