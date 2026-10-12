@@ -63,6 +63,7 @@ const catalog: Catalog = {
   "Marked a no-show": "标记为未到店",
   "Booking dates changed": "预订日期已更改",
   "Stay extended": "延长住宿",
+  "Extra nights put on the bill": "额外住宿晚数已记入账单",
   "Stay extended (free)": "延长住宿（免费）",
   "Guest moved to another room": "客人换到另一间房",
   "Room assigned": "已分配房间",

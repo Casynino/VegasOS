@@ -832,6 +832,67 @@ export async function previewCheckOut(reservationId: string, opts: { chargeOvers
   throw new AppError("Could not work out the final bill.");
 }
 
+/** What putting the nights past the planned check-out on the bill adds, and what the guest owes after. */
+export type OverstayCharge = { nights: number; amount: number; balance: number };
+
+/**
+ * A guest still in the room after the planned check-out: the extra nights go on the bill now, without checking them
+ * out — the same nights, at the same prices, the check-out would add. Used when the money for them comes in by phone
+ * before the check-out: a payment can only be recorded against a bill that has them.
+ *
+ * Only the nights and the bill change. The room's booked hours are left as they are (another booking may follow on the
+ * room) and the guest stays in the house. A stay a company or a group pays is billed at check-out, where its invoice
+ * is made — not here. Nothing past its check-out → nothing is written. A check-out later the same day finds the
+ * nights already on the bill and adds none.
+ */
+export async function chargeOverstayTx(tx: Tx, reservationId: string, actor: Actor, now: Date): Promise<OverstayCharge> {
+  const today = businessDateOf(now, stayConfig(await getSettingsTx(tx)));
+  const r = await loadForUpdate(tx, reservationId);
+  const late = r.billTo === "GUEST" ? r.rooms.filter((rr) => rr.status === "CHECKED_IN" && !rr.isDayUse && today > fromDbDate(rr.departureDate)) : [];
+  if (late.length === 0) return { nights: 0, amount: 0, balance: r.balanceAmount };
+  const rooms: { room: string; nights: number; added: number }[] = [];
+  for (const rr of late) {
+    const nights = Math.round((Date.parse(today) - Date.parse(fromDbDate(rr.arrivalDate))) / 86_400_000);
+    const quote = quoteRoom({ ratePerNight: rr.ratePerNight, discountPerNight: rr.discountPerNight, units: nights });
+    await tx.reservationRoom.update({
+      where: { id: rr.id },
+      data: { departureDate: toDbDate(today), nights, grossAmount: quote.grossAmount, discountAmount: quote.discountAmount, netAmount: quote.netAmount },
+    });
+    // Each new night is priced by today's rules, like any night added to a stay (the same as at check-out).
+    await syncRoomNights(tx, rr.id);
+    rooms.push({ room: rr.room.number, nights, added: nights - rr.nights });
+  }
+  await recalculateReservation(tx, r.id);
+  const after = await tx.reservation.findUniqueOrThrow({ where: { id: r.id }, select: { balanceAmount: true } });
+  const out = { nights: Math.max(...rooms.map((x) => x.added)), amount: after.balanceAmount - r.balanceAmount, balance: after.balanceAmount };
+  await audit(tx, actor, {
+    action: "reservation.overstay_charged", entityType: "Reservation", entityId: r.id,
+    before: { balance: r.balanceAmount },
+    after: { rooms: rooms.map((x) => x.room), nightChanges: rooms.map((x) => ({ room: x.room, nights: x.nights })), extraNights: out.nights, amount: out.amount, balance: out.balance },
+  });
+  return out;
+}
+
+class OverstayRollback extends Error {
+  constructor(readonly data: OverstayCharge) { super("overstay"); }
+}
+
+/**
+ * What `chargeOverstayTx` would put on the bill right now — worked out by running it in a transaction that is then
+ * rolled back, so the figure a phone prompt is allowed to ask for is exactly what will be charged when it is paid.
+ */
+export async function overstayDue(reservationId: string, now = new Date()): Promise<OverstayCharge> {
+  try {
+    await db.$transaction(async (tx) => {
+      throw new OverstayRollback(await chargeOverstayTx(tx, reservationId, { label: "preview" }, now));
+    }, { timeout: 20_000, maxWait: 10_000 });
+  } catch (e) {
+    if (e instanceof OverstayRollback) return e.data;
+    translateDbError(e);
+  }
+  throw new AppError("Could not work out the extra nights.");
+}
+
 async function checkOutTx(tx: Tx, reservationId: string, actor: Actor, opts: CheckOutOptions, now: Date) {
   {
     const settings = await getSettingsTx(tx);

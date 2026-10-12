@@ -3455,6 +3455,9 @@ model MobilePayment {
   depositId       String?             @unique
   status          MobilePaymentStatus @default(PENDING)
   amount          Int
+  /// The part of this prompt that is for nights past the planned check-out — not on the bill when it was sent; the
+  /// nights go on the bill when the money comes in. Empty on every other prompt.
+  overstayAmount  Int?
   /// 255XXXXXXXXX — the phone that gets the prompt.
   phone           String
   /// RESERVATION (a guest's bill) | RESTAURANT (one order, or a table's orders paid together).

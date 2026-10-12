@@ -273,7 +273,7 @@ export async function owedAtClose(date: BusinessDate, cfg: BusinessDayConfig): P
 
 /** Changes to a booking that move its room price — after a day has closed they cannot be put back to that day. */
 const PRICE_CHANGES = [
-  "reservation.dates_changed", "reservation.extended", "reservation.extended_free", "reservation.discount_changed",
+  "reservation.dates_changed", "reservation.extended", "reservation.overstay_charged", "reservation.extended_free", "reservation.discount_changed",
   "reservation.bill_discounted", "reservation.billing_changed", "reservation.room_changed",
 ];
 

@@ -539,6 +539,7 @@ export function CheckOutHere({ stay, roomNumber, methods, canPay, canCharge, can
   const [reason, setReason] = useState("");
   const [invoiceMode, setInvoiceMode] = useState<"ISSUE" | "OPEN" | null>(null);
   const [pending, start] = useTransition();
+  const [paidByPhone, setPaidByPhone] = useState(0);
   useEffect(() => {
     let alive = true;
     previewCheckOutAction({ reservationId: stay.reservationId }).then((r) => {
@@ -546,7 +547,7 @@ export function CheckOutHere({ stay, roomNumber, methods, canPay, canCharge, can
       if (r.ok) { setBill(r.data); setAmount(r.data.balance > 0 ? String(r.data.balance) : ""); } else setError(r.error);
     });
     return () => { alive = false; };
-  }, [stay.reservationId, stay.balance]); // a discount or payment changes the balance → recompute the bill
+  }, [stay.reservationId, stay.balance, paidByPhone]); // a discount or payment changes the balance → recompute the bill
 
   const first = stay.guestName.split(" ")[0];
   const owes = (bill?.balance ?? 0) > 0;
@@ -557,7 +558,10 @@ export function CheckOutHere({ stay, roomNumber, methods, canPay, canCharge, can
   // The way picked in the row: on the customer's phone (it records itself — nothing is taken by hand here), or by hand.
   const mobile = useMobilePayAvailable();
   const [byHand, setByHand] = useState(false);
-  const viaPhone = mobile && owes && canPay && methods.length > 0 && stay.balance > 0 && !byHand;
+  // What a prompt to the phone may ask for. A guest paying their own bill: the whole check-out amount, the nights past
+  // the planned check-out included (they go on the bill when the money comes). A company's stay: what is on the guest's bill now.
+  const phoneMax = !bill ? 0 : bill.overstayNights > 0 && !bill.company ? bill.balance : Math.min(bill.balance, stay.balance);
+  const viaPhone = mobile && owes && canPay && methods.length > 0 && phoneMax > 0 && !byHand;
   const ready = !!bill && (!owes || approvedOwing || (canPay && !viaPhone && !short && !!accountId)) && (!bill.early || !!reason.trim());
 
   function go() {
@@ -651,10 +655,10 @@ export function CheckOutHere({ stay, roomNumber, methods, canPay, canCharge, can
             <div className="space-y-2">
               {/* Every way to pay in one row. On their phone: once recorded, the bill above updates — then check out. */}
               <PayWays accounts={methods} account={accountId} onAccount={setAccountId} byHand={byHand} onByHand={setByHand}
-                phone={stay.balance > 0 ? (
+                phone={phoneMax > 0 ? (
                   <div className="space-y-2">
-                    <SendToPhone target={{ kind: "stay", reservationId: stay.reservationId }} amount={Math.min(bill.balance, stay.balance)} editableAmount phone={stay.guestPhone} who={stay.guestName} primary />
-                    {bill.balance > stay.balance && <p className="text-[11px] text-muted-foreground">{t.plural(bill.overstayNights, "The mobile money request covers up to {amount} — the extra night ({extra}) are received at check-out.", "The mobile money request covers up to {amount} — the extra nights ({extra}) are received at check-out.", { amount: formatTZS(stay.balance), extra: formatTZS(bill.balance - stay.balance) })}</p>}
+                    <SendToPhone target={{ kind: "stay", reservationId: stay.reservationId }} amount={phoneMax} editableAmount phone={stay.guestPhone} who={stay.guestName} primary onPaid={() => setPaidByPhone((n) => n + 1)} />
+                    {bill.balance > phoneMax && <p className="text-[11px] text-muted-foreground">{t.plural(bill.overstayNights, "The mobile money request covers up to {amount} — the extra night ({extra}) are received at check-out.", "The mobile money request covers up to {amount} — the extra nights ({extra}) are received at check-out.", { amount: formatTZS(stay.balance), extra: formatTZS(bill.balance - stay.balance) })}</p>}
                   </div>
                 ) : null}>
                 <div className="grid grid-cols-2 gap-2">

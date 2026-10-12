@@ -14,7 +14,7 @@ import { notifyBookingGuestSoon, notifyReservationGuestSoon } from "./guest-comm
 import { notifyOrderCustomer } from "./online-orders";
 import { holdForPayment, isPayLater, releasePayingHold, type PayingHold } from "./booking-holds";
 import { createNtzsDeposit, depositCompleted, depositFailed, getNtzsDeposit, ntzsEnabled, ntzsLive, ntzsPhone, ntzsSaid, NTZS_MIN_TZS } from "./ntzs";
-import type { Actor } from "./reservations";
+import { chargeOverstayTx, overstayDue, type Actor } from "./reservations";
 import type { MobilePayment } from "@/generated/prisma/client";
 import { msg, msgf } from "@/i18n/msg";
 import { getT } from "@/i18n/server";
@@ -110,7 +110,7 @@ async function priceMoved(h: PayingHold, customer: boolean) {
 async function promptFor(target: PromptTarget, phone: string, actor: (Actor & { userId: string }) | null, now: Date, opts: PromptOptions) {
   const customer = !actor;
   let amount: number, name: string | null = null, reservationId: string | null = null, orderIds: string[] = [], tripId: string | null = null, invoiceId: string | null = null;
-  let payingHold = false;
+  let payingHold = false, overstayAmount: number | null = null;
   if (target.purpose === "TRANSPORT") {
     // A trip: its price, worked out here — once, and never for a trip paid, billed or closed.
     const t = await db.transportTrip.findUnique({ where: { id: target.tripId }, select: { id: true, status: true, charge: true, chargeId: true, paidAt: true, passengerName: true, sales: { where: { isVoided: false }, select: { id: true } } } });
@@ -135,8 +135,14 @@ async function promptFor(target: PromptTarget, phone: string, actor: (Actor & { 
     if (r.status === "CANCELLED" || r.status === "NO_SHOW") throw new AppError("This booking is closed — nothing to pay.", "CONFLICT");
     amount = Math.round(target.amount);
     if (!Number.isInteger(amount) || amount <= 0) throw new AppError("Enter the amount.", "VALIDATION", { amount: msg("Required") });
-    if (r.balanceAmount <= 0) throw new AppError("Nothing is owed on this booking.", "CONFLICT");
-    if (amount > r.balanceAmount) throw new AppError(customer ? msgf("That is more than is owed ({amount}).", { amount: fmt(r.balanceAmount) }) : msgf("That is more than the guest owes ({amount}).", { amount: fmt(r.balanceAmount) }), "VALIDATION", { amount: msg("Exceeds balance") });
+    // A guest still in the room past the planned check-out owes nights that go on the bill only at check-out: staff
+    // may ask for those too, so the whole check-out amount can be paid by phone. They go on the bill when the money comes.
+    const owed = Math.max(0, r.balanceAmount);
+    const late = !customer && r.status === "CHECKED_IN" && amount > owed ? await overstayDue(r.id, now).catch(() => null) : null;
+    const most = late && late.nights > 0 ? late.balance : r.balanceAmount;
+    if (most <= 0) throw new AppError("Nothing is owed on this booking.", "CONFLICT");
+    if (amount > most) throw new AppError(customer ? msgf("That is more than is owed ({amount}).", { amount: fmt(most) }) : msgf("That is more than the guest owes ({amount}).", { amount: fmt(most) }), "VALIDATION", { amount: msg("Exceeds balance") });
+    if (amount > owed) overstayAmount = amount - owed;
     reservationId = r.id; name = r.guest.fullName;
   } else {
     if (target.handedOverById) {
@@ -173,7 +179,7 @@ async function promptFor(target: PromptTarget, phone: string, actor: (Actor & { 
     if (live) throw new AppError("A payment request for this bill is already waiting on the customer's phone — ask them to confirm it, or cancel it first.", "CONFLICT");
     const mp = await tx.mobilePayment.create({
       data: {
-        purpose: target.purpose, amount, phone, reservationId, orderIds, tripId, invoiceId, livemode: ntzsLive(), requestedById: actor?.userId ?? null,
+        purpose: target.purpose, amount, overstayAmount, phone, reservationId, orderIds, tripId, invoiceId, livemode: ntzsLive(), requestedById: actor?.userId ?? null,
         initiator: customer ? "CUSTOMER" : "STAFF", source: opts.source ?? (customer ? "WEBSITE" : "DESK"), publicToken: newToken(), clientKey: opts.clientKey ?? null,
         targetKey, expiresAt: new Date(now.getTime() + (customer || payingHold ? CUSTOMER_EXPIRES_MS : PROMPT_EXPIRES_MS)),
         handedOverById: target.purpose === "RESTAURANT" ? target.handedOverById ?? null : null,
@@ -336,6 +342,19 @@ async function recordMobilePayment(id: string, info: { received?: number | null;
 
     if (mp.purpose === "RESERVATION" && mp.reservationId) {
       await tx.$queryRaw`SELECT "id" FROM "reservations" WHERE "id" = ${mp.reservationId} FOR UPDATE`;
+      if ((mp.overstayAmount ?? 0) > 0) {
+        // Part of this prompt was for nights past the planned check-out: they go on the bill now, in the same step as
+        // the payment. If the bill refuses them (the guest already left, the stay changed…) only that step is undone —
+        // the money is still recorded for what the bill takes and the rest is flagged below, never lost.
+        await tx.$executeRawUnsafe("SAVEPOINT overstay");
+        try {
+          await chargeOverstayTx(tx as unknown as Tx, mp.reservationId, actor, now);
+          await tx.$executeRawUnsafe("RELEASE SAVEPOINT overstay");
+        } catch (e) {
+          if (!(e instanceof AppError)) throw e;
+          await tx.$executeRawUnsafe("ROLLBACK TO SAVEPOINT overstay");
+        }
+      }
       const r = await tx.reservation.findUniqueOrThrow({ where: { id: mp.reservationId }, select: { balanceAmount: true, reference: true } });
       // Never more than is owed now (another payment or a discount since the prompt): the rest is flagged, not lost.
       const amount = Math.min(received, Math.max(0, r.balanceAmount));

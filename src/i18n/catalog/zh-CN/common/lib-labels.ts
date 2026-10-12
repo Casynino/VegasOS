@@ -18,6 +18,7 @@ const catalog: Catalog = {
   "checked a guest in": "为客人办理了入住",
   "checked a guest out": "为客人办理了退房",
   "extended a stay": "延长了住宿",
+  "put extra nights on the bill": "把额外住宿晚数记入了账单",
   "moved a guest to another room": "将客人换到了另一间房",
   "changed a guest's room": "更换了客人的房间",
   "cancelled a booking": "取消了一笔预订",

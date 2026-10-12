@@ -66,6 +66,7 @@ const catalog: Catalog = {
   // Checking out
   "{group} (group · {payer})": "{group}（团体 · {payer}）",
   "Could not work out the final bill.": "无法计算最终账单。",
+  "Could not work out the extra nights.": "无法计算额外的住宿晚数。",
   "No checked-in rooms to check out.": "没有可退房的在住房间。",
   "This is an early departure — give a reason (e.g. change of plans, complaint, emergency).": "这是提前离店 — 请说明原因（例如行程变更、投诉、紧急情况）。",
   "Give the reason for letting the guest leave with an unpaid balance.": "请说明允许客人带着未付余额离店的原因。",

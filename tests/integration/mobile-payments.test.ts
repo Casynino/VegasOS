@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/server/db";
-import { checkIn, createReservation } from "@/server/services/reservations";
+import { checkIn, checkOut, createReservation, overstayDue } from "@/server/services/reservations";
 import { recordReservationPayment } from "@/server/services/payments";
 import { createRestaurantOrder, orderBill } from "@/server/services/restaurant";
 import { stayBill } from "@/server/services/stay-bill";
@@ -162,6 +162,72 @@ describe("a guest's bill", () => {
     failNext = { status: 400, body: { error: { code: "invalid_phone", message: "bad phone" } } };
     await expect(requestMobilePayment({ purpose: "RESERVATION", reservationId: r.id, amount: 10_000 }, "0712 555 001", signed(await anyReceptionist()))).rejects.toThrow(/not a Tanzanian mobile-money number/);
     expect(await db.mobilePayment.findFirstOrThrow({ where: { reservationId: r.id } })).toMatchObject({ status: "FAILED" });
+  });
+});
+
+/** A guest still in the room a night past the planned check-out, with everything on the bill paid. */
+async function stayedPast(name: string) {
+  const dd = await roomType("DOUBLE_DELUXE");
+  const r = await createReservation({
+    sourceCode: "PHONE", guest: { fullName: name, phone: "0712 555 001" }, stay: { kind: "overnight", arrivalDate: addDays(today(), -3), departureDate: addDays(today(), -1) },
+    rooms: [{ roomTypeId: dd.id, roomId: dd.rooms[0].id, adults: 1, children: 0, discountPerNight: 0 }],
+  }, await anyManager(), zonedInstant(addDays(today(), -5), 12 * 60, TZ));
+  await checkIn(r.id, await anyManager(), null, zonedInstant(addDays(today(), -3), 15 * 60, TZ));
+  const owed = (await db.reservation.findUniqueOrThrow({ where: { id: r.id } })).balanceAmount;
+  await recordReservationPayment({ reservationId: r.id, amount: owed, accountId: "acct_cash" }, signed(await anyReceptionist()));
+  return db.reservation.findUniqueOrThrow({ where: { id: r.id } });
+}
+
+describe("at check-out: the nights past the planned check-out (owner, 2026-10-12)", () => {
+  it("the prompt may ask for them; when the money comes they go on the bill and the payment is recorded — once", async () => {
+    const r = await stayedPast("Late Guest");
+    expect(r.balanceAmount).toBe(0);
+    const due = await overstayDue(r.id);
+    expect(due.nights).toBe(1);
+    expect(due.amount).toBeGreaterThan(0);
+    // Working it out wrote nothing.
+    expect((await db.reservation.findUniqueOrThrow({ where: { id: r.id } })).netAmount).toBe(r.netAmount);
+
+    const recep = signed(await anyReceptionist());
+    await expect(requestMobilePayment({ purpose: "RESERVATION", reservationId: r.id, amount: due.balance + 1 }, "0712 555 001", recep)).rejects.toThrow(/more than the guest owes/);
+    // The guest's own pay page asks only for what is on the bill.
+    await expect(requestMobilePayment({ purpose: "RESERVATION", reservationId: r.id, amount: due.balance }, "0712 555 001", null)).rejects.toThrow(/Nothing is owed/);
+    const mp = await requestMobilePayment({ purpose: "RESERVATION", reservationId: r.id, amount: due.balance }, "0712 555 001", recep);
+    expect(mp).toMatchObject({ status: "PENDING", amount: due.amount, overstayAmount: due.amount });
+    // Nothing on the bill until the money comes.
+    expect((await db.reservation.findUniqueOrThrow({ where: { id: r.id } })).netAmount).toBe(r.netAmount);
+
+    expect((await settleMobilePayment(mp.id, { received: due.amount, pspReference: "MPLATE1", source: "webhook" })).recorded).toBe(true);
+    expect((await settleMobilePayment(mp.id, { received: due.amount, source: "webhook" })).recorded).toBe(false);
+    const paid = await db.reservation.findUniqueOrThrow({ where: { id: r.id } });
+    expect(paid).toMatchObject({ netAmount: r.netAmount + due.amount, paidAmount: r.paidAmount + due.amount, balanceAmount: 0, status: "CHECKED_IN" });
+    expect(await db.payment.count({ where: { reservationId: r.id, reference: "nTZS MPLATE1" } })).toBe(1);
+    expect((await db.mobilePayment.findUniqueOrThrow({ where: { id: mp.id } })).lastError).toBeNull();
+
+    // The check-out finds the nights already on the bill and adds none.
+    await checkOut(r.id, await anyManager());
+    expect(await db.reservation.findUniqueOrThrow({ where: { id: r.id } })).toMatchObject({ netAmount: r.netAmount + due.amount, balanceAmount: 0, status: "CHECKED_OUT" });
+  });
+
+  it("the guest paid cash and left before the phone money came: it is flagged, not lost, and nothing is charged twice", async () => {
+    const r = await stayedPast("Cash First Guest");
+    const due = await overstayDue(r.id);
+    const recep = signed(await anyReceptionist());
+    const mp = await requestMobilePayment({ purpose: "RESERVATION", reservationId: r.id, amount: due.balance }, "0712 555 001", recep);
+    await checkOut(r.id, await anyManager(), { payment: { amount: due.balance, accountId: "acct_cash" } });
+    await settleMobilePayment(mp.id, { received: due.amount, source: "webhook" });
+    const after = await db.mobilePayment.findUniqueOrThrow({ where: { id: mp.id } });
+    expect(after.status).toBe("COMPLETED");
+    expect(after.lastError).toMatch(/more than/);
+    expect(await db.reservation.findUniqueOrThrow({ where: { id: r.id } })).toMatchObject({ netAmount: r.netAmount + due.amount, balanceAmount: 0, status: "CHECKED_OUT" });
+  });
+
+  it("a guest who has not stayed past the check-out: the prompt is still only for what is on the bill", async () => {
+    const r = await stayOwing("On Time Guest");
+    const recep = signed(await anyReceptionist());
+    await expect(requestMobilePayment({ purpose: "RESERVATION", reservationId: r.id, amount: r.balanceAmount + 1 }, "0712 555 001", recep)).rejects.toThrow(/more than the guest owes/);
+    const mp = await requestMobilePayment({ purpose: "RESERVATION", reservationId: r.id, amount: r.balanceAmount }, "0712 555 001", recep);
+    expect(mp.overstayAmount).toBeNull();
   });
 });
 

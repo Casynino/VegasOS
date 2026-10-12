@@ -68,6 +68,7 @@ const ACTIONS: Record<string, { label: string; group: HistoryGroup }> = {
   "reservation.back_to_pending": { label: msg("booking back to pending (payment removed)"), group: "bookings" },
   "reservation.dates_changed": { label: msg("changed booking dates"), group: "bookings" },
   "reservation.extended": { label: msg("extended a stay"), group: "bookings" },
+  "reservation.overstay_charged": { label: msg("put extra nights on the bill"), group: "bookings" },
   "reservation.checkin_not_ready_override": { label: msg("checked in to a room that was not ready (override)"), group: "bookings" },
   "reservation.room_assigned": { label: msg("changed the room"), group: "bookings" },
   "reservation.room_changed": { label: msg("moved the guest to another room"), group: "bookings" },
