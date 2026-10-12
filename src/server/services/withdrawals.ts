@@ -732,31 +732,90 @@ export async function withdrawalDetail(id: string, actor: WithdrawalActor, now =
   return { view, history };
 }
 
-export interface WithdrawalsOverview {
+/** What the Withdraw funds button needs, wherever it stands: may one be sent now, and what the form offers. */
+export interface WithdrawForm {
   /** The hotel's nTZS account is connected (its key is set on the server). */
   enabled: boolean;
   live: boolean;
   /** What stands in the way at nTZS, by its code (only the administrator can clear it) — from nTZS's latest answer. */
   setupProblem: string | null;
+  /** A withdrawal nobody can confirm yet — no new one until it is settled. */
+  unsettled: { id: string; number: string | null } | null;
+  destinations: { id: string; label: string; name: string | null; kind: "PHONE" | "BANK" }[];
+  accounts: { id: string; name: string }[];
+  /** Where this person's last withdrawal went in the books ("owner", or an account id). */
+  lastBooks: string | null;
+}
+
+export interface WithdrawalsOverview extends WithdrawForm {
   /** The balance nTZS last reported with a price, and when; `sentSince` = withdrawals sent after that. None = never reported. */
   balance: { availableTzs: number; at: Date; sentSince: number } | null;
   /** The nTZS account in the hotel's own books — the hotel's records, not nTZS's figure. */
   bookBalance: number | null;
   bookAccountId: string | null;
   inFlight: { count: number; total: number };
-  /** A withdrawal nobody can confirm yet — no new one until it is settled. */
-  unsettled: { id: string; number: string | null } | null;
   period: { completed: number; withdrawn: number; fees: number; feesAllConfirmed: boolean; pending: number; failed: number };
   rows: WithdrawalView[];
   people: { id: string; name: string }[];
-  destinations: { id: string; label: string; name: string | null; kind: "PHONE" | "BANK" }[];
-  accounts: { id: string; name: string }[];
-  /** Where this person's last withdrawal went in the books ("owner", or an account id). */
-  lastBooks: string | null;
   canReconcile: boolean;
 }
 
 export interface WithdrawalFilters { from: BusinessDate; to: BusinessDate; status?: string | null; person?: string | null; q?: string | null }
+
+async function withdrawForm(actor: WithdrawalActor): Promise<WithdrawForm> {
+  const [latest, unsettled, recent, accounts, mine] = await Promise.all([
+    db.withdrawal.findFirst({ orderBy: { createdAt: "desc" }, select: { failureCode: true } }),
+    db.withdrawal.findFirst({ where: { status: { in: WITHDRAWAL_UNSETTLED } }, orderBy: { createdAt: "asc" }, select: { id: true, number: true } }),
+    db.withdrawal.findMany({ where: { status: { in: ["COMPLETED", "PROCESSING", "AWAITING_APPROVAL", "IN_REVIEW"] } }, orderBy: { createdAt: "desc" }, take: 40, select: { id: true, destinationKind: true, phone: true, bankCode: true, accountNumber: true, recipientName: true } }),
+    db.moneyAccount.findMany({ where: { isActive: true, code: { not: "NTZS" } }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true } }),
+    db.withdrawal.findFirst({ where: { requestedById: actor.userId, status: { in: WITHDRAWAL_LISTED } }, orderBy: { createdAt: "desc" }, select: { toAccountId: true } }),
+  ]);
+  const seen = new Set<string>();
+  const destinations: WithdrawForm["destinations"] = [];
+  for (const d of recent) {
+    const key = `${d.destinationKind}:${d.phone ?? ""}:${d.bankCode ?? ""}:${d.accountNumber ?? ""}`;
+    if (seen.has(key) || destinations.length >= 5) continue;
+    seen.add(key);
+    destinations.push({ id: d.id, label: maskedDestination(d), name: d.recipientName, kind: d.destinationKind === "BANK" ? "BANK" : "PHONE" });
+  }
+  return {
+    enabled: ntzsEnabled(), live: ntzsLive(),
+    setupProblem: latest?.failureCode && WITHDRAWAL_SETUP_CODES.includes(latest.failureCode) ? latest.failureCode : null,
+    unsettled: unsettled ?? null, destinations, accounts,
+    lastBooks: mine ? mine.toAccountId ?? "owner" : null,
+  };
+}
+
+/** What the nTZS account's own page shows about withdrawals: the form, and the latest ones. */
+export interface AccountWithdrawals extends WithdrawForm {
+  /** Those on their way first (however old), then those that ended in the last 24 hours, the latest ending first — a handful. The one nobody can confirm is not repeated here: it is said by itself. */
+  latest: WithdrawalView[];
+  /** Something was sent and is not finished: the page keeps asking. */
+  following: boolean;
+}
+
+const ACCOUNT_PAGE_LATEST = 5;
+
+/**
+ * Withdraw funds from where the money is — the nTZS account's own page: the same form as the Withdraw funds page, and
+ * what became of the latest withdrawals (one that failed leaves nothing in the account's transactions, so it is said
+ * here). Only for those who may withdraw.
+ */
+export async function withdrawFromAccount(actor: WithdrawalActor, now = new Date()): Promise<AccountWithdrawals> {
+  mustManage(actor);
+  // "The last 24 hours" is counted from when a withdrawal ENDED: one that waited two days at nTZS and then failed is still said here.
+  const since = new Date(now.getTime() - 24 * 3_600_000);
+  const [form, flying, arrived, turnedBack] = await Promise.all([
+    withdrawForm(actor),
+    db.withdrawal.findMany({ where: { status: { in: WITHDRAWAL_IN_FLIGHT } }, orderBy: { createdAt: "desc" }, take: ACCOUNT_PAGE_LATEST + 1, include }),
+    db.withdrawal.findMany({ where: { status: "COMPLETED", completedAt: { gte: since } }, orderBy: { completedAt: "desc" }, take: ACCOUNT_PAGE_LATEST, include }),
+    db.withdrawal.findMany({ where: { status: { in: ["FAILED", "REJECTED"] }, failedAt: { gte: since } }, orderBy: { failedAt: "desc" }, take: ACCOUNT_PAGE_LATEST, include }),
+  ]);
+  const endedAt = (r: (typeof arrived)[number]) => (r.completedAt ?? r.failedAt ?? r.createdAt).getTime();
+  const ended = [...arrived, ...turnedBack].sort((x, y) => endedAt(y) - endedAt(x));
+  const latest = [...flying.filter((r) => r.id !== form.unsettled?.id), ...ended].slice(0, ACCOUNT_PAGE_LATEST);
+  return { ...form, following: flying.length > 0, latest: latest.map((r) => toView(r, now, actor)) };
+}
 
 /** Everything the Withdraw funds page shows. Days are hotel days (04:00 → 04:00), by the day each withdrawal was asked for. */
 export async function withdrawalsOverview(actor: WithdrawalActor, filters: WithdrawalFilters, now = new Date()): Promise<WithdrawalsOverview> {
@@ -771,12 +830,11 @@ export async function withdrawalsOverview(actor: WithdrawalActor, filters: Withd
       { recipientName: { contains: q, mode: "insensitive" } }, ...(Number.isSafeInteger(asAmount) && asAmount > 0 && asAmount <= 2_000_000_000 ? [{ amount: asAmount }] : []),
     ],
   }] : [];
-  const [latest, reported, balances, flight, unsettled, byStatus, estimates, rows, people, recent, accounts, mine] = await Promise.all([
-    db.withdrawal.findFirst({ orderBy: { createdAt: "desc" }, select: { failureCode: true } }),
+  const [form, reported, balances, flight, byStatus, estimates, rows, people] = await Promise.all([
+    withdrawForm(actor),
     db.withdrawal.findFirst({ where: { availableTzs: { not: null } }, orderBy: { createdAt: "desc" }, select: { availableTzs: true, createdAt: true } }),
     accountBalances(undefined, true),
     db.withdrawal.aggregate({ where: { status: { in: WITHDRAWAL_IN_FLIGHT } }, _count: { _all: true }, _sum: { amount: true } }),
-    db.withdrawal.findFirst({ where: { status: { in: WITHDRAWAL_UNSETTLED } }, orderBy: { createdAt: "asc" }, select: { id: true, number: true } }),
     db.withdrawal.groupBy({ by: ["status"], where: { ...range, status: { in: WITHDRAWAL_LISTED } }, _count: { _all: true }, _sum: { amount: true, receivedTzs: true, feeTzs: true } }),
     db.withdrawal.count({ where: { ...range, status: "COMPLETED", feeConfirmed: false, feeTzs: { gt: 0 } } }),
     db.withdrawal.findMany({
@@ -784,28 +842,15 @@ export async function withdrawalsOverview(actor: WithdrawalActor, filters: Withd
       orderBy: { createdAt: "desc" }, take: 200, include,
     }),
     db.withdrawal.findMany({ where: { status: { in: WITHDRAWAL_LISTED } }, distinct: ["requestedById"], select: { requestedBy: { select: { id: true, fullName: true } } } }),
-    db.withdrawal.findMany({ where: { status: { in: ["COMPLETED", "PROCESSING", "AWAITING_APPROVAL", "IN_REVIEW"] } }, orderBy: { createdAt: "desc" }, take: 40, select: { id: true, destinationKind: true, phone: true, bankCode: true, accountNumber: true, recipientName: true } }),
-    db.moneyAccount.findMany({ where: { isActive: true, code: { not: "NTZS" } }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true } }),
-    db.withdrawal.findFirst({ where: { requestedById: actor.userId, status: { in: WITHDRAWAL_LISTED } }, orderBy: { createdAt: "desc" }, select: { toAccountId: true } }),
   ]);
   const sentSince = reported ? await db.withdrawal.count({ where: { submittedAt: { gte: reported.createdAt }, status: { in: [...WITHDRAWAL_IN_FLIGHT, "COMPLETED"] } } }) : 0;
   const of = (...statuses: string[]) => byStatus.filter((s) => statuses.includes(s.status));
   const done = of("COMPLETED")[0];
-  const seen = new Set<string>();
-  const destinations: WithdrawalsOverview["destinations"] = [];
-  for (const d of recent) {
-    const key = `${d.destinationKind}:${d.phone ?? ""}:${d.bankCode ?? ""}:${d.accountNumber ?? ""}`;
-    if (seen.has(key) || destinations.length >= 5) continue;
-    seen.add(key);
-    destinations.push({ id: d.id, label: maskedDestination(d), name: d.recipientName, kind: d.destinationKind === "BANK" ? "BANK" : "PHONE" });
-  }
   return {
-    enabled: ntzsEnabled(), live: ntzsLive(),
-    setupProblem: latest?.failureCode && WITHDRAWAL_SETUP_CODES.includes(latest.failureCode) ? latest.failureCode : null,
+    ...form,
     balance: reported && reported.availableTzs !== null ? { availableTzs: reported.availableTzs, at: reported.createdAt, sentSince } : null,
     bookBalance: balances.find((b) => b.code === "NTZS")?.balance ?? null, bookAccountId: balances.find((b) => b.code === "NTZS")?.id ?? null,
     inFlight: { count: flight._count._all, total: flight._sum.amount ?? 0 },
-    unsettled: unsettled ?? null,
     period: {
       completed: done?._count._all ?? 0, withdrawn: done ? done._sum.receivedTzs ?? done._sum.amount ?? 0 : 0, fees: done?._sum.feeTzs ?? 0, feesAllConfirmed: estimates === 0,
       pending: of("SUBMITTING", "UNKNOWN", "PROCESSING", "AWAITING_APPROVAL", "IN_REVIEW").reduce((n, s) => n + s._count._all, 0),
@@ -813,8 +858,6 @@ export async function withdrawalsOverview(actor: WithdrawalActor, filters: Withd
     },
     rows: rows.map((r) => toView(r, now, actor)),
     people: people.map((p) => ({ id: p.requestedBy.id, name: p.requestedBy.fullName })).sort((a, b) => a.name.localeCompare(b.name)),
-    destinations, accounts,
-    lastBooks: mine ? mine.toAccountId ?? "owner" : null,
     canReconcile: actor.permissions.has("withdrawals.reconcile"),
   };
 }

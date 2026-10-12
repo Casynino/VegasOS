@@ -3,10 +3,10 @@ import { getT } from "@/i18n/server";
 import { msg } from "@/i18n/msg";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowDownLeft, ArrowLeft, ArrowUpRight, BanknoteArrowUp, Info, Paperclip, Search } from "lucide-react";
-import { can, requirePagePermission } from "@/server/auth";
+import { ArrowDownLeft, ArrowLeft, ArrowUpRight, Info, Paperclip, Search, TriangleAlert } from "lucide-react";
+import { can, requestMeta, requirePagePermission } from "@/server/auth";
 import { db } from "@/server/db";
-import { businessToday } from "@/server/settings";
+import { businessToday, getSettings } from "@/server/settings";
 import { accountActivity, ACTIVITY_LABEL, KIND_LABEL, sumIn, sumOut, type ActivityRow, type ActivityType } from "@/server/services/payment-accounts";
 import { accountBalances } from "@/server/services/finance";
 import { accountLook, spacedNumber } from "@/lib/account-look";
@@ -14,16 +14,24 @@ import { CancelButton, ExpenseEditButton, PaymentEditButton, type EditableExpens
 import { CashCountButton, MovementButton, PaymentAccountButton } from "../account-dialogs";
 import { ExpenseDialog, PurchaseChip } from "@/app/staff/(app)/expenses/expense-dialogs";
 import { expenseTypes } from "@/server/services/expenses";
+import { withdrawFromAccount } from "@/server/services/withdrawals";
+import { withdrawalProblem } from "@/lib/withdrawals";
+import { StatusChip, WithdrawButton, WithdrawalDetails } from "@/app/staff/(app)/finance/withdraw/withdraw-ui";
+import { LiveRefresh } from "@/components/live-refresh";
 import { presetRange } from "@/lib/time/business-date";
 import { formatTZS } from "@/lib/format";
 import { FinanceTabs, PeriodPicker, periodLabel, readPeriod } from "@/components/staff/finance/finance-nav";
 import { AutoSelect } from "@/components/staff/finance/auto-select";
 import { cn } from "@/lib/utils";
 
+/** Withdraw funds is sent from the nTZS account's page too, and waits for nTZS's answer (up to 20 s) — the page's actions get the time for it. */
+export const maxDuration = 60;
+
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getT();
   return { title: t("Payment account") };
 }
+const NOTICE = "flex flex-wrap items-start gap-x-3 gap-y-1 rounded-2xl border border-amber-500/40 bg-amber-500/[0.06] px-3 py-2 text-sm";
 const MONEY_IN: ActivityType[] = ["ROOM", "COMPANY", "MEETING", "RESTAURANT", "BAR", "SALE", "OTHER_PAYMENT", "OTHER_INCOME"];
 const MONEY_OUT: ActivityType[] = ["EXPENSE", "REFUND"];
 
@@ -106,6 +114,13 @@ export default async function AccountDetailPage({ params, searchParams }: PagePr
   // A stock purchase's receipt opens for whoever buys or approves (and finance) — not for staff who only ask.
   const seesPurchaseReceipt = can(user, "finance.view") || can(user, "expenses.view_all") || can(user, "inventory.receive") || can(user, "expenses.approve");
   const proofOf = (r: ActivityRow) => (r.id.startsWith("e-") && !seesPurchaseReceipt && expense.get(r.id.slice(2))?.stockRequest ? null : r.proof);
+  // Withdraw funds stands where the money is — on the nTZS account's own page, for those who may withdraw (nobody else is read anything).
+  const withdraw = account.code === "NTZS" && can(user, "withdrawals.manage")
+    ? await Promise.all([getSettings(), requestMeta()]).then(async ([settings, { ipAddress }]) => ({
+      tz: settings.timezone, ...(await withdrawFromAccount({ userId: user.id, label: user.fullName, ipAddress, permissions: user.permissions })),
+    }))
+    : null;
+  const withdrawProblem = withdraw?.setupProblem ? withdrawalProblem(withdraw.setupProblem) : null;
   const receiving: PaymentAccountOption[] = all.filter((a) => a.acceptsPayments).map((a) => ({ id: a.id, name: a.name, number: a.accountNumber, holder: a.holderName }));
   const paidFrom = all.filter((a) => a.acceptsExpenses).map((a) => ({ id: a.id, name: a.name, methodId: a.paymentMethods[0]?.id ?? null }));
 
@@ -166,15 +181,52 @@ export default async function AccountDetailPage({ params, searchParams }: PagePr
         </div>
       </section>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {/* Pay something out of this account: it is preselected as "Paid from". */}
         {types && <ExpenseDialog types={types} methods={methods} accounts={[...paidFrom.filter((a) => a.id === account.id), ...paidFrom.filter((a) => a.id !== account.id)]} />}
         {can(user, "settings.manage") && <PaymentAccountButton account={{ id: account.id, name: account.name, kind: account.kind, accountNumber: account.accountNumber, holderName: account.holderName, acceptsPayments: account.acceptsPayments, acceptsExpenses: account.acceptsExpenses, isActive: account.isActive }} />}
         {account.isActive && (account.kind === "CASH" || account.kind === "PETTY_CASH") && (perms.movement || perms.correct) && <CashCountButton account={{ id: account.id, name: account.name, balance: held?.balance ?? 0 }} />}
         {perms.movement && <MovementButton accounts={books.filter((b) => all.some((x) => x.id === b.id)).map((b) => ({ id: b.id, name: b.name, balance: b.balance }))} />}
-        {/* Taking money out of nTZS itself is its own page — only for those who may withdraw. */}
-        {account.code === "NTZS" && can(user, "withdrawals.manage") && <Link href="/staff/finance/withdraw" className="inline-flex h-9 items-center gap-1.5 px-1 text-sm font-medium underline-offset-4 hover:underline"><BanknoteArrowUp className="size-4" />{t("Withdraw funds")}</Link>}
+        {/* Taking money out of nTZS starts right here: the same form as on the Withdraw funds page, with the full history one tap away. */}
+        {withdraw && <WithdrawButton compact disabled={!withdraw.enabled || !!withdraw.unsettled} accounts={withdraw.accounts} destinations={withdraw.destinations} lastBooks={withdraw.lastBooks} timezone={withdraw.tz} />}
+        {withdraw && <Link href="/staff/finance/withdraw" className="inline-flex h-8 items-center px-1 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">{t("All withdrawals")}</Link>}
       </div>
+
+      {withdraw && <LiveRefresh active={withdraw.following} every={20} />}
+      {withdraw && (!withdraw.enabled || !withdraw.live || withdrawProblem || withdraw.unsettled || withdraw.latest.length > 0) && (
+        <section className="space-y-2">
+          {!withdraw.enabled && <p className={NOTICE}><TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" /><span className="min-w-0 flex-1">{t("Withdrawals are not switched on yet — the administrator has to connect the hotel's nTZS account.")}</span></p>}
+          {withdraw.enabled && !withdraw.live && <p className="rounded-2xl bg-muted/60 px-3 py-2 text-sm">{t("Test mode — the hotel's nTZS account is connected with a test key, so no real money moves.")}</p>}
+          {withdrawProblem && <p className={NOTICE}><TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" /><span className="min-w-0 flex-1">{t(withdrawProblem)}</span></p>}
+          {withdraw.unsettled && (
+            <p className={NOTICE}>
+              <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />
+              <span className="min-w-0 flex-1">{t("Withdrawal {number} has no clear answer from nTZS yet. No other withdrawal can be sent until it is settled — so the same money is never sent twice.", { number: withdraw.unsettled.number ?? "" })}</span>
+              <WithdrawalDetails id={withdraw.unsettled.id} label={t("Open it")} timezone={withdraw.tz} />
+            </p>
+          )}
+          {withdraw.latest.length > 0 && (
+            <div className="rounded-2xl border border-border/70 bg-card">
+              <p className="px-4 pt-3 text-xs font-medium text-muted-foreground">{t("Latest withdrawals")}</p>
+              <ul className="divide-y divide-border/60 text-sm">
+                {withdraw.latest.map((w) => (
+                  <li key={w.id} className="flex flex-col gap-1 px-4 py-2.5 sm:flex-row sm:items-center sm:gap-x-3">
+                    <div className="flex items-center justify-between gap-x-3 sm:contents">
+                      <span className="font-semibold whitespace-nowrap tabular-nums">{formatTZS(w.amount)}</span>
+                      <span className="flex items-center gap-2 sm:order-3">
+                        {w.attention.length > 0 && <span className="flex items-center gap-1 text-xs font-medium whitespace-nowrap text-amber-700 dark:text-amber-300"><TriangleAlert className="size-3.5" />{t("Needs a look")}</span>}
+                        <StatusChip status={w.status} test={w.test} />
+                      </span>
+                    </div>
+                    <span className="min-w-0 text-muted-foreground sm:order-2 sm:flex-1 sm:truncate">{w.recipientName ? `${w.recipientName} · ` : ""}<span className="whitespace-nowrap tabular-nums">{w.destination}</span></span>
+                    <WithdrawalDetails id={w.id} label={w.number ? t("Open {number}", { number: w.number }) : t("Open")} timezone={withdraw.tz} className="self-start whitespace-nowrap sm:order-4 sm:self-auto" />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
+      )}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         {tiles.map((tile) => (

@@ -70,8 +70,10 @@ type Step = { at: "form" } | { at: "check"; price: WithdrawalPrice } | { at: "re
  * paid, the fee, what leaves the balance — and confirmed it. What is shown at the end is what nTZS answered: a
  * withdrawal that is only accepted is never shown as finished.
  */
-export function WithdrawButton({ disabled, accounts, destinations, lastBooks, timezone }: {
+export function WithdrawButton({ disabled, accounts, destinations, lastBooks, timezone, compact }: {
   disabled?: boolean; accounts: { id: string; name: string }[]; destinations: Destination[]; /** "owner", or a hotel account. */ lastBooks: string | null; timezone: string;
+  /** Among a page's other actions (the nTZS account's page): an ordinary button, not the page's main one. */
+  compact?: boolean;
 }) {
   const t = useT();
   const router = useRouter();
@@ -153,7 +155,7 @@ export function WithdrawButton({ disabled, accounts, destinations, lastBooks, ti
       } catch {
         // The answer never reached this screen: nobody here knows whether it was sent.
         router.refresh();
-        setStep({ at: "stopped", message: t("The answer did not reach this screen. Do not send it again — look at the list first: it shows what happened.") });
+        setStep({ at: "stopped", message: t("The answer did not reach this screen. Do not send it again — look at the withdrawals on this page first: they show what happened.") });
       }
     });
   }
@@ -162,7 +164,9 @@ export function WithdrawButton({ disabled, accounts, destinations, lastBooks, ti
 
   return (
     <>
-      <Button onClick={begin} disabled={disabled} className="h-11 px-5 text-sm font-semibold"><BanknoteArrowUp />{t("Withdraw funds")}</Button>
+      {compact
+        ? <Button onClick={begin} disabled={disabled} variant="outline"><BanknoteArrowUp />{t("Withdraw funds")}</Button>
+        : <Button onClick={begin} disabled={disabled} className="h-11 px-5 text-sm font-semibold"><BanknoteArrowUp />{t("Withdraw funds")}</Button>}
       <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : close())}>
         <DialogContent className="sm:max-w-lg" showCloseButton={!pending}>
           {step.at === "form" && (
@@ -310,7 +314,7 @@ export function WithdrawButton({ disabled, accounts, destinations, lastBooks, ti
                     <Line label={t("Amount")} value={formatTZS(v.amount)} strong />
                     <Line label={t("To")} value={<>{v.recipientName && <span className="block">{v.recipientName}</span>}<span>{v.destination}</span></>} />
                   </dl>
-                  {v.status !== "COMPLETED" && v.status !== "REJECTED" && v.status !== "CANCELLED" && <p className="text-sm text-muted-foreground">{t("This page follows it by itself — its state changes in the list when nTZS reports.")}</p>}
+                  {v.status !== "COMPLETED" && v.status !== "REJECTED" && v.status !== "CANCELLED" && <p className="text-sm text-muted-foreground">{t("You can close this — the page follows it by itself and shows its state when nTZS reports.")}</p>}
                   <Button type="button" className="h-11 w-full" onClick={() => setOpen(false)}>{t("Close")}</Button>
                 </div>
               </>
@@ -325,7 +329,7 @@ export function WithdrawButton({ disabled, accounts, destinations, lastBooks, ti
               </DialogHeader>
               <div className="space-y-4">
                 <p role="alert" className="rounded-2xl border border-amber-500/40 bg-amber-500/[0.06] px-3 py-2 text-sm">{step.message}</p>
-                <Button type="button" className="h-11 w-full" onClick={() => setOpen(false)}>{t("Close and look at the list")}</Button>
+                <Button type="button" className="h-11 w-full" onClick={() => setOpen(false)}>{t("Close and look at the withdrawals")}</Button>
               </div>
             </>
           )}

@@ -66,7 +66,7 @@ export async function confirmWithdrawalAction(input: z.input<typeof Id>): Promis
       if (e instanceof AppError) throw e;
       // Something broke part-way: it may already be with nTZS, so "nothing was saved — try again" would be untrue here.
       console.error("[withdrawals] confirm failed", e);
-      throw new AppError(msg("Something went wrong while this was being sent. Do not send it again — look at the list first: it shows what happened."), "CONFLICT");
+      throw new AppError(msg("Something went wrong while this was being sent. Do not send it again — look at the withdrawals on this page first: they show what happened."), "CONFLICT");
     } finally {
       refresh();
     }

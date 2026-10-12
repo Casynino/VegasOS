@@ -5,7 +5,7 @@ import { POST as ntzsWebhook } from "@/app/api/webhooks/ntzs/route";
 import { accountBalances } from "@/server/services/finance";
 import {
   acknowledgeWithdrawal, applyProviderState, cancelWithdrawalPrice, checkNtzsBalance, checkWithdrawal, confirmWithdrawal, handleWithdrawalWebhook, priceWithdrawal,
-  settleWithdrawalByHand, sweepWithdrawals, withdrawalDetail, withdrawalsOverview, withdrawalView, type PriceInput, type WithdrawalActor,
+  settleWithdrawalByHand, sweepWithdrawals, withdrawalDetail, withdrawalsOverview, withdrawalView, withdrawFromAccount, type PriceInput, type WithdrawalActor,
 } from "@/server/services/withdrawals";
 import { WITHDRAWAL_NOTES as N } from "@/lib/withdrawals";
 import { addDays, businessDateOf } from "@/lib/time/business-date";
@@ -163,6 +163,8 @@ describe("who may withdraw", () => {
       expect(await code(withdrawalView(id, a)), email).toBe("FORBIDDEN");
       expect(await code(withdrawalDetail(id, a)), email).toBe("FORBIDDEN");
       expect(await code(withdrawalsOverview(a, { from: today, to: today })), email).toBe("FORBIDDEN");
+      // The nTZS account's page is open to managers — what it holds about withdrawals is not.
+      expect(await code(withdrawFromAccount(a)), email).toBe("FORBIDDEN");
     }
     // Nothing more reached nTZS than the Boss's own one price and one send.
     expect(quoteCalls).toBe(1);
@@ -698,6 +700,98 @@ describe("the balance and the page", () => {
     expect(o.inFlight).toEqual({ count: 1, total: 100_000 });
     // The balance question is not a withdrawal: it is not in the history.
     expect(o.rows).toHaveLength(1);
+  });
+
+  it("the nTZS account's own page: the same form as the Withdraw funds page, what is on its way, and how the last day's withdrawals ended", async () => {
+    const a = await boss();
+    const today = businessDateOf(new Date());
+    const empty = await withdrawFromAccount(a, at(0));
+    expect(empty).toMatchObject({ enabled: true, live: false, setupProblem: null, unsettled: null, destinations: [], lastBooks: null, latest: [], following: false });
+    expect(empty.accounts.length).toBeGreaterThan(0);
+    expect(empty.accounts.map((x) => x.id)).not.toContain((await db.moneyAccount.findUniqueOrThrow({ where: { code: "NTZS" } })).id);
+
+    const first = await send(100_000, {}, at(0));
+    const failed = await send(70_000, {}, at(MIN));
+    finish("wd_2", { status: "reverted", payoutStatus: "reverted", payoutError: "Subscriber not registered" });
+    await handleWithdrawalWebhook(hookOf(byId.wd_2));
+    // A price nobody confirmed is not a withdrawal: it is not shown.
+    await priceWithdrawal(toPhone(55_000), a, at(2 * MIN));
+    const page = await withdrawFromAccount(a, at(3 * MIN));
+    // What is on its way comes first; then how the others ended.
+    expect(page.latest.map((w) => [w.id, w.status, w.amount])).toEqual([[first.id, "PROCESSING", 100_000], [failed.id, "FAILED", 70_000]]);
+    expect(page.following).toBe(true);
+    expect(page.lastBooks).toBe("owner");
+    expect(page.destinations).toHaveLength(1);
+    // The whole number never leaves the server.
+    expect(JSON.stringify(page)).not.toContain("712345678");
+    // The form is the very one the Withdraw funds page has.
+    const o = await withdrawalsOverview(a, { from: today, to: today }, at(3 * MIN));
+    for (const k of ["enabled", "live", "setupProblem", "unsettled", "destinations", "accounts", "lastBooks"] as const) expect(page[k], k).toEqual(o[k]);
+
+    // A day on, the one that failed has left the page; the one still on its way stays, however old.
+    const dayOn = await withdrawFromAccount(a, at(25 * 60 * MIN));
+    expect(dayOn.latest.map((w) => w.id)).toEqual([first.id]);
+    expect(dayOn.following).toBe(true);
+
+    // One nobody can confirm closes the form and is said by itself — not repeated among the latest.
+    const p = await priceWithdrawal(toPhone(250_000), a, at(4 * MIN));
+    nextSend = "taken-no-answer";
+    await confirmWithdrawal(p.view.id, a, at(4 * MIN));
+    const stuck = await withdrawFromAccount(a, at(5 * MIN));
+    expect(stuck.unsettled).toMatchObject({ id: p.view.id });
+    expect(stuck.latest.map((w) => w.id)).toEqual([first.id, failed.id]);
+    expect(stuck.following).toBe(true);
+    expect(sends).toHaveLength(3);
+  });
+
+  it("the nTZS account's page: one that waited more than a day and then failed is still said — the day counts from when it ended", async () => {
+    const a = await boss();
+    const HOUR = 60 * MIN;
+    const slow = await send(900_000, {}, at(0));
+    expect((await withdrawFromAccount(a, at(29 * HOUR))).latest.map((w) => [w.id, w.status])).toEqual([[slow.id, "PROCESSING"]]);
+    // nTZS turns it back 30 hours after it was asked for.
+    finish("wd_1", { status: "reverted", payoutStatus: "reverted", payoutError: "Recipient wallet rejected the payout" });
+    await handleWithdrawalWebhook(hookOf(byId.wd_1), at(30 * HOUR));
+    const after = await withdrawFromAccount(a, at(31 * HOUR));
+    expect(after.latest.map((w) => [w.id, w.status])).toEqual([[slow.id, "FAILED"]]);
+    expect(after.following).toBe(false);
+    // …and for a day from then; after that the history on the Withdraw funds page keeps it.
+    expect((await withdrawFromAccount(a, at(53 * HOUR))).latest).toHaveLength(1);
+    expect((await withdrawFromAccount(a, at(55 * HOUR))).latest).toEqual([]);
+  });
+
+  it("the nTZS account's page: an older withdrawal still on its way is never pushed out by newer ones that ended", async () => {
+    const a = await boss();
+    const waiting = await send(500_000, {}, at(0));
+    for (let i = 1; i <= 5; i++) {
+      await send(20_000 + i * 1_000, {}, at(i * 20_000));
+      finish(`wd_${i + 1}`, { status: "paid", payoutStatus: "completed", payoutReference: `MP${i}` });
+      await handleWithdrawalWebhook(hookOf(byId[`wd_${i + 1}`]), at(i * 20_000 + 5_000));
+    }
+    const page = await withdrawFromAccount(a, at(10 * MIN));
+    expect(page.following).toBe(true);
+    expect(page.latest).toHaveLength(5);
+    expect(page.latest[0]).toMatchObject({ id: waiting.id, status: "PROCESSING" });
+    // Then the latest to end, first.
+    expect(page.latest.slice(1).map((w) => w.amount)).toEqual([25_000, 24_000, 23_000, 22_000]);
+  });
+
+  it("the nTZS account's page stops following once nothing is on its way, and keeps to a handful", async () => {
+    const a = await boss();
+    // Six: as many as one person may send in ten minutes.
+    for (let i = 0; i < 6; i++) {
+      await send(20_000 + i * 1_000, {}, at(i * 20_000));
+      finish(`wd_${i + 1}`, { status: "paid", payoutStatus: "completed", payoutReference: `MP${i}` });
+      await handleWithdrawalWebhook(hookOf(byId[`wd_${i + 1}`]));
+    }
+    const page = await withdrawFromAccount(a, at(10 * MIN));
+    expect(page.following).toBe(false);
+    expect(page.latest).toHaveLength(5);
+    expect(page.latest.every((w) => w.status === "COMPLETED")).toBe(true);
+    expect(page.latest.map((w) => w.amount)).toEqual([25_000, 24_000, 23_000, 22_000, 21_000]);
+    // Without the hotel's key the page says so and the form stays shut.
+    delete process.env.NTZS_API_KEY;
+    expect((await withdrawFromAccount(a, at(10 * MIN))).enabled).toBe(false);
   });
 
   it("the history: totals by day, filters, search — and never a whole phone or account number", async () => {
