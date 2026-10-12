@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useT } from "@/i18n/client";
 import type { T } from "@/i18n/translate";
 import { ROOM_STATUS_META } from "@/lib/room-status";
@@ -75,12 +75,29 @@ function Totals({ items }: { items: { label: string; value: ReactNode; sub?: str
   );
 }
 
+/** The sheet's width on paper, and how far the screen may enlarge it. */
+const PAPER = { portrait: 820, landscape: 1120, most: 1.9 };
+
+/**
+ * On the screen the sheet fills the page: the same sheet, enlarged to the width there is (owner, 2026-10-12). Print
+ * and the PDF put it back to its paper size, so what comes out is the A4 sheet as before.
+ */
 function Sheet({ landscape, children }: { landscape?: boolean; children: ReactNode }) {
+  const wrap = useRef<HTMLDivElement>(null);
+  const [zoom, setZoom] = useState<number | null>(null);
+  useEffect(() => {
+    const el = wrap.current;
+    if (!el) return;
+    const paper = landscape ? PAPER.landscape : PAPER.portrait;
+    const ro = new ResizeObserver(() => setZoom(Math.min(PAPER.most, Math.max(1, el.clientWidth / paper))));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [landscape]);
   return (
-    <div className="list-scroll overflow-x-auto print:overflow-visible">
+    <div ref={wrap} className="list-scroll overflow-x-auto print:overflow-visible">
       <article id={LIST_PAPER_ID} data-landscape={landscape ? "true" : undefined}
-        className={`mx-auto w-full rounded-3xl bg-white p-5 text-[11.5px] leading-snug shadow-sm sm:p-8 print:max-w-none print:rounded-none print:p-0 print:shadow-none ${landscape ? "min-w-[1000px] max-w-[1120px]" : "min-w-[720px] max-w-[820px]"} print:min-w-0`}
-        style={{ color: INK }}>
+        className={`mx-auto w-full rounded-3xl bg-white p-5 text-[11.5px] leading-snug shadow-sm [zoom:var(--list-zoom,1)] sm:p-8 print:max-w-none print:rounded-none print:p-0 print:shadow-none print:[zoom:1] ${landscape ? "min-w-[1000px] max-w-[1120px]" : "min-w-[720px] max-w-[820px]"} print:min-w-0`}
+        style={{ color: INK, "--list-zoom": zoom ?? undefined } as CSSProperties}>
         {children}
       </article>
     </div>

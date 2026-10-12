@@ -11,13 +11,15 @@ const A4 = { short: 595, long: 842 };
 
 export async function saveListPdf(el: HTMLElement, o: { landscape: boolean; footer: string; pageOf: (page: number, pages: number) => string; fileName: string }) {
   const scroll = el.closest<HTMLElement>(".list-scroll");
-  const was = { width: el.style.width, min: el.style.minWidth, max: el.style.maxWidth, pad: el.style.padding, scroll: scroll?.style.overflow ?? "" };
+  const was = { width: el.style.width, min: el.style.minWidth, max: el.style.maxWidth, pad: el.style.padding, zoom: el.style.zoom, scroll: scroll?.style.overflow ?? "" };
   try {
     // Lay the sheet out at paper width whatever the screen is.
     el.style.width = o.landscape ? "1080px" : "760px";
     el.style.minWidth = "0";
     el.style.maxWidth = "none";
     el.style.padding = "0";
+    // The screen shows the sheet enlarged; the PDF is the sheet at its paper size.
+    el.style.zoom = "1";
     if (scroll) scroll.style.overflow = "visible";
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
 
@@ -94,6 +96,7 @@ export async function saveListPdf(el: HTMLElement, o: { landscape: boolean; foot
     el.style.minWidth = was.min;
     el.style.maxWidth = was.max;
     el.style.padding = was.pad;
+    el.style.zoom = was.zoom;
     if (scroll) scroll.style.overflow = was.scroll;
   }
 }

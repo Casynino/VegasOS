@@ -54,7 +54,7 @@ export default async function DailyListPage({ params, searchParams }: {
   };
 
   return (
-    <div className="mx-auto w-full max-w-[1180px]">
+    <div className="mx-auto w-full max-w-[1560px]">
       <div className="print:hidden">
         <PageHeader eyebrow={t("Reception")} title={t("Daily guest & room lists")}
           description={t("Print the housekeeping checklist and the in-house guest & breakfast list. Both are read from the rooms and bookings as they are now.")} />
