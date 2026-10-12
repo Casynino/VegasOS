@@ -90,6 +90,9 @@ export interface RoomGridPerms {
   release?: boolean;
 }
 
+/** The most this person may take off a night on a NEW booking made from a room's window (0 = may not) — the same limit as the full booking form. */
+const bookingDiscountMax = (perms: RoomGridPerms) => perms.decide ? perms.decide.discountMax : perms.discount ? (perms.discountMax === undefined ? DESK_DISCOUNT_MAX : perms.discountMax) : 0;
+
 /** Quick reasons (saved as the room's note in English; shown in the reader's language — a note someone typed shows as written). */
 const REPAIRS: string[] = [msg("AC / fan"), msg("Water / plumbing"), msg("Electricity / lights"), msg("Bathroom"), msg("TV"), msg("Bed / furniture"), msg("Painting / repairs"), msg("Door / lock")];
 
@@ -439,11 +442,11 @@ function RoomPanel({ room, perms, overdue, onDone, today, methods, menu, recent,
         {stay && panel === "transport" && <TransportInline reservationId={stay.reservationId} today={today} onDone={() => setPanel(null)} />}
         {panel === "walkin" && (
           <QuickBook room={{ id: room.id, number: room.number, typeId: room.roomType.id, typeName: room.roomType.name }} mode="walkIn" today={today}
-            methods={methods} canPay={!!perms.pay} onDone={() => { setPanel(null); onDone(); }} />
+            methods={methods} canPay={!!perms.pay} discountMax={bookingDiscountMax(perms)} onDone={() => { setPanel(null); onDone(); }} />
         )}
         {panel === "reserve" && (
           <QuickBook room={{ id: room.id, number: room.number, typeId: room.roomType.id, typeName: room.roomType.name }} mode="reserve" today={today}
-            from={stay ? stay.departureDate : null} methods={methods} canPay={!!perms.pay} onDone={() => setPanel(null)} />
+            from={stay ? stay.departureDate : null} methods={methods} canPay={!!perms.pay} discountMax={bookingDiscountMax(perms)} onDone={() => setPanel(null)} />
         )}
 
         {room.upcoming.length > 0 && (
@@ -879,7 +882,7 @@ function MeetingRoomPanel({ room, perms, today, methods, menu, recent, qr, onPag
         </div>
         {panel === "book" && (
           <QuickBook room={{ id: room.id, number: room.number, typeId: room.roomType.id, typeName: room.roomType.name }} mode="meeting" today={today}
-            methods={methods} canPay={!!perms.pay} onDone={() => setPanel(null)} />
+            methods={methods} canPay={!!perms.pay} discountMax={bookingDiscountMax(perms)} onDone={() => setPanel(null)} />
         )}
         {stay && panel === "extras" && (
           <div className="rounded-2xl border border-border/70 bg-muted/30 p-4">

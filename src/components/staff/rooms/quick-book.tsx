@@ -4,16 +4,19 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Banknote, CalendarPlus, Check, CheckCircle2, DoorOpen, Loader2, Minus, Plus, Presentation, Smartphone, TriangleAlert, XCircle } from "lucide-react";
+import { BadgePercent, Banknote, CalendarPlus, Check, CheckCircle2, DoorOpen, Loader2, Minus, Plus, Presentation, Smartphone, TriangleAlert, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { validPhone } from "@/lib/guest-messages";
 import { formatTZS } from "@/lib/format";
+import { roomDiscountLimit } from "@/lib/discounts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { PayAccount } from "@/lib/pay-account";
 import { NetworkMarks } from "@/components/payments/networks";
 import { SendToPhone, useMobilePayAvailable } from "@/components/staff/mobile-pay";
 import { KnownCustomerNote, useKnownCustomer } from "@/components/staff/known-customer";
+import { CustomerFinder } from "@/components/staff/customer-finder";
+import { DiscountChips } from "@/components/staff/reception/discount-editor";
 import { SameGuestAsk } from "@/components/staff/same-guest";
 import { CheckInLast } from "@/components/staff/check-in-last";
 import { checkAvailabilityAction, createReservationAction, type AvailabilityResult } from "@/app/staff/(app)/reservations/actions";
@@ -32,11 +35,14 @@ const MEETING_TIMES = [[msg("Morning"), "08:00", "12:00"], [msg("Afternoon"), "1
  * Book THIS room right inside its card — no other page: a walk-in checked in now,
  * a reservation for later dates, or (meeting room) a meeting by start–end. The
  * room and price are checked live; saving uses the same booking engine as the
- * full booking form (availability, price and payment all worked out on the server).
+ * full booking form (availability, price, discount limit and payment all worked out on the server).
  */
-export function QuickBook({ room, mode, today, from, methods, canPay, onDone }: {
+export function QuickBook({ room, mode, today, from, methods, canPay, discountMax = 0, onDone }: {
   room: { id: string; number: string; typeId: string; typeName: string };
-  mode: Mode; today: string; from?: string | null; methods: PayAccount[]; canPay: boolean; onDone: () => void;
+  mode: Mode; today: string; from?: string | null; methods: PayAccount[]; canPay: boolean;
+  /** The most this person may take off a night (0 = may not give a discount); a room with its own limit uses that. */
+  discountMax?: number | null;
+  onDone: () => void;
 }) {
   const t = useT();
   const router = useRouter();
@@ -67,6 +73,9 @@ export function QuickBook({ room, mode, today, from, methods, canPay, onDone }: 
   // The phone is the customer's key: a number already on file brings back who they are (their name fills in) — no
   // retyping, no second profile. "Someone else" keeps the typed details as a new customer.
   const [someoneElse, setSomeoneElse] = useState(false);
+  // Found by name in the search: that very customer, for as long as their name and number are left as picked.
+  const [chosen, setChosen] = useState<{ id: string; name: string; phone: string } | null>(null);
+  const [discount, setDiscount] = useState(0);
   const lookup = useKnownCustomer(someoneElse ? "" : guest.phone, (c) => setGuest((g) => ({ ...g, fullName: g.fullName.trim() || (c.room && mode !== "meeting") ? g.fullName : c.name })));
   const known = someoneElse ? null : lookup.customer;
   const phoneDigits = guest.phone.replace(/\D/g, "");
@@ -90,8 +99,17 @@ export function QuickBook({ room, mode, today, from, methods, canPay, onDone }: 
   const type = avail?.types.find((x) => x.id === room.typeId);
   const free = type?.rooms.find((r) => r.id === room.id);
   const busy = type?.busy.find((r) => r.id === room.id);
-  const total = free ? free.grossTotal != null ? free.grossTotal - (free.promoTotal ?? 0) : type!.totalNet : 0;
+  const full = free ? free.grossTotal != null ? free.grossTotal - (free.promoTotal ?? 0) : type!.totalNet : 0;
+  // A discount per night, within this person's limit — or the room's own (the server checks it again).
+  const units = Math.max(1, avail?.stay.units ?? 1);
+  const promoPerNight = free && type ? Math.round((free.grossTotal != null ? free.promoTotal ?? 0 : type.promoTotal) / units) : 0;
+  const rate = type ? Math.max(0, type.baseRate - promoPerNight) : 0;
+  const limit = roomDiscountLimit(discountMax, type?.discountMax);
+  const mayDiscount = !!free && !!avail && (!avail.stay.isDayUse || !!avail.meeting) && (limit == null || limit > 0) && rate > 0;
+  const off = mayDiscount ? Math.min(discount, rate, limit ?? rate) : 0;
+  const total = Math.max(0, full - off * units);
   const maxAdults = type?.maxAdults ?? 2;
+  const picked$ = !someoneElse && chosen && guest.fullName.trim() === chosen.name && (!chosen.phone || guest.phone.trim() === chosen.phone) ? chosen : null;
 
   function save(sameGuest = false) {
     if (!free) return toast.error(t("Room {room} is not free for that time.", { room: room.number }));
@@ -109,8 +127,8 @@ export function QuickBook({ room, mode, today, from, methods, canPay, onDone }: 
         checkInNow: mode === "walkIn",
         stay,
         sameGuest,
-        guest: { id: known?.id, createNew: someoneElse || undefined, fullName: guest.fullName.trim(), phone: guest.phone.trim() },
-        rooms: [{ roomTypeId: room.typeId, roomId: room.id, adults, children: mode === "meeting" ? 0 : children }],
+        guest: { id: picked$?.id ?? known?.id, createNew: someoneElse || undefined, fullName: guest.fullName.trim(), phone: guest.phone.trim() },
+        rooms: [{ roomTypeId: room.typeId, roomId: room.id, adults, children: mode === "meeting" ? 0 : children, discountPerNight: off }],
         companyName: mode === "meeting" ? company.trim() || undefined : undefined,
         specialRequests: needs.trim() || undefined,
         payment: atDesk ? { amount: total, accountId: payWay, reference: ref.trim() || undefined } : null,
@@ -141,7 +159,7 @@ export function QuickBook({ room, mode, today, from, methods, canPay, onDone }: 
     });
   }
   // "No — it is someone else": their own name, saved as their own customer with this number.
-  const notTheSame = () => { setSameAsk(null); setSomeoneElse(true); setGuest((g) => ({ ...g, fullName: "" })); requestAnimationFrame(() => nameRef.current?.focus()); };
+  const notTheSame = () => { setSameAsk(null); setSomeoneElse(true); setChosen(null); setGuest((g) => ({ ...g, fullName: "" })); requestAnimationFrame(() => nameRef.current?.focus()); };
 
   // A walk-in paying now (on their phone, or recorded at the desk): that press is the payment — check-in follows.
   const payFirst = canPay && !!payWay && total > 0;
@@ -207,7 +225,7 @@ export function QuickBook({ room, mode, today, from, methods, canPay, onDone }: 
       <div className={cn("flex flex-wrap items-center gap-2 rounded-xl px-3 py-2 text-xs", checking || (!avail && !availError) ? "bg-muted" : free ? "bg-emerald-500/10" : "bg-rose-500/10")}>
         {checking || (!avail && !availError) ? <><Loader2 className="size-3.5 animate-spin" />{t("Checking room {room}…", { room: room.number })}</>
           : availError ? <><XCircle className="size-3.5 text-rose-600" />{availError}</>
-            : free ? <><CheckCircle2 className="size-3.5 text-emerald-600" /><strong>{t("Room {room} is free", { room: room.number })}</strong><span className="ml-auto font-semibold tabular-nums">{formatTZS(total)}</span>
+            : free ? <><CheckCircle2 className="size-3.5 text-emerald-600" /><strong>{t("Room {room} is free", { room: room.number })}</strong><span className="ml-auto font-semibold tabular-nums">{off > 0 && <s className="mr-1.5 font-normal text-muted-foreground">{formatTZS(full)}</s>}{formatTZS(total)}</span>
               <span className="basis-full text-muted-foreground">{mode === "meeting" ? t("per booking") : mode === "walkIn" ? t.plural(nights, "{n} night", "{n} nights") : `${t.date(dates.arrival)} → ${t.date(dates.departure)} · ${t.plural(avail!.stay.nights, "{n} night", "{n} nights")}`}{free.status !== "AVAILABLE" && free.status !== "READY" ? ` · ${t("cleaned before the guest arrives")}` : ""}</span></>
               : <><XCircle className="size-3.5 text-rose-600" /><span>{busy?.reason === "OUT_OF_ORDER" ? t("Room {room} is under maintenance.", { room: room.number })
                 : busy?.reason === "NOT_CLEAN" ? t("Room {room} is not clean yet — mark it clean first.", { room: room.number })
@@ -218,13 +236,23 @@ export function QuickBook({ room, mode, today, from, methods, canPay, onDone }: 
         )}
       </div>
 
-      {/* Who — the phone first: a number already on file brings the customer back */}
+      {/* Discount — the same buttons as the full booking form, with this room's limit */}
+      {mayDiscount && (
+        <div className="flex flex-col gap-1.5 rounded-xl border border-border/70 bg-card px-3 py-2.5 sm:flex-row sm:items-start sm:gap-x-3">
+          <span className="inline-flex items-center gap-1 pt-0.5 text-xs font-medium"><BadgePercent className="size-3.5 text-emerald-600" />{t("Discount")}</span>
+          <div className="min-w-0 flex-1"><DiscountChips value={off} rate={rate} max={limit} onChange={setDiscount} /></div>
+        </div>
+      )}
+
+      {/* Who — a customer we already have is found by name or number; a number already on file brings them back too */}
+      <CustomerFinder inline placeholder={msg("Search by name or phone")}
+        onPick={(c) => { setChosen(c); setSomeoneElse(false); setSameAsk(null); setGuest((g) => ({ fullName: c.name, phone: c.phone || g.phone })); }} />
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <Input value={guest.phone} onChange={(e) => { setGuest({ ...guest, phone: e.target.value }); setSomeoneElse(false); }} placeholder={t("Phone (WhatsApp) *")} type="tel" inputMode="tel" aria-label={t("Phone")} required className="h-10" />
         <Input ref={nameRef} value={guest.fullName} onChange={(e) => { setGuest({ ...guest, fullName: e.target.value }); setSameAsk(null); }} placeholder={mode === "meeting" ? t("Person booking *") : t("Guest's full name *")} aria-label={t("Name")} className="h-10" />
         {!someoneElse && (
           <KnownCustomerNote phone={guest.phone} lookup={lookup} className="min-w-0 sm:col-span-2"
-            action={known && <button type="button" onClick={() => setSomeoneElse(true)} className="shrink-0 rounded-lg px-2 py-1 text-[11px] font-medium text-muted-foreground ring-1 ring-border hover:bg-muted hover:text-foreground">{t("Someone else")}</button>} />
+            action={known && <button type="button" onClick={() => { setSomeoneElse(true); setChosen(null); }} className="shrink-0 rounded-lg px-2 py-1 text-[11px] font-medium text-muted-foreground ring-1 ring-border hover:bg-muted hover:text-foreground">{t("Someone else")}</button>} />
         )}
         {someoneElse && phoneDigits.length >= 9 && (
           <p className="flex items-center justify-between gap-2 rounded-xl bg-muted/60 px-3 py-1.5 text-[11px] text-muted-foreground sm:col-span-2">
@@ -297,7 +325,7 @@ export function QuickBook({ room, mode, today, from, methods, canPay, onDone }: 
             : mode === "meeting" ? t("Book the meeting") : t("Reserve the room")}
       </Button>
       <p className="text-center text-[11px] text-muted-foreground">
-        {t.rich("Need more (several rooms, discount, company invoice, extras)? <link>Full booking form</link>", {
+        {t.rich("Need more (several rooms, company invoice, extras)? <link>Full booking form</link>", {
           link: (c) => <Link href={`/staff/reservations/new?${new URLSearchParams({ room: room.id, ...(mode === "walkIn" ? { mode: "walkin" } : mode === "meeting" ? { mode: "meeting" } : { from: dates.arrival }) })}`} className="underline underline-offset-2">{c}</Link>,
         })}
       </p>

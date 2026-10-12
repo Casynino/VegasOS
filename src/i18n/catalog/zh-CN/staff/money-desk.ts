@@ -415,6 +415,7 @@ const catalog: Catalog = {
   "Type their mobile money number. A prompt opens on their phone, they enter their PIN, and the payment is recorded by itself.": "输入客人的手机钱包号码。客人手机上会弹出付款提示，输入 PIN 码后，款项自动入账。",
   "Their mobile money number, e.g. 0712 345 678": "客人的手机钱包号码，例如 0712 345 678",
   "Send prompt to their phone · {amount}": "发送付款提示到客人手机 · {amount}",
+  "Send prompt · {amount}": "发送付款提示 · {amount}",
   "Pay on the customer's phone": "客人用手机付款",
   "They get a prompt and enter their PIN — recorded by itself.": "客人收到提示并输入 PIN 码——自动入账。",
   "Payment recorded — now check the guest in.": "款项已入账——现在为客人办理入住。",

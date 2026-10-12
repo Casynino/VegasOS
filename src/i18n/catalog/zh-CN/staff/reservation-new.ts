@@ -236,6 +236,8 @@ const catalog: Catalog = {
   "Confirm without payment (manager)": "无需付款即确认（经理）",
   "A payment now (even a deposit) or a company invoice confirms the booking straight away.": "现在付款（即使只是定金）或开具公司发票，预订即立即确认。",
   "Their reference (e.g. Booking.com no.)": "对方参考号（例如 Booking.com 订单号）",
+  "Their reference": "对方参考号",
+  "e.g. Booking.com no.": "例如 Booking.com 订单号",
   "e.g. projector, U-shape seating, tea break at 10:30": "例如：投影仪、U 形座位、10:30 茶歇",
   "e.g. airport pickup, extra pillow": "例如：接机、加一个枕头",
   "Only staff see this": "仅员工可见",

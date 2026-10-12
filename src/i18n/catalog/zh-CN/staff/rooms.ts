@@ -241,6 +241,8 @@ const catalog: Catalog = {
   "Book the meeting": "预订会议",
   "Reserve the room": "预订房间",
   "Need more (several rooms, discount, company invoice, extras)? <link>Full booking form</link>": "需要更多（多间房、折扣、公司发票、附加项目）？<link>完整预订表</link>",
+  "Need more (several rooms, company invoice, extras)? <link>Full booking form</link>": "需要更多（多间房、公司发票、附加项目）？<link>完整预订表</link>",
+  "Search by name or phone": "按姓名或电话搜索",
 
   // ── The room page ──
   "Payment pending · {amount}": "待付款 · {amount}",

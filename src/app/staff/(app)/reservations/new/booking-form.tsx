@@ -802,9 +802,8 @@ export function BookingForm(props: {
                 )}
                 {extrasTotal > 0 && <p className="flex justify-between px-1 text-sm"><span className="text-muted-foreground">{t("Food, drinks & extras")}</span><strong className="tabular-nums">{formatTZS(extrasTotal)}</strong></p>}
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {mode !== "walkIn" && !checkInNow && (
-                  <div className="space-y-1.5 sm:col-span-2">
+              {mode !== "walkIn" && !checkInNow && (
+                  <div className="mb-5 space-y-1.5">
                     <Label className="text-xs">{t("If the guest does not pay now")}</Label>
                     <div className="flex flex-wrap gap-1.5">
                       {([
@@ -818,10 +817,18 @@ export function BookingForm(props: {
                     </div>
                     <p className="text-[11px] text-muted-foreground">{t("A payment now (even a deposit) or a company invoice confirms the booking straight away.")}</p>
                   </div>
-                )}
-                <div className="space-y-1.5"><Label htmlFor="extref" className="text-xs">{t("Their reference (e.g. Booking.com no.)")}</Label><Input id="extref" value={externalRef} onChange={(e) => setExternalRef(e.target.value)} /></div>
-                <div className="space-y-1.5"><Label htmlFor="requests" className="text-xs">{meetingMode ? t("Special requirements") : t("Guest requests")}</Label><Textarea id="requests" rows={2} value={requests} onChange={(e) => setRequests(e.target.value)} placeholder={meetingMode ? t("e.g. projector, U-shape seating, tea break at 10:30") : t("e.g. airport pickup, extra pillow")} /></div>
-                <div className="space-y-1.5"><Label htmlFor="notes" className="text-xs">{t("Staff notes")}</Label><Textarea id="notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t("Only staff see this")} /></div>
+              )}
+              {/* Notes: what the guest asked for and what staff should know side by side, then the other side's booking number */}
+              <div className="@container space-y-3 border-t border-dashed border-border pt-4">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("Notes")}</p>
+                <div className="grid gap-3 @[30rem]:grid-cols-2">
+                  <label className="block space-y-1.5"><span className={LBL}>{meetingMode ? t("Special requirements") : t("Guest requests")}</span>
+                    <Textarea id="requests" rows={3} value={requests} onChange={(e) => setRequests(e.target.value)} placeholder={meetingMode ? t("e.g. projector, U-shape seating, tea break at 10:30") : t("e.g. airport pickup, extra pillow")} className="min-h-20 resize-none rounded-xl bg-card" /></label>
+                  <label className="block space-y-1.5"><span className={LBL}>{t("Staff notes")}</span>
+                    <Textarea id="notes" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t("Only staff see this")} className="min-h-20 resize-none rounded-xl bg-card" /></label>
+                  <label className="block space-y-1.5 @[30rem]:col-span-2"><span className={LBL}>{t("Their reference")} <span className="font-normal normal-case tracking-normal">{t("(optional)")}</span></span>
+                    <Input id="extref" value={externalRef} onChange={(e) => setExternalRef(e.target.value)} placeholder={t("e.g. Booking.com no.")} className="h-10 rounded-xl bg-card" /></label>
+                </div>
               </div>
             </Step>
           </>
@@ -1017,11 +1024,11 @@ export function BookingForm(props: {
               <SameGuestAsk message={sameAsk} pending={saving} onSame={() => submit(true)}
                 onOther={() => { setSameAsk(null); setGuest({ ...guest, id: null, createNew: true, fullName: "" }); document.getElementById("g-name")?.focus(); }} />
             )}
-            <Button className={cn("h-12 w-full rounded-2xl text-sm font-semibold", sameAsk && "hidden")} onClick={() => submit()} disabled={saving || lines.length === 0 || payNow > guestPart || (overCredit && !props.canApproveCredit)}>
+            <Button className={cn("h-auto min-h-11 w-full rounded-xl px-3 py-2 text-sm font-semibold leading-snug whitespace-normal", sameAsk && "hidden")} onClick={() => submit()} disabled={saving || lines.length === 0 || payNow > guestPart || (overCredit && !props.canApproveCredit)}>
               {saving ? <Loader2 className="animate-spin" /> : checkInNow && payNow > 0 ? (payMethod === PROMPT ? <Smartphone /> : <Banknote />) : checkInNow ? <LogIn /> : <CalendarCheck />}
               {/* Guest at the desk: the payment is its own press — check-in comes after it (never both by one button). */}
               {payNow > 0 && payMethod === PROMPT
-                ? (checkInNow ? t("Send prompt to their phone · {amount}", { amount: formatTZS(payNow) }) : t("Save & request {amount}", { amount: formatTZS(payNow) }))
+                ? (checkInNow ? t("Send prompt · {amount}", { amount: formatTZS(payNow) }) : t("Save & request {amount}", { amount: formatTZS(payNow) }))
                 : payNow > 0
                 ? (checkInNow ? t("Record payment · {amount}", { amount: formatTZS(payNow) }) : t("Receive {amount} & save", { amount: formatTZS(payNow) }))
                 : checkInNow ? (guestPart > 0 ? t("Check in now — pays at check-out") : t("Check in now")) : t("Save reservation")}
