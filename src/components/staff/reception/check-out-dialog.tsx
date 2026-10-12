@@ -9,6 +9,7 @@ import { CheckOutHere } from "@/components/staff/rooms/room-grid";
 import { ChargeComposer, type RecentItem } from "@/components/staff/reception/room-charges";
 import type { BillMenu } from "@/server/services/restaurant";
 import { cn } from "@/lib/utils";
+import { roomDiscountLimit } from "@/lib/discounts";
 import type { PayAccount } from "@/lib/pay-account";
 import type { RoomBoardRoom } from "@/server/services/rooms";
 import { useT } from "@/i18n/client";
@@ -56,7 +57,7 @@ export function CheckOutButton({ stay, roomNumber, nextGuest, methods, perms, me
           ))}
           {open && adding && <p className="text-center text-[11px] text-muted-foreground">{t("Add it to the bill (or close this) — then the final bill shows here to check out.")}</p>}
           {open && !adding && (
-            <CheckOutHere key={round} stay={stay} roomNumber={roomNumber} methods={methods} canPay={perms.pay} canCharge={perms.order} canDiscount={perms.discount} discountMax={perms.discountMax}
+            <CheckOutHere key={round} stay={stay} roomNumber={roomNumber} methods={methods} canPay={perms.pay} canCharge={perms.order} canDiscount={perms.discount} discountMax={roomDiscountLimit(perms.discountMax, stay.discountTypeMax)}
               nextGuest={nextGuest} bare onDone={() => { setOpen(false); router.refresh(); }} />
           )}
         </DialogContent>

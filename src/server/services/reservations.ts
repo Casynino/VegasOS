@@ -1,6 +1,6 @@
 import "server-only";
 import { ONLINE_RECORDER_ID } from "./online-recorder";
-import { discountLimit, discountTooBigMessage } from "@/lib/discounts";
+import { discountLimit, discountTooBigMessage, roomDiscountLimit } from "@/lib/discounts";
 import { shortTimeRate } from "@/lib/short-time";
 import { randomBytes } from "node:crypto";
 import { db, type Tx } from "../db";
@@ -145,11 +145,31 @@ function buildStay(req: StayRequest, settings: HotelSettings, now: Date): Stay {
 /** A booking's status inside a sentence: the English word as it always was ("checked out", "no show"); in another language, the status's own name. */
 const bookingStatusWord = (t: T, status: ReservationStatus) => (t.locale === DEFAULT_LOCALE ? status.toLowerCase().replace("_", " ") : t(RESERVATION_STATUS_META[status].label));
 
-/** A manual (negotiated) discount must be allowed for this staff member and within the hotel's limit. */
-export function assertManualDiscount(perNight: number, actor: Actor, settings: HotelSettings) {
-  const limit = discountLimit(actor.permissions, settings);
-  if (limit === 0) throw new AppError("You are not allowed to give discounts.", "FORBIDDEN");
+/**
+ * A manual (negotiated) discount must be allowed for this staff member and within the limit of the room it is given on:
+ * the room type's own limit when it has one (`typeMax`), the hotel's otherwise.
+ */
+export function assertManualDiscount(perNight: number, actor: Actor, settings: HotelSettings, typeMax?: number | null) {
+  const staff = discountLimit(actor.permissions, settings);
+  if (staff === 0) throw new AppError("You are not allowed to give discounts.", "FORBIDDEN");
+  const limit = roomDiscountLimit(staff, typeMax);
+  if (limit === 0) throw new AppError("No discount can be given on this room.", "FORBIDDEN");
   if (perNight > limit) throw new AppError(discountTooBigMessage(limit), "FORBIDDEN");
+}
+
+/**
+ * The same check for a room already booked — its own room type decides the limit. When the stay is moving to another
+ * room at the same time (`movingToRoomId`), the room it is going to decides.
+ */
+export async function assertRoomDiscount(reservationRoomId: string, perNight: number, actor: Actor, movingToRoomId?: string | null) {
+  if (perNight <= 0) return;
+  const [settings, rr, target] = await Promise.all([
+    db.hotelSettings.findUniqueOrThrow({ where: { id: 1 } }),
+    db.reservationRoom.findUnique({ where: { id: reservationRoomId }, select: { roomType: { select: { manualDiscountMax: true } } } }),
+    movingToRoomId ? db.room.findUnique({ where: { id: movingToRoomId }, select: { roomType: { select: { manualDiscountMax: true } } } }) : null,
+  ]);
+  if (!rr) throw new AppError("Booking room not found.", "NOT_FOUND");
+  assertManualDiscount(perNight, actor, settings, (target ?? rr).roomType.manualDiscountMax);
 }
 
 function translateDbError(e: unknown): never {
@@ -304,7 +324,7 @@ export async function createReservationTx(tx: Tx, input: CreateReservationInput,
     if (meeting) {
       // Meeting room: the room type's current price for the booking (snapshotted), less any allowed discount.
       const manual = Math.min(Math.max(0, Math.trunc(r.discountPerNight ?? 0)), t.baseRate);
-      if (manual > 0) assertManualDiscount(manual, actor, settings);
+      if (manual > 0) assertManualDiscount(manual, actor, settings, t.manualDiscountMax);
       return { request: r, room, type: t, rate: t.baseRate, manual, promotion: null, promoPerNight: 0, overridden: manual > 0, net: t.baseRate - manual };
     }
     if (stay.isDayUse) {
@@ -314,7 +334,7 @@ export async function createReservationTx(tx: Tx, input: CreateReservationInput,
     }
     // Price = base − the promotion that applies (worked out here, never taken from the browser) − manual discount.
     const manual = Math.max(0, Math.trunc(r.discountPerNight ?? 0));
-    if (manual > 0) assertManualDiscount(manual, actor, settings);
+    if (manual > 0) assertManualDiscount(manual, actor, settings, t.manualDiscountMax);
     const q = quoteFromPromos({ dates: stay.nightDates, base: t.baseRate, roomTypeId: t.id, roomId: room.id, channel, promos, rules, manual });
     return { request: r, room, type: t, rate: t.baseRate, manual, promotion: q.promotion, promoPerNight: q.promoPerNight, overridden: manual > 0, net: q.net };
   });
@@ -1500,7 +1520,7 @@ async function changeStayDatesTx(
 
 /** Authorised discount override on one room of a booking (audited). */
 export async function changeDiscount(reservationRoomId: string, discountPerNight: number, reasonIn: string, actor: Actor) {
-  if (discountPerNight > 0) assertManualDiscount(discountPerNight, actor, await db.hotelSettings.findUniqueOrThrow({ where: { id: 1 } }));
+  await assertRoomDiscount(reservationRoomId, discountPerNight, actor);
   const reason = reasonIn.trim() || "Discount given at the desk";
   return run(async (tx) => {
     const rr = await tx.reservationRoom.findUnique({ where: { id: reservationRoomId }, include: { room: true } });

@@ -124,7 +124,7 @@ export async function getStay(reservationId: string, today: BusinessDate, now = 
         source: { select: { name: true } },
         rooms: {
           where: { status: { in: ["CHECKED_IN", "CHECKED_OUT"] } },
-          include: { room: { select: { id: true, number: true, status: true } }, roomType: { select: { name: true } }, checkedInBy: { select: { fullName: true } } },
+          include: { room: { select: { id: true, number: true, status: true } }, roomType: { select: { name: true, manualDiscountMax: true } }, checkedInBy: { select: { fullName: true } } },
           orderBy: { startAt: "asc" },
         },
         charges: { where: { isVoided: false }, orderBy: { createdAt: "asc" }, include: { menuItem: { select: { image: { select: { id: true, url: true, isActive: true } } } }, restaurantOrder: CHARGE_ORDER } },

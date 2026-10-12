@@ -125,7 +125,7 @@ function findArrivals(arrival: { lte?: Date; gte?: Date; gt?: Date }, stillStayi
     include: {
       guest: { select: { id: true, fullName: true, phone: true, email: true, idType: true, idNumber: true, nationality: true, _count: { select: { reservations: true } } } },
       source: { select: { name: true } },
-      rooms: { where: { status: { in: WAITING } }, include: { room: { select: { id: true, number: true, status: true } }, roomType: { select: { id: true, name: true } } } },
+      rooms: { where: { status: { in: WAITING } }, include: { room: { select: { id: true, number: true, status: true } }, roomType: { select: { id: true, name: true, manualDiscountMax: true } } } },
       trips: { where: { status: { not: "CANCELLED" } }, select: { flightNumber: true, pickupAt: true } },
     },
     orderBy: [{ arrivalDate: "asc" }, { eta: "asc" }, { createdAt: "asc" }],
@@ -167,7 +167,7 @@ async function toArrivalCards(arrivals: Awaited<ReturnType<typeof findArrivals>>
         .sort((a, b) => Number(b.roomTypeId === rr.roomTypeId) - Number(a.roomTypeId === rr.roomTypeId) || a.number.localeCompare(b.number, undefined, { numeric: true }));
       return {
         id: rr.id, roomTypeName: rr.roomType.name, arrival, departure: fromDbDate(rr.departureDate),
-        nights: rr.nights, adults: rr.adults, children: rr.children, ratePerNight: rr.ratePerNight, discountPerNight: rr.discountPerNight,
+        nights: rr.nights, adults: rr.adults, children: rr.children, ratePerNight: rr.ratePerNight, discountPerNight: rr.discountPerNight, discountTypeMax: rr.roomType.manualDiscountMax,
         current: { id: rr.room.id, number: rr.room.number, status: rr.room.status, ready: !taken && !busy && CHECK_IN_READY.includes(rr.room.status), type: rr.roomType.name, sameType: true, taken, busy },
         options: options.map((o) => ({
           id: o.id, number: o.number, status: o.status, ready: CHECK_IN_READY.includes(o.status),

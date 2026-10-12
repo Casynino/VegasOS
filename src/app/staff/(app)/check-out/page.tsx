@@ -90,7 +90,7 @@ export default async function CheckOutPage({ searchParams }: PageProps<"/staff/c
     source: stay.source.name, state: stay.state, checkoutAt: stay.checkoutAt.toISOString(), today,
     rooms: stay.live.map((r) => ({
       id: r.id, number: r.room.number, type: r.roomType.name, checkedInAt: r.checkedInAt?.toISOString() ?? null, checkedInBy: r.checkedInBy?.fullName ?? null,
-      endAt: r.endAt.toISOString(), arrival: fromDbDate(r.arrivalDate), departure: fromDbDate(r.departureDate), nights: r.nights, gross: r.grossAmount, net: r.netAmount, ratePerNight: r.ratePerNight, discountPerNight: r.discountPerNight,
+      endAt: r.endAt.toISOString(), arrival: fromDbDate(r.arrivalDate), departure: fromDbDate(r.departureDate), nights: r.nights, gross: r.grossAmount, net: r.netAmount, ratePerNight: r.ratePerNight, discountPerNight: r.discountPerNight, discountTypeMax: r.roomType.manualDiscountMax,
     })),
     folio: stay.folio, gross: stay.grossAmount, discount: stay.discountAmount, total: stay.netAmount, paid: stay.paidAmount, balance: stay.balanceAmount,
     payments: stay.payments.map((p) => ({ id: p.id, amount: p.amount, refund: p.kind === "REFUND", method: p.method.name, at: p.receivedAt.toISOString(), by: p.recordedBy.fullName, reference: p.reference })),

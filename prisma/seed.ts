@@ -57,7 +57,8 @@ const ROOM_TYPES = [
   },
   {
     code: "TWIN", name: "Twin", slug: "twin", baseRate: 160_000, displayRateUsd: 70,
-    maxAdults: 2, maxChildren: 1, sortOrder: 5, rooms: ["101"],
+    // The hotel's dearest room: staff may take up to 40,000 off a night here (every other room: the hotel's limit).
+    maxAdults: 2, maxChildren: 1, sortOrder: 5, rooms: ["101"], manualDiscountMax: 40_000,
     shortDescription: "Separate beds for friends, colleagues or family.",
     description:
       "The Twin room is ideal for two guests travelling together who prefer separate beds, with air conditioning, private bathroom, TV, work desk, free Wi-Fi and breakfast included.",

@@ -7,6 +7,7 @@ import { NetworkMarks } from "@/components/payments/networks";
 import {
   ArrowRight, BadgePercent, Banknote, BedDouble, Building2, CalendarCheck, CalendarDays, Check, CheckCircle2, Circle, Clock, DoorOpen, Loader2, LogIn, LogOut, Minus, Plus, Presentation, Search, Smartphone, Trash2, UserCheck, Users, UsersRound, Wallet, X,
 } from "lucide-react";
+import { roomDiscountLimit } from "@/lib/discounts";
 import { cn } from "@/lib/utils";
 import { formatTZS } from "@/lib/format";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -690,6 +691,8 @@ export function BookingForm(props: {
                 const number = rt.rooms.find((r) => r.id === rid)?.number ?? null;
                 const takenByOthers = new Set(lines.filter((o) => o.key !== l.key && o.roomId).map((o) => o.roomId));
                 const d = avail?.stay.isDayUse && !avail.meeting ? 0 : Number(l.discountPerNight) || 0;
+                // Each room type has its own limit (the Twin room: 40k); the others keep the hotel's.
+                const dMax = roomDiscountLimit(props.discountMax, rt.discountMax);
                 const lq = lineQuote(l)!;
                 const units = avail?.stay.units ?? 1;
                 return (
@@ -729,10 +732,10 @@ export function BookingForm(props: {
                         <span className="text-muted-foreground tabular-nums">{t("{base} − {promo} = {net}/night · set by Admin", { base: formatTZS(rt.baseRate), promo: formatTZS(lq.promoPerNight), net: formatTZS(rt.baseRate - lq.promoPerNight) })}</span>
                       </p>
                     )}
-                    {(!avail?.stay.isDayUse || avail.meeting) && props.discountMax > 0 && <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-dashed border-border pt-2.5">
+                    {(!avail?.stay.isDayUse || avail.meeting) && dMax > 0 && <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-dashed border-border pt-2.5">
                       <span className="inline-flex items-center gap-1 text-xs font-medium"><BadgePercent className="size-3.5 text-emerald-600" />{t("Discount")}</span>
                       <div className="min-w-0 flex-1">
-                        <DiscountChips value={d} rate={rt.baseRate - lq.promoPerNight} max={props.discountMax}
+                        <DiscountChips value={d} rate={rt.baseRate - lq.promoPerNight} max={dMax}
                           onChange={(v) => update(l.key, { discountPerNight: String(v) })} />
                       </div>
                     </div>}

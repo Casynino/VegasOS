@@ -435,6 +435,9 @@ model RoomType {
   translations     RoomTypeTranslation[]
   /// Spin to Win: STANDARD | PREMIUM | NONE (empty = by the room type's kind — see lib/spin.ts).
   spinTier         String?
+  /// The most staff may take off THIS room type, per night (TZS). Empty = the hotel's limit
+  /// (HotelSettings.manualDiscountMax). Who may discount at all is still the hotel's rule — see lib/discounts.ts.
+  manualDiscountMax Int?
 
   @@map("room_types")
 }

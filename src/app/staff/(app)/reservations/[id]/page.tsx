@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { discountLimit } from "@/lib/discounts";
+import { discountLimit, roomDiscountLimit } from "@/lib/discounts";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, BedDouble, BadgeCheck, Building2, Car, ClipboardList, Clock3, FileText, History, Loader2, MessageCircle, QrCode, Receipt, UserRound, Users, UtensilsCrossed, Wallet } from "lucide-react";
@@ -377,7 +377,7 @@ export default async function ReservationPage({ params, searchParams }: PageProp
           <section id="stay" className={cn(BOX, "scroll-mt-24")}>
             {watching && inHouse.filter((x) => !x.isDayUse).map((x, i) => (
               <div key={`decide-${x.id}`} className="mb-4">
-                <StayDecisions discountMax={perms.discountMax} leavingToday={fromDbDate(x.departureDate) <= today}
+                <StayDecisions discountMax={roomDiscountLimit(perms.discountMax, x.roomType.manualDiscountMax)} leavingToday={fromDbDate(x.departureDate) <= today}
                   move={perms.edit ? { reservationId: r.id, guest: r.guest.fullName, room: x.room.number } : null}
                   owing={i > 0 ? null : { reservationId: r.id, guest: r.guest.fullName, balance: r.balanceAmount, approved: r.leaveOwingAt && r.leaveOwingUpTo != null ? { upTo: r.leaveOwingUpTo, reason: r.leaveOwingReason ?? "" } : null }}
                   stay={{ reservationRoomId: x.id, ratePerNight: x.ratePerNight, discountPerNight: x.discountPerNight, nights: x.nights }} />
@@ -465,12 +465,12 @@ export default async function ReservationPage({ params, searchParams }: PageProp
                         <div>
                           <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{rr.status === "CHECKED_IN" ? t("Add nights") : t("Change dates")}</p>
                           {rr.status === "CHECKED_IN"
-                            ? <ExtendStay reservationId={r.id} today={today} canDiscount={perms.discount} discountMax={perms.discountMax} room={{ id: rr.id, number: rr.room.number, departure, endAt: rr.endAt.toISOString(), ratePerNight: rr.ratePerNight, discountPerNight: rr.discountPerNight, nights: rr.nights }} />
+                            ? <ExtendStay reservationId={r.id} today={today} canDiscount={perms.discount} discountMax={roomDiscountLimit(perms.discountMax, rr.roomType.manualDiscountMax)} room={{ id: rr.id, number: rr.room.number, departure, endAt: rr.endAt.toISOString(), ratePerNight: rr.ratePerNight, discountPerNight: rr.discountPerNight, nights: rr.nights }} />
                             : <StayDates reservationId={r.id} today={today} canEdit room={{ id: rr.id, arrival, departure }} />}
                         </div>
                         <div>
                           <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("Discount")}</p>
-                          <DiscountEditor reservationId={r.id} canEdit={perms.discount} max={perms.discountMax}
+                          <DiscountEditor reservationId={r.id} canEdit={perms.discount} max={roomDiscountLimit(perms.discountMax, rr.roomType.manualDiscountMax)}
                             room={{ id: rr.id, number: rr.room.number, ratePerNight: rr.ratePerNight, discountPerNight: rr.discountPerNight, nights: rr.nights }} />
                         </div>
                       </div>

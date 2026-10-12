@@ -11,6 +11,7 @@ import { ChangeRoomDialog } from "./change-room-dialog";
 import type { PayAccount } from "@/lib/pay-account";
 import { changeDatesAction, quickCheckInAction } from "@/app/staff/(app)/reservations/actions";
 import { formatTZS } from "@/lib/format";
+import { roomDiscountLimit } from "@/lib/discounts";
 import { ROOM_STATUS_META } from "@/lib/room-status";
 import { RESERVATION_STATUS_META } from "@/lib/reservation-status";
 import { cn } from "@/lib/utils";
@@ -42,6 +43,8 @@ export interface ArrivalCardData {
   rooms: {
     id: string; roomTypeName: string; arrival: string; departure: string; nights: number; adults: number; children: number;
     ratePerNight: number; discountPerNight: number; current: RoomOpt; options: RoomOpt[];
+    /** This room type's own staff discount limit per night; null = the hotel's limit. */
+    discountTypeMax: number | null;
   }[];
   netAmount: number;
   paidAmount: number;
@@ -382,7 +385,7 @@ export function ArrivalCard({ a, today, canAssign, canOverride, canEditDates = f
                       </div>
                     );
                   })()}
-                  <DiscountEditor reservationId={a.id} canEdit={canDiscount} max={discountMax}
+                  <DiscountEditor reservationId={a.id} canEdit={canDiscount} max={roomDiscountLimit(discountMax, r.discountTypeMax)}
                     room={{ id: r.id, number: opt.number, ratePerNight: r.ratePerNight, discountPerNight: r.discountPerNight, nights: r.nights }} />
                 </div>
               );

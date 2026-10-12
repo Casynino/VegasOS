@@ -18,7 +18,7 @@ export const DEFAULT_DISCOUNT_RULES: DiscountRules = { manualDiscountMax: 20_000
 export const DESK_DISCOUNT_MAX = DEFAULT_DISCOUNT_RULES.manualDiscountMax;
 
 /** The quick choices; only those within the limit are shown. */
-export const DESK_DISCOUNT_CHOICES = [0, 5_000, 10_000, 15_000, 20_000, 25_000, 30_000, 40_000, 50_000] as const;
+export const DESK_DISCOUNT_CHOICES = [0, 5_000, 10_000, 15_000, 20_000, 25_000, 30_000, 35_000, 40_000, 50_000] as const;
 export const MANAGER_DISCOUNT_CHOICES = [] as const;
 
 /** The most this staff member may take off a room per night; 0 = may not give manual discounts. */
@@ -28,6 +28,17 @@ export function discountLimit(permissions?: ReadonlySet<string>, rules: Discount
   if (permissions.has("reservations.discount_override")) return rules.managerCanDiscount ? rules.manualDiscountMax : 0;
   if (permissions.has("reservations.edit")) return rules.receptionCanDiscount ? rules.manualDiscountMax : 0;
   return 0;
+}
+
+/**
+ * The most that may be taken off ONE room per night: the room type's own limit when it has one (the Twin room: 40,000),
+ * the hotel's limit otherwise. A person who may not give discounts (0) may not give one on any room.
+ */
+export function roomDiscountLimit(staffLimit: number, typeMax?: number | null): number;
+export function roomDiscountLimit(staffLimit: number | null, typeMax?: number | null): number | null;
+export function roomDiscountLimit(staffLimit: number | null, typeMax?: number | null): number | null {
+  if (staffLimit === 0 || typeMax == null) return staffLimit;
+  return Math.max(0, typeMax);
 }
 
 /** For `new AppError(…)`: the English text with the amount, translated for whoever sees it. */

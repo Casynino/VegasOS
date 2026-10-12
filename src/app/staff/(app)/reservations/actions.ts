@@ -10,7 +10,7 @@ import { parseInput } from "@/server/validation";
 import { getSettings, stayConfig, businessToday } from "@/server/settings";
 import { dayAvailability, findAvailableRooms } from "@/server/services/availability";
 import {
-  approveLateCheckout, cancelReservation, changeDiscount, changeMeeting, changeStayDates, previewDateChange, noteLateArrival, reinstateNoShow, releaseNoShow, checkIn, checkInWithDetails, assignAndCheckIn, checkOut, confirmReservation,
+  approveLateCheckout, assertRoomDiscount, cancelReservation, changeDiscount, changeMeeting, changeStayDates, previewDateChange, noteLateArrival, reinstateNoShow, releaseNoShow, checkIn, checkInWithDetails, assignAndCheckIn, checkOut, confirmReservation,
   createReservation, extendStay, markNoShow, previewCheckOut, previewExtension, reassignRoom, type Actor, type StayRequest,
 } from "@/server/services/reservations";
 import { correctPayment, addReservationCharge, postRoomCharges, recordReservationPayment, reversePayment, voidReservationCharge } from "@/server/services/payments";
@@ -21,7 +21,6 @@ import { changeRoom, roomChangeOptions } from "@/server/services/room-changes";
 import { HOTEL_MOVE_CODES } from "@/lib/room-change";
 import { refreshBookingStates } from "@/server/services/booking-holds";
 import { requestMobilePayment } from "@/server/services/mobile-payments";
-import { discountLimit, discountTooBigMessage } from "@/lib/discounts";
 import { SHORT_TIME_MAX_HOURS, shortTimeRate } from "@/lib/short-time";
 import { promoLabel } from "@/lib/pricing";
 import { channelFor, loadPricing, quoteFromPromos } from "@/server/services/pricing";
@@ -95,6 +94,8 @@ export interface AvailabilityResult {
     id: string; name: string; baseRate: number; maxAdults: number; maxChildren: number; photo: string | null;
     /** The normal nightly price (differs from baseRate for short time). */
     fullRate: number;
+    /** This room type's own staff discount limit per night; null = the hotel's limit. */
+    discountMax: number | null;
     /** Promotion that applies to this room type for these dates (read-only for reception). */
     promotion: { name: string; label: string } | null;
     /** Promotion discount on the first night, and over the whole stay (one room). */
@@ -211,7 +212,7 @@ export async function checkAvailabilityAction(input: { stay: StayInput; sourceCo
         };
         const datePrices = [...new Set(q.nights.map((n) => n.priceRule?.name).filter((x): x is string => !!x))];
         return {
-          id: t.id, name: t.name, baseRate: rate, fullRate: t.baseRate, maxAdults: t.maxAdults, maxChildren: t.maxChildren,
+          id: t.id, name: t.name, baseRate: rate, fullRate: t.baseRate, discountMax: t.manualDiscountMax, maxAdults: t.maxAdults, maxChildren: t.maxChildren,
           photo: Array.isArray(t.images) && typeof t.images[0] === "string" ? t.images[0] : null,
           promotion: promoInfo(q.promotion), promoPerNight: q.promoPerNight, promoTotal: q.promoDiscount,
           netPerNight: q.nights[0]?.net ?? rate, totalNet: q.net, grossTotal: q.gross, datePrices,
@@ -843,11 +844,10 @@ export async function extendStayAction(input: {
     const disc = input.discountPerNight;
     if (disc != null) {
       if (!Number.isInteger(disc) || disc < 0) throw new AppError("Enter a valid discount.");
-      const limit = discountLimit(user.permissions, await getSettings());
-      if (limit === 0) throw new AppError("You are not allowed to give discounts.", "FORBIDDEN");
-      if (disc > limit) throw new AppError(discountTooBigMessage(limit), "FORBIDDEN");
     }
     const actor = await actorFor(user);
+    // Refused before anything changes: the discount must fit the room's own limit (checked again when it is saved).
+    if (disc != null) await assertRoomDiscount(input.reservationRoomId, disc, actor, input.moveToRoomId);
     const p = await extendStay(input.reservationRoomId, input.newDeparture, actor, { moveToRoomId: input.moveToRoomId ?? null });
     if (disc != null) await changeDiscount(input.reservationRoomId, disc, input.discountReason?.trim() || "Discount on extended stay", actor);
     refresh(input.reservationId);

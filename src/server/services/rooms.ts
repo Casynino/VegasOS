@@ -139,6 +139,8 @@ export interface StayInfo {
   isDayUse: boolean;
   ratePerNight: number;
   discountPerNight: number;
+  /** This room type's own staff discount limit per night; null = the hotel's limit. */
+  discountTypeMax: number | null;
   nights: number;
   /** A manager allowed the guest to leave owing (up to this much) — reception may check them out. */
   leaveOwing: { upTo: number; reason: string } | null;
@@ -164,7 +166,7 @@ export async function getRoomBoard(today: BusinessDate): Promise<RoomBoardRoom[]
             { status: { in: ["RESERVED", "CONFIRMED"] }, arrivalDate: toDbDate(today) },
           ],
         },
-        include: { reservation: { include: { guest: { select: { fullName: true, phone: true } }, guests: { select: { guestId: true } } } } },
+        include: { roomType: { select: { manualDiscountMax: true } }, reservation: { include: { guest: { select: { fullName: true, phone: true } }, guests: { select: { guestId: true } } } } },
         orderBy: { startAt: "asc" },
       },
     },
@@ -201,6 +203,7 @@ export async function getRoomBoard(today: BusinessDate): Promise<RoomBoardRoom[]
     isDayUse: rr.isDayUse,
     ratePerNight: rr.ratePerNight,
     discountPerNight: rr.discountPerNight,
+    discountTypeMax: rr.roomType.manualDiscountMax,
     nights: rr.nights,
     leaveOwing: rr.reservation.leaveOwingAt && rr.reservation.leaveOwingUpTo != null ? { upTo: rr.reservation.leaveOwingUpTo, reason: rr.reservation.leaveOwingReason ?? "" } : null,
     table: rr.status === "CHECKED_IN" ? tableOf(rr.reservation) : null,

@@ -55,6 +55,7 @@ const catalog: Catalog = {
   "Charge added.": "费用已添加。",
   "Charge voided.": "费用已作废。",
   "You are not allowed to give discounts.": "您无权给予折扣。",
+  "No discount can be given on this room.": "此房间不可给予折扣。",
   "Stay extended. Charges and balance updated.": "住宿已延长，费用和余额已更新。",
   "Late checkout approved.": "已批准延迟退房。",
   "Guest checked in. Welcome!": "客人已入住。欢迎！",

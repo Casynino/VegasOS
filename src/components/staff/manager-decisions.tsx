@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { BadgePercent, CalendarX2, CheckCircle2, Clock, DoorOpen, Gift, HandCoins, Loader2, Lock, Repeat, SprayCan, UserRoundCheck, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { roomDiscountLimit } from "@/lib/discounts";
 import { ChangeRoomDialog } from "@/components/staff/reception/change-room-dialog";
 import { billDiscountAction, roomServiceWaiterAction, stayBillDiscountAction, waitersAction, cancelClosureAction, freeLateCheckoutAction, freeNightsAction, leaveOwingAction, planClosureAction, roomDiscountAction, withdrawLeaveOwingAction } from "@/app/staff/(app)/manager-actions";
 import { changeRoomStatusAction } from "@/app/staff/(app)/rooms/actions";
@@ -127,7 +128,8 @@ const FAULTS: { label: string; move: HotelMoveReason }[] = [
 export type RoomDecisionsProps = {
   room: { id: string; number: string; status: string; meeting: boolean };
   /** Who is in the room now (a guest, or a meeting running). */
-  stay: { reservationId: string; reservationRoomId: string; guestName: string; isDayUse: boolean; ratePerNight: number; discountPerNight: number; nights: number; endAt: string; balance: number; leaveOwing: { upTo: number; reason: string } | null } | null;
+  /** `discountTypeMax`: this room type's own discount limit per night (null = the hotel's). */
+  stay: { reservationId: string; reservationRoomId: string; guestName: string; isDayUse: boolean; ratePerNight: number; discountPerNight: number; discountTypeMax?: number | null; nights: number; endAt: string; balance: number; leaveOwing: { upTo: number; reason: string } | null } | null;
   leavingToday: boolean;
   /** Bookings coming to this room (moved elsewhere before a closure). */
   upcoming: { reservationId: string; reservationRoomId: string; name: string; when: string }[];
@@ -156,6 +158,8 @@ export function RoomDecisions({ room, stay, leavingToday, upcoming, heldNoShow, 
   const [pending, start] = useTransition();
   const inRepair = room.status === "MAINTENANCE" || room.status === "OUT_OF_SERVICE";
   const stayChoices = !!stay && !!can.decide && !stay.isDayUse && !room.meeting;
+  // The most off a night in THIS room: a room type can have its own limit (the Twin room: 40k).
+  const decideMax = can.decide ? roomDiscountLimit(can.decide.discountMax, stay?.discountTypeMax) : 0;
   const pick = (m: RoomMode) => setMode(mode === m ? null : m);
   const done = (r: { ok: boolean; message?: string; error?: string }, text?: string) => {
     if (r.ok) { toast.success(text ?? r.message ?? t("Done.")); setMode(null); router.refresh(); } else toast.error(r.error);
@@ -186,7 +190,7 @@ export function RoomDecisions({ room, stay, leavingToday, upcoming, heldNoShow, 
         )}
         {stayChoices && <Chip on={mode === "nights"} onClick={() => pick("nights")}><Gift className="size-3.5" />{t("Free nights")}</Chip>}
         {stayChoices && leavingToday && <Chip on={mode === "late"} onClick={() => pick("late")}><Clock className="size-3.5" />{t("Free late checkout")}</Chip>}
-        {stay && can.decide && (stay.balance > 0 || (stayChoices && can.decide.discountMax > 0)) && <Chip on={mode === "discount"} onClick={() => pick("discount")}><BadgePercent className="size-3.5" />{t("Discount")}{stay.discountPerNight ? ` · ${t("{amount}/night", { amount: n(stay.discountPerNight) })}` : ""}</Chip>}
+        {stay && can.decide && (stay.balance > 0 || (stayChoices && decideMax > 0)) && <Chip on={mode === "discount"} onClick={() => pick("discount")}><BadgePercent className="size-3.5" />{t("Discount")}{stay.discountPerNight ? ` · ${t("{amount}/night", { amount: n(stay.discountPerNight) })}` : ""}</Chip>}
         {stay && can.decide && (stay.balance > 0 || stay.leaveOwing) && (
           <Chip on={mode === "owing"} onClick={() => pick("owing")}><HandCoins className="size-3.5" />{stay.leaveOwing ? t("May leave owing ✓") : t("Let leave owing")}</Chip>
         )}
@@ -208,10 +212,10 @@ export function RoomDecisions({ room, stay, leavingToday, upcoming, heldNoShow, 
       )}
 
       {stayChoices && (mode === "nights" || mode === "late") && (
-        <StayForm key={mode} mode={mode} stay={stay!} discountMax={can.decide!.discountMax} onDone={() => { setMode(null); router.refresh(); }} />
+        <StayForm key={mode} mode={mode} stay={stay!} discountMax={decideMax} onDone={() => { setMode(null); router.refresh(); }} />
       )}
       {mode === "discount" && stay && can.decide && (
-        <DiscountPanel reservationId={stay.reservationId} toPay={stay.balance} stay={stayChoices && can.decide.discountMax > 0 ? stay : null} discountMax={can.decide.discountMax} onDone={() => { setMode(null); router.refresh(); }} />
+        <DiscountPanel reservationId={stay.reservationId} toPay={stay.balance} stay={stayChoices && decideMax > 0 ? stay : null} discountMax={decideMax} onDone={() => { setMode(null); router.refresh(); }} />
       )}
       {mode === "owing" && stay && (
         <OwingForm reservationId={stay.reservationId} guest={stay.guestName} balance={stay.balance} approved={stay.leaveOwing} onDone={() => { setMode(null); router.refresh(); }} />

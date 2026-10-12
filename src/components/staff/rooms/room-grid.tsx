@@ -12,7 +12,7 @@ import { ExtendStay, OpenOrdersNote } from "@/components/staff/reception/stay-wo
 import { DiscountEditor } from "@/components/staff/reception/discount-editor";
 import { CompanyBillBox } from "@/components/staff/reception/company-bill-box";
 import { ChangeRoomDialog } from "@/components/staff/reception/change-room-dialog";
-import { DESK_DISCOUNT_MAX } from "@/lib/discounts";
+import { DESK_DISCOUNT_MAX, roomDiscountLimit } from "@/lib/discounts";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { IdPicker, NationalityPicker } from "@/components/staff/id-nationality";
@@ -214,6 +214,8 @@ function RoomPanel({ room, perms, overdue, onDone, today, methods, menu, recent,
   const transitions = MANUAL_TRANSITIONS[room.status].filter((s) => perms.block || s !== "OUT_OF_SERVICE");
   const inRepair = room.status === "MAINTENANCE" || room.status === "OUT_OF_SERVICE";
   const stay = room.currentStay;
+  // The most this person may take off a night in THIS room: a room type can have its own limit (the Twin room: 40k).
+  const deskMax = roomDiscountLimit(perms.discountMax === undefined ? DESK_DISCOUNT_MAX : perms.discountMax, stay?.discountTypeMax);
   const arrival = room.arrivalToday;
   const guest = stay ?? arrival;
   const free = room.displayStatus === "AVAILABLE" || room.displayStatus === "READY";
@@ -376,7 +378,7 @@ function RoomPanel({ room, perms, overdue, onDone, today, methods, menu, recent,
         {perms.decide && (
           <RoomDecisions key={`${room.id}-${stay?.reservationRoomId ?? "free"}`} today={today} leavingToday={!!stay && stay.departureDate <= today}
             room={{ id: room.id, number: room.number, status: room.status, meeting: false }}
-            stay={stay ? { reservationId: stay.reservationId, reservationRoomId: stay.reservationRoomId, guestName: stay.guestName, isDayUse: stay.isDayUse, ratePerNight: stay.ratePerNight, discountPerNight: stay.discountPerNight, nights: stay.nights, endAt: new Date(stay.endAt).toISOString(), balance: stay.balance, leaveOwing: stay.leaveOwing } : null}
+            stay={stay ? { reservationId: stay.reservationId, reservationRoomId: stay.reservationRoomId, guestName: stay.guestName, isDayUse: stay.isDayUse, ratePerNight: stay.ratePerNight, discountPerNight: stay.discountPerNight, discountTypeMax: stay.discountTypeMax, nights: stay.nights, endAt: new Date(stay.endAt).toISOString(), balance: stay.balance, leaveOwing: stay.leaveOwing } : null}
             upcoming={room.upcoming.map((u) => ({ reservationId: u.reservationId, reservationRoomId: u.reservationRoomId, name: u.company ?? u.guest.fullName, when: u.arrivalDate === today ? "today" : t.shortDate(u.arrivalDate) }))}
             heldNoShow={room.heldNoShow} closures={room.closures} serviceWaiter={room.serviceWaiter}
             can={{ move: !!perms.move, close: perms.update, block: perms.block, release: !!perms.release, decide: perms.decide }} />
@@ -386,7 +388,7 @@ function RoomPanel({ room, perms, overdue, onDone, today, methods, menu, recent,
         {actions.length > 0 && <div className="grid grid-cols-2 gap-2">{actions}</div>}
 
         {stay && panel === "out" && (
-          <CheckOutHere key={stay.reservationId} stay={stay} roomNumber={room.number} methods={methods} canPay={!!perms.pay} canCharge={!!perms.order} canDiscount={!!perms.discount} discountMax={(perms.discountMax === undefined ? DESK_DISCOUNT_MAX : perms.discountMax)}
+          <CheckOutHere key={stay.reservationId} stay={stay} roomNumber={room.number} methods={methods} canPay={!!perms.pay} canCharge={!!perms.order} canDiscount={!!perms.discount} discountMax={deskMax}
             nextGuest={todayArrival?.guest.fullName ?? null}
             onDone={() => { setPanel(null); if (todayArrival) setCheckingIn(todayArrival.reservationRoomId); router.refresh(); }} />
         )}
@@ -398,12 +400,12 @@ function RoomPanel({ room, perms, overdue, onDone, today, methods, menu, recent,
           </div>
         )}
         {stay && panel === "discount" && (
-          <DiscountEditor key={stay.reservationRoomId} reservationId={stay.reservationId} canEdit defaultOpen max={(perms.discountMax === undefined ? DESK_DISCOUNT_MAX : perms.discountMax)} onSaved={() => setPanel(null)}
+          <DiscountEditor key={stay.reservationRoomId} reservationId={stay.reservationId} canEdit defaultOpen max={deskMax} onSaved={() => setPanel(null)}
             room={{ id: stay.reservationRoomId, number: room.number, ratePerNight: stay.ratePerNight, discountPerNight: stay.discountPerNight, nights: stay.nights }} />
         )}
         {stay && panel === "nights" && (
           <div className="rounded-2xl border border-border/70 bg-muted/30 p-4">
-            <ExtendStay reservationId={stay.reservationId} today={today} canDiscount={!!perms.discount} discountMax={(perms.discountMax === undefined ? DESK_DISCOUNT_MAX : perms.discountMax)}
+            <ExtendStay reservationId={stay.reservationId} today={today} canDiscount={!!perms.discount} discountMax={deskMax}
               room={{ id: stay.reservationRoomId, number: room.number, departure: stay.departureDate, endAt: new Date(stay.endAt).toISOString(), ratePerNight: stay.ratePerNight, discountPerNight: stay.discountPerNight, nights: stay.nights }} />
           </div>
         )}
@@ -426,8 +428,8 @@ function RoomPanel({ room, perms, overdue, onDone, today, methods, menu, recent,
             <p className="text-center text-[11px] text-muted-foreground">{t("The room can't be reserved or checked into until you mark it fixed.")}</p>
           </div>
         )}
-        {stay && panel === "pay" && !stay.isDayUse && perms.discount && (perms.discountMax ?? 0) > 0 && (
-          <DiscountEditor key={`pay-${stay.discountPerNight}`} reservationId={stay.reservationId} canEdit max={perms.discountMax ?? DESK_DISCOUNT_MAX}
+        {stay && panel === "pay" && !stay.isDayUse && perms.discount && (deskMax ?? 0) > 0 && (
+          <DiscountEditor key={`pay-${stay.discountPerNight}`} reservationId={stay.reservationId} canEdit max={deskMax ?? DESK_DISCOUNT_MAX}
             room={{ id: stay.reservationRoomId, number: room.number, ratePerNight: stay.ratePerNight, discountPerNight: stay.discountPerNight, nights: stay.nights }} />
         )}
         {stay && panel === "pay" && <PayHere reservationId={stay.reservationId} balance={stay.balance} methods={methods} phone={stay.guestPhone} who={stay.guestName} onDone={() => setPanel(null)} />}
@@ -859,7 +861,7 @@ function MeetingRoomPanel({ room, perms, today, methods, menu, recent, qr, onPag
         {perms.decide && (
           <RoomDecisions key={`${room.id}-${stay?.reservationRoomId ?? "free"}`} today={today} leavingToday={false}
             room={{ id: room.id, number: room.number, status: room.status, meeting: true }}
-            stay={stay ? { reservationId: stay.reservationId, reservationRoomId: stay.reservationRoomId, guestName: stay.guestName, isDayUse: true, ratePerNight: stay.ratePerNight, discountPerNight: stay.discountPerNight, nights: stay.nights, endAt: new Date(stay.endAt).toISOString(), balance: stay.balance, leaveOwing: stay.leaveOwing } : null}
+            stay={stay ? { reservationId: stay.reservationId, reservationRoomId: stay.reservationRoomId, guestName: stay.guestName, isDayUse: true, ratePerNight: stay.ratePerNight, discountPerNight: stay.discountPerNight, discountTypeMax: stay.discountTypeMax, nights: stay.nights, endAt: new Date(stay.endAt).toISOString(), balance: stay.balance, leaveOwing: stay.leaveOwing } : null}
             upcoming={[]} heldNoShow={null} closures={room.closures}
             can={{ move: false, close: perms.update, block: perms.block, release: false, decide: null }} />
         )}

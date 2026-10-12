@@ -14,7 +14,7 @@ import { chargeOrderToRoomAction } from "@/app/staff/(app)/restaurant/actions";
 import { ActionForm, FieldError } from "@/components/staff/action-form";
 import { Initials } from "@/components/dashboard/kit";
 import { DiscountChips, DiscountEditor } from "./discount-editor";
-import { DESK_DISCOUNT_MAX } from "@/lib/discounts";
+import { DESK_DISCOUNT_MAX, roomDiscountLimit } from "@/lib/discounts";
 import { PayWays, SendToPhone } from "@/components/staff/mobile-pay";
 import { ChargeComposer, GuestTab, type RecentItem, type TabCharge } from "./room-charges";
 import type { BillMenu } from "@/server/services/restaurant";
@@ -47,6 +47,8 @@ export interface StayWorkspaceData {
   rooms: {
     id: string; number: string; type: string; checkedInAt: string | null; checkedInBy: string | null; endAt: string;
     arrival: string; departure: string; nights: number; gross: number; net: number; ratePerNight: number; discountPerNight: number;
+    /** This room type's own staff discount limit per night; null = the hotel's limit. */
+    discountTypeMax: number | null;
   }[];
   folio: { label: string; amount: number }[];
   gross: number;
@@ -426,7 +428,7 @@ export function StayWorkspace({ s, methods, perms, recent, menu = null, menuPayN
           </dl>
           <div className="mt-3 space-y-2">
             {s.rooms.map((r) => (
-              <DiscountEditor key={r.id} reservationId={s.id} canEdit={perms.discount} max={perms.discountMax}
+              <DiscountEditor key={r.id} reservationId={s.id} canEdit={perms.discount} max={roomDiscountLimit(perms.discountMax, r.discountTypeMax)}
                 room={{ id: r.id, number: r.number, ratePerNight: r.ratePerNight, discountPerNight: r.discountPerNight, nights: r.nights }} />
             ))}
           </div>
@@ -479,7 +481,7 @@ export function StayWorkspace({ s, methods, perms, recent, menu = null, menuPayN
           {perms.extend ? s.rooms.map((r) => (
             <div key={r.id} className={cn(s.rooms.length > 1 && "mb-4")}>
               {s.rooms.length > 1 && <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold"><BedDouble className="size-4" />{t("Room {room}", { room: r.number })}</p>}
-              <ExtendStay reservationId={s.id} today={s.today} room={r} canDiscount={perms.discount} discountMax={perms.discountMax} />
+              <ExtendStay reservationId={s.id} today={s.today} room={r} canDiscount={perms.discount} discountMax={roomDiscountLimit(perms.discountMax, r.discountTypeMax)} />
 
             </div>
           )) : <p className="text-sm text-muted-foreground">{t("Ask a supervisor to extend this stay.")}</p>}
