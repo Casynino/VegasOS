@@ -142,6 +142,37 @@ export async function notifyReservationGuest(reservationId: string, kind: "WELCO
   }
 }
 
+/**
+ * The check-out message, ready for reception right after a check-out — the window that opens by itself, with the same
+ * text the booking's page offers ("Check-out & thank you"). Null when the stay is not fully out yet (other rooms still
+ * in house), for a meeting room, when the hotel has check-out messages off, or when anything goes wrong: the
+ * check-out stands either way.
+ */
+export async function checkoutThanks(reservationId: string) {
+  try {
+    const r = await db.reservation.findUnique({ where: { id: reservationId }, select: { status: true, kind: true, guest: { select: { email: true } } } });
+    if (!r || r.status !== "CHECKED_OUT" || r.kind !== "STAY") return null;
+    const s = await getSettings();
+    if (!guestEventOn(s.guestNotifications, "checkOut")) return null;
+    const origin = await siteOrigin();
+    const note = await db.thankYouNote.findFirst({ where: { reservationId }, orderBy: { version: "desc" }, select: { token: true } });
+    const m = await reservationMessage(reservationId, "CHECKOUT", origin, { thanksUrl: note ? `${origin}/thanks/${note.token}` : null });
+    if (!m) return null;
+    return {
+      text: m.text, subject: m.subject, locale: m.locale,
+      guest: { name: m.guest.name, phone: m.guest.phone, email: r.guest.email },
+      /** The thank-you note exists (it can be opened and printed). */
+      note: !!note,
+      /** A messaging provider is connected: the hotel sends this same message by itself. */
+      auto: guestNotifyConnected(),
+    };
+  } catch (e) {
+    console.error("check-out message", reservationId, e);
+    return null;
+  }
+}
+export type CheckoutThanks = NonNullable<Awaited<ReturnType<typeof checkoutThanks>>>;
+
 /** The same once the answer has gone out (never delays the desk); straight away where there is no request (a job, a test). */
 export function notifyReservationGuestSoon(reservationId: string, kind: Parameters<typeof notifyReservationGuest>[1], extra: Parameters<typeof notifyReservationGuest>[2] = {}) {
   if (!guestNotifyConnected()) return;

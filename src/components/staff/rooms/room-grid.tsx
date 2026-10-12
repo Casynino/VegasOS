@@ -32,6 +32,7 @@ import { ChargeComposer, type RecentItem } from "@/components/staff/reception/ro
 import type { BillMenu } from "@/server/services/restaurant";
 import { MeetingButtons } from "@/app/staff/(app)/reservations/[id]/panels";
 import { QuickBook } from "./quick-book";
+import { showCheckoutThanks } from "@/components/staff/reception/checkout-thanks";
 import { PayWays, SendToPhone, useMobilePayAvailable } from "@/components/staff/mobile-pay";
 import { RoomHistoryInline, TransportInline } from "./room-panels";
 import { InsightHeader, InsightHistory, InsightRows, MeetingInsightBody, MeetingInsightHeader, useMeetingInsight, useRoomInsight } from "./room-insight";
@@ -562,11 +563,13 @@ export function CheckOutHere({ stay, roomNumber, methods, canPay, canCharge, can
   function go() {
     if (!bill) return;
     start(async () => {
+      const payment = owes && !viaPhone && (!approvedOwing || (paying > 0 && accountId)) ? { amount: approvedOwing ? Math.min(paying, bill.balance) : bill.balance, accountId, reference: reference || undefined } : null;
       const res = await settleCheckOutAction({
         reservationId: stay.reservationId, chargeOverstay: true, earlyReason: bill.early ? reason : undefined,
-        payment: owes && !viaPhone && (!approvedOwing || (paying > 0 && accountId)) ? { amount: approvedOwing ? Math.min(paying, bill.balance) : bill.balance, accountId, reference: reference || undefined } : null,
+        payment,
         ...(approvedOwing && { allowBalance: true }),
         invoiceMode: bill.company && !bill.group ? invoiceMode ?? (bill.company.consolidate ? "OPEN" : "ISSUE") : null,
+        withMessage: true,
       });
       if (res.ok && bill.group?.last) {
         // The last room of its group: the receptionist confirms the final group invoice next.
@@ -577,12 +580,17 @@ export function CheckOutHere({ stay, roomNumber, methods, canPay, canCharge, can
       if (res.ok) {
         const inv = res.data.invoice;
         const invoiced = inv ? `${inv.issued ? t("{amount} invoiced to the company · {number}.", { amount: formatTZS(inv.amount), number: inv.number }) : t("{amount} added to the company's open invoice {number}.", { amount: formatTZS(inv.amount), number: inv.number })} ` : "";
-        toast.success(owes ? t("{name} checked out · {amount} received.", { name: stay.guestName, amount: formatTZS(bill.balance) }) : t("{name} checked out.", { name: stay.guestName }), {
-          description: `${invoiced}${nextGuest ? t("Room {room} now needs cleaning — then check in {name}.", { room: roomNumber, name: nextGuest }) : t("Room {room} now needs cleaning.", { room: roomNumber })}`,
-          duration: 9000,
-          // The guest's thank-you note is made at check-out: print or send it from here.
-          action: { label: t("Thank-you note"), onClick: () => router.push(`/staff/reservations/${stay.reservationId}/thank-you`) },
+        // Only money that was taken here is said as received (a guest allowed to leave owing may have paid part, or nothing).
+        const received = payment?.amount ?? 0;
+        const unpaid = approvedOwing && res.data.balance > 0 ? `${t("The unpaid {amount} is on the follow-up list.", { amount: formatTZS(res.data.balance) })} ` : "";
+        const after = `${unpaid}${invoiced}${nextGuest ? t("Room {room} now needs cleaning — then check in {name}.", { room: roomNumber, name: nextGuest }) : t("Room {room} now needs cleaning.", { room: roomNumber })}`;
+        // The thank-you comes the way the welcome does: a window opens by itself with the message ready to send.
+        // Nothing to send (check-out messages off, other rooms of the booking still in house): said the short way.
+        const shown = !!res.data.thanks && showCheckoutThanks({
+          reservationId: stay.reservationId, name: stay.guestName, thanks: res.data.thanks,
+          summary: `${received > 0 ? `${t("{amount} received.", { amount: formatTZS(received) })} ` : ""}${after}`,
         });
+        if (!shown) toast.success(received > 0 ? t("{name} checked out · {amount} received.", { name: stay.guestName, amount: formatTZS(received) }) : t("{name} checked out.", { name: stay.guestName }), { description: after, duration: 9000 });
         onDone();
       } else toast.error(res.error, { duration: 9000 });
     });

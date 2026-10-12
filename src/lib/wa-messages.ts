@@ -244,21 +244,31 @@ export function welcomeMessage(v: { hotel: Hotel; name: string; stay: StayFacts;
   ]);
 }
 
-/** The departure summary — the final bill straight from the folio. */
+/**
+ * The departure message — laid out like the welcome (owner, 2026-10-12: "the thank note should come like the way the
+ * welcome note comes, clear and nice"): the stay, the final bill with its status straight from the folio, then one
+ * headed block per thing the guest can open — pay what is left, the thank-you note, the bill — each link on a line
+ * of its own.
+ */
 export function checkoutMessage(v: { hotel: Hotel; name: string; stay: StayFacts; money: Money; stayUrl: string | null; thanksUrl?: string | null; payUrl?: string | null }, t: T = englishT) {
   const due = v.money.balance > 0 && !v.money.company;
+  const status = v.money.company ? t("BILLED TO COMPANY") : due || v.money.total <= 0 ? payStatus(v.money, t) : t("PAID IN FULL");
+  // A heading, one line of words, then the link alone on its line (WhatsApp shows it as a link the guest can tap).
+  const open = (title: string, words: string, url: string | null | undefined) => (url ? block(title, `${words}\n\n${url}`) : null);
   return compose([
     hello(v.name, t),
-    t("Thank you for staying with {hotel}. You are checked out.", { hotel: v.hotel.name }),
+    t("Thank you for staying with {hotel}! You’re checked out.", { hotel: v.hotel.name }),
     section(t("YOUR STAY"), stayLines(v.stay, t)),
-    section(t("FINAL BILL"), moneyLines(v.money, t)),
-    block(t("PAYMENT STATUS"), due ? t("OUTSTANDING · {amount}", { amount: tzs(v.money.balance) }) : v.money.company ? t("BILLED TO COMPANY") : t("PAID IN FULL")),
-    due && v.payUrl ? link(t("Pay the balance (mobile money):"), v.payUrl) : null,
-    link(t("Your stay summary and bill:"), v.stayUrl),
-    link(t("A thank-you note from us:"), v.thanksUrl),
-    link(t("Follow us on Instagram:"), v.hotel.instagram),
-    link(t("Follow us on TikTok:"), v.hotel.tiktok),
-    t("We look forward to welcoming you again at {hotel}.", { hotel: v.hotel.name }),
+    section(t("FINAL BILL"), [...moneyLines(v.money, t), t("Status: {status}", { status })]),
+    due ? open(t("PAY THE BALANCE"), t("Pay what is left by mobile money here:"), v.payUrl) : null,
+    open(t("A THANK-YOU NOTE FOR YOU"), t("We wrote you a note about your stay:"), v.thanksUrl),
+    open(t("YOUR BILL"), t("See your stay summary and your bill:"), v.stayUrl),
+    section(t("FOLLOW US"), [
+      v.hotel.instagram ? t("Instagram: {url}", { url: v.hotel.instagram }) : null,
+      v.hotel.tiktok ? t("TikTok: {url}", { url: v.hotel.tiktok }) : null,
+    ]),
+    v.hotel.phone ? block(t("NEED ANYTHING?"), `${t("Call or WhatsApp Reception:")}\n${v.hotel.phone}`) : null,
+    t("We look forward to welcoming you again at {hotel}!", { hotel: v.hotel.name }),
   ]);
 }
 

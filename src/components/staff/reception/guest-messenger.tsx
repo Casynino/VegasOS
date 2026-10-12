@@ -28,6 +28,54 @@ const CHANNEL: Record<string, string> = { WHATSAPP: "WhatsApp", SMS: "SMS", EMAI
 const withoutName = (text: string, name: string) => name.split(/\s+/).filter(Boolean).reduce((x, w) => x.replaceAll(w, ""), text);
 
 /**
+ * A message ready to send: the text (reception may change it), then WhatsApp, SMS, email or copy — each opens that
+ * app on this device with the message written; it is sent when reception presses send there. Every send is kept on
+ * the guest's profile. One sending panel for every window that messages a guest.
+ */
+export function MessageSendPanel({ reservationId, type, label, subject, guest, hint, body, onBody, rows = 10, boxClass }: {
+  reservationId: string; type: GuestMessageOption["type"];
+  /** What the message is, in English ("Welcome & menu") — said when it is logged. */
+  label: string; subject: string;
+  guest: { name: string; phone: string | null; email: string | null };
+  /** "Messages in 中文" — the language the text is written in. */
+  hint?: string | null;
+  body: string; onBody: (text: string) => void; rows?: number;
+  /** Keeps a long message in a box of its own, so the send buttons stay in view. */
+  boxClass?: string;
+}) {
+  const t = useT();
+  const [phone, setPhone] = useState(guest.phone ?? "");
+  const [email, setEmail] = useState(guest.email ?? "");
+  const log = (channel: "WHATSAPP" | "SMS" | "EMAIL" | "COPY", to?: string) =>
+    void logGuestMessageAction({ reservationId, type, channel, to, body }).then((r) => { if (r.ok) toast.success(t("{message} — logged on {name}'s profile.", { message: t(label), name: guest.name })); });
+  return (
+    <>
+      {hint && <p className="-mb-2 flex items-center gap-1.5 text-xs text-muted-foreground"><Languages className="size-3.5" />{hint}</p>}
+      <Textarea rows={rows} value={body} onChange={(e) => onBody(e.target.value)} aria-label={t("Message")} className={cn("text-sm leading-relaxed", boxClass)} />
+      <div className="space-y-2">
+        <div className="flex gap-2">
+          <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t("Guest phone")} inputMode="tel" aria-label={t("Guest phone")} className="flex-1" />
+          <Button className="bg-[#25D366] text-[#073b1f] hover:bg-[#1fbe5b]" disabled={waDigits(phone).length < 9}
+            onClick={() => { log("WHATSAPP", phone); window.open(`https://wa.me/${waDigits(phone)}?text=${encodeURIComponent(body)}`, "_blank", "noopener"); }}>
+            <MessageCircle />WhatsApp
+          </Button>
+          <Button variant="outline" disabled={waDigits(phone).length < 9} onClick={() => { log("SMS", phone); window.location.href = `sms:+${waDigits(phone)}?&body=${encodeURIComponent(body)}`; }} aria-label={t("Send as SMS")}>
+            <Smartphone />SMS
+          </Button>
+        </div>
+        <div className="flex gap-2">
+          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t("Guest email")} aria-label={t("Guest email")} className="flex-1" />
+          <Button variant="outline" disabled={!/.+@.+\..+/.test(email)} onClick={() => { log("EMAIL", email); window.location.href = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`; }}>
+            <Mail />{t("Email")}
+          </Button>
+        </div>
+        <Button variant="ghost" size="sm" onClick={async () => { await navigator.clipboard.writeText(body); log("COPY"); }}><Copy />{t("Copy the message")}</Button>
+      </div>
+    </>
+  );
+}
+
+/**
  * "Message the guest": the booking details, the welcome (Wi-Fi, menu link) or the
  * thank-you note — ready to send on WhatsApp, SMS or email from this device.
  * Every send is kept on the guest's profile. The messages come written in the guest's own language — a small hint
@@ -45,8 +93,6 @@ export function GuestMessenger({ reservationId, guest, options, link, sent, auto
   const [open, setOpen] = useState(!!autoOpen && options.some((o) => o.type === autoOpen));
   const [type, setType] = useState<GuestMessageOption["type"]>(autoOpen && options.some((o) => o.type === autoOpen) ? autoOpen : options[0]?.type ?? "BOOKING_CREATED");
   const [texts, setTexts] = useState<Record<string, string>>(() => Object.fromEntries(options.map((o) => [o.type, o.text])));
-  const [phone, setPhone] = useState(guest.phone ?? "");
-  const [email, setEmail] = useState(guest.email ?? "");
   const [copied, setCopied] = useState(false);
   const current = options.find((o) => o.type === type) ?? options[0];
   const body = texts[type] ?? "";
@@ -54,9 +100,6 @@ export function GuestMessenger({ reservationId, guest, options, link, sent, auto
   // "Messages in 中文" — the guest's language (or, when not given, what the text is written in).
   const lang = toLocale(language) ?? (options.some((o) => hasCjk(withoutName(o.text, guest.name))) ? "zh-CN" : "en");
   const langHint = t("Messages in {language}", { language: LOCALE_META[lang].label });
-
-  const log = (channel: "WHATSAPP" | "SMS" | "EMAIL" | "COPY", to?: string) =>
-    void logGuestMessageAction({ reservationId, type, channel, to, body }).then((r) => { if (r.ok) toast.success(t("{message} — logged on {name}'s profile.", { message: t(current.label), name: guest.name })); });
   const pick = (t: GuestMessageOption["type"]) => { setType(t); setOpen(true); };
 
   return (
@@ -102,27 +145,8 @@ export function GuestMessenger({ reservationId, guest, options, link, sent, auto
               ))}
             </div>
           )}
-          <p className="-mb-2 flex items-center gap-1.5 text-xs text-muted-foreground"><Languages className="size-3.5" />{langHint}</p>
-          <Textarea rows={10} value={body} onChange={(e) => setTexts((all) => ({ ...all, [type]: e.target.value }))} aria-label={t("Message")} className="text-sm leading-relaxed" />
-          <div className="space-y-2">
-            <div className="flex gap-2">
-              <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t("Guest phone")} inputMode="tel" aria-label={t("Guest phone")} className="flex-1" />
-              <Button className="bg-[#25D366] text-[#073b1f] hover:bg-[#1fbe5b]" disabled={waDigits(phone).length < 9}
-                onClick={() => { log("WHATSAPP", phone); window.open(`https://wa.me/${waDigits(phone)}?text=${encodeURIComponent(body)}`, "_blank", "noopener"); }}>
-                <MessageCircle />WhatsApp
-              </Button>
-              <Button variant="outline" disabled={waDigits(phone).length < 9} onClick={() => { log("SMS", phone); window.location.href = `sms:+${waDigits(phone)}?&body=${encodeURIComponent(body)}`; }} aria-label={t("Send as SMS")}>
-                <Smartphone />SMS
-              </Button>
-            </div>
-            <div className="flex gap-2">
-              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t("Guest email")} aria-label={t("Guest email")} className="flex-1" />
-              <Button variant="outline" disabled={!/.+@.+\..+/.test(email)} onClick={() => { log("EMAIL", email); window.location.href = `mailto:${email}?subject=${encodeURIComponent(current.subject)}&body=${encodeURIComponent(body)}`; }}>
-                <Mail />{t("Email")}
-              </Button>
-            </div>
-            <Button variant="ghost" size="sm" onClick={async () => { await navigator.clipboard.writeText(body); log("COPY"); }}><Copy />{t("Copy the message")}</Button>
-          </div>
+          <MessageSendPanel reservationId={reservationId} type={type} label={current.label} subject={current.subject} guest={guest} hint={langHint}
+            body={body} onBody={(text) => setTexts((all) => ({ ...all, [type]: text }))} />
         </DialogContent>
       </Dialog>
     </>

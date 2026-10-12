@@ -20,6 +20,7 @@ import { StaffAlerts } from "./staff-alerts";
 import { StackTableLabels } from "./stack-table-labels";
 import { WaiterPinProvider } from "./waiter-pin";
 import { CustomerFinderAccess } from "./customer-finder";
+import { CheckoutThanksHost } from "./reception/checkout-thanks";
 import type { ReactNode } from "react";
 import { I18nProvider } from "@/i18n/client";
 import { Toaster } from "@/components/ui/sonner";
@@ -156,6 +157,8 @@ export async function StaffShell({ children }: { children: ReactNode }) {
 
       <StaffBottomBar home={home} sections={sections} requests={newRequests} canBook={can(user, "reservations.view")} user={{ name: user.fullName, role: user.roleName }} signOut />
     </div>
+    {/* After a check-out done in place: the thank-you message, ready to send (opened by showCheckoutThanks). */}
+    <CheckoutThanksHost />
     <Toaster richColors position="top-center" />
     </I18nProvider>
   );

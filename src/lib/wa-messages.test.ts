@@ -105,12 +105,42 @@ describe("guest messages in the guest's language", () => {
       hotel, name: "Asha", stay: { ...stay, rooms: "204" }, money: { lines: [{ label: "Room", amount: 160000 }, { label: "Restaurant", amount: 35000 }], total: 195000, paid: 195000, balance: 0 },
       stayUrl: langLink("https://vegas.example/stay/abc", zh), thanksUrl: langLink("https://vegas.example/thanks/xyz", zh),
     }, zh);
-    expect(text).toContain("感谢您入住Vegas Luxury Hotel。您已办理退房。");
+    expect(text).toContain("感谢您入住Vegas Luxury Hotel！您已办理退房。");
     expect(text).toContain("• 房间：204");
     expect(text).toContain("*最终账单*");
     expect(text).toContain("• 餐厅：TZS 35,000");
-    expect(text).toContain("*付款状态*\n已全额付款");
-    expect(text).toContain("https://vegas.example/thanks/xyz?lang=zh");
+    expect(text).toContain("• 状态：已全额付款");
+    expect(text).toContain("*给您的感谢信*\n我们为您的这次入住写了一封感谢信：\n\nhttps://vegas.example/thanks/xyz?lang=zh");
+  });
+
+  it("lays the check-out message out like the welcome: headed blocks, each link on its own line", () => {
+    const money: Money = { lines: [{ label: "Room", amount: 160000 }], total: 160000, paid: 160000, balance: 0 };
+    const v = { hotel: { ...hotel, instagram: "https://instagram.com/vegas", tiktok: null }, name: "Nasseb Fadhil", stay: { ...stay, rooms: "406" }, stayUrl: "https://vegas.example/stay/abc", thanksUrl: "https://vegas.example/thanks/xyz", payUrl: "https://vegas.example/pay/abc" };
+    const paid = checkoutMessage({ ...v, money });
+    expect(paid.split("\n\n").slice(0, 2)).toEqual(["Hello Nasseb,", "Thank you for staying with Vegas Luxury Hotel! You’re checked out."]);
+    expect(paid).toContain("*FINAL BILL*\n• Room: TZS 160,000\n• Total: TZS 160,000\n• Paid: TZS 160,000\n• Balance: TZS 0\n• Status: PAID IN FULL");
+    expect(paid).toContain("*A THANK-YOU NOTE FOR YOU*\nWe wrote you a note about your stay:\n\nhttps://vegas.example/thanks/xyz");
+    expect(paid).toContain("*YOUR BILL*\nSee your stay summary and your bill:\n\nhttps://vegas.example/stay/abc");
+    expect(paid).toContain("*FOLLOW US*\n• Instagram: https://instagram.com/vegas");
+    expect(paid).not.toContain("TikTok");
+    // Nothing left to pay: no "pay" block, and the note comes before the bill.
+    expect(paid).not.toContain("PAY THE BALANCE");
+    expect(paid.indexOf("A THANK-YOU NOTE")).toBeLessThan(paid.indexOf("*YOUR BILL*"));
+    expect(paid.endsWith("We look forward to welcoming you again at Vegas Luxury Hotel!")).toBe(true);
+
+    // Money still owed: said in the bill, and the way to pay it first.
+    const owing = checkoutMessage({ ...v, money: { ...money, paid: 40000, balance: 120000 } });
+    expect(owing).toContain("• Balance: TZS 120,000\n• Status: PARTIALLY PAID");
+    expect(owing).toContain("*PAY THE BALANCE*\nPay what is left by mobile money here:\n\nhttps://vegas.example/pay/abc");
+    // A company's bill is never the guest's to pay.
+    const company = checkoutMessage({ ...v, money: { ...money, paid: 0, balance: 160000, company: "Sino Build" } });
+    expect(company).toContain("• Billed to: Sino Build\n• Status: BILLED TO COMPANY");
+    expect(company).not.toContain("PAY THE BALANCE");
+    // No note yet, no phone: those blocks are simply not there.
+    const bare = checkoutMessage({ ...v, hotel: { name: "Vegas Luxury Hotel", phone: null }, thanksUrl: null, money });
+    expect(bare).not.toContain("THANK-YOU NOTE");
+    expect(bare).not.toContain("NEED ANYTHING?");
+    expect(bare).not.toContain("FOLLOW US");
   });
 
   it("writes the invoice message in Chinese with the same invoice number and amounts", () => {

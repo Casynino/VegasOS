@@ -20,6 +20,7 @@ import { changeBilling } from "@/server/services/company-billing";
 import { changeRoom, roomChangeOptions } from "@/server/services/room-changes";
 import { HOTEL_MOVE_CODES } from "@/lib/room-change";
 import { refreshBookingStates } from "@/server/services/booking-holds";
+import { checkoutThanks } from "@/server/services/guest-comms";
 import { requestMobilePayment } from "@/server/services/mobile-payments";
 import { SHORT_TIME_MAX_HOURS, shortTimeRate } from "@/lib/short-time";
 import { promoLabel } from "@/lib/pricing";
@@ -504,6 +505,8 @@ const SettleSchema = z.object({
   overrideReason: z.string().trim().max(300).optional(),
   payment: z.object({ amount: z.number().int().positive(msg("Enter the amount received.")), accountId: z.string().min(1, msg("Choose where the money was received.")), reference: z.string().trim().max(80).optional() }).nullable().optional(),
   invoiceMode: z.enum(["ISSUE", "OPEN"]).nullable().optional(),
+  /** A check-out done in place (room window, guest list): send back the check-out message, ready for reception to send. */
+  withMessage: z.boolean().default(false),
 });
 
 /** CHECK OUT — or RECORD PAYMENT & CHECK OUT — in one transaction: both happen, or neither. */
@@ -518,7 +521,8 @@ export async function settleCheckOutAction(input: z.input<typeof SettleSchema>) 
     });
     refresh(d.reservationId);
     revalidatePath("/staff/check-out");
-    return res;
+    // The guest is out: the thank-you message comes back with it (never holds the check-out up — null when there is none).
+    return { ...res, thanks: d.withMessage ? await checkoutThanks(d.reservationId) : null };
   });
 }
 
