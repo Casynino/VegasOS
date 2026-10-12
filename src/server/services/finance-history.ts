@@ -54,6 +54,7 @@ const ACTIONS: Record<string, { label: string; group: HistoryGroup }> = {
   "pricing.promotion_created": { label: msg("created a promotion"), group: "prices" },
   "pricing.promotion_updated": { label: msg("changed a promotion"), group: "prices" },
   "pricing.discount_rules": { label: msg("changed the discount rules"), group: "prices" },
+  "pricing.room_discount_limit": { label: msg("changed a room's discount limit"), group: "prices" },
   "pricing.date_price_created": { label: msg("created a date price"), group: "prices" },
   "pricing.date_price_updated": { label: msg("changed a date price"), group: "prices" },
   "pricing.date_price_on": { label: msg("switched on a date price"), group: "prices" },

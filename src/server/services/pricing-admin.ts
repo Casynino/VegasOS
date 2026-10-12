@@ -1,5 +1,6 @@
 import "server-only";
 import { type Tx } from "../db";
+import { audit, type AuditActor } from "../audit";
 import { AppError } from "../errors";
 import { msg, msgf } from "@/i18n/msg";
 import { fromDbDate } from "@/lib/time/business-date";
@@ -51,4 +52,21 @@ export async function assertNoPriceRuleConflict(tx: Tx, c: Candidate) {
       "CONFLICT", { priority: msg("Conflict") },
     );
   }
+}
+
+/**
+ * A room type's own staff discount limit per night (null = it follows the hotel's limit). It decides the most
+ * staff may take off a night from now on; a discount a booking already has is not touched. Written to the audit log.
+ */
+export async function setRoomTypeDiscountLimit(tx: Tx, roomTypeId: string, limit: number | null, actor: AuditActor): Promise<{ changed: boolean }> {
+  if (limit !== null && (!Number.isInteger(limit) || limit < 0)) throw new AppError("Enter a valid amount.");
+  const before = await tx.roomType.findUnique({ where: { id: roomTypeId }, select: { id: true, name: true, manualDiscountMax: true } });
+  if (!before) throw new AppError("Room type not found.", "NOT_FOUND");
+  if (before.manualDiscountMax === limit) return { changed: false };
+  await tx.roomType.update({ where: { id: before.id }, data: { manualDiscountMax: limit } });
+  await audit(tx, actor, {
+    action: "pricing.room_discount_limit", entityType: "RoomType", entityId: before.id,
+    before: { name: before.name, manualDiscountMax: before.manualDiscountMax }, after: { name: before.name, manualDiscountMax: limit },
+  });
+  return { changed: true };
 }

@@ -8,7 +8,7 @@ import { authorize, requestMeta } from "@/server/auth";
 import { AppError, runAction, type ActionResult } from "@/server/errors";
 import { parseInput } from "@/server/validation";
 import { toDbDate } from "@/lib/time/business-date";
-import { assertNoPriceRuleConflict, assertNoPromotionConflict } from "@/server/services/pricing-admin";
+import { assertNoPriceRuleConflict, assertNoPromotionConflict, setRoomTypeDiscountLimit } from "@/server/services/pricing-admin";
 import { msg } from "@/i18n/msg";
 
 /**
@@ -173,6 +173,23 @@ export async function saveDiscountRulesAction(_prev: unknown, formData: FormData
     revalidatePath("/staff", "layout");
     return null;
   }, msg("Discount rules saved."));
+}
+
+const RoomLimitSchema = z.object({
+  roomTypeId: z.string().min(1),
+  // Empty = this room follows the hotel's limit.
+  manualDiscountMax: z.preprocess((v) => (v == null || String(v).trim() === "" ? null : v), z.coerce.number().int(msg("Whole shillings only.")).min(0, msg("Enter a valid amount.")).max(10_000_000).nullable()),
+});
+
+/** One room type's own staff discount limit (the Twin room: 40,000); empty puts it back on the hotel's limit. */
+export async function saveRoomDiscountLimitAction(_prev: unknown, formData: FormData): Promise<ActionResult<null>> {
+  return runAction(async () => {
+    const { actor } = await adminActor();
+    const input = parseInput(RoomLimitSchema, formData);
+    await db.$transaction((tx) => setRoomTypeDiscountLimit(tx, input.roomTypeId, input.manualDiscountMax, actor));
+    revalidatePath("/staff", "layout");
+    return null;
+  }, msg("Discount limit saved."));
 }
 
 // ───────────────────────── Date prices (weekend, holiday, season) ─────────────────────────

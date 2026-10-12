@@ -319,6 +319,7 @@ const catalog: Catalog = {
   "created a promotion": "创建了促销",
   "changed a promotion": "修改了促销",
   "changed the discount rules": "修改了折扣规则",
+  "changed a room's discount limit": "修改了某房型的折扣上限",
   "created a date price": "创建了日期价格",
   "changed a date price": "修改了日期价格",
   "switched on a date price": "开启了日期价格",

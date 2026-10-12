@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "@/server/db";
 import { assertRoomDiscount, changeDiscount, createReservation } from "@/server/services/reservations";
+import { setRoomTypeDiscountLimit } from "@/server/services/pricing-admin";
 import { roomDiscountLimit } from "@/lib/discounts";
-import { eat, receptionistActor, resetBusinessData, roomType, waiterActor } from "../support/helpers";
+import { eat, managerActor, receptionistActor, resetBusinessData, roomType, waiterActor } from "../support/helpers";
 
 /**
  * A room type can have its own staff discount limit: every room follows the hotel's limit (20,000 a night),
@@ -96,6 +97,36 @@ describe("a room type's own discount limit", () => {
     await withTypeLimit("EXECUTIVE", 0, async () => {
       await expect(book("EXECUTIVE", 5_000, "Baraka Said", LATER)).rejects.toThrow(/No discount can be given on this room/);
     });
+  });
+
+  it("the Admin gives a room its own limit, and takes it away again — written to the history once", async () => {
+    const admin = await managerActor();
+    const exec = await roomType("EXECUTIVE");
+    const log = () => db.auditLog.findMany({ where: { action: "pricing.room_discount_limit", entityId: exec.id }, orderBy: { createdAt: "asc" } });
+    const mark = (await log()).length;
+    try {
+      expect(await db.$transaction((tx) => setRoomTypeDiscountLimit(tx, exec.id, 30_000, admin))).toEqual({ changed: true });
+      const r = await book("EXECUTIVE", 30_000);
+      expect((await db.reservationRoom.findUniqueOrThrow({ where: { id: r.rooms[0].id } })).discountPerNight).toBe(30_000);
+      await expect(book("EXECUTIVE", 35_000, "Baraka Said", LATER)).rejects.toThrow(/30,000/);
+      // Saving the same limit again changes nothing and writes nothing.
+      expect(await db.$transaction((tx) => setRoomTypeDiscountLimit(tx, exec.id, 30_000, admin))).toEqual({ changed: false });
+      expect((await log()).slice(mark)).toHaveLength(1);
+      expect((await log()).at(-1)).toMatchObject({ userId: admin.userId, before: { manualDiscountMax: null }, after: { manualDiscountMax: 30_000 } });
+
+      // Empty = back on the hotel's limit. The discount the first booking already has is not touched.
+      expect(await db.$transaction((tx) => setRoomTypeDiscountLimit(tx, exec.id, null, admin))).toEqual({ changed: true });
+      await expect(book("EXECUTIVE", 25_000, "Baraka Said", LATER)).rejects.toThrow(/20,000/);
+      expect((await db.reservationRoom.findUniqueOrThrow({ where: { id: r.rooms[0].id } })).discountPerNight).toBe(30_000);
+      expect((await log()).at(-1)).toMatchObject({ before: { manualDiscountMax: 30_000 }, after: { manualDiscountMax: null } });
+
+      await expect(db.$transaction((tx) => setRoomTypeDiscountLimit(tx, exec.id, -1, admin))).rejects.toThrow(/valid amount/);
+      await expect(db.$transaction((tx) => setRoomTypeDiscountLimit(tx, exec.id, 1500.5, admin))).rejects.toThrow(/valid amount/);
+      await expect(db.$transaction((tx) => setRoomTypeDiscountLimit(tx, "no-such-room-type", 30_000, admin))).rejects.toThrow(/not found/);
+      expect((await db.roomType.findUniqueOrThrow({ where: { id: exec.id } })).manualDiscountMax).toBeNull();
+    } finally {
+      await db.roomType.update({ where: { id: exec.id }, data: { manualDiscountMax: null } });
+    }
   });
 
   it("when the guest is moving to another room, the room they move to decides", async () => {
