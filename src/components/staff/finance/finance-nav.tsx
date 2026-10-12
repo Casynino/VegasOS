@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { addDays, isBusinessDate, presetRange, type BusinessDate, type PeriodPreset } from "@/lib/time/business-date";
 import { getT } from "@/i18n/server";
 import { msg } from "@/i18n/msg";
+import { can, getCurrentUser } from "@/server/auth";
 import { englishT, type T } from "@/i18n/translate";
 
 const TABS = [
@@ -35,7 +36,10 @@ export async function FinanceTabs({ active, limited, actions }: {
   actions?: React.ReactNode;
 }) {
   const t = await getT();
-  const tabs = limited ? LIMITED_TABS : TABS;
+  // Withdraw funds sits beside Online payments — only for those who may withdraw (the page checks again by itself).
+  const withdraw = !limited && can(await getCurrentUser(), "withdrawals.manage");
+  const tabs: readonly { href: string; label: string }[] = limited ? LIMITED_TABS
+    : withdraw ? TABS.flatMap<{ href: string; label: string }>((tab) => (tab.href === "/staff/finance/online" ? [tab, { href: "/staff/finance/withdraw", label: msg("Withdraw funds") }] : [tab])) : TABS;
   const bar = (
     <nav aria-label={t("Finance")} className="-mx-1 min-w-0 flex-1 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none]">
       {/* As wide as the cards below; the tabs share the width (and scroll on a phone) */}

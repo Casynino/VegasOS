@@ -221,6 +221,39 @@ export async function reviewExpense(
 }
 
 /**
+ * A fee a payment provider took from one of the hotel's accounts (nTZS's fee on a withdrawal): an expense under
+ * "Bank & payment fees", paid from that account — written by the system inside the withdrawal's own transaction, so
+ * it exists exactly once. It is the fee only: the money withdrawn is never an expense.
+ */
+export async function createProviderFeeExpenseTx(tx: Tx, input: { amount: number; accountId: string; description: string; payee: string; reference: string; createdById: string }, actor: AuditActor) {
+  if (!Number.isInteger(input.amount) || input.amount <= 0) return null;
+  const category = (await tx.expenseCategory.findUnique({ where: { code: "BANK_FEES" } }))
+    ?? (await tx.expenseCategory.create({ data: { code: "BANK_FEES", name: "Bank & payment fees", icon: "Landmark", sortOrder: 9 } }));
+  const item = await tx.expenseItem.findFirst({ where: { categoryId: category.id, name: "Mobile money charges" }, select: { id: true } });
+  const settings = await getSettingsTx(tx);
+  const spentAt = new Date();
+  const expense = await tx.expense.create({
+    data: {
+      number: await nextExpenseNumber(tx, String(spentAt.getFullYear())),
+      accountId: input.accountId, categoryId: category.id, itemId: item?.id ?? null, amount: input.amount,
+      businessDate: toDbDate(businessDateOf(spentAt, stayConfig(settings))), spentAt,
+      description: input.description, payee: input.payee, reference: input.reference, status: "RECORDED", createdById: input.createdById,
+    },
+  });
+  await audit(tx, actor, { action: "expense.created", entityType: "Expense", entityId: expense.id, after: { number: expense.number, amount: expense.amount, category: category.code, account: input.accountId, reference: input.reference } });
+  return expense;
+}
+
+/** That fee, cancelled when the provider took the withdrawal back (kept on the register with the reason). */
+export async function voidProviderFeeExpenseTx(tx: Tx, expenseId: string, reason: string, actor: AuditActor) {
+  const e = await tx.expense.findUnique({ where: { id: expenseId } });
+  if (!e || e.status === "VOIDED") return false;
+  await tx.expense.update({ where: { id: e.id }, data: { status: "VOIDED", voidedAt: new Date(), voidReason: reason.trim() } });
+  await audit(tx, actor, { action: "expense.voided", entityType: "Expense", entityId: e.id, before: { status: e.status, amount: e.amount }, after: { status: "VOIDED", reason } });
+  return true;
+}
+
+/**
  * Cancel an expense (it stays on the register, struck through, with who and why).
  * A manager may cancel any; staff may cancel their own on the hotel day they recorded it.
  */

@@ -27,6 +27,8 @@ export const PERMISSIONS = {
   "pricing.manage": msg("Set room prices and create promotions (Admin)"),
   "finance.view": msg("See the general ledger, money accounts, receivables and staff activity"),
   "finance.manage": msg("Record transfers, owner money and corrections; accept cash counts"),
+  "withdrawals.manage": msg("Withdraw funds: take money out of the hotel's nTZS balance (Boss and Admin)"),
+  "withdrawals.reconcile": msg("Withdraw funds: settle by hand a withdrawal nTZS could not confirm"),
   "reservations.checkout_override": msg("Check a guest out with an unpaid balance (authorised override)"),
   "reservations.checkin_override": msg("Check a guest into a room housekeeping has not marked ready (authorised override)"),
   "guests.view": msg("View guest profiles"),

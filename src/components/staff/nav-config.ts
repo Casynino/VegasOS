@@ -46,6 +46,8 @@ export const NAV: NavSection[] = [
       { href: "/staff/finance/receivables", label: msg("Who owes us"), icon: "HandCoins", anyOf: ["finance.view"] },
       // nTZS — the hotel's one online payment: status, on/off per service, every attempt, reconciliation.
       { href: "/staff/finance/online", label: msg("Online payments"), icon: "Smartphone", anyOf: ["finance.view"] },
+      // Money out of nTZS, to a phone or a bank — only for those who may withdraw (the Boss and the administrator).
+      { href: "/staff/finance/withdraw", label: msg("Withdraw funds"), icon: "BanknoteArrowUp", anyOf: ["withdrawals.manage"] },
       { href: "/staff/finance/history", label: msg("Edit history"), icon: "History", anyOf: ["finance.view"] },
       { href: "/staff/finance/ledger", label: msg("General ledger"), icon: "ArrowLeftRight", anyOf: ["ledger.view", "finance.view"] },
     ],

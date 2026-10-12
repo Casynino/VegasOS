@@ -161,6 +161,8 @@ model User {
   assignmentsFrom           WaiterAssignment[]       @relation("AssignmentFrom")
   assignmentsTo             WaiterAssignment[]       @relation("AssignmentTo")
   mobilePaymentsRequested   MobilePayment[]          @relation("MobilePaymentRequestedBy")
+  withdrawalsRequested      Withdrawal[]             @relation("WithdrawalRequestedBy")
+  withdrawalsReconciled     Withdrawal[]             @relation("WithdrawalReconciledBy")
 
   @@map("users")
 }
@@ -2198,6 +2200,8 @@ model MoneyAccount {
   entries            LedgerEntry[]            @relation("LedgerEntryAccount")
   entriesIn          LedgerEntry[]            @relation("LedgerEntryToAccount")
   cashCounts         CashCount[]
+  /// Withdrawals from nTZS that land in this hotel account (a transfer in the books).
+  withdrawalsIn      Withdrawal[]
 
   @@map("money_accounts")
 }
@@ -2668,35 +2672,35 @@ model SpinSession {
 
 /// One spin and the gift it won — committed on the server before the wheel turns.
 model SpinResult {
-  id         String           @id @default(cuid())
-  sessionId  String
-  session    SpinSession      @relation(fields: [sessionId], references: [id])
+  id          String           @id @default(cuid())
+  sessionId   String
+  session     SpinSession      @relation(fields: [sessionId], references: [id])
   /// 1, 2, 3 … in the order the stay played them (the bonus spin included).
-  spinNumber Int
+  spinNumber  Int
   /// GIFT | FREE_SPIN (one more spin, once a stay) | TRY_AGAIN (nothing this time).
-  kind       String           @default("GIFT")
+  kind        String           @default("GIFT")
   /// This spin was the stay's bonus spin.
-  bonus      Boolean          @default(false)
+  bonus       Boolean          @default(false)
   /// 1 or 2 for a gift (the stay's first or second); empty otherwise.
   prizeNumber Int?
   /// The phone's key for this very spin: asked twice, answered once.
-  clientKey  String           @unique
-  menuItemId String?
-  menuItem   MenuItem?        @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
-  name       String
-  nameI18n   Json?
+  clientKey   String           @unique
+  menuItemId  String?
+  menuItem    MenuItem?        @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
+  name        String
+  nameI18n    Json?
   /// What the gift is worth (the menu price, or the Admin's value) when it was won. 0 when nothing was won.
-  value      Int
+  value       Int
   /// The wheel this spin showed and the segment it stopped on — so the same spin, asked again, plays back the same.
-  wheel      Json?
-  stopIndex  Int?
+  wheel       Json?
+  stopIndex   Int?
   /// ROOM | RESTAURANT — once the guest has sent the stay's gifts. DECLINED — the guest said "no, thank you": no order.
-  fulfilment String?
+  fulfilment  String?
   /// The stay's one gift order (all its gifts together).
-  orderId    String?
-  order      RestaurantOrder? @relation(fields: [orderId], references: [id])
-  createdAt  DateTime         @default(now())
-  claimedAt  DateTime?
+  orderId     String?
+  order       RestaurantOrder? @relation(fields: [orderId], references: [id])
+  createdAt   DateTime         @default(now())
+  claimedAt   DateTime?
 
   @@unique([sessionId, spinNumber])
   @@unique([sessionId, prizeNumber])
@@ -3497,6 +3501,112 @@ model MobilePayment {
   @@index([attentionAt, resolvedAt])
   @@index([targetKey, status])
   @@map("mobile_payments")
+}
+
+// ───────────────────────── Withdrawals (money out of the hotel's nTZS balance) ─────────────────────────
+
+enum WithdrawalStatus {
+  /// Priced by nTZS; the person has not confirmed yet — nothing was sent.
+  QUOTED
+  /// Never sent (closed, replaced by a new price, or the price ran out).
+  CANCELLED
+  /// Confirmed and being sent to nTZS — its answer is not known yet.
+  SUBMITTING
+  /// nTZS gave no clear answer: nobody knows yet whether it was taken. No new withdrawal until this is settled.
+  UNKNOWN
+  /// nTZS accepted it; the money is on its way.
+  PROCESSING
+  /// nTZS holds it for its own approval (large amounts).
+  AWAITING_APPROVAL
+  /// nTZS is checking the payout itself (its "reconcile_required").
+  IN_REVIEW
+  /// nTZS confirmed the money arrived — the only state written to the hotel's books.
+  COMPLETED
+  /// nTZS could not pay it out (the money goes back to the nTZS balance).
+  FAILED
+  /// nTZS refused the request — nothing moved.
+  REJECTED
+}
+
+/// Money the Boss takes out of the hotel's nTZS balance, to a phone or a bank account (nTZS payouts: price → confirm →
+/// nTZS's own answer). A request is never a success: only nTZS's confirmation (its answer, its signed webhook, or its
+/// status when asked) completes it — and only then, once, the hotel's books are written: a ledger entry out of the
+/// nTZS account for what arrived (never revenue, never an expense) and nTZS's fee as its own expense.
+model Withdrawal {
+  /// Also our reference at nTZS (endUser.reference) and the Idempotency-Key — one request, however often it is sent.
+  id              String           @id @default(cuid())
+  /// WD-000001 — given when it is sent to nTZS (a price nobody confirmed has none).
+  number          String?          @unique
+  provider        String           @default("NTZS")
+  status          WithdrawalStatus @default(QUOTED)
+  /// What the recipient gets (net), whole TZS — what was asked for.
+  amount          Int
+  /// nTZS's fee: its price first (an estimate), then as nTZS confirmed it (feeConfirmed).
+  feeTzs          Int?
+  feeConfirmed    Boolean          @default(false)
+  /// What left the nTZS balance (what arrived + the fee), as nTZS said it.
+  debitedTzs      Int?
+  /// What nTZS says the recipient received.
+  receivedTzs     Int?
+  /// PHONE (mobile money) | BANK.
+  destinationKind String
+  /// 2557XXXXXXXX — kept on the server; screens show it masked.
+  phone           String?
+  bankCode        String?
+  accountNumber   String?
+  /// The registered name as nTZS returned it (none = the network did not confirm one).
+  recipientName   String?
+  payoutRail      String?
+  quoteId         String?
+  quoteExpiresAt  DateTime?
+  /// The balance nTZS reported when it priced this (none when it did not say).
+  availableTzs    Int?
+  /// nTZS said it will hold this one for its own approval.
+  needsApproval   Boolean          @default(false)
+  /// nTZS's withdrawal id (set once it accepted the request).
+  providerId      String?          @unique
+  /// nTZS's own words for the state, as last heard.
+  providerStatus  String?
+  payoutStatus    String?
+  payoutReference String?
+  payoutReceipt   String?
+  providerMessage String?
+  livemode        Boolean          @default(false)
+  /// In the hotel's books: the hotel account the money goes to (a transfer); none = the owner takes it out.
+  toAccountId     String?
+  toAccount       MoneyAccount?    @relation(fields: [toAccountId], references: [id])
+  note            String?
+  /// The browser's key for this request — pressed twice (double tap, two tabs) it is one request.
+  clientKey       String?          @unique
+  requestedById   String
+  requestedBy     User             @relation("WithdrawalRequestedBy", fields: [requestedById], references: [id])
+  /// The hotel day (04:00 → 04:00, Dar es Salaam) it was asked for.
+  businessDate    DateTime         @db.Date
+  submittedAt     DateTime?
+  completedAt     DateTime?
+  failedAt        DateTime?
+  failureCode     String?
+  failureReason   String?
+  lastCheckedAt   DateTime?
+  /// What it became in the books once nTZS confirmed it.
+  ledgerEntryId   String?          @unique
+  feeExpenseId    String?          @unique
+  /// Needs a person (unclear for too long, nTZS disagrees with our record, a payout that came back…) — until settled.
+  attentionAt     DateTime?
+  attentionNote   String?
+  /// Settled by hand from what nTZS shows, when nTZS could not confirm it by itself (who, when, why).
+  reconciledAt    DateTime?
+  reconciledById  String?
+  reconciledBy    User?            @relation("WithdrawalReconciledBy", fields: [reconciledById], references: [id])
+  reconciledNote  String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([status, createdAt])
+  @@index([submittedAt])
+  @@index([businessDate])
+  @@index([requestedById, createdAt])
+  @@map("withdrawals")
 }
 
 // ───────────────────────── Translations (English lives on the record itself) ─────────────────────────

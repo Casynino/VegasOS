@@ -160,6 +160,42 @@ export async function postMovement(input: MovementInput, actor: Actor, opts: { c
   });
 }
 
+/**
+ * A movement the system writes inside another record's transaction — a withdrawal nTZS confirmed. Same numbering and
+ * the same audit line as postMovement; who may do it was decided by the caller (never open to a screen by itself).
+ */
+export async function postMovementTx(tx: Tx, input: { kind: "TRANSFER" | "OWNER_WITHDRAWAL"; amount: number; accountId: string; toAccountId?: string | null; description: string; reference?: string | null; notes?: string | null; createdById: string }, actor: AuditActor) {
+  if (!Number.isInteger(input.amount) || input.amount <= 0) throw new AppError("Enter a positive whole amount.", "VALIDATION", { amount: msg("Invalid") });
+  if (input.kind === "TRANSFER" && (!input.toAccountId || input.toAccountId === input.accountId)) throw new AppError("Choose two different accounts.", "VALIDATION", { toAccountId: msg("Same account") });
+  const settings = await getSettingsTx(tx);
+  const now = new Date();
+  const entry = await tx.ledgerEntry.create({
+    data: {
+      number: await nextNumber(tx), kind: input.kind, amount: input.amount, accountId: input.accountId,
+      toAccountId: input.kind === "TRANSFER" ? input.toAccountId! : null,
+      description: input.description.trim(), reference: input.reference?.trim() || null, notes: input.notes?.trim() || null,
+      occurredAt: now, businessDate: toDbDate(businessDateOf(now, businessDayConfig(settings))), createdById: input.createdById,
+    },
+  });
+  await audit(tx, actor, {
+    action: "finance.movement_posted", entityType: "LedgerEntry", entityId: entry.id,
+    after: { number: entry.number, kind: entry.kind, amount: entry.amount, account: input.accountId, to: input.toAccountId ?? null, description: entry.description },
+  });
+  return entry;
+}
+
+/** The same, taken back (it stays on the ledger, struck through, with the reason). Nothing happens when it already is. */
+export async function reverseMovementTx(tx: Tx, id: string, reason: string, actor: AuditActor) {
+  const e = await tx.ledgerEntry.findUnique({ where: { id } });
+  if (!e || e.status === "REVERSED") return false;
+  await tx.ledgerEntry.update({ where: { id }, data: { status: "REVERSED", reversedAt: new Date(), reversedById: actor.userId ?? null, reversalReason: reason.trim() } });
+  await audit(tx, actor, {
+    action: "finance.movement_reversed", entityType: "LedgerEntry", entityId: id,
+    before: { number: e.number, status: e.status, amount: e.amount }, after: { status: "REVERSED", reason: reason.trim() },
+  });
+  return true;
+}
+
 /** A posted movement is never deleted: it is reversed (stays on the ledger, struck through). */
 export async function reverseMovement(id: string, reason: string, actor: Actor) {
   if (!actor.permissions.has("finance.manage")) throw new AppError("Only Admin can reverse money movements.", "FORBIDDEN");

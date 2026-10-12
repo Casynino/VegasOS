@@ -3,7 +3,7 @@ import { getT } from "@/i18n/server";
 import { msg } from "@/i18n/msg";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowDownLeft, ArrowLeft, ArrowUpRight, Info, Paperclip, Search } from "lucide-react";
+import { ArrowDownLeft, ArrowLeft, ArrowUpRight, BanknoteArrowUp, Info, Paperclip, Search } from "lucide-react";
 import { can, requirePagePermission } from "@/server/auth";
 import { db } from "@/server/db";
 import { businessToday } from "@/server/settings";
@@ -172,6 +172,8 @@ export default async function AccountDetailPage({ params, searchParams }: PagePr
         {can(user, "settings.manage") && <PaymentAccountButton account={{ id: account.id, name: account.name, kind: account.kind, accountNumber: account.accountNumber, holderName: account.holderName, acceptsPayments: account.acceptsPayments, acceptsExpenses: account.acceptsExpenses, isActive: account.isActive }} />}
         {account.isActive && (account.kind === "CASH" || account.kind === "PETTY_CASH") && (perms.movement || perms.correct) && <CashCountButton account={{ id: account.id, name: account.name, balance: held?.balance ?? 0 }} />}
         {perms.movement && <MovementButton accounts={books.filter((b) => all.some((x) => x.id === b.id)).map((b) => ({ id: b.id, name: b.name, balance: b.balance }))} />}
+        {/* Taking money out of nTZS itself is its own page — only for those who may withdraw. */}
+        {account.code === "NTZS" && can(user, "withdrawals.manage") && <Link href="/staff/finance/withdraw" className="inline-flex h-9 items-center gap-1.5 px-1 text-sm font-medium underline-offset-4 hover:underline"><BanknoteArrowUp className="size-4" />{t("Withdraw funds")}</Link>}
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">

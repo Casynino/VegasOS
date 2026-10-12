@@ -30,6 +30,7 @@ import m_spin from "./spin";
 import m_staff_shell from "./staff-shell";
 import m_stock_assets from "./stock-assets";
 import m_svc_reporting from "./svc-reporting";
+import m_withdrawals from "./withdrawals";
 
 const catalog: Catalog = {
   ...m_content_admin,
@@ -62,5 +63,6 @@ const catalog: Catalog = {
   ...m_staff_shell,
   ...m_stock_assets,
   ...m_svc_reporting,
+  ...m_withdrawals,
 };
 export default catalog;

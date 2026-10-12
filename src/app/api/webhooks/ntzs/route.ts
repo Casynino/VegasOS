@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import { depositCompleted, depositFailed, readDeposit, verifyNtzsWebhook } from "@/server/services/ntzs";
 import { db } from "@/server/db";
 import { checkMobilePayment, findMobilePayment, settleMobilePayment } from "@/server/services/mobile-payments";
+import { handleWithdrawalWebhook } from "@/server/services/withdrawals";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -33,6 +34,26 @@ export async function POST(req: Request) {
 
   const event = eventOf(body);
   const data = obj(body.data) ?? obj(body.payload) ?? obj(body.deposit) ?? body;
+
+  // A withdrawal's news (`withdrawal.updated`): the record follows what nTZS says — completed, failed, being checked.
+  if (event.includes("withdrawal") || str(data.withdrawalId, data.withdrawal_id)) {
+    const wlog = { event: event || "(none)", withdrawalId: str(data.withdrawalId, data.withdrawal_id, data.id), status: str(data.status), payoutStatus: str(data.payoutStatus, data.payout_status) };
+    try {
+      const r = await handleWithdrawalWebhook(data);
+      if (!r.found) {
+        console.warn("[ntzs] webhook for a withdrawal we do not know", wlog);
+        return Response.json({ ok: true, ignored: "unknown withdrawal" });
+      }
+      console.info("[ntzs] webhook: withdrawal", { ...wlog, matched: r.id, now: r.status, ignored: r.ignored ?? null });
+      try { revalidatePath("/staff/finance", "layout"); } catch { /* screens refresh on their own as well */ }
+      return Response.json({ ok: true, status: r.status, ...(r.ignored ? { ignored: r.ignored } : {}) });
+    } catch (e) {
+      // Not recorded: answer with an error so nTZS tries again (the scheduled check also asks).
+      console.error("[ntzs] could not record a withdrawal's news", wlog, e);
+      return new Response("Could not record the withdrawal", { status: 500 });
+    }
+  }
+
   const dep = readDeposit(data);
   const endUser = obj(data.endUser) ?? obj(data.end_user);
   const metadata = obj(data.metadata);

@@ -3,14 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Activity, Armchair, ArrowLeftRight, Banknote, BarChart3, Coins, BedDouble, BookOpenText, Boxes, Building2, BusFront, CalendarCheck, CalendarClock, CalendarDays, CalendarPlus, CalendarRange, Car, CirclePlus, ClipboardCheck, ClipboardList, Clock, ConciergeBell, Contact, DoorClosed, DoorOpen, FileChartColumn, FileText, Gift, Globe, HandCoins, HandPlatter, History, Hotel, Inbox, Landmark, Languages, Layers, LayoutDashboard, LayoutGrid, MessageSquareText, NotebookText, Presentation, QrCode, Receipt, ReceiptText, Settings, ShieldCheck, Smartphone, Sofa, Tags, TrendingUp, UserCog, Users, UtensilsCrossed, Wallet, type LucideIcon,
+  Activity, Armchair, ArrowLeftRight, Banknote, BanknoteArrowUp, BarChart3, Coins, BedDouble, BookOpenText, Boxes, Building2, BusFront, CalendarCheck, CalendarClock, CalendarDays, CalendarPlus, CalendarRange, Car, CirclePlus, ClipboardCheck, ClipboardList, Clock, ConciergeBell, Contact, DoorClosed, DoorOpen, FileChartColumn, FileText, Gift, Globe, HandCoins, HandPlatter, History, Hotel, Inbox, Landmark, Languages, Layers, LayoutDashboard, LayoutGrid, MessageSquareText, NotebookText, Presentation, QrCode, Receipt, ReceiptText, Settings, ShieldCheck, Smartphone, Sofa, Tags, TrendingUp, UserCog, Users, UtensilsCrossed, Wallet, type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { NavSection } from "./nav-config";
 import { useT } from "@/i18n/client";
 
 const ICONS: Record<string, LucideIcon> = {
-  Activity, Armchair, ArrowLeftRight, Banknote, BarChart3, Coins, BedDouble, BookOpenText, Boxes, Building2, BusFront, CalendarCheck, CalendarClock, CalendarDays, CalendarPlus, CalendarRange, Car, CirclePlus, ClipboardCheck, ClipboardList, Clock, ConciergeBell, Contact, DoorClosed, DoorOpen, FileChartColumn, FileText, Gift, Globe, HandCoins, HandPlatter, History, Hotel, Inbox, Landmark, Languages, Layers, LayoutDashboard, MessageSquareText, NotebookText, Presentation, QrCode, Receipt, ReceiptText, Settings, ShieldCheck, Smartphone, Sofa, Tags, TrendingUp, UserCog, Users, UtensilsCrossed, Wallet,
+  Activity, Armchair, ArrowLeftRight, Banknote, BanknoteArrowUp, BarChart3, Coins, BedDouble, BookOpenText, Boxes, Building2, BusFront, CalendarCheck, CalendarClock, CalendarDays, CalendarPlus, CalendarRange, Car, CirclePlus, ClipboardCheck, ClipboardList, Clock, ConciergeBell, Contact, DoorClosed, DoorOpen, FileChartColumn, FileText, Gift, Globe, HandCoins, HandPlatter, History, Hotel, Inbox, Landmark, Languages, Layers, LayoutDashboard, MessageSquareText, NotebookText, Presentation, QrCode, Receipt, ReceiptText, Settings, ShieldCheck, Smartphone, Sofa, Tags, TrendingUp, UserCog, Users, UtensilsCrossed, Wallet,
 };
 
 /**
