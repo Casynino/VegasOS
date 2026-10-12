@@ -17,7 +17,7 @@ const LIVE = process.argv.includes("--live");
 const KEEP = [
   "_prisma_migrations", "hotel_settings", "users", "roles", "permissions", "role_permissions", "sessions", "rate_limit_buckets",
   "room_types", "room_type_amenities", "room_type_translations", "rooms", "amenities", "amenity_translations", "price_rules", "promotions",
-  "booking_sources", "payment_methods", "money_accounts", "expense_categories", "revenue_categories",
+  "booking_sources", "payment_methods", "money_accounts", "expense_categories", "expense_items", "revenue_categories",
   "menu_categories", "menu_category_translations", "menu_items", "menu_item_translations", "restaurant_locations",
   "inventory_categories", "inventory_departments", "inventory_items", "recipe_lines", "suppliers", "assets", "asset_movements",
   "hotel_services", "hotel_service_translations", "transport_services", "transport_service_translations", "transport_service_options",
@@ -34,7 +34,7 @@ const WORK = {
   contact_messages: "Website contact messages",
   invoices: "Invoices", invoice_items: "Invoices", thank_you_notes: "Thank-you notes",
   payments: "Payments", payment_corrections: "Payments", mobile_payments: "Phone payment requests (nTZS)", withdrawals: "Withdrawals (nTZS)",
-  revenue_transactions: "Income records", expenses: "Expenses", expense_items: "Expenses", expense_approvals: "Expenses", ledger_entries: "Ledger entries",
+  revenue_transactions: "Income records", expenses: "Expenses", expense_approvals: "Expenses", ledger_entries: "Ledger entries",
   cash_counts: "Cash counts",
   restaurant_orders: "Restaurant and room-service orders", restaurant_order_items: "Restaurant and room-service orders",
   restaurant_order_events: "Restaurant and room-service orders", restaurant_order_payments: "Restaurant and room-service orders",
@@ -53,11 +53,11 @@ const WORK = {
 const MIXED = ["audit_logs", "inventory_movements", "room_blocks", "shift_schedules", "stored_files"];
 
 /** History rows about set-up and sign-ins, and about what was done with guests, orders and money — by the first word of the action. */
-const AUDIT_SETUP = ["auth", "user", "settings", "pricing", "role", "system"];
+const AUDIT_SETUP = ["auth", "user", "settings", "pricing", "role", "system", "menu", "setup"];
 const AUDIT_WORK = [
   "reservation", "restaurant_order", "room", "payment", "expense", "revenue", "spin", "shift", "guest", "table_reservation", "booking_request",
   "request", "invoice", "group", "transport", "report", "dining_session", "finance", "thank_you", "meeting", "restaurant_table", "corporate",
-  "stock_request", "daily_list",
+  "stock_request", "daily_list", "mobile_payment",
 ];
 
 const OPENING = `(kind = 'ADJUST' AND note = 'Opening stock')`;
