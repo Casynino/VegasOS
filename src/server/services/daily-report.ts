@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { inHouseBalances } from "./guest-balances";
 import { db } from "../db";
 import { audit } from "../audit";
-import { getSettings, businessDayConfig } from "../settings";
+import { getSettings, businessDayConfig, liveSinceDate } from "../settings";
 import { addDays, businessDateOf, businessDayBounds, fromDbDate, localParts, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import { assetSummary, inventoryAlerts, inventoryDay } from "./inventory";
 import { guestMovement, meetingRoomStats, occupancy, outstanding, profitLoss, unpaidOrders as unpaidOrderTotals } from "./reporting";
@@ -424,6 +424,9 @@ export async function runDailyReportJob(now = new Date(), deadline?: number) {
   }
   // At 07:00+ the current business day started at 04:00; the report covers the one that just closed.
   const reportDate = addDays(today, -1);
+  // The practice data was cleared: a day before the clean start is never reported again as an empty one.
+  const live = liveSinceDate(settings);
+  if (live && reportDate < live) return { skipped: "before the clean start", businessDate: reportDate };
   const existing = await db.dailyReport.findUnique({ where: { businessDate: toDbDate(reportDate) } });
   const report = existing?.automatic ? existing
     : await generateDailyReport(reportDate, { by: "system", automatic: true, reason: existing ? "The 07:00 automatic report" : null });

@@ -1,7 +1,7 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
 import { db } from "../db";
-import { getSettings, businessDayConfig } from "../settings";
+import { getSettings, businessDayConfig, liveSinceDate } from "../settings";
 import { addDays, businessDateOf, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import { buildDailyReport } from "./daily-report";
 import { buildRoomReportData, withDayMoney, type RoomReportData } from "./room-report-data";
@@ -149,5 +149,7 @@ export async function runRoomReportJob(now = new Date(), deadline?: number) {
   const cfg = businessDayConfig(settings);
   if (!settings.reportEnabled || !settings.roomReportEnabled) return { skipped: "disabled" };
   const reportDate = addDays(businessDateOf(now, cfg), -1);
+  const live = liveSinceDate(settings);
+  if (live && reportDate < live) return { skipped: "before the clean start" };
   return deliverRoomReportByDate(reportDate, { automatic: true, deadline });
 }

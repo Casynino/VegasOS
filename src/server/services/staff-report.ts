@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { db } from "../db";
 import { audit } from "../audit";
 import { isUniqueViolation } from "../errors";
-import { businessDayConfig, getSettings } from "../settings";
+import { businessDayConfig, getSettings, liveSinceDate } from "../settings";
 import { addDays, businessDateOf, businessRangeBounds, diffDays, eachDate, fromDbDate, localParts, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import { formatBusinessDate } from "@/lib/format";
 import { worksWaiterShift } from "@/lib/permissions";
@@ -388,9 +388,12 @@ export async function runStaffPeriodJob(now = new Date(), budgetMs = 15_000, sen
   const today = businessDateOf(now, cfg);
   const morning = localParts(now, cfg.timezone).hour >= PERIOD_SEND_HOUR;
   const made: string[] = [];
+  const live = liveSinceDate(settings);
   for (const kind of ["WEEK", "MONTH"] as const) {
     if (Date.now() > deadline) break;
     const { from, to } = lastCompleted(kind, today);
+    // A period that ended before the clean start (practice data cleared) is not reported again as an empty one.
+    if (live && to < live) continue;
     const before = await db.staffReport.findUnique({ where: { key: `${kind}:${from}:TEAM` }, select: { id: true } });
     const team = before ?? (await generateTeamPeriodReport(kind, from, to, { deadline }));
     if (!team) continue;

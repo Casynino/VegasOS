@@ -28,6 +28,11 @@ export function businessDayConfig(s: HotelSettings): BusinessDayConfig {
   return { timezone: s.timezone, businessDayStartMinutes: s.businessDayStartMinutes };
 }
 
+/** The business day of the hotel's clean start (null = never cleared): no automatic report covers a day before it. */
+export function liveSinceDate(s: HotelSettings): BusinessDate | null {
+  return s.liveSince ? businessDateOf(s.liveSince, businessDayConfig(s)) : null;
+}
+
 export function stayConfig(s: HotelSettings): StayConfig {
   return {
     timezone: s.timezone,

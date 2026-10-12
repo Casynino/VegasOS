@@ -347,6 +347,8 @@ model HotelSettings {
   enabledLanguages           String[]  @default(["en", "zh-CN"])
   /// The language a first-time visitor sees.
   defaultLanguage            String    @default("en")
+  /// The hotel's clean start (practice data cleared before official use): no automatic report covers a day before it.
+  liveSince                  DateTime?
   updatedAt                  DateTime  @updatedAt
   updatedById                String?
   updatedBy                  User?     @relation(fields: [updatedById], references: [id])
