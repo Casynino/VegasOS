@@ -73,8 +73,9 @@ function address() {
   for (const file of [".env.reset.local", ".env.production.local"]) {
     if (!fs.existsSync(file)) continue;
     const text = fs.readFileSync(file, "utf8").trim();
-    const value = (text.match(/^DATABASE_URL\s*=\s*["']?([^"'\n]+)/m)?.[1] ?? text.split("\n")[0]).trim().replace(/^["']|["']$/g, "");
-    if (/^postgres(ql)?:\/\//.test(value)) return value;
+    // However it was copied (the address alone, DATABASE_URL=…, or Neon's "psql '…'" line): the address inside it.
+    const value = text.match(/postgres(?:ql)?:\/\/[^\s'"]+/)?.[0];
+    if (value) return value;
   }
   return null;
 }
