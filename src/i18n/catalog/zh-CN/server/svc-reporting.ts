@@ -478,5 +478,6 @@ const catalog: Catalog = {
 
   // ── A waiter's hand-overs (Waiters page) ──
   "A table": "某张餐桌",
+  "Check-in cancelled — Room {room} · {name} · by {staff}: {reason}": "入住已取消 — {room} 号房 · {name} · 操作人 {staff}：{reason}",
 };
 export default catalog;

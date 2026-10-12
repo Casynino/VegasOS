@@ -17,7 +17,7 @@ import type { T } from "@/i18n/translate";
  * and bought stock waiting for the final approval. The top-bar bell rings when something new
  * appears (and keeps ringing, when the manager chose "repeat", until handled).
  */
-export type StaffAlertKind = "booking" | "request" | "payment" | "bill" | "order_new" | "order_ready" | "stock";
+export type StaffAlertKind = "booking" | "request" | "payment" | "bill" | "order_new" | "order_ready" | "stock" | "checkin_cancelled";
 /** `text` is written in the person's own language; the bell drops the words before the first "— " (keep it in every language). */
 export type StaffAlert = { id: string; kind: StaffAlertKind; text: string; href: string; at: string };
 
@@ -76,7 +76,7 @@ export async function staffAlerts(perms: ReadonlySet<string>, userId: string | n
   const t = await getT();
   // A waiter hears their own orders and tables (and the ones nobody has yet); everyone else (the restaurant screen, managers) hears all.
   const mine = !!userId && worksWaiterShift(perms);
-  const [bookings, qrBookings, requests, payments, bills, fresh, ready, stock] = await Promise.all([
+  const [bookings, qrBookings, requests, payments, bills, fresh, ready, stock, undone] = await Promise.all([
     has("booking_requests.view") ? db.bookingRequest.findMany({ where: { status: "NEW" }, orderBy: { createdAt: "asc" }, take: 20, select: { id: true, fullName: true, checkInDate: true, checkOutDate: true, createdAt: true } }) : [],
     has("reservations.view") ? hotelQrBookings(new Date(), t) : [],
     // New requests ring for everyone who handles them; one given to a person rings for them until they accept it.
@@ -102,6 +102,11 @@ export async function staffAlerts(perms: ReadonlySet<string>, userId: string | n
         inventoryDepartment: { select: { name: true } }, _count: { select: { items: { where: { removedAt: null } } } },
         events: { where: { toStatus: { in: ["SUBMITTED", "PENDING_APPROVAL"] } }, orderBy: { at: "desc" }, take: 1, select: { at: true } },
       },
+    }) : [],
+    // A check-in cancelled at the desk: those who supervise hear of it (the boss also gets it on WhatsApp), for half a day.
+    ["dashboard.manager", "dashboard.owner", "dashboard.admin"].some(has) ? db.auditLog.findMany({
+      where: { action: "reservation.checkin_cancelled", createdAt: { gte: new Date(Date.now() - 12 * 3_600_000) } },
+      orderBy: { createdAt: "asc" }, take: 20, select: { id: true, entityId: true, actorLabel: true, after: true, createdAt: true },
     }) : [],
   ]);
   // Reception hears the HOTEL's tables and payments only (guests staying now) — the rest is the restaurant's (owner, 2026-10-04).
@@ -129,6 +134,13 @@ export async function staffAlerts(perms: ReadonlySet<string>, userId: string | n
         ? `${t("Stock request — approve purchase {number} · {department}", { number: r.purchaseNumber ?? r.number, department: t(dept) })}${r.purchaseTotal ? ` · ${tzs(r.purchaseTotal)}` : ""}`
         : `${t("Stock request — review {number} · {department} · {items}", { number: r.number, department: t(dept), items: t.plural(r._count.items, "{n} item", "{n} items") })}${r.urgent ? ` · ${t("urgent")}` : ""}`;
       return { id: `stock:${r.id}:${r.status}:${at.getTime()}`, kind: "stock" as const, text, href: "/staff/stock-requests", at: at.toISOString() };
+    }),
+    ...undone.map((a) => {
+      const d = (a.after ?? {}) as { guest?: string; rooms?: string[]; reason?: string };
+      return {
+        id: `checkin_cancelled:${a.id}`, kind: "checkin_cancelled" as const, href: `/staff/reservations/${a.entityId}`, at: a.createdAt.toISOString(),
+        text: t("Check-in cancelled — Room {room} · {name} · by {staff}: {reason}", { room: (d.rooms ?? []).join(", "), name: d.guest ?? "", staff: a.actorLabel ?? t("Staff"), reason: d.reason ?? "" }),
+      };
     }),
   ];
 }

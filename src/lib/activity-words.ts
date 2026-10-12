@@ -3,7 +3,7 @@ import { msg } from "@/i18n/msg";
 /** Plain-English words for what staff did (from the history log), and which part of the hotel it was. */
 const WORDS: Record<string, string> = {
   "auth.login": msg("signed in"), "auth.logout": msg("signed out"),
-  "reservation.created": msg("made a booking"), "reservation.checked_in": msg("checked a guest in"), "reservation.checked_out": msg("checked a guest out"),
+  "reservation.created": msg("made a booking"), "reservation.checked_in": msg("checked a guest in"), "reservation.checked_in_voided": msg("checked a guest in — cancelled later"), "reservation.checkin_cancelled": msg("cancelled a check-in"), "reservation.checked_out": msg("checked a guest out"),
   "reservation.extended": msg("extended a stay"), "reservation.overstay_charged": msg("put extra nights on the bill"), "reservation.room_assigned": msg("moved a guest to another room"), "reservation.room_changed": msg("changed a guest's room"),
   "reservation.cancelled": msg("cancelled a booking"), "reservation.confirmed": msg("confirmed a booking"), "reservation.confirmed_by_payment": msg("confirmed a booking by payment"),
   "reservation.dates_changed": msg("changed booking dates"), "reservation.walk_in": msg("checked in a walk-in guest"), "reservation.no_show": msg("marked a no-show"),

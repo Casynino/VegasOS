@@ -376,5 +376,9 @@ const catalog: Catalog = {
   "See our dishes and drinks and order straight to Room {room} — it goes on your room bill. Your booking details are there too.": "查看我们的菜品和饮品，直接点餐送到 {room} 号房——费用记入您的房账。您的预订详情也在其中。",
   "Dial 0 from your room": "在房间内拨 0",
   "Enjoy your stay — karibu sana!": "祝您入住愉快——karibu sana！",
+  "Cancel check-in": "取消入住",
+  "Cancel this check-in?": "取消这次入住？",
+  "For a check-in done by mistake. The booking goes back to waiting with everything it has, ready to be checked in again; the room goes back to what it was. Payments stay on the booking. The boss is told.": "用于办错的入住。预订连同所有内容回到等待状态，可以重新办理入住；房间恢复到之前的状态。付款保留在预订上。系统会通知老板。",
+  "Check-in cancelled. The booking is ready to be checked in again.": "入住已取消。此预订可以重新办理入住。",
 };
 export default catalog;

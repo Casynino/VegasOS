@@ -158,5 +158,13 @@ const catalog: Catalog = {
   "Restaurant · Order {number}": "餐厅 · 订单 {number}",
   "{name} is already checked in to room {room}.": "{name} 已入住 {room} 号房。",
   "{name} already has room {room} booked for these dates.": "{name} 在这些日期已预订 {room} 号房。",
+  "Check-in cancelled": "入住已取消",
+  "Checked in by": "办理入住",
+  "Cancelled by": "取消人",
+  "This guest has already checked out — the check-in can no longer be cancelled.": "这位客人已退房 — 入住不能再取消。",
+  "This booking is not checked in.": "此预订尚未办理入住。",
+  "A meeting that has started cannot be cancelled this way.": "已开始的会议不能这样取消。",
+  "This check-in was on an earlier day, and that day is closed. Check the guest out instead.": "这次入住是在之前的日期办理的，那一天已经结账。请为客人办理退房。",
+  "Say why the check-in is cancelled.": "请说明取消入住的原因。",
 };
 export default catalog;

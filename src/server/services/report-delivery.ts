@@ -1,9 +1,12 @@
 import "server-only";
+import { after } from "next/server";
 import { db } from "../db";
 import { isUniqueViolation } from "../errors";
 import { getSettings } from "../settings";
 import { sendMessage } from "./messaging";
-import type { NotificationDelivery } from "@/generated/prisma/client";
+import type { HotelSettings, NotificationDelivery } from "@/generated/prisma/client";
+import { getTFor } from "@/i18n/server";
+import type { T } from "@/i18n/translate";
 import { DEFAULT_LOCALE, LOCALE_META, toLocale, type Locale } from "@/i18n/config";
 import { keepLink } from "@/lib/wa-fit";
 
@@ -19,6 +22,32 @@ export const withLang = (url: string, lang: Locale) => (lang === DEFAULT_LOCALE 
 
 /** A recipient's language (English when not set or unknown). */
 export const recipientLang = (r: { lang?: string | null }): Locale => toLocale(r.lang) ?? DEFAULT_LOCALE;
+
+/**
+ * A short notice to the boss (every report recipient) about something that just happened — not a report: the caller
+ * sends it once, after the action is saved. Written in each reader's language. Never throws: a notice that could not
+ * be sent is only logged, the action it tells about stays done.
+ */
+export async function tellBoss(textFor: (t: T, settings: HotelSettings) => string) {
+  try {
+    const settings = await getSettings();
+    for (const r of (settings.reportRecipients as unknown as Recipient[]) ?? []) {
+      const sent = await sendMessage({ channel: r.channel ?? "WHATSAPP_CALLMEBOT", to: r.phone, text: textFor(await getTFor(recipientLang(r)), settings), apiKeyRef: r.apiKeyRef });
+      if (!sent.ok) console.error("[boss notice] not sent to", r.name ?? "a recipient", sent.error);
+    }
+  } catch (e) {
+    console.error("[boss notice]", e);
+  }
+}
+
+/** The same once the answer has gone out (never delays the desk); straight away where there is no request (a job, a test). */
+export function tellBossSoon(textFor: Parameters<typeof tellBoss>[0]) {
+  try {
+    after(() => tellBoss(textFor));
+  } catch {
+    void tellBoss(textFor);
+  }
+}
 
 /** At most this many tries per recipient for one report (then only a person's "Send again" tries more). */
 export const MAX_ATTEMPTS = 6;

@@ -19,7 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { NativeCheckbox, NativeSelect } from "@/components/ui/native-select";
 import {
-  cancelAction, changeDatesAction, changeDiscountAction, confirmAction,
+  cancelAction, cancelCheckInAction, changeDatesAction, changeDiscountAction, confirmAction,
   noShowAction, recordPaymentAction, reversePaymentAction,
   previewExtensionAction, extendStayAction, lateCheckoutAction,
   previewDateChangeAction, lateArrivalAction, reinstateNoShowAction, releaseNoShowAction, correctPaymentAction,
@@ -90,13 +90,15 @@ export function ReservationActions(p: {
   /** May note that the guest is coming late (reservations.edit). */
   canLate?: boolean;
   canConfirm: boolean; canCheckIn: boolean; canCheckOut: boolean; canCancel: boolean; canNoShow: boolean;
+  /** A check-in of today done by mistake may be taken back (nobody checked out yet). */
+  canCancelCheckIn?: boolean;
   canInvoice?: boolean; invoiceId?: string | null;
   /** A meeting room booking: Start / Complete meeting instead of check-in / check-out. */
   meeting?: boolean; canOverrideBalance?: boolean;
 }) {
   const t = useT();
   const { pending, run } = useRun();
-  const [dialog, setDialog] = useState<null | "cancel" | "noshow">(null);
+  const [dialog, setDialog] = useState<null | "cancel" | "noshow" | "checkin">(null);
   const [keep, setKeep] = useState(p.keepByDefault ?? true);
   const [releaseNow, setReleaseNow] = useState(false);
   const [lateOpen, setLateOpen] = useState(false);
@@ -121,6 +123,7 @@ export function ReservationActions(p: {
       {p.canConfirm && p.status === "INQUIRY" && <Button variant="outline" disabled={pending} onClick={() => run(() => confirmAction({ reservationId: p.reservationId }))}><Check /> {p.canConfirmUnpaid ? t("Confirm") : t("Hold the room")}</Button>}
       {p.canConfirm && p.status === "RESERVED" && p.canConfirmUnpaid && <Button variant="outline" disabled={pending} onClick={() => run(() => confirmAction({ reservationId: p.reservationId }))}><Check /> {t("Confirm without payment")}</Button>}
       {p.canLate && !p.meeting && ["RESERVED", "CONFIRMED"].includes(p.status) && <Button variant="outline" onClick={() => setLateOpen(true)}><Clock /> {t("Coming late")}</Button>}
+      {p.canCancelCheckIn && <Button variant="outline" disabled={pending} onClick={() => setDialog("checkin")}><Undo2 /> {t("Cancel check-in")}</Button>}
       {p.canNoShow && <Button variant="outline" disabled={pending} onClick={() => setDialog("noshow")}><UserX /> {t("No-show")}</Button>}
       {p.canCancel && <Button variant="destructive" disabled={pending} onClick={() => setDialog("cancel")}><Ban /> {t("Cancel")}</Button>}
 
@@ -137,6 +140,10 @@ export function ReservationActions(p: {
           </fieldset>
         )}
       </ConfirmDialog>
+      <ConfirmDialog open={dialog === "checkin"} onOpenChange={(o) => !o && close()} icon={<Undo2 />} eyebrow={t("Check-in")} title={t("Cancel this check-in?")}
+        description={t("For a check-in done by mistake. The booking goes back to waiting with everything it has, ready to be checked in again; the room goes back to what it was. Payments stay on the booking. The boss is told.")}
+        reasonLabel={t("Reason (required)")} confirmLabel={t("Cancel check-in")} destructive pending={pending}
+        onConfirm={(reason) => run(() => cancelCheckInAction({ reservationId: p.reservationId, reason: reason ?? "" }), close)} />
       <ConfirmDialog open={dialog === "noshow"} onOpenChange={(o) => !o && close()} icon={<UserX />} eyebrow={t("Booking")} title={t("Mark as no-show?")}
         description={(p.paid ?? 0) > 0 ? t("The guest did not arrive and did not tell us they are coming late. The booking stays on record as NO SHOW; the payment stays in the ledger.") : t("The guest did not arrive. Nothing was paid, so the room is released straight away.")}
         confirmLabel={t("Mark no-show")} destructive pending={pending}

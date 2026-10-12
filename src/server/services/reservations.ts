@@ -12,6 +12,7 @@ import { recalculateReservation, syncRoomNights, ACTIVE_STATUSES } from "./reser
 import { deskGuestTx, normalizePhone, resolveGuest, typedDifferences, type GuestInput } from "./guests";
 import { thankYouAfterCheckout } from "./thank-you";
 import { notifyReservationGuestSoon } from "./guest-comms";
+import { tellBossSoon } from "./report-delivery";
 import { readerT, roomStatusWord, setRoomStatusTx } from "./rooms";
 import { postRoomChargesTx, recordPaymentTx, type ChargeLine } from "./payments";
 import { createRestaurantOrderTx } from "./restaurant";
@@ -670,6 +671,122 @@ async function checkInTx(
     });
     return { warnings };
   }
+}
+
+// ───────────────────────── Cancel a check-in done by mistake ─────────────────────────
+
+/** A check-in that was cancelled — what the boss is told. */
+export interface CheckInCancelled {
+  reservationId: string; reference: string; guest: string; rooms: string[]; reason: string;
+  /** Who cancelled it, and when. */
+  by: string | null; at: Date;
+  /** The check-in that was cancelled: who did it, and when. */
+  checkedInBy: string | null; checkedInAt: Date | null;
+}
+
+/**
+ * Why this booking's check-in cannot be cancelled (null when it can). Only a check-in of TODAY, with nobody checked
+ * out yet: an earlier day is closed — its reports are written and are never changed — and a guest who has left is a
+ * finished stay, not a mistake at the desk.
+ */
+export function cancelCheckInBlock(
+  r: { kind: string; rooms: { status: ReservationStatus; checkedInAt: Date | null }[] }, cfg: Parameters<typeof businessDateOf>[1], now = new Date(),
+): string | null {
+  const inHouse = r.rooms.filter((x) => x.status === "CHECKED_IN");
+  if (r.rooms.some((x) => x.status === "CHECKED_OUT")) return msg("This guest has already checked out — the check-in can no longer be cancelled.");
+  if (!inHouse.length) return msg("This booking is not checked in.");
+  if (r.kind === "MEETING") return msg("A meeting that has started cannot be cancelled this way.");
+  const today = businessDateOf(now, cfg);
+  if (inHouse.some((x) => !x.checkedInAt || businessDateOf(x.checkedInAt, cfg) !== today)) {
+    return msg("This check-in was on an earlier day, and that day is closed. Check the guest out instead.");
+  }
+  return null;
+}
+
+/**
+ * CANCEL A CHECK-IN DONE BY MISTAKE (owner, 2026-10-12) — the wrong guest, the wrong room. The booking goes back to
+ * "Confirmed" with everything it had, so the right check-in is done with the normal check-in; the room goes back to
+ * what it was before (never left Occupied, never freed while another guest is in it). Money is not touched: a payment
+ * stays on the booking and the balance is worked out again. Nothing is deleted — the first check-in stays in the
+ * history, marked cancelled, with who did it and when, who cancelled it, when and why. The reports count rooms from
+ * the stays themselves, and the desk counters from the history, so a cancelled check-in is counted nowhere and the
+ * right one is counted once. The boss is told after it is saved (once — it can only be cancelled once).
+ */
+export async function cancelCheckIn(reservationId: string, actor: Actor, reason: string, now = new Date()): Promise<CheckInCancelled> {
+  const why = (reason ?? "").trim();
+  if (why.length < 3) throw new AppError("Say why the check-in is cancelled.", "VALIDATION");
+  const done = await run(async (tx) => {
+    const settings = await getSettingsTx(tx);
+    const r = await loadForUpdate(tx, reservationId);
+    const block = cancelCheckInBlock(r, stayConfig(settings), now);
+    if (block) throw new AppError(block, "CONFLICT");
+    const inHouse = r.rooms.filter((x) => x.status === "CHECKED_IN");
+    const first = [...inHouse].sort((a, b) => (a.checkedInAt?.getTime() ?? 0) - (b.checkedInAt?.getTime() ?? 0))[0];
+
+    for (const rr of inHouse) {
+      await tx.reservationRoom.update({ where: { id: rr.id }, data: { status: "CONFIRMED", checkedInAt: null, checkedInById: null, isLateArrival: false } });
+      await syncRoomNights(tx, rr.id);
+      // The room: back to what it was before this guest went in — unless it is no longer Occupied, or someone else is in it.
+      const others = await tx.reservationRoom.count({ where: { roomId: rr.roomId, status: "CHECKED_IN", id: { not: rr.id } } });
+      if (rr.room.status === "OCCUPIED" && !others) {
+        const was = await tx.roomStatusHistory.findFirst({ where: { roomId: rr.roomId, toStatus: "OCCUPIED" }, orderBy: { changedAt: "desc" }, select: { fromStatus: true } });
+        await setRoomStatusTx(tx, rr.roomId, was && was.fromStatus !== "OCCUPIED" ? was.fromStatus : "AVAILABLE", actor, `Check-in cancelled: ${r.reference}`);
+      }
+      // Money paid online that the check-in counted for whoever did it: not theirs any more — the right check-in counts it.
+      if (rr.checkedInById && rr.checkedInAt) {
+        await tx.payment.updateMany({
+          where: { reservationId: r.id, recordedById: ONLINE_RECORDER_ID, creditedToId: rr.checkedInById, creditedAt: rr.checkedInAt },
+          data: { creditedToId: null, creditedAt: null },
+        });
+      }
+    }
+    // The booking is real (the guest stood at the desk): it waits as Confirmed, never as a hold that can lapse.
+    await tx.reservation.update({ where: { id: r.id }, data: { holdUntil: null, confirmedAt: r.confirmedAt ?? now } });
+    await recalculateReservation(tx, r.id);
+
+    // The history keeps the first check-in, marked cancelled — so the desk counters, which count the history, drop it.
+    // A walk-in is still a booking made that day.
+    const originals = await tx.auditLog.findMany({
+      where: { entityType: "Reservation", entityId: r.id, action: { in: ["reservation.checked_in", "reservation.walk_in"] } },
+      select: { id: true, action: true, actorLabel: true, createdAt: true },
+    });
+    for (const o of originals) {
+      await tx.auditLog.update({ where: { id: o.id }, data: { action: o.action === "reservation.walk_in" ? "reservation.created" : "reservation.checked_in_voided" } });
+    }
+    const [guest, checker] = await Promise.all([
+      tx.guest.findUnique({ where: { id: r.guestId }, select: { fullName: true } }),
+      first?.checkedInById ? tx.user.findUnique({ where: { id: first.checkedInById }, select: { fullName: true } }) : null,
+    ]);
+    const out: CheckInCancelled = {
+      reservationId: r.id, reference: r.reference, guest: guest?.fullName ?? "—", rooms: inHouse.map((x) => x.room.number), reason: why,
+      by: actor.label ?? null, at: now, checkedInBy: checker?.fullName ?? null, checkedInAt: first?.checkedInAt ?? null,
+    };
+    await audit(tx, actor, {
+      action: "reservation.checkin_cancelled", entityType: "Reservation", entityId: r.id,
+      before: { status: r.status, rooms: inHouse.map((x) => ({ room: x.room.number, checkedInAt: x.checkedInAt?.toISOString() ?? null, checkedInById: x.checkedInById })), checkedInBy: out.checkedInBy },
+      after: {
+        status: "CONFIRMED", reference: r.reference, guest: out.guest, rooms: out.rooms, reason: why, at: now.toISOString(),
+        firstCheckIn: originals.map((o) => ({ id: o.id, was: o.action, by: o.actorLabel, at: o.createdAt.toISOString() })),
+      },
+    });
+    return out;
+  });
+  tellBossSoon((t, settings) => checkInCancelledText(done, t, settings.hotelName, settings.timezone));
+  return done;
+}
+
+/** The boss's notice: short, every fact on its own line. */
+export function checkInCancelledText(c: CheckInCancelled, t: T, hotel: string, tz: string) {
+  const cut = (x: string, n: number) => (x.length > n ? `${x.slice(0, n - 1)}…` : x);
+  return [
+    `${hotel} — ${t("Check-in cancelled")}`,
+    `${t("Guest")}: ${cut(c.guest, 60)}`,
+    `${t("Room")}: ${c.rooms.join(", ")}`,
+    `${t("Booking")}: ${c.reference}`,
+    ...(c.checkedInAt ? [`${t("Checked in by")}: ${c.checkedInBy ?? t("Staff")} · ${t.dateTime(c.checkedInAt, tz)}`] : []),
+    `${t("Cancelled by")}: ${c.by ?? t("Staff")} · ${t.dateTime(c.at, tz)}`,
+    `${t("Reason")}: ${cut(c.reason, 200)}`,
+  ].join("\n");
 }
 
 export interface CheckOutOptions {

@@ -208,5 +208,7 @@ const catalog: Catalog = {
   "A reversed payment cannot be corrected.": "已冲销的付款不能更正。",
   "Nothing changed.": "没有任何更改。",
   "Only a manager can correct a payment reference. You can correct where the money went (the method).": "只有经理可以更正付款参考号。您可以更正款项去向（付款方式）。",
+  "checked the guest in — cancelled later": "为客人办理了入住 — 后来已取消",
+  "cancelled the check-in": "取消了入住",
 };
 export default catalog;

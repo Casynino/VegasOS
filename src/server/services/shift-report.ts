@@ -149,7 +149,7 @@ const NOISE = new Set(["auth.logout", "reservation.confirmed_by_payment", "reser
 /** The timeline's words for the actions that matter most on a shift (the rest use the shared activity words). */
 const LINE: Record<string, string> = {
   "shift.started": msg("Shift started"), "shift.ended": msg("Shift ended"), "shift.closed_by_manager": msg("Shift closed by a manager"),
-  "reservation.created": msg("Reservation created"), "reservation.walk_in": msg("Walk-in guest checked in"), "reservation.checked_in": msg("Guest checked in"), "reservation.checked_out": msg("Guest checked out"),
+  "reservation.created": msg("Reservation created"), "reservation.walk_in": msg("Walk-in guest checked in"), "reservation.checked_in": msg("Guest checked in"), "reservation.checked_in_voided": msg("Guest checked in — cancelled later"), "reservation.checkin_cancelled": msg("Check-in cancelled"), "reservation.checked_out": msg("Guest checked out"),
   "reservation.confirmed": msg("Reservation confirmed"), "reservation.cancelled": msg("Reservation cancelled"), "reservation.no_show": msg("Marked a no-show"),
   "reservation.dates_changed": msg("Booking dates changed"), "reservation.extended": msg("Stay extended"), "reservation.extended_free": msg("Stay extended (free)"),
   "reservation.room_changed": msg("Guest moved to another room"), "reservation.room_assigned": msg("Room assigned"),
@@ -162,7 +162,7 @@ const LINE: Record<string, string> = {
   "room.status_changed": msg("Room status changed"), "meeting.booked": msg("Meeting room booked"), "meeting.started": msg("Meeting started"), "meeting.completed": msg("Meeting completed"),
 };
 const AREA = (a: string) =>
-  a.startsWith("shift.") ? msg("Shift") : /^reservation\.(checked_in|checked_out|walk_in|room_)/.test(a) ? msg("Front desk") : a.startsWith("reservation.") || a.startsWith("meeting.") || a.startsWith("booking_request.") ? msg("Bookings")
+  a.startsWith("shift.") ? msg("Shift") : /^reservation\.(checked_in|checked_out|checkin_cancelled|walk_in|room_)/.test(a) ? msg("Front desk") : a.startsWith("reservation.") || a.startsWith("meeting.") || a.startsWith("booking_request.") ? msg("Bookings")
   : /^(payment|revenue|invoice)\./.test(a) ? msg("Money") : a.startsWith("restaurant_order.") || a.startsWith("dining_session.") ? msg("Restaurant")
   : a.startsWith("request.") || a.startsWith("complaint.") ? msg("Requests") : a.startsWith("transport.") ? msg("Transport") : a.startsWith("room.") ? msg("Rooms") : a.startsWith("guest.") ? msg("Guests") : msg("Other");
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);

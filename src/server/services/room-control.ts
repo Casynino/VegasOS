@@ -16,6 +16,7 @@ import { englishT } from "@/i18n/translate";
 
 const AUDIT_WORDS: Record<string, string> = {
   "reservation.extended": msg("Stay extended"),
+  "reservation.checkin_cancelled": msg("Check-in cancelled"),
   "reservation.overstay_charged": msg("Extra nights put on the bill"),
   "reservation.dates_changed": msg("Dates changed"),
   "reservation.discount_changed": msg("Discount changed"),

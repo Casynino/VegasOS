@@ -9,7 +9,8 @@ import { db } from "@/server/db";
 import { maskPhone } from "@/server/services/mobile-payments";
 import { isPayLater } from "@/server/services/booking-holds";
 import { accountOptions } from "@/server/services/payment-accounts";
-import { businessToday, getSettings } from "@/server/settings";
+import { businessToday, getSettings, stayConfig } from "@/server/settings";
+import { cancelCheckInBlock } from "@/server/services/reservations";
 import { formatTZS, formatTime } from "@/lib/format";
 import { addDays, fromDbDate } from "@/lib/time/business-date";
 import { RESERVATION_STATUS_META } from "@/lib/reservation-status";
@@ -301,6 +302,7 @@ export default async function ReservationPage({ params, searchParams }: PageProp
             canConfirm={perms.edit && (r.status === "RESERVED" || (r.status === "INQUIRY" && (!payLater || can(user, "reservations.confirm_unpaid"))))}
             canCheckIn={perms.checkIn && waiting.length + notHeld.length > 0}
             canCheckOut={perms.checkOut && inHouse.length > 0}
+            canCancelCheckIn={perms.checkIn && !cancelCheckInBlock(r, stayConfig(await getSettings()), now)}
             canCancel={perms.cancel && waiting.length + notHeld.length > 0}
             canNoShow={perms.cancel && waiting.length > 0 && waiting.every((w) => w.arrivalDate.toISOString().slice(0, 10) <= today)}
             balance={r.balanceAmount}

@@ -576,5 +576,6 @@ const catalog: Catalog = {
   "No income recorded.": "没有记录到收入。",
   "{trips} · {done} completed · income {amount}": "{trips} · 已完成 {done} · 收入 {amount}",
   "Hotel day {date} 04:00 → next day 04:00. Income is counted when earned (room nights night by night; food, drinks and extras when sold or put on a room bill). Money received is money in (payments and on-the-spot sales, less refunds). Still owed is everything owed to the hotel at the time of the report. Net profit is income less the expenses recorded in the system — salaries, tax and other costs count only when they are recorded as expenses.": "酒店营业日 {date} 04:00 → 次日 04:00。收入在赚取时计入（客房按晚计入；食品、饮品及其他在售出或记入房账时计入）。已收款项是实际收到的钱（付款及当场销售，减去退款）。仍欠是报告时欠酒店的全部款项。净利润是收入减去系统中已记录的支出——工资、税费和其他成本只有记为支出时才计入。",
+  "Guest checked in — cancelled later": "客人已办理入住 — 后来已取消",
 };
 export default catalog;

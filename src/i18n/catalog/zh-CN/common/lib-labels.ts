@@ -687,5 +687,7 @@ const catalog: Catalog = {
   "won the Spin to Win bonus spin": "赢得了幸运转盘的奖励转盘",
   "spun — no gift this time": "转动了转盘 — 这次没有礼物",
   "sent their Spin to Win gifts to the restaurant": "将幸运转盘礼物送到了餐厅",
+  "checked a guest in — cancelled later": "为客人办理了入住 — 后来已取消",
+  "cancelled a check-in": "取消了一次入住",
 };
 export default catalog;

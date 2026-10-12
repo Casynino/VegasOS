@@ -10,7 +10,7 @@ import { parseInput } from "@/server/validation";
 import { getSettings, stayConfig, businessToday } from "@/server/settings";
 import { dayAvailability, findAvailableRooms } from "@/server/services/availability";
 import {
-  approveLateCheckout, assertRoomDiscount, cancelReservation, changeDiscount, changeMeeting, changeStayDates, previewDateChange, noteLateArrival, reinstateNoShow, releaseNoShow, checkIn, checkInWithDetails, assignAndCheckIn, checkOut, confirmReservation,
+  approveLateCheckout, assertRoomDiscount, cancelCheckIn, cancelReservation, changeDiscount, changeMeeting, changeStayDates, previewDateChange, noteLateArrival, reinstateNoShow, releaseNoShow, checkIn, checkInWithDetails, assignAndCheckIn, checkOut, confirmReservation,
   createReservation, extendStay, markNoShow, previewCheckOut, previewExtension, reassignRoom, type Actor, type StayRequest,
 } from "@/server/services/reservations";
 import { correctPayment, addReservationCharge, postRoomCharges, recordReservationPayment, reversePayment, voidReservationCharge } from "@/server/services/payments";
@@ -386,6 +386,17 @@ export async function checkInAction(input: { reservationId: string; roomIds?: st
     refresh(reservationId);
     return res;
   }, msg("Guest checked in."));
+}
+
+/** A check-in done by mistake: the booking goes back to waiting, ready to be checked in the right way. The boss is told. */
+export async function cancelCheckInAction(input: { reservationId: string; reason: string }) {
+  return runAction(async () => {
+    const user = await authorize("reservations.check_in");
+    const { reservationId } = parseInput(IdSchema, input);
+    await cancelCheckIn(reservationId, await actorFor(user), input.reason ?? "");
+    refresh(reservationId);
+    return null;
+  }, msg("Check-in cancelled. The booking is ready to be checked in again."));
 }
 
 export async function checkOutAction(input: { reservationId: string; roomIds?: string[]; allowBalance?: boolean; earlyReason?: string; overrideReason?: string }) {

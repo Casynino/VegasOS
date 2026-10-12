@@ -183,6 +183,7 @@ export async function financeHistory(f: { from: BusinessDate; to: BusinessDate; 
 /** Everything that happened to one booking, oldest first, in plain words (for the booking's timeline). */
 const TIMELINE_EXTRA: Record<string, string> = {
   "reservation.created": msg("made the booking"), "reservation.walk_in": msg("checked in a walk-in guest"), "reservation.checked_in": msg("checked the guest in"),
+  "reservation.checked_in_voided": msg("checked the guest in — cancelled later"), "reservation.checkin_cancelled": msg("cancelled the check-in"),
   "reservation.checked_out": msg("checked the guest out"), "payment.created": msg("recorded a payment"), "payment.refunded": msg("gave a refund"),
   "reservation.confirmed_by_payment": msg("— payment received, booking confirmed"), "reservation.held": msg("put the room on hold"),
   "reservation.charge_added": msg("added to the room bill"), "reservation.charges_posted": msg("added room service / extras"),
