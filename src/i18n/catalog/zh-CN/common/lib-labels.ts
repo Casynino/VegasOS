@@ -249,6 +249,9 @@ const catalog: Catalog = {
   "Pesapal / Lipa number fee": "Pesapal / Lipa 号码手续费",
   "Bank charges": "银行手续费",
   "Mobile money charges": "手机支付手续费",
+  // The nTZS account: its name in Finance, and how a guest's own receipt or bill says it
+  "nTZS · Mobile money (phone)": "nTZS · 手机支付",
+  "Mobile money (phone)": "手机支付",
   "Security & insurance": "安保与保险",
   "Security company (Co-operative Defense)": "安保公司（Co-operative Defense）",
   "Vegas insurance": "Vegas 保险",

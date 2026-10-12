@@ -3,7 +3,9 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vites
 import { db } from "@/server/db";
 import { checkIn, createReservation } from "@/server/services/reservations";
 import { recordReservationPayment } from "@/server/services/payments";
-import { createRestaurantOrder } from "@/server/services/restaurant";
+import { createRestaurantOrder, orderBill } from "@/server/services/restaurant";
+import { stayBill } from "@/server/services/stay-bill";
+import { guestAccountName } from "@/lib/pay-account";
 import { cancelMobilePayment, checkMobilePayment, mobilePaymentsNeedingAttention, requestMobilePayment, resolveMobilePaymentAttention, settleMobilePayment, sweepMobilePayments } from "@/server/services/mobile-payments";
 import { resolveAccountTx } from "@/server/services/payment-accounts";
 import { ntzsPhone, verifyNtzsWebhook } from "@/server/services/ntzs";
@@ -107,6 +109,9 @@ describe("a guest's bill", () => {
     expect(payments[0]).toMatchObject({ amount: 50_000, recordedById: recep.userId, reference: "nTZS MP123XYZ" });
     expect(payments[0].account.code).toBe("NTZS");
     expect(payments[0].method.code).toBe("NTZS");
+    // The books name the account after nTZS; the guest's own bill says how they paid, in plain words.
+    expect(payments[0].account.name).toBe("nTZS · Mobile money (phone)");
+    expect((await stayBill(r.id))!.payments.map((p) => p.account)).toEqual(["Mobile money (phone)"]);
     expect((await db.reservation.findUniqueOrThrow({ where: { id: r.id } })).paidAmount).toBe(50_000);
     expect(await db.mobilePayment.findUniqueOrThrow({ where: { id: mp.id } })).toMatchObject({ status: "COMPLETED", paymentId: payments[0].id });
   });
@@ -172,6 +177,8 @@ describe("restaurant orders", () => {
     expect(paid.payments).toHaveLength(1);
     expect(paid.payments[0]).toMatchObject({ amount: o.total, confirmedByRole: "Automatic — nTZS mobile money" });
     expect(paid.payments[0].account.code).toBe("NTZS");
+    // …and so does the guest's receipt.
+    expect((await orderBill(o.id, "order"))!.orders.flatMap((x) => x.payments.map((p) => guestAccountName(p.account)))).toEqual(["Mobile money (phone)"]);
     const sales = await db.revenueTransaction.findMany({ where: { restaurantOrderId: o.id, isVoided: false }, include: { account: true } });
     expect(sales.reduce((t, x) => t + x.amount, 0)).toBe(o.total);
     expect(sales.every((x) => x.account.code === "NTZS")).toBe(true);

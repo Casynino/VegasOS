@@ -1,6 +1,7 @@
 import "server-only";
 import { db } from "../db";
 import { fromDbDate } from "@/lib/time/business-date";
+import { guestAccountName } from "@/lib/pay-account";
 import { msg } from "@/i18n/msg";
 import { getT } from "@/i18n/server";
 import { englishT, type T } from "@/i18n/translate";
@@ -25,7 +26,7 @@ export async function stayBill(reservationId: string, t?: T) {
         include: { room: { select: { number: true } }, roomType: { select: { name: true } }, nightsLedger: { orderBy: { businessDate: "asc" } } },
       },
       charges: { where: { isVoided: false }, orderBy: [{ businessDate: "asc" }, { createdAt: "asc" }], include: { restaurantOrder: CHARGE_ORDER } },
-      payments: { where: { status: "POSTED" }, include: { account: { select: { name: true } }, method: { select: { name: true } } }, orderBy: { receivedAt: "asc" } },
+      payments: { where: { status: "POSTED" }, include: { account: { select: { name: true, code: true } }, method: { select: { name: true } } }, orderBy: { receivedAt: "asc" } },
     },
   });
   if (!r) return null;
@@ -56,7 +57,7 @@ export async function stayBill(reservationId: string, t?: T) {
       order: o ? { id: o.id, heading: orderHeading(o, "Order ", words) } : null,
     };
   });
-  const payments = r.payments.map((p) => ({ id: p.id, at: p.receivedAt, account: p.account?.name ?? p.method.name, reference: p.reference, amount: p.amount, refund: p.kind === "REFUND" }));
+  const payments = r.payments.map((p) => ({ id: p.id, at: p.receivedAt, account: p.account ? guestAccountName(p.account) : p.method.name, reference: p.reference, amount: p.amount, refund: p.kind === "REFUND" }));
   return {
     id: r.id, reference: r.reference, status: r.status, kind: r.kind, billTo: r.billTo,
     guest: r.guest, company: r.corporateCustomer?.companyName ?? r.companyName ?? null, group: r.group,

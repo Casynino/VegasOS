@@ -1,5 +1,6 @@
 import type { OrderBill } from "@/server/services/restaurant";
 import { deliveryPlace } from "@/lib/delivery-place";
+import { guestAccountName } from "@/lib/pay-account";
 import { DueBar, FolioDetails, FolioFooter, FolioHeader, GOLD, money, PayMethods, Stamp, type Hotel, type PayTo } from "./folio";
 import { englishT, type T } from "@/i18n/translate";
 import { orderItemName } from "@/i18n/content";
@@ -40,7 +41,7 @@ export function OrderReceipt({ bill, leadId, hotel, payTo, t = englishT }: {
   const single = bill.orders.length === 1;
   const billNo = single ? short(lead.number) : t.plural(bill.orders.length, "{n} order", "{n} orders");
   const servedBy = [...new Set(bill.orders.map((o) => (o.deliveredBy ?? o.createdBy)?.fullName.replace(/\s*\(.*\)/, "").split(" ")[0]).filter(Boolean))].join(", ");
-  const paidWith = [...new Set(bill.orders.flatMap((o) => o.payments.map((p) => p.account.name)))];
+  const paidWith = [...new Set(bill.orders.flatMap((o) => o.payments.map((p) => guestAccountName(p.account))))];
   const roomStamp = sum.onRoom > 0 && sum.paid === 0;
   // Spin to Win gifts: nothing was paid and nothing is owed — the paper says "gift", never "paid".
   const allGift = bill.orders.every((o) => o.isGift);
@@ -128,7 +129,7 @@ export function OrderReceipt({ bill, leadId, hotel, payTo, t = englishT }: {
           <ul className="text-[11.5px]">
             {bill.orders.flatMap((o) => o.payments.map((p, i) => (
               <li key={`${o.id}-${i}`} className="flex justify-between gap-3 border-b border-[#f7f3ec] py-1.5">
-                <span className="text-black/70">{date(p.collectedAt)} · {time(p.collectedAt)} · {t(p.account.name)}{p.reference ? ` · ${t("Ref {reference}", { reference: p.reference })}` : ""}{p.atCounter ? ` · ${t("Restaurant Counter")}` : p.collectedBy ? ` · ${p.collectedBy.fullName.replace(/\s*\(.*\)/, "").split(" ")[0]}` : ""}</span>
+                <span className="text-black/70">{date(p.collectedAt)} · {time(p.collectedAt)} · {t(guestAccountName(p.account))}{p.reference ? ` · ${t("Ref {reference}", { reference: p.reference })}` : ""}{p.atCounter ? ` · ${t("Restaurant Counter")}` : p.collectedBy ? ` · ${p.collectedBy.fullName.replace(/\s*\(.*\)/, "").split(" ")[0]}` : ""}</span>
                 <span className="shrink-0 font-medium tabular-nums">{money(p.amount)}</span>
               </li>
             )))}

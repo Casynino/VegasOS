@@ -1788,7 +1788,7 @@ export async function orderBill(orderId: string, scope: BillScope) {
     where, orderBy: { createdAt: "asc" },
     include: {
       items: { orderBy: { id: "asc" } }, account: { select: { name: true } }, createdBy: person, deliveredBy: person,
-      payments: { where: { status: "POSTED" }, orderBy: { collectedAt: "asc" }, select: { amount: true, reference: true, collectedAt: true, atCounter: true, account: { select: { name: true } }, collectedBy: person, confirmedAt: true } },
+      payments: { where: { status: "POSTED" }, orderBy: { collectedAt: "asc" }, select: { amount: true, reference: true, collectedAt: true, atCounter: true, account: { select: { name: true, code: true } }, collectedBy: person, confirmedAt: true } },
       reservation: { select: { reference: true, guest: { select: { fullName: true } }, rooms: { select: { room: { select: { number: true } } } } } },
     },
   });
