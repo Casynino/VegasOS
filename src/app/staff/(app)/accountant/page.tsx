@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { AlertCircle, ArrowRight, Banknote, BadgeCheck, ClipboardCheck, HandCoins, Landmark, Receipt, ReceiptText, Scale, Wallet } from "lucide-react";
 import { db } from "@/server/db";
-import { requirePagePermission } from "@/server/auth";
+import { redirect } from "next/navigation";
+import { can, requirePagePermission } from "@/server/auth";
 import { businessToday } from "@/server/settings";
 import { accountantOverview } from "@/server/services/accountant";
 import { financeQueue } from "@/server/services/procurement-desk";
@@ -26,7 +27,9 @@ const str = (v: string | string[] | undefined) => (typeof v === "string" ? v : "
  * that cannot be known is left out, not guessed.
  */
 export default async function AccountantPage({ searchParams }: PageProps<"/staff/accountant">) {
-  await requirePagePermission("dashboard.finance", "cash.handover.view", "cash.handover.review");
+  const user = await requirePagePermission("dashboard.finance", "cash.handover.view", "cash.handover.review");
+  // Finance's Home has all of this (and more): whoever has that Home is sent there. The desk stays for roles that cannot see the finance figures.
+  if (can(user, "dashboard.finance") && can(user, "finance.view")) redirect("/finance/dashboard");
   const t = await getT();
   const sp = await searchParams;
   const today = await businessToday();

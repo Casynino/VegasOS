@@ -34,30 +34,28 @@ export const NAV: NavSection[] = [
   {
     // Right below Home: the money comes first for managers and the MD.
     title: msg("Finance"), icon: "ReceiptText", ordered: true,
-    // The owner's order: (the overview), income, expenses, then the accounts — small to big after that.
+    // The owner's order: the overview first, then income, expenses and the accounts — and every one after that from the shortest name to the longest (a staircase, owner 2026-10-13).
     items: [
-      // Finance's own desk (their Home); the Boss and the MD open it from here.
-      // Finance's Home (a portal like the Boss's and the Manager's): what needs Finance, the money of the period, the analysis. The Boss and the MD open it from here.
-      { href: "/finance/dashboard", label: msg("Finance dashboard"), icon: "BarChart3", anyOf: ["dashboard.finance"], allOf: ["finance.view"] },
-      { href: "/staff/accountant", label: msg("Finance desk"), icon: "Calculator", anyOf: ["dashboard.finance"] },
       { href: "/staff/finance", label: msg("Overview"), icon: "Wallet", anyOf: ["finance.view"] },
       // Income and Expenses are managers' and the MD's; reception sees what it collected in Collections (owner, 2026-10-04).
       { href: "/staff/payments", label: msg("Income"), icon: "Banknote", anyOf: ["reports.view", "finance.view"] },
       { href: "/staff/expenses", label: msg("Expenses"), icon: "Receipt", anyOf: ["expenses.record", "expenses.view_all"] },
-      // The money each person collected from customers — their own ("My collections"); managers pick anyone.
-      { href: "/staff/collections", label: msg("Collections"), icon: "Coins", anyOf: ["revenue.record", "payments.record", "dashboard.manager", "dashboard.owner", "dashboard.admin"] },
-      // The cash reception and the Restaurant Counter hand to Finance (Finance receives; managers watch).
-      { href: "/staff/accountant/handovers", label: msg("Cash handovers"), icon: "HandCoins", anyOf: ["cash.handover.view", "cash.handover.review"] },
       { href: "/staff/finance/accounts", label: msg("Accounts"), icon: "Landmark", anyOf: ["ledger.view", "finance.view"] },
       // Invoices are not in the sidebar (the owner's choice) — they open from a booking, a group or a company.
       { href: "/staff/corporate", label: msg("Companies"), icon: "Building2", anyOf: ["corporate.view"] },
+      // The money each person collected from customers — their own ("My collections"); managers pick anyone.
+      { href: "/staff/collections", label: msg("Collections"), icon: "Coins", anyOf: ["revenue.record", "payments.record", "dashboard.manager", "dashboard.owner", "dashboard.admin"] },
       { href: "/staff/finance/receivables", label: msg("Who owes us"), icon: "HandCoins", anyOf: ["finance.view"] },
-      // nTZS — the hotel's one online payment: status, on/off per service, every attempt, reconciliation.
-      { href: "/staff/finance/online", label: msg("Online payments"), icon: "Smartphone", anyOf: ["finance.view"] },
+      { href: "/staff/finance/history", label: msg("Edit history"), icon: "History", anyOf: ["finance.view"] },
+      // The cash reception and the Restaurant Counter hand to Finance (Finance receives; managers watch).
+      { href: "/staff/accountant/handovers", label: msg("Cash handovers"), icon: "HandCoins", anyOf: ["cash.handover.view", "cash.handover.review"] },
+      { href: "/staff/finance/ledger", label: msg("General ledger"), icon: "ArrowLeftRight", anyOf: ["ledger.view", "finance.view"] },
       // Money out of nTZS, to a phone or a bank — only for those who may withdraw (the Boss and the administrator).
       { href: "/staff/finance/withdraw", label: msg("Withdraw funds"), icon: "BanknoteArrowUp", anyOf: ["withdrawals.manage"] },
-      { href: "/staff/finance/history", label: msg("Edit history"), icon: "History", anyOf: ["finance.view"] },
-      { href: "/staff/finance/ledger", label: msg("General ledger"), icon: "ArrowLeftRight", anyOf: ["ledger.view", "finance.view"] },
+      // nTZS — the hotel's one online payment: status, on/off per service, every attempt, reconciliation.
+      { href: "/staff/finance/online", label: msg("Online payments"), icon: "Smartphone", anyOf: ["finance.view"] },
+      // Finance's Home is a portal of its own (it is Finance's Home pill); the Boss and the MD open it from here.
+      { href: "/finance/dashboard", label: msg("Finance dashboard"), icon: "BarChart3", anyOf: ["dashboard.finance"], allOf: ["finance.view"] },
     ],
   },
   {

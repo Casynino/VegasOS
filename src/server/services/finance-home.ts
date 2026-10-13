@@ -189,3 +189,32 @@ export async function restaurantDiscounts(range: Range) {
   });
   return { count: a._count, amount: a._sum.discountAmount ?? 0 };
 }
+
+// ───────────────────────── nTZS ─────────────────────────
+
+/**
+ * What nTZS itself last said it holds. nTZS has no call for the balance alone — it says it together with a price — so this
+ * is the last figure it reported (a price or a "Check balance"), with when, and how many withdrawals were sent after it.
+ * It is never guessed: no report yet means no figure.
+ */
+export async function ntzsReported() {
+  const row = await db.withdrawal.findFirst({ where: { availableTzs: { not: null } }, orderBy: { createdAt: "desc" }, select: { availableTzs: true, createdAt: true, livemode: true } });
+  if (!row || row.availableTzs === null) return null;
+  const sentSince = await db.withdrawal.count({ where: { submittedAt: { gte: row.createdAt }, status: { in: ["SUBMITTING", "UNKNOWN", "PROCESSING", "AWAITING_APPROVAL", "IN_REVIEW", "COMPLETED"] } } });
+  return { available: row.availableTzs, at: row.createdAt, live: row.livemode !== false, sentSince };
+}
+
+// ───────────────────────── Latest money in ─────────────────────────
+
+/** The latest payments received in the period (no guest names: the booking reference and who recorded it). */
+export async function latestPayments(range: Range, take = 8) {
+  const rows = await db.payment.findMany({
+    where: { status: "POSTED", kind: "PAYMENT", businessDate: { gte: toDbDate(range.from), lte: toDbDate(range.to) } },
+    orderBy: { receivedAt: "desc" }, take,
+    select: { id: true, amount: true, receivedAt: true, reference: true, method: { select: { name: true } }, account: { select: { name: true } }, reservation: { select: { reference: true } }, invoice: { select: { number: true } }, recordedBy: { select: { fullName: true } } },
+  });
+  return rows.map((r) => ({
+    id: r.id, amount: r.amount, at: r.receivedAt.toISOString(), method: r.method.name, account: r.account.name,
+    for: r.reservation?.reference ?? r.invoice?.number ?? r.reference ?? null, by: r.recordedBy.fullName,
+  }));
+}
