@@ -56,7 +56,7 @@ export function proxy(request: NextRequest) {
 
   const isStaffApp =
     (pathname.startsWith("/staff") && !pathname.startsWith("/staff/login")) ||
-    /^\/(admin|manager|reception)(\/|$)/.test(pathname);
+    /^\/(admin|manager|reception|finance)(\/|$)/.test(pathname);
 
   if (isStaffApp && !request.cookies.has(SESSION_COOKIE)) {
     const url = request.nextUrl.clone();
@@ -75,7 +75,7 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/staff/:path*", "/admin/:path*", "/manager/:path*", "/reception/:path*", "/admin", "/manager", "/reception",
+    "/staff/:path*", "/admin/:path*", "/manager/:path*", "/reception/:path*", "/finance/:path*", "/admin", "/manager", "/reception", "/finance",
     // The website (served per language) and its language addresses.
     "/", "/rooms/:path*", "/book/:path*", "/booking/:path*", "/contact/:path*", "/gallery/:path*", "/hotel/:path*",
     "/meeting-room/:path*", "/menu/:path*", "/restaurant/:path*", "/bar/:path*", "/transport/:path*", "/verify/:path*",

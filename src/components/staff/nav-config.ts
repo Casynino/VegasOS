@@ -6,6 +6,8 @@ export interface NavItem {
   label: string;
   icon: string; // lucide icon name, resolved in StaffNav
   anyOf: PermissionCode[];
+  /** Shown only to people who hold ALL of these as well (on top of anyOf). */
+  allOf?: PermissionCode[];
   /** Hide the item from users who also hold any of these (e.g. the driver view for managers). */
   hideIf?: PermissionCode[];
   /** Count shown as a badge (e.g. new booking requests). */
@@ -35,6 +37,8 @@ export const NAV: NavSection[] = [
     // The owner's order: (the overview), income, expenses, then the accounts — small to big after that.
     items: [
       // Finance's own desk (their Home); the Boss and the MD open it from here.
+      // Finance's Home (a portal like the Boss's and the Manager's): what needs Finance, the money of the period, the analysis. The Boss and the MD open it from here.
+      { href: "/finance/dashboard", label: msg("Finance dashboard"), icon: "BarChart3", anyOf: ["dashboard.finance"], allOf: ["finance.view"] },
       { href: "/staff/accountant", label: msg("Finance desk"), icon: "Calculator", anyOf: ["dashboard.finance"] },
       { href: "/staff/finance", label: msg("Overview"), icon: "Wallet", anyOf: ["finance.view"] },
       // Income and Expenses are managers' and the MD's; reception sees what it collected in Collections (owner, 2026-10-04).
@@ -186,7 +190,7 @@ export function visibleNav(permissions: ReadonlySet<string>, opts: { badges?: Re
     ...s,
     items: s.items
       .filter((i) => i.href !== opts.home)
-      .filter((i) => (i.anyOf.length === 0 || i.anyOf.some((p) => permissions.has(p))) && !i.hideIf?.some((p) => permissions.has(p)))
+      .filter((i) => (i.anyOf.length === 0 || i.anyOf.some((p) => permissions.has(p))) && (!i.allOf || i.allOf.every((p) => permissions.has(p))) && !i.hideIf?.some((p) => permissions.has(p)))
       .map((i) => (opts.badges?.[i.href] ? { ...i, badge: opts.badges[i.href] } : i))
       // In the order listed (sections marked `ordered`); otherwise pinned first, then shortest name first, so every group steps down neatly.
       .sort((a, b) => (s.ordered ? 0 : a.pinned || b.pinned ? pinOrder(a) - pinOrder(b) : a.label.length - b.label.length || a.label.localeCompare(b.label))),

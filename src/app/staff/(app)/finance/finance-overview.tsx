@@ -53,7 +53,7 @@ export async function FinanceOverview({ p, today }: { p: Period; /** The hotel d
  * figures, the income ring and what needs attention) and at the bottom of the manager's and the
  * MD's home (without them: the home has its own).
  */
-export async function BusinessDetail({ p, today, full = false, chrome }: { p: Period; today: BusinessDate; full?: boolean; /** Under the banner (full): tabs, period. */ chrome?: React.ReactNode }) {
+export async function BusinessDetail({ p, today, full = false, chrome, restaurantLinks = true }: { p: Period; today: BusinessDate; full?: boolean; /** Under the banner (full): tabs, period. */ chrome?: React.ReactNode; /** Link to the restaurant pages — off for someone who cannot open them (Finance). */ restaurantLinks?: boolean }) {
   const t = await getT();
   const range = { from: p.from, to: p.to };
   const prev = previousRange(range);
@@ -120,7 +120,7 @@ export async function BusinessDetail({ p, today, full = false, chrome }: { p: Pe
     overdueInv._count > 0 && { text: t.plural(overdueInv._count, "{n} company invoice overdue", "{n} company invoices overdue"), amount: overdueInv._sum.balanceAmount ?? 0, href: "/staff/finance/receivables" },
     pendingExp._count > 0 && { text: t.plural(pendingExp._count, "{n} expense waiting for approval", "{n} expenses waiting for approval"), amount: pendingExp._sum.amount ?? 0, href: "/staff/expenses?status=PENDING_APPROVAL" },
     openCounts > 0 && { text: t.plural(openCounts, "{n} cash count with a difference to settle", "{n} cash counts with a difference to settle"), amount: null, href: "/staff/finance/accounts" },
-    overdueGuests > 0 && { text: t.plural(overdueGuests, "{n} guest past checkout time", "{n} guests past checkout time"), amount: null, href: "/staff/check-out" },
+    overdueGuests > 0 && { text: t.plural(overdueGuests, "{n} guest past checkout time", "{n} guests past checkout time"), amount: null, href: "/staff/reservations?view=inhouse" },
   ].filter(Boolean) as { text: string; amount: number | null; href: string }[];
   const periodQs = p.key === "custom" ? `from=${p.from}&to=${p.to}` : `period=${p.key}`;
 
@@ -368,7 +368,7 @@ export async function BusinessDetail({ p, today, full = false, chrome }: { p: Pe
 
       {/* ── 6 · Restaurant & bar · best customers · who owes the hotel ── */}
       <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-3">
-        <Panel title={t("Restaurant & bar")} subtitle={periodLabel(range, t)} action={<PanelLink href="/staff/restaurant/history">{t("History")}</PanelLink>}>
+        <Panel title={t("Restaurant & bar")} subtitle={periodLabel(range, t)} action={restaurantLinks ? <PanelLink href="/staff/restaurant/history">{t("History")}</PanelLink> : undefined}>
           <div className="grid grid-cols-3 divide-x divide-border/70 rounded-2xl border border-border/70 text-center">
             <Mini label={t("Orders worth")} value={money(food.sales)} center />
             <Mini label={t("Orders")} value={String(food.orders)} center />
@@ -420,7 +420,7 @@ export async function BusinessDetail({ p, today, full = false, chrome }: { p: Pe
             <Owe icon={Users} tone="bg-rose-500/12 text-rose-600 dark:text-rose-300" label={t("Guests")} sub={t.plural(owed.reservations.count, "{n} stay with a balance (staying or left)", "{n} stays with a balance (staying or left)")} amount={owed.reservations.amount} href="/staff/finance/receivables" />
             <Owe icon={Building2} tone="bg-violet-500/12 text-violet-600 dark:text-violet-300" label={t("Companies")} sub={`${t.plural(owed.invoices.count, "{n} invoice not fully paid", "{n} invoices not fully paid")}${overdueInv._count ? ` · ${t("{n} overdue", { n: overdueInv._count })}` : ""}`} amount={owed.invoices.amount} href="/staff/finance/receivables" />
             <Owe icon={Presentation} tone="bg-amber-500/12 text-amber-600 dark:text-amber-300" label={t("Meeting room")} sub={t.plural(owed.meetings.count, "{n} booking with a balance", "{n} bookings with a balance")} amount={owed.meetings.amount} href="/staff/meeting-room" />
-            <Owe icon={UtensilsCrossed} tone="bg-sky-500/12 text-sky-600 dark:text-sky-300" label={t("Restaurant")} sub={t("Pay-later orders not paid yet")} amount={unpaidFoodTotal} href="/staff/restaurant" />
+            <Owe icon={UtensilsCrossed} tone="bg-sky-500/12 text-sky-600 dark:text-sky-300" label={t("Restaurant")} sub={t("Pay-later orders not paid yet")} amount={unpaidFoodTotal} href={restaurantLinks ? "/staff/restaurant" : undefined} />
           </ul>
           <dl className="mt-4 border-t border-dashed border-border pt-3 text-sm">
             <Line label={t("Owed to the hotel")} value={formatTZS(owed.total + unpaidFoodTotal)} strong tone="text-rose-600 dark:text-rose-400" />
@@ -512,14 +512,19 @@ function Line({ label, value, strong, muted, tone }: { label: string; value: str
   );
 }
 
-function Owe({ icon: Icon, tone, label, sub, amount, href }: { icon: typeof Users; tone: string; label: string; sub: string; amount: number; href: string }) {
+function Owe({ icon: Icon, tone, label, sub, amount, href }: { icon: typeof Users; tone: string; label: string; sub: string; amount: number; href?: string }) {
+  const body = (
+    <>
+      <span className={cn("grid size-9 shrink-0 place-items-center rounded-xl", tone)}><Icon className="size-4" /></span>
+      <span className="min-w-0 flex-1 leading-tight"><span className="block font-medium">{label}</span><span className="block text-xs leading-snug text-muted-foreground">{sub}</span></span>
+      <span className={cn("shrink-0 font-semibold tabular-nums", amount > 0 ? "text-rose-600 dark:text-rose-400" : "text-muted-foreground")}>{formatTZS(amount)}</span>
+    </>
+  );
   return (
     <li>
-      <Link href={href} className="flex items-center gap-3 rounded-2xl px-1 py-1 transition-colors hover:bg-muted/50">
-        <span className={cn("grid size-9 shrink-0 place-items-center rounded-xl", tone)}><Icon className="size-4" /></span>
-        <span className="min-w-0 flex-1 leading-tight"><span className="block font-medium">{label}</span><span className="block text-xs leading-snug text-muted-foreground">{sub}</span></span>
-        <span className={cn("shrink-0 font-semibold tabular-nums", amount > 0 ? "text-rose-600 dark:text-rose-400" : "text-muted-foreground")}>{formatTZS(amount)}</span>
-      </Link>
+      {href
+        ? <Link href={href} className="flex items-center gap-3 rounded-2xl px-1 py-1 transition-colors hover:bg-muted/50">{body}</Link>
+        : <div className="flex items-center gap-3 rounded-2xl px-1 py-1">{body}</div>}
     </li>
   );
 }

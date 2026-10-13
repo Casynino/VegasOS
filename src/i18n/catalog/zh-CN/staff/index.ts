@@ -4,6 +4,7 @@ import m_accountant from "./accountant";
 import m_content_admin from "./content-admin";
 import m_daily_lists from "./daily-lists";
 import m_dashboards from "./dashboards";
+import m_finance_home from "./finance-home";
 import m_finance from "./finance";
 import m_fix_people_misc from "./fix-people-misc";
 import m_groups_corporate from "./groups-corporate";
@@ -39,6 +40,7 @@ const catalog: Catalog = {
   ...m_content_admin,
   ...m_daily_lists,
   ...m_dashboards,
+  ...m_finance_home,
   ...m_finance,
   ...m_fix_people_misc,
   ...m_groups_corporate,

@@ -46,7 +46,7 @@ export function Delta({ value, unit = "%", invert, label, t = englishT }: { valu
   const I = up ? TrendingUp : TrendingDown;
   return (
     <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-      <span className={cn("inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 font-semibold", good ? "bg-emerald-500/12 text-emerald-700" : "bg-rose-500/12 text-rose-700")}>
+      <span className={cn("inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 font-semibold", good ? "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300" : "bg-rose-500/12 text-rose-700 dark:text-rose-300")}>
         <I className="size-3" />{Math.abs(value).toFixed(1)}{unit}
       </span>
       {label && <span>{t("vs {label}", { label })}</span>}
@@ -65,12 +65,12 @@ export function StatTile({ label, value, icon, tone = "gold", delta, sub, spark,
         <span className={cn("grid size-10 shrink-0 place-items-center rounded-2xl text-white sm:size-11 [&_svg]:size-5", t.chip)}>{icon}</span>
         <div className="min-w-0">
           <p className="truncate text-xs font-medium text-muted-foreground sm:text-sm">{label}</p>
-          <p className={cn("mt-0.5 truncate font-bold tracking-tight text-foreground tabular-nums", typeof value === "string" && value.length > 10 ? "text-[15px] sm:text-xl" : "text-xl sm:text-[1.65rem]")}>{value}</p>
+          <p title={typeof value === "string" ? value : undefined} className={cn("mt-0.5 break-words font-bold tracking-tight text-foreground tabular-nums", typeof value === "string" && value.length > 10 ? "text-[15px] sm:text-xl" : "text-xl sm:text-[1.65rem]")}>{value}</p>
         </div>
       </div>
-      <div className="mt-auto flex items-end justify-between gap-3 pt-3">
+      <div className="mt-auto flex flex-wrap items-end justify-between gap-x-3 gap-y-2 pt-3">
         <div className="min-w-0 text-xs text-muted-foreground">{delta}{sub && <div className="mt-0.5 truncate">{sub}</div>}</div>
-        {spark && <Sparkline values={spark} tone={tone} className="w-24 shrink-0 sm:w-28" />}
+        {spark && <Sparkline values={spark} tone={tone} className="ml-auto w-24 shrink-0 sm:w-28" />}
       </div>
     </div>
   );

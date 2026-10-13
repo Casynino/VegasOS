@@ -38,7 +38,7 @@ export function AreaTrend({ data, color = "#8b5cf6", unit = "money", height = 24
             <CartesianGrid stroke="var(--border)" vertical={false} />
             <XAxis dataKey="date" tickFormatter={(d: string) => shortDate(d, t.intl)} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} tickLine={false} axisLine={false} minTickGap={24} />
             <YAxis tickFormatter={(v) => (unit === "percent" ? `${v}%` : compact(v))} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} tickLine={false} axisLine={false} width={44}
-              domain={unit === "percent" ? [0, 100] : [0, "auto"]} />
+              domain={unit === "percent" ? [0, 100] : unit === "count" ? [0, (max: number) => Math.max(3, max)] : [0, "auto"]} allowDecimals={unit !== "count"} />
             <Tooltip content={<Tip format={format} />} cursor={{ stroke: color, strokeDasharray: "4 4" }} />
             <Area type="monotone" dataKey="value" stroke={color} strokeWidth={2.5} fill={`url(#${id})`} dot={false} activeDot={{ r: 5, fill: "var(--card)", stroke: color, strokeWidth: 2.5 }} />
           </AreaChart>
