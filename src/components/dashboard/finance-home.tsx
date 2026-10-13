@@ -12,9 +12,9 @@ import { onlinePaymentTotals } from "@/server/services/online-payments-admin";
 import { receivablesBoard } from "@/server/services/company-billing";
 import { financeNeeds, latestPayments, purchasesPanel, restaurantDiscounts, type FinanceNeed } from "@/server/services/finance-home";
 import { receivablesAging, recentSpend } from "@/server/services/finance-outlook";
-import { buildInsights, type InsightFacts } from "@/lib/finance-insights";
+import { buildInsights } from "@/lib/finance-insights";
 import { addDays, diffDays } from "@/lib/time/business-date";
-import { formatNumber, formatTZS } from "@/lib/format";
+import { formatTZS } from "@/lib/format";
 import { CASH_HANDOVER_ON } from "@/lib/cash-handover";
 import { getT } from "@/i18n/server";
 import { msg } from "@/i18n/msg";
@@ -22,14 +22,13 @@ import type { T } from "@/i18n/translate";
 import { PeriodPicker, periodLabel, readPeriod } from "@/components/staff/finance/finance-nav";
 import { MoneyChart, type MoneyPoint } from "@/components/staff/finance/money-chart";
 import { BusinessDetail } from "@/app/staff/(app)/finance/finance-overview";
-import { AttentionCards, Delta, HeroBanner, Panel, PanelLink, QuickActions, RoomsGlance, SectionLabel, StatTile, type AttentionItem } from "./kit";
+import { AttentionCards, Delta, HeroBanner, Panel, PanelLink, QuickActions, SectionLabel, StatTile, type AttentionItem } from "./kit";
 import { Donut } from "./light-charts";
-import { AccountCards, DataTable, FigureCards, HBars, JumpNav, PartHeading, Pipeline } from "./finance-panels";
+import { DataTable, FigureCards, HBars, JumpNav, PartHeading, Pipeline } from "./finance-panels";
 import { InsightsPanel, OutlookView } from "./finance-analysis";
-import { BookingsSection, compareKit, moves, PartSkeleton, TrendsSection, type HomeContext } from "./finance-sections";
+import { AccountsPart, BookingsSection, compareKit, insightFactsOf, PartSkeleton, TrendsSection, type HomeContext } from "./finance-sections";
 
 const shortDay = (d: string, t: T) => new Intl.DateTimeFormat(t.intl, { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${d}T00:00:00Z`));
-const RING = ["#8b5cf6", "#0ea5e9", "#10b981", "#f59e0b", "#f43f5e", "#94a3b8"];
 
 /**
  * Finance's Home — ONE page, everything on it, in the order a Finance person decides: a small banner, the jobs waiting, the figures
@@ -126,35 +125,10 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
   // ── What stands out: read from the figures of the page ──
   const canSeeAccounts = has("ledger.view", "finance.view");
   const moneyTotal = ov.balances.reduce((s, b) => s + b.balance, 0);
-  const receivedByAccount = ov.received.byAccount.reduce((s, a) => s + Math.max(0, a.received), 0);
-  const cashReceived = ov.received.byAccount.filter((a) => a.kind === "CASH").reduce((s, a) => s + Math.max(0, a.received), 0);
   // A day that is not over yet, or a few days against a longer stretch, does not make a fair comparison: say nothing about the change then.
   // Nor does a previous period that begins before the records did: it is only partly filled.
   const comparable = (p.to < today || days >= 7) && !straddles;
-  const insights = buildInsights({
-    earned, earnedBefore: comparable ? plPrev.netRevenue : 0, expenses, expensesBefore: comparable ? plPrev.expenses : 0,
-    categories: moves(spend.byCategory.map((c) => ({ name: c.name, amount: c.amount })), comparable ? plPrev.expenseSummary.byCategory.map((c) => ({ name: c.name, amount: c.amount })) : []),
-    owed: aging ? { total: aging.total, late: aging.lateOverWeek.amount, lateCount: aging.lateOverWeek.count } : null,
-    suppliers: purchases ? { overdue: purchases.suppliers.overdue.amount, dueWeek: purchases.suppliers.due.find((d) => d.bucket === "week")?.amount ?? 0 } : null,
-    money: canSeeAccounts ? moneyTotal : null,
-    spendPerDay: pace?.perDay ?? 0, spendDays: pace?.days ?? 0,
-    roomNet: ov.earned.rooms, roomDiscount: ov.earned.discounts,
-    received: receivedByAccount, cashReceived,
-  } satisfies InsightFacts);
-
-  // ── The accounts as a ring (the accounts that hold money; the smallest are one "Other accounts") ──
-  const holding = ov.balances.filter((b) => b.balance > 0).sort((a, b) => b.balance - a.balance);
-  const ringParts = [
-    ...holding.slice(0, 5).map((b, i) => ({ label: t(b.name), value: b.balance, color: RING[i] })),
-    ...(holding.length > 5 ? [{ label: t("Other accounts"), value: holding.slice(5).reduce((s, b) => s + b.balance, 0), color: RING[5] }] : []),
-  ];
-  const ringTotal = holding.reduce((s, b) => s + b.balance, 0);
-  const below = ov.balances.filter((b) => b.balance < 0);
-  // …and by kind of account, for the foot of the ring card
-  const kindOf = (k: string) => (k === "CASH" || k === "PETTY_CASH" ? "cash" : k === "BANK" ? "bank" : k === "MOBILE_MONEY" ? "mobile" : k === "CARD" ? "card" : "other");
-  const kindName = { cash: t("Cash"), bank: t("Banks"), mobile: t("Mobile money"), card: t("Card"), other: t("Other") } as const;
-  const byKind = (["cash", "bank", "mobile", "card", "other"] as const)
-    .map((k) => ({ k, amount: holding.filter((b) => kindOf(b.kind) === k).reduce((s, b) => s + b.balance, 0) })).filter((x) => x.amount > 0);
+  const insights = buildInsights(insightFactsOf({ ov, plPrev, spend, aging, pace, suppliers: purchases?.suppliers ?? null, canSeeAccounts, comparable }));
 
   const ctx: HomeContext = { p, range, prev, days, today, live, straddles, prevHasRecords, has, ov, plPrev, spend };
   const jump = [
@@ -218,27 +192,7 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
       {/* ── Where the money is ── */}
       <section className="space-y-4">
         <PartHeading id="accounts" tone="sky" icon={<Landmark />} title={t("Where the money is")} subtitle={t("What the hotel's own records add up to — check it against the bank")} action={link(["ledger.view", "finance.view"], "/staff/finance/accounts", t("Accounts"))} />
-        {ov.balances.length === 0 ? <p className="text-sm text-muted-foreground">{t("No accounts yet.")}</p> : (
-          <div className="grid gap-4 xl:grid-cols-[21rem_minmax(0,1fr)]">
-            {canSeeAccounts && ringTotal > 0 && (
-              <RoomsGlance t={t} href="/staff/finance/accounts" total={ringTotal} title={t("In all accounts")} format={formatTZS} parts={ringParts}
-                center={{ value: formatNumber(ringTotal), label: t("TZS held") }}
-                footer={(
-                  <div className="space-y-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/50">{t("By kind of account")}</p>
-                    <ul className="space-y-1.5">
-                      {below.length > 0 && <li className="flex items-center justify-between gap-3 text-rose-300"><span>{t("Below zero")}</span><span className="tabular-nums"><strong>{formatTZS(below.reduce((n, b) => n + b.balance, 0))}</strong></span></li>}
-                      {byKind.map((x) => (
-                        <li key={x.k} className="flex items-center justify-between gap-3"><span>{kindName[x.k]}</span><span className="tabular-nums text-white"><strong>{formatTZS(x.amount)}</strong><span className="ml-2 text-white/50">{Math.round((x.amount / ringTotal) * 100)}%</span></span></li>
-                      ))}
-                    </ul>
-                    <p className="border-t border-white/10 pt-2 text-white/60">{t("The hotel's own records — check them against the bank.")}</p>
-                  </div>
-                )} />
-            )}
-            <AccountCards t={t} accounts={ov.balances} canWithdraw={has("withdrawals.manage")} canOpen={canSeeAccounts} />
-          </div>
-        )}
+        <AccountsPart t={t} ov={ov} canOpen={canSeeAccounts} canWithdraw={has("withdrawals.manage")} />
       </section>
 
       {/* ── Money in and out ── */}

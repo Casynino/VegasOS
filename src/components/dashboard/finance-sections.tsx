@@ -1,20 +1,22 @@
 import { BedDouble, Banknote, Gauge, Moon, Percent, Receipt, Tag, UtensilsCrossed } from "lucide-react";
+import { formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { formatTZS } from "@/lib/format";
 import { getT } from "@/i18n/server";
 import type { T } from "@/i18n/translate";
 import type { BusinessDate } from "@/lib/time/business-date";
 import { addDays } from "@/lib/time/business-date";
-import { percent, weekdayAverages } from "@/lib/finance-insights";
+import { percent, weekdayAverages, type InsightFacts } from "@/lib/finance-insights";
 import type { PermissionCode } from "@/lib/permissions";
 import { change, occupancy, restaurantSummary, type Range } from "@/server/services/reporting";
 import type { profitLoss } from "@/server/services/reporting";
 import type { AccountantOverview } from "@/server/services/accountant";
-import { bookingActivity } from "@/server/services/finance-home";
-import { closedDays, monthlyTrend } from "@/server/services/finance-outlook";
+import { bookingActivity, type supplierSnapshot } from "@/server/services/finance-home";
+import { closedDays, monthlyTrend, type ReceivablesAging } from "@/server/services/finance-outlook";
 import type { expenseSummary } from "@/server/services/reporting";
 import { periodLabel, type readPeriod } from "@/components/staff/finance/finance-nav";
-import { Delta, Panel, PanelLink } from "./kit";
+import { Delta, Panel, PanelLink, RoomsGlance } from "./kit";
+import { AccountCards } from "./finance-panels";
 import { AreaTrend } from "./light-charts";
 import { MIN_DAYS_FOR_WEEK, TrendsView, type Movement } from "./finance-analysis";
 
@@ -178,4 +180,66 @@ export async function BookingsSection({ c, movement }: { c: HomeContext; movemen
 /** What a loading part looks like. */
 export function PartSkeleton({ label, height = "h-72" }: { label: string; height?: string }) {
   return <div className={cn(height, "animate-pulse rounded-3xl border border-border/60 bg-card/60")} role="status" aria-busy="true"><span className="sr-only">{label}</span></div>;
+}
+
+// ───────────────────────── Shared by Finance's Home and the Boss's and Manager's dashboards ─────────────────────────
+
+/** What the "what stands out" rules read, worked out from the figures of the page. */
+export function insightFactsOf(a: {
+  ov: AccountantOverview; plPrev: Awaited<ReturnType<typeof profitLoss>>; spend: Awaited<ReturnType<typeof expenseSummary>>;
+  aging: ReceivablesAging | null; pace: { perDay: number; days: number } | null; suppliers: Awaited<ReturnType<typeof supplierSnapshot>> | null;
+  canSeeAccounts: boolean; comparable: boolean;
+}): InsightFacts {
+  const { ov, plPrev, spend, aging, pace, suppliers, canSeeAccounts, comparable } = a;
+  const receivedByAccount = ov.received.byAccount.reduce((s, x) => s + Math.max(0, x.received), 0);
+  const cashReceived = ov.received.byAccount.filter((x) => x.kind === "CASH").reduce((s, x) => s + Math.max(0, x.received), 0);
+  return {
+    earned: ov.earned.total, earnedBefore: comparable ? plPrev.netRevenue : 0, expenses: ov.expenses.total, expensesBefore: comparable ? plPrev.expenses : 0,
+    categories: moves(spend.byCategory.map((c) => ({ name: c.name, amount: c.amount })), comparable ? plPrev.expenseSummary.byCategory.map((c) => ({ name: c.name, amount: c.amount })) : []),
+    owed: aging ? { total: aging.total, late: aging.lateOverWeek.amount, lateCount: aging.lateOverWeek.count } : null,
+    suppliers: suppliers ? { overdue: suppliers.overdue.amount, dueWeek: suppliers.due.find((d) => d.bucket === "week")?.amount ?? 0 } : null,
+    money: canSeeAccounts ? ov.balances.reduce((s, b) => s + b.balance, 0) : null,
+    spendPerDay: pace?.perDay ?? 0, spendDays: pace?.days ?? 0,
+    roomNet: ov.earned.rooms, roomDiscount: ov.earned.discounts,
+    received: receivedByAccount, cashReceived,
+  };
+}
+
+const RING = ["#8b5cf6", "#0ea5e9", "#10b981", "#f59e0b", "#f43f5e", "#94a3b8"];
+
+/** The accounts: a ring of what each holds (and the split by kind) beside one card per account — every amount in full. */
+export function AccountsPart({ t, ov, canOpen, canWithdraw }: { t: T; ov: AccountantOverview; canOpen: boolean; canWithdraw: boolean }) {
+  if (ov.balances.length === 0) return <p className="text-sm text-muted-foreground">{t("No accounts yet.")}</p>;
+  const holding = ov.balances.filter((b) => b.balance > 0).sort((a, b) => b.balance - a.balance);
+  const ringParts = [
+    ...holding.slice(0, 5).map((b, i) => ({ label: t(b.name), value: b.balance, color: RING[i] })),
+    ...(holding.length > 5 ? [{ label: t("Other accounts"), value: holding.slice(5).reduce((s, b) => s + b.balance, 0), color: RING[5] }] : []),
+  ];
+  const ringTotal = holding.reduce((s, b) => s + b.balance, 0);
+  const below = ov.balances.filter((b) => b.balance < 0);
+  const kindOf = (k: string) => (k === "CASH" || k === "PETTY_CASH" ? "cash" : k === "BANK" ? "bank" : k === "MOBILE_MONEY" ? "mobile" : k === "CARD" ? "card" : "other");
+  const kindName = { cash: t("Cash"), bank: t("Banks"), mobile: t("Mobile money"), card: t("Card"), other: t("Other") } as const;
+  const byKind = (["cash", "bank", "mobile", "card", "other"] as const)
+    .map((k) => ({ k, amount: holding.filter((b) => kindOf(b.kind) === k).reduce((s, b) => s + b.balance, 0) })).filter((x) => x.amount > 0);
+  return (
+    <div className="grid gap-4 xl:grid-cols-[21rem_minmax(0,1fr)]">
+      {canOpen && ringTotal > 0 && (
+        <RoomsGlance t={t} href="/staff/finance/accounts" total={ringTotal} title={t("In all accounts")} format={formatTZS} parts={ringParts}
+          center={{ value: formatNumber(ringTotal), label: t("TZS held") }}
+          footer={(
+            <div className="space-y-2">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/50">{t("By kind of account")}</p>
+              <ul className="space-y-1.5">
+                {below.length > 0 && <li className="flex items-center justify-between gap-3 text-rose-300"><span>{t("Below zero")}</span><span className="tabular-nums"><strong>{formatTZS(below.reduce((n, b) => n + b.balance, 0))}</strong></span></li>}
+                {byKind.map((x) => (
+                  <li key={x.k} className="flex items-center justify-between gap-3"><span>{kindName[x.k]}</span><span className="tabular-nums text-white"><strong>{formatTZS(x.amount)}</strong><span className="ml-2 text-white/50">{Math.round((x.amount / ringTotal) * 100)}%</span></span></li>
+                ))}
+              </ul>
+              <p className="border-t border-white/10 pt-2 text-white/60">{t("The hotel's own records — check them against the bank.")}</p>
+            </div>
+          )} />
+      )}
+      <AccountCards t={t} accounts={ov.balances} canWithdraw={canWithdraw} canOpen={canOpen} />
+    </div>
+  );
 }

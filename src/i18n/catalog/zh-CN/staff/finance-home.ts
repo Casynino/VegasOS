@@ -260,6 +260,8 @@ const catalog: Catalog = {
   "Company invoices due today": "公司发票今天到期",
   "Company invoices due this week": "公司发票本周到期",
   "Best day": "最佳日",
+  "The money, analysed": "资金分析",
+  "What stands out, where the money is, what is owed and when, how the hotel is doing": "值得关注的事项、资金在哪里、欠款及到期时间、酒店经营状况",
 };
 
 export default catalog;

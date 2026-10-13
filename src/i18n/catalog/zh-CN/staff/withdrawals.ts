@@ -235,5 +235,6 @@ const catalog: Catalog = {
   "Name confirmed by the network": "姓名已由网络确认",
   "This price holds for": "此价格还有效",
   "This price ran out": "价格已过期",
+  "Paying": "付款给",
 };
 export default catalog;

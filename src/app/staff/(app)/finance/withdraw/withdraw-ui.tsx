@@ -3,9 +3,8 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowLeft, BadgeCheck, BanknoteArrowUp, BookOpenText, Check, CircleCheck, CircleX, Clock, Landmark, Loader2, RefreshCw, Send, Smartphone, Store, Timer, TriangleAlert } from "lucide-react";
+import { ArrowLeft, BadgeCheck, BanknoteArrowUp, Check, CircleCheck, CircleX, Clock, Landmark, Loader2, RefreshCw, Send, Smartphone, Store, Timer, TriangleAlert } from "lucide-react";
 import { useT } from "@/i18n/client";
-import { msg } from "@/i18n/msg";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -62,7 +61,40 @@ function Line({ label, sub, value, strong }: { label: React.ReactNode; sub?: Rea
 }
 
 const KIND_ICON = { PHONE: Smartphone, LIPA: Store, BANK: Landmark } as const;
-const KIND_WORD = { PHONE: msg("Phone number"), LIPA: msg("Lipa number"), BANK: msg("Bank account") } as const;
+
+/** "Lipa · 65562884" → who it is ("Lipa number") and the number itself; a phone has no label of its own. */
+function destinationParts(destination: string, kind: "PHONE" | "BANK" | "LIPA", t: (k: string) => string) {
+  const [first, ...rest] = destination.split(" · ");
+  if (!rest.length) return { label: kind === "PHONE" ? t("Phone number") : t("Bank account"), value: destination };
+  return { label: kind === "LIPA" ? t("Lipa number") : first, value: rest.join(" · ") };
+}
+
+/** Who is paid — the name first and big (it is the thing to be sure of), then the number, then how much. */
+function PayCard({ name, confirmed, kind, destination, amount, amountLabel, t }: {
+  name: string | null; confirmed: boolean; kind: "PHONE" | "BANK" | "LIPA"; destination: string; amount: string; amountLabel: string; t: (k: string) => string;
+}) {
+  const Kind = KIND_ICON[kind];
+  const d = destinationParts(destination, kind, t);
+  return (
+    <div className="overflow-hidden rounded-3xl border border-amber-500/30 bg-linear-to-br from-amber-500/[0.10] via-card to-card">
+      <div className="flex items-start gap-4 px-5 pb-4 pt-5">
+        <span className="grid size-14 shrink-0 place-items-center rounded-2xl bg-amber-500/15 text-amber-700 dark:text-amber-300 [&_svg]:size-6"><Kind /></span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">{t("Paying")}</p>
+          <p className="mt-0.5 break-words text-2xl font-bold leading-tight tracking-tight">
+            {name ?? t("Name not confirmed")}
+            {confirmed && name && <BadgeCheck className="ml-2 inline size-5 -translate-y-px text-emerald-500" aria-label={t("Name confirmed by the network")} />}
+          </p>
+          <p className="mt-1.5 text-sm"><span className="text-muted-foreground">{d.label}</span> <strong className="ml-1 tabular-nums">{d.value}</strong></p>
+        </div>
+      </div>
+      <div className="flex items-baseline justify-between gap-3 border-t border-amber-500/20 bg-background/40 px-5 py-3.5">
+        <span className="text-sm text-muted-foreground">{amountLabel}</span>
+        <span className="text-3xl font-bold tabular-nums tracking-tight">{amount}</span>
+      </div>
+    </div>
+  );
+}
 
 /** How long a price still holds, counting down — a bar that empties and the minutes left. */
 function PriceTimer({ until, label, ranOut }: { until: Date | string; label: string; ranOut: string }) {
@@ -309,9 +341,7 @@ export function WithdrawButton({ disabled, accounts, destinations, lastBooks, co
           {step.at === "check" && (() => {
             const v = step.price.view;
             const gets = step.price.receiveTzs ?? v.amount;
-            const Kind = KIND_ICON[v.destinationKind];
             const left = v.availableTzs !== null && v.debitedTzs !== null ? Math.max(0, v.availableTzs - v.debitedTzs) : null;
-            const share = v.availableTzs && v.debitedTzs !== null ? Math.min(100, Math.round((v.debitedTzs / v.availableTzs) * 100)) : null;
             return (
               <>
                 <DialogHeader icon={<Send />} eyebrow={t("Check before you send")} tone="amber">
@@ -319,55 +349,15 @@ export function WithdrawButton({ disabled, accounts, destinations, lastBooks, co
                   <DialogDescription>{t("Read this once more. After you send it, it cannot be taken back.")}</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
-                  {/* who is paid, and how much: the two things to be sure of */}
-                  <div className="overflow-hidden rounded-3xl border border-amber-500/30 bg-linear-to-br from-amber-500/[0.12] via-card to-card">
-                    <div className="px-5 pb-4 pt-5 text-center">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">{t("The recipient gets")}</p>
-                      <p className="mt-1 text-4xl font-bold tabular-nums tracking-tight">{formatTZS(gets)}</p>
-                    </div>
-                    <div className="flex items-center gap-3 border-t border-amber-500/20 bg-background/40 px-5 py-3.5">
-                      <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-amber-500/15 text-amber-700 dark:text-amber-300 [&_svg]:size-5"><Kind /></span>
-                      <div className="min-w-0 flex-1">
-                        <p className="flex items-center gap-1.5 text-base font-semibold leading-tight">
-                          <span className="truncate">{v.recipientName ?? t("Name not confirmed")}</span>
-                          {v.recipientName && <BadgeCheck className="size-4 shrink-0 text-emerald-500" aria-label={t("Name confirmed by the network")} />}
-                        </p>
-                        <p className="mt-0.5 text-sm tabular-nums text-muted-foreground"><span className="mr-1.5 rounded-md bg-muted px-1.5 py-0.5 text-[10.5px] font-medium uppercase tracking-wider">{t(KIND_WORD[v.destinationKind])}</span>{step.price.destination}</p>
-                      </div>
-                    </div>
-                  </div>
+                  <PayCard name={v.recipientName} confirmed={!!v.recipientName} kind={v.destinationKind} destination={step.price.destination} amount={formatTZS(gets)} amountLabel={t("The recipient gets")} t={t} />
                   {!v.recipientName && (
                     <p className="flex gap-2 rounded-2xl border border-amber-500/40 bg-amber-500/[0.06] px-3 py-2 text-sm"><TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />{t("nTZS could not confirm the name on this number. Check the number yourself, digit by digit, before you send.")}</p>
                   )}
-
-                  {/* the money: what the recipient gets, the fee, what leaves */}
-                  <div className="rounded-2xl border border-border/70 bg-muted/30 px-4 py-1">
-                    <dl className="divide-y divide-border/60 text-sm">
-                      <Line label={t("The recipient gets")} value={formatTZS(gets)} />
-                      <Line label={t("nTZS's fee")} sub={t("nTZS's price now — it confirms the real fee when it pays.")} value={v.feeTzs === null ? "—" : `+ ${formatTZS(v.feeTzs)}`} />
-                      <Line label={t("Leaves the nTZS balance")} value={v.debitedTzs === null ? "—" : formatTZS(v.debitedTzs)} strong />
-                    </dl>
-                  </div>
-                  {v.availableTzs !== null && (
-                    <div className="space-y-1.5 rounded-2xl border border-border/70 px-4 py-3">
-                      <div className="flex items-baseline justify-between gap-3 text-sm">
-                        <span className="text-muted-foreground">{t("At nTZS now")}</span><strong className="tabular-nums">{formatTZS(v.availableTzs)}</strong>
-                      </div>
-                      {share !== null && (
-                        <div className="flex h-2 gap-0.5 overflow-hidden rounded-full bg-muted" aria-hidden>
-                          <span className="h-full rounded-full bg-amber-500" style={{ width: `${Math.max(2, share)}%` }} />
-                          <span className="h-full flex-1 rounded-full bg-emerald-500/70" />
-                        </div>
-                      )}
-                      {left !== null && <p className="flex justify-between gap-3 text-xs text-muted-foreground"><span>{t("About {amount} is left after this.", { amount: formatTZS(left) })}</span>{share !== null && <span className="tabular-nums">{share}%</span>}</p>}
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2.5 rounded-2xl bg-muted/40 px-4 py-2.5 text-sm">
-                    <BookOpenText className="size-4 shrink-0 text-muted-foreground" />
-                    <span className="text-muted-foreground">{t("In the hotel's books")}</span>
-                    <span className="ml-auto text-right font-medium">{booksLine(books)}</span>
-                  </div>
-
+                  <dl className="divide-y divide-border/60 px-1 text-sm">
+                    <Line label={t("nTZS's fee")} sub={t("nTZS's price now — it confirms the real fee when it pays.")} value={v.feeTzs === null ? "—" : `+ ${formatTZS(v.feeTzs)}`} />
+                    <Line label={t("Leaves the nTZS balance")} sub={left !== null ? t("About {amount} is left after this.", { amount: formatTZS(left) }) : undefined} value={v.debitedTzs === null ? "—" : formatTZS(v.debitedTzs)} strong />
+                    <Line label={t("In the hotel's books")} value={booksLine(books)} />
+                  </dl>
                   {gets !== v.amount && <p className="rounded-2xl border border-amber-500/40 bg-amber-500/[0.06] px-3 py-2 text-sm">{t("You asked for {asked}, and nTZS says the recipient gets {gets}.", { asked: formatTZS(v.amount), gets: formatTZS(gets) })}</p>}
                   {v.needsApproval && <p className="rounded-2xl border border-sky-500/40 bg-sky-500/[0.06] px-3 py-2 text-sm">{t(WITHDRAWAL_STATUS.AWAITING_APPROVAL.hint)}</p>}
                   {expired
@@ -400,19 +390,7 @@ export function WithdrawButton({ disabled, accounts, destinations, lastBooks, co
                 <div className="space-y-4">
                   {why && <p className="rounded-2xl border border-rose-500/40 bg-rose-500/[0.06] px-3 py-2 text-sm">{t(why)}</p>}
                   {v.attention.map((n) => <p key={n} className="rounded-2xl border border-amber-500/40 bg-amber-500/[0.06] px-3 py-2 text-sm">{t(n)}</p>)}
-                  <div className="overflow-hidden rounded-3xl border border-border/70 bg-linear-to-br from-muted/50 via-card to-card">
-                    <div className="px-5 pb-4 pt-5 text-center">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">{t("Amount")}</p>
-                      <p className="mt-1 text-4xl font-bold tabular-nums tracking-tight">{formatTZS(v.amount)}</p>
-                    </div>
-                    <div className="flex items-center gap-3 border-t border-border/60 bg-background/40 px-5 py-3.5">
-                      <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-muted text-muted-foreground [&_svg]:size-5">{(() => { const K = KIND_ICON[v.destinationKind]; return <K />; })()}</span>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-base font-semibold leading-tight">{v.recipientName ?? t("Name not confirmed")}</p>
-                        <p className="mt-0.5 text-sm tabular-nums text-muted-foreground">{v.destination}</p>
-                      </div>
-                    </div>
-                  </div>
+                  <PayCard name={v.recipientName} confirmed={!!v.recipientName} kind={v.destinationKind} destination={v.destination} amount={formatTZS(v.amount)} amountLabel={t("Amount")} t={t} />
                   {v.status !== "COMPLETED" && v.status !== "REJECTED" && v.status !== "CANCELLED" && <p className="text-sm text-muted-foreground">{t("You can close this — the page follows it by itself and shows its state when nTZS reports.")}</p>}
                   <Button type="button" className="h-11 w-full" onClick={() => setOpen(false)}>{t("Close")}</Button>
                 </div>

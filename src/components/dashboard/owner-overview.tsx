@@ -1,7 +1,8 @@
+import { Suspense } from "react";
 import { inHouseBalances } from "@/server/services/guest-balances";
 import Link from "next/link";
 import {
-  Armchair, Banknote, BedDouble, Boxes, Building2, CircleDollarSign, HandCoins, Inbox, Percent, Receipt, Store, Tag, Timer, TrendingUp, Trophy, UserX, Users, UtensilsCrossed, Wallet, Wrench,
+  Activity, Armchair, BadgeCheck, Banknote, BarChart3, BedDouble, Boxes, Building2, CircleDollarSign, Clock, HandCoins, Inbox, Landmark, LineChart, Percent, Receipt, Store, Tag, Timer, TrendingUp, Trophy, UserX, Users, UtensilsCrossed, Wallet, Wrench,
 } from "lucide-react";
 import { can, requireUser } from "@/server/auth";
 import { tablesOnHome } from "@/server/services/table-performance";
@@ -29,6 +30,10 @@ import { TablesOnHome } from "./tables-on-home";
 import { MoneyCard } from "./money-card";
 import { TABLE_META } from "./table-meta";
 import { BusinessDetail } from "@/app/staff/(app)/finance/finance-overview";
+import { readPeriod } from "@/components/staff/finance/finance-nav";
+import { MoneyAnalysis, MoneyAnalysisHeading } from "./money-analysis";
+import { JumpNav } from "./finance-panels";
+import { PartSkeleton } from "./finance-sections";
 import { getT } from "@/i18n/server";
 import { msg } from "@/i18n/msg";
 import type { T } from "@/i18n/translate";
@@ -191,6 +196,24 @@ export async function OwnerOverview({ searchParams, basePath }: {
     ...snap.departures.map((r) => ({ id: r.id, name: r.guest.fullName, kind: "Leaving" as const, room: r.rooms.filter((x) => x.status === "CHECKED_IN").map((x) => x.room.number).join(", "), when: t("by {time}", { time: "11:00" }), status: "CHECKED_IN", balance: r.balanceAmount })),
   ];
 
+  // The money analysis follows the chosen period; with none chosen (the dashboard opens on today) it reads this month — one day alone says little.
+  const analysisPeriod = readPeriod(sp, today, "month");
+  const canAnalyse = can(user, "finance.view");
+  const jump = [
+    { id: "attention", label: t("Needs your attention"), icon: <BadgeCheck /> },
+    { id: "rooms", label: t("Rooms today"), icon: <BedDouble /> },
+    { id: "tables", label: t("Tables today"), icon: <Armchair /> },
+    { id: "live", label: t("Right now"), icon: <Activity /> },
+    { id: "business", label: t("The business"), icon: <CircleDollarSign /> },
+    ...(canAnalyse ? [
+      { id: "accounts", label: t("Where the money is"), icon: <Landmark /> },
+      { id: "outlook", label: t("Cash outlook"), icon: <Clock /> },
+      { id: "trends", label: t("How the hotel is doing"), icon: <LineChart /> },
+    ] : []),
+    { id: "online", label: t("Online bookings"), icon: <Inbox /> },
+    { id: "detail", label: t("In detail"), icon: <BarChart3 /> },
+  ];
+
   return (
     <div className="w-full space-y-6">
       <HeroBanner
@@ -201,13 +224,15 @@ export async function OwnerOverview({ searchParams, basePath }: {
         }, { occupied: rooms.occupied, total: rooms.total, received: formatTZS(receivedToday) })}{owedNow > 0 && <> · {t.rich("<a>{owed}</a> not paid yet by guests", { a: (c) => <strong className="font-semibold text-amber-300">{c}</strong> }, { owed: formatTZS(owedNow) })}</>}</>}
       />
 
-      <div>
+      <JumpNav label={t("Jump to")} items={jump} />
+
+      <div id="attention" className="scroll-mt-28">
         <SectionLabel title={t("Needs your attention")} count={attention.length} t={t} />
         <AttentionCards items={attention} t={t} />
       </div>
 
       {/* ── Rooms today ── */}
-      <div>
+      <div id="rooms" className="scroll-mt-28">
         <SectionLabel title={t("Rooms today")} href="/staff/rooms" linkLabel={t("Room board")} t={t} />
         <div className="grid gap-3 sm:gap-4 lg:grid-cols-[21rem_minmax(0,1fr)]">
           <div>
@@ -238,7 +263,7 @@ export async function OwnerOverview({ searchParams, basePath }: {
       </div>
 
       {/* ── Tables today: the restaurant floor, like the rooms ── */}
-      <div>
+      <div id="tables" className="scroll-mt-28">
         <SectionLabel title={t("Tables today")} href="/staff/restaurant/tables" linkLabel={t("The floor")} t={t} />
         <div className="grid gap-3 sm:gap-4 lg:grid-cols-[21rem_minmax(0,1fr)]">
           <div>
@@ -270,11 +295,13 @@ export async function OwnerOverview({ searchParams, basePath }: {
       </div>
 
       {/* ── Every department right now, and what the staff have done today ── */}
-      <LiveBoard data={command} time={liveTime} />
-      <StaffToday data={command} today={today} />
+      <div id="live" className="scroll-mt-28 space-y-6">
+        <LiveBoard data={command} time={liveTime} />
+        <StaffToday data={command} today={today} />
+      </div>
 
       {/* ── Money & performance for the chosen period ── */}
-      <div>
+      <div id="business" className="scroll-mt-28">
         <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">{periodKey === "today" ? t("The business · pick a period") : t("Money · {period}", { period: periodLabel })}</h2>
           <nav aria-label={t("Period")} className="-mx-1 flex gap-1 overflow-x-auto px-1 [scrollbar-width:none] sm:rounded-full sm:border sm:border-border sm:bg-card sm:p-1">
@@ -308,6 +335,14 @@ export async function OwnerOverview({ searchParams, basePath }: {
         <AreaTrend data={occTrend.series.map((d) => ({ date: d.date, value: d.occupancy }))} unit="percent" color="#8b5cf6" height={230} />
       </Panel>
 
+      {/* ── The money, analysed: what stands out, where the money is, the cash outlook, how the hotel is doing (for those who may see the figures) ── */}
+      {canAnalyse && (
+        <section className="space-y-6">
+          <MoneyAnalysisHeading p={analysisPeriod} />
+          <Suspense fallback={<PartSkeleton label={t("Loading…")} height="h-96" />}><MoneyAnalysis perms={user.permissions} p={analysisPeriod} today={today} /></Suspense>
+        </section>
+      )}
+
       <div className="grid gap-4 lg:grid-cols-3">
         <Panel title={t("Arrivals & departures today")} className="lg:col-span-2" action={<PanelLink href="/reception/dashboard">{t("Front desk")}</PanelLink>} bodyClassName="-mx-4 sm:-mx-6">
           {movement.length === 0 ? <p className="px-4 text-sm text-muted-foreground sm:px-6">{t("No more guests arriving or leaving today.")}</p> : (
@@ -338,7 +373,7 @@ export async function OwnerOverview({ searchParams, basePath }: {
         </Panel>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div id="online" className="grid scroll-mt-28 gap-4 lg:grid-cols-3">
         <Panel title={t("Online bookings")} subtitle={periodLabel} action={<PanelLink href="/staff/booking-requests">{t.ctx("link", "Open")}</PanelLink>}>
           {/* The period in one quiet strip, like the other figures */}
           <div className="grid grid-cols-3 divide-x divide-border/70 rounded-2xl border border-border/70 text-center">
@@ -407,7 +442,7 @@ export async function OwnerOverview({ searchParams, basePath }: {
       </div>
 
       {/* The business in detail — the same picture as Finance → Overview, for the period chosen above */}
-      <div>
+      <div id="detail" className="scroll-mt-28">
         <SectionLabel title={t("The business in detail")} href={`/staff/finance?${periodKey === "custom" ? `from=${range.from}&to=${range.to}` : `period=${periodKey}`}`} linkLabel={t("Finance")} t={t} />
         <BusinessDetail p={{ key: periodKey, from: range.from, to: range.to }} today={today} />
       </div>
