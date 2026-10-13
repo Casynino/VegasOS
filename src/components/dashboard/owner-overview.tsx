@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { inHouseBalances } from "@/server/services/guest-balances";
 import Link from "next/link";
 import {
-  Activity, Armchair, BadgeCheck, Banknote, BarChart3, BedDouble, Boxes, Building2, CircleDollarSign, Clock, HandCoins, Inbox, Landmark, LineChart, Percent, Receipt, Store, Tag, Timer, TrendingUp, Trophy, UserX, Users, UtensilsCrossed, Wallet, Wrench,
+  Activity, Armchair, BadgeCheck, Banknote, BarChart3, BedDouble, Boxes, Building2, CircleDollarSign, Clock, HandCoins, Inbox, Landmark, LineChart, Percent, Receipt, Store, Timer, TrendingUp, Trophy, UserX, Users, UtensilsCrossed, Wallet, Wrench,
 } from "lucide-react";
 import { can, requireUser } from "@/server/auth";
 import { tablesOnHome } from "@/server/services/table-performance";
@@ -21,6 +21,7 @@ import { addDays, diffDays, isBusinessDate, presetRange, toDbDate, type PeriodPr
 import { formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { friendlyAction } from "@/lib/activity-words";
+import { billState } from "@/lib/payment-status";
 import {
   AttentionCards, Delta, HeroBanner, Initials, Panel, PanelLink, Pill, RoomsGlance, SectionLabel, StatTile, type AttentionItem,
 } from "./kit";
@@ -135,16 +136,14 @@ export async function OwnerOverview({ searchParams, basePath }: {
   // Today, always (the cards at the top) — the period chosen further down drives the rest.
   const todayOnly = { from: today, to: today }, yesterday = { from: addDays(today, -1), to: addDays(today, -1) };
   const liveOrders = { status: { not: "CANCELLED" as const } };
-  const [tables, plToday, cashToday, cashYesterday, occToday, foodToday, foodYesterday] = await Promise.all([
+  const [tables, plToday, cashToday, cashYesterday, foodToday, foodYesterday] = await Promise.all([
     tablesOnHome(today, todayOnly, now),
     periodKey === "today" ? pl : profitLoss(todayOnly),
     dailyMoney(todayOnly),
     dailyMoney(yesterday),
-    periodKey === "today" ? occ : occupancy(todayOnly),
     db.restaurantOrder.aggregate({ where: { businessDate: toDbDate(today), ...liveOrders }, _sum: { foodSubtotal: true, drinksSubtotal: true, serviceFee: true, total: true }, _count: true }),
     db.restaurantOrder.aggregate({ where: { businessDate: toDbDate(addDays(today, -1)), ...liveOrders }, _sum: { total: true } }),
   ]);
-  const revToday = plToday.revenue;
   // Money really received today (every account) — the headline (owner, 2026-10-05: "the boss will think we have
   // 160,000 but we don't have the money"). What was earned (rooms sold, food served) is shown beside it, with what
   // guests still owe — earned is not money in hand.
@@ -152,7 +151,12 @@ export async function OwnerOverview({ searchParams, basePath }: {
   const receivedYesterday = cashYesterday[0]?.received ?? 0;
   const owedNow = inHouse.summary.totalOutstanding;
   const profitToday = plToday.estimatedProfit;
-  const rateToday = occToday.roomsSold ? Math.round(revToday.rooms.net / occToday.roomsSold) : 0;
+  // Which of the occupied rooms have paid: the same reading of the bill as the tiles ("Paid" only when something was due and nothing is owed).
+  const stays = board.flatMap((r) => (r.currentStay ? [r.currentStay] : []));
+  const states = stays.map((x) => billState({ total: x.total, paid: x.paid, company: x.company, owed: x.balance, billTo: x.billTo }));
+  const roomsPaid = states.filter((x) => x === "PAID" || x === "CREDIT").length;
+  const roomsOpen = states.filter((x) => x === "UNPAID" || x === "PART_PAID").length;
+  const roomsElsewhere = stays.length - roomsPaid - roomsOpen;
   const foodTotal = foodToday._sum.total ?? 0;
   const floor = tables.places.filter((p) => p.kind === "TABLE");
   const tablesAt = (s: (keyof typeof TABLE_META)[]) => floor.filter((p) => s.includes(p.state)).length;
@@ -255,8 +259,10 @@ export async function OwnerOverview({ searchParams, basePath }: {
               { label: t.ctx("money", "Spent"), icon: <Receipt />, tint: "bg-rose-500/15 text-rose-400", value: formatTZS(plToday.expenses), sub: t.plural(plToday.expenseSummary.count, "{n} expense", "{n} expenses"), href: "/staff/expenses" },
               { label: profitToday >= 0 ? t("Profit (estimate)") : t("Loss (estimate)"), icon: <TrendingUp />, tint: "bg-[oklch(0.72_0.12_80/0.18)] text-[oklch(0.8_0.11_82)]", value: formatTZS(Math.abs(profitToday)), sub: t("earned − spent · on paper"), tone: profitToday >= 0 ? "good" : "bad" },
               { label: t("Not paid yet"), icon: <Wallet />, tint: "bg-amber-500/15 text-amber-400", value: formatTZS(owedNow), sub: owedNow ? (departuresOwing.length ? t("guests owe · {n} leaving today", { n: departuresOwing.length }) : t("guests owe · {n} staying", { n: inHouse.summary.owingCount })) : t("guests have paid"), tone: owedNow ? "warn" : undefined, href: "/staff/finance/receivables" },
-              { label: t("Income per room"), icon: <BedDouble />, tint: "bg-violet-500/15 text-violet-400", value: formatTZS(rooms.total ? Math.round(revToday.rooms.net / rooms.total) : 0), sub: t("across {n} rooms", { n: rooms.total }) },
-              { label: t("Average room rate"), icon: <Tag />, tint: "bg-sky-500/15 text-sky-400", value: rateToday ? formatTZS(rateToday) : t("None yet"), sub: t.plural(occToday.roomsSold, "{n} room occupied today", "{n} rooms occupied today") },
+              { label: t("Rooms paid"), icon: <BedDouble />, tint: "bg-emerald-500/15 text-emerald-400", value: t("{n} of {total}", { n: roomsPaid, total: stays.length }),
+                sub: roomsOpen ? t.plural(roomsOpen, "{n} room not paid yet", "{n} rooms not paid yet") : roomsElsewhere ? t("The others are billed to a group or company") : stays.length ? t("every room is paid") : t("No guests in the rooms"), tone: roomsOpen ? "warn" : undefined },
+              { label: t("Expenses waiting"), icon: <BadgeCheck />, tint: "bg-amber-500/15 text-amber-400", value: formatTZS(plToday.expenseSummary.pending.amount),
+                sub: plToday.expenseSummary.pending.count ? t.plural(plToday.expenseSummary.pending.count, "{n} expense to approve", "{n} expenses to approve") : t("nothing to approve"), tone: plToday.expenseSummary.pending.count ? "warn" : undefined, href: "/staff/expenses?status=PENDING_APPROVAL" },
             ]} />
         </div>
         <div className="mt-4"><RoomsOnHome today={today} rooms={allRooms} discountMax={discountLimit(user.permissions, await getSettings())} /></div>

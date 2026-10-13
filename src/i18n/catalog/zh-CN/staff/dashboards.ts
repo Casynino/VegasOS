@@ -622,5 +622,15 @@ const catalog: Catalog = {
   "Why? e.g. no answer on the phone": "原因？例如电话无人接听",
   "Room released.": "房间已释放。",
   "Release room {room}": "释放 {room} 号房",
+  "Rooms paid": "已付款房间",
+  "{n} room not paid yet": "{n} 间房尚未付款",
+  "{n} rooms not paid yet": "{n} 间房尚未付款",
+  "The others are billed to a group or company": "其余由团体或公司承担",
+  "every room is paid": "所有房间都已付款",
+  "No guests in the rooms": "房间里没有客人",
+  "Expenses waiting": "待批准的支出",
+  "{n} expense to approve": "{n} 笔支出待批准",
+  "{n} expenses to approve": "{n} 笔支出待批准",
+  "nothing to approve": "没有待批准的支出",
 };
 export default catalog;
