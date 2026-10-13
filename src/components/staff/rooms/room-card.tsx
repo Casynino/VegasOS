@@ -31,8 +31,8 @@ export const CARD_META: Record<CardState, { label: string; dot: string; tint: st
  */
 export function RoomTile({ number, type, state, guest, detail, overdue, pay, onClick }: {
   number: string; type: string; state: CardState; guest?: string | null; detail?: string | null; overdue?: boolean; onClick?: () => void;
-  /** The guest's bill, in one look: Paid, or Not paid / Part paid with how much is still owed. */
-  pay?: { label: string; owed: string | null; className: string; text: string } | null;
+  /** The guest's bill, in one word: Paid, Not paid, Part paid… (the amount is on the room's card). */
+  pay?: { label: string; className: string; text: string } | null;
 }) {
   const t = useT();
   const m = CARD_META[state];
@@ -56,12 +56,7 @@ export function RoomTile({ number, type, state, guest, detail, overdue, pay, onC
       <span className={cn("flex min-w-0 items-center gap-1 text-[10px]", overdue ? "font-medium text-red-600 dark:text-red-400" : "text-muted-foreground")}>
         <Icon className="size-3 shrink-0 opacity-70" /><span className="truncate">{detail ?? t(m.label)}</span>
       </span>
-      {pay && (
-        <span className={cn("mt-2 flex min-w-0 flex-wrap items-baseline gap-x-2 text-[13px] font-bold leading-tight", pay.text)}>
-          <span>{pay.label}</span>
-          {pay.owed && <span className="tabular-nums">{pay.owed}</span>}
-        </span>
-      )}
+      {pay && <span className={cn("mt-2 text-[13px] font-bold leading-tight", pay.text)}>{pay.label}</span>}
     </button>
   );
 }

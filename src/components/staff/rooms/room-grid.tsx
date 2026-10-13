@@ -131,12 +131,12 @@ function view(r: RoomBoardRoom, now: Date, today: string, t: T) {
   return { state, overdue, detail, guest: stay?.guestName ?? r.arrivalToday?.guestName ?? null, pay: payLook(stay, t) };
 }
 
-/** The bill of the guest in the room: paid, or not paid (with what is still owed). Nothing for an empty room. */
+/** The bill of the guest in the room: just Paid or Not paid (the amount is on the room's card). Nothing for an empty room. */
 function payLook(stay: RoomBoardRoom["currentStay"], t: T) {
   if (!stay) return null;
   const s = billState({ total: stay.total, paid: stay.paid, company: stay.company, owed: stay.balance, billTo: stay.billTo });
   const look = BILL_LOOK[s];
-  return { label: t(look.label), owed: look.owes && stay.balance > 0 ? formatTZS(stay.balance) : null, className: look.className, text: look.text };
+  return { label: t(look.label), className: look.className, text: look.text };
 }
 
 /**
