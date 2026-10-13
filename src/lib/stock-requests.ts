@@ -25,6 +25,27 @@ export const STATUS_META: Record<string, { label: string; tone: string }> = {
   REJECTED: { label: msg("Rejected"), tone: "bg-rose-500/12 text-rose-700 dark:text-rose-300" },
   CANCELLED: { label: msg("Cancelled"), tone: "bg-muted text-muted-foreground" },
 };
+/**
+ * What a request is called to the people who ASK (reception, the Restaurant, the kitchen): six simple words, whatever step Finance
+ * is on. Finance and the managers see the full steps above. A step that is still waiting for goods is "Purchased" once Finance has
+ * ordered or bought it; the money steps after that (invoice, payment) are Finance's, not theirs.
+ */
+export const SIMPLE_STATUS: Record<string, { label: string; tone: string }> = {
+  SUBMITTED: { label: msg("Submitted"), tone: "bg-sky-500/12 text-sky-700 dark:text-sky-300" },
+  SENT_BACK: { label: msg("More information needed"), tone: "bg-orange-500/15 text-orange-700 dark:text-orange-300" },
+  APPROVED: { label: msg("Approved"), tone: "bg-amber-500/15 text-amber-800 dark:text-amber-300" },
+  AWAITING_AUTHORIZATION: { label: msg("Approved"), tone: "bg-amber-500/15 text-amber-800 dark:text-amber-300" },
+  PURCHASING: { label: msg("Purchased"), tone: "bg-violet-500/12 text-violet-700 dark:text-violet-300" },
+  PENDING_APPROVAL: { label: msg("Purchased"), tone: "bg-violet-500/12 text-violet-700 dark:text-violet-300" },
+  ORDERED: { label: msg("Purchased"), tone: "bg-violet-500/12 text-violet-700 dark:text-violet-300" },
+  PART_DELIVERED: { label: msg("Purchased"), tone: "bg-violet-500/12 text-violet-700 dark:text-violet-300" },
+  DELIVERED: { label: msg("Purchased"), tone: "bg-violet-500/12 text-violet-700 dark:text-violet-300" },
+  COMPLETED: { label: msg("Completed"), tone: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300" },
+  REJECTED: { label: msg("Rejected"), tone: "bg-rose-500/12 text-rose-700 dark:text-rose-300" },
+  CANCELLED: { label: msg("Cancelled"), tone: "bg-muted text-muted-foreground" },
+};
+export const simpleStatusMeta = (s: string) => SIMPLE_STATUS[s] ?? statusMeta(s);
+
 export const statusMeta = (s: string) => STATUS_META[s] ?? { label: s.toLowerCase().replace(/_/g, " "), tone: "bg-muted text-muted-foreground" };
 
 /**
@@ -40,6 +61,21 @@ export function procurementStatus(status: string, ready: boolean) {
 
 /** Still moving: not done, rejected or cancelled. */
 export const OPEN_STATUSES = ["SUBMITTED", "SENT_BACK", "APPROVED", "PURCHASING", "PENDING_APPROVAL", "AWAITING_AUTHORIZATION", "ORDERED", "PART_DELIVERED", "DELIVERED"];
+
+/**
+ * Which departments a person can ask for (owner, 2026-10-13): Reception and the other hotel staff ask for the hotel's general needs and
+ * guest-room supplies; the restaurant, the kitchen and the bar ask for theirs; Finance, the managers and the Boss ask for any. The same
+ * rule is checked on the server when a request is made.
+ */
+export const RESTAURANT_DEPARTMENTS: readonly string[] = ["KITCHEN", "BAR", "RESTAURANT"];
+export type AskScope = "ALL" | "RESTAURANT" | "HOTEL";
+export function askScope(perms: ReadonlySet<string> | undefined): AskScope {
+  const has = (...c: string[]) => c.some((x) => perms?.has(x));
+  if (has("expenses.approve", "inventory.receive", "procurement.manage", "purchases.authorize", "purchases.pay", "dashboard.admin", "dashboard.owner", "dashboard.manager")) return "ALL";
+  if (has("kitchen.orders", "bar.orders", "restaurant.serve", "restaurant.device")) return "RESTAURANT";
+  return "HOTEL";
+}
+export const canAskFor = (scope: AskScope, code: string) => scope === "ALL" || (scope === "RESTAURANT" ? RESTAURANT_DEPARTMENTS.includes(code) : !RESTAURANT_DEPARTMENTS.includes(code));
 
 /** A stock item in the stores (what a line is linked to). */
 export type StockItemRef = { id: string; name: string; unit: string; tracksExpiry: boolean };
@@ -162,7 +198,7 @@ export type DepartmentOption = { id: string; code: string; name: string };
 export type StoreItem = { id: string; name: string; unit: string; departmentId: string };
 
 /** Who is looking, and what they may do. */
-export type Viewer = { id: string; name: string; asker: boolean; reviewer: boolean; buyer: boolean; approverMustDiffer: boolean };
+export type Viewer = { id: string; name: string; asker: boolean; reviewer: boolean; buyer: boolean; approverMustDiffer: boolean; /** Which departments this person may ask for. */ scope: AskScope };
 
 // ── Helpers ──
 

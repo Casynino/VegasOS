@@ -1,5 +1,6 @@
 import type { PermissionCode } from "@/lib/permissions";
 import { msg } from "@/i18n/msg";
+import { CASH_HANDOVER_ON } from "@/lib/cash-handover";
 
 export interface NavItem {
   href: string;
@@ -48,7 +49,7 @@ export const NAV: NavSection[] = [
       { href: "/staff/finance/receivables", label: msg("Who owes us"), icon: "HandCoins", anyOf: ["finance.view"] },
       { href: "/staff/finance/history", label: msg("Edit history"), icon: "History", anyOf: ["finance.view"] },
       // The cash reception and the Restaurant Counter hand to Finance (Finance receives; managers watch).
-      { href: "/staff/accountant/handovers", label: msg("Cash handovers"), icon: "HandCoins", anyOf: ["cash.handover.view", "cash.handover.review"] },
+      ...(CASH_HANDOVER_ON ? [{ href: "/staff/accountant/handovers", label: msg("Cash handovers"), icon: "HandCoins", anyOf: ["cash.handover.view", "cash.handover.review"] as PermissionCode[] }] : []),
       { href: "/staff/finance/ledger", label: msg("General ledger"), icon: "ArrowLeftRight", anyOf: ["ledger.view", "finance.view"] },
       // Money out of nTZS, to a phone or a bank — only for those who may withdraw (the Boss and the administrator).
       { href: "/staff/finance/withdraw", label: msg("Withdraw funds"), icon: "BanknoteArrowUp", anyOf: ["withdrawals.manage"] },

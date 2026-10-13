@@ -4,6 +4,7 @@ import { businessDayConfig, getSettings, liveSinceDate } from "../settings";
 import { addDays, eachDate, fromDbDate, localParts, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import { accountBalances } from "./finance";
 import { handoverTotals } from "./cash-handover";
+import { CASH_HANDOVER_ON } from "@/lib/cash-handover";
 import { inHouseBalances } from "./guest-balances";
 import { financeQueue } from "./procurement-desk";
 import { purchasingPosition } from "./procurement";
@@ -80,7 +81,7 @@ export async function financeNeeds(today: BusinessDate, perms: ReadonlySet<strin
   const [queue, suppliers, handovers, cashCounts, expenses, companyOverdue, leftOwing, inHouse, online, withdrawals, lastReport, yesterdayReport, balances] = await Promise.all([
     has("purchases.authorize", "purchases.pay") ? financeQueue() : null,
     has("purchases.pay") ? supplierSnapshot(today) : null,
-    has("cash.handover.view", "cash.handover.review") ? handoverTotals(today, today) : null,
+    CASH_HANDOVER_ON && has("cash.handover.view", "cash.handover.review") ? handoverTotals(today, today) : null,
     has("finance.view") ? db.cashCount.count({ where: { status: "OPEN" } }) : 0,
     has("expenses.view_all", "expenses.approve") ? db.expense.aggregate({ where: { status: "PENDING_APPROVAL" }, _count: true, _sum: { amount: true } }) : null,
     has("finance.view", "corporate.view") ? db.invoice.aggregate({ where: { reservationId: null, balanceAmount: { gt: 0 }, dueDate: { lt: toDbDate(today) }, status: { in: ["ISSUED", "PARTIALLY_PAID", "OVERDUE"] } }, _count: true, _sum: { balanceAmount: true } }) : null,

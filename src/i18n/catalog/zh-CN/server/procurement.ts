@@ -2,6 +2,11 @@
 import type { Catalog } from "../../../translate";
 
 const catalog: Catalog = {
+  "This expense is the payment of supplier invoice {invoice} (order {order}) — it changes only from the purchase.": "这笔支出是供应商发票 {invoice}（订单 {order}）的付款——只能在采购中修改。",
+  "Invoice {ref} is already on order {order} — its expense is made when Finance pays it. Don't record it twice.": "发票 {ref} 已在订单 {order} 上——财务付款时才会生成支出。请勿重复登记。",
+  "Ask for your own department: Reception asks for the hotel's supplies; the restaurant and the kitchen ask for theirs.": "请为自己的部门申请：前台申请酒店用品；餐厅和厨房申请各自的用品。",
+  "Not your department": "不是您的部门",
+  "Cash handover is switched off for now.": "现金交接暂时关闭。",
   // Action messages
   "The form could not be read — try again.": "无法读取表单——请重试。",
   "Price at least one item.": "请至少为一项物品报价。",

@@ -93,6 +93,9 @@ function validate(input: ExpenseInput) {
 async function assertNotPurchaseTx(tx: Tx, expenseId: string) {
   const p = await tx.stockRequest.findUnique({ where: { expenseId }, select: { number: true, purchaseNumber: true } });
   if (p) throw new AppError(msgf("This expense comes from purchase {purchase} ({number}) — the stock was received with it, so it changes only from the purchase.", { purchase: p.purchaseNumber ?? p.number, number: p.number }), "CONFLICT");
+  // The payment to a supplier for an order: its expense belongs to that invoice's payment, so it is changed there — never voided or retyped here.
+  const pay = await tx.supplierPayment.findUnique({ where: { expenseId }, select: { invoice: { select: { number: true, request: { select: { orderNumber: true, number: true } } } } } });
+  if (pay) throw new AppError(msgf("This expense is the payment of supplier invoice {invoice} (order {order}) — it changes only from the purchase.", { invoice: pay.invoice.number, order: pay.invoice.request.orderNumber ?? pay.invoice.request.number }), "CONFLICT");
 }
 
 /** The same supplier receipt already on a stock purchase: it becomes an expense by itself — never typed in again. */
@@ -103,6 +106,9 @@ async function assertNotPurchasedTx(tx: Tx, reference: string | null | undefined
     where: { receiptNumber: { equals: ref, mode: "insensitive" }, status: { in: ["PURCHASING", "PENDING_APPROVAL", "COMPLETED"] } },
     select: { number: true, purchaseNumber: true, status: true },
   });
+  // The same supplier invoice already recorded on an order: its expense is made when Finance pays it — never typed in again.
+  const inv = await tx.supplierInvoice.findFirst({ where: { number: { equals: ref, mode: "insensitive" }, status: { not: "CANCELLED" } }, select: { number: true, request: { select: { orderNumber: true, number: true } } } });
+  if (inv) throw new AppError(msgf("Invoice {ref} is already on order {order} — its expense is made when Finance pays it. Don't record it twice.", { ref, order: inv.request.orderNumber ?? inv.request.number }), "CONFLICT", { reference: msg("Duplicate") });
   if (p) {
     const vars = { ref, purchase: p.purchaseNumber ?? p.number };
     throw new AppError(p.status === "COMPLETED"

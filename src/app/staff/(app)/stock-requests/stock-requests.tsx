@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { formatTZS } from "@/lib/format";
 import type { StockGroup } from "@/lib/stock-catalog";
 import {
-  OPEN_STATUSES, num, person, toBuyQty, when,
+  OPEN_STATUSES, canAskFor, num, person, toBuyQty, when,
   type DepartmentOption, type PurchaseOptionsView, type PurchasingSummaryView, type StockReqView, type StoreItem, type Viewer,
 } from "@/lib/stock-requests";
 import { DeptBadge, StatusChip, norm, picsFor } from "./parts";
@@ -112,7 +112,7 @@ export function StockRequests({ open, closed, me, hotel, today, kitchen, drinks,
       )}
 
       {me.asker && tab === "new" ? (
-        <NewRequest kitchen={kitchen} drinks={drinks} storeItems={storeItems} departments={departments} defaultDepartment={defaultDepartment}
+        <NewRequest kitchen={kitchen} drinks={drinks} storeItems={storeItems} departments={departments.filter((d) => canAskFor(me.scope, d.code))} defaultDepartment={defaultDepartment}
           pics={pics} me={me.name} hotel={hotel} onSent={() => setTab("requests")} />
       ) : (
         <Requests open={open} closed={closed} me={me} active={active} clearFilter={() => setFilter(null)} summary={summary} options={options}
@@ -200,7 +200,7 @@ function RequestRows({ list, me, onOpen }: { list: StockReqView[]; me: Viewer; o
                 {person(r.by)}<span className="block">{when(r.at, t)}</span>
               </span>
               {amount != null && amount > 0 && <span className="hidden shrink-0 text-sm font-semibold tabular-nums sm:block">{formatTZS(amount)}</span>}
-              <StatusChip status={r.status} />
+              <StatusChip status={r.status} simple={!me.reviewer && !me.buyer} />
               <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
             </button>
           </li>

@@ -48,6 +48,56 @@ export const STOCK_CATALOG: StockGroup[] = [
   ]),
 ];
 
+/**
+ * What the kitchen and the restaurant also ask for: the things they cook, serve and eat with. Added to the kitchen's list — nothing
+ * in it was taken away.
+ */
+const KITCHEN_EQUIPMENT: StockGroup = g("equipment", msg("Kitchen & restaurant equipment"), "🍳", [
+  [msg("Cooking pots"), "pcs", "🍲"], [msg("Frying pans"), "pcs", "🍳"], [msg("Kitchen knives"), "pcs", "🔪"], [msg("Chopping boards"), "pcs", "🪵"], [msg("Ladles & serving spoons"), "pcs", "🥄"],
+  [msg("Mixing bowls"), "pcs", "🥣"], [msg("Food containers"), "pcs", "🥡"], [msg("Plates"), "pcs", "🍽️"], [msg("Cups & mugs"), "pcs", "☕"], [msg("Drinking glasses"), "pcs", "🥛"],
+  [msg("Spoons, forks & knives"), "sets", "🍴"], [msg("Serving trays"), "pcs", "🍽️"], [msg("Water jugs"), "pcs", "🫗"], [msg("Teapots & kettles"), "pcs", "🫖"],
+]);
+STOCK_CATALOG.push(KITCHEN_EQUIPMENT);
+
+/**
+ * What RECEPTION asks for — the hotel's general needs and guest-room supplies — as suggestions with a picture. Not a fixed list:
+ * anything missing is typed in ("Something else"). The restaurant's and the kitchen's own lists are separate (STOCK_CATALOG).
+ */
+export const HOTEL_CATALOG: StockGroup[] = [
+  g("linen", msg("Towels & bedding"), "🛏️", [
+    [msg("Bath towels"), "pcs", "🛁"], [msg("Hand towels"), "pcs", "🧻"], [msg("Face cloths"), "pcs", "🧼"], [msg("Bed sheets"), "pcs", "🛏️"], [msg("Pillowcases"), "pcs", "🛏️"],
+    [msg("Duvet covers"), "pcs", "🛏️"], [msg("Blankets"), "pcs", "🧣"], [msg("Pillows"), "pcs", "🛏️"], [msg("Mattress protectors"), "pcs", "🛏️"], [msg("Bath mats"), "pcs", "🛁"],
+  ]),
+  g("toiletries", msg("Guest toiletries"), "🧴", [
+    [msg("Toothbrushes"), "pcs", "🪥"], [msg("Toothpaste"), "pcs", "🪥"], [msg("Bathing soap"), "pcs", "🧼"], [msg("Shower gel"), "bottles", "🧴"], [msg("Shampoo"), "bottles", "🧴"],
+    [msg("Body lotion"), "bottles", "🧴"], [msg("Shower caps"), "pcs", "🚿"], [msg("Combs"), "pcs", "💈"], [msg("Razors"), "pcs", "🪒"], [msg("Cotton buds"), "packs", "🧻"],
+  ]),
+  g("bathroom", msg("Bathroom supplies"), "🧻", [
+    [msg("Toilet paper"), "rolls", "🧻"], [msg("Tissues"), "boxes", "🤧"], [msg("Hand wash"), "bottles", "🧴"], [msg("Air freshener"), "pcs", "🌸"], [msg("Toilet brushes"), "pcs", "🚽"],
+    [msg("Bathroom bins"), "pcs", "🗑️"], [msg("Sanitary bags"), "packs", "🛍️"],
+  ]),
+  g("amenities", msg("Guest amenities"), "🩴", [
+    [msg("Room slippers"), "pairs", "🩴"], [msg("Laundry bags"), "pcs", "🧺"], [msg("Clothes hangers"), "pcs", "🧥"], [msg("Door hangers (do not disturb)"), "pcs", "🚪"], [msg("Umbrellas"), "pcs", "☂️"],
+    [msg("Electric kettles"), "pcs", "🫖"], [msg("Key cards"), "pcs", "🔑"], [msg("Mosquito nets"), "pcs", "🦟"],
+  ]),
+  g("cleaning", msg("Hotel cleaning supplies"), "🧽", [
+    [msg("Floor cleaner"), "litres", "🧴"], [msg("Washing powder"), "kg", "🧺"], [msg("Bleach"), "litres", "🧴"], [msg("Glass cleaner"), "bottles", "🪟"], [msg("Disinfectant"), "litres", "🧴"],
+    [msg("Mops"), "pcs", "🧹"], [msg("Brooms"), "pcs", "🧹"], [msg("Cleaning cloths"), "packs", "🧽"], [msg("Rubbish bags"), "packs", "🗑️"], [msg("Gloves"), "boxes", "🧤"],
+  ]),
+  g("office", msg("Reception & office"), "🗂️", [
+    [msg("Printer paper"), "reams", "📄"], [msg("Pens"), "boxes", "🖊️"], [msg("Notebooks"), "pcs", "📓"], [msg("Registration books"), "pcs", "📒"], [msg("Files & folders"), "pcs", "🗂️"],
+    [msg("Staplers & staples"), "packs", "📎"], [msg("Printer ink or toner"), "pcs", "🖨️"], [msg("Sticky tape"), "rolls", "📎"], [msg("Envelopes"), "packs", "✉️"], [msg("Receipt rolls"), "rolls", "🧾"],
+  ]),
+  g("furniture", msg("Furniture & equipment"), "🪑", [
+    [msg("Chairs"), "pcs", "🪑"], [msg("Tables"), "pcs", "🪑"], [msg("Sofas"), "pcs", "🛋️"], [msg("Fans"), "pcs", "🌀"], [msg("Printers"), "pcs", "🖨️"], [msg("Telephones"), "pcs", "☎️"],
+    [msg("Luggage trolleys"), "pcs", "🧳"], [msg("Wall clocks"), "pcs", "🕒"],
+  ]),
+  g("maintenance", msg("Maintenance & replacements"), "💡", [
+    [msg("Light bulbs"), "pcs", "💡"], [msg("Batteries"), "packs", "🔋"], [msg("Extension cables"), "pcs", "🔌"], [msg("Door locks"), "pcs", "🔒"], [msg("Paint"), "tins", "🎨"],
+    [msg("Taps & plumbing parts"), "pcs", "🚰"], [msg("Hand tools"), "sets", "🧰"], [msg("Air-conditioner filters"), "pcs", "❄️"],
+  ]),
+];
+
 /** A drink's usual unit when the bar orders it: beer and soda by the crate, water by the pack, the rest by the bottle. */
 export function drinkUnit(section: string, name: string) {
   if (/water/i.test(name)) return msg("packs");
@@ -60,4 +110,4 @@ export function drinkEmoji(section: string, name: string) {
   return /water/i.test(name) ? "💧" : /soda|soft/i.test(s) ? "🥤" : /beer|lager/i.test(s) ? "🍺" : /wine|champ/i.test(s) ? "🍷" : /whisk/i.test(s) ? "🥃" : "🍸";
 }
 
-export const STOCK_UNITS = ["kg", "g", msg("pcs"), msg("litres"), msg("bottles"), msg("crates"), msg("packs"), msg("trays"), msg("bags"), msg("boxes"), msg("bunches"), msg("tins"), msg("jars"), msg("rolls"), msg("cylinders")];
+export const STOCK_UNITS = ["kg", "g", msg("pcs"), msg("litres"), msg("bottles"), msg("crates"), msg("packs"), msg("trays"), msg("bags"), msg("boxes"), msg("bunches"), msg("tins"), msg("jars"), msg("rolls"), msg("cylinders"), msg("reams"), msg("pairs"), msg("sets")];

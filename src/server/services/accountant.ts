@@ -6,6 +6,10 @@ import { accountBalances, paymentsByMethod } from "./finance";
 import { outstanding, profitLoss, unpaidOrders } from "./reporting";
 import { accountSummaries } from "./payment-accounts";
 import { handoverTotals, whoHoldsCash } from "./cash-handover";
+import { CASH_HANDOVER_ON } from "@/lib/cash-handover";
+
+/** What the handover figures are while the feature is off: nothing waits, nothing is held, nothing was received. */
+export const NO_HANDOVERS = { waitingCount: 0, waitingExpected: 0, waitingDeclared: 0, returned: 0, receivedCount: 0, received: 0, receivedExpected: 0, short: 0, over: 0, withDifference: 0 };
 
 /**
  * Finance's dashboard numbers. Four different things are kept apart on purpose and never added together:
@@ -45,8 +49,8 @@ export async function accountantOverview(range: { from: BusinessDate; to: Busine
     outstanding(),
     unpaidOrders(),
     cashBySource(range.from, range.to, f),
-    handoverTotals(range.from, range.to),
-    whoHoldsCash(),
+    CASH_HANDOVER_ON ? handoverTotals(range.from, range.to) : Promise.resolve(NO_HANDOVERS),
+    CASH_HANDOVER_ON ? whoHoldsCash() : Promise.resolve([] as Awaited<ReturnType<typeof whoHoldsCash>>),
     db.expense.aggregate({ where: { status: "PENDING_APPROVAL" }, _count: true, _sum: { amount: true } }),
     db.cashCount.count({ where: { status: "OPEN" } }),
     // The people who take cash and hand it over (the staff filter)

@@ -6,7 +6,7 @@ import { businessToday } from "@/server/settings";
 import { handoverList } from "@/server/services/cash-handover";
 import { correctionsHistory, reconciliationByStaff } from "@/server/services/accountant-reports";
 import { formatTZS } from "@/lib/format";
-import { HANDOVER_STATUS_TEXT, HANDOVER_STATUS_TONE } from "@/lib/cash-handover";
+import { CASH_HANDOVER_ON, HANDOVER_STATUS_TEXT, HANDOVER_STATUS_TONE } from "@/lib/cash-handover";
 import { getT } from "@/i18n/server";
 import { msg } from "@/i18n/msg";
 import { cn } from "@/lib/utils";
@@ -18,9 +18,11 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 export const dynamic = "force-dynamic";
 
-const TABS = [
+const ALL_TABS = [
   { key: "staff", label: msg("Staff reconciliation") }, { key: "handovers", label: msg("Cash handovers") }, { key: "corrections", label: msg("Refunds and corrections") },
 ] as const;
+// Without the digital handover there is nothing to reconcile: the page is refunds, reversals and corrections only.
+const TABS = CASH_HANDOVER_ON ? ALL_TABS : ALL_TABS.filter((x) => x.key === "corrections");
 
 /** Finance's cash reports: who took what and handed what over; every handover; refunds, reversals and corrections. */
 export default async function AccountantReportsPage({ searchParams }: PageProps<"/staff/accountant/reports">) {
@@ -29,7 +31,7 @@ export default async function AccountantReportsPage({ searchParams }: PageProps<
   const sp = await searchParams;
   const today = await businessToday();
   const p = readPeriod(sp, today, "month");
-  const tab = TABS.find((x) => x.key === sp.tab)?.key ?? "staff";
+  const tab = TABS.find((x) => x.key === sp.tab)?.key ?? TABS[0].key;
   const keep = { tab };
   const range = p.key === "custom" ? `from=${p.from}&to=${p.to}` : `period=${p.key}`;
   return (
@@ -37,16 +39,16 @@ export default async function AccountantReportsPage({ searchParams }: PageProps<
       <FinanceTabs active="/staff/accountant/reports" />
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-[clamp(1.4rem,2vw,1.75rem)] font-semibold tracking-tight">{t("Cash reports")}</h1>
+          <h1 className="text-[clamp(1.4rem,2vw,1.75rem)] font-semibold tracking-tight">{CASH_HANDOVER_ON ? t("Cash reports") : t("Refunds and corrections")}</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">{periodLabel(p, t)}</p>
         </div>
         <PeriodPicker current={p.key} from={p.from} to={p.to} keep={keep} />
       </header>
-      <nav className="flex flex-wrap gap-1 rounded-xl bg-muted p-1" aria-label={t("Reports")}>
+      {TABS.length > 1 && <nav className="flex flex-wrap gap-1 rounded-xl bg-muted p-1" aria-label={t("Reports")}>
         {TABS.map((x) => <Link key={x.key} href={`?${range}&tab=${x.key}`} className={cn("rounded-lg px-3 py-1.5 text-xs font-medium", tab === x.key ? "bg-card shadow-sm" : "text-muted-foreground hover:text-foreground")}>{t(x.label)}</Link>)}
-      </nav>
-      {tab === "staff" && <Staff from={p.from} to={p.to} />}
-      {tab === "handovers" && <Handovers from={p.from} to={p.to} range={range} />}
+      </nav>}
+      {CASH_HANDOVER_ON && tab === "staff" && <Staff from={p.from} to={p.to} />}
+      {CASH_HANDOVER_ON && tab === "handovers" && <Handovers from={p.from} to={p.to} range={range} />}
       {tab === "corrections" && <Corrections from={p.from} to={p.to} />}
     </div>
   );

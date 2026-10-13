@@ -57,11 +57,15 @@ describe("finance, the accountant and cash handover", () => {
     ] as const) expect(finance.has(p), p).toBe(true);
   });
 
+  it("Finance organizes the purchasing too (owner, 2026-10-13): quotations, orders, deliveries, invoices, what was bought and received", () => {
+    for (const p of ["procurement.manage", "inventory.receive", "purchases.authorize", "purchases.pay"] as const) expect(finance.has(p), p).toBe(true);
+  });
+
   it("Finance also authorizes purchases and pays suppliers — and still never runs the hotel, sets the system up or settles a withdrawal by hand", () => {
     for (const p of ["purchases.authorize", "purchases.pay"] as const) expect(finance.has(p), p).toBe(true);
     for (const p of [
       "reservations.create", "reservations.check_in", "reservations.check_out", "restaurant.orders", "restaurant.serve", "kitchen.orders", "inventory.manage", "inventory.approve",
-      "users.manage", "settings.manage", "restaurant.menu", "rooms.manage", "website.manage", "withdrawals.reconcile", "shifts.manage", "shifts.work", "cash.handover.submit", "procurement.manage",
+      "users.manage", "settings.manage", "restaurant.menu", "rooms.manage", "website.manage", "withdrawals.reconcile", "shifts.manage", "shifts.work", "cash.handover.submit",
     ] as const) expect(finance.has(p), p).toBe(false);
   });
 

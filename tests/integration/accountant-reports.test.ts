@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/server/db";
 import { createReservation, checkIn } from "@/server/services/reservations";
 import { recordSale } from "@/server/services/outlets";
@@ -7,6 +7,10 @@ import { accountantOverview } from "@/server/services/accountant";
 import { correctionsHistory, discountHistory, reconciliationByStaff } from "@/server/services/accountant-reports";
 import { businessToday } from "@/server/settings";
 import { eat, managerActor, resetBusinessData, roomType } from "../support/helpers";
+
+
+// The digital cash handover is switched off in the app (CASH_HANDOVER_ON = false); its reports are tested with the switch ON, so it can come back safely.
+vi.mock("@/lib/cash-handover", async (original) => ({ ...(await original<typeof import("@/lib/cash-handover")>()), CASH_HANDOVER_ON: true }));
 
 beforeEach(resetBusinessData);
 

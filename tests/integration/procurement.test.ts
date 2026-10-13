@@ -6,6 +6,7 @@ import {
   authorizeQuote, cancelInvoice, cancelOrder, closeDeliveryShort, issueOrder, paySupplier, proposeQuote, purchasingPosition, recordDelivery, recordInvoice, reportDelivery, saveQuote, verifyInvoice,
 } from "@/server/services/procurement";
 import { staffAlerts } from "@/server/services/staff-alerts";
+import { recordExpense, voidExpense } from "@/server/services/expenses";
 import { counterActor, receptionistActor, resetBusinessData } from "../support/helpers";
 import type { Actor } from "@/server/services/reservations";
 
@@ -67,7 +68,7 @@ describe("quotations", () => {
     expect(await db.expense.count()).toBe(0);
     expect(await status(x.r.id)).toBe("APPROVED");
     // nobody but procurement records quotations; no more than Finance approved; a bad price is refused
-    await expect(saveQuote(x.r.id, { supplierId: a.supplierId, lines: lines(x, 1, 1) }, null, await finance(), NOW)).rejects.toThrow(/Only the Accountant/);
+    await expect(saveQuote(x.r.id, { supplierId: a.supplierId, lines: lines(x, 1, 1) }, null, await receptionistActor(), NOW)).rejects.toThrow(/Only Finance or the Accountant/);
     await expect(saveQuote(x.r.id, { supplierId: a.supplierId, lines: [{ itemId: x.sodaLine.id, quantity: 11, unitPrice: 18_000 }] }, null, acc, NOW)).rejects.toThrow(/more than Finance approved/);
     await expect(saveQuote(x.r.id, { supplierId: a.supplierId, lines: [{ itemId: x.table.id, quantity: 1, unitPrice: -5 }] }, null, acc, NOW)).rejects.toThrow(/whole shillings/);
     await expect(saveQuote(x.r.id, { lines: lines(x, 1, 1) }, null, acc, NOW)).rejects.toThrow(/Who gave the quotation/);
@@ -255,6 +256,22 @@ describe("invoice and payment", () => {
     expect((await db.inventoryItem.findUniqueOrThrow({ where: { id: x.soda.id } })).quantity).toBe(12);
   });
 
+  it("the expense of a supplier payment changes only from the purchase: it cannot be voided by hand, and its invoice number cannot be typed in again as an expense", async () => {
+    const { acc, x } = await delivered();
+    const fin = await finance();
+    const inv = await recordInvoice(x.r.id, { number: "INV-777", amount: 430_000, invoiceDate: "2026-10-15" }, null, acc, LATER);
+    // typed in again before it is paid: refused (it becomes an expense when Finance pays it)
+    const bank = await cashAccount();
+    const cat = await db.expenseCategory.findFirstOrThrow({ where: { isActive: true } });
+    const again = { amount: 430_000, categoryId: cat.id, description: "Furniture", spentAt: LATER, accountId: bank.id, reference: "inv-777" } as unknown as Parameters<typeof recordExpense>[0];
+    await expect(recordExpense(again, fin)).rejects.toThrow(/already on order/);
+    await verifyInvoice(inv.id, "VERIFY", null, fin, LATER);
+    const paid = await paySupplier(inv.id, { amount: 430_000, accountId: bank.id, paidOn: "2026-10-16" }, fin, LATER);
+    const expense = await db.supplierPayment.findUniqueOrThrow({ where: { id: paid.paymentId } });
+    await expect(voidExpense(expense.expenseId, "Entered by mistake", fin)).rejects.toThrow(/payment of supplier invoice INV-777/);
+    expect((await db.expense.aggregate({ _sum: { amount: true } }))._sum.amount).toBe(430_000);
+  });
+
   it("an invoice above what was delivered needs Finance's reason or is disputed; a duplicate invoice and a cancelled one are handled", async () => {
     const { acc, x } = await ordered();
     const fin = await finance();
@@ -307,9 +324,9 @@ describe("who may do what", () => {
       await expect(verifyInvoice(inv.id, "VERIFY", null, who, LATER), `${who.label} verify`).rejects.toThrow(/Only Finance/);
       await expect(paySupplier(inv.id, { amount: 1000, accountId: "x", paidOn: "2026-10-16" }, who, LATER), `${who.label} pay`).rejects.toThrow(/Only Finance pays/);
     }
-    for (const who of [await receptionistActor(), await counterActor(), await finance(), mgr]) {
-      await expect(issueOrder(x.r.id, { expectedDeliveryOn: "2026-10-20" }, who, NOW), `${who.label} order`).rejects.toThrow(/Only the Accountant/);
-      await expect(recordInvoice(x.r.id, { number: "INV-X", amount: 1000, invoiceDate: "2026-10-15" }, null, who, LATER), `${who.label} invoice`).rejects.toThrow(/Only the Accountant/);
+    for (const who of [await receptionistActor(), await counterActor(), mgr]) {
+      await expect(issueOrder(x.r.id, { expectedDeliveryOn: "2026-10-20" }, who, NOW), `${who.label} order`).rejects.toThrow(/Only Finance or the Accountant/);
+      await expect(recordInvoice(x.r.id, { number: "INV-X", amount: 1000, invoiceDate: "2026-10-15" }, null, who, LATER), `${who.label} invoice`).rejects.toThrow(/Only Finance or the Accountant/);
     }
   });
 });
@@ -321,15 +338,16 @@ describe("the bell", () => {
     const acc = await accountant(), fin = await finance();
     const x = await approvedRequest(400_000);
     const asker = await db.stockRequest.findUniqueOrThrow({ where: { id: x.r.id } });
+    // Finance organizes the purchasing too (owner, 2026-10-13), so it hears what the Accountant hears
     expect(await purchase(acc)).toEqual([expect.stringMatching(/get quotations for/)]);
-    expect(await purchase(fin)).toEqual([]);
+    expect(await purchase(fin)).toEqual([expect.stringMatching(/get quotations for/)]);
     const q = await saveQuote(x.r.id, { supplierId: (await supplierOf("Mwenge Furniture")).id, lines: lines(x, 250_000, 18_000) }, null, acc, NOW);
     await proposeQuote(x.r.id, q.id, acc, NOW);
     expect(await purchase(acc)).toEqual([]);
     expect(await purchase(fin)).toEqual([expect.stringMatching(/authorize the price .*30,000 above the budget/)]);
     await authorizeQuote(x.r.id, "AUTHORIZE", null, fin, NOW);
     expect(await purchase(acc)).toEqual([expect.stringMatching(/issue the order/)]);
-    expect(await purchase(fin)).toEqual([]);
+    expect(await purchase(fin)).toEqual([expect.stringMatching(/issue the order/)]);
     await issueOrder(x.r.id, { expectedDeliveryOn: "2026-10-20" }, acc, NOW);
     await recordDelivery(x.r.id, { lines: [{ itemId: x.sodaLine.id, quantity: 10 }, { itemId: x.table.id, quantity: 1 }] }, null, acc, LATER);
     // the person who asked hears it arrived — and nobody else does

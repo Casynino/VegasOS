@@ -6,7 +6,7 @@ import { can, requirePagePermission } from "@/server/auth";
 import { db } from "@/server/db";
 import { handoverDetail } from "@/server/services/cash-handover";
 import { formatTZS } from "@/lib/format";
-import { HANDOVER_EVENT_TEXT, HANDOVER_STATUS_TEXT, HANDOVER_STATUS_TONE } from "@/lib/cash-handover";
+import { CASH_HANDOVER_ON, HANDOVER_EVENT_TEXT, HANDOVER_STATUS_TEXT, HANDOVER_STATUS_TONE } from "@/lib/cash-handover";
 import { getT } from "@/i18n/server";
 import { cn } from "@/lib/utils";
 import { HandoverActions } from "../handover-actions";
@@ -22,6 +22,7 @@ const SOURCE = { ROOM: "Rooms & bookings", RESTAURANT: "Restaurant & bar", SALE:
 /** One handover: what the person said, the cash records behind it as they stand now, what Finance received, and its whole story. */
 export default async function HandoverPage({ params }: PageProps<"/staff/accountant/handovers/[id]">) {
   const user = await requirePagePermission("cash.handover.view", "cash.handover.review");
+  if (!CASH_HANDOVER_ON) notFound();
   const t = await getT();
   const { id } = await params;
   const h = await handoverDetail(id);

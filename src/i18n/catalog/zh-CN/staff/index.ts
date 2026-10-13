@@ -11,6 +11,7 @@ import m_groups_corporate from "./groups-corporate";
 import m_guest_language from "./guest-language";
 import m_guest_pages from "./guest-pages";
 import m_guests_meeting from "./guests-meeting";
+import m_hotel_supplies from "./hotel-supplies";
 import m_hotelqr_transport from "./hotelqr-transport";
 import m_inventory_misc from "./inventory-misc";
 import m_invoices_requests from "./invoices-requests";
@@ -47,6 +48,7 @@ const catalog: Catalog = {
   ...m_guest_language,
   ...m_guest_pages,
   ...m_guests_meeting,
+  ...m_hotel_supplies,
   ...m_hotelqr_transport,
   ...m_inventory_misc,
   ...m_invoices_requests,

@@ -60,7 +60,7 @@ export interface QuoteInput {
 
 /** Record one supplier's quotation: who, line by line what they would charge, how long it holds, and their document. Nothing is bought. */
 export async function saveQuote(requestId: string, input: QuoteInput, file: File | null, actor: StockActor, now = new Date()) {
-  need(actor, ["procurement.manage"], "Only the Accountant records quotations.");
+  need(actor, ["procurement.manage"], "Only Finance or the Accountant records quotations.");
   if (input.validUntil && (!DATE.test(input.validUntil) || input.validUntil < eatToday(now))) throw new AppError("The quotation must still be valid — check the date.", "VALIDATION", { validUntil: msg("Invalid") });
   if (input.deliveryDays != null && (!Number.isInteger(input.deliveryDays) || input.deliveryDays < 0 || input.deliveryDays > 365)) throw new AppError("Delivery days must be a whole number.", "VALIDATION", { deliveryDays: msg("Invalid") });
   if (!input.lines.length) throw new AppError("Price at least one item.", "VALIDATION", { lines: msg("Empty") });
@@ -125,7 +125,7 @@ export async function saveQuote(requestId: string, input: QuoteInput, file: File
  * has to be asked again); above it — or when no budget was approved — it goes to Finance to be authorized.
  */
 export async function proposeQuote(requestId: string, quoteId: string, actor: StockActor, now = new Date()) {
-  need(actor, ["procurement.manage"], "Only the Accountant proposes a quotation.");
+  need(actor, ["procurement.manage"], "Only Finance or the Accountant proposes a quotation.");
   return db.$transaction(async (tx) => {
     const r = await lockRequestTx(tx, requestId, ["APPROVED"], msg("This request is not waiting for a quotation."));
     if (r.chosenQuoteId) throw new AppError("A quotation is already proposed.", "CONFLICT");
@@ -178,7 +178,7 @@ export async function authorizeQuote(requestId: string, decision: "AUTHORIZE" | 
 
 /** Issue the purchase order for the authorized quotation. Nothing has arrived and nothing is paid; the amount is committed. */
 export async function issueOrder(requestId: string, input: { expectedDeliveryOn: string; note?: string | null }, actor: StockActor, now = new Date()) {
-  need(actor, ["procurement.manage"], "Only the Accountant issues purchase orders.");
+  need(actor, ["procurement.manage"], "Only Finance or the Accountant issues purchase orders.");
   if (!DATE.test(input.expectedDeliveryOn ?? "")) throw new AppError("When will it be delivered?", "VALIDATION", { expectedDeliveryOn: msg("Required") });
   return db.$transaction(async (tx) => {
     const r = await lockRequestTx(tx, requestId, ["APPROVED"], msg("This request is not ready to be ordered."));
@@ -277,7 +277,7 @@ export async function recordDelivery(requestId: string, input: DeliveryInput, fi
 
 /** The rest will not come: close the order as delivered, with the reason (the supplier is owed the difference — the invoice covers what arrived). */
 export async function closeDeliveryShort(requestId: string, reason: string, actor: StockActor, now = new Date()) {
-  need(actor, ["procurement.manage"], "Only the Accountant closes an order.");
+  need(actor, ["procurement.manage"], "Only Finance or the Accountant closes an order.");
   const why = clean(reason, 300);
   if ((why?.length ?? 0) < 5) throw new AppError("Say why the rest is not coming.", "VALIDATION", { reason: msg("Required") });
   return db.$transaction(async (tx) => {
@@ -308,7 +308,7 @@ const deliveredValue = (items: ItemRow[]) => live(items).reduce((s, i) => s + Ma
 
 /** The Accountant records the supplier's invoice (with its document). It is not a payment and not an expense. */
 export async function recordInvoice(requestId: string, input: { number: string; amount: number; invoiceDate: string; dueOn?: string | null; note?: string | null }, file: File | null, actor: StockActor, now = new Date()) {
-  need(actor, ["procurement.manage"], "Only the Accountant records supplier invoices.");
+  need(actor, ["procurement.manage"], "Only Finance or the Accountant records supplier invoices.");
   const number = input.number.trim().slice(0, 60);
   if (!number) throw new AppError("What is the invoice number?", "VALIDATION", { number: msg("Required") });
   if (!Number.isInteger(input.amount) || input.amount <= 0 || input.amount > 2_000_000_000) throw new AppError("Enter the invoice amount in whole shillings.", "VALIDATION", { amount: msg("Invalid") });

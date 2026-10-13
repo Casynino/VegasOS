@@ -15,6 +15,7 @@ import { receivablesBoard } from "@/server/services/company-billing";
 import { bookingActivity, financeNeeds, latestPayments, ntzsReported, purchasesPanel, restaurantDiscounts, type FinanceNeed } from "@/server/services/finance-home";
 import { addDays, diffDays } from "@/lib/time/business-date";
 import { formatTZS } from "@/lib/format";
+import { CASH_HANDOVER_ON } from "@/lib/cash-handover";
 import { cn } from "@/lib/utils";
 import { getT } from "@/i18n/server";
 import { msg } from "@/i18n/msg";
@@ -54,7 +55,7 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
   const todayRange = { from: today, to: today };
   const perms = user.permissions;
   const has = (...codes: PermissionCode[]) => codes.some((c) => perms.has(c));
-  const handoverRights = has("cash.handover.view", "cash.handover.review");
+  const handoverRights = CASH_HANDOVER_ON && has("cash.handover.view", "cash.handover.review");
   const buying = has("purchases.authorize", "purchases.pay", "procurement.manage");
 
   const [ov, plPrev, methodsPrev, movement, movementPrev, trend, needs, receivedToday, occToday, online, restDisc, purchases, bookings, bookingsTrend, spend, owing, payments, ntzs] = await Promise.all([
@@ -139,7 +140,7 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
 
       <div>
         <SectionLabel title={t("Needs your attention")} count={needs.length} t={t} />
-        <AttentionCards items={attention} t={t} emptyTitle={t("Nothing is waiting for Finance")} emptyDetail={t("No purchase to authorize, no invoice to pay, no handover to receive, nothing overdue.")} />
+        <AttentionCards items={attention} t={t} emptyTitle={t("Nothing is waiting for Finance")} emptyDetail={CASH_HANDOVER_ON ? t("No purchase to authorize, no invoice to pay, no handover to receive, nothing overdue.") : t("No purchase to authorize, no invoice to pay, nothing overdue.")} />
       </div>
 
       {/* ── The figures of the period ── */}
@@ -216,7 +217,7 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
 
           {/* 4 · Cash in hand, and who owes the hotel */}
           <div className="grid gap-4 lg:grid-cols-2">
-            <Panel title={t("Cash")} subtitle={t("Taken in the period, and where it is now")} action={link(["cash.handover.view", "cash.handover.review"], "/staff/accountant/handovers", t("Cash handovers"))}>
+            <Panel title={t("Cash")} subtitle={handoverRights ? t("Taken in the period, and where it is now") : t("Taken in the period")} action={handoverRights ? link(["cash.handover.view", "cash.handover.review"], "/staff/accountant/handovers", t("Cash handovers")) : null}>
               <FigureCards items={[
                 { label: t("Cash taken"), value: formatTZS(ov.cash.total), sub: periodLabel(p, t) },
                 ...(handoverRights ? [
@@ -241,7 +242,7 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
                     ])} />
                 </div>
               )}
-              <p className="mt-3 text-[11px] text-muted-foreground">{t("A handover only confirms who holds the cash. It is never new income.")}</p>
+              {handoverRights && <p className="mt-3 text-[11px] text-muted-foreground">{t("A handover only confirms who holds the cash. It is never new income.")}</p>}
             </Panel>
 
             <Panel title={t("Who owes the hotel")} subtitle={t("Right now — whatever the period")} action={link(["finance.view"], "/staff/finance/receivables", t("Who owes us"))}>

@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { addDays, isBusinessDate, presetRange, type BusinessDate, type PeriodPreset } from "@/lib/time/business-date";
 import { getT } from "@/i18n/server";
 import { msg } from "@/i18n/msg";
+import { CASH_HANDOVER_ON } from "@/lib/cash-handover";
 import { can, getCurrentUser } from "@/server/auth";
 import { englishT, type T } from "@/i18n/translate";
 
@@ -23,7 +24,7 @@ const TABS = [
   // Finance's own pages: what was taken off, what prices are, who handed over what.
   { href: "/staff/accountant/discounts", label: msg("Discounts") },
   { href: "/staff/accountant/prices", label: msg("Price control") },
-  { href: "/staff/accountant/reports", label: msg("Cash reports") },
+  { href: "/staff/accountant/reports", label: CASH_HANDOVER_ON ? msg("Cash reports") : msg("Refunds and corrections") },
 ] as const;
 
 /** What front-desk staff (ledger access, no full finance) can open — Accounts first. */
@@ -43,7 +44,7 @@ export async function FinanceTabs({ active, limited, actions }: {
   // Withdraw funds sits beside Online payments — only for those who may withdraw (the page checks again by itself).
   const me = await getCurrentUser();
   const withdraw = !limited && can(me, "withdrawals.manage");
-  const handovers = !limited && (can(me, "cash.handover.view") || can(me, "cash.handover.review"));
+  const handovers = CASH_HANDOVER_ON && !limited && (can(me, "cash.handover.view") || can(me, "cash.handover.review"));
   const purchases = !limited && (can(me, "purchases.authorize") || can(me, "purchases.pay"));
   const tabs: readonly { href: string; label: string }[] = limited ? LIMITED_TABS
     : TABS.flatMap<{ href: string; label: string }>((tab) => [

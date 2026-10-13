@@ -148,3 +148,24 @@ describe("Finance reviews", () => {
     expect(events.map((e) => [e.action, e.byId])).toEqual([["SUBMITTED", desk.userId], ["APPROVED", fin.userId]]);
   });
 });
+
+describe("each department asks for its own things", () => {
+  it("Reception files under the hotel's departments and is refused the kitchen's; the Counter the other way round; a manager may file for any", async () => {
+    const desk = await receptionistActor();
+    const counter = await counterActor();
+    const towels = { urgent: false, items: [{ name: "Bath towels", quantity: 20, unit: "pcs" }] };
+    const beef = { urgent: false, items: [{ name: "Beef", quantity: 10, unit: "kg" }] };
+    expect((await createStockRequest({ ...towels, department: "RECEPTION" }, desk, NOW)).department).toBe("RECEPTION");
+    expect((await createStockRequest({ ...towels, department: "HOUSEKEEPING", clientKey: "hk-towels-0001" }, desk, NOW)).department).toBe("HOUSEKEEPING");
+    await expect(createStockRequest({ ...towels, department: "KITCHEN", clientKey: "wrong-dept-001" }, desk, NOW)).rejects.toThrow(/own department/);
+    await expect(createStockRequest({ ...beef, department: "BAR", clientKey: "wrong-dept-002" }, desk, NOW)).rejects.toThrow(/own department/);
+    expect((await createStockRequest({ ...beef, department: "KITCHEN", clientKey: "kitchen-beef-01" }, counter, NOW)).department).toBe("KITCHEN");
+    await expect(createStockRequest({ ...towels, department: "RECEPTION", clientKey: "wrong-dept-003" }, counter, NOW)).rejects.toThrow(/own department/);
+    const mgr = await managerActor();
+    expect((await createStockRequest({ ...towels, department: "RECEPTION", clientKey: "mgr-any-0001" }, mgr, NOW)).department).toBe("RECEPTION");
+    expect((await createStockRequest({ ...beef, department: "KITCHEN", clientKey: "mgr-any-0002" }, mgr, NOW)).department).toBe("KITCHEN");
+    // Finance sees which department each request is from
+    const all = await db.stockRequest.findMany({ select: { department: true } });
+    expect(all.map((r) => r.department).sort()).toEqual(["HOUSEKEEPING", "KITCHEN", "KITCHEN", "RECEPTION", "RECEPTION"]);
+  });
+});

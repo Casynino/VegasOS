@@ -2,6 +2,11 @@
 import type { Catalog } from "../../../translate";
 
 const catalog: Catalog = {
+  "No purchase to authorize, no invoice to pay, nothing overdue.": "没有待授权的采购，没有待付的发票，也没有逾期事项。",
+  "At nTZS": "在 nTZS",
+  "reported by nTZS at {time}": "nTZS 于 {time} 报告",
+  "nTZS does not show its balance by itself. Press Check balance — or open Withdraw funds, enter any amount and ask for the price: it shows what nTZS holds, and nothing is sent.": "nTZS 不会单独显示余额。请点“查询余额”，或打开“提现”，输入任意金额并询价：会显示 nTZS 持有的金额，不会发送任何款项。",
+  "Taken in the period": "本期收取",
   "Where the money is": "资金在哪里",
   "How the money came in": "资金如何到账",
   "No expenses were recorded in this period.": "本期没有记录支出。",

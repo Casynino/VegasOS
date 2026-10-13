@@ -3,6 +3,7 @@ import Link from "next/link";
 import { AlertCircle, ArrowRight, Banknote, BadgeCheck, ClipboardCheck, HandCoins, Landmark, Receipt, ReceiptText, Scale, Wallet } from "lucide-react";
 import { db } from "@/server/db";
 import { redirect } from "next/navigation";
+import { CASH_HANDOVER_ON } from "@/lib/cash-handover";
 import { can, requirePagePermission } from "@/server/auth";
 import { businessToday } from "@/server/settings";
 import { accountantOverview } from "@/server/services/accountant";
@@ -47,8 +48,8 @@ export default async function AccountantPage({ searchParams }: PageProps<"/staff
     queue.authorize > 0 && { icon: BadgeCheck, text: t.plural(queue.authorize, "{n} purchase price waiting for you to authorize", "{n} purchase prices waiting for you to authorize"), amount: null, href: "/staff/procurement?tab=authorize" },
     queue.verify > 0 && { icon: ReceiptText, text: t.plural(queue.verify, "{n} supplier invoice to verify", "{n} supplier invoices to verify"), amount: queue.verifyAmount, href: "/staff/procurement?tab=invoices" },
     queue.pay > 0 && { icon: ClipboardCheck, text: t.plural(queue.pay, "{n} supplier invoice verified, to pay", "{n} supplier invoices verified, to pay"), amount: queue.payAmount, href: "/staff/procurement?tab=invoices" },
-    o.handovers.waitingCount > 0 && { icon: HandCoins, text: t.plural(o.handovers.waitingCount, "{n} cash handover waiting to be received", "{n} cash handovers waiting to be received"), amount: o.handovers.waitingExpected, href: "/staff/accountant/handovers?status=SUBMITTED" },
-    o.handovers.returned > 0 && { icon: AlertCircle, text: t.plural(o.handovers.returned, "{n} handover sent back, not corrected yet", "{n} handovers sent back, not corrected yet"), amount: null, href: "/staff/accountant/handovers?status=RETURNED" },
+    CASH_HANDOVER_ON && o.handovers.waitingCount > 0 && { icon: HandCoins, text: t.plural(o.handovers.waitingCount, "{n} cash handover waiting to be received", "{n} cash handovers waiting to be received"), amount: o.handovers.waitingExpected, href: "/staff/accountant/handovers?status=SUBMITTED" },
+    CASH_HANDOVER_ON && o.handovers.returned > 0 && { icon: AlertCircle, text: t.plural(o.handovers.returned, "{n} handover sent back, not corrected yet", "{n} handovers sent back, not corrected yet"), amount: null, href: "/staff/accountant/handovers?status=RETURNED" },
     o.expenses.pendingCount > 0 && { icon: Receipt, text: t.plural(o.expenses.pendingCount, "{n} expense waiting for approval", "{n} expenses waiting for approval"), amount: o.expenses.pendingAmount, href: "/staff/expenses?status=PENDING_APPROVAL" },
     o.openCashCounts > 0 && { icon: Scale, text: t.plural(o.openCashCounts, "{n} cash count with a difference to settle", "{n} cash counts with a difference to settle"), amount: null, href: "/staff/finance/accounts" },
   ].filter(Boolean) as { icon: typeof HandCoins; text: string; amount: number | null; href: string }[];
@@ -119,12 +120,13 @@ export default async function AccountantPage({ searchParams }: PageProps<"/staff
             <Row label={t("Restaurant — the Counter")} value={o.cash.restaurant} />
             <Row label={t("Other sales")} value={o.cash.other} />
             <Row label={t("Cash taken in the period")} value={o.cash.total} strong />
-            <Row label={t("Received from staff in the period")} value={o.handovers.received} sub={t.plural(o.handovers.receivedCount, "{n} handover", "{n} handovers")} />
-            {o.handovers.withDifference > 0 && <Row label={t("Differences accepted")} value={-o.handovers.short + o.handovers.over} sub={t("{short} short · {over} over", { short: formatTZS(o.handovers.short), over: formatTZS(o.handovers.over) })} tone="text-amber-700 dark:text-amber-300" />}
+            {CASH_HANDOVER_ON && <Row label={t("Received from staff in the period")} value={o.handovers.received} sub={t.plural(o.handovers.receivedCount, "{n} handover", "{n} handovers")} />}
+            {CASH_HANDOVER_ON && o.handovers.withDifference > 0 && <Row label={t("Differences accepted")} value={-o.handovers.short + o.handovers.over} sub={t("{short} short · {over} over", { short: formatTZS(o.handovers.short), over: formatTZS(o.handovers.over) })} tone="text-amber-700 dark:text-amber-300" />}
           </dl>
-          <p className="mt-2 text-[11px] text-muted-foreground">{t("A handover only confirms who holds the cash. It is never new income.")}</p>
+          {CASH_HANDOVER_ON && <p className="mt-2 text-[11px] text-muted-foreground">{t("A handover only confirms who holds the cash. It is never new income.")}</p>}
         </Panel>
 
+        {CASH_HANDOVER_ON && (
         <Panel title={t("Cash still with staff")} subtitle={o.handovers.heldNow + o.handovers.awaiting > 0 ? t("{held} not handed over · {awaiting} sent, waiting for you", { held: formatTZS(o.handovers.heldNow), awaiting: formatTZS(o.handovers.awaiting) }) : t("All cash has been handed over.")}
           action={<Link href="/staff/accountant/handovers" className="text-xs font-medium text-muted-foreground underline-offset-4 hover:underline">{t("Cash handovers")}</Link>}>
           {o.holders.length > 0 && (
@@ -141,6 +143,7 @@ export default async function AccountantPage({ searchParams }: PageProps<"/staff
             </ul>
           )}
         </Panel>
+        )}
       </section>
 
       {/* Money received, by account */}

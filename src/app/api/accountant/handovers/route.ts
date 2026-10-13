@@ -1,10 +1,12 @@
 import { getCurrentUser } from "@/server/auth";
 import { handoverList } from "@/server/services/cash-handover";
+import { CASH_HANDOVER_ON } from "@/lib/cash-handover";
 import { isBusinessDate, presetRange, type PeriodPreset } from "@/lib/time/business-date";
 import { businessToday } from "@/server/settings";
 
 /** Cash handovers as CSV (Excel opens it) — the same period as the Cash reports page. */
 export async function GET(req: Request) {
+  if (!CASH_HANDOVER_ON) return new Response("Not found", { status: 404 });
   const user = await getCurrentUser();
   if (!user) return new Response("Unauthorized", { status: 401 });
   if (!user.permissions.has("cash.handover.view") && !user.permissions.has("cash.handover.review")) return new Response("Forbidden", { status: 403 });

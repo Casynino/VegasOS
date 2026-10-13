@@ -3,12 +3,12 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChefHat, ChevronDown, ClipboardList, Flame, Loader2, Minus, Paperclip, Pencil, Plus, Search, Send, StickyNote, Tag, Target, Trash2, Wine } from "lucide-react";
+import { Banknote, ChefHat, ChevronDown, ClipboardList, Flame, Loader2, Minus, Paperclip, Pencil, Plus, Search, Send, StickyNote, Tag, Target, Trash2, Wine } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { STOCK_UNITS, type StockGroup } from "@/lib/stock-catalog";
-import type { DepartmentOption, StoreItem } from "@/lib/stock-requests";
+import { HOTEL_CATALOG, STOCK_UNITS, type StockGroup } from "@/lib/stock-catalog";
+import { RESTAURANT_DEPARTMENTS, type DepartmentOption, type StoreItem } from "@/lib/stock-requests";
 import { createStockRequestAction } from "./actions";
 import { DeptIcon, Pic, norm, storeGroup, type Row, type Tile, type TileGroup } from "./parts";
 import { StockSheet, SheetTools, type SheetLine } from "./sheet";
@@ -21,8 +21,9 @@ export function groupsFor(code: string, deptId: string | null, kitchen: StockGro
   const s = stores ? [stores] : [];
   if (code === "KITCHEN" || code === "RESTAURANT") return [...kitchen, ...drinks, ...s];
   if (code === "BAR") return [...drinks, ...s, ...kitchen];
-  // Housekeeping, maintenance, reception…: their own stock items, then the everyday supplies, then the rest.
-  return [...s, ...kitchen.filter((g) => g.key === "supplies"), ...kitchen.filter((g) => g.key !== "supplies"), ...drinks];
+  // Reception, housekeeping, maintenance, the office…: their own stock items, then the hotel's general supplies and guest-room amenities —
+  // never the restaurant's ingredients and kitchen equipment. Anything not listed is typed in.
+  return [...s, ...HOTEL_CATALOG];
 }
 
 /** How soon: four steps (Urgent puts it first in Finance's list). */
@@ -125,7 +126,7 @@ export function NewRequest({ kitchen, drinks, storeItems, departments, defaultDe
           </div>
           <label className="relative min-w-52 flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("Search — rice, chicken, Safari, gas…")} className="h-10 w-full rounded-xl border border-border bg-background pl-9 pr-3 text-base sm:text-sm" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={RESTAURANT_DEPARTMENTS.includes(dept) ? t("Search — rice, chicken, Safari, gas…") : t("Search — towels, soap, paper, bulbs…")} className="h-10 w-full rounded-xl border border-border bg-background pl-9 pr-3 text-base sm:text-sm" />
           </label>
         </div>
         {!needle && (
@@ -181,31 +182,20 @@ export function NewRequest({ kitchen, drinks, storeItems, departments, defaultDe
         <div className="space-y-3 border-t border-border/60 px-4 py-4 sm:px-5">
           <div className={cn("overflow-hidden rounded-2xl border bg-background/50 transition-colors", urgent ? "border-rose-500/50" : "border-border/80")}>
             <label className="flex items-center gap-3 px-3.5">
-              <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground"><Tag className="size-4" /></span>
-              <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} placeholder={t("Name this request (optional)")} className="h-12 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground/70 sm:text-sm" />
-            </label>
-            <div className="border-t border-border/60 px-3.5 py-2.5">
-              <p className="mb-1.5 flex items-center gap-1.5 text-[11.5px] text-muted-foreground"><Flame className="size-3.5" />{t("How soon is it needed?")}</p>
-              <div role="radiogroup" aria-label={t("Priority")} className="grid grid-cols-4 gap-1 rounded-xl bg-muted p-1">
-                {PRIORITY.map((o) => (
-                  <button key={o.key} type="button" role="radio" aria-checked={priority === o.key} onClick={() => setPriority(o.key)}
-                    className={cn("rounded-lg px-1 py-1.5 text-xs font-medium transition", priority === o.key ? (o.key === "URGENT" ? "bg-rose-500 text-white shadow-sm" : "bg-background shadow-sm") : "text-muted-foreground")}>{t(o.label)}</button>
-                ))}
-              </div>
-            </div>
-            <label className="flex items-center gap-3 border-t border-border/60 px-3.5">
               <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground"><Target className="size-4" /></span>
               <input value={reason} onChange={(e) => setReason(e.target.value)} maxLength={300} placeholder={t("What is it for? (optional)")} className="h-12 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground/70 sm:text-sm" />
             </label>
-            <div className="grid grid-cols-2 gap-2 border-t border-border/60 px-3.5 py-2.5">
-              <label className="grid gap-1 text-[11.5px] text-muted-foreground">{t("Estimated cost (TZS)")}
-                <input value={estimate} onChange={(e) => setEstimate(e.target.value.replace(/[^\d]/g, ""))} inputMode="numeric" placeholder={t("if you know")} className="h-10 rounded-lg border border-border bg-background px-2.5 text-base tabular-nums text-foreground sm:text-sm" />
-              </label>
-              <label className="grid gap-1 text-[11.5px] text-muted-foreground">{t("Needed by")}
-                <input value={neededBy} onChange={(e) => setNeededBy(e.target.value)} type="date" className="h-10 rounded-lg border border-border bg-background px-2 text-base text-foreground sm:text-sm" />
-              </label>
-              <p className="col-span-2 text-[11px] text-muted-foreground">{t("The cost is only your estimate — it is not an approved expense.")}</p>
-            </div>
+            <label className="flex items-center gap-3 border-t border-border/60 px-3.5 py-2">
+              <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground"><Banknote className="size-4" /></span>
+              <span className="min-w-0 flex-1">
+                <input value={estimate} onChange={(e) => setEstimate(e.target.value.replace(/[^\d]/g, ""))} inputMode="numeric" placeholder={t("Estimated cost in TZS, if you know")} aria-label={t("Estimated cost (TZS)")} className="h-10 w-full bg-transparent text-base tabular-nums outline-none placeholder:text-muted-foreground/70 sm:text-sm" />
+                <span className="block pb-1 text-[11px] text-muted-foreground">{t("The cost is only your estimate — it is not an approved expense.")}</span>
+              </span>
+            </label>
+            <label className="flex items-center gap-3 border-t border-border/60 px-3.5">
+              <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground"><StickyNote className="size-4" /></span>
+              <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} placeholder={t("Note for Finance (optional)")} className="h-12 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground/70 sm:text-sm" />
+            </label>
             <label className="flex items-center gap-3 border-t border-border/60 px-3.5 py-2">
               <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground"><Paperclip className="size-4" /></span>
               <span className="min-w-0 flex-1 text-sm">
@@ -213,10 +203,29 @@ export function NewRequest({ kitchen, drinks, storeItems, departments, defaultDe
                 <input type="file" accept="image/*,application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="block w-full text-xs file:mr-2 file:rounded-lg file:border-0 file:bg-muted file:px-2.5 file:py-1.5 file:text-xs file:font-medium" />
               </span>
             </label>
-            <label className="flex items-center gap-3 border-t border-border/60 px-3.5">
-              <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground"><StickyNote className="size-4" /></span>
-              <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} placeholder={t("Note for Finance (optional)")} className="h-12 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground/70 sm:text-sm" />
-            </label>
+            {/* Only when it matters: a name for the request, how soon it is needed, the date. Everything above is enough to send. */}
+            <details className="group border-t border-border/60">
+              <summary className="flex cursor-pointer list-none items-center justify-between px-3.5 py-3 text-[13px] font-medium text-muted-foreground hover:text-foreground">
+                {t("More options")}<ChevronDown className="size-4 transition group-open:rotate-180" />
+              </summary>
+              <div className="space-y-3 px-3.5 pb-3.5">
+                <label className="grid gap-1 text-[11.5px] text-muted-foreground"><span className="flex items-center gap-1.5"><Tag className="size-3.5" />{t("Name this request (optional)")}</span>
+                  <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} className="h-10 rounded-lg border border-border bg-background px-2.5 text-base text-foreground sm:text-sm" />
+                </label>
+                <div>
+                  <p className="mb-1.5 flex items-center gap-1.5 text-[11.5px] text-muted-foreground"><Flame className="size-3.5" />{t("How soon is it needed?")}</p>
+                  <div role="radiogroup" aria-label={t("Priority")} className="grid grid-cols-4 gap-1 rounded-xl bg-muted p-1">
+                    {PRIORITY.map((o) => (
+                      <button key={o.key} type="button" role="radio" aria-checked={priority === o.key} onClick={() => setPriority(o.key)}
+                        className={cn("rounded-lg px-1 py-1.5 text-xs font-medium transition", priority === o.key ? (o.key === "URGENT" ? "bg-rose-500 text-white shadow-sm" : "bg-background shadow-sm") : "text-muted-foreground")}>{t(o.label)}</button>
+                    ))}
+                  </div>
+                </div>
+                <label className="grid gap-1 text-[11.5px] text-muted-foreground">{t("Needed by")}
+                  <input value={neededBy} onChange={(e) => setNeededBy(e.target.value)} type="date" className="h-10 rounded-lg border border-border bg-background px-2 text-base text-foreground sm:text-sm" />
+                </label>
+              </div>
+            </details>
           </div>
           <Button className="h-12 w-full text-[15px]" disabled={ready.length === 0} onClick={() => setReviewing(true)}><ClipboardList />{ready.length ? t.plural(ready.length, "Check the list · {n} item", "Check the list · {n} items") : t("Check the list")}</Button>
         </div>

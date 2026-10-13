@@ -5,7 +5,7 @@ import { BedDouble, Briefcase, Building2, ChefHat, ConciergeBell, Loader2, Utens
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { StockGroup, StockItem } from "@/lib/stock-catalog";
-import { statusMeta, unitWord, type StoreItem } from "@/lib/stock-requests";
+import { statusMeta, simpleStatusMeta, unitWord, type StoreItem } from "@/lib/stock-requests";
 import { useT } from "@/i18n/client";
 import { msg } from "@/i18n/msg";
 
@@ -39,9 +39,9 @@ export const DeptIcon = ({ code, className }: { code: string; className?: string
   return <I className={className} />;
 };
 
-export function StatusChip({ status, className }: { status: string; className?: string }) {
+export function StatusChip({ status, simple, className }: { status: string; /** The six simple words, for the people who ask (not for Finance and the managers). */ simple?: boolean; className?: string }) {
   const t = useT();
-  const m = statusMeta(status);
+  const m = simple ? simpleStatusMeta(status) : statusMeta(status);
   return <span className={cn("shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-semibold", m.tone, className)}>{t(m.label)}</span>;
 }
 

@@ -9,7 +9,7 @@ import {
 } from "@/server/services/stock-requests";
 import { STOCK_CATALOG } from "@/lib/stock-catalog";
 import { formatTZS } from "@/lib/format";
-import type { StockEventView, StockReqView, Viewer } from "@/lib/stock-requests";
+import { askScope, canAskFor, type StockEventView, type StockReqView, type Viewer } from "@/lib/stock-requests";
 import { StockRequests } from "./stock-requests";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -30,6 +30,10 @@ const eatDay = (d: Date) => new Date(d.getTime() + 3 * 3600_000).toISOString().s
  * What a history step changed, in words — money only for buyers and approvers. Someone who only
  * asks sees the list changes, never prices, totals, suppliers, accounts or the expense.
  */
+/** What the people who ASK see of a request's history: its own story, not the quotations, orders' prices, invoices or payments behind it. */
+const REQUESTER_EVENTS = new Set(["SUBMITTED", "EDITED", "APPROVED", "SENT_BACK", "REJECTED", "CANCELLED", "ORDER_ISSUED", "DELIVERY_RECORDED", "DELIVERY_PROBLEM", "DELIVERY_CLOSED_SHORT", "DELIVERY_REPORTED", "DELIVERY_CONFIRMED", "COMPLETED"]);
+const REQUESTER_REASONS = new Set(["SUBMITTED", "EDITED", "APPROVED", "SENT_BACK", "REJECTED", "CANCELLED", "DELIVERY_PROBLEM", "DELIVERY_CLOSED_SHORT", "DELIVERY_REPORTED", "DELIVERY_CONFIRMED"]);
+
 function eventView(e: StockRequestRow["events"][number], money: boolean, t: T): StockEventView {
   const b = obj(e.before), a = obj(e.after);
   const detail: (string | null)[] = [];
@@ -61,7 +65,7 @@ function eventView(e: StockRequestRow["events"][number], money: boolean, t: T): 
   return {
     id: e.id, action: e.action, from: e.fromStatus, to: e.toStatus, by: e.byLabel, role: e.byRole,
     // A correction note on a purchase can name prices — only buyers and approvers see it.
-    reason: purchase && !money ? null : e.reason,
+    reason: (purchase && !money) || (!money && !REQUESTER_REASONS.has(e.action)) ? null : e.reason,
     detail: detail.filter((x): x is string => !!x), at: e.at.toISOString(),
   };
 }
@@ -91,7 +95,7 @@ function view(r: StockRequestRow, money: boolean, deptName: (code: string) => st
       total: r.purchaseTotal, submittedAt: r.submittedAt?.toISOString() ?? null, correctionNote: r.correctionNote,
       expense: r.expense ? { number: r.expense.number, amount: r.expense.amount } : null,
     } : null,
-    events: r.events.map((e) => eventView(e, money, t)),
+    events: r.events.filter((e) => money || REQUESTER_EVENTS.has(e.action)).map((e) => eventView(e, money, t)),
   };
 }
 
@@ -122,9 +126,12 @@ export default async function StockRequestsPage() {
   // Where a new request usually goes: the Mpishi → kitchen, the waiters → bar, reception → reception.
   const serve = can(user, "restaurant.serve"), kitchen = can(user, "kitchen.orders");
   const wanted = kitchen && !serve ? "KITCHEN" : serve && !reviewer ? "BAR" : can(user, "dashboard.front_desk") && !reviewer ? "RECEPTION" : "KITCHEN";
-  const defaultDepartment = departments.some((d) => d.code === wanted) ? wanted : departments[0]?.code ?? "KITCHEN";
+  // Only the departments this person may ask for (Reception: the hotel's own; the restaurant and kitchen: theirs; Finance and managers: any).
+  const scope = askScope(user.permissions);
+  const askable = departments.filter((d) => canAskFor(scope, d.code));
+  const defaultDepartment = askable.some((d) => d.code === wanted) ? wanted : askable.find((d) => d.code === "RECEPTION")?.code ?? askable[0]?.code ?? "KITCHEN";
 
-  const me: Viewer = { id: user.id, name: user.fullName, asker, reviewer, buyer, approverMustDiffer: settings.purchaseApproverMustDiffer };
+  const me: Viewer = { id: user.id, name: user.fullName, asker, reviewer, buyer, approverMustDiffer: settings.purchaseApproverMustDiffer, scope };
   return (
     <div className="w-full space-y-4">
       <StockRequests

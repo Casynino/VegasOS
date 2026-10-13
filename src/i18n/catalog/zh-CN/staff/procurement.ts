@@ -3,6 +3,12 @@
 import type { Catalog } from "../../../translate";
 
 const catalog: Catalog = {
+  "Submitted": "已提交",
+  "More information needed": "需要补充信息",
+  "Purchased": "已采购",
+  "Estimated cost in TZS, if you know": "预估费用（TZS，如果知道）",
+  "More options": "更多选项",
+  "Procurement: get supplier quotations, propose a purchase, issue the order once its price is authorized, record deliveries and attach supplier invoices (Finance, and the Accountant who assists Finance — the Accountant never approves or pays)": "采购：取得供应商报价、提出采购建议、价格获授权后开具订单、登记收货并附上供应商发票（由财务负责，采购会计协助财务——采购会计不能批准，也不能付款）",
   // Desk and workspace
   "Procurement": "采购",
   "Purchases": "采购",

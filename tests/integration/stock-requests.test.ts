@@ -5,6 +5,7 @@ import {
 } from "@/server/services/stock-requests";
 import { saveInventoryItem } from "@/server/services/inventory";
 import { recordExpense, voidExpense } from "@/server/services/expenses";
+import { DEFAULT_ROLES } from "@/lib/permissions";
 import { chefActor, managerActor, receptionistActor, resetBusinessData } from "../support/helpers";
 import type { Actor } from "@/server/services/reservations";
 
@@ -97,6 +98,20 @@ describe("the purchase and the final approval", () => {
     const p = await savePurchase(x.r.id, input, null, mgr, NOW);
     return { ...x, mgr, p, input };
   }
+
+  it("above Finance's own limit only the Boss or the MD gives the final approval of a purchase — below it Finance does", async () => {
+    const { r } = await bought();
+    await db.hotelSettings.update({ where: { id: 1 }, data: { financeAuthorizationLimit: 150_000 } });
+    try {
+      // 219,000 is above the limit: a manager (or Finance) cannot give the final approval; the MD can
+      const realManager = { ...(await managerActor()), permissions: new Set<string>(DEFAULT_ROLES.MANAGER.permissions) };
+      const realFinance = { ...(await managerActor()), permissions: new Set<string>(DEFAULT_ROLES.FINANCE.permissions) };
+      await expect(approvePurchase(r.id, {}, realManager, NOW)).rejects.toThrow(/above what Finance may approve alone/);
+      await expect(approvePurchase(r.id, {}, realFinance, NOW)).rejects.toThrow(/above what Finance may approve alone/);
+      expect(await db.expense.count()).toBe(0);
+      expect(await approvePurchase(r.id, {}, await mdActor(), NOW)).toMatchObject({ amount: 219_000 });
+    } finally { await db.hotelSettings.update({ where: { id: 1 }, data: { financeAuthorizationLimit: null } }); }
+  });
 
   it("records what was ACTUALLY bought; final approval puts the stock in and makes ONE expense for the actual amount — and never twice", async () => {
     const { r, beef, rice, p, mgr } = await bought();

@@ -15,8 +15,9 @@ import { CashCountButton, MovementButton, PaymentAccountButton } from "../accoun
 import { ExpenseDialog, PurchaseChip } from "@/app/staff/(app)/expenses/expense-dialogs";
 import { expenseTypes } from "@/server/services/expenses";
 import { withdrawFromAccount } from "@/server/services/withdrawals";
+import { ntzsReported } from "@/server/services/finance-home";
 import { withdrawalProblem } from "@/lib/withdrawals";
-import { StatusChip, WithdrawButton, WithdrawalDetails } from "@/app/staff/(app)/finance/withdraw/withdraw-ui";
+import { CheckBalanceButton, StatusChip, WithdrawButton, WithdrawalDetails } from "@/app/staff/(app)/finance/withdraw/withdraw-ui";
 import { LiveRefresh } from "@/components/live-refresh";
 import { presetRange } from "@/lib/time/business-date";
 import { formatTZS } from "@/lib/format";
@@ -120,6 +121,8 @@ export default async function AccountDetailPage({ params, searchParams }: PagePr
       tz: settings.timezone, ...(await withdrawFromAccount({ userId: user.id, label: user.fullName, ipAddress, permissions: user.permissions })),
     }))
     : null;
+  // What nTZS itself last said it holds (it has no balance call of its own — only a price or "Check balance" tells it): shown beside the books, never guessed.
+  const ntzs = account.code === "NTZS" ? await ntzsReported() : null;
   const withdrawProblem = withdraw?.setupProblem ? withdrawalProblem(withdraw.setupProblem) : null;
   const receiving: PaymentAccountOption[] = all.filter((a) => a.acceptsPayments).map((a) => ({ id: a.id, name: a.name, number: a.accountNumber, holder: a.holderName }));
   const paidFrom = all.filter((a) => a.acceptsExpenses).map((a) => ({ id: a.id, name: a.name, methodId: a.paymentMethods[0]?.id ?? null }));
@@ -177,6 +180,21 @@ export default async function AccountDetailPage({ params, searchParams }: PagePr
             <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/75">{t("In the books")}</p>
             <p className="mt-1 text-4xl font-semibold tabular-nums tracking-tight">{formatTZS(held?.balance ?? 0)}</p>
             <p className="mt-1 text-xs text-white/80">{t("in {amount}", { amount: formatTZS(held?.moneyIn ?? 0) })} · {t("out {amount}", { amount: formatTZS(held?.moneyOut ?? 0) })}{held?.openingBalance ? ` · ${t("opening {amount}", { amount: formatTZS(held.openingBalance) })}` : ""}</p>
+            {account.code === "NTZS" && (
+              <div className="mt-3 rounded-2xl bg-black/20 px-3.5 py-2.5 text-left backdrop-blur">
+                {ntzs ? (
+                  <>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/75">{t("At nTZS")}</p>
+                    <p className="mt-0.5 text-2xl font-semibold tabular-nums">{formatTZS(ntzs.available)}</p>
+                    <p className="text-xs text-white/80">{t("reported by nTZS at {time}", { time: t.dateTime(ntzs.at.toISOString()) })}{!ntzs.live && ` · ${t("test key — no real money")}`}{ntzs.sentSince > 0 && ` · ${t.plural(ntzs.sentSince, "{n} withdrawal sent since", "{n} withdrawals sent since")}`}</p>
+                    {ntzs.available !== (held?.balance ?? 0) && <p className="mt-1.5 text-xs font-semibold text-amber-200">{ntzs.available > (held?.balance ?? 0) ? t("{amount} is at nTZS but not in the books yet", { amount: formatTZS(ntzs.available - (held?.balance ?? 0)) }) : t("The books show {amount} more than nTZS reported", { amount: formatTZS((held?.balance ?? 0) - ntzs.available) })}</p>}
+                  </>
+                ) : (
+                  <p className="max-w-64 text-xs text-white/85">{t("nTZS does not show its balance by itself. Press Check balance — or open Withdraw funds, enter any amount and ask for the price: it shows what nTZS holds, and nothing is sent.")}</p>
+                )}
+                {withdraw && <div className="mt-1.5"><CheckBalanceButton /></div>}
+              </div>
+            )}
           </div>
         </div>
       </section>

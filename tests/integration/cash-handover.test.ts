@@ -1,10 +1,15 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/server/db";
 import { recordSale } from "@/server/services/outlets";
 import {
   handoverDetail, handoverTotals, previewHandover, receiveHandover, rejectHandover, resubmitHandover, returnHandover, submitHandover, whoHoldsCash, type HandoverActor,
 } from "@/server/services/cash-handover";
 import { resetBusinessData } from "../support/helpers";
+
+
+// The digital cash handover is switched off in the app (CASH_HANDOVER_ON = false). These tests keep it working with the switch ON,
+// so it can be brought back later without surprises; tests/integration/cash-handover-off.test.ts covers the switched-off state.
+vi.mock("@/lib/cash-handover", async (original) => ({ ...(await original<typeof import("@/lib/cash-handover")>()), CASH_HANDOVER_ON: true }));
 
 beforeEach(resetBusinessData);
 

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { requirePagePermission } from "@/server/auth";
 import { businessToday } from "@/server/settings";
 import { handoverList, handoverTotals } from "@/server/services/cash-handover";
@@ -8,7 +9,7 @@ import { getT } from "@/i18n/server";
 import { msg } from "@/i18n/msg";
 import { cn } from "@/lib/utils";
 import { FinanceTabs, PeriodPicker, periodLabel, readPeriod } from "@/components/staff/finance/finance-nav";
-import { HANDOVER_STATUS_TEXT as STATUS_TEXT, HANDOVER_STATUS_TONE as TONE } from "@/lib/cash-handover";
+import { CASH_HANDOVER_ON, HANDOVER_STATUS_TEXT as STATUS_TEXT, HANDOVER_STATUS_TONE as TONE } from "@/lib/cash-handover";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getT();
@@ -24,6 +25,7 @@ const TABS = [
 /** Every cash handover: what waits for Finance, what was sent back, what was received (and any difference), what was refused. */
 export default async function HandoversPage({ searchParams }: PageProps<"/staff/accountant/handovers">) {
   await requirePagePermission("cash.handover.view", "cash.handover.review");
+  if (!CASH_HANDOVER_ON) notFound();
   const t = await getT();
   const sp = await searchParams;
   const today = await businessToday();

@@ -12,6 +12,7 @@ import { createPurchaseExpenseTx, storeReceipt } from "./expenses";
 import { accountOptions, resolveAccountTx } from "./payment-accounts";
 import type { Actor } from "./reservations";
 import { msg, msgf } from "@/i18n/msg";
+import { askScope, canAskFor } from "@/lib/stock-requests";
 
 /**
  * STOCK REQUESTS → PURCHASE → FINAL APPROVAL.
@@ -157,6 +158,8 @@ export async function createStockRequest(input: StockRequestInput, actor: StockA
     return await db.$transaction(async (tx) => {
       const dept = await tx.inventoryDepartment.findUnique({ where: { code: input.department } });
       if (!dept || !dept.isActive) throw new AppError("Choose the department it is for.", "VALIDATION", { department: msg("Required") });
+      // Reception asks for the hotel's general needs, the restaurant and the kitchen for theirs — never the other's (Finance and the managers may ask for any).
+      if (!canAskFor(askScope(actor.permissions), dept.code)) throw new AppError("Ask for your own department: Reception asks for the hotel's supplies; the restaurant and the kitchen ask for theirs.", "FORBIDDEN", { department: msg("Not your department") });
       const linked = await linkItemsTx(tx, dept.id, items);
       const number = await nextNumberTx(tx, "SR", now);
       const r = await tx.stockRequest.create({
@@ -402,6 +405,11 @@ export async function approvePurchase(id: string, opts: { categoryId?: string | 
     const bought = r.items.filter((i) => !i.removedAt && (i.purchasedQty ?? 0) > 0);
     const amount = bought.reduce((t, i) => t + (i.lineTotal ?? 0), 0);
     if (!bought.length || amount <= 0) throw new AppError("Nothing was bought on this purchase.", "VALIDATION");
+    // Finance gives the final approval on its own up to its limit; above it the Boss or the MD does (the same rule as the budget and a quotation).
+    const limit = settings.financeAuthorizationLimit;
+    if (limit != null && amount > limit && !actor.permissions?.has("dashboard.admin") && !actor.permissions?.has("dashboard.owner")) {
+      throw new AppError(msgf("TZS {amount} is above what Finance may approve alone (TZS {limit}) — the Boss or the MD approves it.", { amount: amount.toLocaleString("en-US"), limit: limit.toLocaleString("en-US") }), "FORBIDDEN");
+    }
     const ref = `${r.purchaseNumber} · ${r.number}`;
 
     // Stock in — each line once (sorted, so two approvals never deadlock).

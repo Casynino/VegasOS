@@ -1,4 +1,5 @@
 import "server-only";
+import { CASH_HANDOVER_ON } from "@/lib/cash-handover";
 import { db, type Tx } from "../db";
 import { audit, type AuditActor } from "../audit";
 import { AppError } from "../errors";
@@ -166,6 +167,7 @@ function explainDifference(expected: number, declared: number, note: string | nu
 
 /** Hand over the cash recorded since the last handover. Counted by the person, received later by Finance. */
 export async function submitHandover(input: { declared: number; note?: string | null }, actor: HandoverActor) {
+  if (!CASH_HANDOVER_ON) throw new AppError("Cash handover is switched off for now.", "CONFLICT");
   need(actor, "cash.handover.submit");
   const declared = amountOf(input.declared, "declared");
   return db.$transaction(async (tx) => {
@@ -204,6 +206,7 @@ export async function submitHandover(input: { declared: number; note?: string | 
 
 /** A handover sent back is corrected and sent again: the same period, the cash counted again from the records as they are now. */
 export async function resubmitHandover(id: string, input: { declared: number; note?: string | null }, actor: HandoverActor) {
+  if (!CASH_HANDOVER_ON) throw new AppError("Cash handover is switched off for now.", "CONFLICT");
   need(actor, "cash.handover.submit");
   const declared = amountOf(input.declared, "declared");
   return db.$transaction(async (tx) => {
@@ -244,6 +247,7 @@ function forReview(actor: HandoverActor) {
  * When the cash goes into a different cash account than the one it was recorded in, a transfer (never revenue) is posted.
  */
 export async function receiveHandover(id: string, input: { received: number; toAccountId?: string | null; note?: string | null }, actor: HandoverActor) {
+  if (!CASH_HANDOVER_ON) throw new AppError("Cash handover is switched off for now.", "CONFLICT");
   forReview(actor);
   const received = amountOf(input.received, "received");
   return db.$transaction(async (tx) => {
@@ -298,6 +302,7 @@ export async function receiveHandover(id: string, input: { received: number; toA
 
 /** Send a handover back to the person to correct and send again; nothing was received. */
 export async function returnHandover(id: string, reason: string, actor: HandoverActor) {
+  if (!CASH_HANDOVER_ON) throw new AppError("Cash handover is switched off for now.", "CONFLICT");
   forReview(actor);
   const why = reasonOf(reason, "what to correct");
   return db.$transaction(async (tx) => {
@@ -317,6 +322,7 @@ export async function returnHandover(id: string, reason: string, actor: Handover
  * person's latest handover can be refused, so no cash is ever left between two handovers — otherwise send it back.
  */
 export async function rejectHandover(id: string, reason: string, actor: HandoverActor) {
+  if (!CASH_HANDOVER_ON) throw new AppError("Cash handover is switched off for now.", "CONFLICT");
   forReview(actor);
   const why = reasonOf(reason, "why it is refused");
   return db.$transaction(async (tx) => {

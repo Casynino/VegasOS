@@ -33,7 +33,7 @@ export const PERMISSIONS = {
   "cash.handover.view": msg("See the cash handovers, who still holds cash and the differences (read-only)"),
   "cash.handover.review": msg("Receive cash handovers (Finance): confirm what was received, return one for correction, reject one, choose the cash account"),
   "cash.handover.discrepancy": msg("Accept a cash handover that is short or over, with the reason (Finance)"),
-  "procurement.manage": msg("Procurement (Accountant): get supplier quotations, propose a purchase, issue the order once Finance authorized it, record deliveries and attach supplier invoices — never approve or pay"),
+  "procurement.manage": msg("Procurement: get supplier quotations, propose a purchase, issue the order once its price is authorized, record deliveries and attach supplier invoices (Finance, and the Accountant who assists Finance — the Accountant never approves or pays)"),
   "purchases.authorize": msg("Authorize a purchase quotation above the approved budget (Finance; above Finance's limit, the Boss or the MD)"),
   "purchases.pay": msg("Verify a supplier invoice and record the payment to the supplier (Finance)"),
   "withdrawals.manage": msg("Withdraw funds: take money out of the hotel's nTZS balance (Boss and Admin)"),
@@ -225,6 +225,9 @@ const FINANCE: PermissionCode[] = [
   "dashboard.finance",
   "purchases.authorize",
   "purchases.pay",
+  // Finance organizes the hotel's purchasing (owner, 2026-10-13): quotations, orders, deliveries, invoices — and records what was bought and received.
+  "procurement.manage",
+  "inventory.receive",
   "reports.view",
   "reports.daily.manage",
   "payments.record",
