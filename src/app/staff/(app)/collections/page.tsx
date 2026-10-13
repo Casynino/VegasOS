@@ -10,6 +10,7 @@ import { isRestaurantDevice, needsOwnShift } from "@/lib/permissions";
 import { db } from "@/server/db";
 import { businessToday, getSettings } from "@/server/settings";
 import { ShiftPicker } from "@/components/staff/shift-picker";
+import { HandoverSection } from "../cash-handover/handover-section";
 import {
   ALL_SOURCES, collectionCounts, collectionRows, collectionTotals, collectors, NO_WAITER, onlineTotals, paidOnlineAwaitingCheckIn, SOURCE_LABEL, stillToCollect,
   type CollectionFilter, type CollectionRow, type MoneySource, type StillToCollect,
@@ -213,6 +214,8 @@ export default async function CollectionsPage({ searchParams }: PageProps<"/staf
   return (
     <div className="w-full space-y-4">
       <MobileMoneyAttention rows={attention} />
+      {/* The cash this person has not handed over yet — reception and the Restaurant Counter hand it to the Accountant */}
+      {can(user, "cash.handover.submit") && !supervisor && <HandoverSection userId={user.id} />}
       {/* Title and period */}
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">

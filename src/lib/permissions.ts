@@ -13,6 +13,7 @@ export const PERMISSIONS = {
   "dashboard.owner": msg("View the owner/boss business dashboard"),
   "dashboard.manager": msg("View the manager operations dashboard"),
   "dashboard.front_desk": msg("View the front-desk dashboard"),
+  "dashboard.accountant": msg("Accountant portal: the financial dashboard and the cash handovers waiting to be received"),
   "reports.view": msg("View management and financial reports"),
   "reports.daily.manage": msg("Regenerate and resend daily boss reports"),
 
@@ -27,6 +28,10 @@ export const PERMISSIONS = {
   "pricing.manage": msg("Set room prices and create promotions (Admin)"),
   "finance.view": msg("See the general ledger, money accounts, receivables and staff activity"),
   "finance.manage": msg("Record transfers, owner money and corrections; accept cash counts"),
+  "cash.handover.submit": msg("Hand over the cash you collected: count it and send it to the Accountant (reception and the Restaurant Counter)"),
+  "cash.handover.view": msg("See the cash handovers, who still holds cash and the differences (read-only)"),
+  "cash.handover.review": msg("Receive cash handovers (Accountant): confirm what was received, return one for correction, reject one, choose the cash account"),
+  "cash.handover.discrepancy": msg("Accept a cash handover that is short or over, with the reason (Accountant)"),
   "withdrawals.manage": msg("Withdraw funds: take money out of the hotel's nTZS balance (Boss and Admin)"),
   "withdrawals.reconcile": msg("Withdraw funds: settle by hand a withdrawal nTZS could not confirm"),
   "reservations.checkout_override": msg("Check a guest out with an unpaid balance (authorised override)"),
@@ -113,6 +118,7 @@ const RECEPTIONIST: PermissionCode[] = [
   "rooms.view",
   "rooms.status.update",
   "payments.record",
+  "cash.handover.submit",
   "invoices.view",
   "corporate.view",
   // Reception takes the guests' payments and sees what it collected (Collections). Income and Expenses,
@@ -142,12 +148,14 @@ const RECEPTIONIST: PermissionCode[] = [
  * suppliers, expense types, staff access, pricing, payment accounts and settings.
  */
 const MANAGER: PermissionCode[] = [
-  ...RECEPTIONIST,
+  // Managers watch the cash handovers (below); handing cash over is the front desk's and the Counter's.
+  ...RECEPTIONIST.filter((p) => p !== "cash.handover.submit"),
   "dashboard.manager",
   "reports.view",
   "reports.daily.manage",
   "finance.view",
   "ledger.view",
+  "cash.handover.view",
   "reservations.cancel",
   "reservations.confirm_unpaid",
   "reservations.discount_override",
@@ -188,11 +196,42 @@ const RESTAURANT: PermissionCode[] = ["restaurant.orders", "restaurant.serve", "
 /** Restaurant — Mpishi (cook): prepares food and drinks (accept, prepare, mark ready) and can take orders. No prices, payments or reports. */
 const KITCHEN: PermissionCode[] = ["kitchen.orders", "bar.orders", "inventory.view", "inventory.use", "inventory.request"];
 /** The shared Restaurant Counter account (one for the restaurant): the whole restaurant, and the official restaurant payments. Waiters say who they are with their ID for the service they do there. */
-const RESTAURANT_SCREEN: PermissionCode[] = ["restaurant.orders", "restaurant.serve", "restaurant.device", "kitchen.orders", "bar.orders", "revenue.record", "restaurant.payments.confirm", "guests.view"];
+const RESTAURANT_SCREEN: PermissionCode[] = ["restaurant.orders", "restaurant.serve", "restaurant.device", "kitchen.orders", "bar.orders", "revenue.record", "restaurant.payments.confirm", "cash.handover.submit", "guests.view"];
+
+/**
+ * Accountant — the hotel's finance controller: reads every payment, receives the cash the front desk and the Counter
+ * hand over, keeps the accounts, expenses, prices and discounts in order and reports on them. Never runs the front
+ * desk, the restaurant, the stores or the system's set-up: no check-in/out, no orders, no staff accounts, no settings,
+ * and no withdrawals from nTZS or regenerating the Boss's reports (the Boss and the MD keep those).
+ */
+const ACCOUNTANT: PermissionCode[] = [
+  "dashboard.accountant",
+  "reports.view",
+  "finance.view",
+  "finance.manage",
+  "ledger.view",
+  "cash.handover.view",
+  "cash.handover.review",
+  "cash.handover.discrepancy",
+  "payments.reverse",
+  "revenue.void",
+  "invoices.view",
+  "invoices.manage",
+  "corporate.view",
+  "corporate.manage",
+  "expenses.record",
+  "expenses.view_all",
+  "expenses.approve",
+  "expenses.void",
+  "pricing.manage",
+  // To follow a payment back to its booking, and to see who the customer is — read-only.
+  "reservations.view",
+  "guests.view",
+];
 
 /** The department each built-in role belongs to (staff accounts: choose the department, then the role). */
 export const ROLE_DEPARTMENT: Record<string, string> = {
-  ADMIN: msg("Management"), OWNER: msg("Management"), MANAGER: msg("Management"), RECEPTIONIST: msg("Front office"), RESTAURANT: msg("Restaurant"), KITCHEN: msg("Restaurant"), RESTAURANT_SCREEN: msg("Restaurant"), DRIVER: msg("Transport"),
+  ADMIN: msg("Management"), OWNER: msg("Management"), MANAGER: msg("Management"), ACCOUNTANT: msg("Finance"), RECEPTIONIST: msg("Front office"), RESTAURANT: msg("Restaurant"), KITCHEN: msg("Restaurant"), RESTAURANT_SCREEN: msg("Restaurant"), DRIVER: msg("Transport"),
 };
 
 export const DEFAULT_ROLES: Record<
@@ -213,6 +252,11 @@ export const DEFAULT_ROLES: Record<
     name: msg("Manager"),
     description: msg("Hotel operations authority: runs and supervises the hotel every day — monitors every department, makes operational decisions and steps in; staff do the routine work."),
     permissions: MANAGER,
+  },
+  ACCOUNTANT: {
+    name: msg("Accountant"),
+    description: msg("Finance controller: reviews every payment, receives the cash handed over by reception and the Restaurant Counter, keeps the accounts, expenses, prices and discounts in order and reports on them."),
+    permissions: ACCOUNTANT,
   },
   RECEPTIONIST: {
     name: msg("Receptionist"),
@@ -242,7 +286,7 @@ export const DEFAULT_ROLES: Record<
 };
 
 /** Codes that work without a shift: starting and closing it, its notes, one's own shifts and collections. */
-export const SHIFT_FREE_CODES: ReadonlySet<string> = new Set<PermissionCode>(["shifts.view", "shifts.work", "shifts.manage"]);
+export const SHIFT_FREE_CODES: ReadonlySet<string> = new Set<PermissionCode>(["shifts.view", "shifts.work", "shifts.manage", "cash.handover.submit"]);
 /**
  * A receptionist works under their own open shift (Open → Work → Close); managers, the MD and the
  * owner supervise without one. By permission, never by role name: whoever can work a shift but not

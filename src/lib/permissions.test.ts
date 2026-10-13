@@ -38,3 +38,48 @@ describe("manager and admin roles", () => {
     expect(admin.size).toBe(ALL_PERMISSIONS.length);
   });
 });
+
+/** The Accountant controls the money — and nothing else: no front desk, restaurant, stores, staff accounts, settings or withdrawals. */
+describe("accountant and cash handover", () => {
+  const accountant = new Set(DEFAULT_ROLES.ACCOUNTANT.permissions);
+  const reception = new Set(DEFAULT_ROLES.RECEPTIONIST.permissions);
+  const counter = new Set(DEFAULT_ROLES.RESTAURANT_SCREEN.permissions);
+  const waiter = new Set(DEFAULT_ROLES.RESTAURANT.permissions);
+  const manager = new Set(DEFAULT_ROLES.MANAGER.permissions);
+
+  it("the Accountant receives cash, keeps the accounts, expenses and prices, and reads every payment", () => {
+    for (const p of [
+      "dashboard.accountant", "cash.handover.view", "cash.handover.review", "cash.handover.discrepancy", "finance.view", "finance.manage", "ledger.view",
+      "payments.reverse", "expenses.record", "expenses.view_all", "expenses.approve", "pricing.manage", "reports.view",
+    ] as const) expect(accountant.has(p), p).toBe(true);
+  });
+
+  it("the Accountant never runs the hotel, sets the system up, withdraws from nTZS or regenerates the Boss's reports", () => {
+    for (const p of [
+      "reservations.create", "reservations.check_in", "reservations.check_out", "restaurant.orders", "restaurant.serve", "kitchen.orders", "inventory.manage", "inventory.approve",
+      "users.manage", "settings.manage", "restaurant.menu", "rooms.manage", "website.manage", "withdrawals.manage", "withdrawals.reconcile", "reports.daily.manage", "payments.record", "revenue.record",
+    ] as const) expect(accountant.has(p), p).toBe(false);
+  });
+
+  it("reception and the Restaurant Counter hand cash over but never receive it; waiters have no part in it; the Manager only watches", () => {
+    for (const side of [reception, counter]) {
+      expect(side.has("cash.handover.submit")).toBe(true);
+      for (const p of ["cash.handover.review", "cash.handover.discrepancy", "cash.handover.view", "dashboard.accountant"] as const) expect(side.has(p), p).toBe(false);
+    }
+    for (const p of ["cash.handover.submit", "cash.handover.review", "cash.handover.view"] as const) expect(waiter.has(p), p).toBe(false);
+    expect(manager.has("cash.handover.view")).toBe(true);
+    for (const p of ["cash.handover.review", "cash.handover.discrepancy", "cash.handover.submit"] as const) expect(manager.has(p), p).toBe(false);
+  });
+
+  it("the Boss and the MD hold every cash handover right", () => {
+    for (const role of ["OWNER", "ADMIN"] as const) {
+      const all = new Set(DEFAULT_ROLES[role].permissions);
+      for (const p of ["cash.handover.submit", "cash.handover.view", "cash.handover.review", "cash.handover.discrepancy", "dashboard.accountant"] as const) expect(all.has(p), `${role} ${p}`).toBe(true);
+    }
+  });
+
+  it("a receptionist can hand cash over after their shift has ended (the right works without a shift)", async () => {
+    const { SHIFT_FREE_CODES } = await import("./permissions");
+    expect(SHIFT_FREE_CODES.has("cash.handover.submit")).toBe(true);
+  });
+});

@@ -34,12 +34,16 @@ export const NAV: NavSection[] = [
     title: msg("Finance"), icon: "ReceiptText", ordered: true,
     // The owner's order: (the overview), income, expenses, then the accounts — small to big after that.
     items: [
+      // The Accountant's own desk (their Home); the Boss and the MD open it from here.
+      { href: "/staff/accountant", label: msg("Accountant desk"), icon: "Calculator", anyOf: ["dashboard.accountant"] },
       { href: "/staff/finance", label: msg("Overview"), icon: "Wallet", anyOf: ["finance.view"] },
       // Income and Expenses are managers' and the MD's; reception sees what it collected in Collections (owner, 2026-10-04).
       { href: "/staff/payments", label: msg("Income"), icon: "Banknote", anyOf: ["reports.view", "finance.view"] },
       { href: "/staff/expenses", label: msg("Expenses"), icon: "Receipt", anyOf: ["expenses.record", "expenses.view_all"] },
       // The money each person collected from customers — their own ("My collections"); managers pick anyone.
       { href: "/staff/collections", label: msg("Collections"), icon: "Coins", anyOf: ["revenue.record", "payments.record", "dashboard.manager", "dashboard.owner", "dashboard.admin"] },
+      // The cash reception and the Restaurant Counter hand to the Accountant (the Accountant receives; managers watch).
+      { href: "/staff/accountant/handovers", label: msg("Cash handovers"), icon: "HandCoins", anyOf: ["cash.handover.view", "cash.handover.review"] },
       { href: "/staff/finance/accounts", label: msg("Accounts"), icon: "Landmark", anyOf: ["ledger.view", "finance.view"] },
       // Invoices are not in the sidebar (the owner's choice) — they open from a booking, a group or a company.
       { href: "/staff/corporate", label: msg("Companies"), icon: "Building2", anyOf: ["corporate.view"] },

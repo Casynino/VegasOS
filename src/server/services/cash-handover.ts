@@ -252,7 +252,7 @@ export async function receiveHandover(id: string, input: { received: number; toA
     if (h.submittedById === actor.userId) throw new AppError("You cannot receive your own handover.", "FORBIDDEN");
     if (h.status !== "SUBMITTED") throw new AppError("This handover is not waiting to be received.");
     const difference = received - h.expected;
-    let note = (input.note ?? "").trim() || null;
+    const note = (input.note ?? "").trim() || null;
     if (difference !== 0) {
       need(actor, "cash.handover.discrepancy");
       const amount = Math.abs(difference).toLocaleString("en-US");

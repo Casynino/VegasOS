@@ -7,6 +7,8 @@
 export function staffHome(permissions: ReadonlySet<string>): string {
   if (permissions.has("dashboard.admin")) return "/admin/dashboard";
   if (permissions.has("dashboard.manager") || permissions.has("dashboard.owner")) return "/manager/dashboard";
+  // The Accountant's finance desk (the Boss and the MD land on their own homes above).
+  if (permissions.has("dashboard.accountant")) return "/staff/accountant";
   if (permissions.has("dashboard.front_desk")) return "/reception/dashboard";
   // Waiters, the shared restaurant screen and the Mpishi: the Live board is Home (a waiter's shift is on it).
   if (permissions.has("restaurant.shift")) return "/staff/restaurant";

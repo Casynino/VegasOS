@@ -37,9 +37,16 @@ export async function FinanceTabs({ active, limited, actions }: {
 }) {
   const t = await getT();
   // Withdraw funds sits beside Online payments — only for those who may withdraw (the page checks again by itself).
-  const withdraw = !limited && can(await getCurrentUser(), "withdrawals.manage");
+  const me = await getCurrentUser();
+  const withdraw = !limited && can(me, "withdrawals.manage");
+  const handovers = !limited && (can(me, "cash.handover.view") || can(me, "cash.handover.review"));
   const tabs: readonly { href: string; label: string }[] = limited ? LIMITED_TABS
-    : withdraw ? TABS.flatMap<{ href: string; label: string }>((tab) => (tab.href === "/staff/finance/online" ? [tab, { href: "/staff/finance/withdraw", label: msg("Withdraw funds") }] : [tab])) : TABS;
+    : TABS.flatMap<{ href: string; label: string }>((tab) => [
+      // Cash handovers sit beside Accounts; Withdraw funds beside Online payments — only for those who may use them (each page checks again by itself).
+      ...(tab.href === "/staff/finance/accounts" && handovers ? [{ href: "/staff/accountant/handovers", label: msg("Cash handovers") }] : []),
+      tab,
+      ...(tab.href === "/staff/finance/online" && withdraw ? [{ href: "/staff/finance/withdraw", label: msg("Withdraw funds") }] : []),
+    ]);
   const bar = (
     <nav aria-label={t("Finance")} className="-mx-1 min-w-0 flex-1 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none]">
       {/* As wide as the cards below; the tabs share the width (and scroll on a phone) */}
