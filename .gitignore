@@ -46,3 +46,9 @@ next-env.d.ts
 
 # safety copies written by scripts/launch-reset.mjs — never in git
 /backups/
+
+# guide books: the pictures and the finished PDFs stay on this computer (too big for the repository)
+/guides/shots/
+/guides/pdf/
+/guides/html/
+/guides/tools/tokens.json

@@ -1,6 +1,7 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "vegas-dev", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev"], "port": 3000 }
+    { "name": "vegas-dev", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev"], "port": 3000 },
+    { "name": "vegas-guides", "runtimeExecutable": "node", "runtimeArgs": ["guides/tools/local.mjs", "dev"], "port": 3100 }
   ]
 }
