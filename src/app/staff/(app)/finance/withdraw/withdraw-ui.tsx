@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowLeft, BanknoteArrowUp, Check, CircleCheck, CircleX, Clock, Landmark, Loader2, RefreshCw, Send, Smartphone, TriangleAlert } from "lucide-react";
+import { ArrowLeft, BanknoteArrowUp, Check, CircleCheck, CircleX, Clock, Landmark, Loader2, RefreshCw, Send, Smartphone, Store, TriangleAlert } from "lucide-react";
 import { useT } from "@/i18n/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +15,7 @@ import { FieldError } from "@/components/staff/action-form";
 import { formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
-  WITHDRAW_BANKS, WITHDRAW_MIN_TZS, WITHDRAWAL_EVENTS, WITHDRAWAL_NOTES, WITHDRAWAL_STATUS, withdrawalProblem, type WithdrawalStatusCode, type WithdrawalTone,
+  LIPA_BELOW_TZS, LIPA_MIN_TZS, WITHDRAW_BANKS, WITHDRAW_MIN_TZS, WITHDRAWAL_EVENTS, WITHDRAWAL_NOTES, WITHDRAWAL_STATUS, withdrawalProblem, type WithdrawalStatusCode, type WithdrawalTone,
 } from "@/lib/withdrawals";
 import type { WithdrawalHistoryLine, WithdrawalPrice, WithdrawalView } from "@/server/services/withdrawals";
 import {
@@ -62,7 +62,7 @@ function Line({ label, sub, value, strong }: { label: React.ReactNode; sub?: Rea
 
 // ───────────────────────── Withdraw: the form → the check → what nTZS said ─────────────────────────
 
-type Destination = { id: string; label: string; name: string | null; kind: "PHONE" | "BANK" };
+type Destination = { id: string; label: string; name: string | null; kind: "PHONE" | "BANK" | "LIPA" };
 type Step = { at: "form" } | { at: "check"; price: WithdrawalPrice } | { at: "result"; view: WithdrawalView } | { at: "stopped"; message: string };
 
 /**
@@ -86,6 +86,7 @@ export function WithdrawButton({ disabled, accounts, destinations, lastBooks, ti
   const [amount, setAmount] = useState("");
   const [way, setWay] = useState<string>(destinations[0]?.id ?? "PHONE");
   const [phone, setPhone] = useState("");
+  const [lipa, setLipa] = useState("");
   const [bank, setBank] = useState("");
   const [account, setAccount] = useState("");
   const [books, setBooks] = useState(lastBooks && (lastBooks === "owner" || accounts.some((a) => a.id === lastBooks)) ? lastBooks : "");
@@ -118,15 +119,18 @@ export function WithdrawButton({ disabled, accounts, destinations, lastBooks, ti
   function price() {
     const e: Record<string, string> = {};
     const n = Number(amount);
+    const least = way === "LIPA" ? LIPA_MIN_TZS : WITHDRAW_MIN_TZS;
     if (!n) e.amount = t("Enter the amount.");
-    else if (n < WITHDRAW_MIN_TZS) e.amount = t("The least is {amount}.", { amount: formatTZS(WITHDRAW_MIN_TZS) });
+    else if (n < least) e.amount = t("The least is {amount}.", { amount: formatTZS(least) });
+    else if (way === "LIPA" && n >= LIPA_BELOW_TZS) e.amount = t("A Lipa number takes less than {amount} at a time, fee included.", { amount: formatTZS(LIPA_BELOW_TZS) });
     if (way === "PHONE" && !phone.trim()) e.phone = t("Enter the phone number.");
+    if (way === "LIPA" && !lipa.trim()) e.payNumber = t("Enter the Lipa number.");
     if (way === "BANK" && !bank) e.bankCode = t("Choose the bank.");
     if (way === "BANK" && !account.trim()) e.accountNumber = t("Enter the account number.");
     if (!books) e.toAccountId = t("Choose one.");
     setErrors(e); setProblem(null);
     if (Object.keys(e).length) return;
-    const destination = way === "PHONE" ? { kind: "PHONE" as const, phone } : way === "BANK" ? { kind: "BANK" as const, bankCode: bank, accountNumber: account } : { kind: "AGAIN" as const, withdrawalId: way };
+    const destination = way === "PHONE" ? { kind: "PHONE" as const, phone } : way === "LIPA" ? { kind: "LIPA" as const, payNumber: lipa } : way === "BANK" ? { kind: "BANK" as const, bankCode: bank, accountNumber: account } : { kind: "AGAIN" as const, withdrawalId: way };
     start(async () => {
       try {
         const r = await priceWithdrawalAction({ amount: n, destination, toAccountId: books === "owner" ? null : books, note: note.trim() || null, clientKey: key });
@@ -175,7 +179,7 @@ export function WithdrawButton({ disabled, accounts, destinations, lastBooks, ti
             <>
               <DialogHeader icon={<BanknoteArrowUp />} eyebrow={t("Finance")} tone="emerald">
                 <DialogTitle>{t("Withdraw funds")}</DialogTitle>
-                <DialogDescription>{t("From the hotel's nTZS balance, to a phone or a bank account.")}</DialogDescription>
+                <DialogDescription>{t("From the hotel's nTZS balance, to a phone, a Lipa number or a bank account.")}</DialogDescription>
               </DialogHeader>
               <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); price(); }}>
                 <div className="space-y-1.5">
@@ -198,15 +202,15 @@ export function WithdrawButton({ disabled, accounts, destinations, lastBooks, ti
                     {destinations.map((d) => (
                       <button key={d.id} type="button" onClick={() => setWay(d.id)} aria-pressed={way === d.id}
                         className={cn("flex items-center gap-2.5 rounded-xl border px-3 py-2 text-left text-sm", way === d.id ? "border-foreground bg-foreground/[0.04]" : "border-border hover:bg-muted")}>
-                        {d.kind === "BANK" ? <Landmark className="size-4 shrink-0 text-muted-foreground" /> : <Smartphone className="size-4 shrink-0 text-muted-foreground" />}
+                        {d.kind === "BANK" ? <Landmark className="size-4 shrink-0 text-muted-foreground" /> : d.kind === "LIPA" ? <Store className="size-4 shrink-0 text-muted-foreground" /> : <Smartphone className="size-4 shrink-0 text-muted-foreground" />}
                         <span className="min-w-0 flex-1"><span className="block truncate font-medium">{d.name ?? d.label}</span>{d.name && <span className="block text-xs text-muted-foreground tabular-nums">{d.label}</span>}</span>
                         {way === d.id && <Check className="size-4 shrink-0" />}
                       </button>
                     ))}
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {([["PHONE", destinations.length ? t("Another phone number") : t("Phone number"), Smartphone], ["BANK", t("Bank account"), Landmark]] as const).map(([k, label, Icon]) => (
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {([["PHONE", destinations.length ? t("Another phone number") : t("Phone number"), Smartphone], ["LIPA", t("Lipa number"), Store], ["BANK", t("Bank account"), Landmark]] as const).map(([k, label, Icon]) => (
                         <button key={k} type="button" onClick={() => setWay(k)} aria-pressed={way === k}
-                          className={cn("inline-flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2 text-xs font-medium", way === k ? "border-foreground bg-foreground text-background" : "border-border hover:bg-muted")}>
+                          className={cn("inline-flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2 text-center text-xs font-medium leading-tight", way === k ? "border-foreground bg-foreground text-background" : "border-border hover:bg-muted")}>
                           <Icon className="size-3.5" />{label}
                         </button>
                       ))}
@@ -218,6 +222,13 @@ export function WithdrawButton({ disabled, accounts, destinations, lastBooks, ti
                       <Input id="wd-phone" type="tel" inputMode="tel" autoComplete="off" aria-label={t("Phone number")} value={phone} onChange={(e) => setPhone(e.target.value.slice(0, 20))} placeholder="07XX XXX XXX" className="h-10 tabular-nums" />
                       <p className="text-xs text-muted-foreground">{t("A Tanzanian mobile-money number.")}</p>
                       <FieldError message={errors.phone} />
+                    </div>
+                  )}
+                  {way === "LIPA" && (
+                    <div className="space-y-1.5 pt-1">
+                      <Input id="wd-lipa" inputMode="numeric" autoComplete="off" aria-label={t("Lipa number")} value={lipa} onChange={(e) => setLipa(e.target.value.replace(/[^\d\s]/g, "").slice(0, 16))} placeholder={t("Lipa number")} className="h-10 tabular-nums" />
+                      <p className="text-xs text-muted-foreground">{t("A Lipa Namba (a till). nTZS finds its network by itself. It takes less than {amount} at a time, fee included.", { amount: formatTZS(LIPA_BELOW_TZS) })}</p>
+                      <FieldError message={errors.payNumber} />
                     </div>
                   )}
                   {way === "BANK" && (
@@ -309,7 +320,7 @@ export function WithdrawButton({ disabled, accounts, destinations, lastBooks, ti
             const v = step.view;
             const s = WITHDRAWAL_STATUS[v.status];
             const Icon = TONE_ICON[s.tone];
-            const why = v.status === "REJECTED" || v.status === "CANCELLED" ? withdrawalProblem(v.failureCode) : null;
+            const why = v.status === "REJECTED" || v.status === "CANCELLED" ? withdrawalProblem(v.failureCode, v.destinationKind) : null;
             return (
               <>
                 <DialogHeader icon={<Icon />} eyebrow={v.number ?? t("Withdrawal")} tone={TONE[s.tone].dialog}>
@@ -421,7 +432,7 @@ export function WithdrawalDetails({ id, label, timezone, className }: { id: stri
   const s = v ? WITHDRAWAL_STATUS[v.status] : null;
   const moved = !!v && !["REJECTED", "CANCELLED", "QUOTED"].includes(v.status);
   const waitUntil = v?.checkAfter && detail && new Date(v.checkAfter).getTime() > detail.at ? v.checkAfter : null;
-  const why = v && v.failureCode && v.status !== "COMPLETED" ? withdrawalProblem(v.failureCode) : null;
+  const why = v && v.failureCode && v.status !== "COMPLETED" ? withdrawalProblem(v.failureCode, v.destinationKind) : null;
   // A payout nTZS turned back: the line under the state already says it — only nTZS's own words are added.
   const said = v?.status === "FAILED" && v.failureCode === "payout_failed";
   const when = (d: Date | null | undefined) => (d ? t.dateTime(d, timezone) : "—");

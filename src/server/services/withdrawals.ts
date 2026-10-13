@@ -14,7 +14,7 @@ import {
 import type { Prisma, Withdrawal } from "@/generated/prisma/client";
 import { msg, msgf } from "@/i18n/msg";
 import {
-  WITHDRAW_BANKS, WITHDRAW_MAX_TZS, WITHDRAW_MIN_TZS, WITHDRAWAL_FILTERS, WITHDRAWAL_IN_FLIGHT, WITHDRAWAL_LISTED, WITHDRAWAL_NOTES as N, WITHDRAWAL_SETUP_CODES,
+  LIPA_BELOW_TZS, LIPA_MIN_TZS, WITHDRAW_BANKS, WITHDRAW_MAX_TZS, WITHDRAW_MIN_TZS, WITHDRAWAL_FILTERS, WITHDRAWAL_IN_FLIGHT, WITHDRAWAL_LISTED, WITHDRAWAL_NOTES as N, WITHDRAWAL_SETUP_CODES,
   WITHDRAWAL_UNSETTLED, bankName, canSettleByHand, maskedDestination, withdrawalProblem, type WithdrawalStatusCode,
 } from "@/lib/withdrawals";
 
@@ -53,11 +53,23 @@ const fmt = (n: number) => `TZS ${n.toLocaleString("en-US")}`;
 const cut = (s: string | null | undefined, max: number) => (s ? s.slice(0, max) : null);
 /** nTZS's own code for a refusal (a 401 has none: "unauthorized"); never free text. */
 const codeOf = (res: { status?: number; code?: string }) => (res.status === 401 ? "unauthorized" : res.code && /^[a-z0-9_]{2,60}$/.test(res.code) ? res.code : `http_${res.status ?? 0}`);
+// A Lipa number is stored in the account-number column, and its network (only when nTZS asked for one) in the bank-code column —
+// no new columns for the same idea: "where the money goes".
 const destinationOf = (w: Pick<Withdrawal, "destinationKind" | "phone" | "bankCode" | "accountNumber">): NtzsDestination =>
-  w.destinationKind === "BANK" ? { kind: "BANK", bankCode: w.bankCode ?? "", accountNumber: w.accountNumber ?? "" } : { kind: "PHONE", phone: w.phone ?? "" };
+  w.destinationKind === "BANK" ? { kind: "BANK", bankCode: w.bankCode ?? "", accountNumber: w.accountNumber ?? "" }
+    : w.destinationKind === "LIPA" ? { kind: "LIPA", payNumber: w.accountNumber ?? "", network: w.bankCode || null }
+    : { kind: "PHONE", phone: w.phone ?? "" };
+/** The record's destination columns for a destination. */
+const columnsOf = (d: NtzsDestination) => ({
+  destinationKind: d.kind,
+  phone: d.kind === "PHONE" ? d.phone : null,
+  bankCode: d.kind === "BANK" ? d.bankCode : d.kind === "LIPA" ? d.network ?? null : null,
+  accountNumber: d.kind === "BANK" ? d.accountNumber : d.kind === "LIPA" ? d.payNumber : null,
+});
+const kindOf = (k: string): "PHONE" | "BANK" | "LIPA" => (k === "BANK" ? "BANK" : k === "LIPA" ? "LIPA" : "PHONE");
 /** The whole number — only for the person confirming their own request (every other screen shows it masked). */
 const fullDestination = (w: Pick<Withdrawal, "destinationKind" | "phone" | "bankCode" | "accountNumber">) =>
-  w.destinationKind === "BANK" ? `${bankName(w.bankCode)} · ${w.accountNumber ?? ""}` : w.phone ? `0${w.phone.slice(3, 6)} ${w.phone.slice(6, 9)} ${w.phone.slice(9)}` : "";
+  w.destinationKind === "BANK" ? `${bankName(w.bankCode)} · ${w.accountNumber ?? ""}` : w.destinationKind === "LIPA" ? `Lipa · ${w.accountNumber ?? ""}` : w.phone ? `0${w.phone.slice(3, 6)} ${w.phone.slice(6, 9)} ${w.phone.slice(9)}` : "";
 
 function mustManage(actor: WithdrawalActor) {
   if (!actor.permissions.has("withdrawals.manage")) throw new AppError(msg("Only the Boss or the Admin can withdraw funds."), "FORBIDDEN");
@@ -241,7 +253,7 @@ async function afterSend(row: Withdrawal, res: NtzsResult<NtzsWithdrawal>, repla
   if (res.code === "duplicate_withdrawal") {
     // nTZS already has this request (our key): read it back when nTZS names it, else it is simply on its way.
     const named = typeof res.details?.withdrawalId === "string" ? res.details.withdrawalId : null;
-    const got = named ? await getNtzsWithdrawal(named) : null;
+    const got = named ? await getNtzsWithdrawal(named, row.destinationKind) : null;
     const same = got?.ok && (!got.data.externalId || got.data.externalId === id) ? got.data : null;
     return applyProviderState(id, same ?? acceptedOnly(null), replay ? "check" : "answer", actor, now);
   }
@@ -272,7 +284,7 @@ async function afterSend(row: Withdrawal, res: NtzsResult<NtzsWithdrawal>, repla
 export interface PriceInput {
   /** What the recipient gets, whole TZS. */
   amount: number;
-  destination: { kind: "PHONE"; phone: string } | { kind: "BANK"; bankCode: string; accountNumber: string } | { kind: "AGAIN"; withdrawalId: string };
+  destination: { kind: "PHONE"; phone: string } | { kind: "BANK"; bankCode: string; accountNumber: string } | { kind: "LIPA"; payNumber: string } | { kind: "AGAIN"; withdrawalId: string };
   /** In the hotel's books: the hotel account the money goes to; none = the owner takes it out. */
   toAccountId: string | null;
   note?: string | null;
@@ -299,6 +311,11 @@ async function resolveDestination(input: PriceInput["destination"]): Promise<Ntz
     if (!phone) throw new AppError(msg("That phone number is not a Tanzanian mobile-money number."), "VALIDATION", { phone: msg("Check the number") });
     return { kind: "PHONE", phone };
   }
+  if (input.kind === "LIPA") {
+    const payNumber = (input.payNumber ?? "").replace(/[\s-]/g, "");
+    if (!/^\d{4,12}$/.test(payNumber)) throw new AppError(msg("Enter the Lipa number (digits only)."), "VALIDATION", { payNumber: msg("Check the number") });
+    return { kind: "LIPA", payNumber };
+  }
   const bankCode = WITHDRAW_BANKS.find((b) => b.code === input.bankCode)?.code;
   if (!bankCode) throw new AppError(msg("Choose the bank."), "VALIDATION", { bankCode: msg("Required") });
   const accountNumber = (input.accountNumber ?? "").replace(/[\s-]/g, "");
@@ -313,9 +330,14 @@ async function resolveDestination(input: PriceInput["destination"]): Promise<Ntz
 export async function priceWithdrawal(input: PriceInput, actor: WithdrawalActor, now = new Date()): Promise<WithdrawalPrice> {
   mustManage(actor);
   mustBeOn();
-  if (!Number.isInteger(input.amount) || input.amount < WITHDRAW_MIN_TZS) throw new AppError(msgf("The least nTZS pays out is {amount}.", { amount: fmt(WITHDRAW_MIN_TZS) }), "VALIDATION", { amount: msg("Too small") });
-  if (input.amount > WITHDRAW_MAX_TZS) throw new AppError(msg("This is more than nTZS pays out in one withdrawal — use a smaller amount."), "VALIDATION", { amount: msg("Too large") });
+  if (!Number.isInteger(input.amount)) throw new AppError(msgf("The least nTZS pays out is {amount}.", { amount: fmt(WITHDRAW_MIN_TZS) }), "VALIDATION", { amount: msg("Too small") });
   const destination = await resolveDestination(input.destination);
+  // A Lipa number has its own least (TZS 500) and its own limit (under TZS 1,000,000, the fee included).
+  const least = destination.kind === "LIPA" ? LIPA_MIN_TZS : WITHDRAW_MIN_TZS;
+  if (input.amount < least) throw new AppError(msgf("The least nTZS pays out is {amount}.", { amount: fmt(least) }), "VALIDATION", { amount: msg("Too small") });
+  if (destination.kind === "LIPA" ? input.amount >= LIPA_BELOW_TZS : input.amount > WITHDRAW_MAX_TZS) {
+    throw new AppError(withdrawalProblem("amount_too_large", destination.kind)!, "VALIDATION", { amount: msg("Too large") });
+  }
   let toAccountId: string | null = null;
   if (input.toAccountId) {
     const account = await db.moneyAccount.findUnique({ where: { id: input.toAccountId }, select: { id: true, code: true, isActive: true } });
@@ -335,8 +357,7 @@ export async function priceWithdrawal(input: PriceInput, actor: WithdrawalActor,
 
   const res = await quoteNtzsWithdrawal({ amountTzs: input.amount, destination });
   const base = {
-    amount: input.amount, destinationKind: destination.kind, phone: destination.kind === "PHONE" ? destination.phone : null,
-    bankCode: destination.kind === "BANK" ? destination.bankCode : null, accountNumber: destination.kind === "BANK" ? destination.accountNumber : null,
+    amount: input.amount, ...columnsOf(destination),
     toAccountId, note: cut(input.note?.trim(), 300), requestedById: actor.userId, livemode: ntzsLive(),
     businessDate: toDbDate(businessDateOf(now, businessDayConfig(await getSettings()))),
   } satisfies Prisma.WithdrawalUncheckedCreateInput;
@@ -353,12 +374,17 @@ export async function priceWithdrawal(input: PriceInput, actor: WithdrawalActor,
       await db.withdrawal.create({ data: { ...base, status: "CANCELLED", failureCode: code, failureReason: cut(res.error, 300), availableTzs: code === "insufficient_balance" ? said : null } });
     }
     if (code === "insufficient_balance") throw notEnough(said);
-    throw new AppError(withdrawalProblem(code) ?? msgf("nTZS refused this request ({code}).", { code }), WITHDRAWAL_SETUP_CODES.includes(code) ? "UNAVAILABLE" : "VALIDATION");
+    throw new AppError(withdrawalProblem(code, destination.kind) ?? msgf("nTZS refused this request ({code}).", { code }), WITHDRAWAL_SETUP_CODES.includes(code) ? "UNAVAILABLE" : "VALIDATION");
   }
   const q = res.data;
   if (!q.quoteId || q.sufficient === false) {
     await db.withdrawal.create({ data: { ...base, status: "CANCELLED", failureCode: "insufficient_balance", availableTzs: q.availableTzs } });
     throw notEnough(q.availableTzs);
+  }
+  // A Lipa number takes less than TZS 1,000,000 with the fee: nTZS would refuse the send, so say it now (nothing is kept to confirm).
+  if (destination.kind === "LIPA" && q.debitTzs !== null && q.debitTzs >= LIPA_BELOW_TZS) {
+    await db.withdrawal.create({ data: { ...base, status: "CANCELLED", failureCode: "amount_too_large", availableTzs: q.availableTzs } });
+    throw new AppError(withdrawalProblem("amount_too_large", "LIPA")!, "VALIDATION", { amount: msg("Too large") });
   }
   try {
     const row = await db.$transaction(async (tx) => {
@@ -464,7 +490,7 @@ export async function checkWithdrawal(id: string, actor: WithdrawalActor, now = 
   if (!row) throw new AppError(msg("That withdrawal was not found."), "NOT_FOUND");
   const busy = new AppError(msg("nTZS could not be asked just now. Try again in a moment."), "UNAVAILABLE");
   if (row.providerId) {
-    const res = await getNtzsWithdrawal(row.providerId);
+    const res = await getNtzsWithdrawal(row.providerId, row.destinationKind);
     if (!res.ok) { await db.withdrawal.update({ where: { id }, data: { lastCheckedAt: now } }); throw busy; }
     await applyProviderState(id, res.data, "check", actor, now);
     await audit(db, actor, { action: "withdrawal.checked", entityType: "Withdrawal", entityId: id, after: { number: row.number, answer: withdrawalStateOf(res.data) } });
@@ -550,7 +576,7 @@ export async function handleWithdrawalWebhook(data: unknown, now = new Date()): 
   // A test-mode message can never settle a real withdrawal.
   if (hook.livemode === false && row.livemode) return { found: true, id: row.id, status: row.status, ignored: "test-mode event for a live withdrawal" };
   const providerId = row.providerId ?? (hook.id || null);
-  const asked = providerId ? await getNtzsWithdrawal(providerId) : null;
+  const asked = providerId ? await getNtzsWithdrawal(providerId, row.destinationKind) : null;
   const same = asked?.ok && (!asked.data.externalId || asked.data.externalId === row.id) ? asked.data : null;
   const after = await applyProviderState(row.id, same ? newest(same, hook) : hook, "webhook", SYSTEM, now);
   return { found: true, id: row.id, status: after?.status ?? row.status };
@@ -570,7 +596,7 @@ export async function sweepWithdrawals(now = new Date(), deadline = Date.now() +
   const slow = await db.withdrawal.findMany({
     where: {
       status: "PROCESSING",
-      OR: [{ destinationKind: "PHONE", submittedAt: { lt: new Date(now.getTime() - 60 * MIN) } }, { submittedAt: { lt: new Date(now.getTime() - 24 * 60 * MIN) } }],
+      OR: [{ destinationKind: { in: ["PHONE", "LIPA"] }, submittedAt: { lt: new Date(now.getTime() - 60 * MIN) } }, { submittedAt: { lt: new Date(now.getTime() - 24 * 60 * MIN) } }],
       AND: [{ OR: [{ attentionNote: null }, { NOT: { attentionNote: { contains: N.slow } } }] }],
     },
     select: { id: true },
@@ -592,7 +618,7 @@ export async function sweepWithdrawals(now = new Date(), deadline = Date.now() +
     if (Date.now() > deadline) break;
     // After a day, ask every half hour only.
     if (row.submittedAt && row.lastCheckedAt && now.getTime() - row.submittedAt.getTime() > 24 * 60 * MIN && now.getTime() - row.lastCheckedAt.getTime() < 30 * MIN) continue;
-    const res = await getNtzsWithdrawal(row.providerId!);
+    const res = await getNtzsWithdrawal(row.providerId!, row.destinationKind);
     if (res.ok && (!res.data.externalId || res.data.externalId === row.id)) await applyProviderState(row.id, res.data, "sweep", SYSTEM, now).catch((e) => console.error("[withdrawals] sweep", row.id, e));
     else await db.withdrawal.update({ where: { id: row.id }, data: { lastCheckedAt: now } }).catch(() => null);
   }
@@ -659,8 +685,7 @@ export async function checkNtzsBalance(actor: WithdrawalActor, now = new Date(),
   if (available === null) throw new AppError(msg("nTZS did not say the balance this time."), "UNAVAILABLE");
   await db.withdrawal.create({
     data: {
-      status: "CANCELLED", failureCode: "balance_check", amount: WITHDRAW_MIN_TZS, destinationKind: destination.kind, phone: destination.kind === "PHONE" ? destination.phone : null,
-      bankCode: destination.kind === "BANK" ? destination.bankCode : null, accountNumber: destination.kind === "BANK" ? destination.accountNumber : null,
+      status: "CANCELLED", failureCode: "balance_check", amount: WITHDRAW_MIN_TZS, ...columnsOf(destination),
       availableTzs: available, requestedById: actor.userId, livemode: ntzsLive(), businessDate: toDbDate(businessDateOf(now, businessDayConfig(await getSettings()))),
     },
   });
@@ -687,7 +712,7 @@ export interface WithdrawalView {
   /** What nTZS says arrived. */
   receivedTzs: number | null;
   destination: string;
-  destinationKind: "PHONE" | "BANK";
+  destinationKind: "PHONE" | "BANK" | "LIPA";
   recipientName: string | null;
   needsApproval: boolean;
   quoteExpiresAt: Date | null;
@@ -728,7 +753,7 @@ function toView(row: Row, now: Date, actor: WithdrawalActor): WithdrawalView {
   const inFlight = WITHDRAWAL_IN_FLIGHT.includes(status);
   return {
     id: row.id, number: row.number, status, amount: row.amount, feeTzs: row.feeTzs, feeConfirmed: row.feeConfirmed, debitedTzs: row.debitedTzs, receivedTzs: row.receivedTzs,
-    destination: maskedDestination(row), destinationKind: row.destinationKind === "BANK" ? "BANK" : "PHONE", recipientName: row.recipientName,
+    destination: maskedDestination(row), destinationKind: kindOf(row.destinationKind), recipientName: row.recipientName,
     needsApproval: row.needsApproval, quoteExpiresAt: row.quoteExpiresAt, providerId: row.providerId, payoutReference: row.payoutReference,
     requestedBy: row.requestedBy.fullName, createdAt: row.createdAt, submittedAt: row.submittedAt, completedAt: row.completedAt, failedAt: row.failedAt, lastCheckedAt: row.lastCheckedAt,
     businessDate: fromDbDate(row.businessDate), failureCode: row.failureCode, failureReason: row.failureCode === "payout_failed" ? row.failureReason : null,
@@ -771,7 +796,7 @@ export interface WithdrawForm {
   setupProblem: string | null;
   /** A withdrawal nobody can confirm yet — no new one until it is settled. */
   unsettled: { id: string; number: string | null } | null;
-  destinations: { id: string; label: string; name: string | null; kind: "PHONE" | "BANK" }[];
+  destinations: { id: string; label: string; name: string | null; kind: "PHONE" | "BANK" | "LIPA" }[];
   accounts: { id: string; name: string }[];
   /** Where this person's last withdrawal went in the books ("owner", or an account id). */
   lastBooks: string | null;
@@ -806,7 +831,7 @@ async function withdrawForm(actor: WithdrawalActor): Promise<WithdrawForm> {
     const key = `${d.destinationKind}:${d.phone ?? ""}:${d.bankCode ?? ""}:${d.accountNumber ?? ""}`;
     if (seen.has(key) || destinations.length >= 5) continue;
     seen.add(key);
-    destinations.push({ id: d.id, label: maskedDestination(d), name: d.recipientName, kind: d.destinationKind === "BANK" ? "BANK" : "PHONE" });
+    destinations.push({ id: d.id, label: maskedDestination(d), name: d.recipientName, kind: kindOf(d.destinationKind) });
   }
   return {
     enabled: ntzsEnabled(), live: ntzsLive(),

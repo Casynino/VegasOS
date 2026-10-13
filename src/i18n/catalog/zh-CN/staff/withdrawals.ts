@@ -221,5 +221,16 @@ const catalog: Catalog = {
   "Test — no real money": "测试 — 无真实资金",
   "All withdrawals": "全部提现",
   "Latest withdrawals": "最近的提现",
+  // Withdraw to a Lipa number (nTZS's spend)
+  "Lipa number": "Lipa 号码",
+  "Enter the Lipa number.": "请输入 Lipa 号码。",
+  "Enter the Lipa number (digits only).": "请输入 Lipa 号码（仅数字）。",
+  "From the hotel's nTZS balance, to a phone, a Lipa number or a bank account.": "从酒店的 nTZS 余额转出，可转到手机号、Lipa 号码或银行账户。",
+  "A Lipa number takes less than {amount} at a time, fee included.": "Lipa 号码每次不能达到 {amount}（含手续费）。",
+  "A Lipa Namba (a till). nTZS finds its network by itself. It takes less than {amount} at a time, fee included.": "Lipa Namba（商户收款号）。nTZS 会自动识别所属网络。每次不能达到 {amount}（含手续费）。",
+  "nTZS does not pay out this amount to a Lipa number — the least is TZS 500.": "nTZS 不支持向 Lipa 号码支付这个金额——最少为 TZS 500。",
+  "A Lipa number takes less than TZS 1,000,000 at a time, fee included — use a smaller amount.": "Lipa 号码每次不能达到 TZS 1,000,000（含手续费）——请使用较小的金额。",
+  "nTZS could not tell which mobile network this Lipa number belongs to, so it did not pay it — nothing moved. Ask nTZS, or send to a phone or a bank account.": "nTZS 无法确定这个 Lipa 号码属于哪个移动网络，所以没有付款——资金没有动。请联系 nTZS，或改为转到手机号或银行账户。",
+  "nTZS has not switched on payments to Lipa numbers for the hotel yet — nothing was sent. Ask nTZS to switch them on, or send to a phone or a bank account.": "nTZS 还没有为酒店开通向 Lipa 号码付款的功能——没有发送任何款项。请联系 nTZS 开通，或改为转到手机号或银行账户。",
 };
 export default catalog;

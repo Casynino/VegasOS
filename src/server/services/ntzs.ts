@@ -173,8 +173,14 @@ export const depositFailed = (status: string | null | undefined) => !depositComp
 /** The least nTZS pays out in one withdrawal (what the recipient gets). */
 export const NTZS_WITHDRAW_MIN_TZS = 5_000;
 
-export type NtzsDestination = { kind: "PHONE"; phone: string } | { kind: "BANK"; bankCode: string; accountNumber: string };
-const destinationBody = (d: NtzsDestination) => (d.kind === "PHONE" ? { phoneNumber: d.phone } : { bankCode: d.bankCode, accountNumber: d.accountNumber });
+/**
+ * Where a withdrawal goes: a phone, a bank account, or a Lipa number (a till). A phone or a bank is paid by nTZS's
+ * /withdrawals; a Lipa number by its "spend" calls (/spend/quote, /spend, /spend/{id}) — the same price → send → state
+ * steps, answered in nearly the same shape, which the readers below turn into one. `network` is only given when nTZS asked for it.
+ */
+export type NtzsDestination = { kind: "PHONE"; phone: string } | { kind: "BANK"; bankCode: string; accountNumber: string } | { kind: "LIPA"; payNumber: string; network?: string | null };
+const destinationBody = (d: Exclude<NtzsDestination, { kind: "LIPA" }>) => (d.kind === "PHONE" ? { phoneNumber: d.phone } : { bankCode: d.bankCode, accountNumber: d.accountNumber });
+const lipaBody = (d: Extract<NtzsDestination, { kind: "LIPA" }>) => ({ kind: "lipa", payNumber: d.payNumber, ...(d.network ? { network: d.network } : {}) });
 /** Where the money comes from: the hotel's platform wallet at nTZS, or the wallet of NTZS_USER_ID (as collections do). */
 const fundingBody = () => { const userId = process.env.NTZS_USER_ID || null; return userId ? { userId } : { fromTreasury: true }; };
 
@@ -224,10 +230,11 @@ const wInt = (...v: unknown[]) => { for (const y of v) { const n = typeof y === 
 /** A price as nTZS sends it (top level, or wrapped in { data } / { quote }). */
 export function readWithdrawalQuote(raw: unknown): NtzsWithdrawalQuote {
   const o = wObj(raw) ?? {};
-  const inner = [o.quote, o.data].map(wObj).find((x) => x && ("quoteId" in x || "totalFeeTzs" in x || "receiveAmountTzs" in x));
+  const inner = [o.quote, o.data].map(wObj).find((x) => x && ("quoteId" in x || "totalFeeTzs" in x || "receiveAmountTzs" in x || "principalTzs" in x));
   const q = inner ?? o;
-  const fees = wObj(q.fees), balance = wObj(q.balance), approval = wObj(q.approval);
-  const receiveTzs = wInt(q.receiveAmountTzs, q.receive_amount_tzs), feeTzs = wInt(q.totalFeeTzs, q.total_fee_tzs, fees?.totalFeeTzs);
+  const fees = wObj(q.fees), balance = wObj(q.balance), approval = wObj(q.approval), target = wObj(q.target);
+  // A Lipa price (spend) says principalTzs where a withdrawal's says receiveAmountTzs, and where it goes in `target`.
+  const receiveTzs = wInt(q.receiveAmountTzs, q.receive_amount_tzs, q.principalTzs, q.principal_tzs), feeTzs = wInt(q.totalFeeTzs, q.total_fee_tzs, fees?.totalFeeTzs);
   const at = wStr(q.expiresAt, q.expires_at);
   const expiresAt = at && Number.isFinite(Date.parse(at)) ? new Date(at) : null;
   return {
@@ -236,7 +243,7 @@ export function readWithdrawalQuote(raw: unknown): NtzsWithdrawalQuote {
     receiveTzs, feeTzs,
     debitTzs: wInt(q.burnAmountTzs, q.burn_amount_tzs) ?? (receiveTzs !== null && feeTzs !== null ? receiveTzs + feeTzs : null),
     recipientName: wStr(q.recipientName, q.recipient_name),
-    payoutRail: wStr(q.payoutRail, q.payout_rail),
+    payoutRail: wStr(q.payoutRail, q.payout_rail, target?.network),
     availableTzs: wInt(balance?.availableTzs, balance?.available_tzs),
     sufficient: typeof balance?.sufficient === "boolean" ? balance.sufficient : null,
     requiresApproval: approval?.requiresApproval === true,
@@ -246,21 +253,28 @@ export function readWithdrawalQuote(raw: unknown): NtzsWithdrawalQuote {
 /** A withdrawal as nTZS sends it — its answer, its status, or the webhook's `data` (top level or wrapped). */
 export function readWithdrawal(raw: unknown, fallbackId: string | null = null): NtzsWithdrawal {
   const o = wObj(raw) ?? {};
-  const inner = [o.withdrawal, o.data].map(wObj).find((x) => x && ("status" in x || "id" in x || "withdrawalId" in x));
+  const inner = [o.withdrawal, o.spend, o.data].map(wObj).find((x) => x && ("status" in x || "id" in x || "withdrawalId" in x || "spendId" in x));
   const w = inner ?? o;
   const fees = wObj(w.fees), endUser = wObj(w.endUser) ?? wObj(w.end_user);
-  const receiveTzs = wInt(w.receiveAmountTzs, w.receive_amount_tzs), debitTzs = wInt(w.burnAmountTzs, w.burn_amount_tzs);
+  // A Lipa payment ("spend") answers with principalTzs (what the till gets) and its own id (spendId on the webhook).
+  const spend = "spendId" in w || "spend_id" in w || "principalTzs" in w || "principal_tzs" in w;
+  const receiveTzs = wInt(w.receiveAmountTzs, w.receive_amount_tzs, w.principalTzs, w.principal_tzs), debitTzs = wInt(w.burnAmountTzs, w.burn_amount_tzs);
   const feeTzs = wInt(w.totalFeeTzs, w.total_fee_tzs, fees?.totalFeeTzs) ?? (debitTzs !== null && receiveTzs !== null && debitTzs >= receiveTzs ? debitTzs - receiveTzs : null);
+  const status = (wStr(w.status, w.state) ?? "").toLowerCase();
+  let payoutStatus = (wStr(w.payoutStatus, w.payout_status) ?? "").toLowerCase();
+  // The spend webhook says its end in `status` alone: completed (paid), reverted (the money came back), reconcile_required (nTZS is checking).
+  if (spend && !payoutStatus && status === "completed") payoutStatus = status;
+  if (spend && status === "reconcile_required") payoutStatus = status;
   return {
-    id: wStr(w.withdrawalId, w.withdrawal_id, w.id) ?? fallbackId ?? "",
-    status: (wStr(w.status, w.state) ?? "").toLowerCase(),
-    payoutStatus: (wStr(w.payoutStatus, w.payout_status) ?? "").toLowerCase(),
+    id: wStr(w.withdrawalId, w.withdrawal_id, w.spendId, w.spend_id, w.id) ?? fallbackId ?? "",
+    status,
+    payoutStatus,
     receiveTzs, feeTzs,
     debitTzs: debitTzs ?? (receiveTzs !== null && feeTzs !== null ? receiveTzs + feeTzs : null),
     recipientName: wStr(w.recipientName, w.recipient_name),
     payoutRail: wStr(w.payoutRail, w.payout_rail, w.payoutProvider, w.payout_provider),
-    payoutReference: wStr(w.payoutReference, w.payout_reference),
-    payoutReceipt: wStr(w.payoutReceipt, w.payout_receipt),
+    payoutReference: wStr(w.payoutReference, w.payout_reference, spend ? w.reference : null),
+    payoutReceipt: wStr(w.payoutReceipt, w.payout_receipt, w.selcomReceipt, w.selcom_receipt),
     payoutError: wStr(w.payoutError, w.payout_error),
     message: wStr(w.confirmationMessage, w.message),
     externalId: wStr(w.externalId, w.external_id, endUser?.reference),
@@ -286,7 +300,8 @@ export function withdrawalStateOf(w: Pick<NtzsWithdrawal, "status" | "payoutStat
  * do not say so (408, and 409 `duplicate_withdrawal` — nTZS already HAS it), and the 5xx answers its documentation
  * marks "nothing moved". Anything else — no answer, a 502, an unnamed 5xx — is an unknown outcome, never a refusal.
  */
-const NOTHING_MOVED_5XX = new Set(["token_paused", "compliance_screening_unavailable", "bank_rail_unavailable", "not_provisioned", "relayer_unavailable", "database_error", "configuration_error"]);
+// (A Lipa payment: `till_network_required` — nTZS reverted its own burn, so nothing moved — and the two "spend is not switched on" answers.)
+const NOTHING_MOVED_5XX = new Set(["token_paused", "compliance_screening_unavailable", "bank_rail_unavailable", "not_provisioned", "relayer_unavailable", "database_error", "configuration_error", "till_network_required", "spend_disabled", "spend_kind_disabled"]);
 export function withdrawalRefused(res: { status?: number; code?: string }): boolean {
   if (!res.status) return false;
   if (res.code === "duplicate_withdrawal") return false;
@@ -296,7 +311,10 @@ export function withdrawalRefused(res: { status?: number; code?: string }): bool
 
 /** The price of a withdrawal — no money moves. */
 export async function quoteNtzsWithdrawal(input: { amountTzs: number; destination: NtzsDestination }): Promise<Result<NtzsWithdrawalQuote>> {
-  const res = await call<unknown>("POST", "/withdrawals/quote", { amountTzs: Math.round(input.amountTzs), ...fundingBody(), ...destinationBody(input.destination) });
+  const d = input.destination;
+  const res = d.kind === "LIPA"
+    ? await call<unknown>("POST", "/spend/quote", { ...lipaBody(d), amountTzs: Math.round(input.amountTzs), ...fundingBody() })
+    : await call<unknown>("POST", "/withdrawals/quote", { amountTzs: Math.round(input.amountTzs), ...fundingBody(), ...destinationBody(d) });
   if (!res.ok) return res;
   return { ok: true, data: readWithdrawalQuote(res.data) };
 }
@@ -307,20 +325,31 @@ export async function quoteNtzsWithdrawal(input: { amountTzs: number; destinatio
  */
 export async function createNtzsWithdrawal(input: { amountTzs: number; destination: NtzsDestination; quoteId: string; reference: string; name?: string | null }): Promise<Result<NtzsWithdrawal>> {
   const funding = fundingBody();
+  const d = input.destination;
+  if (d.kind === "LIPA") {
+    // A Lipa number is paid by nTZS's spend: the same price (quoteId), the same key, our reference back on its webhook.
+    const res = await call<unknown>("POST", "/spend", {
+      ...lipaBody(d), amountTzs: Math.round(input.amountTzs), ...funding,
+      ...("fromTreasury" in funding ? { endUser: { reference: input.reference } } : {}),
+      quoteId: input.quoteId,
+    }, { "Idempotency-Key": input.reference });
+    if (!res.ok) return res;
+    return { ok: true, data: readWithdrawal(res.data) };
+  }
   const res = await call<unknown>("POST", "/withdrawals", {
     amountTzs: Math.round(input.amountTzs),
     ...funding,
     ...("fromTreasury" in funding ? { endUser: { reference: input.reference, ...(input.name ? { name: input.name.slice(0, 200) } : {}), ...(input.destination.kind === "PHONE" ? { phone: input.destination.phone } : {}) } } : {}),
-    ...destinationBody(input.destination),
+    ...destinationBody(d),
     quoteId: input.quoteId,
   }, { "Idempotency-Key": input.reference });
   if (!res.ok) return res;
   return { ok: true, data: readWithdrawal(res.data) };
 }
 
-/** A withdrawal's state now, by nTZS's own id. */
-export async function getNtzsWithdrawal(id: string): Promise<Result<NtzsWithdrawal>> {
-  const res = await call<unknown>("GET", `/withdrawals/${encodeURIComponent(id)}`);
+/** A withdrawal's state now, by nTZS's own id (`lipa`: a payment to a Lipa number, asked at nTZS's spend). */
+export async function getNtzsWithdrawal(id: string, destinationKind?: string | null): Promise<Result<NtzsWithdrawal>> {
+  const res = await call<unknown>("GET", `/${destinationKind === "LIPA" ? "spend" : "withdrawals"}/${encodeURIComponent(id)}`);
   if (!res.ok) return res;
   return { ok: true, data: readWithdrawal(res.data, id) };
 }

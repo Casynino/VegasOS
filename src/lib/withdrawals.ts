@@ -9,6 +9,9 @@ import { msg } from "@/i18n/msg";
 export const WITHDRAW_MIN_TZS = 5_000;
 /** A sanity ceiling for one request (nTZS sets the real limits and says so when it prices). */
 export const WITHDRAW_MAX_TZS = 500_000_000;
+/** A Lipa number (a till) is paid through nTZS's "spend": the least it pays, and the limit — the amount plus nTZS's fee stays under this. */
+export const LIPA_MIN_TZS = 500;
+export const LIPA_BELOW_TZS = 1_000_000;
 
 /** The banks nTZS's documentation names for payouts — only these (it publishes no fuller list). */
 export const WITHDRAW_BANKS = [
@@ -54,10 +57,15 @@ export const WITHDRAWAL_FILTERS = [
  * nTZS's refusal in plain words, by its own code (the record keeps the code; the words are said in the reader's
  * language where they are shown). None = a code we have no words for — the record's own text is shown instead.
  */
-export function withdrawalProblem(code: string | null | undefined): string | null {
+export function withdrawalProblem(code: string | null | undefined, kind?: string | null): string | null {
+  // A Lipa number has its own least and its own limit.
+  if (kind === "LIPA" && code === "invalid_amount") return msg("nTZS does not pay out this amount to a Lipa number — the least is TZS 500.");
+  if (kind === "LIPA" && code === "amount_too_large") return msg("A Lipa number takes less than TZS 1,000,000 at a time, fee included — use a smaller amount.");
   switch (code) {
     case "invalid_amount": return msg("nTZS does not pay out this amount — the least is TZS 5,000.");
     case "amount_too_large": return msg("This is more than nTZS pays out in one withdrawal — use a smaller amount.");
+    case "till_network_required": return msg("nTZS could not tell which mobile network this Lipa number belongs to, so it did not pay it — nothing moved. Ask nTZS, or send to a phone or a bank account.");
+    case "spend_disabled": case "spend_kind_disabled": return msg("nTZS has not switched on payments to Lipa numbers for the hotel yet — nothing was sent. Ask nTZS to switch them on, or send to a phone or a bank account.");
     case "invalid_phone": return msg("That phone number is not a Tanzanian mobile-money number.");
     case "insufficient_balance": return msg("There is not enough money at nTZS for this amount and its fee.");
     case "quote_stale": case "invalid_quote": case "quote_mismatch": case "quote_required":
@@ -135,7 +143,7 @@ export function canSettleByHand(w: { status: string; failureCode: string | null;
 }
 
 /** Problems only the administrator can clear with nTZS (the screen says so instead of offering to try again). */
-export const WITHDRAWAL_SETUP_CODES: readonly string[] = ["kyb_required", "capability_required", "wallet_frozen", "ip_not_allowed", "treasury_not_provisioned", "wallet_not_provisioned", "not_provisioned", "funding_source_required", "end_user_required", "user_not_found", "configuration_error", "unauthorized"];
+export const WITHDRAWAL_SETUP_CODES: readonly string[] = ["kyb_required", "capability_required", "wallet_frozen", "ip_not_allowed", "treasury_not_provisioned", "wallet_not_provisioned", "not_provisioned", "funding_source_required", "end_user_required", "user_not_found", "configuration_error", "unauthorized", "spend_disabled", "spend_kind_disabled"];
 
 /** "255712345678" → "0712 ••• 678". */
 export const maskPhone = (p: string) => `0${p.slice(3, 6)} ••• ${p.slice(-3)}`;
@@ -145,5 +153,7 @@ export const maskAccount = (a: string) => `•••• ${a.replace(/\s/g, "").s
 /** Where the money went, for a screen — never the full number. */
 export function maskedDestination(w: { destinationKind: string; phone: string | null; bankCode: string | null; accountNumber: string | null }): string {
   if (w.destinationKind === "BANK") return `${bankName(w.bankCode)} ${maskAccount(w.accountNumber ?? "")}`;
+  // A Lipa number is kept in accountNumber (and its network, only when nTZS asked for it, in bankCode).
+  if (w.destinationKind === "LIPA") return `Lipa ${maskAccount(w.accountNumber ?? "")}`;
   return w.phone ? maskPhone(w.phone) : "—";
 }

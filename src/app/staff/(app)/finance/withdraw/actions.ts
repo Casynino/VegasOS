@@ -30,6 +30,7 @@ const Price = z.object({
   destination: z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("PHONE"), phone: z.string().trim().min(1).max(30) }),
     z.object({ kind: z.literal("BANK"), bankCode: z.string().trim().min(1).max(20), accountNumber: z.string().trim().min(1).max(40) }),
+    z.object({ kind: z.literal("LIPA"), payNumber: z.string().trim().min(1).max(20) }),
     z.object({ kind: z.literal("AGAIN"), withdrawalId: z.string().min(10).max(40) }),
   ]),
   toAccountId: z.string().min(1).max(40).nullable(),

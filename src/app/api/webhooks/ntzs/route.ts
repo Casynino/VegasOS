@@ -35,9 +35,10 @@ export async function POST(req: Request) {
   const event = eventOf(body);
   const data = obj(body.data) ?? obj(body.payload) ?? obj(body.deposit) ?? body;
 
-  // A withdrawal's news (`withdrawal.updated`): the record follows what nTZS says — completed, failed, being checked.
-  if (event.includes("withdrawal") || str(data.withdrawalId, data.withdrawal_id)) {
-    const wlog = { event: event || "(none)", withdrawalId: str(data.withdrawalId, data.withdrawal_id, data.id), status: str(data.status), payoutStatus: str(data.payoutStatus, data.payout_status) };
+  // A withdrawal's news (`withdrawal.updated`, or `spend.updated` for a payment to a Lipa number): the record follows what nTZS says —
+  // completed, failed, being checked.
+  if (event.includes("withdrawal") || event.includes("spend") || str(data.withdrawalId, data.withdrawal_id, data.spendId, data.spend_id)) {
+    const wlog = { event: event || "(none)", withdrawalId: str(data.withdrawalId, data.withdrawal_id, data.spendId, data.spend_id, data.id), status: str(data.status), payoutStatus: str(data.payoutStatus, data.payout_status) };
     try {
       const r = await handleWithdrawalWebhook(data);
       if (!r.found) {
