@@ -57,9 +57,9 @@ export function RoomTile({ number, type, state, guest, detail, overdue, pay, onC
         <Icon className="size-3 shrink-0 opacity-70" /><span className="truncate">{detail ?? t(m.label)}</span>
       </span>
       {pay && (
-        <span className="mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-          <span className={cn("inline-flex shrink-0 items-center rounded-full px-2 py-1 text-[10px] font-semibold leading-none ring-1 ring-inset", pay.className)}>{pay.label}</span>
-          {pay.owed && <span className={cn("text-[11px] font-bold tabular-nums leading-none", pay.text)}>{pay.owed}</span>}
+        <span className={cn("mt-2 flex min-w-0 flex-wrap items-baseline gap-x-2 text-[13px] font-bold leading-tight", pay.text)}>
+          <span>{pay.label}</span>
+          {pay.owed && <span className="tabular-nums">{pay.owed}</span>}
         </span>
       )}
     </button>
