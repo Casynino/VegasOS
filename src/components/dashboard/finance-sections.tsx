@@ -137,7 +137,7 @@ export async function BookingsSection({ c, movement }: { c: HomeContext; movemen
   const trendRange = days >= 7 ? range : { from: addDays(p.to, -13), to: p.to };
   const [bookings, bookingsTrend] = await Promise.all([bookingActivity(range), days < 7 ? bookingActivity(trendRange) : null]);
   return (
-    <Panel title={t("Bookings")} subtitle={periodLabel(p, t)} action={has("reservations.view") ? <PanelLink href="/staff/reservations">{t("Stays")}</PanelLink> : null}>
+    <Panel level={3} title={t("Bookings")} subtitle={periodLabel(p, t)} action={has("reservations.view") ? <PanelLink href="/staff/reservations">{t("Stays")}</PanelLink> : null}>
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
         <div>
           <dl className="mb-3 grid grid-cols-3 gap-2 text-center sm:grid-cols-6">
@@ -176,6 +176,6 @@ export async function BookingsSection({ c, movement }: { c: HomeContext; movemen
 }
 
 /** What a loading part looks like. */
-export function PartSkeleton({ height = "h-72" }: { height?: string }) {
-  return <div className={cn(height, "animate-pulse rounded-3xl border border-border/60 bg-card/60")} aria-busy="true" />;
+export function PartSkeleton({ label, height = "h-72" }: { label: string; height?: string }) {
+  return <div className={cn(height, "animate-pulse rounded-3xl border border-border/60 bg-card/60")} role="status" aria-busy="true"><span className="sr-only">{label}</span></div>;
 }

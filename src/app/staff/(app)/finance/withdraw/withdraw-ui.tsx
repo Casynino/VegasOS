@@ -3,8 +3,9 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowLeft, BanknoteArrowUp, Check, CircleCheck, CircleX, Clock, Landmark, Loader2, RefreshCw, Send, Smartphone, Store, TriangleAlert } from "lucide-react";
+import { ArrowLeft, BadgeCheck, BanknoteArrowUp, BookOpenText, Check, CircleCheck, CircleX, Clock, Landmark, Loader2, RefreshCw, Send, Smartphone, Store, Timer, TriangleAlert } from "lucide-react";
 import { useT } from "@/i18n/client";
+import { msg } from "@/i18n/msg";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -60,6 +61,32 @@ function Line({ label, sub, value, strong }: { label: React.ReactNode; sub?: Rea
   );
 }
 
+const KIND_ICON = { PHONE: Smartphone, LIPA: Store, BANK: Landmark } as const;
+const KIND_WORD = { PHONE: msg("Phone number"), LIPA: msg("Lipa number"), BANK: msg("Bank account") } as const;
+
+/** How long a price still holds, counting down — a bar that empties and the minutes left. */
+function PriceTimer({ until, label, ranOut }: { until: Date | string; label: string; ranOut: string }) {
+  const [left, setLeft] = useState<number | null>(null);
+  useEffect(() => {
+    const tick = () => setLeft(Math.max(0, new Date(until).getTime() - Date.now()));
+    const first = setTimeout(tick, 0);
+    const every = setInterval(tick, 1000);
+    return () => { clearTimeout(first); clearInterval(every); };
+  }, [until]);
+  if (left === null) return null;
+  const mm = Math.floor(left / 60_000), ss = Math.floor((left % 60_000) / 1000);
+  const low = left < 60_000;
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-3 text-xs">
+        <span className="flex items-center gap-1.5 text-muted-foreground"><Timer className="size-3.5" />{left === 0 ? ranOut : label}</span>
+        <span className={cn("font-semibold tabular-nums", low ? "text-amber-600 dark:text-amber-300" : "text-foreground")}>{mm}:{String(ss).padStart(2, "0")}</span>
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-muted"><div className={cn("h-full rounded-full transition-[width] duration-1000 ease-linear", low ? "bg-amber-500" : "bg-emerald-500")} style={{ width: `${Math.min(100, (left / (5 * 60_000)) * 100)}%` }} /></div>
+    </div>
+  );
+}
+
 // ───────────────────────── Withdraw: the form → the check → what nTZS said ─────────────────────────
 
 type Destination = { id: string; label: string; name: string | null; kind: "PHONE" | "BANK" | "LIPA" };
@@ -70,7 +97,7 @@ type Step = { at: "form" } | { at: "check"; price: WithdrawalPrice } | { at: "re
  * paid, the fee, what leaves the balance — and confirmed it. What is shown at the end is what nTZS answered: a
  * withdrawal that is only accepted is never shown as finished.
  */
-export function WithdrawButton({ disabled, accounts, destinations, lastBooks, timezone, compact, available }: {
+export function WithdrawButton({ disabled, accounts, destinations, lastBooks, compact, available }: {
   /** What can be withdrawn now (the books' balance less what is on its way): the amount starts as all of it, and the person lowers it. */
   available?: number | null;
   disabled?: boolean; accounts: { id: string; name: string }[]; destinations: Destination[]; /** "owner", or a hotel account. */ lastBooks: string | null; timezone: string;
@@ -95,6 +122,11 @@ export function WithdrawButton({ disabled, accounts, destinations, lastBooks, ti
   const [problem, setProblem] = useState<string | null>(null);
   const [checked, setChecked] = useState(false);
   const [expired, setExpired] = useState(false);
+  // The kind of the chosen way: typed (phone, Lipa, bank) or an earlier destination picked from the list — it decides the least and the most.
+  const chosenKind = way === "PHONE" || way === "LIPA" || way === "BANK" ? way : destinations.find((d) => d.id === way)?.kind ?? "PHONE";
+  const leastFor = (k: string) => (k === "LIPA" ? LIPA_MIN_TZS : WITHDRAW_MIN_TZS);
+  /** All of what is available — except that a Lipa number takes less than TZS 1,000,000 at a time. */
+  const allOf = (k: string) => (available == null ? null : k === "LIPA" ? Math.min(available, LIPA_BELOW_TZS - 1) : available);
 
   // The price holds for a few minutes — after that, sending is closed and the person prices it again.
   const holdsUntil = step.at === "check" ? step.price.view.quoteExpiresAt : null;
@@ -105,7 +137,7 @@ export function WithdrawButton({ disabled, accounts, destinations, lastBooks, ti
   }, [holdsUntil]);
 
   function begin() {
-    setStep({ at: "form" }); setAmount(available != null && available >= WITHDRAW_MIN_TZS ? String(available) : ""); setNote(""); setErrors({}); setProblem(null); setChecked(false); setExpired(false);
+    setStep({ at: "form" }); setAmount((allOf(chosenKind) ?? 0) >= leastFor(chosenKind) ? String(allOf(chosenKind)) : ""); setNote(""); setErrors({}); setProblem(null); setChecked(false); setExpired(false);
     setKey(newKey());
     setOpen(true);
   }
@@ -119,10 +151,11 @@ export function WithdrawButton({ disabled, accounts, destinations, lastBooks, ti
   function price() {
     const e: Record<string, string> = {};
     const n = Number(amount);
-    const least = way === "LIPA" ? LIPA_MIN_TZS : WITHDRAW_MIN_TZS;
+    const kind = chosenKind;
+    const least = kind === "LIPA" ? LIPA_MIN_TZS : WITHDRAW_MIN_TZS;
     if (!n) e.amount = t("Enter the amount.");
     else if (n < least) e.amount = t("The least is {amount}.", { amount: formatTZS(least) });
-    else if (way === "LIPA" && n >= LIPA_BELOW_TZS) e.amount = t("A Lipa number takes less than {amount} at a time, fee included.", { amount: formatTZS(LIPA_BELOW_TZS) });
+    else if (kind === "LIPA" && n >= LIPA_BELOW_TZS) e.amount = t("A Lipa number takes less than {amount} at a time, fee included.", { amount: formatTZS(LIPA_BELOW_TZS) });
     if (way === "PHONE" && !phone.trim()) e.phone = t("Enter the phone number.");
     if (way === "LIPA" && !lipa.trim()) e.payNumber = t("Enter the Lipa number.");
     if (way === "BANK" && !bank) e.bankCode = t("Choose the bank.");
@@ -188,7 +221,7 @@ export function WithdrawButton({ disabled, accounts, destinations, lastBooks, ti
                   {available != null && (
                     <p className="flex flex-wrap items-center justify-between gap-2 text-sm">
                       <span><span className="text-muted-foreground">{t("Available to withdraw")}</span> <strong className="tabular-nums">{formatTZS(available)}</strong></span>
-                      {available >= WITHDRAW_MIN_TZS && Number(amount) !== available && <button type="button" onClick={() => setAmount(String(available))} className="text-xs font-medium underline-offset-4 hover:underline">{t("Use all of it")}</button>}
+                      {(allOf(chosenKind) ?? 0) >= leastFor(chosenKind) && Number(amount) !== allOf(chosenKind) && <button type="button" onClick={() => setAmount(String(allOf(chosenKind)))} className="text-xs font-medium underline-offset-4 hover:underline">{t("Use all of it")}</button>}
                     </p>
                   )}
                   {available != null && Number(amount) > available && <p className="rounded-xl bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-300">{t("That is more than what is available — nTZS will refuse it if the money is not there.")}</p>}
@@ -276,6 +309,9 @@ export function WithdrawButton({ disabled, accounts, destinations, lastBooks, ti
           {step.at === "check" && (() => {
             const v = step.price.view;
             const gets = step.price.receiveTzs ?? v.amount;
+            const Kind = KIND_ICON[v.destinationKind];
+            const left = v.availableTzs !== null && v.debitedTzs !== null ? Math.max(0, v.availableTzs - v.debitedTzs) : null;
+            const share = v.availableTzs && v.debitedTzs !== null ? Math.min(100, Math.round((v.debitedTzs / v.availableTzs) * 100)) : null;
             return (
               <>
                 <DialogHeader icon={<Send />} eyebrow={t("Check before you send")} tone="amber">
@@ -283,30 +319,64 @@ export function WithdrawButton({ disabled, accounts, destinations, lastBooks, ti
                   <DialogDescription>{t("Read this once more. After you send it, it cannot be taken back.")}</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
-                  <div className="rounded-2xl border border-border/70 bg-muted/40 px-4 py-3">
-                    <p className="text-xs text-muted-foreground">{t("Paid to")}</p>
-                    <p className="mt-0.5 text-base font-semibold">{v.recipientName ?? t("Name not confirmed")}</p>
-                    <p className="text-sm tabular-nums">{step.price.destination}</p>
+                  {/* who is paid, and how much: the two things to be sure of */}
+                  <div className="overflow-hidden rounded-3xl border border-amber-500/30 bg-linear-to-br from-amber-500/[0.12] via-card to-card">
+                    <div className="px-5 pb-4 pt-5 text-center">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">{t("The recipient gets")}</p>
+                      <p className="mt-1 text-4xl font-bold tabular-nums tracking-tight">{formatTZS(gets)}</p>
+                    </div>
+                    <div className="flex items-center gap-3 border-t border-amber-500/20 bg-background/40 px-5 py-3.5">
+                      <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-amber-500/15 text-amber-700 dark:text-amber-300 [&_svg]:size-5"><Kind /></span>
+                      <div className="min-w-0 flex-1">
+                        <p className="flex items-center gap-1.5 text-base font-semibold leading-tight">
+                          <span className="truncate">{v.recipientName ?? t("Name not confirmed")}</span>
+                          {v.recipientName && <BadgeCheck className="size-4 shrink-0 text-emerald-500" aria-label={t("Name confirmed by the network")} />}
+                        </p>
+                        <p className="mt-0.5 text-sm tabular-nums text-muted-foreground"><span className="mr-1.5 rounded-md bg-muted px-1.5 py-0.5 text-[10.5px] font-medium uppercase tracking-wider">{t(KIND_WORD[v.destinationKind])}</span>{step.price.destination}</p>
+                      </div>
+                    </div>
                   </div>
                   {!v.recipientName && (
                     <p className="flex gap-2 rounded-2xl border border-amber-500/40 bg-amber-500/[0.06] px-3 py-2 text-sm"><TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />{t("nTZS could not confirm the name on this number. Check the number yourself, digit by digit, before you send.")}</p>
                   )}
-                  <dl className="divide-y divide-border/60 text-sm">
-                    <Line label={t("The recipient gets")} value={formatTZS(gets)} strong />
-                    <Line label={t("nTZS's fee")} sub={t("nTZS's price now — it confirms the real fee when it pays.")} value={v.feeTzs === null ? "—" : formatTZS(v.feeTzs)} />
-                    <Line label={t("Leaves the nTZS balance")} value={v.debitedTzs === null ? "—" : formatTZS(v.debitedTzs)} strong />
-                    {v.availableTzs !== null && <Line label={t("At nTZS now")} sub={v.debitedTzs !== null ? t("About {amount} is left after this.", { amount: formatTZS(Math.max(0, v.availableTzs - v.debitedTzs)) }) : undefined} value={formatTZS(v.availableTzs)} />}
-                    <Line label={t("In the hotel's books")} value={booksLine(books)} />
-                  </dl>
+
+                  {/* the money: what the recipient gets, the fee, what leaves */}
+                  <div className="rounded-2xl border border-border/70 bg-muted/30 px-4 py-1">
+                    <dl className="divide-y divide-border/60 text-sm">
+                      <Line label={t("The recipient gets")} value={formatTZS(gets)} />
+                      <Line label={t("nTZS's fee")} sub={t("nTZS's price now — it confirms the real fee when it pays.")} value={v.feeTzs === null ? "—" : `+ ${formatTZS(v.feeTzs)}`} />
+                      <Line label={t("Leaves the nTZS balance")} value={v.debitedTzs === null ? "—" : formatTZS(v.debitedTzs)} strong />
+                    </dl>
+                  </div>
+                  {v.availableTzs !== null && (
+                    <div className="space-y-1.5 rounded-2xl border border-border/70 px-4 py-3">
+                      <div className="flex items-baseline justify-between gap-3 text-sm">
+                        <span className="text-muted-foreground">{t("At nTZS now")}</span><strong className="tabular-nums">{formatTZS(v.availableTzs)}</strong>
+                      </div>
+                      {share !== null && (
+                        <div className="flex h-2 gap-0.5 overflow-hidden rounded-full bg-muted" aria-hidden>
+                          <span className="h-full rounded-full bg-amber-500" style={{ width: `${Math.max(2, share)}%` }} />
+                          <span className="h-full flex-1 rounded-full bg-emerald-500/70" />
+                        </div>
+                      )}
+                      {left !== null && <p className="flex justify-between gap-3 text-xs text-muted-foreground"><span>{t("About {amount} is left after this.", { amount: formatTZS(left) })}</span>{share !== null && <span className="tabular-nums">{share}%</span>}</p>}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2.5 rounded-2xl bg-muted/40 px-4 py-2.5 text-sm">
+                    <BookOpenText className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="text-muted-foreground">{t("In the hotel's books")}</span>
+                    <span className="ml-auto text-right font-medium">{booksLine(books)}</span>
+                  </div>
+
                   {gets !== v.amount && <p className="rounded-2xl border border-amber-500/40 bg-amber-500/[0.06] px-3 py-2 text-sm">{t("You asked for {asked}, and nTZS says the recipient gets {gets}.", { asked: formatTZS(v.amount), gets: formatTZS(gets) })}</p>}
                   {v.needsApproval && <p className="rounded-2xl border border-sky-500/40 bg-sky-500/[0.06] px-3 py-2 text-sm">{t(WITHDRAWAL_STATUS.AWAITING_APPROVAL.hint)}</p>}
                   {expired
                     ? <p role="alert" className="rounded-2xl border border-rose-500/40 bg-rose-500/[0.06] px-3 py-2 text-sm">{t("This price ran out — nothing was sent. Go back and ask for the price again.")}</p>
-                    : v.quoteExpiresAt && <p className="text-xs text-muted-foreground">{t("This price holds until {time}.", { time: t.time(v.quoteExpiresAt, timezone) })}</p>}
+                    : v.quoteExpiresAt && <PriceTimer until={v.quoteExpiresAt} label={t("This price holds for")} ranOut={t("This price ran out")} />}
                   <NativeCheckbox checked={checked} disabled={pending || expired} onChange={(e) => setChecked(e.target.checked)} label={t("I checked the name, the number and the amount.")} />
                   <div className="flex gap-2">
-                    <Button type="button" variant="outline" className="h-11" onClick={back} disabled={pending}><ArrowLeft />{t("Back")}</Button>
-                    <Button type="button" className="h-11 flex-1" onClick={send} disabled={pending || !checked || expired}>
+                    <Button type="button" variant="outline" className="h-12" onClick={back} disabled={pending}><ArrowLeft />{t("Back")}</Button>
+                    <Button type="button" className="h-12 flex-1 text-base font-semibold" onClick={send} disabled={pending || !checked || expired}>
                       {pending ? <Loader2 className="animate-spin" /> : <Send />}{pending ? t("Sending to nTZS…") : t("Send {amount}", { amount: formatTZS(gets) })}
                     </Button>
                   </div>
@@ -330,10 +400,19 @@ export function WithdrawButton({ disabled, accounts, destinations, lastBooks, ti
                 <div className="space-y-4">
                   {why && <p className="rounded-2xl border border-rose-500/40 bg-rose-500/[0.06] px-3 py-2 text-sm">{t(why)}</p>}
                   {v.attention.map((n) => <p key={n} className="rounded-2xl border border-amber-500/40 bg-amber-500/[0.06] px-3 py-2 text-sm">{t(n)}</p>)}
-                  <dl className="divide-y divide-border/60 text-sm">
-                    <Line label={t("Amount")} value={formatTZS(v.amount)} strong />
-                    <Line label={t("To")} value={<>{v.recipientName && <span className="block">{v.recipientName}</span>}<span>{v.destination}</span></>} />
-                  </dl>
+                  <div className="overflow-hidden rounded-3xl border border-border/70 bg-linear-to-br from-muted/50 via-card to-card">
+                    <div className="px-5 pb-4 pt-5 text-center">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">{t("Amount")}</p>
+                      <p className="mt-1 text-4xl font-bold tabular-nums tracking-tight">{formatTZS(v.amount)}</p>
+                    </div>
+                    <div className="flex items-center gap-3 border-t border-border/60 bg-background/40 px-5 py-3.5">
+                      <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-muted text-muted-foreground [&_svg]:size-5">{(() => { const K = KIND_ICON[v.destinationKind]; return <K />; })()}</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-base font-semibold leading-tight">{v.recipientName ?? t("Name not confirmed")}</p>
+                        <p className="mt-0.5 text-sm tabular-nums text-muted-foreground">{v.destination}</p>
+                      </div>
+                    </div>
+                  </div>
                   {v.status !== "COMPLETED" && v.status !== "REJECTED" && v.status !== "CANCELLED" && <p className="text-sm text-muted-foreground">{t("You can close this — the page follows it by itself and shows its state when nTZS reports.")}</p>}
                   <Button type="button" className="h-11 w-full" onClick={() => setOpen(false)}>{t("Close")}</Button>
                 </div>

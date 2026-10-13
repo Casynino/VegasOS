@@ -254,6 +254,12 @@ const catalog: Catalog = {
   "The key figures": "核心数据",
   "Banks": "银行",
   "By kind of account": "按账户类型",
+  "TZS held": "账户持有 TZS",
+  "Below zero": "低于零",
+  "Company invoices overdue": "公司发票已逾期",
+  "Company invoices due today": "公司发票今天到期",
+  "Company invoices due this week": "公司发票本周到期",
+  "Best day": "最佳日",
 };
 
 export default catalog;

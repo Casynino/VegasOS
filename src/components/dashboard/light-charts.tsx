@@ -2,10 +2,11 @@
 
 import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useT } from "@/i18n/client";
+import { compactTZS } from "@/lib/format";
 
 /** Light-surface charts for the staff dashboards (soft gradients, hover tooltips, screen-reader tables). */
 const shortDate = (d: string, intl: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString(intl, { day: "numeric", month: "short", timeZone: "UTC" });
-const compact = (v: number) => (v >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M` : v >= 1000 ? `${Math.round(v / 1000)}k` : String(Math.round(v)));
+const compact = compactTZS;
 
 function Tip({ active, payload, label, format }: { active?: boolean; payload?: { value?: number }[]; label?: string; format: (v: number) => string }) {
   const t = useT();

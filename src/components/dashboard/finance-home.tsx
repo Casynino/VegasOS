@@ -14,7 +14,7 @@ import { financeNeeds, latestPayments, purchasesPanel, restaurantDiscounts, type
 import { receivablesAging, recentSpend } from "@/server/services/finance-outlook";
 import { buildInsights, type InsightFacts } from "@/lib/finance-insights";
 import { addDays, diffDays } from "@/lib/time/business-date";
-import { formatTZS } from "@/lib/format";
+import { formatNumber, formatTZS } from "@/lib/format";
 import { CASH_HANDOVER_ON } from "@/lib/cash-handover";
 import { getT } from "@/i18n/server";
 import { msg } from "@/i18n/msg";
@@ -29,7 +29,6 @@ import { InsightsPanel, OutlookView } from "./finance-analysis";
 import { BookingsSection, compareKit, moves, PartSkeleton, TrendsSection, type HomeContext } from "./finance-sections";
 
 const shortDay = (d: string, t: T) => new Intl.DateTimeFormat(t.intl, { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${d}T00:00:00Z`));
-const compactTzs = (v: number) => (Math.abs(v) >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M` : Math.abs(v) >= 1000 ? `${Math.round(v / 1000)}k` : String(Math.round(v)));
 const RING = ["#8b5cf6", "#0ea5e9", "#10b981", "#f59e0b", "#f43f5e", "#94a3b8"];
 
 /**
@@ -150,6 +149,7 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
     ...(holding.length > 5 ? [{ label: t("Other accounts"), value: holding.slice(5).reduce((s, b) => s + b.balance, 0), color: RING[5] }] : []),
   ];
   const ringTotal = holding.reduce((s, b) => s + b.balance, 0);
+  const below = ov.balances.filter((b) => b.balance < 0);
   // …and by kind of account, for the foot of the ring card
   const kindOf = (k: string) => (k === "CASH" || k === "PETTY_CASH" ? "cash" : k === "BANK" ? "bank" : k === "MOBILE_MONEY" ? "mobile" : k === "CARD" ? "card" : "other");
   const kindName = { cash: t("Cash"), bank: t("Banks"), mobile: t("Mobile money"), card: t("Card"), other: t("Other") } as const;
@@ -221,14 +221,15 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
         {ov.balances.length === 0 ? <p className="text-sm text-muted-foreground">{t("No accounts yet.")}</p> : (
           <div className="grid gap-4 xl:grid-cols-[21rem_minmax(0,1fr)]">
             {canSeeAccounts && ringTotal > 0 && (
-              <RoomsGlance t={t} href="/staff/finance/accounts" total={ringTotal} title={t("In all accounts")} format={compactTzs} parts={ringParts}
-                center={{ value: compactTzs(moneyTotal), label: t("TZS in all") }}
+              <RoomsGlance t={t} href="/staff/finance/accounts" total={ringTotal} title={t("In all accounts")} format={formatTZS} parts={ringParts}
+                center={{ value: formatNumber(ringTotal), label: t("TZS held") }}
                 footer={(
                   <div className="space-y-2">
                     <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/50">{t("By kind of account")}</p>
                     <ul className="space-y-1.5">
+                      {below.length > 0 && <li className="flex items-center justify-between gap-3 text-rose-300"><span>{t("Below zero")}</span><span className="tabular-nums"><strong>{formatTZS(below.reduce((n, b) => n + b.balance, 0))}</strong></span></li>}
                       {byKind.map((x) => (
-                        <li key={x.k} className="flex items-center justify-between gap-3"><span>{kindName[x.k]}</span><span className="tabular-nums text-white"><strong>{compactTzs(x.amount)}</strong><span className="ml-2 text-white/50">{Math.round((x.amount / ringTotal) * 100)}%</span></span></li>
+                        <li key={x.k} className="flex items-center justify-between gap-3"><span>{kindName[x.k]}</span><span className="tabular-nums text-white"><strong>{formatTZS(x.amount)}</strong><span className="ml-2 text-white/50">{Math.round((x.amount / ringTotal) * 100)}%</span></span></li>
                       ))}
                     </ul>
                     <p className="border-t border-white/10 pt-2 text-white/60">{t("The hotel's own records — check them against the bank.")}</p>
@@ -244,17 +245,17 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
       <section className="space-y-4">
         <PartHeading id="flow" tone="violet" icon={<Waypoints />} title={t("Money in and out")} subtitle={t("What was earned, what came in and what went out — day by day, and where it came from and went")} action={link(["ledger.view", "finance.view"], `/staff/finance/ledger?from=${trendRange.from}&to=${trendRange.to}`, t("Ledger"))} />
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.9fr)_minmax(0,1fr)]">
-          <Panel title={byMonth ? t("Month by month") : t("Day by day")} subtitle={`${periodLabel(trendRange, t)}${days < 7 ? ` · ${t("the last two weeks, for context")}` : ""}`}>
+          <Panel level={3} title={byMonth ? t("Month by month") : t("Day by day")} subtitle={`${periodLabel(trendRange, t)}${days < 7 ? ` · ${t("the last two weeks, for context")}` : ""}`}>
             <MoneyChart data={points} />
           </Panel>
-          <Panel title={t("Where income comes from")} subtitle={periodLabel(p, t)}>
+          <Panel level={3} title={t("Where income comes from")} subtitle={periodLabel(p, t)}>
             {streams.length === 0 ? <p className="text-sm text-muted-foreground">{t("Nothing was earned in this period.")}</p>
               : <Donut center={{ label: t("earned"), value: formatTZS(earned) }} data={streams} />}
             {ov.earned.refunds > 0 && <p className="mt-2 text-[11px] text-muted-foreground">{t("Refunds of {amount} are taken off the total.", { amount: formatTZS(ov.earned.refunds) })}</p>}
           </Panel>
         </div>
         <div className="grid gap-4 lg:grid-cols-2">
-          <Panel title={t("How the money came in")} subtitle={`${t("Received")} · ${periodLabel(p, t)}`} action={link(["reports.view", "finance.view"], `/staff/payments?from=${p.from}&to=${p.to}`, t("Income"))}>
+          <Panel level={3} title={t("How the money came in")} subtitle={`${t("Received")} · ${periodLabel(p, t)}`} action={link(["reports.view", "finance.view"], `/staff/payments?from=${p.from}&to=${p.to}`, t("Income"))}>
             {ov.received.byMethod.length === 0 ? <p className="text-sm text-muted-foreground">{t("Nothing was received in this period.")}</p> : (
               <div className="grid items-center gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                 <Donut center={{ label: t("received"), value: formatTZS(ov.received.total) }} data={ov.received.byMethod.filter((m) => m.amount > 0).map((m) => ({ name: t(m.method), value: m.amount }))} />
@@ -262,7 +263,7 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
               </div>
             )}
           </Panel>
-          <Panel title={t("Where the money went")} subtitle={`${t("Expenses by category")} · ${periodLabel(p, t)}`} action={link(["expenses.record", "expenses.view_all"], `/staff/expenses?from=${p.from}&to=${p.to}`, t("Expenses"))}>
+          <Panel level={3} title={t("Where the money went")} subtitle={`${t("Expenses by category")} · ${periodLabel(p, t)}`} action={link(["expenses.record", "expenses.view_all"], `/staff/expenses?from=${p.from}&to=${p.to}`, t("Expenses"))}>
             <HBars empty={t("No expenses were recorded in this period.")} rows={spend.byCategory.filter((c) => c.amount > 0).slice(0, 7).map((c) => ({ label: t(c.name), value: c.amount, color: "#f43f5e" }))} />
             {spend.pending.count > 0 && <p className="mt-3 rounded-xl bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-700 dark:text-amber-300">{t.plural(spend.pending.count, "{n} more expense waiting for approval · {amount}", "{n} more expenses waiting for approval · {amount}", { amount: formatTZS(spend.pending.amount) })}</p>}
           </Panel>
@@ -279,7 +280,7 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
             accounts: href(["ledger.view", "finance.view"], "/staff/finance/accounts"), expenses: href(["expenses.record", "expenses.view_all"], "/staff/expenses"),
           }} />
         <div className="grid gap-4 lg:grid-cols-2">
-          <Panel title={t("Who owes the hotel")} subtitle={t("Right now — whatever the period")} action={link(["finance.view"], "/staff/finance/receivables", t("Who owes us"))}>
+          <Panel level={3} title={t("Who owes the hotel")} subtitle={t("Right now — whatever the period")} action={link(["finance.view"], "/staff/finance/receivables", t("Who owes us"))}>
             <HBars empty={t("Nobody owes the hotel anything.")} rows={[
               { label: t("Guests"), value: ov.owed.guests.amount, sub: t.plural(ov.owed.guests.count, "{n} stay", "{n} stays"), color: "#f43f5e" },
               { label: t("Companies"), value: ov.owed.companies.amount, sub: t.plural(ov.owed.companies.count, "{n} invoice", "{n} invoices"), color: "#8b5cf6" },
@@ -289,9 +290,9 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
             {owing && owing.total > 0 && (
               <>
                 <div className="mt-4"><FigureCards items={[
-                  { label: t("Overdue"), value: formatTZS(owing.overdue), tone: owing.overdue > 0 ? "bad" : undefined },
-                  { label: t("Due today"), value: formatTZS(owing.dueToday), tone: owing.dueToday > 0 ? "warn" : undefined },
-                  { label: t("Due this week"), value: formatTZS(owing.dueWeek) },
+                  { label: t("Company invoices overdue"), value: formatTZS(owing.overdue), tone: owing.overdue > 0 ? "bad" : undefined },
+                  { label: t("Company invoices due today"), value: formatTZS(owing.dueToday), tone: owing.dueToday > 0 ? "warn" : undefined },
+                  { label: t("Company invoices due this week"), value: formatTZS(owing.dueWeek) },
                 ]} /></div>
                 <p className="mb-1 mt-4 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{t("Companies owing the most")}</p>
                 <DataTable label={t("Companies owing the most")} empty="" head={[t("Company"), t("Invoices"), t("Owed"), t("Overdue")]} right={[1, 2, 3]}
@@ -302,7 +303,7 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
               </>
             )}
           </Panel>
-          <Panel title={t("Cash")} subtitle={handoverRights ? t("Taken in the period, and where it is now") : t("Taken in the period")} action={handoverRights ? link(["cash.handover.view", "cash.handover.review"], "/staff/accountant/handovers", t("Cash handovers")) : null}>
+          <Panel level={3} title={t("Cash")} subtitle={handoverRights ? t("Taken in the period, and where it is now") : t("Taken in the period")} action={handoverRights ? link(["cash.handover.view", "cash.handover.review"], "/staff/accountant/handovers", t("Cash handovers")) : null}>
             <FigureCards items={[
               { label: t("Cash taken"), value: formatTZS(ov.cash.total), sub: periodLabel(p, t) },
               ...(handoverRights ? [
@@ -337,7 +338,7 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
         <PartHeading id="purchases" tone="rose" icon={<Truck />} title={buying ? t("Purchases, discounts and online payments") : t("Discounts and online payments")} subtitle={t("What is being bought and paid, what was given away, and the phone payments that came in")} action={buying ? link(["purchases.authorize", "purchases.pay", "procurement.manage"], "/staff/procurement", t("Procurement")) : null} />
         <div className="grid gap-4 xl:grid-cols-3">
           {purchases && (
-            <Panel title={t("Purchases and suppliers")} subtitle={t("Right now — each stage on its own: a request is not an expense, an approval is not a payment")} className="xl:col-span-2">
+            <Panel level={3} title={t("Purchases and suppliers")} subtitle={t("Right now — each stage on its own: a request is not an expense, an approval is not a payment")} className="xl:col-span-2">
               <div className="grid gap-5 lg:grid-cols-2">
                 <Pipeline steps={[
                   { label: t("Asked for"), amount: purchases.position.requested.amount, sub: t("estimates"), color: "#94a3b8" },
@@ -359,7 +360,7 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
             </Panel>
           )}
           <div className={purchases ? "grid gap-4" : "grid gap-4 xl:col-span-3 xl:grid-cols-2"}>
-            <Panel title={t("Discounts and refunds")} subtitle={periodLabel(p, t)} action={link(["finance.view"], "/staff/accountant/discounts", t("Discounts"))}>
+            <Panel level={3} title={t("Discounts and refunds")} subtitle={periodLabel(p, t)} action={link(["finance.view"], "/staff/accountant/discounts", t("Discounts"))}>
               <FigureCards items={[
                 { label: t("Room discounts"), value: formatTZS(ov.earned.discounts) },
                 { label: t("Restaurant discounts"), value: formatTZS(restDisc.amount), sub: restDisc.count ? t.plural(restDisc.count, "{n} order", "{n} orders") : undefined },
@@ -367,7 +368,7 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
               ]} />
             </Panel>
             {online && (
-              <Panel title={t("Online payments")} subtitle={periodLabel(p, t)} action={link(["finance.view"], "/staff/finance/online", t("Online payments"))}>
+              <Panel level={3} title={t("Online payments")} subtitle={periodLabel(p, t)} action={link(["finance.view"], "/staff/finance/online", t("Online payments"))}>
                 <FigureCards items={[
                   { label: t("Paid"), value: formatTZS(online.paid.amount), sub: t.plural(online.paid.count, "{n} payment", "{n} payments"), tone: "good" },
                   { label: t("Waiting"), value: String(online.pending) },
@@ -383,27 +384,27 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
       {/* ── How the hotel is doing: the figures that show it, six months, occupancy, the best days ── */}
       <section className="space-y-4">
         <PartHeading id="trends" tone="emerald" icon={<LineChart />} title={t("How the hotel is doing")} subtitle={t("Occupancy, rates, six months, what moved against the period before, which days earn most")} />
-        <Suspense fallback={<PartSkeleton height="h-96" />}><TrendsSection c={ctx} /></Suspense>
+        <Suspense fallback={<PartSkeleton label={t("Loading…")} height="h-96" />}><TrendsSection c={ctx} /></Suspense>
       </section>
 
       {/* ── Bookings ── */}
       <section className="space-y-4">
         <PartHeading id="bookings" tone="sky" icon={<BedDouble />} title={t("Bookings")} subtitle={t("How many were made, what became of them, and where they came from")} />
-        <Suspense fallback={<PartSkeleton height="h-80" />}><BookingsSection c={ctx} movement={movement} /></Suspense>
+        <Suspense fallback={<PartSkeleton label={t("Loading…")} height="h-80" />}><BookingsSection c={ctx} movement={movement} /></Suspense>
       </section>
 
       {/* ── The latest, in tables ── */}
       <section className="space-y-4">
         <PartHeading id="latest" tone="slate" icon={<ReceiptText />} title={t("The latest")} subtitle={t("The newest money in and the newest expenses of the period")} />
         <div className="grid gap-4 lg:grid-cols-2">
-          <Panel title={t("Latest money in")} subtitle={periodLabel(p, t)} action={link(["reports.view", "finance.view"], `/staff/payments?from=${p.from}&to=${p.to}`, t("Income"))}>
+          <Panel level={3} title={t("Latest money in")} subtitle={periodLabel(p, t)} action={link(["reports.view", "finance.view"], `/staff/payments?from=${p.from}&to=${p.to}`, t("Income"))}>
             <DataTable label={t("Latest money in")} empty={t("Nothing was received in this period.")} head={[t("When"), t("For"), t("How"), t("Amount")]} right={[3]}
               rows={payments.map((x) => [
                 <span key="w" className="whitespace-nowrap text-muted-foreground">{t.dateTime(x.at)}</span>, x.for ?? <span key="f" className="text-muted-foreground">—</span>,
                 <span key="m">{t(x.method)}{x.account !== x.method && <span className="block text-[11px] text-muted-foreground">{t(x.account)}</span>}</span>, <span key="a" className="font-medium">{formatTZS(x.amount)}</span>,
               ])} />
           </Panel>
-          <Panel title={t("Latest expenses")} subtitle={periodLabel(p, t)} action={link(["expenses.record", "expenses.view_all"], `/staff/expenses?from=${p.from}&to=${p.to}`, t("Expenses"))}>
+          <Panel level={3} title={t("Latest expenses")} subtitle={periodLabel(p, t)} action={link(["expenses.record", "expenses.view_all"], `/staff/expenses?from=${p.from}&to=${p.to}`, t("Expenses"))}>
             <DataTable label={t("Latest expenses")} empty={t("No expenses were recorded in this period.")} head={[t("When"), t("What"), t("By"), t("Amount")]} right={[3]}
               rows={spend.recent.map((x) => [
                 <span key="w" className="whitespace-nowrap text-muted-foreground">{t.dateTime(x.spentAt.toISOString())}</span>,
@@ -417,7 +418,7 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
       {/* ── The business in detail ── */}
       <section className="space-y-4">
         <PartHeading id="detail" tone="violet" icon={<BarChart3 />} title={t("The business in detail")} subtitle={t("Rooms by type, where bookings come from, the restaurant and bar, the best customers")} />
-        <Suspense fallback={<PartSkeleton height="h-72" />}>
+        <Suspense fallback={<PartSkeleton label={t("Loading…")} height="h-72" />}>
           <BusinessDetail p={p} today={today} restaurantLinks={has("restaurant.orders", "kitchen.orders", "restaurant.menu", "restaurant.serve")} />
         </Suspense>
       </section>

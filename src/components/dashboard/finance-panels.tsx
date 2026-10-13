@@ -214,20 +214,24 @@ export function JumpNav({ label, items }: { label: string; items: { id: string; 
   );
 }
 
-/** Seven columns, one per day of the week: how much each earns on average; the best day stands out. */
-export function WeekColumns({ days, best }: { days: { label: string; value: number; sub?: string }[]; best: number }) {
+/** One bar per day of the week: how much each earns on average, the full amount at the end of each bar; the best day stands out. */
+export function WeekColumns({ days, best, bestLabel }: { days: { label: string; value: number; sub?: string }[]; best: number; bestLabel: string }) {
   const max = Math.max(1, ...days.map((d) => d.value));
-  const compact = (v: number) => (v >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M` : v >= 1000 ? `${Math.round(v / 1000)}k` : String(Math.round(v)));
   return (
-    <div className="flex h-52 items-end gap-2 sm:gap-3" role="img" aria-label={days.map((d) => `${d.label}: ${formatTZS(d.value)}`).join("; ")}>
-      {days.map((d) => (
-        <div key={d.label} className="flex h-full min-w-0 flex-1 flex-col justify-end" title={`${d.label}: ${formatTZS(d.value)}${d.sub ? ` · ${d.sub}` : ""}`}>
-          <span className="mb-1 text-center text-[11px] font-semibold tabular-nums text-foreground">{compact(d.value)}</span>
-          <div className="w-full rounded-t-xl" style={{ height: `${Math.max(3, (d.value / max) * 78)}%`, background: d.value > 0 && d.value === best ? "linear-gradient(180deg,#34d399,#10b981)" : "linear-gradient(180deg,#a78bfa,#8b5cf6)", opacity: d.value ? 1 : 0.25 }} />
-          <span className="mt-1.5 truncate text-center text-[11px] text-muted-foreground">{d.label}</span>
-        </div>
-      ))}
-    </div>
+    <ul className="space-y-3" aria-label={days.map((d) => `${d.label}: ${formatTZS(d.value)}`).join("; ")}>
+      {days.map((d) => {
+        const top = d.value > 0 && d.value === best;
+        return (
+          <li key={d.label} className="grid grid-cols-[3rem_minmax(0,1fr)_auto] items-center gap-3 text-sm" title={d.sub}>
+            <span className={cn("text-muted-foreground", top && "font-semibold text-foreground")}>{d.label}</span>
+            <div className="h-3.5 overflow-hidden rounded-full bg-muted">
+              <div className="h-full rounded-full" style={{ width: `${Math.max(d.value ? 2 : 0, (d.value / max) * 100)}%`, background: top ? "linear-gradient(90deg,#10b981,#34d399)" : "linear-gradient(90deg,#8b5cf6,#a78bfa)" }} />
+            </div>
+            <span className="min-w-[7.5rem] text-right font-semibold tabular-nums">{formatTZS(d.value)}{top && <span className="ml-1.5 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-300">{bestLabel}</span>}</span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 

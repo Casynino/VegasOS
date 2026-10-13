@@ -313,7 +313,7 @@ async function resolveDestination(input: PriceInput["destination"]): Promise<Ntz
   }
   if (input.kind === "LIPA") {
     const payNumber = (input.payNumber ?? "").replace(/[\s-]/g, "");
-    if (!/^\d{4,12}$/.test(payNumber)) throw new AppError(msg("Enter the Lipa number (digits only)."), "VALIDATION", { payNumber: msg("Check the number") });
+    if (!/^\d{4,12}$/.test(payNumber)) throw new AppError(msg("A Lipa number has 4 to 12 digits."), "VALIDATION", { payNumber: msg("Check the number") });
     return { kind: "LIPA", payNumber };
   }
   const bankCode = WITHDRAW_BANKS.find((b) => b.code === input.bankCode)?.code;

@@ -78,14 +78,17 @@ export function StatTile({ label, value, icon, tone = "gold", delta, sub, spark,
 }
 
 /** Rounded white panel with a title row. */
-export function Panel({ title, subtitle, action, children, className, bodyClassName }: {
+export function Panel({ title, subtitle, action, children, className, bodyClassName, level = 2 }: {
   title: React.ReactNode; subtitle?: React.ReactNode; action?: React.ReactNode; children: React.ReactNode; className?: string; bodyClassName?: string;
+  /** The heading level: 3 for a panel that sits under a part's own heading (so a screen reader hears the parts, then what is in them). */
+  level?: 2 | 3;
 }) {
+  const Heading = level === 3 ? "h3" : "h2";
   return (
     <section className={cn("min-w-0 rounded-3xl border border-border/70 bg-card p-4 shadow-[0_2px_4px_rgba(15,23,42,0.03),0_12px_32px_-18px_rgba(15,23,42,0.18)] sm:p-6", className)}>
       <div className="mb-4 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-base font-semibold text-foreground">{title}</h2>
+          <Heading className="text-base font-semibold text-foreground">{title}</Heading>
           {subtitle && <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>}
         </div>
         {action}
@@ -303,17 +306,18 @@ export function RoomsGlance({ total, parts, footer, href, title, unit, center, f
   const body = (
     <div className="flex h-full flex-col gap-5 rounded-3xl bg-linear-to-br from-[#1d2233] via-[#232842] to-[#2e2a4a] p-5 text-white shadow-[0_18px_40px_-22px_rgba(15,23,42,0.8)] transition-transform hover:-translate-y-0.5 sm:p-6">
       <p className="text-sm font-medium text-white/70">{title ?? t("Rooms tonight")}</p>
-      <div className="flex items-center gap-5">
-        <div className="relative size-32 shrink-0">
-          <svg viewBox="0 0 110 110" className="size-full -rotate-90" role="img" aria-label={parts.map((p) => `${p.label}: ${p.value}`).join(", ")}>
+      {/* With money beside it (`format`) the ring sits above and the list below, so every name and every amount is written in full. */}
+      <div className={cn("flex items-center gap-5", format && "flex-col")}>
+        <div className={cn("relative shrink-0", format ? "size-44" : "size-32")}>
+          <svg viewBox="0 0 110 110" className="size-full -rotate-90" role="img" aria-label={parts.map((p) => `${p.label}: ${format ? format(p.value) : p.value}`).join(", ")}>
             <circle cx="55" cy="55" r={r} fill="none" stroke="rgb(255 255 255 / 0.1)" strokeWidth="11" />
             {parts.map((p, i) => p.value > 0 && (
               <circle key={p.label} cx="55" cy="55" r={r} fill="none" stroke={p.color} strokeWidth="11" strokeDasharray={`${Math.max(0, lens[i] - 2)} ${c}`} strokeDashoffset={-offsets[i]} />
             ))}
           </svg>
-          <div className="absolute inset-0 grid place-items-center text-center"><div><p className={cn("font-bold tabular-nums leading-none tracking-tight", center ? "text-[1.6rem]" : "text-3xl")}>{center?.value ?? total}</p><p className="mt-1 text-[9px] font-medium uppercase leading-none tracking-[0.14em] text-white/55">{center?.label ?? unit ?? t("rooms")}</p>{center?.sub && <p className="mt-1 text-[10px] leading-none tabular-nums text-white/40">{center.sub}</p>}</div></div>
+          <div className="absolute inset-0 grid place-items-center text-center"><div><p className={cn("font-bold tabular-nums leading-none tracking-tight", format ? ((center?.value ?? "").length <= 7 ? "text-3xl" : (center?.value ?? "").length <= 9 ? "text-2xl" : "text-xl") : center ? "text-[1.6rem]" : "text-3xl")}>{center?.value ?? total}</p><p className="mt-1 text-[9px] font-medium uppercase leading-none tracking-[0.14em] text-white/55">{center?.label ?? unit ?? t("rooms")}</p>{center?.sub && <p className="mt-1 text-[10px] leading-none tabular-nums text-white/40">{center.sub}</p>}</div></div>
         </div>
-        <ul className="min-w-0 flex-1 space-y-2 text-sm">
+        <ul className={cn("min-w-0 space-y-2 text-sm", format ? "w-full" : "flex-1")}>
           {parts.map((p) => (
             <li key={p.label} className="flex items-center gap-2">
               <span className="size-2.5 shrink-0 rounded-full" style={{ background: p.color }} />

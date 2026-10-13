@@ -9,7 +9,7 @@ export type MoneyPoint = { key: string; label: string; income: number; expenses:
 const INCOME = "#8b5cf6", EXPENSES = "#f43f5e", RECEIVED = "#0ea5e9";
 const tzs = (v: number) => `TZS ${Math.round(v).toLocaleString("en-US")}`;
 const EARNED = msg("Earned"), SPENT = msg("Spent"), RECEIVED_LABEL = msg("Received");
-const compact = (v: number) => (Math.abs(v) >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M` : Math.abs(v) >= 1000 ? `${Math.round(v / 1000)}k` : String(Math.round(v)));
+const whole = (v: number) => Math.round(v).toLocaleString("en-US");
 
 function Tip({ active, payload, label }: { active?: boolean; payload?: { dataKey?: string | number; value?: number }[]; label?: string }) {
   const t = useT();
@@ -39,10 +39,10 @@ export function MoneyChart({ data, height = 260 }: { data: MoneyPoint[]; height?
       </div>
       <div style={{ height }} aria-hidden>
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={data} margin={{ top: 6, right: 4, left: -10, bottom: 0 }} barGap={2} barCategoryGap="22%">
+          <ComposedChart data={data} margin={{ top: 6, right: 4, left: 0, bottom: 0 }} barGap={2} barCategoryGap="22%">
             <CartesianGrid stroke="var(--border)" vertical={false} />
             <XAxis dataKey="label" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} tickLine={false} axisLine={false} minTickGap={16} />
-            <YAxis tickFormatter={compact} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} tickLine={false} axisLine={false} width={44} />
+            <YAxis tickFormatter={whole} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} tickLine={false} axisLine={false} width={78} />
             <Tooltip content={<Tip />} cursor={{ fill: "var(--muted)", opacity: 0.35 }} />
             <Bar dataKey="income" fill={INCOME} radius={[4, 4, 0, 0]} maxBarSize={16} />
             <Bar dataKey="expenses" fill={EXPENSES} radius={[4, 4, 0, 0]} maxBarSize={16} />

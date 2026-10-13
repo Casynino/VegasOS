@@ -10,7 +10,7 @@ const catalog: Catalog = {
   "Only the Boss or the Admin can withdraw funds.": "只有老板或管理员可以提现。",
   "Only the Boss or the Admin can settle a withdrawal by hand.": "只有老板或管理员可以人工结清提现。",
   "Withdrawals are not switched on yet — the administrator has to connect the hotel's nTZS account.": "提现功能尚未开通 — 需要管理员先连接酒店的 nTZS 账户。",
-  "Take money out of the hotel's nTZS balance — to a phone or a bank account.": "从酒店的 nTZS 余额中取款 — 汇到手机号或银行账户。",
+  "Take money out of the hotel's nTZS balance — to a phone, a Lipa number or a bank account.": "从酒店的 nTZS 余额中取款 — 汇到手机号或银行账户。",
   "Test mode — the hotel's nTZS account is connected with a test key, so no real money moves.": "测试模式 — 酒店的 nTZS 账户使用的是测试密钥，不会有真实款项变动。",
   "Withdrawal {number} has no clear answer from nTZS yet. No other withdrawal can be sent until it is settled — so the same money is never sent twice.": "提现 {number} 尚未得到 nTZS 的明确答复。在它结清之前不能发起其他提现 — 这样同一笔钱绝不会汇出两次。",
   "Open it": "打开查看",
@@ -224,7 +224,7 @@ const catalog: Catalog = {
   // Withdraw to a Lipa number (nTZS's spend)
   "Lipa number": "Lipa 号码",
   "Enter the Lipa number.": "请输入 Lipa 号码。",
-  "Enter the Lipa number (digits only).": "请输入 Lipa 号码（仅数字）。",
+  "A Lipa number has 4 to 12 digits.": "Lipa 号码为 4 到 12 位数字。",
   "From the hotel's nTZS balance, to a phone, a Lipa number or a bank account.": "从酒店的 nTZS 余额转出，可转到手机号、Lipa 号码或银行账户。",
   "A Lipa number takes less than {amount} at a time, fee included.": "Lipa 号码每次不能达到 {amount}（含手续费）。",
   "A Lipa Namba (a till). nTZS finds its network by itself. It takes less than {amount} at a time, fee included.": "Lipa Namba（商户收款号）。nTZS 会自动识别所属网络。每次不能达到 {amount}（含手续费）。",
@@ -232,5 +232,8 @@ const catalog: Catalog = {
   "A Lipa number takes less than TZS 1,000,000 at a time, fee included — use a smaller amount.": "Lipa 号码每次不能达到 TZS 1,000,000（含手续费）——请使用较小的金额。",
   "nTZS could not tell which mobile network this Lipa number belongs to, so it did not pay it — nothing moved. Ask nTZS, or send to a phone or a bank account.": "nTZS 无法确定这个 Lipa 号码属于哪个移动网络，所以没有付款——资金没有动。请联系 nTZS，或改为转到手机号或银行账户。",
   "nTZS has not switched on payments to Lipa numbers for the hotel yet — nothing was sent. Ask nTZS to switch them on, or send to a phone or a bank account.": "nTZS 还没有为酒店开通向 Lipa 号码付款的功能——没有发送任何款项。请联系 nTZS 开通，或改为转到手机号或银行账户。",
+  "Name confirmed by the network": "姓名已由网络确认",
+  "This price holds for": "此价格还有效",
+  "This price ran out": "价格已过期",
 };
 export default catalog;

@@ -6,6 +6,14 @@ export function formatTZS(amount: number | null | undefined): string {
   return `TZS ${tzs.format(amount ?? 0)}`;
 }
 
+/** A short amount for a ring or a column: 850, 7.5k → "8k", 1.2M. Never "1000k": near a million it says "1.0M". Display only. */
+export function compactTZS(value: number): string {
+  const abs = Math.abs(value), sign = value < 0 ? "−" : "";
+  if (abs >= 999_500) return `${sign}${(abs / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1000) return `${sign}${Math.round(abs / 1000)}k`;
+  return `${sign}${Math.round(abs)}`;
+}
+
 export function formatNumber(value: number | null | undefined): string {
   return tzs.format(value ?? 0);
 }

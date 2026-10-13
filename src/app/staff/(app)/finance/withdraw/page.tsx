@@ -70,7 +70,7 @@ export default async function WithdrawFundsPage({ searchParams }: PageProps<"/st
             <span className={cn("grid size-11 shrink-0 place-items-center rounded-2xl", TONES.emerald)}><BanknoteArrowUp className="size-5" /></span>
             <div className="leading-tight">
               <h1 className="text-lg font-semibold">{t("Withdraw funds")}</h1>
-              <p className="text-sm text-muted-foreground">{t("Take money out of the hotel's nTZS balance — to a phone or a bank account.")}</p>
+              <p className="text-sm text-muted-foreground">{t("Take money out of the hotel's nTZS balance — to a phone, a Lipa number or a bank account.")}</p>
             </div>
           </div>
           <WithdrawButton available={av.available} disabled={!o.enabled || !!o.unsettled} accounts={o.accounts} destinations={o.destinations} lastBooks={o.lastBooks} timezone={tz} />

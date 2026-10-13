@@ -49,7 +49,7 @@ function insightText(i: Insight, t: T): string {
 export function InsightsPanel({ insights, t, period }: { insights: Insight[]; t: T; period: string }) {
   if (insights.length === 0) return null;
   return (
-    <Panel title={t("What stands out")} subtitle={t("Read from the figures below — nothing is guessed. {period}", { period })}>
+    <Panel level={3} title={t("What stands out")} subtitle={t("Read from the figures below — nothing is guessed. {period}", { period })}>
       <InsightList items={insights.map((i) => ({ id: i.id, tone: i.tone, text: insightText(i, t), href: i.href }))} />
     </Panel>
   );
@@ -100,14 +100,14 @@ export function OutlookView({ t, money, aging, suppliers, pace, pending, booked,
 
       <div className="grid gap-4 lg:grid-cols-2">
         {aging && (
-          <Panel title={t("Who owes the hotel — how late")} subtitle={t("A guest's bill is due the day they leave, a company's on its due date")}
+          <Panel level={3} title={t("Who owes the hotel — how late")} subtitle={t("A guest's bill is due the day they leave, a company's on its due date")}
             action={links.receivables ? <PanelLink href={links.receivables}>{t("Who owes us")}</PanelLink> : null}>
             <SplitBar total={aging.total} empty={t("Nobody owes the hotel anything.")}
               rows={aging.rows.map((r) => ({ label: ageLabel[r.bucket], amount: r.amount, count: r.count, color: AGE_COLOR[r.bucket], note: bills(r.count) }))} />
           </Panel>
         )}
         {suppliers && (
-          <Panel title={t("What the hotel owes — when it falls due")} subtitle={t("Supplier invoices not paid in full")}
+          <Panel level={3} title={t("What the hotel owes — when it falls due")} subtitle={t("Supplier invoices not paid in full")}
             action={links.procurement ? <PanelLink href={links.procurement}>{t("Procurement")}</PanelLink> : null}>
             <SplitBar total={suppliers.owed.amount} empty={t("Nobody is owed anything.")}
               rows={suppliers.due.map((r) => ({ label: dueLabel[r.bucket], amount: r.amount, count: r.count, color: DUE_COLOR[r.bucket], note: invoices(r.count) }))} />
@@ -127,7 +127,7 @@ export function OutlookView({ t, money, aging, suppliers, pace, pending, booked,
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title={t("How fast the money goes")} subtitle={pace ? t("Recorded expenses of the last {n} closed days — today is left out until it ends", { n: pace.days }) : t("Today is left out until it ends")}
+        <Panel level={3} title={t("How fast the money goes")} subtitle={pace ? t("Recorded expenses of the last {n} closed days — today is left out until it ends", { n: pace.days }) : t("Today is left out until it ends")}
           action={links.expenses ? <PanelLink href={links.expenses}>{t("Expenses")}</PanelLink> : null}>
           {pace && enough ? (
             <FigureCards items={[
@@ -142,7 +142,7 @@ export function OutlookView({ t, money, aging, suppliers, pace, pending, booked,
         </Panel>
 
         {booked ? (
-          <Panel title={t("Rooms booked ahead")} subtitle={t("The next 30 nights — money still to be earned, not money received")}>
+          <Panel level={3} title={t("Rooms booked ahead")} subtitle={t("The next 30 nights — money still to be earned, not money received")}>
             {booked.nights > 0 ? (
               <FigureCards items={[
                 { label: t("Room nights booked"), value: String(booked.nights) },
@@ -208,13 +208,13 @@ export function TrendsView({ t, kpis, months, occupancySeries, streams, categori
   return (
     <>
       {kpis.length > 0 && (
-        <Panel title={t("The key figures")} subtitle={t("Each figure against the period before")}>
+        <Panel level={3} title={t("The key figures")} subtitle={t("Each figure against the period before")}>
           <KpiCards items={kpis} />
         </Panel>
       )}
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
-        <Panel title={t("The last six months")} subtitle={t("Month by month — this month so far; the first month starts when the hotel's records began")}
+        <Panel level={3} title={t("The last six months")} subtitle={t("Month by month — this month so far; the first month starts when the hotel's records began")}
           action={links.ledger ? <PanelLink href={links.ledger}>{t("Ledger")}</PanelLink> : null}>
           {shown.length === 0 ? <p className="text-sm text-muted-foreground">{t("No records yet.")}</p> : (
             <div className="space-y-5">
@@ -234,14 +234,14 @@ export function TrendsView({ t, kpis, months, occupancySeries, streams, categori
 
         <div className="grid content-start gap-4">
           {occupancySeries && occupancySeries.length > 1 && (
-            <Panel title={t("Occupancy")} subtitle={t("Share of the guest rooms sold each night, over the period")}>
+            <Panel level={3} title={t("Occupancy")} subtitle={t("Share of the guest rooms sold each night, over the period")}>
               <AreaTrend data={occupancySeries} unit="percent" color="#8b5cf6" height={190} />
             </Panel>
           )}
-          <Panel title={t("Which days earn most")} subtitle={weekdays ? t("The average earned on each day of the week — the last {n} weeks, closed days only", { n: weeks }) : t("The average earned on each day of the week")}>
+          <Panel level={3} title={t("Which days earn most")} subtitle={weekdays ? t("The average earned on each day of the week — the last {n} weeks, closed days only", { n: weeks }) : t("The average earned on each day of the week")}>
             {weekdays ? (
               <>
-                <WeekColumns best={best} days={weekdays.map((d) => ({ label: weekdayName(d.weekday, t, "short"), value: d.average, sub: t.plural(d.days, "{n} day", "{n} days") }))} />
+                <WeekColumns best={best} bestLabel={t("Best day")} days={weekdays.map((d) => ({ label: weekdayName(d.weekday, t, "short"), value: d.average, sub: t.plural(d.days, "{n} day", "{n} days") }))} />
                 <p className="sr-only">{weekdays.map((d) => `${weekdayName(d.weekday, t)}: ${formatTZS(d.average)}`).join("; ")}</p>
               </>
             ) : (
@@ -252,10 +252,10 @@ export function TrendsView({ t, kpis, months, occupancySeries, streams, categori
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <Panel title={t("Income against the period before")} subtitle={t("What each part of the business earned")}>
+        <Panel level={3} title={t("Income against the period before")} subtitle={t("What each part of the business earned")}>
           <MovementTable rows={streams} label={t("Income")} t={t} />
         </Panel>
-        <Panel title={t("Expenses against the period before")} subtitle={t("What each kind of cost took")} action={links.expenses ? <PanelLink href={links.expenses}>{t("Expenses")}</PanelLink> : null}>
+        <Panel level={3} title={t("Expenses against the period before")} subtitle={t("What each kind of cost took")} action={links.expenses ? <PanelLink href={links.expenses}>{t("Expenses")}</PanelLink> : null}>
           <MovementTable rows={categories} label={t("Expenses")} costs t={t} />
         </Panel>
       </div>
