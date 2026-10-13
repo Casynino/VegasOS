@@ -22,3 +22,14 @@ describe("the Finance menu", () => {
     }
   });
 });
+
+describe("the Stores menu", () => {
+  it("goes from the shortest name to the longest", () => {
+    for (const role of ["OWNER", "ADMIN", "MANAGER", "FINANCE"] as const) {
+      const labels = visibleNav(new Set<string>(DEFAULT_ROLES[role].permissions)).find((s) => s.title === "Stores")!.items.map((i) => i.label);
+      expect(labels, role).toEqual([...labels].sort((a, b) => a.length - b.length || a.localeCompare(b)));
+    }
+    const all = visibleNav(new Set<string>(DEFAULT_ROLES.OWNER.permissions)).find((s) => s.title === "Stores")!.items.map((i) => i.label);
+    expect(all).toEqual(["Assets", "Inventory", "Procurement", "Purchase requests"]);
+  });
+});

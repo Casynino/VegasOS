@@ -130,15 +130,15 @@ export const NAV: NavSection[] = [
     ],
   },
   {
-    // Consumable stock (every department), asking for it and buying it, and the hotel's assets — kept apart.
+    // Consumable stock (every department), asking for it and buying it, and the hotel's assets — kept apart. From the shortest name to the longest (owner, 2026-10-13).
     title: msg("Stores"), icon: "Boxes", ordered: true,
     items: [
+      { href: "/staff/assets", label: msg("Assets"), icon: "Sofa", anyOf: ["assets.view"] },
       { href: "/staff/inventory", label: msg("Inventory"), icon: "Boxes", anyOf: ["inventory.view"] },
-      // Ask → review → buy → final approval: the kitchen, waiters and reception ask; managers review, buy and approve.
-      { href: "/staff/stock-requests", label: msg("Purchase requests"), icon: "ClipboardList", anyOf: ["inventory.view", "expenses.approve", "inventory.receive"] },
       // Approved purchases: quotations → price authorized by Finance → order → delivery → invoice → payment.
       { href: "/staff/procurement", label: msg("Procurement"), icon: "ClipboardCheck", anyOf: ["dashboard.procurement", "procurement.manage", "purchases.authorize", "purchases.pay"] },
-      { href: "/staff/assets", label: msg("Assets"), icon: "Sofa", anyOf: ["assets.view"] },
+      // Ask → review → buy → final approval: the kitchen, waiters and reception ask; managers review, buy and approve.
+      { href: "/staff/stock-requests", label: msg("Purchase requests"), icon: "ClipboardList", anyOf: ["inventory.view", "expenses.approve", "inventory.receive"] },
     ],
   },
   {
