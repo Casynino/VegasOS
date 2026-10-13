@@ -54,11 +54,19 @@ describe("accountant and cash handover", () => {
     ] as const) expect(accountant.has(p), p).toBe(true);
   });
 
-  it("the Accountant never runs the hotel, sets the system up, withdraws from nTZS or regenerates the Boss's reports", () => {
+  it("the Accountant never runs the hotel, sets the system up, settles a withdrawal by hand or works a shift", () => {
     for (const p of [
       "reservations.create", "reservations.check_in", "reservations.check_out", "restaurant.orders", "restaurant.serve", "kitchen.orders", "inventory.manage", "inventory.approve",
-      "users.manage", "settings.manage", "restaurant.menu", "rooms.manage", "website.manage", "withdrawals.manage", "withdrawals.reconcile", "reports.daily.manage", "payments.record", "revenue.record",
+      "users.manage", "settings.manage", "restaurant.menu", "rooms.manage", "website.manage", "withdrawals.reconcile", "shifts.manage", "shifts.work", "cash.handover.submit",
     ] as const) expect(accountant.has(p), p).toBe(false);
+  });
+
+  it("the Accountant has full control of the money: records payments and sales, withdraws from nTZS, makes the reports, changes restaurant prices — and only reads shifts, stock and assets", () => {
+    for (const p of ["payments.record", "revenue.record", "withdrawals.manage", "reports.daily.manage", "restaurant.prices", "shifts.view", "inventory.view", "assets.view"] as const) expect(accountant.has(p), p).toBe(true);
+    // read-only: no stock, asset or shift changes
+    for (const p of ["inventory.use", "inventory.receive", "inventory.manage", "assets.manage", "shifts.manage"] as const) expect(accountant.has(p), p).toBe(false);
+    // the restaurant-prices right is narrow: only the Accountant, the Boss and the MD hold it
+    for (const [name, set] of [["reception", reception], ["counter", counter], ["waiter", waiter], ["manager", manager]] as const) expect(set.has("restaurant.prices"), name).toBe(false);
   });
 
   it("reception and the Restaurant Counter hand cash over but never receive it; waiters have no part in it; the Manager only watches", () => {

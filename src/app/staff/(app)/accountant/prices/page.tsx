@@ -9,6 +9,7 @@ import { addDays, toDbDate } from "@/lib/time/business-date";
 import { formatTZS } from "@/lib/format";
 import { getT } from "@/i18n/server";
 import { FinanceTabs } from "@/components/staff/finance/finance-nav";
+import { PriceCell } from "./price-cell";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getT();
@@ -34,6 +35,7 @@ export default async function PriceControlPage() {
   ]);
   const aheadOf = new Map(ahead.map((a) => [a.roomTypeId, a._count]));
   const editRooms = can(user, "pricing.manage");
+  const editMenu = can(user, "restaurant.prices") || can(user, "restaurant.menu");
   const byCategory = new Map<string, typeof menu>();
   for (const m of menu) byCategory.set(m.category.name, [...(byCategory.get(m.category.name) ?? []), m]);
   return (
@@ -99,13 +101,13 @@ export default async function PriceControlPage() {
               <details key={cat} className="group">
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-2 text-sm font-medium hover:bg-muted/30"><span>{t(cat)}</span><span className="text-xs font-normal text-muted-foreground">{t.plural(items.length, "{n} item", "{n} items")}</span></summary>
                 <ul className="divide-y divide-border/40 bg-muted/10 px-4 pb-1 text-sm">
-                  {items.map((m) => <li key={m.id} className="flex items-center justify-between gap-3 py-1.5"><span className={m.isAvailable ? "" : "text-muted-foreground line-through"}>{t(m.name)}</span><span className="tabular-nums">{formatTZS(m.price)}</span></li>)}
+                  {items.map((m) => <li key={m.id} className="flex items-center justify-between gap-3 py-1.5"><span className={m.isAvailable ? "" : "text-muted-foreground line-through"}>{t(m.name)}</span><PriceCell id={m.id} name={t(m.name)} price={m.price} canEdit={editMenu} /></li>)}
                 </ul>
               </details>
             ))}
           </div>
         )}
-        <p className="border-t border-border/60 px-4 py-2 text-[11px] text-muted-foreground">{t("Each order copies the price when it is placed, so a new price never changes an old order. No cost price is kept for menu items, so no margin is shown.")}</p>
+        <p className="border-t border-border/60 px-4 py-2 text-[11px] text-muted-foreground">{t("Each order copies the price when it is placed, so a new price never changes an old order — it counts from the next order. No cost price is kept for menu items, so no margin is shown.")}</p>
       </section>
     </div>
   );

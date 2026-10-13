@@ -176,5 +176,10 @@ const catalog: Catalog = {
   "Staff may take off at most {amount} a night.": "员工每晚最多可减 {amount}。",
   "The Boss and the MD set these limits.": "这些上限由老板和总经理设置。",
   "All transactions (ledger)": "全部交易（总账）",
+  "Each order copies the price when it is placed, so a new price never changes an old order — it counts from the next order. No cost price is kept for menu items, so no margin is shown.": "每张订单在下单时复制当时的价格，所以新价格不会改变旧订单——从下一张订单起生效。菜品未记录成本价，因此不显示毛利。",
+  "Change the price of {name}": "修改 {name} 的价格",
+  "New price of {name} (TZS)": "{name} 的新价格（TZS）",
+  "Change the selling prices of menu items (Accountant) — nothing else on the menu; each order keeps the price it was placed at": "修改菜品的售价（会计）——不涉及菜单的其他内容；每张订单保持下单时的价格",
+  "changed a menu price": "修改了菜品价格",
 };
 export default catalog;

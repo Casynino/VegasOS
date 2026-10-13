@@ -88,6 +88,7 @@ export const PERMISSIONS = {
   "restaurant.device": msg("Only the main restaurant's own login (the shared computer / iPad) — never a person's role: it stays signed in, and waiters give their PIN on it"),
   "restaurant.payments.confirm": msg("Confirm restaurant payments (the Restaurant Counter's own are confirmed as they are recorded)"),
   "restaurant.menu": msg("Restaurant set-up (Admin): menu, prices, categories, photos, tables, restaurant QR codes and order sounds"),
+  "restaurant.prices": msg("Change the selling prices of menu items (Accountant) — nothing else on the menu; each order keeps the price it was placed at"),
   "kitchen.orders": msg("Restaurant portal as the Mpishi: accept, prepare and mark any order ready (food and drinks)"),
   "bar.orders": msg("Restaurant portal: accept, prepare and mark drinks ready"),
   "booking_requests.manage": msg("Handle online booking requests (contact, confirm, reject, convert)"),
@@ -199,14 +200,25 @@ const KITCHEN: PermissionCode[] = ["kitchen.orders", "bar.orders", "inventory.vi
 const RESTAURANT_SCREEN: PermissionCode[] = ["restaurant.orders", "restaurant.serve", "restaurant.device", "kitchen.orders", "bar.orders", "revenue.record", "restaurant.payments.confirm", "cash.handover.submit", "guests.view"];
 
 /**
- * Accountant — the hotel's finance controller: reads every payment, receives the cash the front desk and the Counter
- * hand over, keeps the accounts, expenses, prices and discounts in order and reports on them. Never runs the front
- * desk, the restaurant, the stores or the system's set-up: no check-in/out, no orders, no staff accounts, no settings,
- * and no withdrawals from nTZS or regenerating the Boss's reports (the Boss and the MD keep those).
+ * Accountant — the hotel's finance controller (owner, 2026-10-13: "full control of all financial activities"): sees every
+ * account, transaction and report; records payments and sales; receives the cash the front desk and the Counter hand
+ * over; keeps the accounts, expenses, prices and discounts in order; withdraws from nTZS; makes and sends the daily
+ * reports. Never runs the front desk, the kitchen or the system's set-up: no check-in/out, no orders, no staff accounts,
+ * no hotel settings. Regenerating a report, settling a withdrawal by hand and how much staff may discount stay with the
+ * Boss and the MD.
  */
 const ACCOUNTANT: PermissionCode[] = [
   "dashboard.accountant",
   "reports.view",
+  "reports.daily.manage",
+  "payments.record",
+  "revenue.record",
+  "withdrawals.manage",
+  "restaurant.prices",
+  // Read-only: the shifts and their money, what the stores and the assets are worth.
+  "shifts.view",
+  "inventory.view",
+  "assets.view",
   "finance.view",
   "finance.manage",
   "ledger.view",

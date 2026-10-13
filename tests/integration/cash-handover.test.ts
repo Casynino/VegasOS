@@ -185,6 +185,24 @@ describe("the Accountant receives it", () => {
   });
 });
 
+describe("who holds cash", () => {
+  it("does not list the Accountant (or the Boss) as staff holding cash — they are the ones who receive it", async () => {
+    // A real Accountant account (role ACCOUNTANT) — the Accountant may record a sale too.
+    const role = await db.role.findUniqueOrThrow({ where: { code: "ACCOUNTANT" }, include: { permissions: { include: { permission: true } } } });
+    const user = await db.user.upsert({
+      where: { email: "accountant@test.local" }, update: { roleId: role.id, isActive: true },
+      create: { email: "accountant@test.local", fullName: "Test Accountant", roleId: role.id, passwordHash: "x", mustChangePassword: false },
+    });
+    const accountantWhoRecords: HandoverActor = { userId: user.id, label: user.fullName, permissions: new Set(role.permissions.map((p) => p.permission.code)) };
+    await cashSale(accountantWhoRecords, 33_000);
+    expect(await db.revenueTransaction.count({ where: { recordedById: user.id } })).toBe(1);
+    expect((await whoHoldsCash()).find((p) => p.userId === user.id)).toBeUndefined();
+    const reception = await asha();
+    await cashSale(reception, 12_000);
+    expect((await whoHoldsCash()).find((p) => p.userId === reception.userId)).toMatchObject({ expected: 12_000 });
+  });
+});
+
 describe("who may do what — checked on the server", () => {
   it("a waiter cannot hand cash over, and nobody receives their own handover", async () => {
     const reception = await asha();

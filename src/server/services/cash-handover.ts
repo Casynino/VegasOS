@@ -378,7 +378,8 @@ export async function whoHoldsCash() {
     ...rooms.map((r) => r.recordedById), ...credited.map((r) => r.creditedToId!), ...restaurant.map((r) => r.collectedById!), ...sales.map((r) => r.recordedById),
   ]);
   const [users, waiting] = await Promise.all([
-    db.user.findMany({ where: { id: { in: [...ids] } }, select: { id: true, fullName: true, role: { select: { name: true } } } }),
+    // Whoever receives handovers (the Accountant, the Boss, the MD) already holds their own cash: it is not "with staff".
+    db.user.findMany({ where: { id: { in: [...ids] }, role: { permissions: { none: { permission: { code: "cash.handover.review" } } } } }, select: { id: true, fullName: true, role: { select: { name: true } } } }),
     db.cashHandover.groupBy({ by: ["submittedById"], where: { status: "SUBMITTED" }, _sum: { declared: true, expected: true }, _count: true }),
   ]);
   const waitingOf = new Map(waiting.map((w) => [w.submittedById, w]));

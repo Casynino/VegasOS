@@ -49,6 +49,7 @@ const ACTIONS: Record<string, { label: string; group: HistoryGroup }> = {
   "revenue.voided": { label: msg("cancelled a dining / bar sale"), group: "payments" },
   "reservation.charge_voided": { label: msg("removed an item from a room bill"), group: "payments" },
   "reservation.discount_changed": { label: msg("changed a discount"), group: "prices" },
+  "menu.price_changed": { label: msg("changed a menu price"), group: "prices" },
   "pricing.rate_changed": { label: msg("changed a room price"), group: "prices" },
   "room_type.rate_changed": { label: msg("changed a room price"), group: "prices" },
   "pricing.promotion_created": { label: msg("created a promotion"), group: "prices" },
@@ -138,13 +139,14 @@ export async function financeHistory(f: { from: BusinessDate; to: BusinessDate; 
   });
   // Names for the records the changes were made to.
   const ids = (type: string) => [...new Set(logs.filter((l) => l.entityType === type && l.entityId).map((l) => l.entityId!))];
-  const [res, exps, pays, invs, corps, stock] = await Promise.all([
+  const [res, exps, pays, invs, corps, stock, menuItems] = await Promise.all([
     db.reservation.findMany({ where: { id: { in: ids("Reservation") } }, select: { id: true, reference: true, guest: { select: { fullName: true } } } }),
     db.expense.findMany({ where: { id: { in: ids("Expense") } }, select: { id: true, number: true, description: true } }),
     db.payment.findMany({ where: { id: { in: ids("Payment") } }, select: { id: true, amount: true, reservationId: true, invoiceId: true, reservation: { select: { reference: true } } } }),
     db.invoice.findMany({ where: { id: { in: ids("Invoice") } }, select: { id: true, number: true } }),
     db.corporateCustomer.findMany({ where: { id: { in: ids("CorporateCustomer") } }, select: { id: true, companyName: true } }),
     db.stockRequest.findMany({ where: { id: { in: ids("StockRequest") } }, select: { id: true, number: true, purchaseNumber: true, department: true, inventoryDepartment: { select: { name: true } } } }),
+    db.menuItem.findMany({ where: { id: { in: ids("MenuItem") } }, select: { id: true, name: true } }),
   ]);
   const name = (type: string, id: string | null): { record: string; href: string | null } => {
     if (!id) return { record: type, href: null };
@@ -157,6 +159,7 @@ export async function financeHistory(f: { from: BusinessDate; to: BusinessDate; 
       const r = stock.find((x) => x.id === id);
       return { record: r ? `${t("Stock request {number}", { number: r.number })}${r.purchaseNumber ? ` · ${t("purchase {number}", { number: r.purchaseNumber })}` : ""} · ${r.inventoryDepartment ? t(r.inventoryDepartment.name) : r.department}` : "Stock request", href: "/staff/stock-requests" };
     }
+    if (type === "MenuItem") return { record: menuItems.find((x) => x.id === id)?.name ?? "Menu item", href: "/staff/accountant/prices" };
     if (type === "LedgerEntry" || type === "CashCount") return { record: type === "CashCount" ? "Cash count" : "Money movement", href: "/staff/finance/accounts" };
     return { record: RECORD_KIND[type] && t.locale !== DEFAULT_LOCALE ? t(RECORD_KIND[type]) : type, href: type.startsWith("Room") || type === "Promotion" || type === "HotelSettings" ? "/staff/settings/pricing" : null };
   };
