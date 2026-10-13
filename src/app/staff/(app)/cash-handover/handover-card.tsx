@@ -64,7 +64,7 @@ export function HandoverCard({ data }: { data: CardData }) {
             <p className="font-medium">{h.number} · <span className="text-rose-700 dark:text-rose-300">{t(STATUS_TEXT.RETURNED)}</span></p>
             <DeclareDialog mode="resubmit" data={data} handover={h} />
           </div>
-          {h.reviewNote && <p className="text-xs text-muted-foreground">{t("The Accountant says: {note}", { note: h.reviewNote })}</p>}
+          {h.reviewNote && <p className="text-xs text-muted-foreground">{t("Finance says: {note}", { note: h.reviewNote })}</p>}
         </div>
       ))}
       {waiting.map((h) => (
@@ -115,7 +115,7 @@ function DeclareDialog({ mode, data, handover }: { mode: "submit" | "resubmit"; 
         <DialogContent className="sm:max-w-md">
           <DialogHeader icon={<HandCoins />} eyebrow={t("Cash handover")} tone="emerald">
             <DialogTitle>{mode === "submit" ? t("Hand over your cash") : t("Send {number} again", { number: handover?.number ?? "" })}</DialogTitle>
-            <DialogDescription>{t("Count the cash. The Accountant receives it and confirms the amount.")}</DialogDescription>
+            <DialogDescription>{t("Count the cash. Finance receives it and confirms the amount.")}</DialogDescription>
           </DialogHeader>
           <ActionForm action={action} onSuccess={() => { setOpen(false); router.refresh(); }} className="space-y-4">
             {({ pending, fieldErrors: e }) => (
@@ -139,7 +139,7 @@ function DeclareDialog({ mode, data, handover }: { mode: "submit" | "resubmit"; 
                   <Textarea id="ch-note" name="note" rows={3} maxLength={500} />
                   <FieldError message={e?.note} />
                 </div>
-                <Button type="submit" className="w-full" disabled={pending || declared === ""}>{pending ? <Loader2 className="animate-spin" /> : <Send />}{t("Send to the Accountant")}</Button>
+                <Button type="submit" className="w-full" disabled={pending || declared === ""}>{pending ? <Loader2 className="animate-spin" /> : <Send />}{t("Send to Finance")}</Button>
               </>
             )}
           </ActionForm>

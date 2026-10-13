@@ -6,7 +6,7 @@ import { cashRecords, totalsOf } from "./cash-handover";
 import { EARNED_NIGHT } from "./reservation-financials";
 
 /**
- * The Accountant's own reports. Every line comes from the records themselves — nothing is estimated:
+ * Finance's own reports. Every line comes from the records themselves — nothing is estimated:
  *   discounts        what was taken off a price, by whom, with the original price and the final one;
  *   reconciliation   for each person who takes cash: cash recorded, handed over, received, the differences;
  *   cash handovers   every handover of the period (also as a spreadsheet).
@@ -82,7 +82,7 @@ export type DiscountHistory = Awaited<ReturnType<typeof discountHistory>>;
 
 // ───────────────────────── Staff cash reconciliation ─────────────────────────
 
-/** For each person who takes cash: what they recorded in the period, what they handed over, what the Accountant received, and the differences. */
+/** For each person who takes cash: what they recorded in the period, what they handed over, what Finance received, and the differences. */
 export async function reconciliationByStaff(from: BusinessDate, to: BusinessDate) {
   const cfg = businessDayConfig(await getSettings());
   const { start, end } = businessRangeBounds(from, to, cfg);

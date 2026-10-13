@@ -11,7 +11,7 @@ import { msg } from "@/i18n/msg";
 
 /**
  * Cash handover — every step runs here on the server as the signed-in person. Who may do it is checked here and again
- * in the service, whatever the screen shows: reception and the Restaurant Counter hand cash over; only the Accountant
+ * in the service, whatever the screen shows: reception and the Restaurant Counter hand cash over; only Finance
  * (and the Boss and the MD) receive, return or refuse it.
  */
 async function actor(code: PermissionCode): Promise<HandoverActor> {
@@ -36,7 +36,7 @@ export async function submitHandoverAction(_prev: unknown, formData: FormData): 
     await submitHandover(input, who);
     refresh();
     return null;
-  }, msg("Handover sent to the Accountant."));
+  }, msg("Handover sent to Finance."));
 }
 
 export async function resubmitHandoverAction(_prev: unknown, formData: FormData): Promise<ActionResult<null>> {

@@ -34,22 +34,29 @@ const Item = z.object({
 });
 const Request = z.object({
   department: z.string().trim().min(1, msg("Choose the department it is for.")).max(40),
-  urgent: z.boolean(),
+  urgent: z.boolean().optional().default(false),
+  priority: z.enum(["LOW", "NORMAL", "HIGH", "URGENT"]).optional(),
+  title: z.string().trim().max(80).optional(),
+  estimatedTotal: z.number().int(msg("Whole shillings only.")).min(0).max(2_000_000_000).nullable().optional(),
+  clientKey: z.string().trim().min(8).max(64).optional(),
   neededBy: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal("")),
   reason: Why.optional(),
   note: Why.optional(),
   items: z.array(Item).min(1, msg("Add at least one item.")).max(40),
 });
 
-/** A department asks for stock (the kitchen, the waiters, reception for housekeeping…). */
-export async function createStockRequestAction(input: z.input<typeof Request>): Promise<ActionResult<{ number: string }>> {
+/** A department asks for something to be bought (the kitchen, the Counter, reception…): the request as JSON, with an optional photo or document. */
+export async function createStockRequestAction(_prev: unknown, formData: FormData): Promise<ActionResult<{ number: string }>> {
   return runAction(async () => {
     const user = await authorize("inventory.request");
-    const d = parseInput(Request, input);
-    const r = await createStockRequest({ ...d, neededBy: d.neededBy || null }, await actor(user));
+    let raw: unknown;
+    try { raw = JSON.parse(String(formData.get("payload") ?? "")); } catch { throw new AppError("The request could not be read — try again.", "VALIDATION"); }
+    const d = parseInput(Request, raw);
+    const file = formData.get("attachment");
+    const r = await createStockRequest({ ...d, neededBy: d.neededBy || null, attachment: file instanceof File && file.size > 0 ? file : null }, await actor(user));
     refresh();
     return { number: r.number };
-  }, msg("Request sent to the manager."));
+  }, msg("Request sent to Finance."));
 }
 
 const Edit = z.object({ id: Id, items: z.array(Item).min(1, msg("Keep at least one item.")).max(40), urgent: z.boolean().optional(), note: Why.optional(), reason: Why.optional() });
@@ -64,13 +71,13 @@ export async function editStockRequestAction(input: z.input<typeof Edit>): Promi
   }, msg("Request updated."));
 }
 
-const Review = z.object({ id: Id, decision: z.enum(["APPROVE", "SEND_BACK", "REJECT"]), note: Why.optional() });
+const Review = z.object({ id: Id, decision: z.enum(["APPROVE", "SEND_BACK", "REJECT"]), note: Why.optional(), approvedBudget: z.number().int().min(0).max(2_000_000_000).nullable().optional() });
 /** The manager's review: approve for purchase, send back to be changed, or reject. */
 export async function reviewStockRequestAction(input: z.input<typeof Review>): Promise<ActionResult<null>> {
   return runAction(async () => {
     const user = await authorize("expenses.approve");
     const d = parseInput(Review, input);
-    await reviewStockRequest(d.id, d.decision, d.note ?? null, await actor(user));
+    await reviewStockRequest(d.id, d.decision, d.note ?? null, await actor(user), new Date(), { approvedBudget: d.approvedBudget ?? null });
     refresh();
     return null;
   }, input.decision === "APPROVE" ? msg("Approved for purchase.") : input.decision === "SEND_BACK" ? msg("Sent back to change.") : msg("Rejected."));

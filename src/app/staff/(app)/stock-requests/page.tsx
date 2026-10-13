@@ -14,7 +14,7 @@ import { StockRequests } from "./stock-requests";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getT();
-  return { title: t("Stock requests") };
+  return { title: t("Purchase requests") };
 }
 export const dynamic = "force-dynamic";
 
@@ -70,7 +70,9 @@ function eventView(e: StockRequestRow["events"][number], money: boolean, t: T): 
 function view(r: StockRequestRow, money: boolean, deptName: (code: string) => string, t: T): StockReqView {
   return {
     id: r.id, number: r.number, department: r.department, departmentName: r.inventoryDepartment?.name ?? deptName(r.department), departmentId: r.departmentId,
-    status: r.status, urgent: r.urgent, neededBy: r.neededBy?.toISOString().slice(0, 10) ?? null, reason: r.reason, note: r.note,
+    status: r.status, urgent: r.urgent, title: r.title, priority: r.priority, estimatedTotal: r.estimatedTotal, approvedBudget: r.approvedBudget,
+    order: r.orderNumber ? { number: r.orderNumber, expectedOn: r.expectedDeliveryOn?.toISOString().slice(0, 10) ?? null, total: money ? r.orderTotal : null } : null,
+    attachments: r.documents.map((d) => ({ id: d.fileId, kind: d.kind, isPdf: d.file.contentType === "application/pdf" })), neededBy: r.neededBy?.toISOString().slice(0, 10) ?? null, reason: r.reason, note: r.note,
     by: r.requestedBy.fullName, byId: r.requestedById, at: r.createdAt.toISOString(),
     decidedBy: r.decidedBy?.fullName ?? null, decidedAt: r.decidedAt?.toISOString() ?? null, decisionNote: r.decisionNote,
     purchaseNumber: r.purchaseNumber, boughtBy: r.purchasedBy?.fullName ?? null, boughtById: r.purchasedById,
@@ -78,7 +80,7 @@ function view(r: StockRequestRow, money: boolean, deptName: (code: string) => st
     lines: r.items.map((i) => ({
       id: i.id, name: i.name, quantity: i.quantity, unit: i.unit, note: i.note, approvedQty: i.approvedQty,
       stockItem: i.inventoryItem ? { id: i.inventoryItem.id, name: i.inventoryItem.name, unit: i.inventoryItem.unit, tracksExpiry: i.inventoryItem.tracksExpiry } : null,
-      purchasedQty: i.purchasedQty, received: !!i.movementId,
+      purchasedQty: i.purchasedQty, received: !!i.movementId, orderedQty: i.orderedQty, receivedQty: i.receivedQty,
       unitPrice: money ? i.unitPrice : null, lineTotal: money ? i.lineTotal : null, expiresOn: money ? i.expiresOn?.toISOString().slice(0, 10) ?? null : null,
     })),
     purchase: money && (r.purchaseNumber || r.correctionNote) ? {

@@ -66,8 +66,8 @@ export function StockRequests({ open, closed, me, hotel, today, kitchen, drinks,
             <PackagePlus className="size-5" />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[oklch(0.62_0.11_78)] dark:text-[oklch(0.8_0.11_82)]">{money ? t("Every department · purchasing") : t("Ask for stock")}</p>
-            <h1 className="font-display text-[26px] font-semibold leading-tight">{t("Stock requests")}</h1>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[oklch(0.62_0.11_78)] dark:text-[oklch(0.8_0.11_82)]">{money ? t("Every department · purchasing") : t("Ask for what you need")}</p>
+            <h1 className="font-display text-[26px] font-semibold leading-tight">{t("Purchase requests")}</h1>
           </div>
           <div role="group" aria-label={t("Requests at each step")} className="flex max-w-full items-stretch divide-x divide-border/70 overflow-x-auto rounded-2xl bg-background/40 ring-1 ring-border/60 [scrollbar-width:none]">
             {counters.map((c) => (
@@ -84,7 +84,7 @@ export function StockRequests({ open, closed, me, hotel, today, kitchen, drinks,
         </div>
         <div className="relative flex flex-wrap items-center justify-between gap-2 border-t border-border/60 px-2 sm:px-3">
           {me.asker ? (
-            <nav className="flex" aria-label={t("Stock requests")}>
+            <nav className="flex" aria-label={t("Purchase requests")}>
               {([["new", t.ctx("stock", "New request"), PackagePlus], ["requests", t.ctx("stock", "Requests"), ClipboardList]] as const).map(([v, label, I]) => (
                 <button key={v} type="button" onClick={() => setTab(v)} aria-current={tab === v ? "page" : undefined}
                   className={cn("relative flex items-center gap-2 px-3 py-3 text-sm font-medium transition",
@@ -95,9 +95,9 @@ export function StockRequests({ open, closed, me, hotel, today, kitchen, drinks,
                 </button>
               ))}
             </nav>
-          ) : <p className="px-2 py-3 text-sm text-muted-foreground">{t("What every department needs — review it, buy it, give the final approval.")}</p>}
+          ) : <p className="px-2 py-3 text-sm text-muted-foreground">{t("What every department needs — Finance reviews it, the Accountant buys it, Finance gives the final approval.")}</p>}
           <p className="hidden px-2 text-xs text-muted-foreground md:block">
-            {tab === "new" && me.asker ? t("Tap the pictures · check the list · send it to the manager") : t("Open a request to see it, work on it, print or save it")}
+            {tab === "new" && me.asker ? t("Tap the pictures · check the list · send it to Finance") : t("Open a request to see it, work on it, print or save it")}
           </p>
         </div>
       </header>

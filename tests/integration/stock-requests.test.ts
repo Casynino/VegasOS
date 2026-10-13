@@ -36,7 +36,7 @@ describe("asking and the manager's review", () => {
     const { r, beef, rice } = await askForBeefAndRice();
     expect(r).toMatchObject({ number: "SR-2026-0001", status: "SUBMITTED", department: "KITCHEN", reason: "Weekend wedding" });
     expect((await lines(r.id)).map((l) => [l.name, l.inventoryItemId])).toEqual([["Beef", beef], ["Charcoal", null], ["Rice", rice]]);
-    await expect(reviewStockRequest(r.id, "APPROVE", null, await chefActor(), NOW)).rejects.toThrow(/Only a manager/);
+    await expect(reviewStockRequest(r.id, "APPROVE", null, await chefActor(), NOW)).rejects.toThrow(/Only Finance or a manager/);
     await reviewStockRequest(r.id, "APPROVE", null, await managerActor(), NOW);
     expect((await db.stockRequest.findUniqueOrThrow({ where: { id: r.id } })).status).toBe("APPROVED");
     expect((await lines(r.id)).map((l) => l.approvedQty)).toEqual([10, 2, 25]);
@@ -66,8 +66,10 @@ describe("asking and the manager's review", () => {
     expect(events[1]).toMatchObject({ reason: "8 kg is enough", byLabel: mgr.label });
   });
 
-  it("reception does not ask for stock (the restaurant's); a manager can ask for another department; someone who only asks sees their own requests", async () => {
-    await expect(createStockRequest({ department: "HOUSEKEEPING", urgent: true, items: [{ name: "Toilet paper", quantity: 4, unit: "packs" }] }, await receptionistActor(), NOW)).rejects.toThrow(/cannot request stock/);
+  it("reception asks for what the front desk needs (owner, 2026-10-13) but cannot review; a manager can ask for another department; someone who only asks sees their own requests", async () => {
+    const desk = await createStockRequest({ department: "RECEPTION", urgent: false, title: "Reception chairs", items: [{ name: "Chair", quantity: 4, unit: "pcs" }] }, await receptionistActor(), NOW);
+    expect(desk).toMatchObject({ department: "RECEPTION", status: "SUBMITTED", title: "Reception chairs" });
+    await expect(reviewStockRequest(desk.id, "APPROVE", null, await receptionistActor(), NOW)).rejects.toThrow(/Only Finance or a manager/);
     const mgr = await managerActor();
     const r = await createStockRequest({ department: "HOUSEKEEPING", urgent: true, items: [{ name: "Toilet paper", quantity: 4, unit: "packs" }] }, mgr, NOW);
     expect(r).toMatchObject({ department: "HOUSEKEEPING" });

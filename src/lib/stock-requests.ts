@@ -17,14 +17,29 @@ export const STATUS_META: Record<string, { label: string; tone: string }> = {
   APPROVED: { label: msg("Approved — to buy"), tone: "bg-amber-500/15 text-amber-800 dark:text-amber-300" },
   PURCHASING: { label: msg("Being bought"), tone: "bg-violet-500/12 text-violet-700 dark:text-violet-300" },
   PENDING_APPROVAL: { label: msg("Bought — waiting for approval"), tone: "bg-fuchsia-500/12 text-fuchsia-700 dark:text-fuchsia-300" },
-  COMPLETED: { label: msg("Done — in stock"), tone: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300" },
+  AWAITING_AUTHORIZATION: { label: msg("Waiting for Finance to authorize the price"), tone: "bg-fuchsia-500/12 text-fuchsia-700 dark:text-fuchsia-300" },
+  ORDERED: { label: msg("Ordered — waiting for delivery"), tone: "bg-indigo-500/12 text-indigo-700 dark:text-indigo-300" },
+  PART_DELIVERED: { label: msg("Partly delivered"), tone: "bg-violet-500/12 text-violet-700 dark:text-violet-300" },
+  DELIVERED: { label: msg("Delivered — invoice and payment to finish"), tone: "bg-teal-500/12 text-teal-700 dark:text-teal-300" },
+  COMPLETED: { label: msg("Done"), tone: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300" },
   REJECTED: { label: msg("Rejected"), tone: "bg-rose-500/12 text-rose-700 dark:text-rose-300" },
   CANCELLED: { label: msg("Cancelled"), tone: "bg-muted text-muted-foreground" },
 };
 export const statusMeta = (s: string) => STATUS_META[s] ?? { label: s.toLowerCase().replace(/_/g, " "), tone: "bg-muted text-muted-foreground" };
 
+/**
+ * The status as procurement reads it: an approved purchase is "awaiting a supplier quotation" until a price is authorized
+ * (then "ready to order"). Everything else is the request's own status.
+ */
+export function procurementStatus(status: string, ready: boolean) {
+  if (status !== "APPROVED") return statusMeta(status);
+  return ready
+    ? { label: msg("Price authorized — ready to order"), tone: "bg-indigo-500/12 text-indigo-700 dark:text-indigo-300" }
+    : { label: msg("Approved — awaiting supplier quotation"), tone: "bg-amber-500/15 text-amber-800 dark:text-amber-300" };
+}
+
 /** Still moving: not done, rejected or cancelled. */
-export const OPEN_STATUSES = ["SUBMITTED", "SENT_BACK", "APPROVED", "PURCHASING", "PENDING_APPROVAL"];
+export const OPEN_STATUSES = ["SUBMITTED", "SENT_BACK", "APPROVED", "PURCHASING", "PENDING_APPROVAL", "AWAITING_AUTHORIZATION", "ORDERED", "PART_DELIVERED", "DELIVERED"];
 
 /** A stock item in the stores (what a line is linked to). */
 export type StockItemRef = { id: string; name: string; unit: string; tracksExpiry: boolean };
@@ -44,6 +59,9 @@ export type StockLineView = {
   purchasedQty: number | null;
   /** Put into stock at the final approval. */
   received: boolean;
+  /** On the purchase order, and how much of it has arrived (quantities only — no prices). */
+  orderedQty: number | null;
+  receivedQty: number;
   unitPrice: number | null;
   lineTotal: number | null;
   expiresOn: string | null;
@@ -91,6 +109,18 @@ export type StockReqView = {
   departmentId: string | null;
   status: string;
   urgent: boolean;
+  /** A short name for the request, if the person gave one. */
+  title: string | null;
+  /** LOW | NORMAL | HIGH | URGENT */
+  priority: string;
+  /** The person's own guess of the cost — an estimate, never an approved expense. */
+  estimatedTotal: number | null;
+  /** What Finance approved to spend on it. */
+  approvedBudget: number | null;
+  /** The purchase order, once one is issued (the amount only for those who handle money). */
+  order: { number: string; expectedOn: string | null; total: number | null } | null;
+  /** The photo or document kept with the request. */
+  attachments: { id: string; kind: string; isPdf: boolean }[];
   neededBy: string | null;
   reason: string | null;
   note: string | null;
@@ -171,6 +201,22 @@ export function eventVerb(e: Pick<StockEventView, "action" | "from">) {
     case "PURCHASE_SUBMITTED": return msg("sent the purchase for final approval");
     case "PURCHASE_SENT_BACK": return msg("sent the purchase back for correction");
     case "FINAL_APPROVED": return msg("gave the final approval — stock in, expense recorded");
+    case "QUOTE_RECORDED": return msg("recorded a supplier quotation");
+    case "QUOTE_PROPOSED": return msg("proposed a quotation to buy from");
+    case "QUOTE_AUTHORIZED": return msg("authorized the price");
+    case "QUOTE_RETURNED": return msg("returned the quotation");
+    case "ORDER_ISSUED": return msg("issued the purchase order");
+    case "DELIVERY_RECORDED": return msg("recorded a delivery");
+    case "DELIVERY_PROBLEM": return msg("recorded a problem with a delivery");
+    case "DELIVERY_CLOSED_SHORT": return msg("closed the delivery with what arrived");
+    case "DELIVERY_REPORTED": return msg("reported that the delivery is not right");
+    case "DELIVERY_CONFIRMED": return msg("confirmed the delivery is right");
+    case "INVOICE_RECORDED": return msg("recorded the supplier invoice");
+    case "INVOICE_VERIFIED": return msg("verified the invoice");
+    case "INVOICE_DISPUTED": return msg("disputed the invoice");
+    case "INVOICE_CANCELLED": return msg("cancelled the invoice");
+    case "SUPPLIER_PAID": return msg("paid the supplier");
+    case "COMPLETED": return msg("closed the purchase — everything delivered, invoiced and paid");
     default: return e.action.toLowerCase().replace(/_/g, " ");
   }
 }

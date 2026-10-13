@@ -21,14 +21,14 @@ const TABS = [
   { key: "REJECTED", label: msg("Refused") }, { key: "", label: msg("All") },
 ] as const;
 
-/** Every cash handover: what waits for the Accountant, what was sent back, what was received (and any difference), what was refused. */
+/** Every cash handover: what waits for Finance, what was sent back, what was received (and any difference), what was refused. */
 export default async function HandoversPage({ searchParams }: PageProps<"/staff/accountant/handovers">) {
   await requirePagePermission("cash.handover.view", "cash.handover.review");
   const t = await getT();
   const sp = await searchParams;
   const today = await businessToday();
   const p = readPeriod(sp, today, "all", { allTime: true });
-  // No choice yet: what waits for the Accountant. "All" is an explicit choice (?status=).
+  // No choice yet: what waits for Finance. "All" is an explicit choice (?status=).
   const asked = typeof sp.status === "string" ? sp.status : "SUBMITTED";
   const status = (TABS.find((x) => x.key === asked)?.key ?? "SUBMITTED") as "SUBMITTED" | "RETURNED" | "ACCEPTED" | "REJECTED" | "";
   const [rows, totals] = await Promise.all([
@@ -42,7 +42,7 @@ export default async function HandoversPage({ searchParams }: PageProps<"/staff/
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-[clamp(1.4rem,2vw,1.75rem)] font-semibold tracking-tight">{t("Cash handovers")}</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">{t("Cash that reception and the Restaurant Counter hand to the Accountant. It was already counted as received when it was recorded — a handover only confirms who holds it.")}</p>
+          <p className="mt-0.5 text-sm text-muted-foreground">{t("Cash that reception and the Restaurant Counter hand to Finance. It was already counted as received when it was recorded — a handover only confirms who holds it.")}</p>
         </div>
         {status !== "SUBMITTED" && status !== "RETURNED" && <PeriodPicker allTime current={p.key} from={p.from} to={p.to} keep={keep} />}
       </header>

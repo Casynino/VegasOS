@@ -142,10 +142,10 @@ async function send(amount: number, more: Partial<PriceInput> = {}, now = at(0))
 }
 
 describe("who may withdraw", () => {
-  it("the Boss and the Admin hold both withdrawal permissions; the Accountant (owner, 2026-10-13) withdraws but cannot settle by hand", async () => {
+  it("the Boss and the Admin hold both withdrawal permissions; Finance (owner, 2026-10-13) withdraws but cannot settle by hand", async () => {
     const holders = await db.rolePermission.findMany({ where: { permission: { code: { in: ["withdrawals.manage", "withdrawals.reconcile"] } } }, select: { role: { select: { code: true } }, permission: { select: { code: true } } } });
     const by = (code: string) => holders.filter((h) => h.permission.code === code).map((h) => h.role.code).sort();
-    expect(by("withdrawals.manage")).toEqual(["ACCOUNTANT", "ADMIN", "OWNER"]);
+    expect(by("withdrawals.manage")).toEqual(["ADMIN", "FINANCE", "OWNER"]);
     expect(by("withdrawals.reconcile")).toEqual(["ADMIN", "OWNER"]);
     expect(holders).toHaveLength(5);
   });

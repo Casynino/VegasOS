@@ -79,7 +79,7 @@ describe("cash handover — custody, not revenue", () => {
   });
 });
 
-describe("the Accountant receives it", () => {
+describe("Finance receives it", () => {
   it("confirms the exact amount once; a second press is refused; guest payments and revenue stay as they are", async () => {
     const reception = await asha();
     const boss = await accountant();
@@ -186,9 +186,9 @@ describe("the Accountant receives it", () => {
 });
 
 describe("who holds cash", () => {
-  it("does not list the Accountant (or the Boss) as staff holding cash — they are the ones who receive it", async () => {
-    // A real Accountant account (role ACCOUNTANT) — the Accountant may record a sale too.
-    const role = await db.role.findUniqueOrThrow({ where: { code: "ACCOUNTANT" }, include: { permissions: { include: { permission: true } } } });
+  it("does not list Finance (or the Boss) as staff holding cash — they are the ones who receive it", async () => {
+    // A real Finance account (role FINANCE) — Finance may record a sale too.
+    const role = await db.role.findUniqueOrThrow({ where: { code: "FINANCE" }, include: { permissions: { include: { permission: true } } } });
     const user = await db.user.upsert({
       where: { email: "accountant@test.local" }, update: { roleId: role.id, isActive: true },
       create: { email: "accountant@test.local", fullName: "Test Accountant", roleId: role.id, passwordHash: "x", mustChangePassword: false },

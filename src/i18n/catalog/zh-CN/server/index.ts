@@ -6,6 +6,7 @@ import m_fix_svc_a from "./fix-svc-a";
 import m_fix_svc_b from "./fix-svc-b";
 import m_lib_labels from "./lib-labels";
 import m_orders_lang from "./orders-lang";
+import m_procurement from "./procurement";
 import m_reports from "./reports";
 import m_svc_booking from "./svc-booking";
 import m_svc_misc from "./svc-misc";
@@ -25,6 +26,7 @@ const catalog: Catalog = {
   ...m_fix_svc_b,
   ...m_lib_labels,
   ...m_orders_lang,
+  ...m_procurement,
   ...m_reports,
   ...m_svc_booking,
   ...m_svc_misc,

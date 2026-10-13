@@ -2,7 +2,7 @@ import { msg } from "@/i18n/msg";
 
 /** How a cash handover's status is said (shown with t(…)). Kept out of the client component so server pages can use it too. */
 export const HANDOVER_STATUS_TEXT = {
-  SUBMITTED: msg("Waiting for the Accountant"), RETURNED: msg("Sent back"), ACCEPTED: msg("Received"), REJECTED: msg("Refused"),
+  SUBMITTED: msg("Waiting for Finance"), RETURNED: msg("Sent back"), ACCEPTED: msg("Received"), REJECTED: msg("Refused"),
 } as const;
 
 export const HANDOVER_STATUS_TONE = {

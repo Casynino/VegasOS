@@ -2,7 +2,7 @@
 import type { Catalog } from "../../../translate";
 
 const catalog: Catalog = {
-  "Handover sent to the Accountant.": "已提交给会计。",
+  "Handover sent to Finance.": "已提交给财务。",
   "Handover sent again.": "已重新提交。",
   "Cash received.": "已收到现金。",
   "Say why — at least 5 letters.": "请说明原因——至少 5 个字。",
@@ -15,7 +15,7 @@ const catalog: Catalog = {
   "You are handing over TZS {amount} more than the cash recorded. Explain the difference.": "您上交的现金比记录多 TZS {amount}。请说明差额原因。",
   "There is nothing to hand over yet.": "目前没有可上交的内容。",
   "You have no cash to hand over — no cash was recorded since your last handover.": "您没有可上交的现金——自上次交接以来没有记录现金。",
-  "The cash refunded is more than the cash collected in this period. Ask the Accountant.": "本期已退现金多于已收现金。请联系会计。",
+  "The cash refunded is more than the cash collected in this period. Ask Finance.": "本期已退现金多于已收现金。请联系财务。",
   "Handover not found.": "找不到该交接。",
   "Only a handover that was sent back can be sent again.": "只有已退回的交接才能重新提交。",
   "This handover was already sent again.": "这笔交接已重新提交。",

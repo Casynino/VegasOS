@@ -17,7 +17,7 @@ import type { T } from "@/i18n/translate";
  * and bought stock waiting for the final approval. The top-bar bell rings when something new
  * appears (and keeps ringing, when the manager chose "repeat", until handled).
  */
-export type StaffAlertKind = "booking" | "request" | "payment" | "bill" | "order_new" | "order_ready" | "stock" | "checkin_cancelled";
+export type StaffAlertKind = "booking" | "request" | "payment" | "bill" | "order_new" | "order_ready" | "stock" | "purchase" | "checkin_cancelled";
 /** `text` is written in the person's own language; the bell drops the words before the first "— " (keep it in every language). */
 export type StaffAlert = { id: string; kind: StaffAlertKind; text: string; href: string; at: string };
 
@@ -70,6 +70,56 @@ async function hotelQrBookings(now: Date, t: T) {
   });
 }
 
+/**
+ * Purchases (owner, 2026-10-13): each person hears what is theirs to do. Finance: a price to authorize, an invoice to verify
+ * or pay. The Accountant: an approved purchase to quote, an authorized one to order, an order that is late. The person who
+ * asked: it needs more information, was rejected, was ordered, arrived. Each rings once (its id holds its state).
+ */
+async function purchaseAlerts(perms: ReadonlySet<string>, userId: string | null, now: Date, t: T) {
+  const has = (p: string) => perms.has(p);
+  const today = new Date(now.getTime() + 3 * 3_600_000).toISOString().slice(0, 10);
+  const day2 = new Date(now.getTime() - 48 * 3_600_000);
+  const [authorize, toVerify, toPay, toQuote, toOrder, late, mine] = await Promise.all([
+    has("purchases.authorize") ? db.stockRequest.findMany({
+      where: { status: "AWAITING_AUTHORIZATION" }, orderBy: { updatedAt: "asc" }, take: 20,
+      select: { id: true, number: true, title: true, approvedBudget: true, updatedAt: true, chosenQuote: { select: { total: true } } },
+    }) : [],
+    has("purchases.pay") ? db.supplierInvoice.findMany({ where: { status: "RECEIVED" }, orderBy: { recordedAt: "asc" }, take: 20, select: { id: true, number: true, amount: true, recordedAt: true, request: { select: { id: true, orderNumber: true } } } }) : [],
+    has("purchases.pay") ? db.supplierInvoice.findMany({ where: { status: { in: ["VERIFIED", "PART_PAID"] } }, orderBy: { verifiedAt: "asc" }, take: 20, select: { id: true, number: true, amount: true, paidAmount: true, verifiedAt: true, request: { select: { id: true, orderNumber: true } } } }) : [],
+    has("procurement.manage") ? db.stockRequest.findMany({ where: { status: "APPROVED", chosenQuoteId: null }, orderBy: [{ urgent: "desc" }, { decidedAt: "asc" }], take: 20, select: { id: true, number: true, title: true, urgent: true, decidedAt: true, createdAt: true, authorizationNote: true } }) : [],
+    has("procurement.manage") ? db.stockRequest.findMany({ where: { status: "APPROVED", chosenQuoteId: { not: null }, authorizedAt: { not: null } }, orderBy: { authorizedAt: "asc" }, take: 20, select: { id: true, number: true, title: true, authorizedAt: true } }) : [],
+    has("procurement.manage") ? db.stockRequest.findMany({ where: { status: { in: ["ORDERED", "PART_DELIVERED"] }, expectedDeliveryOn: { lt: new Date(`${today}T00:00:00Z`) } }, orderBy: { expectedDeliveryOn: "asc" }, take: 20, select: { id: true, number: true, orderNumber: true, expectedDeliveryOn: true } }) : [],
+    userId && has("inventory.request") ? db.stockRequest.findMany({
+      where: {
+        requestedById: userId,
+        OR: [{ status: "SENT_BACK" }, { status: { in: ["REJECTED", "ORDERED", "PART_DELIVERED", "DELIVERED"] }, updatedAt: { gte: day2 } }],
+      },
+      orderBy: { updatedAt: "desc" }, take: 20, select: { id: true, number: true, title: true, status: true, orderNumber: true, expectedDeliveryOn: true, updatedAt: true },
+    }) : [],
+  ]);
+  const name = (r: { number: string; title?: string | null }) => r.title ? `${r.number} · ${r.title}` : r.number;
+  const href = (id: string) => `/staff/procurement/${id}`;
+  return [
+    ...authorize.map((r) => ({ id: `purchase:authorize:${r.id}:${r.updatedAt.getTime()}`, kind: "purchase" as const, href: href(r.id), at: r.updatedAt.toISOString(),
+      text: t("Purchase — authorize the price of {name} · {total}{over}", { name: name(r), total: tzs(r.chosenQuote?.total ?? 0), over: r.approvedBudget != null && r.chosenQuote ? ` · ${t("{amount} above the budget", { amount: tzs(r.chosenQuote.total - r.approvedBudget) })}` : "" }) })),
+    ...toVerify.map((i) => ({ id: `purchase:verify:${i.id}`, kind: "purchase" as const, href: href(i.request.id), at: i.recordedAt.toISOString(), text: t("Purchase — verify supplier invoice {number} · {amount}", { number: i.number, amount: tzs(i.amount) }) })),
+    ...toPay.map((i) => ({ id: `purchase:pay:${i.id}:${i.paidAmount}`, kind: "purchase" as const, href: href(i.request.id), at: (i.verifiedAt ?? now).toISOString(), text: t("Purchase — pay supplier invoice {number} · {amount}", { number: i.number, amount: tzs(i.amount - i.paidAmount) }) })),
+    ...toQuote.map((r) => ({ id: `purchase:quote:${r.id}:${r.authorizationNote ? "back" : "new"}`, kind: "purchase" as const, href: href(r.id), at: (r.decidedAt ?? r.createdAt).toISOString(),
+      text: `${r.authorizationNote ? t("Purchase — Finance sent {name} back, get a better price", { name: name(r) }) : t("Purchase — get quotations for {name}", { name: name(r) })}${r.urgent ? ` · ${t("urgent")}` : ""}` })),
+    ...toOrder.map((r) => ({ id: `purchase:order:${r.id}`, kind: "purchase" as const, href: href(r.id), at: (r.authorizedAt ?? now).toISOString(), text: t("Purchase — price authorized, issue the order for {name}", { name: name(r) }) })),
+    ...late.map((r) => ({ id: `purchase:late:${r.id}:${r.expectedDeliveryOn?.getTime() ?? 0}`, kind: "purchase" as const, href: href(r.id), at: (r.expectedDeliveryOn ?? now).toISOString(),
+      text: t("Purchase — delivery of {order} is late, it was due {date}", { order: r.orderNumber ?? r.number, date: r.expectedDeliveryOn ? day(r.expectedDeliveryOn, t) : "" }) })),
+    ...mine.map((r) => {
+      const text = r.status === "SENT_BACK" ? t("Your request — Finance needs more information for {name}", { name: name(r) })
+        : r.status === "REJECTED" ? t("Your request — {name} was rejected", { name: name(r) })
+          : r.status === "ORDERED" ? t("Your request — {name} was ordered{due}", { name: name(r), due: r.expectedDeliveryOn ? ` · ${t("expected {date}", { date: day(r.expectedDeliveryOn, t) })}` : "" })
+            : r.status === "PART_DELIVERED" ? t("Your request — part of {name} arrived", { name: name(r) })
+              : t("Your request — {name} arrived", { name: name(r) });
+      return { id: `purchase:mine:${r.id}:${r.status}`, kind: "purchase" as const, href: "/staff/stock-requests", at: r.updatedAt.toISOString(), text };
+    }),
+  ];
+}
+
 export async function staffAlerts(perms: ReadonlySet<string>, userId: string | null = null): Promise<StaffAlert[]> {
   const has = (p: string) => perms.has(p);
   // Written in this person's language (English without a request — jobs and tests).
@@ -110,6 +160,7 @@ export async function staffAlerts(perms: ReadonlySet<string>, userId: string | n
     }) : [],
   ]);
   // Reception hears the HOTEL's tables and payments only (guests staying now) — the rest is the restaurant's (owner, 2026-10-04).
+  const purchases = await purchaseAlerts(perms, userId, new Date(), t);
   const desk = perms.has("dashboard.front_desk") && !["dashboard.manager", "dashboard.owner", "dashboard.admin"].some((p) => perms.has(p));
   const inHouse = desk ? await inHouseGuestIds() : null;
   const hotelBills = inHouse ? bills.filter((s) => [s.guestId, ...s.members.map((m) => m.guestId)].some((g) => !!g && inHouse.has(g))) : bills;
@@ -135,6 +186,7 @@ export async function staffAlerts(perms: ReadonlySet<string>, userId: string | n
         : `${t("Stock request — review {number} · {department} · {items}", { number: r.number, department: t(dept), items: t.plural(r._count.items, "{n} item", "{n} items") })}${r.urgent ? ` · ${t("urgent")}` : ""}`;
       return { id: `stock:${r.id}:${r.status}:${at.getTime()}`, kind: "stock" as const, text, href: "/staff/stock-requests", at: at.toISOString() };
     }),
+    ...purchases,
     ...undone.map((a) => {
       const d = (a.after ?? {}) as { guest?: string; rooms?: string[]; reason?: string };
       return {

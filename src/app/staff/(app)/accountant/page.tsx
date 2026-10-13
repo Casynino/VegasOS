@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { AlertCircle, ArrowRight, Banknote, HandCoins, Landmark, Receipt, Scale, Wallet } from "lucide-react";
+import { AlertCircle, ArrowRight, Banknote, BadgeCheck, ClipboardCheck, HandCoins, Landmark, Receipt, ReceiptText, Scale, Wallet } from "lucide-react";
 import { db } from "@/server/db";
 import { requirePagePermission } from "@/server/auth";
 import { businessToday } from "@/server/settings";
 import { accountantOverview } from "@/server/services/accountant";
+import { financeQueue } from "@/server/services/procurement-desk";
 import { formatTZS } from "@/lib/format";
 import { getT } from "@/i18n/server";
 import { cn } from "@/lib/utils";
@@ -13,32 +14,36 @@ import { PeriodPicker, periodLabel, readPeriod } from "@/components/staff/financ
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getT();
-  return { title: t("Accountant") };
+  return { title: t("Finance") };
 }
 export const dynamic = "force-dynamic";
 
 const str = (v: string | string[] | undefined) => (typeof v === "string" ? v : "");
 
 /**
- * The Accountant's desk: what needs doing now, then the money in four separate figures (earned · received · owed · result),
+ * Finance's desk: what needs doing now, then the money in four separate figures (earned · received · owed · result),
  * the cash — who took it, what was handed over, what is still in staff hands — and every account. Real records only; a figure
  * that cannot be known is left out, not guessed.
  */
 export default async function AccountantPage({ searchParams }: PageProps<"/staff/accountant">) {
-  await requirePagePermission("dashboard.accountant", "cash.handover.view", "cash.handover.review");
+  await requirePagePermission("dashboard.finance", "cash.handover.view", "cash.handover.review");
   const t = await getT();
   const sp = await searchParams;
   const today = await businessToday();
   const p = readPeriod(sp, today, "today");
   const accountId = str(sp.account) || null;
   const staffId = str(sp.staff) || null;
-  const [o, accountList] = await Promise.all([
+  const [o, accountList, queue] = await Promise.all([
     accountantOverview(p, today, { accountId, staffId }),
     db.moneyAccount.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true } }),
+    financeQueue(),
   ]);
   const keep = Object.fromEntries(Object.entries({ account: accountId ?? "", staff: staffId ?? "" }).filter(([, v]) => v));
   const filtered = Boolean(accountId || staffId);
   const needs = [
+    queue.authorize > 0 && { icon: BadgeCheck, text: t.plural(queue.authorize, "{n} purchase price waiting for you to authorize", "{n} purchase prices waiting for you to authorize"), amount: null, href: "/staff/procurement?tab=authorize" },
+    queue.verify > 0 && { icon: ReceiptText, text: t.plural(queue.verify, "{n} supplier invoice to verify", "{n} supplier invoices to verify"), amount: queue.verifyAmount, href: "/staff/procurement?tab=invoices" },
+    queue.pay > 0 && { icon: ClipboardCheck, text: t.plural(queue.pay, "{n} supplier invoice verified, to pay", "{n} supplier invoices verified, to pay"), amount: queue.payAmount, href: "/staff/procurement?tab=invoices" },
     o.handovers.waitingCount > 0 && { icon: HandCoins, text: t.plural(o.handovers.waitingCount, "{n} cash handover waiting to be received", "{n} cash handovers waiting to be received"), amount: o.handovers.waitingExpected, href: "/staff/accountant/handovers?status=SUBMITTED" },
     o.handovers.returned > 0 && { icon: AlertCircle, text: t.plural(o.handovers.returned, "{n} handover sent back, not corrected yet", "{n} handovers sent back, not corrected yet"), amount: null, href: "/staff/accountant/handovers?status=RETURNED" },
     o.expenses.pendingCount > 0 && { icon: Receipt, text: t.plural(o.expenses.pendingCount, "{n} expense waiting for approval", "{n} expenses waiting for approval"), amount: o.expenses.pendingAmount, href: "/staff/expenses?status=PENDING_APPROVAL" },
@@ -49,7 +54,7 @@ export default async function AccountantPage({ searchParams }: PageProps<"/staff
     <div className="w-full space-y-5">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[oklch(0.62_0.11_78)] dark:text-[oklch(0.8_0.1_82)]">{t("Accountant")}</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[oklch(0.62_0.11_78)] dark:text-[oklch(0.8_0.1_82)]">{t("Finance")}</p>
           <h1 className="text-[clamp(1.4rem,2vw,1.75rem)] font-semibold tracking-tight">{t("Finance desk")}</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">{periodLabel(p, t)}</p>
         </div>
@@ -75,7 +80,7 @@ export default async function AccountantPage({ searchParams }: PageProps<"/staff
         <p className="basis-full text-[11px] text-muted-foreground">{t("The account and staff filters narrow the money received, the cash and the accounts. What was earned and what is owed are for the whole hotel.")}</p>
       </form>
 
-      {/* What needs the Accountant now */}
+      {/* What needs Finance now */}
       <Panel title={t("Needs you now")} subtitle={needs.length ? t.plural(needs.length, "{n} thing waiting", "{n} things waiting") : t("Nothing is waiting.")}>
         {needs.length > 0 && (
           <ul className="divide-y divide-border/60">

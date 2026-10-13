@@ -8,12 +8,12 @@ import { accountSummaries } from "./payment-accounts";
 import { handoverTotals, whoHoldsCash } from "./cash-handover";
 
 /**
- * The Accountant's dashboard numbers. Four different things are kept apart on purpose and never added together:
+ * Finance's dashboard numbers. Four different things are kept apart on purpose and never added together:
  *   EARNED    what the hotel earned (nights, food, drinks, services) — before anyone paid;
  *   RECEIVED  money that really came in (payments + on-the-spot sales − refunds) — and, of that, cash by who took it;
  *   OWED      earned and not paid yet, on any date;
  *   BALANCES  what each account's own records add up to (opening + in − out) — never a bank statement.
- * Cash in a person's hands is a fifth figure: cash recorded by staff and not yet received by the Accountant.
+ * Cash in a person's hands is a fifth figure: cash recorded by staff and not yet received by Finance.
  * The net result is earned − the expenses recorded in the same period; costs nobody recorded are not in it.
  */
 export type OverviewFilter = { accountId?: string | null; staffId?: string | null };

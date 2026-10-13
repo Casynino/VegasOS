@@ -95,6 +95,14 @@ model User {
   cashHandoversSubmitted    CashHandover[]           @relation("CashHandoverSubmittedBy")
   cashHandoversReviewed     CashHandover[]           @relation("CashHandoverReviewedBy")
   cashHandoverEvents        CashHandoverEvent[]
+  stockDocuments            StockDocument[]          @relation("StockDocumentBy")
+  stockQuotesRecorded       StockQuote[]             @relation("StockQuoteBy")
+  stockRequestsAuthorized   StockRequest[]           @relation("StockRequestAuthorizedBy")
+  stockRequestsOrdered      StockRequest[]           @relation("StockRequestOrderedBy")
+  stockDeliveriesReceived   StockDelivery[]          @relation("StockDeliveryBy")
+  supplierInvoicesRecorded  SupplierInvoice[]        @relation("SupplierInvoiceRecordedBy")
+  supplierInvoicesVerified  SupplierInvoice[]        @relation("SupplierInvoiceVerifiedBy")
+  supplierPaymentsMade      SupplierPayment[]        @relation("SupplierPaymentBy")
   expenseApprovals          ExpenseApproval[]
   roomStatusChanges         RoomStatusHistory[]
   roomBlocksCreated         RoomBlock[]
@@ -224,6 +232,8 @@ model HotelSettings {
   managerCanDiscount         Boolean   @default(true)
   applyDiscountToWebsite     Boolean   @default(true)
   expenseApprovalThreshold   Int       @default(200000)
+  /// The most Finance may authorize on its own for one purchase; above it the Boss or the MD authorizes (null: no limit set).
+  financeAuthorizationLimit  Int?
   /// Stock purchases: the final approval must be by someone other than the buyer.
   purchaseApproverMustDiffer Boolean   @default(false)
   invoicePrefix              String    @default("VLH-INV-")
@@ -1199,6 +1209,8 @@ model Expense {
   approvals       ExpenseApproval[]
   /// Made by a stock purchase's final approval — changed only from the purchase.
   stockRequest    StockRequest?
+  /// The payment to a supplier this expense is (a purchase paid after delivery).
+  supplierPayment SupplierPayment?
 
   @@index([businessDate])
   @@index([categoryId, businessDate])
@@ -1649,6 +1661,8 @@ model StoredFile {
   restaurantOrder RestaurantOrder?
   /// A supplier's receipt for a stock purchase.
   stockRequest    StockRequest?
+  /// A photo or document kept with a purchase request (the request's photo, a quotation, a delivery note, a supplier invoice).
+  stockDocument   StockDocument?
 
   @@map("stored_files")
 }
@@ -2213,6 +2227,7 @@ model MoneyAccount {
   cashCounts         CashCount[]
   /// Cash handed over to the Accountant: recorded in this account, and (when it differs) put into this one.
   cashHandovers      CashHandover[]           @relation("CashHandoverAccount")
+  supplierPayments   SupplierPayment[]
   cashHandoversTo    CashHandover[]           @relation("CashHandoverTo")
   /// Withdrawals from nTZS that land in this hotel account (a transfer in the books).
   withdrawalsIn      Withdrawal[]
@@ -3222,6 +3237,16 @@ model StockRequest {
   /// SUBMITTED | SENT_BACK | APPROVED | PURCHASING | PENDING_APPROVAL | COMPLETED | REJECTED | CANCELLED
   status              String               @default("SUBMITTED")
   urgent              Boolean              @default(false)
+  /// A short name for the request ("Reception chairs").
+  title               String?
+  /// LOW | NORMAL | HIGH | URGENT (`urgent` is true for URGENT).
+  priority            String               @default("NORMAL")
+  /// What the person thinks it would cost, if they know — an ESTIMATE, never an approved expense.
+  estimatedTotal      Int?
+  /// The most Finance approved to spend on it. A supplier's quotation above it goes back to Finance to be authorized.
+  approvedBudget      Int?
+  /// Stops a double tap or a retried send from making the same request twice.
+  clientKey           String?              @unique
   neededBy            DateTime?            @db.Date
   /// What it is for ("for the weekend wedding").
   reason              String?
@@ -3266,8 +3291,29 @@ model StockRequest {
   cancelledAt         DateTime?
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
+  // ── Ordering from a supplier (the Accountant buys; Finance authorizes) ──
+  /// The quotation the Accountant proposes to buy from.
+  chosenQuoteId       String?              @unique
+  chosenQuote         StockQuote?          @relation("ChosenQuote", fields: [chosenQuoteId], references: [id])
+  /// The quotation was authorized — by Finance, or automatically when it is within the approved budget (then no one).
+  authorizedAt        DateTime?
+  authorizedById      String?
+  authorizedBy        User?                @relation("StockRequestAuthorizedBy", fields: [authorizedById], references: [id])
+  authorizationNote   String?
+  /// The purchase order: PO-2026-0001. Issued only after the quotation is authorized.
+  orderNumber         String?              @unique
+  orderedAt           DateTime?
+  orderedById         String?
+  orderedBy           User?                @relation("StockRequestOrderedBy", fields: [orderedById], references: [id])
+  orderTotal          Int?
+  expectedDeliveryOn  DateTime?            @db.Date
+  orderNote           String?
   items               StockRequestItem[]
   events              StockRequestEvent[]
+  documents           StockDocument[]
+  quotes              StockQuote[]         @relation("RequestQuotes")
+  deliveries          StockDelivery[]
+  invoices            SupplierInvoice[]
 
   @@index([status, createdAt])
   @@index([departmentId])
@@ -3299,6 +3345,12 @@ model StockRequestItem {
   /// The stock received for this line at the final approval (never twice).
   movementId      String?            @unique
   movement        InventoryMovement? @relation(fields: [movementId], references: [id])
+  /// Ordered from a supplier: how much, at what price — and how much has arrived (good condition) so far.
+  orderedQty       Float?
+  orderedUnitPrice Int?
+  receivedQty      Float             @default(0)
+  quoteLines       StockQuoteLine[]
+  deliveryLines    StockDeliveryLine[]
 
   @@index([requestId])
   @@index([inventoryItemId])
@@ -3306,6 +3358,159 @@ model StockRequestItem {
 }
 
 /// Everything that happened to a stock request — who (and in what role), from → to, why, what changed.
+/// A document kept with a purchase request: the photo that supports it, a supplier's quotation, a delivery note, an invoice.
+model StockDocument {
+  id           String       @id @default(cuid())
+  requestId    String
+  request      StockRequest @relation(fields: [requestId], references: [id])
+  /// REQUEST_PHOTO | QUOTATION | DELIVERY_NOTE | INVOICE | OTHER
+  kind         String
+  /// The quotation, delivery or invoice it belongs to (when it does).
+  refId        String?
+  fileId       String       @unique
+  file         StoredFile   @relation(fields: [fileId], references: [id])
+  note         String?
+  uploadedById String
+  uploadedBy   User         @relation("StockDocumentBy", fields: [uploadedById], references: [id])
+  createdAt    DateTime     @default(now())
+
+  @@index([requestId, kind])
+  @@map("stock_documents")
+}
+
+/// A supplier's quotation for a purchase request: what they would charge, line by line, and how long it holds.
+model StockQuote {
+  id           String           @id @default(cuid())
+  requestId    String
+  request      StockRequest     @relation("RequestQuotes", fields: [requestId], references: [id])
+  supplierId   String?
+  supplier     Supplier?        @relation(fields: [supplierId], references: [id])
+  /// A supplier that is not in the list (a market stall, a shop).
+  supplierName String?
+  /// How to reach them, as quoted.
+  contact      String?
+  /// The whole quoted price, delivery included.
+  total        Int
+  validUntil   DateTime?        @db.Date
+  deliveryDays Int?
+  note         String?
+  recordedById String
+  recordedBy   User             @relation("StockQuoteBy", fields: [recordedById], references: [id])
+  createdAt    DateTime         @default(now())
+  lines        StockQuoteLine[]
+  /// Set when this is the quotation the Accountant proposes to buy from.
+  chosenFor    StockRequest?    @relation("ChosenQuote")
+
+  @@index([requestId])
+  @@map("stock_quotes")
+}
+
+model StockQuoteLine {
+  id        String           @id @default(cuid())
+  quoteId   String
+  quote     StockQuote       @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  itemId    String
+  item      StockRequestItem @relation(fields: [itemId], references: [id])
+  quantity  Float
+  unitPrice Int
+  lineTotal Int
+
+  @@unique([quoteId, itemId])
+  @@map("stock_quote_lines")
+}
+
+/// A delivery of an ordered purchase: what really arrived, line by line (a partial delivery is one of several).
+model StockDelivery {
+  id           String              @id @default(cuid())
+  requestId    String
+  request      StockRequest        @relation(fields: [requestId], references: [id])
+  receivedById String
+  receivedBy   User                @relation("StockDeliveryBy", fields: [receivedById], references: [id])
+  receivedAt   DateTime            @default(now())
+  note         String?
+  lines        StockDeliveryLine[]
+
+  @@index([requestId, receivedAt])
+  @@map("stock_deliveries")
+}
+
+model StockDeliveryLine {
+  id         String           @id @default(cuid())
+  deliveryId String
+  delivery   StockDelivery    @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  itemId     String
+  item       StockRequestItem @relation(fields: [itemId], references: [id])
+  /// Arrived and accepted (in good condition) — this is what goes into stock.
+  quantity   Float
+  /// Arrived but not accepted: damaged or not what was ordered. It does not go into stock and is still owed by the supplier.
+  rejectedQty Float           @default(0)
+  /// DAMAGED | WRONG | OTHER (with the rejected quantity)
+  problem    String?
+  note       String?
+  expiresOn  DateTime?        @db.Date
+  /// The stock received for this line — once, never twice.
+  movementId String?          @unique
+  movement   InventoryMovement? @relation(fields: [movementId], references: [id])
+
+  @@index([deliveryId])
+  @@map("stock_delivery_lines")
+}
+
+/// An invoice from a supplier for an ordered purchase. Recorded by the Accountant (with the document), verified and paid by Finance.
+model SupplierInvoice {
+  id           String            @id @default(cuid())
+  requestId    String
+  request      StockRequest      @relation(fields: [requestId], references: [id])
+  /// The supplier's own invoice number.
+  number       String
+  supplierId   String?
+  supplier     Supplier?         @relation(fields: [supplierId], references: [id])
+  supplierName String?
+  amount       Int
+  invoiceDate  DateTime          @db.Date
+  dueOn        DateTime?         @db.Date
+  /// RECEIVED (recorded) | VERIFIED (matches the order and the delivery — may be paid) | DISPUTED | PART_PAID | PAID | CANCELLED
+  status       String            @default("RECEIVED")
+  note         String?
+  recordedById String
+  recordedBy   User              @relation("SupplierInvoiceRecordedBy", fields: [recordedById], references: [id])
+  recordedAt   DateTime          @default(now())
+  verifiedById String?
+  verifiedBy   User?             @relation("SupplierInvoiceVerifiedBy", fields: [verifiedById], references: [id])
+  verifiedAt   DateTime?
+  verifyNote   String?
+  /// Paid so far — the sum of its payments.
+  paidAmount   Int               @default(0)
+  payments     SupplierPayment[]
+
+  @@unique([requestId, number])
+  @@index([status])
+  @@map("supplier_invoices")
+}
+
+/// A payment to a supplier. Each one is an expense (the money left an account) — recorded here, once, when it was really paid.
+model SupplierPayment {
+  id          String          @id @default(cuid())
+  invoiceId   String
+  invoice     SupplierInvoice @relation(fields: [invoiceId], references: [id])
+  amount      Int
+  accountId   String
+  account     MoneyAccount    @relation(fields: [accountId], references: [id])
+  paidOn      DateTime        @db.Date
+  reference   String?
+  note        String?
+  paidById    String
+  paidBy      User            @relation("SupplierPaymentBy", fields: [paidById], references: [id])
+  expenseId   String          @unique
+  expense     Expense         @relation(fields: [expenseId], references: [id])
+  createdAt   DateTime        @default(now())
+  /// Stops a double tap or a retried send from paying twice.
+  clientKey   String?         @unique
+
+  @@index([invoiceId])
+  @@map("supplier_payments")
+}
+
 model StockRequestEvent {
   id         String       @id @default(cuid())
   requestId  String
@@ -3373,6 +3578,8 @@ model Supplier {
   movements   InventoryMovement[]
   assets      Asset[]
   purchases   StockRequest[]
+  quotes      StockQuote[]
+  invoices    SupplierInvoice[]
 
   @@map("suppliers")
 }
@@ -3455,6 +3662,8 @@ model InventoryMovement {
   decisionNote  String?
   /// The purchase line it was received for (stock requests).
   purchaseLine  StockRequestItem?
+  /// The delivery line it was received for (ordered purchases).
+  deliveryLine  StockDeliveryLine?
 
   @@index([itemId, recordedAt])
   @@index([recordedAt])

@@ -9,13 +9,13 @@ import { msg, msgf } from "@/i18n/msg";
 import type { CashHandoverStatus, ShiftDepartment } from "@/generated/prisma/enums";
 
 /**
- * CASH HANDOVER — the cash a person collected from customers, handed to the Accountant.
+ * CASH HANDOVER — the cash a person collected from customers, handed to Finance.
  *
  * It is a custody record, not a payment: every cash receipt was already counted when it was recorded (payment,
  * restaurant payment or sale), so handing it over adds no revenue and no receipt, and never changes a guest's
  * payment. Each handover covers one person's cash records in [periodStart, periodEnd); the next one starts where
  * the last one ended, so the same cash cannot be handed over twice. What the person says they hand over, what the
- * Accountant says arrived and the difference are kept apart. A short or over handover is recorded as it is — the
+ * Finance says arrived and the difference are kept apart. A short or over handover is recorded as it is — the
  * books are corrected only by the existing authorised flows (cash count, ledger adjustment), never automatically.
  * Only cash accounts count; mobile money, bank and card are already in their own accounts.
  */
@@ -164,7 +164,7 @@ function explainDifference(expected: number, declared: number, note: string | nu
   return text;
 }
 
-/** Hand over the cash recorded since the last handover. Counted by the person, received later by the Accountant. */
+/** Hand over the cash recorded since the last handover. Counted by the person, received later by Finance. */
 export async function submitHandover(input: { declared: number; note?: string | null }, actor: HandoverActor) {
   need(actor, "cash.handover.submit");
   const declared = amountOf(input.declared, "declared");
@@ -177,7 +177,7 @@ export async function submitHandover(input: { declared: number; note?: string | 
     const rows = await cashRecords(actor.userId, w.start, w.end, tx);
     const t = totalsOf(rows);
     if (!rows.some((r) => r.counted)) throw new AppError("You have no cash to hand over — no cash was recorded since your last handover.");
-    if (t.expected < 0) throw new AppError("The cash refunded is more than the cash collected in this period. Ask the Accountant.");
+    if (t.expected < 0) throw new AppError("The cash refunded is more than the cash collected in this period. Ask Finance.");
     const note = explainDifference(t.expected, declared, input.note);
     const [account, shift, settings] = await Promise.all([
       cashAccount(tx),
@@ -213,7 +213,7 @@ export async function resubmitHandover(id: string, input: { declared: number; no
     if (h.status !== "RETURNED") throw new AppError("Only a handover that was sent back can be sent again.");
     const rows = await cashRecords(actor.userId, h.periodStart, h.periodEnd, tx);
     const t = totalsOf(rows);
-    if (t.expected < 0) throw new AppError("The cash refunded is more than the cash collected in this period. Ask the Accountant.");
+    if (t.expected < 0) throw new AppError("The cash refunded is more than the cash collected in this period. Ask Finance.");
     const note = explainDifference(t.expected, declared, input.note);
     const done = await tx.cashHandover.updateMany({
       where: { id, status: "RETURNED" },
@@ -232,7 +232,7 @@ export async function resubmitHandover(id: string, input: { declared: number; no
   });
 }
 
-// ───────────────────────── The Accountant receives it ─────────────────────────
+// ───────────────────────── Finance receives it ─────────────────────────
 
 function forReview(actor: HandoverActor) {
   need(actor, "cash.handover.review");
@@ -378,7 +378,7 @@ export async function whoHoldsCash() {
     ...rooms.map((r) => r.recordedById), ...credited.map((r) => r.creditedToId!), ...restaurant.map((r) => r.collectedById!), ...sales.map((r) => r.recordedById),
   ]);
   const [users, waiting] = await Promise.all([
-    // Whoever receives handovers (the Accountant, the Boss, the MD) already holds their own cash: it is not "with staff".
+    // Whoever receives handovers (Finance, the Boss, the MD) already holds their own cash: it is not "with staff".
     db.user.findMany({ where: { id: { in: [...ids] }, role: { permissions: { none: { permission: { code: "cash.handover.review" } } } } }, select: { id: true, fullName: true, role: { select: { name: true } } } }),
     db.cashHandover.groupBy({ by: ["submittedById"], where: { status: "SUBMITTED" }, _sum: { declared: true, expected: true }, _count: true }),
   ]);

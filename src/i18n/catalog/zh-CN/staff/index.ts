@@ -15,6 +15,7 @@ import m_inventory_misc from "./inventory-misc";
 import m_invoices_requests from "./invoices-requests";
 import m_money_desk from "./money-desk";
 import m_orders_lang from "./orders-lang";
+import m_procurement from "./procurement";
 import m_reception_components from "./reception-components";
 import m_reports_lang from "./reports-lang";
 import m_reports_papers from "./reports-papers";
@@ -49,6 +50,7 @@ const catalog: Catalog = {
   ...m_invoices_requests,
   ...m_money_desk,
   ...m_orders_lang,
+  ...m_procurement,
   ...m_reception_components,
   ...m_reports_lang,
   ...m_reports_papers,

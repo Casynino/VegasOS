@@ -39,51 +39,74 @@ describe("manager and admin roles", () => {
   });
 });
 
-/** The Accountant controls the money — and nothing else: no front desk, restaurant, stores, staff accounts, settings or withdrawals. */
-describe("accountant and cash handover", () => {
+/** Finance holds the money and the purchase approvals; the Accountant buys — and never approves or pays. */
+describe("finance, the accountant and cash handover", () => {
+  const finance = new Set(DEFAULT_ROLES.FINANCE.permissions);
   const accountant = new Set(DEFAULT_ROLES.ACCOUNTANT.permissions);
   const reception = new Set(DEFAULT_ROLES.RECEPTIONIST.permissions);
   const counter = new Set(DEFAULT_ROLES.RESTAURANT_SCREEN.permissions);
   const waiter = new Set(DEFAULT_ROLES.RESTAURANT.permissions);
+  const kitchen = new Set(DEFAULT_ROLES.KITCHEN.permissions);
   const manager = new Set(DEFAULT_ROLES.MANAGER.permissions);
 
-  it("the Accountant receives cash, keeps the accounts, expenses and prices, and reads every payment", () => {
+  it("Finance receives cash, keeps the accounts, expenses and prices, reads every payment and report, and records and pays", () => {
     for (const p of [
-      "dashboard.accountant", "cash.handover.view", "cash.handover.review", "cash.handover.discrepancy", "finance.view", "finance.manage", "ledger.view",
+      "dashboard.finance", "cash.handover.view", "cash.handover.review", "cash.handover.discrepancy", "finance.view", "finance.manage", "ledger.view",
       "payments.reverse", "expenses.record", "expenses.view_all", "expenses.approve", "pricing.manage", "reports.view",
-    ] as const) expect(accountant.has(p), p).toBe(true);
+      "payments.record", "revenue.record", "withdrawals.manage", "reports.daily.manage", "restaurant.prices", "shifts.view", "inventory.view", "assets.view",
+    ] as const) expect(finance.has(p), p).toBe(true);
   });
 
-  it("the Accountant never runs the hotel, sets the system up, settles a withdrawal by hand or works a shift", () => {
+  it("Finance also authorizes purchases and pays suppliers — and still never runs the hotel, sets the system up or settles a withdrawal by hand", () => {
+    for (const p of ["purchases.authorize", "purchases.pay"] as const) expect(finance.has(p), p).toBe(true);
     for (const p of [
       "reservations.create", "reservations.check_in", "reservations.check_out", "restaurant.orders", "restaurant.serve", "kitchen.orders", "inventory.manage", "inventory.approve",
-      "users.manage", "settings.manage", "restaurant.menu", "rooms.manage", "website.manage", "withdrawals.reconcile", "shifts.manage", "shifts.work", "cash.handover.submit",
+      "users.manage", "settings.manage", "restaurant.menu", "rooms.manage", "website.manage", "withdrawals.reconcile", "shifts.manage", "shifts.work", "cash.handover.submit", "procurement.manage",
+    ] as const) expect(finance.has(p), p).toBe(false);
+  });
+
+  it("the Accountant does the purchasing only: quotations, orders, deliveries, documents — and has no money, approval or payment right at all", () => {
+    for (const p of ["dashboard.procurement", "procurement.manage", "inventory.view", "inventory.request"] as const) expect(accountant.has(p), p).toBe(true);
+    for (const p of [
+      "expenses.approve", "expenses.record", "expenses.void", "purchases.authorize", "purchases.pay", "finance.view", "finance.manage", "ledger.view", "payments.record", "payments.reverse",
+      "revenue.record", "revenue.void", "withdrawals.manage", "pricing.manage", "restaurant.prices", "reports.view", "reports.daily.manage", "cash.handover.review", "cash.handover.submit",
+      "inventory.receive", "inventory.approve", "inventory.manage", "dashboard.finance",
     ] as const) expect(accountant.has(p), p).toBe(false);
   });
 
-  it("the Accountant has full control of the money: records payments and sales, withdraws from nTZS, makes the reports, changes restaurant prices — and only reads shifts, stock and assets", () => {
-    for (const p of ["payments.record", "revenue.record", "withdrawals.manage", "reports.daily.manage", "restaurant.prices", "shifts.view", "inventory.view", "assets.view"] as const) expect(accountant.has(p), p).toBe(true);
-    // read-only: no stock, asset or shift changes
-    for (const p of ["inventory.use", "inventory.receive", "inventory.manage", "assets.manage", "shifts.manage"] as const) expect(accountant.has(p), p).toBe(false);
-    // the restaurant-prices right is narrow: only the Accountant, the Boss and the MD hold it
-    for (const [name, set] of [["reception", reception], ["counter", counter], ["waiter", waiter], ["manager", manager]] as const) expect(set.has("restaurant.prices"), name).toBe(false);
+  it("only Finance, the Boss and the MD authorize a quotation or pay a supplier — the Manager, the Accountant and the departments cannot", () => {
+    for (const [name, set] of [["accountant", accountant], ["manager", manager], ["reception", reception], ["counter", counter], ["waiter", waiter], ["kitchen", kitchen]] as const) {
+      for (const p of ["purchases.authorize", "purchases.pay"] as const) expect(set.has(p), `${name} ${p}`).toBe(false);
+    }
+    for (const role of ["OWNER", "ADMIN"] as const) for (const p of ["purchases.authorize", "purchases.pay", "procurement.manage"] as const) expect(new Set(DEFAULT_ROLES[role].permissions).has(p), `${role} ${p}`).toBe(true);
   });
 
-  it("reception and the Restaurant Counter hand cash over but never receive it; waiters have no part in it; the Manager only watches", () => {
+  it("Reception, the Restaurant Counter and the kitchen can ask for what they need; waiters still do not (owner, 2026-10-04)", () => {
+    for (const [name, set] of [["reception", reception], ["counter", counter], ["kitchen", kitchen]] as const) expect(set.has("inventory.request"), name).toBe(true);
+    expect(waiter.has("inventory.request")).toBe(false);
+    // asking is all they do: they cannot review, buy, authorize or pay
+    for (const set of [reception, counter, kitchen]) for (const p of ["expenses.approve", "inventory.receive", "purchases.authorize", "purchases.pay", "procurement.manage"] as const) expect(set.has(p), p).toBe(false);
+  });
+
+  it("the Manager keeps what the Manager has (owner, 2026-10-13: nothing changes for the Manager) and gains no purchase authority", () => {
+    for (const p of ["expenses.approve", "expenses.void", "payments.reverse", "inventory.receive", "inventory.approve", "finance.view", "ledger.view", "cash.handover.view"] as const) expect(manager.has(p), p).toBe(true);
+    for (const p of ["cash.handover.review", "cash.handover.discrepancy", "cash.handover.submit", "withdrawals.manage", "procurement.manage"] as const) expect(manager.has(p), p).toBe(false);
+  });
+
+  it("Finance, the departments and the Boss and MD hold the cash handover rights they should", () => {
     for (const side of [reception, counter]) {
       expect(side.has("cash.handover.submit")).toBe(true);
-      for (const p of ["cash.handover.review", "cash.handover.discrepancy", "cash.handover.view", "dashboard.accountant"] as const) expect(side.has(p), p).toBe(false);
+      for (const p of ["cash.handover.review", "cash.handover.discrepancy", "cash.handover.view", "dashboard.finance"] as const) expect(side.has(p), p).toBe(false);
     }
     for (const p of ["cash.handover.submit", "cash.handover.review", "cash.handover.view"] as const) expect(waiter.has(p), p).toBe(false);
-    expect(manager.has("cash.handover.view")).toBe(true);
-    for (const p of ["cash.handover.review", "cash.handover.discrepancy", "cash.handover.submit"] as const) expect(manager.has(p), p).toBe(false);
-  });
-
-  it("the Boss and the MD hold every cash handover right", () => {
     for (const role of ["OWNER", "ADMIN"] as const) {
       const all = new Set(DEFAULT_ROLES[role].permissions);
-      for (const p of ["cash.handover.submit", "cash.handover.view", "cash.handover.review", "cash.handover.discrepancy", "dashboard.accountant"] as const) expect(all.has(p), `${role} ${p}`).toBe(true);
+      for (const p of ["cash.handover.submit", "cash.handover.view", "cash.handover.review", "cash.handover.discrepancy", "dashboard.finance", "dashboard.procurement"] as const) expect(all.has(p), `${role} ${p}`).toBe(true);
     }
+  });
+
+  it("the restaurant-prices right is narrow: Finance, the Boss and the MD only", () => {
+    for (const [name, set] of [["reception", reception], ["counter", counter], ["waiter", waiter], ["manager", manager], ["accountant", accountant]] as const) expect(set.has("restaurant.prices"), name).toBe(false);
   });
 
   it("a receptionist can hand cash over after their shift has ended (the right works without a shift)", async () => {

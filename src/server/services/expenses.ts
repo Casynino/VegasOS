@@ -72,7 +72,7 @@ async function nextExpenseNumber(tx: Tx, year: string) {
   return `EXP-${year}-${String(n).padStart(6, "0")}`;
 }
 
-export async function storeReceipt(tx: Parameters<Parameters<typeof db.$transaction>[0]>[0], file: File, userId: string, purpose: "EXPENSE_RECEIPT" | "PURCHASE_RECEIPT" = "EXPENSE_RECEIPT") {
+export async function storeReceipt(tx: Parameters<Parameters<typeof db.$transaction>[0]>[0], file: File, userId: string, purpose: "EXPENSE_RECEIPT" | "PURCHASE_RECEIPT" | "STOCK_DOCUMENT" = "EXPENSE_RECEIPT") {
   if (file.size > RECEIPT_MAX_BYTES) throw new AppError("Receipt file is larger than 5 MB.", "VALIDATION", { receipt: msg("Too large") });
   if (!RECEIPT_TYPES.includes(file.type)) throw new AppError("Receipt must be a photo (JPG/PNG/WebP/HEIC) or PDF.", "VALIDATION", { receipt: msg("Wrong type") });
   const stored = await tx.storedFile.create({
@@ -351,6 +351,8 @@ export async function reinstateExpense(expenseId: string, actor: Actor) {
 export async function createPurchaseExpenseTx(tx: Tx, input: {
   amount: number; categoryId: string; spentAt: Date; accountId: string; description: string; payee: string | null; reference: string | null;
   notes: string | null; receiptFileId: string | null; purchaserId: string; submittedAt: Date; approverId: string; now: Date;
+  /** What the approval trail says (a stock purchase by default; "Supplier payment" for a payment to a supplier). */
+  trail?: { submitted: string; approved: string };
 }, actor: AuditActor) {
   if (!Number.isInteger(input.amount) || input.amount <= 0) throw new AppError("The purchase has no amount paid.", "VALIDATION");
   const settings = await getSettingsTx(tx);
@@ -365,8 +367,8 @@ export async function createPurchaseExpenseTx(tx: Tx, input: {
       status: "APPROVED", createdById: input.purchaserId,
     },
   });
-  await tx.expenseApproval.create({ data: { expenseId: expense.id, action: "SUBMITTED", note: "Stock purchase", actorId: input.purchaserId, createdAt: input.submittedAt } });
-  await tx.expenseApproval.create({ data: { expenseId: expense.id, action: "APPROVED", note: "Final approval of the purchase", actorId: input.approverId, createdAt: input.now } });
+  await tx.expenseApproval.create({ data: { expenseId: expense.id, action: "SUBMITTED", note: input.trail?.submitted ?? "Stock purchase", actorId: input.purchaserId, createdAt: input.submittedAt } });
+  await tx.expenseApproval.create({ data: { expenseId: expense.id, action: "APPROVED", note: input.trail?.approved ?? "Final approval of the purchase", actorId: input.approverId, createdAt: input.now } });
   await audit(tx, actor, {
     action: "expense.created", entityType: "Expense", entityId: expense.id,
     after: { category: category.name, amount: expense.amount, description: expense.description, status: expense.status, businessDate: expense.businessDate.toISOString().slice(0, 10), source: "stock purchase", account: paid.account.name },

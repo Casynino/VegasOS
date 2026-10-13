@@ -22,7 +22,7 @@ const TABS = [
   { key: "staff", label: msg("Staff reconciliation") }, { key: "handovers", label: msg("Cash handovers") }, { key: "corrections", label: msg("Refunds and corrections") },
 ] as const;
 
-/** The Accountant's cash reports: who took what and handed what over; every handover; refunds, reversals and corrections. */
+/** Finance's cash reports: who took what and handed what over; every handover; refunds, reversals and corrections. */
 export default async function AccountantReportsPage({ searchParams }: PageProps<"/staff/accountant/reports">) {
   await requirePagePermission("reports.view", "cash.handover.view");
   const t = await getT();
@@ -70,7 +70,7 @@ async function Staff({ from, to }: { from: string; to: string }) {
       {rows.length === 0 ? <p className="p-4 text-sm text-muted-foreground">{t("No cash was taken or handed over in this period.")}</p> : (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[46rem] text-sm">
-            <thead><tr className={head}><Th>{t("Person")}</Th><Th right>{t("Cash recorded")}</Th><Th right>{t("Handed over")}</Th><Th right>{t("Waiting for the Accountant")}</Th><Th right>{t("Received")}</Th><Th right>{t("Difference")}</Th></tr></thead>
+            <thead><tr className={head}><Th>{t("Person")}</Th><Th right>{t("Cash recorded")}</Th><Th right>{t("Handed over")}</Th><Th right>{t("Waiting for Finance")}</Th><Th right>{t("Received")}</Th><Th right>{t("Difference")}</Th></tr></thead>
             <tbody className="divide-y divide-border/50">
               {rows.map((r) => (
                 <tr key={r.userId}>

@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
 
 const SOURCE = { ROOM: "Rooms & bookings", RESTAURANT: "Restaurant & bar", SALE: "Other sales" } as const;
 
-/** One handover: what the person said, the cash records behind it as they stand now, what the Accountant received, and its whole story. */
+/** One handover: what the person said, the cash records behind it as they stand now, what Finance received, and its whole story. */
 export default async function HandoverPage({ params }: PageProps<"/staff/accountant/handovers/[id]">) {
   const user = await requirePagePermission("cash.handover.view", "cash.handover.review");
   const t = await getT();
@@ -56,7 +56,7 @@ export default async function HandoverPage({ params }: PageProps<"/staff/account
       {(h.declaredNote || h.reviewNote) && (
         <div className="space-y-1 rounded-2xl border border-border/70 bg-card px-4 py-3 text-sm">
           {h.declaredNote && <p><span className="text-muted-foreground">{t("{name} wrote:", { name: h.submittedBy.fullName })}</span> {h.declaredNote}</p>}
-          {h.reviewNote && <p><span className="text-muted-foreground">{t("{name} wrote:", { name: h.reviewedBy?.fullName ?? t("The Accountant") })}</span> {h.reviewNote}</p>}
+          {h.reviewNote && <p><span className="text-muted-foreground">{t("{name} wrote:", { name: h.reviewedBy?.fullName ?? t("Finance") })}</span> {h.reviewNote}</p>}
         </div>
       )}
 

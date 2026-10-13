@@ -1,7 +1,7 @@
 import "server-only";
 import { db, type Tx } from "../db";
 import { audit } from "../audit";
-import { AppError } from "../errors";
+import { AppError, isUniqueViolation } from "../errors";
 import { getSettingsTx } from "../settings";
 import type { Prisma } from "@/generated/prisma/client";
 import { drinkEmoji, drinkUnit, type StockGroup } from "@/lib/stock-catalog";
@@ -29,13 +29,15 @@ import { msg, msgf } from "@/i18n/msg";
  * Every step keeps who (and in what role), when, from → to, what changed and why.
  */
 
-type StockActor = Actor & { roleCode?: string | null };
+export type StockActor = Actor & { roleCode?: string | null };
 
 export const STOCK_STATUS: Record<string, string> = {
   SUBMITTED: msg("Waiting for review"), SENT_BACK: msg("Sent back to change"), APPROVED: msg("Approved — to buy"), PURCHASING: msg("Being bought"),
   PENDING_APPROVAL: msg("Bought — waiting for approval"), COMPLETED: msg("Done — in stock"), REJECTED: msg("Rejected"), CANCELLED: msg("Cancelled"),
+  AWAITING_AUTHORIZATION: msg("Waiting for Finance to authorize the price"), ORDERED: msg("Ordered — waiting for delivery"), PART_DELIVERED: msg("Partly delivered"),
+  DELIVERED: msg("Delivered — invoice and payment next"),
 };
-export const OPEN_STOCK = ["SUBMITTED", "SENT_BACK", "APPROVED", "PURCHASING", "PENDING_APPROVAL"];
+export const OPEN_STOCK = ["SUBMITTED", "SENT_BACK", "APPROVED", "PURCHASING", "PENDING_APPROVAL", "AWAITING_AUTHORIZATION", "ORDERED", "PART_DELIVERED", "DELIVERED"];
 
 /** Asking: the kitchen, the waiters, reception (for housekeeping, maintenance…). */
 export const canRequestStock = (a: Actor) => !!a.permissions?.has("inventory.request");
@@ -45,16 +47,16 @@ export const canReviewStock = (a: Actor) => !!a.permissions?.has("expenses.appro
 export const canBuyStock = (a: Actor) => !!a.permissions?.has("inventory.receive");
 
 /** What each department's purchases are, as an expense (the approver may choose another). */
-const EXPENSE_GROUP: Record<string, string> = {
+export const EXPENSE_GROUP: Record<string, string> = {
   KITCHEN: "FOOD", RESTAURANT: "FOOD", BAR: "BAR_SUPPLIES", HOUSEKEEPING: "HOUSEKEEPING", MAINTENANCE: "MAINTENANCE",
   RECEPTION: "OFFICE_SUPPLIES", OFFICE: "OFFICE_SUPPLIES", GENERAL: "OTHER",
 };
 
-const clean = (s: string | null | undefined, max = 300) => s?.trim().slice(0, max) || null;
+export const clean = (s: string | null | undefined, max = 300) => s?.trim().slice(0, max) || null;
 const line = (i: { quantity: number; unit: string; name: string }) => `${i.quantity} ${i.unit} ${i.name}`;
 const money = (n: number) => `TZS ${n.toLocaleString("en-US")}`;
 
-async function eventTx(tx: Tx, requestId: string, action: string, actor: StockActor, p: { from?: string | null; to?: string | null; reason?: string | null; before?: unknown; after?: unknown }, at: Date) {
+export async function eventTx(tx: Tx, requestId: string, action: string, actor: StockActor, p: { from?: string | null; to?: string | null; reason?: string | null; before?: unknown; after?: unknown }, at: Date) {
   await tx.stockRequestEvent.create({
     data: {
       requestId, action, fromStatus: p.from ?? null, toStatus: p.to ?? null, byId: actor.userId ?? null, byLabel: actor.label ?? null, byRole: actor.role ?? null,
@@ -64,7 +66,7 @@ async function eventTx(tx: Tx, requestId: string, action: string, actor: StockAc
 }
 
 /** Lock a request and check it is at one of the given steps. */
-async function lockRequestTx(tx: Tx, id: string, statuses: string[], wrong: string) {
+export async function lockRequestTx(tx: Tx, id: string, statuses: string[], wrong: string) {
   await tx.$queryRaw`SELECT "id" FROM "stock_requests" WHERE "id" = ${id} FOR UPDATE`;
   const r = await tx.stockRequest.findUnique({ where: { id }, include: { items: { orderBy: { id: "asc" } } } });
   if (!r) throw new AppError("Request not found.", "NOT_FOUND");
@@ -72,21 +74,35 @@ async function lockRequestTx(tx: Tx, id: string, statuses: string[], wrong: stri
   return r;
 }
 
-async function nextNumberTx(tx: Tx, prefix: "SR" | "P", now: Date) {
+export async function nextNumberTx(tx: Tx, prefix: "SR" | "P" | "PO", now: Date) {
   await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`stock_${prefix}_number`}))::text`;
   const year = String(now.getFullYear());
   const last = prefix === "SR"
     ? (await tx.stockRequest.findFirst({ where: { number: { startsWith: `SR-${year}-` } }, orderBy: { number: "desc" }, select: { number: true } }))?.number
-    : (await tx.stockRequest.findFirst({ where: { purchaseNumber: { startsWith: `P-${year}-` } }, orderBy: { purchaseNumber: "desc" }, select: { purchaseNumber: true } }))?.purchaseNumber;
+    : prefix === "PO"
+      ? (await tx.stockRequest.findFirst({ where: { orderNumber: { startsWith: `PO-${year}-` } }, orderBy: { orderNumber: "desc" }, select: { orderNumber: true } }))?.orderNumber
+      : (await tx.stockRequest.findFirst({ where: { purchaseNumber: { startsWith: `P-${year}-` } }, orderBy: { purchaseNumber: "desc" }, select: { purchaseNumber: true } }))?.purchaseNumber;
   return `${prefix}-${year}-${String(last ? Number(last.slice(-4)) + 1 : 1).padStart(4, "0")}`;
 }
 
 // ───────────────────────── 1. Asking ─────────────────────────
 
+export const PRIORITIES = ["LOW", "NORMAL", "HIGH", "URGENT"] as const;
+export type Priority = (typeof PRIORITIES)[number];
+
 export interface StockRequestInput {
   /** The department's code: KITCHEN, BAR, RESTAURANT, HOUSEKEEPING, MAINTENANCE, RECEPTION, OFFICE, GENERAL. */
   department: string;
   urgent: boolean;
+  /** A short name for the request. */
+  title?: string | null;
+  priority?: Priority | null;
+  /** What the person thinks it will cost — an estimate, never an approved expense. */
+  estimatedTotal?: number | null;
+  /** Created when the form opens: a double tap or a retried send finds the request it already made. */
+  clientKey?: string | null;
+  /** A photo or document that supports the request. */
+  attachment?: File | null;
   neededBy?: string | null;
   /** What it is for. */
   reason?: string | null;
@@ -116,25 +132,58 @@ async function linkItemsTx(tx: Tx, departmentId: string | null, items: ReturnTyp
   });
 }
 
+/** A whole, non-negative amount of shillings (or nothing). */
+function moneyOrNull(v: number | null | undefined, what: string) {
+  if (v == null) return null;
+  if (!Number.isInteger(v) || v < 0 || v > 2_000_000_000) throw new AppError(msgf("{what} must be a whole number of shillings.", { what }), "VALIDATION", { estimatedTotal: msg("Invalid") });
+  return v;
+}
+
 export async function createStockRequest(input: StockRequestInput, actor: StockActor, now = new Date()) {
   if (!actor.userId || !canRequestStock(actor)) throw new AppError("You cannot request stock.", "FORBIDDEN");
   const items = cleanItems(input.items);
-  return db.$transaction(async (tx) => {
-    const dept = await tx.inventoryDepartment.findUnique({ where: { code: input.department } });
-    if (!dept || !dept.isActive) throw new AppError("Choose the department it is for.", "VALIDATION", { department: msg("Required") });
-    const linked = await linkItemsTx(tx, dept.id, items);
-    const number = await nextNumberTx(tx, "SR", now);
-    const r = await tx.stockRequest.create({
-      data: {
-        number, department: dept.code, departmentId: dept.id, urgent: input.urgent, neededBy: input.neededBy ? new Date(`${input.neededBy}T00:00:00Z`) : null,
-        reason: clean(input.reason), note: clean(input.note), requestedById: actor.userId!, createdAt: now, status: "SUBMITTED",
-        items: { create: linked.map((i) => ({ name: i.name, quantity: i.quantity, unit: i.unit, note: i.note, inventoryItemId: i.inventoryItemId })) },
-      },
+  const priority: Priority = input.priority && PRIORITIES.includes(input.priority) ? input.priority : input.urgent ? "URGENT" : "NORMAL";
+  const estimatedTotal = moneyOrNull(input.estimatedTotal, "The estimated cost");
+  const clientKey = clean(input.clientKey, 64);
+  // The same form sent twice (a double tap, a retry): the request it already made, not a second one.
+  if (clientKey) {
+    const same = await db.stockRequest.findUnique({ where: { clientKey } });
+    if (same) {
+      if (same.requestedById !== actor.userId) throw new AppError("This request was already sent.", "CONFLICT");
+      return same;
+    }
+  }
+  try {
+    return await db.$transaction(async (tx) => {
+      const dept = await tx.inventoryDepartment.findUnique({ where: { code: input.department } });
+      if (!dept || !dept.isActive) throw new AppError("Choose the department it is for.", "VALIDATION", { department: msg("Required") });
+      const linked = await linkItemsTx(tx, dept.id, items);
+      const number = await nextNumberTx(tx, "SR", now);
+      const r = await tx.stockRequest.create({
+        data: {
+          number, department: dept.code, departmentId: dept.id, urgent: priority === "URGENT", priority, title: clean(input.title, 80), estimatedTotal, clientKey,
+          neededBy: input.neededBy ? new Date(`${input.neededBy}T00:00:00Z`) : null,
+          reason: clean(input.reason), note: clean(input.note), requestedById: actor.userId!, createdAt: now, status: "SUBMITTED",
+          items: { create: linked.map((i) => ({ name: i.name, quantity: i.quantity, unit: i.unit, note: i.note, inventoryItemId: i.inventoryItemId })) },
+        },
+      });
+      if (input.attachment && input.attachment.size > 0) {
+        const fileId = await storeReceipt(tx, input.attachment, actor.userId!, "STOCK_DOCUMENT");
+        await tx.stockDocument.create({ data: { requestId: r.id, kind: "REQUEST_PHOTO", fileId, uploadedById: actor.userId! } });
+      }
+      const after = { department: dept.name, title: r.title, priority, estimate: estimatedTotal, urgent: r.urgent, items: linked.map(line), reason: r.reason };
+      await eventTx(tx, r.id, "SUBMITTED", actor, { to: "SUBMITTED", after }, now);
+      await audit(tx, actor, { action: "stock_request.created", entityType: "StockRequest", entityId: r.id, after: { number, ...after, role: actor.role ?? null } });
+      return r;
     });
-    await eventTx(tx, r.id, "SUBMITTED", actor, { to: "SUBMITTED", after: { department: dept.name, urgent: input.urgent, items: linked.map(line), reason: r.reason } }, now);
-    await audit(tx, actor, { action: "stock_request.created", entityType: "StockRequest", entityId: r.id, after: { number, department: dept.name, urgent: input.urgent, items: linked.map(line), reason: r.reason, role: actor.role ?? null } });
-    return r;
-  });
+  } catch (e) {
+    // Two sends at the very same moment: the second finds the first one.
+    if (clientKey && isUniqueViolation(e)) {
+      const same = await db.stockRequest.findUnique({ where: { clientKey } });
+      if (same && same.requestedById === actor.userId) return same;
+    }
+    throw e;
+  }
 }
 
 /**
@@ -176,20 +225,30 @@ export async function editStockRequest(id: string, input: { items: StockRequestI
 // ───────────────────────── 2. The manager's review ─────────────────────────
 
 /** Approve for purchase (permission to buy — not an expense), send back to be changed, or reject. */
-export async function reviewStockRequest(id: string, decision: "APPROVE" | "SEND_BACK" | "REJECT", note: string | null, actor: StockActor, now = new Date()) {
-  if (!actor.userId || !canReviewStock(actor)) throw new AppError("Only a manager can review stock requests.", "FORBIDDEN");
+export async function reviewStockRequest(id: string, decision: "APPROVE" | "SEND_BACK" | "REJECT", note: string | null, actor: StockActor, now = new Date(), opts: { approvedBudget?: number | null } = {}) {
+  if (!actor.userId || !canReviewStock(actor)) throw new AppError("Only Finance or a manager can review purchase requests.", "FORBIDDEN");
   const why = clean(note);
+  const budget = decision === "APPROVE" ? moneyOrNull(opts.approvedBudget, "The approved budget") : null;
   if (decision !== "APPROVE" && (why?.length ?? 0) < 3) throw new AppError(decision === "REJECT" ? msg("Say why it is rejected.") : msg("Say what to change."), "VALIDATION", { note: msg("Required") });
-  const from = decision === "REJECT" ? ["SUBMITTED", "SENT_BACK", "APPROVED"] : ["SUBMITTED"];
+  const from = decision === "REJECT" ? ["SUBMITTED", "SENT_BACK", "APPROVED", "AWAITING_AUTHORIZATION"] : ["SUBMITTED"];
   const to = decision === "APPROVE" ? "APPROVED" : decision === "SEND_BACK" ? "SENT_BACK" : "REJECTED";
   await db.$transaction(async (tx) => {
     const r = await lockRequestTx(tx, id, from, decision === "REJECT" ? msg("It is already being bought or closed.") : msg("This request is not waiting for review."));
+    // Nobody approves their own request when the hotel asks for approvals to be kept apart (Settings).
+    if (r.requestedById === actor.userId && (await getSettingsTx(tx)).purchaseApproverMustDiffer) throw new AppError("You cannot review your own request — another person does.", "FORBIDDEN");
     if (decision === "APPROVE") {
       for (const i of r.items.filter((x) => !x.removedAt && x.approvedQty == null)) await tx.stockRequestItem.update({ where: { id: i.id }, data: { approvedQty: i.quantity } });
     }
-    await tx.stockRequest.update({ where: { id }, data: { status: to, decidedById: actor.userId, decidedAt: now, decisionNote: why ?? r.decisionNote } });
-    await eventTx(tx, id, to, actor, { from: r.status, to, reason: why }, now);
-    await audit(tx, actor, { action: `stock_request.${decision === "APPROVE" ? "approved_for_purchase" : decision === "SEND_BACK" ? "sent_back" : "rejected"}`, entityType: "StockRequest", entityId: id, before: { status: r.status }, after: { status: to, reason: why, role: actor.role ?? null } });
+    // The approved budget: what Finance says it may cost (the person's estimate when none is given). A quotation above it comes back to Finance.
+    const approvedBudget = decision === "APPROVE" ? (budget ?? r.estimatedTotal ?? null) : r.approvedBudget;
+    // Finance authorizes up to its limit on its own; above it the Boss or the MD does (Settings → the limit; none set = no limit).
+    const limit = (await getSettingsTx(tx)).financeAuthorizationLimit;
+    if (decision === "APPROVE" && limit != null && (approvedBudget ?? 0) > limit && !actor.permissions?.has("dashboard.admin") && !actor.permissions?.has("dashboard.owner")) {
+      throw new AppError(msgf("TZS {amount} is above what Finance may approve alone (TZS {limit}) — the Boss or the MD approves it.", { amount: (approvedBudget ?? 0).toLocaleString("en-US"), limit: limit.toLocaleString("en-US") }), "FORBIDDEN");
+    }
+    await tx.stockRequest.update({ where: { id }, data: { status: to, decidedById: actor.userId, decidedAt: now, decisionNote: why ?? r.decisionNote, approvedBudget } });
+    await eventTx(tx, id, to, actor, { from: r.status, to, reason: why, after: decision === "APPROVE" ? { approvedBudget } : undefined }, now);
+    await audit(tx, actor, { action: `stock_request.${decision === "APPROVE" ? "approved_for_purchase" : decision === "SEND_BACK" ? "sent_back" : "rejected"}`, entityType: "StockRequest", entityId: id, before: { status: r.status }, after: { status: to, reason: why, approvedBudget, role: actor.role ?? null } });
   });
 }
 
@@ -243,6 +302,8 @@ export async function savePurchase(id: string, input: PurchaseInput, receipt: Fi
   if (purchasedAt.getTime() > now.getTime() + 24 * 3600_000) throw new AppError("The purchase date cannot be in the future.", "VALIDATION", { purchasedOn: msg("Future") });
   return db.$transaction(async (tx) => {
     const r = await lockRequestTx(tx, id, ["APPROVED", "PURCHASING"], msg("This request is not approved for purchase."));
+    // A quotation was proposed (or authorized) for the supplier's order: it is bought through that order, not a second time here.
+    if (r.chosenQuoteId) throw new AppError("The Accountant has a quotation for this request — it is ordered from the supplier, not bought here.", "CONFLICT");
     const live = r.items.filter((i) => !i.removedAt);
     const itemIds = input.lines.map((l) => l.inventoryItemId).filter((x): x is string => !!x);
     const stock = await tx.inventoryItem.findMany({ where: { id: { in: itemIds } }, select: { id: true, name: true, unit: true, isActive: true, tracksExpiry: true } });
@@ -384,6 +445,7 @@ const LIST_INCLUDE = {
   inventoryDepartment: { select: { name: true } }, supplier: { select: { id: true, name: true } }, account: { select: { id: true, name: true } },
   expense: { select: { id: true, number: true, amount: true, status: true } }, receiptFile: { select: { id: true, contentType: true } },
   events: { orderBy: { at: "asc" as const } },
+  documents: { orderBy: { createdAt: "asc" as const }, select: { id: true, kind: true, fileId: true, file: { select: { contentType: true } } } },
 } satisfies Prisma.StockRequestInclude;
 export type StockRequestRow = Prisma.StockRequestGetPayload<{ include: typeof LIST_INCLUDE }>;
 

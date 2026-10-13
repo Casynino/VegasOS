@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChefHat, ChevronDown, ClipboardList, Flame, Loader2, Minus, Pencil, Plus, Search, Send, StickyNote, Target, Trash2, Wine } from "lucide-react";
+import { ChefHat, ChevronDown, ClipboardList, Flame, Loader2, Minus, Paperclip, Pencil, Plus, Search, Send, StickyNote, Tag, Target, Trash2, Wine } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
@@ -13,6 +13,7 @@ import { createStockRequestAction } from "./actions";
 import { DeptIcon, Pic, norm, storeGroup, type Row, type Tile, type TileGroup } from "./parts";
 import { StockSheet, SheetTools, type SheetLine } from "./sheet";
 import { useT } from "@/i18n/client";
+import { msg } from "@/i18n/msg";
 
 /** The tile groups in the order a department wants them: the bar its drinks, others their stores first. */
 export function groupsFor(code: string, deptId: string | null, kitchen: StockGroup[], drinks: StockGroup[], storeItems: StoreItem[], departments: DepartmentOption[]): TileGroup[] {
@@ -23,6 +24,9 @@ export function groupsFor(code: string, deptId: string | null, kitchen: StockGro
   // Housekeeping, maintenance, reception…: their own stock items, then the everyday supplies, then the rest.
   return [...s, ...kitchen.filter((g) => g.key === "supplies"), ...kitchen.filter((g) => g.key !== "supplies"), ...drinks];
 }
+
+/** How soon: four steps (Urgent puts it first in Finance's list). */
+const PRIORITY = [{ key: "LOW", label: msg("Low") }, { key: "NORMAL", label: msg("Normal") }, { key: "HIGH", label: msg("High") }, { key: "URGENT", label: msg("Urgent") }] as const;
 
 /* ─────────────── A new request: pick, check, send ─────────────── */
 
@@ -39,7 +43,14 @@ export function NewRequest({ kitchen, drinks, storeItems, departments, defaultDe
   const [q, setQ] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
   const [next, setNext] = useState(1);
-  const [urgent, setUrgent] = useState(false);
+  const [priority, setPriority] = useState<(typeof PRIORITY)[number]["key"]>("NORMAL");
+  const urgent = priority === "URGENT";
+  const [title, setTitle] = useState("");
+  const [estimate, setEstimate] = useState("");
+  const [neededBy, setNeededBy] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  // One key per form: a double tap or a retried send finds the request already made, never a second one.
+  const [clientKey, setClientKey] = useState(() => crypto.randomUUID());
   const [reason, setReason] = useState("");
   const [note, setNote] = useState("");
   const [reviewing, setReviewing] = useState(false);
@@ -71,13 +82,17 @@ export function NewRequest({ kitchen, drinks, storeItems, departments, defaultDe
   const ready = rows.filter((r) => r.name.trim() && Number(r.quantity) > 0);
   const lines: SheetLine[] = ready.map((r) => ({ name: r.name.trim(), quantity: Number(r.quantity), unit: r.unit }));
   const send = () => start(async () => {
-    const res = await createStockRequestAction({
-      department: dept, urgent, reason: reason.trim() || undefined, note: note.trim() || undefined,
+    const body = new FormData();
+    body.set("payload", JSON.stringify({
+      department: dept, urgent, priority, title: title.trim() || undefined, estimatedTotal: estimate.trim() ? Math.round(Number(estimate)) : null, neededBy: neededBy || undefined,
+      reason: reason.trim() || undefined, note: note.trim() || undefined, clientKey,
       items: ready.map((r) => ({ name: r.name.trim(), quantity: Number(r.quantity), unit: r.unit, inventoryItemId: r.stockId ?? null })),
-    });
+    }));
+    if (file) body.set("attachment", file);
+    const res = await createStockRequestAction(undefined, body);
     if (!res.ok) { toast.error(res.error); return; }
-    toast.success(t("{number} sent — it is waiting for the manager.", { number: res.data.number }));
-    setRows([]); setUrgent(false); setReason(""); setNote(""); setReviewing(false);
+    toast.success(t("{number} sent — Finance will review it.", { number: res.data.number }));
+    setRows([]); setPriority("NORMAL"); setTitle(""); setEstimate(""); setNeededBy(""); setFile(null); setClientKey(crypto.randomUUID()); setReason(""); setNote(""); setReviewing(false);
     router.refresh();
     onSent();
   });
@@ -165,23 +180,42 @@ export function NewRequest({ kitchen, drinks, storeItems, departments, defaultDe
         </div>
         <div className="space-y-3 border-t border-border/60 px-4 py-4 sm:px-5">
           <div className={cn("overflow-hidden rounded-2xl border bg-background/50 transition-colors", urgent ? "border-rose-500/50" : "border-border/80")}>
-            <button type="button" onClick={() => setUrgent((u) => !u)} role="switch" aria-checked={urgent} className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left">
-              <span className={cn("grid size-8 shrink-0 place-items-center rounded-full transition-colors", urgent ? "bg-rose-500/15 text-rose-500 dark:text-rose-300" : "bg-muted text-muted-foreground")}><Flame className="size-4" /></span>
-              <span className="min-w-0 flex-1 leading-tight">
-                <span className="block text-sm font-medium">{t("Urgent")}</span>
-                <span className="block text-[11.5px] text-muted-foreground">{urgent ? t("The manager sees it first") : t("Normal — on the next shopping")}</span>
-              </span>
-              <span className={cn("relative h-6 w-10 shrink-0 rounded-full transition-colors", urgent ? "bg-rose-500" : "bg-muted-foreground/30")}>
-                <span className={cn("absolute top-0.5 size-5 rounded-full bg-white shadow transition-all", urgent ? "left-[18px]" : "left-0.5")} />
-              </span>
-            </button>
+            <label className="flex items-center gap-3 px-3.5">
+              <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground"><Tag className="size-4" /></span>
+              <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} placeholder={t("Name this request (optional)")} className="h-12 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground/70 sm:text-sm" />
+            </label>
+            <div className="border-t border-border/60 px-3.5 py-2.5">
+              <p className="mb-1.5 flex items-center gap-1.5 text-[11.5px] text-muted-foreground"><Flame className="size-3.5" />{t("How soon is it needed?")}</p>
+              <div role="radiogroup" aria-label={t("Priority")} className="grid grid-cols-4 gap-1 rounded-xl bg-muted p-1">
+                {PRIORITY.map((o) => (
+                  <button key={o.key} type="button" role="radio" aria-checked={priority === o.key} onClick={() => setPriority(o.key)}
+                    className={cn("rounded-lg px-1 py-1.5 text-xs font-medium transition", priority === o.key ? (o.key === "URGENT" ? "bg-rose-500 text-white shadow-sm" : "bg-background shadow-sm") : "text-muted-foreground")}>{t(o.label)}</button>
+                ))}
+              </div>
+            </div>
             <label className="flex items-center gap-3 border-t border-border/60 px-3.5">
               <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground"><Target className="size-4" /></span>
               <input value={reason} onChange={(e) => setReason(e.target.value)} maxLength={300} placeholder={t("What is it for? (optional)")} className="h-12 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground/70 sm:text-sm" />
             </label>
+            <div className="grid grid-cols-2 gap-2 border-t border-border/60 px-3.5 py-2.5">
+              <label className="grid gap-1 text-[11.5px] text-muted-foreground">{t("Estimated cost (TZS)")}
+                <input value={estimate} onChange={(e) => setEstimate(e.target.value.replace(/[^\d]/g, ""))} inputMode="numeric" placeholder={t("if you know")} className="h-10 rounded-lg border border-border bg-background px-2.5 text-base tabular-nums text-foreground sm:text-sm" />
+              </label>
+              <label className="grid gap-1 text-[11.5px] text-muted-foreground">{t("Needed by")}
+                <input value={neededBy} onChange={(e) => setNeededBy(e.target.value)} type="date" className="h-10 rounded-lg border border-border bg-background px-2 text-base text-foreground sm:text-sm" />
+              </label>
+              <p className="col-span-2 text-[11px] text-muted-foreground">{t("The cost is only your estimate — it is not an approved expense.")}</p>
+            </div>
+            <label className="flex items-center gap-3 border-t border-border/60 px-3.5 py-2">
+              <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground"><Paperclip className="size-4" /></span>
+              <span className="min-w-0 flex-1 text-sm">
+                <span className="block text-[11.5px] text-muted-foreground">{file ? file.name : t("Photo or document (optional)")}</span>
+                <input type="file" accept="image/*,application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="block w-full text-xs file:mr-2 file:rounded-lg file:border-0 file:bg-muted file:px-2.5 file:py-1.5 file:text-xs file:font-medium" />
+              </span>
+            </label>
             <label className="flex items-center gap-3 border-t border-border/60 px-3.5">
               <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground"><StickyNote className="size-4" /></span>
-              <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} placeholder={t("Note for the manager (optional)")} className="h-12 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground/70 sm:text-sm" />
+              <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} placeholder={t("Note for Finance (optional)")} className="h-12 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground/70 sm:text-sm" />
             </label>
           </div>
           <Button className="h-12 w-full text-[15px]" disabled={ready.length === 0} onClick={() => setReviewing(true)}><ClipboardList />{ready.length ? t.plural(ready.length, "Check the list · {n} item", "Check the list · {n} items") : t("Check the list")}</Button>
@@ -192,9 +226,9 @@ export function NewRequest({ kitchen, drinks, storeItems, departments, defaultDe
       <Dialog open={reviewing} onOpenChange={setReviewing}>
         <DialogContent className="max-h-[92svh] gap-0 overflow-y-auto p-0 sm:max-w-2xl">
           {/* The content has no padding (p-0): the band starts at the edge without the usual pull-out. */}
-          <DialogHeader icon={<ClipboardList />} eyebrow={t("Stock request")} tone="amber" className="mx-0 mt-0">
+          <DialogHeader icon={<ClipboardList />} eyebrow={t("Purchase request")} tone="amber" className="mx-0 mt-0">
             <DialogTitle>{t("Check your list")}</DialogTitle>
-            <DialogDescription>{t("Print it or save it if you like — then send it to the manager.")}</DialogDescription>
+            <DialogDescription>{t("Print it or save it if you like — then send it to Finance.")}</DialogDescription>
           </DialogHeader>
           <div className="bg-muted/30 p-3 sm:p-5">
             <StockSheet id="stock-sheet-new" hotel={hotel} number={null} deptName={deptName} by={me} at={new Date().toISOString()} urgent={urgent}
@@ -204,7 +238,7 @@ export function NewRequest({ kitchen, drinks, storeItems, departments, defaultDe
             <SheetTools target="stock-sheet-new" fileName={`stock-request-${dept.toLowerCase()}`} />
             <div className="grid grid-cols-[auto_1fr] gap-2">
               <Button variant="outline" className="h-11" onClick={() => setReviewing(false)}><Pencil />{t("Change it")}</Button>
-              <Button className="h-11" disabled={pending || !lines.length} onClick={send}>{pending ? <Loader2 className="animate-spin" /> : <Send />}{t.plural(lines.length, "Send {n} item to the manager", "Send {n} items to the manager")}</Button>
+              <Button className="h-11" disabled={pending || !lines.length} onClick={send}>{pending ? <Loader2 className="animate-spin" /> : <Send />}{t.plural(lines.length, "Send {n} item to Finance", "Send {n} items to Finance")}</Button>
             </div>
           </div>
         </DialogContent>

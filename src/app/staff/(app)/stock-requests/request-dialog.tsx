@@ -4,15 +4,17 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
-  Ban, Check, ChevronDown, ClipboardList, CornerUpLeft, Flame, History, Hourglass, Loader2, Pencil, Printer, ShoppingBasket, StickyNote, Target, X,
+  Ban, Check, ChevronDown, ClipboardList, CornerUpLeft, Flame, History, Hourglass, Loader2, Paperclip, Pencil, Printer, ShoppingBasket, StickyNote, Target, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { formatTZS } from "@/lib/format";
 import {
-  eventVerb, person, statusMeta, toBuyQty, when, type PurchaseOptionsView, type StockEventView, type StockReqView, type Viewer,
+  eventVerb, num, person, statusMeta, toBuyQty, when, type PurchaseOptionsView, type StockEventView, type StockReqView, type Viewer,
 } from "@/lib/stock-requests";
 import { cancelStockRequestAction, reviewStockRequestAction } from "./actions";
+import { DeliveryReport } from "../procurement/workspace-actions";
 import { DeptIcon, ReasonBox, StatusChip, type Tile, type TileGroup } from "./parts";
 import { StockSheet, SheetTools } from "./sheet";
 import { LinesTable } from "./lines-table";
@@ -26,7 +28,7 @@ type Asking = null | "send-back" | "reject" | "cancel";
 
 const DOT: Record<string, string> = {
   SUBMITTED: "bg-sky-400", SENT_BACK: "bg-orange-400", APPROVED: "bg-amber-400", PURCHASING: "bg-violet-400",
-  PENDING_APPROVAL: "bg-fuchsia-400", COMPLETED: "bg-emerald-400", REJECTED: "bg-rose-400", CANCELLED: "bg-muted-foreground/50",
+  PENDING_APPROVAL: "bg-fuchsia-400", AWAITING_AUTHORIZATION: "bg-fuchsia-400", ORDERED: "bg-indigo-400", PART_DELIVERED: "bg-violet-400", DELIVERED: "bg-teal-400", COMPLETED: "bg-emerald-400", REJECTED: "bg-rose-400", CANCELLED: "bg-muted-foreground/50",
 };
 
 /** A coloured note in the dialog: the manager's note, a correction, a rejection. */
@@ -86,13 +88,15 @@ export function RequestDialog({ r, me, groups, pics, hotel, today, options, onCl
   const [mode, setMode] = useState<Mode>("view");
   const [asking, setAsking] = useState<Asking>(null);
   const [paper, setPaper] = useState(false);
+  // Finance's approved budget: the person's estimate unless Finance says otherwise.
+  const [budget, setBudget] = useState(r.estimatedTotal != null ? String(r.estimatedTotal) : "");
   const [pending, start] = useTransition();
   const money = me.reviewer || me.buyer;
   const mine = r.byId === me.id;
   const done = (close: boolean) => { router.refresh(); if (close) onClose(); else { setMode("view"); setAsking(null); } };
 
   const review = (decision: "APPROVE" | "SEND_BACK" | "REJECT", note?: string) => start(async () => {
-    const res = await reviewStockRequestAction({ id: r.id, decision, note });
+    const res = await reviewStockRequestAction({ id: r.id, decision, note, approvedBudget: decision === "APPROVE" && budget.trim() ? Math.round(Number(budget)) : null });
     if (!res.ok) { toast.error(res.error); return; }
     toast.success(decision === "APPROVE" ? t("{number} approved for purchase.", { number: r.number }) : res.message ?? t("Saved."));
     done(true);
@@ -136,9 +140,13 @@ export function RequestDialog({ r, me, groups, pics, hotel, today, options, onCl
 
   // Where it stands, in words, when there is nothing for this person to do.
   const waiting =
-    r.status === "SUBMITTED" && !me.reviewer ? t("Waiting for the manager to review it.")
+    r.status === "SUBMITTED" && !me.reviewer ? t("Waiting for Finance to review it.")
     : r.status === "SENT_BACK" && !mine ? t("Waiting for {name} to change it and send it again.", { name: person(r.by) })
-    : r.status === "APPROVED" && !canBuy ? t("Approved — it will be bought.")
+    : r.status === "APPROVED" && !canBuy ? t("Approved by Finance — the Accountant is getting quotations from suppliers.")
+    : r.status === "AWAITING_AUTHORIZATION" ? t("The price is above the approved budget — waiting for Finance to authorize it.")
+    : r.status === "ORDERED" ? t("Ordered from the supplier — waiting for the delivery.")
+    : r.status === "PART_DELIVERED" ? t("Part of the order has arrived — the rest is still to come.")
+    : r.status === "DELIVERED" ? t("Everything arrived — the supplier's invoice and payment are being finished.")
     : r.status === "PURCHASING" && !canBuy ? (r.boughtBy ? t("Being bought by {name}.", { name: person(r.boughtBy) }) : t("Being bought."))
     : r.status === "PENDING_APPROVAL" && !finalCheck ? t("Bought — waiting for the manager's final approval.")
     : null;
@@ -167,11 +175,11 @@ export function RequestDialog({ r, me, groups, pics, hotel, today, options, onCl
     <Dialog open onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="max-h-[92svh] gap-0 overflow-y-auto p-0 sm:max-w-3xl">
         {/* The content has no padding (p-0): the band starts at the edge without the usual pull-out; mb-4 keeps the body off it. */}
-        <DialogHeader icon={<ClipboardList />} eyebrow={t("Stock request")} tone="amber" className="mx-0 mt-0 mb-4">
+        <DialogHeader icon={<ClipboardList />} eyebrow={t("Purchase request")} tone="amber" className="mx-0 mt-0 mb-4">
           {/* `dark`: on the dark band the status and urgent chips take their night-mode colours. */}
           <DialogTitle className="dark flex flex-wrap items-center gap-2">
             <span className="font-mono">{r.number}</span><StatusChip status={r.status} />
-            {r.urgent && <span className="inline-flex items-center gap-0.5 rounded-full bg-rose-500/12 px-2 py-0.5 text-[11px] font-semibold text-rose-600 dark:text-rose-300"><Flame className="size-3" />{t("Urgent")}</span>}
+            {(r.urgent || r.priority === "HIGH") && <span className="inline-flex items-center gap-0.5 rounded-full bg-rose-500/12 px-2 py-0.5 text-[11px] font-semibold text-rose-600 dark:text-rose-300"><Flame className="size-3" />{r.urgent ? t("Urgent") : t("High")}</span>}
           </DialogTitle>
           <DialogDescription className="flex flex-wrap items-center gap-x-1.5">
             <DeptIcon code={r.department} className="size-3.5" />{t(r.departmentName)} · {t("asked by {name}", { name: person(r.by) })} · {when(r.at, t)}
@@ -187,6 +195,25 @@ export function RequestDialog({ r, me, groups, pics, hotel, today, options, onCl
         ) : (
           <>
             <div className="space-y-4 px-5 pb-5">
+              {(r.title || r.estimatedTotal != null || r.approvedBudget != null || r.attachments.length > 0) && (
+                <div className="space-y-1.5 rounded-xl bg-muted/40 px-3 py-2.5 text-sm">
+                  {r.title && <p className="font-medium">{r.title}</p>}
+                  <p className="flex flex-wrap gap-x-4 gap-y-0.5 text-muted-foreground">
+                    {r.estimatedTotal != null && <span>{t("Estimated cost: {amount} (a guess, not approved)", { amount: formatTZS(r.estimatedTotal) })}</span>}
+                    {r.approvedBudget != null && <span className="font-medium text-foreground">{t("Budget approved by Finance: {amount}", { amount: formatTZS(r.approvedBudget) })}</span>}
+                  </p>
+                  {r.attachments.map((a) => (
+                    <a key={a.id} href={`/api/files/${a.id}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs font-medium underline-offset-4 hover:underline">
+                      <Paperclip className="size-3.5" />{a.isPdf ? t("The document") : t("The photo")}
+                    </a>
+                  ))}
+                </div>
+              )}
+              {r.status === "SUBMITTED" && me.reviewer && (
+                <label className="grid gap-1 rounded-xl border border-border/70 px-3 py-2.5 text-xs text-muted-foreground">{t("Approved budget (TZS) — the most it may cost; a quotation above it comes back to you")}
+                  <input value={budget} onChange={(e) => setBudget(e.target.value.replace(/[^\d]/g, ""))} inputMode="numeric" placeholder={t("leave empty for no limit set")} className="h-10 rounded-lg border border-border bg-background px-2.5 text-base tabular-nums text-foreground sm:text-sm" />
+                </label>
+              )}
               {(r.reason || r.note) && (
                 <div className="grid gap-2 sm:grid-cols-2">
                   {r.reason && <p className="flex gap-2 rounded-xl bg-muted/40 px-3 py-2 text-sm"><Target className="mt-0.5 size-4 shrink-0 text-muted-foreground" /><span><span className="text-muted-foreground">{t("For:")} </span>{r.reason}</span></p>}
@@ -195,7 +222,7 @@ export function RequestDialog({ r, me, groups, pics, hotel, today, options, onCl
               )}
 
               {r.status === "SENT_BACK" && (
-                <Notice tone="orange" icon={CornerUpLeft} title={mine ? t("The manager sent it back to you:") : t("Sent back to change:")}>
+                <Notice tone="orange" icon={CornerUpLeft} title={mine ? t("Sent back to you — please answer or change it:") : t("Sent back to change:")}>
                   {r.decisionNote ?? "—"}{r.decidedBy && <span className="text-muted-foreground"> — {person(r.decidedBy)}</span>}
                 </Notice>
               )}
@@ -216,6 +243,22 @@ export function RequestDialog({ r, me, groups, pics, hotel, today, options, onCl
               ) : (
                 <>
                   <LinesTable lines={r.lines} money={money} />
+                  {r.order && (
+                    <section className="space-y-2 rounded-2xl border border-border/70 px-4 py-3 text-sm">
+                      <h3 className="font-semibold">{t("The order")}</h3>
+                      <p className="text-muted-foreground">
+                        {r.order.number}{r.order.expectedOn && ` · ${t("expected {date}", { date: t.date(r.order.expectedOn) })}`}{r.order.total != null && ` · ${formatTZS(r.order.total)}`}
+                      </p>
+                      <ul className="space-y-0.5">
+                        {r.lines.filter((l) => l.orderedQty != null).map((l) => (
+                          <li key={l.id} className="flex flex-wrap justify-between gap-2"><span>{t(l.name)}</span><span className="tabular-nums text-muted-foreground">{t("{got} of {ordered} {unit} arrived", { got: num(l.receivedQty), ordered: num(l.orderedQty ?? 0), unit: t(l.unit) })}</span></li>
+                        ))}
+                      </ul>
+                      {mine && ["ORDERED", "PART_DELIVERED", "DELIVERED"].includes(r.status) && (
+                        <div className="border-t border-border/60 pt-3"><p className="mb-2 font-medium">{t("Is what arrived right?")}</p><DeliveryReport id={r.id} /></div>
+                      )}
+                    </section>
+                  )}
                   {money && (r.status === "PURCHASING" || r.status === "PENDING_APPROVAL" || r.status === "COMPLETED") && <PurchaseFacts r={r} />}
                   {extras}
                 </>

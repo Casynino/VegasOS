@@ -85,10 +85,12 @@ export function SettingsForm({ defaults: d }: { defaults: Defaults }) {
               <Field name="taxRatePercent" label={t("Tax rate % (optional)")} type="number" step="0.01" min={0} max={100} d={d} errors={e} />
               <NativeCheckbox name="taxIncludedInRates" defaultChecked={Boolean(d.taxIncludedInRates)}
                 label={t("Room rates already include tax")} className="sm:col-span-2" />
+              <Field name="financeAuthorizationLimit" label={t("Purchase price Finance may authorize alone")} type="number" min={0} step={1000} d={d} errors={e}
+                hint={t("A quotation above this amount is authorized only by the Boss or the MD. Leave empty for no limit.")} />
               <div id="purchaseApproverMustDiffer" className="space-y-1 sm:col-span-2">
                 <NativeCheckbox name="purchaseApproverMustDiffer" defaultChecked={Boolean(d.purchaseApproverMustDiffer)}
-                  label={t("Stock purchases: someone other than the buyer gives the final approval")} />
-                <p className="pl-6 text-xs text-muted-foreground">{t("When on, the manager who bought the stock cannot approve their own purchase — another manager or the MD does.")}</p>
+                  label={t("Purchases: the person who bought or quoted cannot approve their own purchase")} />
+                <p className="pl-6 text-xs text-muted-foreground">{t("When on, nobody approves a request they asked for, authorizes a price they quoted, or gives the final approval to stock they bought — another person does.")}</p>
               </div>
             </CardContent>
           </Card>

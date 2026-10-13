@@ -34,15 +34,15 @@ export const NAV: NavSection[] = [
     title: msg("Finance"), icon: "ReceiptText", ordered: true,
     // The owner's order: (the overview), income, expenses, then the accounts — small to big after that.
     items: [
-      // The Accountant's own desk (their Home); the Boss and the MD open it from here.
-      { href: "/staff/accountant", label: msg("Accountant desk"), icon: "Calculator", anyOf: ["dashboard.accountant"] },
+      // Finance's own desk (their Home); the Boss and the MD open it from here.
+      { href: "/staff/accountant", label: msg("Finance desk"), icon: "Calculator", anyOf: ["dashboard.finance"] },
       { href: "/staff/finance", label: msg("Overview"), icon: "Wallet", anyOf: ["finance.view"] },
       // Income and Expenses are managers' and the MD's; reception sees what it collected in Collections (owner, 2026-10-04).
       { href: "/staff/payments", label: msg("Income"), icon: "Banknote", anyOf: ["reports.view", "finance.view"] },
       { href: "/staff/expenses", label: msg("Expenses"), icon: "Receipt", anyOf: ["expenses.record", "expenses.view_all"] },
       // The money each person collected from customers — their own ("My collections"); managers pick anyone.
       { href: "/staff/collections", label: msg("Collections"), icon: "Coins", anyOf: ["revenue.record", "payments.record", "dashboard.manager", "dashboard.owner", "dashboard.admin"] },
-      // The cash reception and the Restaurant Counter hand to the Accountant (the Accountant receives; managers watch).
+      // The cash reception and the Restaurant Counter hand to Finance (Finance receives; managers watch).
       { href: "/staff/accountant/handovers", label: msg("Cash handovers"), icon: "HandCoins", anyOf: ["cash.handover.view", "cash.handover.review"] },
       { href: "/staff/finance/accounts", label: msg("Accounts"), icon: "Landmark", anyOf: ["ledger.view", "finance.view"] },
       // Invoices are not in the sidebar (the owner's choice) — they open from a booking, a group or a company.
@@ -65,6 +65,8 @@ export const NAV: NavSection[] = [
       { href: "/staff/check-in", label: msg("Check-in"), icon: "DoorOpen", anyOf: ["reservations.check_in"], hideIf: ["dashboard.manager", "dashboard.owner", "dashboard.admin"] },
       { href: "/staff/check-out", label: msg("Check-out"), icon: "DoorClosed", anyOf: ["reservations.check_out"], hideIf: ["dashboard.manager", "dashboard.owner", "dashboard.admin"] },
       { href: "/staff/driver", label: msg("My trips"), icon: "Car", anyOf: ["transport.driver"], hideIf: ["reservations.view"] },
+      // What the front desk needs (tables, paper, supplies): Reception asks here, Finance reviews it. Those who work in the Stores find it there.
+      { href: "/staff/stock-requests", label: msg("Purchase requests"), icon: "ClipboardList", anyOf: ["inventory.request"], hideIf: ["inventory.view", "expenses.approve", "inventory.receive", "restaurant.device"] },
     ],
   },
   {
@@ -117,6 +119,8 @@ export const NAV: NavSection[] = [
       // What every waiter served and which table or room each one served — for managers, the MD and the owner.
       { href: "/staff/restaurant/waiters", label: msg("Waiters"), icon: "Users", anyOf: ["dashboard.manager", "dashboard.owner", "dashboard.admin"] },
       { href: "/staff/restaurant/reservations", label: msg("Reservations"), icon: "CalendarClock", anyOf: ["restaurant.orders", "restaurant.serve"] },
+      // The Restaurant Counter asks for restocking and supplies here; the kitchen finds it in the Stores.
+      { href: "/staff/stock-requests", label: msg("Purchase requests"), icon: "ClipboardList", anyOf: ["inventory.request"], hideIf: ["inventory.view", "expenses.approve", "inventory.receive", "dashboard.front_desk"] },
       // Waiters see customers here (their one section); reception and managers find them in Settings.
       { href: "/staff/guests", label: msg("Customers"), icon: "Contact", anyOf: ["guests.view"], hideIf: ["reservations.view"] },
     ],
@@ -127,7 +131,9 @@ export const NAV: NavSection[] = [
     items: [
       { href: "/staff/inventory", label: msg("Inventory"), icon: "Boxes", anyOf: ["inventory.view"] },
       // Ask → review → buy → final approval: the kitchen, waiters and reception ask; managers review, buy and approve.
-      { href: "/staff/stock-requests", label: msg("Stock requests"), icon: "ClipboardList", anyOf: ["inventory.request", "expenses.approve", "inventory.receive"] },
+      { href: "/staff/stock-requests", label: msg("Purchase requests"), icon: "ClipboardList", anyOf: ["inventory.view", "expenses.approve", "inventory.receive"] },
+      // Approved purchases: quotations → price authorized by Finance → order → delivery → invoice → payment.
+      { href: "/staff/procurement", label: msg("Procurement"), icon: "ClipboardCheck", anyOf: ["dashboard.procurement", "procurement.manage", "purchases.authorize", "purchases.pay"] },
       { href: "/staff/assets", label: msg("Assets"), icon: "Sofa", anyOf: ["assets.view"] },
     ],
   },

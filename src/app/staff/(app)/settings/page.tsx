@@ -74,6 +74,7 @@ export default async function SettingsPage() {
               lateArrival: formatMinutes(s.lateArrivalMinutes),
               expenseApprovalThreshold: s.expenseApprovalThreshold,
               purchaseApproverMustDiffer: s.purchaseApproverMustDiffer,
+              financeAuthorizationLimit: s.financeAuthorizationLimit ?? "",
               bankName: s.bankName ?? "",
               bankAccountName: s.bankAccountName ?? "",
               bankAccountNumber: s.bankAccountNumber ?? "",

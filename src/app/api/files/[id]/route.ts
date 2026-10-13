@@ -6,6 +6,8 @@ const CAN_SEE: Record<string, string[]> = {
   PAYMENT_PROOF: ["restaurant.orders", "restaurant.serve", "revenue.record", "restaurant.payments.confirm", "finance.view"],
   /** A supplier's receipt for a stock purchase: whoever buys and whoever approves — never the staff who only ask. */
   PURCHASE_RECEIPT: ["inventory.receive", "expenses.approve"],
+  /** A document kept with a purchase request (photo, quotation, delivery note, supplier invoice): the person who uploaded it, Finance, the buyers and whoever reviews. */
+  STOCK_DOCUMENT: ["procurement.manage", "expenses.approve", "purchases.authorize", "purchases.pay", "inventory.receive"],
 };
 
 /** Serve an uploaded file to authorised staff only (never public, never cached by shared caches). `?download=1` saves it. */

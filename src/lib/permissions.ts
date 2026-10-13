@@ -13,7 +13,8 @@ export const PERMISSIONS = {
   "dashboard.owner": msg("View the owner/boss business dashboard"),
   "dashboard.manager": msg("View the manager operations dashboard"),
   "dashboard.front_desk": msg("View the front-desk dashboard"),
-  "dashboard.accountant": msg("Accountant portal: the financial dashboard and the cash handovers waiting to be received"),
+  "dashboard.finance": msg("Finance desk: the financial dashboard, the purchases to authorize and the cash handovers waiting to be received"),
+  "dashboard.procurement": msg("Procurement desk (Accountant): the purchases to quote, order, receive and follow up"),
   "reports.view": msg("View management and financial reports"),
   "reports.daily.manage": msg("Regenerate and resend daily boss reports"),
 
@@ -28,10 +29,13 @@ export const PERMISSIONS = {
   "pricing.manage": msg("Set room prices and create promotions (Admin)"),
   "finance.view": msg("See the general ledger, money accounts, receivables and staff activity"),
   "finance.manage": msg("Record transfers, owner money and corrections; accept cash counts"),
-  "cash.handover.submit": msg("Hand over the cash you collected: count it and send it to the Accountant (reception and the Restaurant Counter)"),
+  "cash.handover.submit": msg("Hand over the cash you collected: count it and send it to Finance (reception and the Restaurant Counter)"),
   "cash.handover.view": msg("See the cash handovers, who still holds cash and the differences (read-only)"),
-  "cash.handover.review": msg("Receive cash handovers (Accountant): confirm what was received, return one for correction, reject one, choose the cash account"),
-  "cash.handover.discrepancy": msg("Accept a cash handover that is short or over, with the reason (Accountant)"),
+  "cash.handover.review": msg("Receive cash handovers (Finance): confirm what was received, return one for correction, reject one, choose the cash account"),
+  "cash.handover.discrepancy": msg("Accept a cash handover that is short or over, with the reason (Finance)"),
+  "procurement.manage": msg("Procurement (Accountant): get supplier quotations, propose a purchase, issue the order once Finance authorized it, record deliveries and attach supplier invoices — never approve or pay"),
+  "purchases.authorize": msg("Authorize a purchase quotation above the approved budget (Finance; above Finance's limit, the Boss or the MD)"),
+  "purchases.pay": msg("Verify a supplier invoice and record the payment to the supplier (Finance)"),
   "withdrawals.manage": msg("Withdraw funds: take money out of the hotel's nTZS balance (Boss and Admin)"),
   "withdrawals.reconcile": msg("Withdraw funds: settle by hand a withdrawal nTZS could not confirm"),
   "reservations.checkout_override": msg("Check a guest out with an unpaid balance (authorised override)"),
@@ -88,7 +92,7 @@ export const PERMISSIONS = {
   "restaurant.device": msg("Only the main restaurant's own login (the shared computer / iPad) — never a person's role: it stays signed in, and waiters give their PIN on it"),
   "restaurant.payments.confirm": msg("Confirm restaurant payments (the Restaurant Counter's own are confirmed as they are recorded)"),
   "restaurant.menu": msg("Restaurant set-up (Admin): menu, prices, categories, photos, tables, restaurant QR codes and order sounds"),
-  "restaurant.prices": msg("Change the selling prices of menu items (Accountant) — nothing else on the menu; each order keeps the price it was placed at"),
+  "restaurant.prices": msg("Change the selling prices of menu items (Finance) — nothing else on the menu; each order keeps the price it was placed at"),
   "kitchen.orders": msg("Restaurant portal as the Mpishi: accept, prepare and mark any order ready (food and drinks)"),
   "bar.orders": msg("Restaurant portal: accept, prepare and mark drinks ready"),
   "booking_requests.manage": msg("Handle online booking requests (contact, confirm, reject, convert)"),
@@ -120,6 +124,8 @@ const RECEPTIONIST: PermissionCode[] = [
   "rooms.status.update",
   "payments.record",
   "cash.handover.submit",
+  // Reception asks for what the front desk needs (tables, paper, supplies); Finance reviews it (owner, 2026-10-13).
+  "inventory.request",
   "invoices.view",
   "corporate.view",
   // Reception takes the guests' payments and sees what it collected (Collections). Income and Expenses,
@@ -197,18 +203,28 @@ const RESTAURANT: PermissionCode[] = ["restaurant.orders", "restaurant.serve", "
 /** Restaurant — Mpishi (cook): prepares food and drinks (accept, prepare, mark ready) and can take orders. No prices, payments or reports. */
 const KITCHEN: PermissionCode[] = ["kitchen.orders", "bar.orders", "inventory.view", "inventory.use", "inventory.request"];
 /** The shared Restaurant Counter account (one for the restaurant): the whole restaurant, and the official restaurant payments. Waiters say who they are with their ID for the service they do there. */
-const RESTAURANT_SCREEN: PermissionCode[] = ["restaurant.orders", "restaurant.serve", "restaurant.device", "kitchen.orders", "bar.orders", "revenue.record", "restaurant.payments.confirm", "cash.handover.submit", "guests.view"];
+const RESTAURANT_SCREEN: PermissionCode[] = ["restaurant.orders", "restaurant.serve", "restaurant.device", "kitchen.orders", "bar.orders", "revenue.record", "restaurant.payments.confirm", "cash.handover.submit", "inventory.request", "guests.view"];
 
 /**
- * Accountant — the hotel's finance controller (owner, 2026-10-13: "full control of all financial activities"): sees every
- * account, transaction and report; records payments and sales; receives the cash the front desk and the Counter hand
- * over; keeps the accounts, expenses, prices and discounts in order; withdraws from nTZS; makes and sends the daily
- * reports. Never runs the front desk, the kitchen or the system's set-up: no check-in/out, no orders, no staff accounts,
- * no hotel settings. Regenerating a report, settling a withdrawal by hand and how much staff may discount stay with the
- * Boss and the MD.
+ * Accountant — procurement and purchasing (owner, 2026-10-13): gets the supplier quotations for the requests Finance
+ * approved, proposes the purchase, issues the order once Finance authorized it, records what was delivered and attaches
+ * the supplier's documents. Sees stock (to check it first) — and never approves, authorizes or pays anything, touches an
+ * account or edits a financial record. Finance holds the money.
  */
-const ACCOUNTANT: PermissionCode[] = [
-  "dashboard.accountant",
+const ACCOUNTANT: PermissionCode[] = ["dashboard.procurement", "procurement.manage", "inventory.view", "inventory.request"];
+
+/**
+ * Finance — the hotel's financial authority (owner, 2026-10-13: "full control of all financial activities"): sees every
+ * account, transaction and report; records payments and sales; receives the cash the front desk and the Counter hand
+ * over; reviews and authorizes purchases and pays suppliers; keeps the accounts, expenses, prices and discounts in order;
+ * withdraws from nTZS; makes and sends the daily reports. Never runs the front desk, the kitchen or the system's
+ * set-up: no check-in/out, no orders, no staff accounts, no hotel settings. Regenerating a report, settling a withdrawal
+ * by hand and how much staff may discount stay with the Boss and the MD.
+ */
+const FINANCE: PermissionCode[] = [
+  "dashboard.finance",
+  "purchases.authorize",
+  "purchases.pay",
   "reports.view",
   "reports.daily.manage",
   "payments.record",
@@ -243,7 +259,7 @@ const ACCOUNTANT: PermissionCode[] = [
 
 /** The department each built-in role belongs to (staff accounts: choose the department, then the role). */
 export const ROLE_DEPARTMENT: Record<string, string> = {
-  ADMIN: msg("Management"), OWNER: msg("Management"), MANAGER: msg("Management"), ACCOUNTANT: msg("Finance"), RECEPTIONIST: msg("Front office"), RESTAURANT: msg("Restaurant"), KITCHEN: msg("Restaurant"), RESTAURANT_SCREEN: msg("Restaurant"), DRIVER: msg("Transport"),
+  ADMIN: msg("Management"), OWNER: msg("Management"), MANAGER: msg("Management"), FINANCE: msg("Finance"), ACCOUNTANT: msg("Purchasing"), RECEPTIONIST: msg("Front office"), RESTAURANT: msg("Restaurant"), KITCHEN: msg("Restaurant"), RESTAURANT_SCREEN: msg("Restaurant"), DRIVER: msg("Transport"),
 };
 
 export const DEFAULT_ROLES: Record<
@@ -265,9 +281,14 @@ export const DEFAULT_ROLES: Record<
     description: msg("Hotel operations authority: runs and supervises the hotel every day — monitors every department, makes operational decisions and steps in; staff do the routine work."),
     permissions: MANAGER,
   },
+  FINANCE: {
+    name: msg("Finance"),
+    description: msg("Financial authority: reviews and authorizes purchases, pays suppliers, receives the cash handed over by reception and the Restaurant Counter, keeps the accounts, expenses, prices and discounts in order and reports on them."),
+    permissions: FINANCE,
+  },
   ACCOUNTANT: {
     name: msg("Accountant"),
-    description: msg("Finance controller: reviews every payment, receives the cash handed over by reception and the Restaurant Counter, keeps the accounts, expenses, prices and discounts in order and reports on them."),
+    description: msg("Procurement and purchasing: gets supplier quotations for approved requests, issues the order once Finance authorized it, records deliveries and documents. Never approves or pays."),
     permissions: ACCOUNTANT,
   },
   RECEPTIONIST: {

@@ -14,6 +14,7 @@ import { getT } from "@/i18n/server";
 
 const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, msg("Use HH:MM (24-hour).")).transform(parseTimeToMinutes);
 const money = z.coerce.number().int(msg("Whole shillings only.")).min(0, msg("Cannot be negative."));
+const optionalMoney = z.union([z.literal(""), money]).transform((v) => (v === "" ? null : v));
 const optionalText = z.string().trim().max(300).transform((v) => v || null);
 const checkbox = z.preprocess((v) => v === "on" || v === "true", z.boolean());
 
@@ -35,6 +36,7 @@ const SettingsSchema = z.object({
   lateArrival: time,
   expenseApprovalThreshold: money,
   purchaseApproverMustDiffer: checkbox,
+  financeAuthorizationLimit: optionalMoney,
   bankName: optionalText,
   bankAccountName: optionalText,
   bankAccountNumber: optionalText,
@@ -134,6 +136,7 @@ export async function updateSettingsAction(_prev: unknown, formData: FormData): 
       lateArrivalMinutes: input.lateArrival,
       expenseApprovalThreshold: input.expenseApprovalThreshold,
       purchaseApproverMustDiffer: input.purchaseApproverMustDiffer,
+      financeAuthorizationLimit: input.financeAuthorizationLimit,
       bankName: input.bankName,
       bankAccountName: input.bankAccountName,
       bankAccountNumber: input.bankAccountNumber,

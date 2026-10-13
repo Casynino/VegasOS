@@ -16,7 +16,7 @@ import { receiveHandoverAction, rejectHandoverAction, returnHandoverAction } fro
 
 type CashAccount = { id: string; name: string };
 
-/** The Accountant's three answers to a handover that is waiting: receive it (what really arrived), send it back, or refuse it. */
+/** Finance's three answers to a handover that is waiting: receive it (what really arrived), send it back, or refuse it. */
 export function HandoverActions({ id, number, expected, declared, accountId, accounts, canAcceptDifference }: {
   id: string; number: string; expected: number; declared: number; accountId: string; accounts: CashAccount[]; canAcceptDifference: boolean;
 }) {

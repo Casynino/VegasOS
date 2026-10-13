@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Bell, BellOff, CalendarCheck, ChefHat, ClipboardList, ConciergeBell, HandPlatter, Receipt, Undo2, Wallet, type LucideIcon } from "lucide-react";
+import { Bell, BellOff, CalendarCheck, ChefHat, ClipboardList, ConciergeBell, HandPlatter, PackageCheck, Receipt, Undo2, Wallet, type LucideIcon } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import type { StaffAlert, StaffAlertKind } from "@/server/services/staff-alerts";
@@ -23,6 +23,7 @@ const KIND: Record<StaffAlertKind, { icon: LucideIcon; tone: string; title: stri
   order_new: { icon: ChefHat, tone: "bg-rose-500/15 text-rose-300", title: msg("New order") },
   order_ready: { icon: HandPlatter, tone: "bg-teal-500/15 text-teal-300", title: msg("Order ready") },
   stock: { icon: ClipboardList, tone: "bg-orange-500/15 text-orange-300", title: msg("Stock request") },
+  purchase: { icon: PackageCheck, tone: "bg-indigo-500/15 text-indigo-300", title: msg("Purchase") },
   checkin_cancelled: { icon: Undo2, tone: "bg-rose-500/15 text-rose-300", title: msg("Check-in cancelled") },
 };
 /** Ready orders and bills are for the waiter: the "ready" sound; everything new: the "new" sound. */

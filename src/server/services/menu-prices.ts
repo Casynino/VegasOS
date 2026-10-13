@@ -9,7 +9,7 @@ export type PriceActor = AuditActor & { userId: string; permissions: ReadonlySet
 const MAX_PRICE = 5_000_000;
 
 /**
- * Change ONE menu item's selling price — nothing else on the item. For the Accountant ("restaurant.prices") and for whoever
+ * Change ONE menu item's selling price — nothing else on the item. For Finance ("restaurant.prices") and for whoever
  * sets the menu up ("restaurant.menu"). An order copies the price when it is placed, so an order already placed keeps the
  * price it was made at; the change counts from the next order. The old and the new price go to the audit log with who.
  */

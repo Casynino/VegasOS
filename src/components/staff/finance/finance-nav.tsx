@@ -20,7 +20,7 @@ const TABS = [
   { href: "/staff/invoices", label: msg("Invoices") },
   { href: "/staff/corporate", label: msg("Companies") },
   { href: "/staff/reports/daily", label: msg("Daily reports") },
-  // The Accountant's own pages: what was taken off, what prices are, who handed over what.
+  // Finance's own pages: what was taken off, what prices are, who handed over what.
   { href: "/staff/accountant/discounts", label: msg("Discounts") },
   { href: "/staff/accountant/prices", label: msg("Price control") },
   { href: "/staff/accountant/reports", label: msg("Cash reports") },
@@ -44,12 +44,15 @@ export async function FinanceTabs({ active, limited, actions }: {
   const me = await getCurrentUser();
   const withdraw = !limited && can(me, "withdrawals.manage");
   const handovers = !limited && (can(me, "cash.handover.view") || can(me, "cash.handover.review"));
+  const purchases = !limited && (can(me, "purchases.authorize") || can(me, "purchases.pay"));
   const tabs: readonly { href: string; label: string }[] = limited ? LIMITED_TABS
     : TABS.flatMap<{ href: string; label: string }>((tab) => [
       // Cash handovers sit beside Accounts; Withdraw funds beside Online payments — only for those who may use them (each page checks again by itself).
       ...(tab.href === "/staff/finance/accounts" && handovers ? [{ href: "/staff/accountant/handovers", label: msg("Cash handovers") }] : []),
       tab,
       ...(tab.href === "/staff/finance/online" && withdraw ? [{ href: "/staff/finance/withdraw", label: msg("Withdraw funds") }] : []),
+      // Purchases: the prices to authorize, the supplier invoices to verify and pay.
+      ...(tab.href === "/staff/expenses" && purchases ? [{ href: "/staff/procurement", label: msg("Purchases") }] : []),
     ]);
   const bar = (
     <nav aria-label={t("Finance")} className="-mx-1 min-w-0 flex-1 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none]">
