@@ -607,6 +607,23 @@ export async function sweepWithdrawalsIfDue(now = new Date()) {
   await sweepWithdrawals(now, Date.now() + 8_000);
 }
 
+// ───────────────────────── What can be withdrawn ─────────────────────────
+
+/**
+ * What the hotel can withdraw from the nTZS account right now: what the books hold for it (opening + money in − money out) less what is
+ * already on its way out (sent to nTZS and not finished — the books take it out when it completes). nTZS itself checks the real balance
+ * when the price is asked, so a difference is caught before anything is sent.
+ */
+export async function ntzsAvailable() {
+  const [balances, flight] = await Promise.all([
+    accountBalances(undefined, true),
+    db.withdrawal.aggregate({ where: { status: { in: WITHDRAWAL_IN_FLIGHT } }, _sum: { amount: true, feeTzs: true } }),
+  ]);
+  const books = balances.find((b) => b.code === "NTZS")?.balance ?? 0;
+  const onItsWay = (flight._sum.amount ?? 0) + (flight._sum.feeTzs ?? 0);
+  return { books, onItsWay, available: Math.max(0, books - onItsWay) };
+}
+
 // ───────────────────────── The balance at nTZS ─────────────────────────
 
 /** The destination "Check balance" asks with: the last one the hotel withdrew to — or none yet, and then the person gives a phone number to ask with. */

@@ -1,21 +1,22 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { db } from "@/server/db";
-import { checkNtzsBalance, ntzsCheckNeedsPhone, type WithdrawalActor } from "@/server/services/withdrawals";
+import { checkNtzsBalance, ntzsAvailable, ntzsCheckNeedsPhone, type WithdrawalActor } from "@/server/services/withdrawals";
 import { ntzsReported } from "@/server/services/finance-home";
 import { resetBusinessData } from "../support/helpers";
 
 /** What nTZS holds is only known from what nTZS itself said (a price or "Check balance") — never guessed, and a number given to ask with is never a place to pay to. */
 beforeEach(resetBusinessData);
+afterEach(async () => { await db.moneyAccount.update({ where: { code: "NTZS" }, data: { openingBalance: 0 } }); });
 
 async function someone() {
   const u = await db.user.findFirstOrThrow({ where: { isActive: true } });
   return u;
 }
-const row = async (data: { status: string; availableTzs?: number | null; failureCode?: string | null; submittedAt?: Date | null; createdAt?: Date }) => {
+const row = async (data: { status: string; amount?: number; feeTzs?: number | null; availableTzs?: number | null; failureCode?: string | null; submittedAt?: Date | null; createdAt?: Date }) => {
   const u = await someone();
   return db.withdrawal.create({
     data: {
-      status: data.status as never, amount: 5_000, destinationKind: "PHONE", phone: "255712345678", requestedById: u.id, livemode: true,
+      status: data.status as never, amount: data.amount ?? 5_000, feeTzs: data.feeTzs ?? null, destinationKind: "PHONE", phone: "255712345678", requestedById: u.id, livemode: true,
       businessDate: new Date("2026-10-13T00:00:00Z"), availableTzs: data.availableTzs ?? null, failureCode: data.failureCode ?? null,
       submittedAt: data.submittedAt ?? null, ...(data.createdAt ? { createdAt: data.createdAt } : {}),
     },
@@ -48,5 +49,15 @@ describe("the nTZS balance", () => {
     const actor: WithdrawalActor = { userId: u.id, label: u.fullName, ipAddress: null, permissions: new Set(["withdrawals.manage"]) };
     await expect(checkNtzsBalance(actor)).rejects.toThrow();
     expect(await db.withdrawal.count()).toBe(0);
+  });
+
+  it("what can be withdrawn is what the books hold for nTZS, less what is already on its way out (a finished withdrawal is already out of the books)", async () => {
+    await db.moneyAccount.update({ where: { code: "NTZS" }, data: { openingBalance: 7_500 } });
+    expect(await ntzsAvailable()).toEqual({ books: 7_500, onItsWay: 0, available: 7_500 });
+    await row({ status: "PROCESSING", amount: 5_000, feeTzs: 200 });
+    expect(await ntzsAvailable()).toEqual({ books: 7_500, onItsWay: 5_200, available: 2_300 });
+    await row({ status: "COMPLETED", amount: 1_000 });
+    await row({ status: "FAILED", amount: 9_000 });
+    expect(await ntzsAvailable()).toEqual({ books: 7_500, onItsWay: 5_200, available: 2_300 });
   });
 });

@@ -1,9 +1,8 @@
 import Link from "next/link";
-import { Banknote, CircleHelp, Coins, CreditCard, Landmark, Smartphone, Wallet } from "lucide-react";
+import { Banknote, Coins, CreditCard, Landmark, Smartphone, Wallet } from "lucide-react";
 import { formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { T } from "@/i18n/translate";
-import { CheckBalanceButton } from "@/app/staff/(app)/finance/withdraw/withdraw-ui";
 
 /** The pieces Finance's Home is made of: account cards, bars, a pipeline and tables. Plain data in, no money logic here. */
 
@@ -17,15 +16,14 @@ const KIND: Record<string, { icon: React.ReactNode; chip: string; bar: string }>
 };
 
 export interface AccountCardData { id: string; code: string; name: string; kind: string; balance: number; dayIn: number; dayOut: number }
-export interface NtzsReport { available: number; at: string; live: boolean; sentSince: number }
 
 /**
  * Where the money is: one card per account — what the hotel's records say it holds (opening + in − out), today's movement and its
  * share of the total. The nTZS card also says what nTZS itself last reported, and the difference, so money that sits at nTZS but
  * is not in the books yet is never hidden.
  */
-export function AccountCards({ accounts, ntzs, canCheckNtzs, ntzsNeedsPhone, canOpen, t }: {
-  accounts: AccountCardData[]; ntzs: NtzsReport | null; canCheckNtzs: boolean; ntzsNeedsPhone: boolean; canOpen: boolean; t: T;
+export function AccountCards({ accounts, canWithdraw, canOpen, t }: {
+  accounts: AccountCardData[]; canWithdraw: boolean; canOpen: boolean; t: T;
 }) {
   const total = accounts.reduce((s, a) => s + a.balance, 0);
   const positive = accounts.reduce((s, a) => s + Math.max(0, a.balance), 0);
@@ -37,7 +35,6 @@ export function AccountCards({ accounts, ntzs, canCheckNtzs, ntzsNeedsPhone, can
           const k = KIND[a.kind] ?? KIND.OTHER;
           const share = positive > 0 && a.balance > 0 ? Math.round((a.balance / positive) * 100) : 0;
           const isNtzs = a.code === "NTZS";
-          const gap = isNtzs && ntzs ? ntzs.available - a.balance : 0;
           const body = (
             <>
               <div className="flex items-start gap-3">
@@ -57,22 +54,7 @@ export function AccountCards({ accounts, ntzs, canCheckNtzs, ntzsNeedsPhone, can
           return (
             <li key={a.id} className={cn("rounded-3xl border border-border/70 bg-card p-4", isNtzs && "sm:col-span-2 xl:col-span-1")}>
               {canOpen ? <Link href={`/staff/finance/accounts/${a.id}`} className="block rounded-2xl transition-colors hover:bg-muted/30">{body}</Link> : body}
-              {isNtzs && (
-                <div className="mt-3 space-y-1.5 border-t border-dashed border-border pt-3 text-xs">
-                  {ntzs ? (
-                    <>
-                      <p className="flex items-baseline justify-between gap-2"><span className="text-muted-foreground">{t("nTZS itself reported")}</span><strong className="text-sm tabular-nums">{formatTZS(ntzs.available)}</strong></p>
-                      <p className="text-[11px] text-muted-foreground">{t("at {time}", { time: t.dateTime(ntzs.at) })}{!ntzs.live && ` · ${t("test key — no real money")}`}{ntzs.sentSince > 0 && ` · ${t.plural(ntzs.sentSince, "{n} withdrawal sent since", "{n} withdrawals sent since")}`}</p>
-                      {gap > 0 && <p className="rounded-xl bg-amber-500/10 px-2.5 py-1.5 font-medium text-amber-700 dark:text-amber-300">{t("{amount} is at nTZS but not in the books yet", { amount: formatTZS(gap) })}</p>}
-                      {gap < 0 && <p className="rounded-xl bg-amber-500/10 px-2.5 py-1.5 font-medium text-amber-700 dark:text-amber-300">{t("The books show {amount} more than nTZS reported", { amount: formatTZS(-gap) })}</p>}
-                      {gap === 0 && <p className="text-emerald-600 dark:text-emerald-300">{t("The books and nTZS agree")}</p>}
-                    </>
-                  ) : (
-                    <p className="flex items-start gap-1.5 text-muted-foreground"><CircleHelp className="mt-0.5 size-3.5 shrink-0" />{t("nTZS does not show its balance by itself. Check it here to see what it holds.")}</p>
-                  )}
-                  {canCheckNtzs && <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-0.5"><CheckBalanceButton needsPhone={ntzsNeedsPhone} /><Link href="/staff/finance/withdraw" className="text-xs font-medium underline-offset-4 hover:underline">{t("Withdraw funds")}</Link></div>}
-                </div>
-              )}
+              {isNtzs && canWithdraw && <div className="mt-3 border-t border-dashed border-border pt-3"><Link href="/staff/finance/withdraw" className="text-xs font-medium underline-offset-4 hover:underline">{t("Withdraw funds")}</Link></div>}
             </li>
           );
         })}

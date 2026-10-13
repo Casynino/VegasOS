@@ -10,10 +10,9 @@ import { accountantOverview } from "@/server/services/accountant";
 import { guestMovement, occupancy, change, previousRange, profitLoss, dailyMoney } from "@/server/services/reporting";
 import { paymentsByMethod } from "@/server/services/finance";
 import { onlinePaymentTotals } from "@/server/services/online-payments-admin";
-import { ntzsCheckNeedsPhone } from "@/server/services/withdrawals";
 import { expenseSummary } from "@/server/services/reporting";
 import { receivablesBoard } from "@/server/services/company-billing";
-import { bookingActivity, financeNeeds, latestPayments, ntzsReported, purchasesPanel, restaurantDiscounts, type FinanceNeed } from "@/server/services/finance-home";
+import { bookingActivity, financeNeeds, latestPayments, purchasesPanel, restaurantDiscounts, type FinanceNeed } from "@/server/services/finance-home";
 import { addDays, diffDays } from "@/lib/time/business-date";
 import { formatTZS } from "@/lib/format";
 import { CASH_HANDOVER_ON } from "@/lib/cash-handover";
@@ -59,7 +58,7 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
   const handoverRights = CASH_HANDOVER_ON && has("cash.handover.view", "cash.handover.review");
   const buying = has("purchases.authorize", "purchases.pay", "procurement.manage");
 
-  const [ov, plPrev, methodsPrev, movement, movementPrev, trend, needs, receivedToday, occToday, online, restDisc, purchases, bookings, bookingsTrend, spend, owing, payments, ntzs, ntzsNeedsPhone] = await Promise.all([
+  const [ov, plPrev, methodsPrev, movement, movementPrev, trend, needs, receivedToday, occToday, online, restDisc, purchases, bookings, bookingsTrend, spend, owing, payments] = await Promise.all([
     accountantOverview(range, today),
     profitLoss(prev),
     paymentsByMethod(prev.from, prev.to),
@@ -77,8 +76,6 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
     view === "overview" ? expenseSummary(range) : null,
     view === "overview" && has("finance.view", "corporate.view") ? receivablesBoard(today) : null,
     view === "overview" ? latestPayments(range) : null,
-    view === "overview" && has("ledger.view", "finance.view") ? ntzsReported() : null,
-    view === "overview" && has("withdrawals.manage") ? ntzsCheckNeedsPhone() : false,
   ]);
 
   // ── Figures of the period, each against the period before ──
@@ -197,8 +194,7 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
           {/* 2 · Where the money is */}
           <Panel title={t("Where the money is")} subtitle={t("What the hotel's own records add up to — check it against the bank")} action={link(["ledger.view", "finance.view"], "/staff/finance/accounts", t("Accounts"))}>
             {ov.balances.length === 0 ? <p className="text-sm text-muted-foreground">{t("No accounts yet.")}</p>
-              : <AccountCards t={t} accounts={ov.balances} ntzs={ntzs ? { available: ntzs.available, at: ntzs.at.toISOString(), live: ntzs.live, sentSince: ntzs.sentSince } : null}
-                canCheckNtzs={has("withdrawals.manage")} ntzsNeedsPhone={ntzsNeedsPhone} canOpen={has("ledger.view", "finance.view")} />}
+              : <AccountCards t={t} accounts={ov.balances} canWithdraw={has("withdrawals.manage")} canOpen={has("ledger.view", "finance.view")} />}
           </Panel>
 
           {/* 3 · Money in and money out */}

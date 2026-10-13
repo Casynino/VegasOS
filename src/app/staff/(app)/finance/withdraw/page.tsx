@@ -4,14 +4,14 @@ import { BanknoteArrowUp, CircleCheck, CircleX, Clock, ReceiptText, Search, Tria
 import { getT } from "@/i18n/server";
 import { requestMeta, requirePagePermission } from "@/server/auth";
 import { businessToday, getSettings } from "@/server/settings";
-import { ntzsCheckNeedsPhone, withdrawalsOverview, type WithdrawalView } from "@/server/services/withdrawals";
+import { ntzsAvailable, withdrawalsOverview, type WithdrawalView } from "@/server/services/withdrawals";
 import { WITHDRAWAL_FILTERS, withdrawalProblem } from "@/lib/withdrawals";
 import { formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { FinanceTabs, PeriodPicker, periodLabel, readPeriod } from "@/components/staff/finance/finance-nav";
 import { AutoSelect } from "@/components/staff/finance/auto-select";
 import { LiveRefresh } from "@/components/live-refresh";
-import { CheckBalanceButton, StatusChip, WithdrawButton, WithdrawalDetails } from "./withdraw-ui";
+import { StatusChip, WithdrawButton, WithdrawalDetails } from "./withdraw-ui";
 
 /** Sending a withdrawal waits for nTZS's answer (up to 20 s) — the page's actions get the time for it. */
 export const maxDuration = 60;
@@ -46,7 +46,7 @@ export default async function WithdrawFundsPage({ searchParams }: PageProps<"/st
   const person = str(sp.person).slice(0, 40);
   const q = str(sp.q).trim().slice(0, 80);
   const [settings, { ipAddress }] = await Promise.all([getSettings(), requestMeta()]);
-  const needsPhone = await ntzsCheckNeedsPhone();
+  const av = await ntzsAvailable();
   const o = await withdrawalsOverview(
     { userId: user.id, label: user.fullName, ipAddress, permissions: user.permissions },
     { from: p.from, to: p.to, status, person: person || null, q: q || null },
@@ -73,7 +73,7 @@ export default async function WithdrawFundsPage({ searchParams }: PageProps<"/st
               <p className="text-sm text-muted-foreground">{t("Take money out of the hotel's nTZS balance — to a phone or a bank account.")}</p>
             </div>
           </div>
-          <WithdrawButton disabled={!o.enabled || !!o.unsettled} accounts={o.accounts} destinations={o.destinations} lastBooks={o.lastBooks} timezone={tz} />
+          <WithdrawButton available={av.available} disabled={!o.enabled || !!o.unsettled} accounts={o.accounts} destinations={o.destinations} lastBooks={o.lastBooks} timezone={tz} />
         </div>
         {(!o.enabled || !o.live || problem || o.unsettled) && (
           <div className="mt-4 space-y-2">
@@ -91,32 +91,20 @@ export default async function WithdrawFundsPage({ searchParams }: PageProps<"/st
         )}
       </section>
 
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-2">
         <section className="rounded-3xl border border-border/70 bg-card p-5">
-          <div className="flex items-start justify-between gap-2">
-            <p className="text-sm text-muted-foreground">{t("Available at nTZS")}</p>
-            {o.enabled && <CheckBalanceButton needsPhone={needsPhone} />}
-          </div>
-          <p className="mt-1 text-2xl font-semibold tabular-nums">{o.balance ? formatTZS(o.balance.availableTzs) : "—"}</p>
+          <p className="text-sm text-muted-foreground">{t("Available to withdraw")}</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums">{formatTZS(av.available)}</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            {o.balance
-              ? t("As nTZS reported it on {when}.", { when: t.dateTime(o.balance.at, tz) })
-              : t("nTZS does not show its balance by itself — press Check balance to ask it.")}
-            {o.balance && o.balance.sentSince > 0 && <span className="mt-0.5 block text-amber-700 dark:text-amber-300">{t.plural(o.balance.sentSince, "{n} withdrawal was sent since then, so less is there now.", "{n} withdrawals were sent since then, so less is there now.")}</span>}
+            {t("In the nTZS account's books: {amount}.", { amount: formatTZS(av.books) })}
+            {o.bookAccountId && <Link href={`/staff/finance/accounts/${o.bookAccountId}`} className="mt-0.5 block font-medium text-foreground underline-offset-4 hover:underline">{t("Open the account")}</Link>}
+            {av.onItsWay > 0 && <span className="mt-0.5 block text-amber-700 dark:text-amber-300">{t("{amount} is on its way out and not counted.", { amount: formatTZS(av.onItsWay) })}</span>}
           </p>
         </section>
         <section className="rounded-3xl border border-border/70 bg-card p-5">
           <p className="text-sm text-muted-foreground">{t("On its way")}</p>
           <p className="mt-1 text-2xl font-semibold tabular-nums">{formatTZS(o.inFlight.total)}</p>
           <p className="mt-1 text-xs text-muted-foreground">{o.inFlight.count ? t.plural(o.inFlight.count, "{n} withdrawal sent and not finished yet.", "{n} withdrawals sent and not finished yet.") : t("Nothing is waiting.")}</p>
-        </section>
-        <section className="rounded-3xl border border-border/70 bg-card p-5">
-          <p className="text-sm text-muted-foreground">{t("In the hotel's own books")}</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums">{o.bookBalance === null ? "—" : formatTZS(o.bookBalance)}</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {t("What the hotel recorded for its nTZS account: payments received, less withdrawals and fees. This is the hotel's record, not nTZS's figure — the two can differ.")}
-            {o.bookAccountId && <Link href={`/staff/finance/accounts/${o.bookAccountId}`} className="mt-0.5 block font-medium text-foreground underline-offset-4 hover:underline">{t("Open the account")}</Link>}
-          </p>
         </section>
       </div>
 

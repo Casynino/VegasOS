@@ -2,6 +2,13 @@
 import type { Catalog } from "../../../translate";
 
 const catalog: Catalog = {
+  "{amount} is on its way out — available to withdraw {available}": "{amount} 正在转出——可提现 {available}",
+  "Available to withdraw": "可提现金额",
+  "In the nTZS account's books: {amount}.": "nTZS 账户账面：{amount}。",
+  "{amount} is on its way out and not counted.": "{amount} 正在转出，未计入。",
+  "Use all of it": "全部提现",
+  "That is more than what is available — nTZS will refuse it if the money is not there.": "超过了可提现金额——如果资金不足，nTZS 会拒绝。",
+  "nTZS adds its fee on top — you see it before anything is sent. If all of it is asked, lower the amount a little when nTZS says the fee does not fit.": "nTZS 会在此之上加收手续费——发送前您会先看到。如果提取全部金额，当 nTZS 提示手续费放不下时，请把金额略微调低。",
   "Finance may authorize up to {limit} — the rest is yours": "财务可授权至 {limit}——超出部分由您决定",
   "Authorize or send it back": "授权或退回",
   "{n} purchase price above Finance's limit": "{n} 个采购价格超出财务额度",

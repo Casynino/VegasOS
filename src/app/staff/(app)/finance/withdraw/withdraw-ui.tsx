@@ -70,7 +70,9 @@ type Step = { at: "form" } | { at: "check"; price: WithdrawalPrice } | { at: "re
  * paid, the fee, what leaves the balance — and confirmed it. What is shown at the end is what nTZS answered: a
  * withdrawal that is only accepted is never shown as finished.
  */
-export function WithdrawButton({ disabled, accounts, destinations, lastBooks, timezone, compact }: {
+export function WithdrawButton({ disabled, accounts, destinations, lastBooks, timezone, compact, available }: {
+  /** What can be withdrawn now (the books' balance less what is on its way): the amount starts as all of it, and the person lowers it. */
+  available?: number | null;
   disabled?: boolean; accounts: { id: string; name: string }[]; destinations: Destination[]; /** "owner", or a hotel account. */ lastBooks: string | null; timezone: string;
   /** Among a page's other actions (the nTZS account's page): an ordinary button, not the page's main one. */
   compact?: boolean;
@@ -102,7 +104,7 @@ export function WithdrawButton({ disabled, accounts, destinations, lastBooks, ti
   }, [holdsUntil]);
 
   function begin() {
-    setStep({ at: "form" }); setAmount(""); setNote(""); setErrors({}); setProblem(null); setChecked(false); setExpired(false);
+    setStep({ at: "form" }); setAmount(available != null && available >= WITHDRAW_MIN_TZS ? String(available) : ""); setNote(""); setErrors({}); setProblem(null); setChecked(false); setExpired(false);
     setKey(newKey());
     setOpen(true);
   }
@@ -179,7 +181,14 @@ export function WithdrawButton({ disabled, accounts, destinations, lastBooks, ti
                 <div className="space-y-1.5">
                   <Label htmlFor="wd-amount">{t("Amount the recipient gets (TZS)")}</Label>
                   <Input id="wd-amount" inputMode="numeric" autoComplete="off" value={grouped(amount)} onChange={(e) => setAmount(digits(e.target.value))} placeholder="0" className="h-12 text-lg font-semibold tabular-nums" />
-                  <p className="text-xs text-muted-foreground">{t("nTZS adds its fee on top — you see it before anything is sent.")}</p>
+                  {available != null && (
+                    <p className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                      <span><span className="text-muted-foreground">{t("Available to withdraw")}</span> <strong className="tabular-nums">{formatTZS(available)}</strong></span>
+                      {available >= WITHDRAW_MIN_TZS && Number(amount) !== available && <button type="button" onClick={() => setAmount(String(available))} className="text-xs font-medium underline-offset-4 hover:underline">{t("Use all of it")}</button>}
+                    </p>
+                  )}
+                  {available != null && Number(amount) > available && <p className="rounded-xl bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-300">{t("That is more than what is available — nTZS will refuse it if the money is not there.")}</p>}
+                  <p className="text-xs text-muted-foreground">{t("nTZS adds its fee on top — you see it before anything is sent. If all of it is asked, lower the amount a little when nTZS says the fee does not fit.")}</p>
                   <FieldError message={errors.amount} />
                 </div>
 
