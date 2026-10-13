@@ -136,6 +136,11 @@ export interface StayInfo {
   arrivalDate: string;
   departureDate: string;
   balance: number;
+  /** The whole bill, what the guest paid, and what a company took on its invoice — so a tile can say paid / not paid. */
+  total: number;
+  paid: number;
+  company: number;
+  billTo: string;
   isDayUse: boolean;
   ratePerNight: number;
   discountPerNight: number;
@@ -200,6 +205,10 @@ export async function getRoomBoard(today: BusinessDate): Promise<RoomBoardRoom[]
     arrivalDate: rr.arrivalDate.toISOString().slice(0, 10),
     departureDate: rr.departureDate.toISOString().slice(0, 10),
     balance: rr.reservation.balanceAmount,
+    total: rr.reservation.netAmount,
+    paid: rr.reservation.paidAmount,
+    company: rr.reservation.companyBilledAmount,
+    billTo: rr.reservation.billTo,
     isDayUse: rr.isDayUse,
     ratePerNight: rr.ratePerNight,
     discountPerNight: rr.discountPerNight,

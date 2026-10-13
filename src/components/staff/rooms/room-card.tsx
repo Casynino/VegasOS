@@ -29,8 +29,10 @@ export const CARD_META: Record<CardState, { label: string; dot: string; tint: st
  * checkout shows a red accent bar and red time line, but the card keeps its status colour so you
  * can still see at a glance that the room is occupied. Click it to open the room panel.
  */
-export function RoomTile({ number, type, state, guest, detail, overdue, onClick }: {
+export function RoomTile({ number, type, state, guest, detail, overdue, pay, onClick }: {
   number: string; type: string; state: CardState; guest?: string | null; detail?: string | null; overdue?: boolean; onClick?: () => void;
+  /** The guest's bill, in one look: Paid, or Not paid / Part paid with how much is still owed. */
+  pay?: { label: string; owed: string | null; className: string; text: string } | null;
 }) {
   const t = useT();
   const m = CARD_META[state];
@@ -54,6 +56,12 @@ export function RoomTile({ number, type, state, guest, detail, overdue, onClick 
       <span className={cn("flex min-w-0 items-center gap-1 text-[10px]", overdue ? "font-medium text-red-600 dark:text-red-400" : "text-muted-foreground")}>
         <Icon className="size-3 shrink-0 opacity-70" /><span className="truncate">{detail ?? t(m.label)}</span>
       </span>
+      {pay && (
+        <span className="mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <span className={cn("inline-flex shrink-0 items-center rounded-full px-2 py-1 text-[10px] font-semibold leading-none ring-1 ring-inset", pay.className)}>{pay.label}</span>
+          {pay.owed && <span className={cn("text-[11px] font-bold tabular-nums leading-none", pay.text)}>{pay.owed}</span>}
+        </span>
+      )}
     </button>
   );
 }

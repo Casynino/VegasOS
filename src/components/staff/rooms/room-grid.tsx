@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { IdPicker, NationalityPicker } from "@/components/staff/id-nationality";
 import { SameGuestAsk } from "@/components/staff/same-guest";
 import { formatTZS } from "@/lib/format";
+import { BILL_LOOK, billState } from "@/lib/payment-status";
 import { MANUAL_TRANSITIONS, ROOM_STATUS_META, BLOCKED_STATUSES } from "@/lib/room-status";
 import type { RoomBoardRoom } from "@/server/services/rooms";
 import type { CheckOutPreview } from "@/server/services/reservations";
@@ -118,7 +119,7 @@ function view(r: RoomBoardRoom, now: Date, today: string, t: T) {
     const detail = stay ? (overdue ? t("Running over · {time}", { time: hhmm(stay.endAt) }) : t("In use till {time}", { time: hhmm(stay.endAt) }))
       : st === "MAINTENANCE" || st === "OUT_OF_SERVICE" ? (r.statusNote ? t(r.statusNote) : r.statusNote)
       : next ? t("Meeting {time}", { time: timeRange(next.startAt, next.endAt) }) : t("No meetings today");
-    return { state, overdue, detail, guest: stay?.guestName ?? (next ? next.company ?? next.guest.fullName : null) };
+    return { state, overdue, detail, guest: stay?.guestName ?? (next ? next.company ?? next.guest.fullName : null), pay: payLook(stay, t) };
   }
   const overdue = !!stay && new Date(stay.endAt) <= now;
   const mins = Math.round((now.getTime() - new Date(r.statusChangedAt).getTime()) / 60000);
@@ -127,7 +128,15 @@ function view(r: RoomBoardRoom, now: Date, today: string, t: T) {
     : r.arrivalToday && (st === "DIRTY" || st === "CLEANING") ? t("Guest due — clean first")
     : r.arrivalToday ? t("Arrives today") : st === "DIRTY" || st === "CLEANING" ? t("Waiting {since}", { since }) : st === "MAINTENANCE" || st === "OUT_OF_SERVICE" ? (r.statusNote ? t(r.statusNote) : r.statusNote)
     : r.upcoming[0] ? t("Free until {date}", { date: t.date(r.upcoming[0].arrivalDate) }) : t("Free — no bookings");
-  return { state, overdue, detail, guest: stay?.guestName ?? r.arrivalToday?.guestName ?? null };
+  return { state, overdue, detail, guest: stay?.guestName ?? r.arrivalToday?.guestName ?? null, pay: payLook(stay, t) };
+}
+
+/** The bill of the guest in the room: paid, or not paid (with what is still owed). Nothing for an empty room. */
+function payLook(stay: RoomBoardRoom["currentStay"], t: T) {
+  if (!stay) return null;
+  const s = billState({ total: stay.total, paid: stay.paid, company: stay.company, owed: stay.balance, billTo: stay.billTo });
+  const look = BILL_LOOK[s];
+  return { label: t(look.label), owed: look.owes && stay.balance > 0 ? formatTZS(stay.balance) : null, className: look.className, text: look.text };
 }
 
 /**
@@ -182,7 +191,7 @@ export function RoomGrid({ rooms, perms, today, methods = [], menu = null, recen
           const v = views.get(r.id)!;
           return (
             <li key={r.id} className={FLOOR_ITEM}>
-              <RoomTile number={r.number} type={r.roomType.category === "MEETING_ROOM" ? t("Meeting room") : t(r.roomType.name)} state={v.state} guest={v.guest} detail={v.detail} overdue={v.overdue} onClick={() => setSelectedId(r.id)} />
+              <RoomTile number={r.number} type={r.roomType.category === "MEETING_ROOM" ? t("Meeting room") : t(r.roomType.name)} state={v.state} guest={v.guest} detail={v.detail} overdue={v.overdue} pay={v.pay} onClick={() => setSelectedId(r.id)} />
             </li>
           );
         })}

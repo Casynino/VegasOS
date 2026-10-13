@@ -262,6 +262,8 @@ const catalog: Catalog = {
   "Best day": "最佳日",
   "The money, analysed": "资金分析",
   "What stands out, where the money is, what is owed and when, how the hotel is doing": "值得关注的事项、资金在哪里、欠款及到期时间、酒店经营状况",
+  "On company invoice": "已记入公司发票",
+  "Overpaid": "多付",
 };
 
 export default catalog;
