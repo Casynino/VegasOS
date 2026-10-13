@@ -251,7 +251,7 @@ export function TrendsView({ t, kpis, months, occupancySeries, streams, categori
         </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid gap-4 2xl:grid-cols-2">
         <Panel level={3} title={t("Income against the period before")} subtitle={t("What each part of the business earned")}>
           <MovementTable rows={streams} label={t("Income")} t={t} />
         </Panel>

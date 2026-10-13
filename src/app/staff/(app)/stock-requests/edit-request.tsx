@@ -50,7 +50,7 @@ export function EditRequest({ r, mode, groups, pics, onDone, onCancel }: {
     if (mode === "resend") {
       const again = await resubmitStockRequestAction({ id: r.id });
       if (!again.ok) { toast.error(again.error); return; }
-      toast.success(t("{number} changed and sent to the manager again.", { number: r.number }));
+      toast.success(t("{number} changed and sent again.", { number: r.number }));
     } else toast.success(t("Request updated — the approved amounts are changed."));
     onDone();
   });
@@ -95,7 +95,7 @@ export function EditRequest({ r, mode, groups, pics, onDone, onCancel }: {
       <div className="grid grid-cols-[auto_1fr] gap-2">
         <Button variant="ghost" className="h-11" onClick={onCancel}>{t("Cancel")}</Button>
         <Button className="h-11" disabled={pending || !ready.length || needsWhy} onClick={save}>
-          {pending ? <Loader2 className="animate-spin" /> : mode === "resend" ? <Send /> : <Check />}{mode === "resend" ? t("Send again to the manager") : t("Save changes")}
+          {pending ? <Loader2 className="animate-spin" /> : mode === "resend" ? <Send /> : <Check />}{mode === "resend" ? t("Send again") : t("Save changes")}
         </Button>
       </div>
     </div>

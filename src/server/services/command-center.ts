@@ -233,7 +233,7 @@ export async function commandCenter(input: CommandInput) {
   const toReview = stock.filter((r) => r.status === "SUBMITTED");
   if (toReview.length) {
     const depts = [...new Set(toReview.map((r) => r.inventoryDepartment?.name ?? r.department))];
-    push({ id: "sr-review", area: "Stores", tone: toReview.some((r) => r.urgent) ? "rose" : "amber", title: `${t.plural(toReview.length, "{n} stock request to review", "{n} stock requests to review")}${toReview.some((r) => r.urgent) ? ` · ${t("urgent")}` : ""}`, detail: depts.map((x) => t(x)).join(" · "), minutes: mins(toReview[0].createdAt, now), href: "/staff/stock-requests", act: t("Approve, send back or reject") });
+    push({ id: "sr-review", area: "Stores", tone: toReview.some((r) => r.urgent) ? "rose" : "amber", title: `${t.plural(toReview.length, "{n} purchase request to review", "{n} purchase requests to review")}${toReview.some((r) => r.urgent) ? ` · ${t("urgent")}` : ""}`, detail: depts.map((x) => t(x)).join(" · "), minutes: mins(toReview[0].createdAt, now), href: "/staff/stock-requests", act: t("Approve, send back or reject") });
   }
   const toBuy = stock.filter((r) => r.status === "APPROVED" && r.decidedAt && now.getTime() - r.decidedAt.getTime() > 24 * 3600_000);
   if (toBuy.length) push({ id: "sr-buy", area: "Stores", tone: "amber", title: t.plural(toBuy.length, "{n} approved request not bought yet", "{n} approved requests not bought yet"), detail: toBuy.slice(0, 4).map((r) => r.number).join(" · "), minutes: mins(toBuy[0].decidedAt!, now), href: "/staff/stock-requests", act: t("Buy it, or reject it") });

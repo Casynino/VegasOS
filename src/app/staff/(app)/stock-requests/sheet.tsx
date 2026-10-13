@@ -88,7 +88,7 @@ export function StockSheet({ id, hotel, number, deptName, by, at, urgent, reason
                 <Stamp title={done ? t("Received") : t("Approved")} sub={done ? t("In the store") : t("To buy")} tone={done ? "green" : "violet"} />
               </div>
             )}
-            <p className="font-semibold">&nbsp;</p><p className="text-black/50">{t("Approved by (manager)")}</p>
+            <p className="font-semibold">&nbsp;</p><p className="text-black/50">{t("Approved by")}</p>
           </div>
         </div>
       </section>

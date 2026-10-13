@@ -293,7 +293,7 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
         <div className="grid gap-4 xl:grid-cols-3">
           {purchases && (
             <Panel level={3} title={t("Purchases and suppliers")} subtitle={t("Right now — each stage on its own: a request is not an expense, an approval is not a payment")} className="xl:col-span-2">
-              <div className="grid gap-5 lg:grid-cols-2">
+              <div className="grid gap-5 2xl:grid-cols-2">
                 <Pipeline steps={[
                   { label: t("Asked for"), amount: purchases.position.requested.amount, sub: t("estimates"), color: "#94a3b8" },
                   { label: t("Approved"), amount: purchases.position.approved.amount, sub: t("budgets, not yet ordered"), color: "#0ea5e9" },

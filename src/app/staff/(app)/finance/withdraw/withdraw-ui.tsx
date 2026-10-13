@@ -62,11 +62,13 @@ function Line({ label, sub, value, strong }: { label: React.ReactNode; sub?: Rea
 
 const KIND_ICON = { PHONE: Smartphone, LIPA: Store, BANK: Landmark } as const;
 
-/** "Lipa · 65562884" → who it is ("Lipa number") and the number itself; a phone has no label of its own. */
+/** What the destination is ("Lipa number") and the number itself — from the whole text ("Lipa · 65562884") or the masked one ("Lipa •••• 0987"). */
 function destinationParts(destination: string, kind: "PHONE" | "BANK" | "LIPA", t: (k: string) => string) {
-  const [first, ...rest] = destination.split(" · ");
-  if (!rest.length) return { label: kind === "PHONE" ? t("Phone number") : t("Bank account"), value: destination };
-  return { label: kind === "LIPA" ? t("Lipa number") : first, value: rest.join(" · ") };
+  if (kind === "LIPA") return { label: t("Lipa number"), value: destination.replace(/^Lipa\s*·?\s*/, "") };
+  if (kind === "PHONE") return { label: t("Phone number"), value: destination };
+  // A bank: "CRDB Bank · 0150123456700" or masked "CRDB Bank •••• 6700" — the bank's name, then the account.
+  const at = destination.search(/\s·\s|\s•/);
+  return at > 0 ? { label: destination.slice(0, at), value: destination.slice(at).replace(/^\s·\s/, "").trim() } : { label: t("Bank account"), value: destination };
 }
 
 /** Who is paid — the name first and big (it is the thing to be sure of), then the number, then how much. */

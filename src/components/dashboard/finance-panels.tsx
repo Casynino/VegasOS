@@ -83,15 +83,15 @@ export function HBars({ rows, empty, t }: { rows: { label: string; value: number
 /** A row of figures in cards: a big number under a small label. */
 export function FigureCards({ items }: { items: { label: string; value: string; sub?: string; tone?: "good" | "warn" | "bad" }[] }) {
   return (
-    <dl className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+    <div className="@container"><dl className="grid grid-cols-1 gap-2.5 @[17rem]:grid-cols-2 @[26rem]:grid-cols-3">
       {items.map((i) => (
-        <div key={i.label} className="rounded-2xl border border-border/60 bg-muted/20 px-3 py-2.5">
+        <div key={i.label} className="min-w-0 rounded-2xl border border-border/60 bg-muted/20 px-3 py-2.5">
           <dt className="text-[11px] text-muted-foreground">{i.label}</dt>
           <dd className={cn("mt-0.5 text-base font-semibold tabular-nums", i.tone === "warn" && "text-amber-700 dark:text-amber-300", i.tone === "bad" && "text-rose-600 dark:text-rose-400", i.tone === "good" && "text-emerald-600 dark:text-emerald-300")}>{i.value}</dd>
           {i.sub && <dd className="text-[11px] text-muted-foreground">{i.sub}</dd>}
         </div>
       ))}
-    </dl>
+    </dl></div>
   );
 }
 

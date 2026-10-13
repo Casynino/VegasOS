@@ -73,7 +73,7 @@ const catalog: Catalog = {
   "Copy": "复制",
 
   // ── Changing a request ──
-  "{number} changed and sent to the manager again.": "{number} 已修改并重新发送给经理。",
+  "{number} changed and sent again.": "{number} 已修改并重新发送。",
   "Request updated — the approved amounts are changed.": "申请已更新——批准数量已修改。",
   "Change the amounts to buy, take items off or add some. What was asked stays in the history.": "修改采购数量、删除或添加物品。原申请内容会保留在历史记录中。",
   "Change what you ask for, then send it to the manager again.": "修改您申领的物品，然后重新发送给经理。",
@@ -84,7 +84,6 @@ const catalog: Catalog = {
   "Not urgent": "不紧急",
   "A note": "备注",
   "Why do you change it? e.g. We still have 10 kg in the store": "为什么修改？例如：仓库里还有 10 公斤",
-  "Send again to the manager": "重新发送给经理",
 
   // ── A request's window ──
   "Someone": "某人",
@@ -131,7 +130,7 @@ const catalog: Catalog = {
   "What it is for": "用途",
   "In the store": "已入仓库",
   "To buy": "待采购",
-  "Approved by (manager)": "批准人（经理）",
+  "Approved by": "批准人",
   "{department} stock": "{department}库存",
   "Could not make the picture — try again.": "无法生成图片——请重试。",
   "Picture": "图片",
