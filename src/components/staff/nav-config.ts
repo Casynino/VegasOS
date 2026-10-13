@@ -69,8 +69,6 @@ export const NAV: NavSection[] = [
       { href: "/staff/check-in", label: msg("Check-in"), icon: "DoorOpen", anyOf: ["reservations.check_in"], hideIf: ["dashboard.manager", "dashboard.owner", "dashboard.admin"] },
       { href: "/staff/check-out", label: msg("Check-out"), icon: "DoorClosed", anyOf: ["reservations.check_out"], hideIf: ["dashboard.manager", "dashboard.owner", "dashboard.admin"] },
       { href: "/staff/driver", label: msg("My trips"), icon: "Car", anyOf: ["transport.driver"], hideIf: ["reservations.view"] },
-      // What the front desk needs (tables, paper, supplies): Reception asks here, Finance reviews it. Those who work in the Stores find it there.
-      { href: "/staff/stock-requests", label: msg("Purchase requests"), icon: "ClipboardList", anyOf: ["inventory.request"], hideIf: ["inventory.view", "expenses.approve", "inventory.receive", "restaurant.device"] },
     ],
   },
   {
@@ -92,7 +90,11 @@ export const NAV: NavSection[] = [
       { href: "/staff/rooms", label: msg("Rooms"), icon: "BedDouble", anyOf: ["rooms.view"] },
       // The printable Housekeeping Checklist and In-House Guest & Breakfast List (also on reception's dashboard).
       { href: "/staff/lists", label: msg("Daily lists"), icon: "ClipboardList", anyOf: ["dashboard.front_desk"] },
-      { href: "/staff/requests", label: msg("Requests"), icon: "ClipboardCheck", anyOf: ["requests.view"] },
+      // The guests' requests (towels, cleaning, repairs) and, right beside it, what the front desk asks Finance to buy (owner, 2026-10-13) — both at the bottom, by name length.
+      { href: "/staff/requests", label: msg("Guest requests"), icon: "ClipboardCheck", anyOf: ["requests.view"] },
+      // Reception asks for what the front desk needs (tables, paper, supplies) and Finance reviews it. Those who work in the Stores find it there.
+      { href: "/staff/stock-requests", label: msg("Purchase requests"), icon: "ClipboardList", anyOf: ["inventory.request"], hideIf: ["inventory.view", "expenses.approve", "inventory.receive", "restaurant.device"] },
+
       { href: "/staff/transport", label: msg("Transport"), icon: "BusFront", anyOf: ["transport.view", "transport.manage"] },
       { href: "/staff/meeting-room", label: msg("Meetings"), icon: "Presentation", anyOf: ["meeting.view"] },
       // Gifts for checked-in guests (a wheel on the room's own card): the Admin sets it up; managers follow what was given.

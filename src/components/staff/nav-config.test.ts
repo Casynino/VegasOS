@@ -33,3 +33,13 @@ describe("the Stores menu", () => {
     expect(all).toEqual(["Assets", "Inventory", "Procurement", "Purchase requests"]);
   });
 });
+
+describe("Reception's menu", () => {
+  it("the guests' requests and the purchase requests sit together at the bottom of Hotel services", () => {
+    const section = visibleNav(new Set<string>(DEFAULT_ROLES.RECEPTIONIST.permissions)).find((x) => x.title === "Hotel services")!;
+    const labels = section.items.map((i) => i.label);
+    expect(labels.slice(-2)).toEqual(["Guest requests", "Purchase requests"]);
+    expect(visibleNav(new Set<string>(DEFAULT_ROLES.RECEPTIONIST.permissions)).find((x) => x.title === "Front office")!.items.map((i) => i.label)).not.toContain("Purchase requests");
+    expect(labels).not.toContain("Requests");
+  });
+});
