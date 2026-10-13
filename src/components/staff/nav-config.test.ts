@@ -13,4 +13,12 @@ describe("the Finance menu", () => {
     expect(labels).not.toContain("Finance dashboard");
     expect(labels).not.toContain("Finance desk");
   });
+
+  it("the Boss, the MD and the Manager do not get Finance's Home in their menu — they have their own dashboard", () => {
+    for (const role of ["OWNER", "ADMIN", "MANAGER"] as const) {
+      const labels = visibleNav(new Set<string>(DEFAULT_ROLES[role].permissions)).flatMap((s) => s.items.map((i) => i.label));
+      expect(labels, role).not.toContain("Finance dashboard");
+      expect(labels, role).not.toContain("Finance desk");
+    }
+  });
 });

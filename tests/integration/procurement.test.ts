@@ -6,6 +6,7 @@ import {
   authorizeQuote, cancelInvoice, cancelOrder, closeDeliveryShort, issueOrder, paySupplier, proposeQuote, purchasingPosition, recordDelivery, recordInvoice, reportDelivery, saveQuote, verifyInvoice,
 } from "@/server/services/procurement";
 import { staffAlerts } from "@/server/services/staff-alerts";
+import { purchasesAboveFinanceLimit } from "@/server/services/procurement-desk";
 import { recordExpense, voidExpense } from "@/server/services/expenses";
 import { counterActor, receptionistActor, resetBusinessData } from "../support/helpers";
 import type { Actor } from "@/server/services/reservations";
@@ -127,8 +128,11 @@ describe("authorization above the budget", () => {
     try {
       const q = await saveQuote(x.r.id, { supplierId: (await supplierOf("Mwenge Furniture")).id, lines: lines(x, 250_000, 18_000) }, null, acc, NOW);
       await proposeQuote(x.r.id, q.id, acc, NOW);
+      // it waits on the Boss's own dashboard, not Finance's (and nothing waits there when no limit is set)
+      expect(await purchasesAboveFinanceLimit()).toEqual({ count: 1, limit: 400_000 });
       await expect(authorizeQuote(x.r.id, "AUTHORIZE", null, fin, NOW)).rejects.toThrow(/above what Finance may authorize/);
       await authorizeQuote(x.r.id, "AUTHORIZE", "Boss agreed", await owner(), NOW);
+      expect((await purchasesAboveFinanceLimit()).count).toBe(0);
       expect((await db.stockRequest.findUniqueOrThrow({ where: { id: x.r.id } })).authorizedAt).toBeTruthy();
       // Finance cannot approve a budget above its limit either
       const big = await createStockRequest({ department: "RESTAURANT", urgent: false, items: [{ name: "Oven", quantity: 1, unit: "pcs" }], clientKey: "big-oven-key-001" }, await counterActor(), NOW);

@@ -2,6 +2,10 @@
 import type { Catalog } from "../../../translate";
 
 const catalog: Catalog = {
+  "Finance may authorize up to {limit} — the rest is yours": "财务可授权至 {limit}——超出部分由您决定",
+  "Authorize or send it back": "授权或退回",
+  "{n} purchase price above Finance's limit": "{n} 个采购价格超出财务额度",
+  "{n} purchase prices above Finance's limit": "{n} 个采购价格超出财务额度",
   "The money this account already held when the hotel's records began. It is not income and not a payment — nothing is added to sales or payments. It only sets where the books begin.": "这个账户在酒店开始记账时已有的资金。它不是收入，也不是付款——不会计入销售或付款，只是确定账簿的起点。",
   "Now: opening {opening} · in the books {balance}": "当前：期初 {opening} · 账面 {balance}",
   "Opening balance (TZS)": "期初余额（TZS）",

@@ -55,8 +55,9 @@ export const NAV: NavSection[] = [
       { href: "/staff/finance/withdraw", label: msg("Withdraw funds"), icon: "BanknoteArrowUp", anyOf: ["withdrawals.manage"] },
       // nTZS — the hotel's one online payment: status, on/off per service, every attempt, reconciliation.
       { href: "/staff/finance/online", label: msg("Online payments"), icon: "Smartphone", anyOf: ["finance.view"] },
-      // Finance's Home is a portal of its own (it is Finance's Home pill); the Boss and the MD open it from here.
-      { href: "/finance/dashboard", label: msg("Finance dashboard"), icon: "BarChart3", anyOf: ["dashboard.finance"], allOf: ["finance.view"] },
+      // Finance's Home is a portal of its own: it is the Finance person's Home pill, not an item in the Boss's, the MD's or the Manager's menu
+      // (the Boss and the MD have their own dashboard; Finance's work reaches them through the pages above and their own dashboard).
+      { href: "/finance/dashboard", label: msg("Finance dashboard"), icon: "BarChart3", anyOf: ["dashboard.finance"], allOf: ["finance.view"], hideIf: ["dashboard.admin", "dashboard.owner", "dashboard.manager"] },
     ],
   },
   {

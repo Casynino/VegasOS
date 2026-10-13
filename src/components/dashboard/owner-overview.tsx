@@ -6,6 +6,7 @@ import {
 import { can, requireUser } from "@/server/auth";
 import { tablesOnHome } from "@/server/services/table-performance";
 import { commandCenter, type Area } from "@/server/services/command-center";
+import { purchasesAboveFinanceLimit } from "@/server/services/procurement-desk";
 import { LiveBoard, StaffToday } from "./command-center";
 import { db } from "@/server/db";
 import { businessToday, getSettings } from "@/server/settings";
@@ -155,6 +156,7 @@ export async function OwnerOverview({ searchParams, basePath }: {
   const lastReport = await db.dailyReport.findFirst({ orderBy: { businessDate: "desc" }, select: { id: true, generatedAt: true, deliveries: { select: { status: true, sentAt: true } } } });
   const reportFailed = !!lastReport && lastReport.deliveries.some((x) => x.status === "FAILED") && !lastReport.deliveries.some((x) => x.status === "SENT" && x.sentAt && x.sentAt >= lastReport.generatedAt);
   // The command centre: what needs a decision now (timed), the live board and staff activity.
+  const aboveLimit = can(user, "purchases.authorize") ? await purchasesAboveFinanceLimit() : { count: 0, limit: null };
   const command = await commandCenter({
     today, now,
     tablesWaiting: slowPay.map((p) => ({ id: p.id, name: p.name, minutes: p.now?.billAsked ?? 0, due: p.now?.due ?? 0 })),
@@ -163,6 +165,8 @@ export async function OwnerOverview({ searchParams, basePath }: {
     expensesPending: { count: pl.expenseSummary.pending.count, amount: pl.expenseSummary.pending.amount },
     reportFailedId: reportFailed ? lastReport!.id : null,
     extra: [
+      // What Finance cannot decide alone — a purchase price above its limit — is the Boss's to authorize (Finance's own work stays on Finance's Home).
+      ...(can(user, "purchases.authorize") && aboveLimit.count ? [{ id: "purchase-above-limit", area: "Payments" as const, tone: "rose" as const, title: t.plural(aboveLimit.count, "{n} purchase price above Finance's limit", "{n} purchase prices above Finance's limit"), detail: t("Finance may authorize up to {limit} — the rest is yours", { limit: formatTZS(aboveLimit.limit ?? 0) }), minutes: null, href: "/staff/procurement?tab=authorize", act: t("Authorize or send it back") }] : []),
       ...(snap.unpaidAfterCheckout.count ? [{ id: "left-unpaid", area: "Guests" as const, tone: "rose" as const, title: t("{n} left without paying in full", { n: snap.unpaidAfterCheckout.count }), detail: t("Balance still open after checkout"), minutes: null, href: "/staff/finance/receivables", act: t("Follow up the money") }] : []),
       // Tables: a very long sitting, paid but not cleared, blocked by a manager.
       ...floor.filter((p) => p.now && p.state !== "PAID" && p.now.minutes >= 180).map((p) => ({ id: `tb-long-${p.id}`, area: "Tables" as const, tone: "sky" as const, title: t("{table} — seated for {time}", { table: p.name, time: since(p.now!.minutes, t) }), detail: `${p.now!.customer} · ${t("{amount} to pay", { amount: formatTZS(p.now!.due) })}`, minutes: p.now!.minutes, href: `/staff/restaurant/tables?table=${p.id}`, act: t("Check on them — bill or more orders?") })),

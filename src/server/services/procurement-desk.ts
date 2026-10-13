@@ -167,3 +167,14 @@ export async function financeQueue() {
     pay: pay._count, payAmount: (pay._sum.amount ?? 0) - (pay._sum.paidAmount ?? 0),
   };
 }
+
+/**
+ * The purchase prices that wait for the BOSS or the MD: Finance authorizes up to its own limit (Settings) and cannot go above it. Nothing
+ * when no limit is set — then Finance decides every one. This is what Finance's work leaves on the Boss's own dashboard.
+ */
+export async function purchasesAboveFinanceLimit() {
+  const limit = (await db.hotelSettings.findFirst({ select: { financeAuthorizationLimit: true } }))?.financeAuthorizationLimit ?? null;
+  if (limit == null) return { count: 0, limit: null as number | null };
+  const rows = await db.stockRequest.findMany({ where: { status: "AWAITING_AUTHORIZATION", chosenQuote: { total: { gt: limit } } }, select: { id: true } });
+  return { count: rows.length, limit };
+}
