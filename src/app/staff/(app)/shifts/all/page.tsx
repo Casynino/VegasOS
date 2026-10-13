@@ -26,8 +26,9 @@ const DEPT = {
  * waiter sees their own. Reports are never made by hand here — the system makes them.
  */
 export default async function StaffShiftsPage({ searchParams }: PageProps<"/staff/shifts/all">) {
-  const user = await requirePagePermission("shifts.manage", "restaurant.shift", "shifts.view");
-  const manager = can(user, "shifts.manage");
+  // Whoever reads the reports (the Accountant) also reads every shift and its money — read-only, as on the reports pages.
+  const user = await requirePagePermission("shifts.manage", "restaurant.shift", "shifts.view", "reports.view");
+  const manager = can(user, "shifts.manage") || can(user, "reports.view");
   const [sp, s, today, t] = await Promise.all([searchParams, getSettings(), businessToday(), getT()]);
   const dept: "RECEPTION" | "RESTAURANT" | null = sp.dept === "RECEPTION" || sp.dept === "RESTAURANT" ? sp.dept : null;
   const person = manager && typeof sp.person === "string" ? sp.person : manager ? null : user.id;

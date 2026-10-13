@@ -14,7 +14,8 @@ export async function generateMetadata(): Promise<Metadata> {
 
 /** The list staff pick from when recording an expense: groups and types (managers keep it tidy). */
 export default async function ExpenseTypesPage() {
-  await requirePagePermission("settings.manage");
+  // The list of expense types is part of keeping the books: the MD and whoever controls finance.
+  await requirePagePermission("settings.manage", "finance.manage");
   const t = await getT();
   const groups = await db.expenseCategory.findMany({
     where: { isActive: true }, orderBy: { sortOrder: "asc" },

@@ -163,7 +163,7 @@ export default async function AccountantPage({ searchParams }: PageProps<"/staff
       </Panel>
 
       <nav aria-label={t("Finance pages")} className="flex flex-wrap gap-2 text-sm">
-        {([["/staff/payments", t("Income"), Banknote], ["/staff/expenses", t("Expenses"), Receipt], ["/staff/collections", t("Collections"), Wallet], ["/staff/finance/ledger", t("General ledger"), Scale], ["/staff/settings/pricing", t("Room pricing"), Landmark], ["/staff/reports", t("Reports"), HandCoins]] as const).map(([href, label, Icon]) => (
+        {([["/staff/finance/ledger", t("All transactions (ledger)"), Scale], ["/staff/finance/accounts", t("All accounts"), Landmark], ["/staff/payments", t("Income"), Banknote], ["/staff/expenses", t("Expenses"), Receipt], ["/staff/collections", t("Collections"), Wallet], ["/staff/reports", t("Reports"), HandCoins], ["/staff/reports/daily", t("Daily reports"), HandCoins], ["/staff/reports/staff", t("Weekly & monthly"), HandCoins], ["/staff/shifts/all", t("Staff shifts"), HandCoins], ["/staff/settings/pricing", t("Room pricing"), Landmark]] as const).map(([href, label, Icon]) => (
           <Link key={href} href={href} className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2 font-medium hover:bg-muted"><Icon className="size-4 text-muted-foreground" />{label}</Link>
         ))}
       </nav>

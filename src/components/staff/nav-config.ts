@@ -140,7 +140,7 @@ export const NAV: NavSection[] = [
       // Their own shift, weekly and monthly reports.
       { href: "/staff/reports/staff", label: msg("My reports"), icon: "FileText", anyOf: ["shifts.work"], hideIf: ["shifts.manage", "reports.view", "dashboard.manager", "dashboard.owner", "dashboard.admin"] },
       // Everyone's shifts (waiters and reception) with the report made when each ended — managers, the MD and the owner.
-      { href: "/staff/shifts/all", label: msg("Staff shifts"), icon: "History", anyOf: ["shifts.manage"] },
+      { href: "/staff/shifts/all", label: msg("Staff shifts"), icon: "History", anyOf: ["shifts.manage", "reports.view"] },
       { href: "/staff/activity", label: msg("Activity"), icon: "Activity", anyOf: ["staff.activity.view"] },
       { href: "/staff/users", label: msg("Staff & roles"), icon: "UserCog", anyOf: ["users.manage"] },
     ],

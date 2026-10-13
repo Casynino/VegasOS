@@ -175,5 +175,6 @@ const catalog: Catalog = {
   "Refunds and corrections": "退款与更正",
   "Staff may take off at most {amount} a night.": "员工每晚最多可减 {amount}。",
   "The Boss and the MD set these limits.": "这些上限由老板和总经理设置。",
+  "All transactions (ledger)": "全部交易（总账）",
 };
 export default catalog;
