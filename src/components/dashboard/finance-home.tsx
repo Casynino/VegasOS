@@ -45,7 +45,7 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
   const handoverRights = has("cash.handover.view", "cash.handover.review");
   const buying = has("purchases.authorize", "purchases.pay", "procurement.manage");
 
-  const [ov, plPrev, methodsPrev, movement, movementPrev, trend, needs, receivedToday, moveToday, occToday, online, bookings, bookingsTrend, restDisc, purchases] = await Promise.all([
+  const [ov, plPrev, methodsPrev, movement, movementPrev, trend, needs, receivedToday, occToday, online, bookings, bookingsTrend, restDisc, purchases] = await Promise.all([
     accountantOverview(range, today),
     profitLoss(prev),
     paymentsByMethod(prev.from, prev.to),
@@ -54,7 +54,6 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
     dailyMoney(trendRange),
     financeNeeds(today, perms),
     paymentsByMethod(today, today),
-    guestMovement(todayRange),
     occupancy(todayRange),
     has("finance.view") ? onlinePaymentTotals(p.from, p.to) : null,
     bookingActivity(range),
@@ -81,18 +80,6 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
   const greeting = hour < 12 ? t("Good morning, {name}", { name: first }) : hour < 17 ? t("Good afternoon, {name}", { name: first }) : t("Good evening, {name}", { name: first });
   const owedNow = ov.owed.total;
   const attention = needs.map((n) => needCard(n, t));
-  const chips = [
-    { label: t("received today"), value: formatTZS(receivedToday.total), dot: "bg-emerald-400" },
-    { label: t("still owed"), value: formatTZS(owedNow), dot: "bg-rose-400" },
-    { label: t("new bookings today"), value: moveToday.newBookings, dot: "bg-sky-400" },
-    { label: t("things waiting for you"), value: needs.length, dot: needs.length ? "bg-amber-400" : "bg-emerald-400" },
-  ];
-  const actions = [
-    has("cash.handover.view", "cash.handover.review") && { href: "/staff/accountant/handovers", label: t("Cash handovers"), icon: <HandCoins />, primary: true },
-    has("purchases.authorize", "purchases.pay") && { href: "/staff/procurement", label: t("Purchases"), icon: <ClipboardCheck /> },
-    has("reports.view") && { href: "/staff/reports", label: t("Reports"), icon: <FileText /> },
-  ].filter(Boolean) as { href: string; label: string; icon: React.ReactNode; primary?: boolean }[];
-
   const href = (code: PermissionCode[], to: string) => (has(...code) ? to : undefined);
   const link = (code: PermissionCode[], to: string, label: string) => (has(...code) ? <PanelLink href={to}>{label}</PanelLink> : null);
 
@@ -101,9 +88,9 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
       <HeroBanner
         eyebrow={user.roleName === "Finance" ? t("Finance") : t("Finance · {role}", { role: t(user.roleName) })}
         title={greeting}
-        subtitle={<>{t.rich("<b>{pct}%</b> of the guest rooms occupied today", { b: (c) => <strong className="font-semibold text-white">{c}</strong> }, { pct: Math.round(occToday.occupancy) })} · {t.date(today, true)}</>}
-        chips={chips}
-        actions={actions}
+        subtitle={<>{t.rich("<b>{pct}%</b> of the guest rooms occupied today · <g>{received}</g> received today", {
+          b: (c) => <strong className="font-semibold text-white">{c}</strong>, g: (c) => <strong className="font-semibold text-emerald-300">{c}</strong>,
+        }, { pct: Math.round(occToday.occupancy), received: formatTZS(receivedToday.total) })}{owedNow > 0 && <> · {t.rich("<a>{owed}</a> still owed to the hotel", { a: (c) => <strong className="font-semibold text-amber-300">{c}</strong> }, { owed: formatTZS(owedNow) })}</>}</>}
       />
 
       <div>
