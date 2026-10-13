@@ -1,7 +1,8 @@
 import "server-only";
 import { db } from "../db";
 import { businessDayConfig, getSettings, liveSinceDate } from "../settings";
-import { addDays, eachDate, fromDbDate, localParts, toDbDate, type BusinessDate } from "@/lib/time/business-date";
+import { addDays, diffDays, eachDate, fromDbDate, localParts, toDbDate, type BusinessDate } from "@/lib/time/business-date";
+import { DUE_ORDER, dueBucket, type DueBucket } from "@/lib/finance-insights";
 import { accountBalances } from "./finance";
 import { handoverTotals } from "./cash-handover";
 import { CASH_HANDOVER_ON } from "@/lib/cash-handover";
@@ -41,18 +42,28 @@ export interface FinanceNeed {
   name?: string;
 }
 
-const OPEN_SUPPLIER_INVOICE = ["RECEIVED", "VERIFIED", "DISPUTED", "PART_PAID"];
+export const OPEN_SUPPLIER_INVOICE = ["RECEIVED", "VERIFIED", "DISPUTED", "PART_PAID"];
 const TONE_ORDER: Record<NeedTone, number> = { rose: 0, amber: 1, sky: 2, slate: 3 };
 
-/** The supplier invoices not fully paid: what is owed, what is past due, what is disputed, and who is owed most. */
+/**
+ * The supplier invoices not fully paid: what is owed, what is past due, what is disputed, who is owed most, and when the rest
+ * falls due (`due`: past its date, within a week, within a month, later, no date) with the next few to pay.
+ */
 export async function supplierSnapshot(today: BusinessDate) {
   const open = await db.supplierInvoice.findMany({
     where: { status: { in: OPEN_SUPPLIER_INVOICE } },
-    select: { amount: true, paidAmount: true, dueOn: true, status: true, supplierName: true, supplier: { select: { name: true } } },
+    select: { number: true, amount: true, paidAmount: true, dueOn: true, status: true, supplierName: true, supplier: { select: { name: true } } },
   });
   const t = toDbDate(today).getTime();
   const owedOf = (i: { amount: number; paidAmount: number }) => i.amount - i.paidAmount;
   const overdue = open.filter((i) => i.dueOn && i.dueOn.getTime() < t);
+  const due = new Map<DueBucket, { bucket: DueBucket; count: number; amount: number }>(DUE_ORDER.map((b) => [b, { bucket: b, count: 0, amount: 0 }]));
+  for (const i of open) {
+    const row = due.get(dueBucket(i.dueOn ? diffDays(today, fromDbDate(i.dueOn)) : null))!;
+    row.count += 1; row.amount += owedOf(i);
+  }
+  const next = open.filter((i) => i.dueOn).sort((a, b) => a.dueOn!.getTime() - b.dueOn!.getTime()).slice(0, 5)
+    .map((i) => ({ supplier: i.supplier?.name ?? i.supplierName ?? "—", number: i.number, dueOn: fromDbDate(i.dueOn!), owed: owedOf(i), late: i.dueOn!.getTime() < t, disputed: i.status === "DISPUTED" }));
   const bySupplier = new Map<string, number>();
   for (const i of open) {
     const name = i.supplier?.name ?? i.supplierName ?? "—";
@@ -63,6 +74,8 @@ export async function supplierSnapshot(today: BusinessDate) {
     overdue: { count: overdue.length, amount: overdue.reduce((s, i) => s + owedOf(i), 0) },
     disputed: open.filter((i) => i.status === "DISPUTED").length,
     top: [...bySupplier.entries()].map(([name, amount]) => ({ name, amount })).sort((a, b) => b.amount - a.amount).slice(0, 5),
+    due: DUE_ORDER.map((b) => due.get(b)!),
+    next,
   };
 }
 

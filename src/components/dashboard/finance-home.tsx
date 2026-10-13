@@ -5,14 +5,16 @@ import {
 } from "lucide-react";
 import { requireUser } from "@/server/auth";
 import type { PermissionCode } from "@/lib/permissions";
-import { businessToday } from "@/server/settings";
+import { businessToday, getSettings, liveSinceDate } from "@/server/settings";
 import { accountantOverview } from "@/server/services/accountant";
-import { guestMovement, occupancy, change, previousRange, profitLoss, dailyMoney } from "@/server/services/reporting";
+import { guestMovement, occupancy, change, previousRange, profitLoss, dailyMoney, onTheBooks, restaurantSummary } from "@/server/services/reporting";
 import { paymentsByMethod } from "@/server/services/finance";
 import { onlinePaymentTotals } from "@/server/services/online-payments-admin";
 import { expenseSummary } from "@/server/services/reporting";
 import { receivablesBoard } from "@/server/services/company-billing";
 import { bookingActivity, financeNeeds, latestPayments, purchasesPanel, restaurantDiscounts, type FinanceNeed } from "@/server/services/finance-home";
+import { closedDays, monthlyTrend, receivablesAging, recentSpend } from "@/server/services/finance-outlook";
+import { buildInsights, percent, weekdayAverages, type InsightFacts } from "@/lib/finance-insights";
 import { addDays, diffDays } from "@/lib/time/business-date";
 import { formatTZS } from "@/lib/format";
 import { CASH_HANDOVER_ON } from "@/lib/cash-handover";
@@ -26,9 +28,10 @@ import { BusinessDetail } from "@/app/staff/(app)/finance/finance-overview";
 import { AttentionCards, Delta, HeroBanner, Panel, PanelLink, QuickActions, SectionLabel, StatTile, type AttentionItem } from "./kit";
 import { AreaTrend, Donut } from "./light-charts";
 import { AccountCards, DataTable, FigureCards, HBars, Pipeline } from "./finance-panels";
+import { InsightsPanel, MIN_DAYS_FOR_WEEK, OutlookView, TrendsView, type Movement } from "./finance-analysis";
 
 /** The three views of the Home. One at a time, so the page stays short and quick; the figures at the top are the same in each. */
-const VIEWS = [{ key: "overview", label: msg("Overview") }, { key: "bookings", label: msg("Bookings") }, { key: "analysis", label: msg("Full analysis") }] as const;
+const VIEWS = [{ key: "overview", label: msg("Overview") }, { key: "outlook", label: msg("Cash outlook") }, { key: "trends", label: msg("Trends") }, { key: "bookings", label: msg("Bookings") }, { key: "analysis", label: msg("Full analysis") }] as const;
 type View = (typeof VIEWS)[number]["key"];
 
 const shortDay = (d: string, t: T) => new Intl.DateTimeFormat(t.intl, { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${d}T00:00:00Z`));
@@ -36,7 +39,7 @@ const shortDay = (d: string, t: T) => new Intl.DateTimeFormat(t.intl, { day: "nu
 /**
  * Finance's Home — the same look as the Boss's and the Manager's, about money only: a small banner, quick links, what needs
  * Finance now, the figures of the chosen period against the one before, then one view at a time (the overview with the
- * day-by-day chart, cash, accounts and purchases; the bookings; the full analysis). Earned, received, still owed and the
+ * day-by-day chart, cash, accounts and purchases; the cash outlook; the trends; the bookings; the full analysis). Earned, received, still owed and the
  * account balances stay four different things and are never added together. Every figure comes from the shared money
  * services, so it always agrees with the ledger and the daily report.
  */
@@ -57,8 +60,15 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
   const has = (...codes: PermissionCode[]) => codes.some((c) => perms.has(c));
   const handoverRights = CASH_HANDOVER_ON && has("cash.handover.view", "cash.handover.review");
   const buying = has("purchases.authorize", "purchases.pay", "procurement.manage");
+  const live = liveSinceDate(await getSettings());
+  const looksAhead = view === "overview" || view === "outlook";
+  // The records began on `live`. A period before that holds nothing; one that begins before it is only partly filled — neither is a fair
+  // base for "up 50%", so nothing is said about the change then.
+  const straddles = Boolean(live && prev.from < live && prev.to >= live);
+  const prevHasRecords = !live || prev.to >= live;
+  const rangeLive = { from: live && p.from < live ? live : p.from, to: p.to };
 
-  const [ov, plPrev, methodsPrev, movement, movementPrev, trend, needs, receivedToday, occToday, online, restDisc, purchases, bookings, bookingsTrend, spend, owing, payments] = await Promise.all([
+  const [ov, plPrev, methodsPrev, movement, movementPrev, trend, needs, receivedToday, occToday, online, restDisc, purchases, bookings, bookingsTrend, spend, owing, payments, aging, pace, onBooks, monthly, occNow, occPrev, restNow, restPrev] = await Promise.all([
     accountantOverview(range, today),
     profitLoss(prev),
     paymentsByMethod(prev.from, prev.to),
@@ -70,21 +80,29 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
     occupancy(todayRange),
     view === "overview" && has("finance.view") ? onlinePaymentTotals(p.from, p.to) : null,
     view === "overview" ? restaurantDiscounts(range) : null,
-    view === "overview" && buying ? purchasesPanel(today) : null,
+    looksAhead && buying ? purchasesPanel(today) : null,
     view === "bookings" ? bookingActivity(range) : null,
     view === "bookings" && days < 7 ? bookingActivity(trendRange) : null,
-    view === "overview" ? expenseSummary(range) : null,
+    view === "overview" || view === "trends" ? expenseSummary(range) : null,
     view === "overview" && has("finance.view", "corporate.view") ? receivablesBoard(today) : null,
     view === "overview" ? latestPayments(range) : null,
+    looksAhead && has("finance.view", "corporate.view") ? receivablesAging(today) : null,
+    looksAhead && has("finance.view") ? recentSpend(today, live) : null,
+    view === "outlook" ? onTheBooks(today, 14) : null,
+    view === "trends" ? monthlyTrend(today, live, 6) : null,
+    view === "trends" && rangeLive.from <= rangeLive.to ? occupancy(rangeLive) : null,
+    view === "trends" && !straddles && prevHasRecords ? occupancy(prev) : null,
+    view === "trends" ? restaurantSummary(range) : null,
+    view === "trends" && !straddles && prevHasRecords ? restaurantSummary(prev) : null,
   ]);
 
   // ── Figures of the period, each against the period before ──
   const vsLabel = days === 1 ? (p.key === "today" ? t("yesterday") : t("the day before")) : t("previous period");
   // Where there is nothing before to compare with, say so — never "same as before".
   const sinceWords = days === 1 ? (p.key === "today" ? t("yesterday") : t("the day before")) : t("in the previous period");
-  const versus = (now: number, before: number, invert?: boolean) => before > 0
+  const versus = (now: number, before: number, invert?: boolean) => (straddles ? null : before > 0
     ? <Delta value={change(now, before)} invert={invert} label={vsLabel} t={t} />
-    : now > 0 ? <span className="text-xs text-muted-foreground">{t("none {when}", { when: sinceWords })}</span> : null;
+    : now > 0 ? <span className="text-xs text-muted-foreground">{t("none {when}", { when: sinceWords })}</span> : null);
   const earned = ov.earned.total, expenses = ov.expenses.total, net = ov.netResult;
   const netPrev = plPrev.netRevenue - plPrev.expenses;
   const spark = (pick: (d: (typeof trend)[number]) => number) => trend.map(pick);
@@ -123,6 +141,63 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
     { name: t("Rooms"), value: ov.earned.rooms }, { name: t("Restaurant & room service"), value: ov.earned.restaurant }, { name: t("Bar"), value: ov.earned.bar },
     { name: t("Meeting room"), value: ov.earned.meeting }, { name: t("Transport & other"), value: ov.earned.other },
   ].filter((x) => x.value > 0);
+
+  // ── What the analysis views read: the books, how late the debts are, the comparisons ──
+  const canSeeAccounts = has("ledger.view", "finance.view");
+  const moneyTotal = ov.balances.reduce((s, b) => s + b.balance, 0);
+  const receivedByAccount = ov.received.byAccount.reduce((s, a) => s + Math.max(0, a.received), 0);
+  const cashReceived = ov.received.byAccount.filter((a) => a.kind === "CASH").reduce((s, a) => s + Math.max(0, a.received), 0);
+  const moves = (nowRows: { name: string; amount: number }[], beforeRows: { name: string; amount: number }[]): Movement[] => {
+    const byName = new Map<string, Movement>();
+    for (const r of nowRows) byName.set(r.name, { name: r.name, now: (byName.get(r.name)?.now ?? 0) + r.amount, before: byName.get(r.name)?.before ?? 0 });
+    for (const r of beforeRows) byName.set(r.name, { name: r.name, now: byName.get(r.name)?.now ?? 0, before: (byName.get(r.name)?.before ?? 0) + r.amount });
+    return [...byName.values()];
+  };
+  // A day that is not over yet, or a few days against a longer stretch, does not make a fair comparison: say nothing about the change then.
+  // Nor does a previous period that begins before the records did: it is only partly filled.
+  const comparable = (p.to < today || days >= 7) && !straddles;
+  const insights = view === "overview" ? buildInsights({
+    earned, earnedBefore: comparable ? plPrev.netRevenue : 0, expenses, expensesBefore: comparable ? plPrev.expenses : 0,
+    categories: moves(spend?.byCategory.map((c) => ({ name: c.name, amount: c.amount })) ?? [], comparable ? plPrev.expenseSummary.byCategory.map((c) => ({ name: c.name, amount: c.amount })) : []),
+    owed: aging ? { total: aging.total, late: aging.lateOverWeek.amount, lateCount: aging.lateOverWeek.count } : null,
+    suppliers: purchases ? { overdue: purchases.suppliers.overdue.amount, dueWeek: purchases.suppliers.due.find((d) => d.bucket === "week")?.amount ?? 0 } : null,
+    money: canSeeAccounts ? moneyTotal : null,
+    spendPerDay: pace?.perDay ?? 0, spendDays: pace?.days ?? 0,
+    roomNet: ov.earned.rooms, roomDiscount: ov.earned.discounts,
+    received: receivedByAccount, cashReceived,
+  } satisfies InsightFacts) : [];
+
+  // Trends: the figures of the period, each with its change against the period before.
+  const roomsBefore = plPrev.revenue.rooms.net;
+  const perRoom = (net: number, rooms: number) => (rooms > 0 ? Math.round(net / rooms) : null);
+  // A figure that is itself a percentage changes in percentage points (40% → 60% is +20 points, not +50%).
+  const kpi = (label: string, now: number | null, before: number | null, show: (n: number) => string, sub?: string, invert?: boolean, points?: boolean) => ({
+    label, value: now === null ? "—" : show(now), sub,
+    change: now === null || before === null || straddles ? null : points
+      ? (before > 0 ? <Delta value={now - before} unit={` ${t("pts")}`} invert={invert} label={vsLabel} t={t} /> : now > 0 ? <span className="text-xs text-muted-foreground">{t("none {when}", { when: sinceWords })}</span> : null)
+      : versus(now, before, invert),
+  });
+  // Occupancy and what depends on it count only the days since the records began (occNow was asked for those days).
+  const kpis = view === "trends" && restNow ? [
+    kpi(t("Occupancy"), occNow ? occNow.occupancy : null, occPrev ? occPrev.occupancy : null, (n) => `${Math.round(n)}%`, occNow ? t("{sold} of {sellable} room nights", { sold: occNow.roomNights, sellable: occNow.sellableNights }) : undefined, false, true),
+    kpi(t("Nights sold"), occNow ? occNow.roomsSold : null, occPrev ? occPrev.roomsSold : null, (n) => String(n), occNow ? t("{nights} nights · {short} short time", { nights: occNow.roomNights, short: occNow.dayUse }) : undefined),
+    kpi(t("Average room rate"), perRoom(ov.earned.rooms, occNow?.roomsSold ?? 0), occPrev ? perRoom(roomsBefore, occPrev.roomsSold) : null, formatTZS, t("room income per night sold")),
+    kpi(t("Income per available room"), perRoom(ov.earned.rooms, occNow?.sellableNights ?? 0), occPrev ? perRoom(roomsBefore, occPrev.sellableNights) : null, formatTZS, t("room income per room available")),
+    kpi(t("Average restaurant order"), restNow.orders > 0 ? restNow.averageOrder : null, restPrev && restPrev.orders > 0 ? restPrev.averageOrder : null, formatTZS, t.plural(restNow.orders, "{n} order", "{n} orders")),
+    kpi(t("Spent of what was earned"), percent(expenses, earned), prevHasRecords ? percent(plPrev.expenses, plPrev.netRevenue) : null, (n) => `${n}%`, t("recorded expenses against earned"), true, true),
+    kpi(t("Room discounts"), percent(ov.earned.discounts, ov.earned.rooms + ov.earned.discounts), prevHasRecords ? percent(plPrev.revenue.rooms.discount, roomsBefore + plPrev.revenue.rooms.discount) : null, (n) => `${n}%`, t("of the room price given away"), true, true),
+    kpi(t("Cash of the money received"), (percent(cashReceived, receivedByAccount)), null, (n) => `${n}%`, t("the rest came by mobile money, bank or card")),
+  ] : [];
+  const closed = monthly ? closedDays(monthly.daily, today, 8) : [];
+  const weekdays = closed.length >= MIN_DAYS_FOR_WEEK ? weekdayAverages(closed.map((d) => ({ date: d.date, value: d.income }))) : null;
+  const before = (n: number) => (straddles ? 0 : n);
+  const streamMoves: Movement[] = [
+    { name: "Rooms", now: ov.earned.rooms, before: before(roomsBefore) },
+    { name: "Restaurant & room service", now: ov.earned.restaurant, before: before(plPrev.revenue.restaurant + plPrev.revenue.roomService) },
+    { name: "Bar", now: ov.earned.bar, before: before(plPrev.revenue.bar) },
+    { name: "Meeting room", now: ov.earned.meeting, before: before(plPrev.revenue.meeting) },
+    { name: "Transport & other", now: ov.earned.other, before: before(plPrev.revenue.other + plPrev.revenue.transport) },
+  ];
   const viewHref = (v: View) => `?${new URLSearchParams({ ...(p.key === "custom" ? { from: p.from, to: p.to } : { period: p.key }), ...(v === "overview" ? {} : { view: v }) })}`;
 
   return (
@@ -157,7 +232,7 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
             delta={versus(expenses, plPrev.expenses, true)}
             sub={ov.expenses.pendingCount ? t.plural(ov.expenses.pendingCount, "{n} waiting for approval now", "{n} waiting for approval now") : t("recorded in the period")} href={href(["expenses.record", "expenses.view_all"], `/staff/expenses?from=${p.from}&to=${p.to}`)} />
           <StatTile label={t("Net result")} value={formatTZS(net)} icon={<TrendingUp />} tone={net >= 0 ? "emerald" : "rose"}
-            delta={netPrev > 0 ? <Delta value={change(net, netPrev)} label={vsLabel} t={t} /> : net !== 0 || netPrev !== 0 ? <span className="text-xs text-muted-foreground">{t("{amount} {when}", { amount: formatTZS(netPrev), when: sinceWords })}</span> : null} sub={t("earned − expenses")} href={href(["ledger.view", "finance.view"], `/staff/finance/ledger?from=${p.from}&to=${p.to}`)} />
+            delta={straddles ? null : netPrev > 0 ? <Delta value={change(net, netPrev)} label={vsLabel} t={t} /> : net !== 0 || netPrev !== 0 ? <span className="text-xs text-muted-foreground">{t("{amount} {when}", { amount: formatTZS(netPrev), when: sinceWords })}</span> : null} sub={t("earned − expenses")} href={href(["ledger.view", "finance.view"], `/staff/finance/ledger?from=${p.from}&to=${p.to}`)} />
           <StatTile label={t("Still owed")} value={formatTZS(owedNow)} icon={<Wallet />} tone="amber"
             sub={t("right now, whatever the period")} href={href(["finance.view"], "/staff/finance/receivables")} />
           <StatTile label={t("Bookings made")} value={String(movement.newBookings)} icon={<ClipboardCheck />} tone="sky"
@@ -178,6 +253,9 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
 
       {view === "overview" && (
         <>
+          {/* 0 · What stands out: the few things worth reading, from the figures below */}
+          <InsightsPanel insights={insights} t={t} period={periodLabel(p, t)} />
+
           {/* 1 · The picture: money in and out day by day, and where the income comes from */}
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.9fr)_minmax(0,1fr)]">
             <Panel title={byMonth ? t("Month by month") : t("Day by day")} subtitle={`${periodLabel(trendRange, t)}${days < 7 ? ` · ${t("the last two weeks, for context")}` : ""}`}
@@ -333,6 +411,22 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
             </Panel>
           </div>
         </>
+      )}
+
+      {view === "outlook" && (
+        <OutlookView t={t} money={moneyTotal} aging={aging} suppliers={purchases?.suppliers ?? null} pace={pace}
+          pending={{ count: ov.expenses.pendingCount, amount: ov.expenses.pendingAmount }} booked={onBooks ? onBooks.next30 : null}
+          links={{
+            receivables: href(["finance.view"], "/staff/finance/receivables"), procurement: href(["purchases.authorize", "purchases.pay", "procurement.manage"], "/staff/procurement?tab=invoices"),
+            accounts: href(["ledger.view", "finance.view"], "/staff/finance/accounts"), expenses: href(["expenses.record", "expenses.view_all"], "/staff/expenses"),
+          }} />
+      )}
+
+      {view === "trends" && monthly && (
+        <TrendsView t={t} today={today} kpis={kpis} months={monthly.months} streams={streamMoves}
+          categories={moves((spend?.byCategory ?? []).map((c) => ({ name: c.name, amount: c.amount })), straddles ? [] : plPrev.expenseSummary.byCategory.map((c) => ({ name: c.name, amount: c.amount })))}
+          weekdays={weekdays} closedDays={closed.length} weeks={Math.min(8, Math.max(1, Math.ceil(closed.length / 7)))}
+          links={{ ledger: href(["ledger.view", "finance.view"], "/staff/finance/ledger"), expenses: href(["expenses.record", "expenses.view_all"], `/staff/expenses?from=${p.from}&to=${p.to}`) }} />
       )}
 
       {view === "bookings" && bookings && (

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Banknote, Coins, CreditCard, Landmark, Smartphone, Wallet } from "lucide-react";
+import { AlertCircle, Banknote, BadgeCheck, Coins, CreditCard, Info, Landmark, Smartphone, TrendingUp, Wallet } from "lucide-react";
 import { formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { T } from "@/i18n/translate";
@@ -135,5 +135,77 @@ export function Pipeline({ steps }: { steps: { label: string; amount: number; su
         </li>
       ))}
     </ol>
+  );
+}
+
+/**
+ * One bar cut into parts, with every part named underneath (colour is never the only sign): for "how late" and "when it falls due".
+ * Parts with nothing in them are left out of the bar and shown greyed in the list, so the list is always the same.
+ */
+export function SplitBar({ rows, empty, total }: { rows: { label: string; amount: number; count: number; color: string; note?: string }[]; empty: string; total: number }) {
+  if (total <= 0) return <p className="text-sm text-muted-foreground">{empty}</p>;
+  return (
+    <div>
+      <div className="flex h-3 gap-0.5 overflow-hidden rounded-full bg-muted" aria-hidden>
+        {rows.filter((r) => r.amount > 0).map((r) => <div key={r.label} className="h-full first:rounded-l-full last:rounded-r-full" style={{ width: `${Math.max(2, (r.amount / total) * 100)}%`, background: r.color }} />)}
+      </div>
+      <ul className="mt-3 space-y-1.5">
+        {rows.map((r) => (
+          <li key={r.label} className={cn("grid grid-cols-[0.75rem_minmax(0,1fr)_auto] items-baseline gap-x-2.5 text-sm", r.amount === 0 && "text-muted-foreground")}>
+            <span className="size-2.5 translate-y-px rounded-sm" style={{ background: r.amount > 0 ? r.color : "var(--muted)" }} />
+            <span className="min-w-0 truncate">{r.label}{r.note && <span className="ml-2 text-[11px] text-muted-foreground">{r.note}</span>}</span>
+            <span className="text-right tabular-nums"><span className="font-semibold">{formatTZS(r.amount)}</span><span className="ml-2 inline-block w-9 text-[11px] text-muted-foreground">{Math.round((r.amount / total) * 100)}%</span></span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** A figure with its change against the period before and a short line under it. */
+export function KpiCards({ items }: { items: { label: string; value: string; change?: React.ReactNode; sub?: string }[] }) {
+  return (
+    <dl className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+      {items.map((i) => (
+        <div key={i.label} className="flex flex-col rounded-2xl border border-border/60 bg-muted/20 px-3.5 py-3">
+          <dt className="text-[11px] text-muted-foreground">{i.label}</dt>
+          <dd className="mt-0.5 text-xl font-semibold tabular-nums tracking-tight">{i.value}</dd>
+          {i.change && <dd className="mt-1">{i.change}</dd>}
+          {i.sub && <dd className="mt-0.5 text-[11px] text-muted-foreground">{i.sub}</dd>}
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+const INSIGHT = {
+  bad: { icon: <AlertCircle />, chip: "bg-rose-500/15 text-rose-600 dark:text-rose-300" },
+  warn: { icon: <Info />, chip: "bg-amber-500/15 text-amber-600 dark:text-amber-300" },
+  info: { icon: <Info />, chip: "bg-sky-500/15 text-sky-600 dark:text-sky-300" },
+  good: { icon: <TrendingUp />, chip: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300" },
+} as const;
+
+/** The few sentences worth reading, most serious first; one with a place to act on it is a link. */
+export function InsightList({ items, more }: { items: { id: string; tone: keyof typeof INSIGHT; text: React.ReactNode; href?: string }[]; more?: React.ReactNode }) {
+  return (
+    <ul className="grid gap-2 lg:grid-cols-2">
+      {items.map((i) => {
+        const k = INSIGHT[i.tone];
+        const body = (
+          <>
+            <span className={cn("grid size-8 shrink-0 place-items-center rounded-xl [&_svg]:size-4", k.chip)}>{i.tone === "good" ? <BadgeCheck /> : k.icon}</span>
+            <span className="min-w-0 text-sm leading-snug">{i.text}</span>
+          </>
+        );
+        return (
+          <li key={i.id}>
+            {i.href
+              ? <Link href={i.href} className="flex items-start gap-3 rounded-2xl border border-border/60 bg-muted/20 px-3 py-2.5 transition-colors hover:bg-muted/40">{body}</Link>
+              : <div className="flex items-start gap-3 rounded-2xl border border-border/60 bg-muted/20 px-3 py-2.5">{body}</div>}
+          </li>
+        );
+      })}
+      {more}
+    </ul>
   );
 }
