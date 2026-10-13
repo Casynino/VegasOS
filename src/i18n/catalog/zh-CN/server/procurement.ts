@@ -2,6 +2,7 @@
 import type { Catalog } from "../../../translate";
 
 const catalog: Catalog = {
+  "nTZS tells the balance only together with a price. Give a phone number to ask with — nothing is sent to it.": "nTZS 只会在报价时一并告知余额。请提供一个手机号用于询价——不会向它转账。",
   "This expense is the payment of supplier invoice {invoice} (order {order}) — it changes only from the purchase.": "这笔支出是供应商发票 {invoice}（订单 {order}）的付款——只能在采购中修改。",
   "Invoice {ref} is already on order {order} — its expense is made when Finance pays it. Don't record it twice.": "发票 {ref} 已在订单 {order} 上——财务付款时才会生成支出。请勿重复登记。",
   "Ask for your own department: Reception asks for the hotel's supplies; the restaurant and the kitchen ask for theirs.": "请为自己的部门申请：前台申请酒店用品；餐厅和厨房申请各自的用品。",

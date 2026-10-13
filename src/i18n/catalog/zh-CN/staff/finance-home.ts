@@ -2,6 +2,11 @@
 import type { Catalog } from "../../../translate";
 
 const catalog: Catalog = {
+  "nTZS does not show its balance by itself — press Check balance to ask it.": "nTZS 不会单独显示余额——请点“查询余额”来询问。",
+  "nTZS": "nTZS",
+  "Check the nTZS balance": "查询 nTZS 余额",
+  "nTZS tells its balance only together with a price, and a price needs a phone number to ask about. Give any mobile-money number (yours is fine). Nothing is sent to it, and it is not kept as a place to pay to.": "nTZS 只会在报价时一并告知余额，而报价需要一个手机号。请填写任意移动支付号码（用您自己的即可）。不会向它转账，也不会保存为收款号码。",
+  "Ask nTZS for the balance": "向 nTZS 查询余额",
   "No purchase to authorize, no invoice to pay, nothing overdue.": "没有待授权的采购，没有待付的发票，也没有逾期事项。",
   "At nTZS": "在 nTZS",
   "reported by nTZS at {time}": "nTZS 于 {time} 报告",

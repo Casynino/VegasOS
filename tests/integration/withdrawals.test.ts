@@ -4,7 +4,7 @@ import { db } from "@/server/db";
 import { POST as ntzsWebhook } from "@/app/api/webhooks/ntzs/route";
 import { accountBalances } from "@/server/services/finance";
 import {
-  acknowledgeWithdrawal, applyProviderState, cancelWithdrawalPrice, checkNtzsBalance, checkWithdrawal, confirmWithdrawal, handleWithdrawalWebhook, priceWithdrawal,
+  acknowledgeWithdrawal, applyProviderState, cancelWithdrawalPrice, checkNtzsBalance, ntzsCheckNeedsPhone, checkWithdrawal, confirmWithdrawal, handleWithdrawalWebhook, priceWithdrawal,
   settleWithdrawalByHand, sweepWithdrawals, withdrawalDetail, withdrawalsOverview, withdrawalView, withdrawFromAccount, type PriceInput, type WithdrawalActor,
 } from "@/server/services/withdrawals";
 import { WITHDRAWAL_NOTES as N } from "@/lib/withdrawals";
@@ -691,7 +691,22 @@ describe("the balance and the page", () => {
     const today = businessDateOf(new Date());
     expect((await withdrawalsOverview(a, { from: today, to: today })).balance).toBeNull();
     // nTZS tells the balance only with a price: with no destination yet, there is nothing to ask.
-    expect(await code(checkNtzsBalance(a))).toBe("CONFLICT");
+    const asked = quoteCalls;
+    expect(await code(checkNtzsBalance(a))).toBe("VALIDATION");
+    // ...unless the person gives a phone number to ask with: it is used for the question only, never offered later as a place to pay to
+    expect(await code(checkNtzsBalance(a, at(0), { phone: "123" }))).toBe("VALIDATION");
+    expect(quoteCalls).toBe(asked); // no number, or a bad one: nTZS was not asked anything
+    balance = 6_500;
+    expect((await checkNtzsBalance(a, at(0), { phone: "0712 345 678" })).availableTzs).toBe(6_500);
+    expect(sends).toHaveLength(0);
+    // the question leaves one note — never a withdrawal: cancelled, flagged as a balance check, no recipient name
+    expect(await db.withdrawal.findFirstOrThrow({ where: { failureCode: "balance_check" } })).toMatchObject({ status: "CANCELLED", availableTzs: 6_500, recipientName: null, destinationKind: "PHONE" });
+    // ...and its id cannot be used as a place to pay to
+    const note = await db.withdrawal.findFirstOrThrow({ where: { failureCode: "balance_check" } });
+    expect(await code(priceWithdrawal({ amount: 10_000, destination: { kind: "AGAIN", withdrawalId: note.id }, toAccountId: null }, a, at(0)))).toBe("VALIDATION");
+    expect(await ntzsCheckNeedsPhone()).toBe(true);
+    expect((await withdrawFromAccount(a, at(0))).destinations).toEqual([]);
+    balance = 2_000_000;
     await send(100_000, {}, at(0));
     balance = 1_750_000;
     const b = await checkNtzsBalance(a, at(MIN));

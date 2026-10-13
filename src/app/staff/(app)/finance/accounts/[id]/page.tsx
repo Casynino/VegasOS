@@ -16,6 +16,7 @@ import { ExpenseDialog, PurchaseChip } from "@/app/staff/(app)/expenses/expense-
 import { expenseTypes } from "@/server/services/expenses";
 import { withdrawFromAccount } from "@/server/services/withdrawals";
 import { ntzsReported } from "@/server/services/finance-home";
+import { ntzsCheckNeedsPhone } from "@/server/services/withdrawals";
 import { withdrawalProblem } from "@/lib/withdrawals";
 import { CheckBalanceButton, StatusChip, WithdrawButton, WithdrawalDetails } from "@/app/staff/(app)/finance/withdraw/withdraw-ui";
 import { LiveRefresh } from "@/components/live-refresh";
@@ -123,6 +124,7 @@ export default async function AccountDetailPage({ params, searchParams }: PagePr
     : null;
   // What nTZS itself last said it holds (it has no balance call of its own — only a price or "Check balance" tells it): shown beside the books, never guessed.
   const ntzs = account.code === "NTZS" ? await ntzsReported() : null;
+  const needsPhone = withdraw ? await ntzsCheckNeedsPhone() : false;
   const withdrawProblem = withdraw?.setupProblem ? withdrawalProblem(withdraw.setupProblem) : null;
   const receiving: PaymentAccountOption[] = all.filter((a) => a.acceptsPayments).map((a) => ({ id: a.id, name: a.name, number: a.accountNumber, holder: a.holderName }));
   const paidFrom = all.filter((a) => a.acceptsExpenses).map((a) => ({ id: a.id, name: a.name, methodId: a.paymentMethods[0]?.id ?? null }));
@@ -192,7 +194,7 @@ export default async function AccountDetailPage({ params, searchParams }: PagePr
                 ) : (
                   <p className="max-w-64 text-xs text-white/85">{t("nTZS does not show its balance by itself. Press Check balance — or open Withdraw funds, enter any amount and ask for the price: it shows what nTZS holds, and nothing is sent.")}</p>
                 )}
-                {withdraw && <div className="mt-1.5"><CheckBalanceButton /></div>}
+                {withdraw && <div className="mt-1.5"><CheckBalanceButton needsPhone={needsPhone} /></div>}
               </div>
             )}
           </div>

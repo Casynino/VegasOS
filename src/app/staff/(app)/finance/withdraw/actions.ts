@@ -109,10 +109,11 @@ export async function acknowledgeWithdrawalAction(input: z.input<typeof Id>): Pr
 }
 
 /** "Check balance": the balance as nTZS reports it now (it comes with a price — nothing moves). */
-export async function checkNtzsBalanceAction(): Promise<ActionResult<{ availableTzs: number; at: Date }>> {
+export async function checkNtzsBalanceAction(input?: { phone?: string }): Promise<ActionResult<{ availableTzs: number; at: Date }>> {
   return runAction(async () => {
     const who = await actor();
-    const balance = await checkNtzsBalance(who);
+    const phone = input ? parseInput(z.object({ phone: z.string().trim().max(30).optional() }), input).phone : undefined;
+    const balance = await checkNtzsBalance(who, new Date(), { phone });
     refresh();
     return balance;
   });

@@ -24,8 +24,8 @@ export interface NtzsReport { available: number; at: string; live: boolean; sent
  * share of the total. The nTZS card also says what nTZS itself last reported, and the difference, so money that sits at nTZS but
  * is not in the books yet is never hidden.
  */
-export function AccountCards({ accounts, ntzs, canCheckNtzs, canOpen, t }: {
-  accounts: AccountCardData[]; ntzs: NtzsReport | null; canCheckNtzs: boolean; canOpen: boolean; t: T;
+export function AccountCards({ accounts, ntzs, canCheckNtzs, ntzsNeedsPhone, canOpen, t }: {
+  accounts: AccountCardData[]; ntzs: NtzsReport | null; canCheckNtzs: boolean; ntzsNeedsPhone: boolean; canOpen: boolean; t: T;
 }) {
   const total = accounts.reduce((s, a) => s + a.balance, 0);
   const positive = accounts.reduce((s, a) => s + Math.max(0, a.balance), 0);
@@ -70,7 +70,7 @@ export function AccountCards({ accounts, ntzs, canCheckNtzs, canOpen, t }: {
                   ) : (
                     <p className="flex items-start gap-1.5 text-muted-foreground"><CircleHelp className="mt-0.5 size-3.5 shrink-0" />{t("nTZS does not show its balance by itself. Check it here to see what it holds.")}</p>
                   )}
-                  {canCheckNtzs && <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-0.5"><CheckBalanceButton /><Link href="/staff/finance/withdraw" className="text-xs font-medium underline-offset-4 hover:underline">{t("Withdraw funds")}</Link></div>}
+                  {canCheckNtzs && <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-0.5"><CheckBalanceButton needsPhone={ntzsNeedsPhone} /><Link href="/staff/finance/withdraw" className="text-xs font-medium underline-offset-4 hover:underline">{t("Withdraw funds")}</Link></div>}
                 </div>
               )}
             </li>

@@ -520,21 +520,57 @@ export function WithdrawalDetails({ id, label, timezone, className }: { id: stri
   );
 }
 
-/** "Check balance": asks nTZS what is available now. Nothing moves. */
-export function CheckBalanceButton() {
+/**
+ * "Check balance": asks nTZS what is available now. Nothing moves. nTZS tells its balance only with a price, and a price needs a place to pay to:
+ * when no withdrawal was ever priced (`needsPhone`), the person gives a phone number to ask with — it is used for the question only.
+ */
+export function CheckBalanceButton({ needsPhone = false }: { needsPhone?: boolean }) {
   const t = useT();
   const router = useRouter();
   const [pending, start] = useTransition();
+  const [open, setOpen] = useState(false);
+  const [phone, setPhone] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  // The page may have been drawn when a destination still existed: if the server now needs a number, the same question is asked here.
+  const [forced, setForced] = useState(false);
+  const askForPhone = needsPhone || forced;
+  const ask = (withPhone?: string) => start(async () => {
+    setError(null);
+    const r = await checkNtzsBalanceAction(withPhone ? { phone: withPhone } : undefined).catch(() => null);
+    if (!r) { toast.error(t("nTZS did not answer — try again in a moment.")); return; }
+    if (!r.ok) {
+      if (!askForPhone && r.fieldErrors?.phone) { setForced(true); setOpen(true); router.refresh(); return; }
+      if (askForPhone) setError(r.error); else toast.error(r.error);
+      return;
+    }
+    toast.success(t("nTZS reports {amount} available.", { amount: formatTZS(r.data.availableTzs) }));
+    setOpen(false);
+    router.refresh();
+  });
   return (
-    <button type="button" disabled={pending} className="inline-flex shrink-0 items-center gap-1 text-xs font-medium whitespace-nowrap underline-offset-4 hover:underline disabled:opacity-60"
-      onClick={() => start(async () => {
-        const r = await checkNtzsBalanceAction().catch(() => null);
-        if (!r) { toast.error(t("nTZS did not answer — try again in a moment.")); return; }
-        if (!r.ok) { toast.error(r.error); return; }
-        toast.success(t("nTZS reports {amount} available.", { amount: formatTZS(r.data.availableTzs) }));
-        router.refresh();
-      })}>
-      {pending ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}{t("Check balance")}
-    </button>
+    <>
+      <button type="button" disabled={pending} className="inline-flex shrink-0 items-center gap-1 text-xs font-medium whitespace-nowrap underline-offset-4 hover:underline disabled:opacity-60"
+        onClick={() => (askForPhone ? setOpen(true) : ask())}>
+        {pending && !open ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}{t("Check balance")}
+      </button>
+      {askForPhone && (
+        <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (o) setError(null); }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader icon={<RefreshCw />} eyebrow={t("nTZS")} tone="sky">
+              <DialogTitle>{t("Check the nTZS balance")}</DialogTitle>
+              <DialogDescription>{t("nTZS tells its balance only together with a price, and a price needs a phone number to ask about. Give any mobile-money number (yours is fine). Nothing is sent to it, and it is not kept as a place to pay to.")}</DialogDescription>
+            </DialogHeader>
+            <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); ask(phone); }}>
+              <div className="space-y-1.5">
+                <Label htmlFor="bal-phone">{t("Phone number")}</Label>
+                <Input id="bal-phone" value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" autoComplete="off" placeholder="07xx xxx xxx" className="h-11 text-base" />
+                {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
+              </div>
+              <Button type="submit" className="w-full" disabled={pending || !phone.trim()}>{pending ? <Loader2 className="animate-spin" /> : <RefreshCw />}{t("Ask nTZS for the balance")}</Button>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
   );
 }

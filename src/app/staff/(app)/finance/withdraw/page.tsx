@@ -4,7 +4,7 @@ import { BanknoteArrowUp, CircleCheck, CircleX, Clock, ReceiptText, Search, Tria
 import { getT } from "@/i18n/server";
 import { requestMeta, requirePagePermission } from "@/server/auth";
 import { businessToday, getSettings } from "@/server/settings";
-import { withdrawalsOverview, type WithdrawalView } from "@/server/services/withdrawals";
+import { ntzsCheckNeedsPhone, withdrawalsOverview, type WithdrawalView } from "@/server/services/withdrawals";
 import { WITHDRAWAL_FILTERS, withdrawalProblem } from "@/lib/withdrawals";
 import { formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -46,6 +46,7 @@ export default async function WithdrawFundsPage({ searchParams }: PageProps<"/st
   const person = str(sp.person).slice(0, 40);
   const q = str(sp.q).trim().slice(0, 80);
   const [settings, { ipAddress }] = await Promise.all([getSettings(), requestMeta()]);
+  const needsPhone = await ntzsCheckNeedsPhone();
   const o = await withdrawalsOverview(
     { userId: user.id, label: user.fullName, ipAddress, permissions: user.permissions },
     { from: p.from, to: p.to, status, person: person || null, q: q || null },
@@ -94,13 +95,13 @@ export default async function WithdrawFundsPage({ searchParams }: PageProps<"/st
         <section className="rounded-3xl border border-border/70 bg-card p-5">
           <div className="flex items-start justify-between gap-2">
             <p className="text-sm text-muted-foreground">{t("Available at nTZS")}</p>
-            {o.enabled && (o.balance || o.destinations.length > 0) && <CheckBalanceButton />}
+            {o.enabled && <CheckBalanceButton needsPhone={needsPhone} />}
           </div>
           <p className="mt-1 text-2xl font-semibold tabular-nums">{o.balance ? formatTZS(o.balance.availableTzs) : "—"}</p>
           <p className="mt-1 text-xs text-muted-foreground">
             {o.balance
               ? t("As nTZS reported it on {when}.", { when: t.dateTime(o.balance.at, tz) })
-              : t("nTZS tells the balance together with a price — it shows here once a withdrawal has been priced.")}
+              : t("nTZS does not show its balance by itself — press Check balance to ask it.")}
             {o.balance && o.balance.sentSince > 0 && <span className="mt-0.5 block text-amber-700 dark:text-amber-300">{t.plural(o.balance.sentSince, "{n} withdrawal was sent since then, so less is there now.", "{n} withdrawals were sent since then, so less is there now.")}</span>}
           </p>
         </section>

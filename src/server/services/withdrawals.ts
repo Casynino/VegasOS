@@ -290,7 +290,7 @@ export interface WithdrawalPrice {
 
 async function resolveDestination(input: PriceInput["destination"]): Promise<NtzsDestination> {
   if (input.kind === "AGAIN") {
-    const earlier = await db.withdrawal.findUnique({ where: { id: input.withdrawalId }, select: { destinationKind: true, phone: true, bankCode: true, accountNumber: true } });
+    const earlier = await db.withdrawal.findFirst({ where: { id: input.withdrawalId, OR: [{ failureCode: null }, { failureCode: { not: "balance_check" } }] }, select: { destinationKind: true, phone: true, bankCode: true, accountNumber: true } });
     if (!earlier) throw new AppError(msg("Choose where to send the money."), "VALIDATION", { destination: msg("Required") });
     return destinationOf(earlier);
   }
@@ -609,19 +609,31 @@ export async function sweepWithdrawalsIfDue(now = new Date()) {
 
 // ───────────────────────── The balance at nTZS ─────────────────────────
 
+/** The destination "Check balance" asks with: the last one the hotel withdrew to — or none yet, and then the person gives a phone number to ask with. */
+async function balanceCheckDestination() {
+  return (await db.withdrawal.findFirst({ where: { status: "COMPLETED" }, orderBy: { createdAt: "desc" } }))
+    ?? (await db.withdrawal.findFirst({ where: { status: { in: ["QUOTED", ...WITHDRAWAL_LISTED] } }, orderBy: { createdAt: "desc" } }));
+}
+/** True when "Check balance" has nothing to ask with yet (no withdrawal was ever priced): it then asks for a phone number each time, until the first withdrawal is priced. */
+export async function ntzsCheckNeedsPhone() {
+  return !(await balanceCheckDestination());
+}
+
 /**
- * nTZS has no call for the balance alone: it tells it together with a price. "Check balance" therefore asks the price
- * of its smallest withdrawal to a destination the hotel used before — a price only, nothing moves — and keeps the
- * balance nTZS reported with it.
+ * nTZS has no call for the balance alone: it tells it together with a price. "Check balance" therefore asks the price of its smallest
+ * withdrawal to a destination the hotel used before (or, when there is none yet, to a phone number the person gives) — a price only,
+ * nothing moves — and keeps the balance nTZS reported with it.
  */
-export async function checkNtzsBalance(actor: WithdrawalActor, now = new Date()): Promise<{ availableTzs: number; at: Date }> {
+export async function checkNtzsBalance(actor: WithdrawalActor, now = new Date(), opts: { phone?: string | null } = {}): Promise<{ availableTzs: number; at: Date }> {
   mustManage(actor);
   mustBeOn();
-  const last = (await db.withdrawal.findFirst({ where: { status: "COMPLETED" }, orderBy: { createdAt: "desc" } }))
-    ?? (await db.withdrawal.findFirst({ where: { status: { in: ["QUOTED", ...WITHDRAWAL_LISTED] } }, orderBy: { createdAt: "desc" } }));
-  if (!last) throw new AppError(msg("nTZS tells the balance only together with a price. Price a withdrawal to see it."), "CONFLICT");
+  const last = await balanceCheckDestination();
+  // Nothing was ever priced, so there is no number to ask with: the person gives one (their own is fine). It is used for this question only —
+  // nothing is sent to it, and it is never offered later as a place to pay out to.
+  const destination = last ? destinationOf(last) : opts.phone?.trim() ? await resolveDestination({ kind: "PHONE", phone: opts.phone }) : null;
+  if (!destination) throw new AppError(msg("nTZS tells the balance only together with a price. Give a phone number to ask with — nothing is sent to it."), "VALIDATION", { phone: msg("Required") });
   await rateLimit(`wd-balance:${actor.userId}`, 10, 600);
-  const res = await quoteNtzsWithdrawal({ amountTzs: WITHDRAW_MIN_TZS, destination: destinationOf(last) });
+  const res = await quoteNtzsWithdrawal({ amountTzs: WITHDRAW_MIN_TZS, destination });
   let available: number | null = null;
   if (res.ok) available = res.data.availableTzs;
   else if (!res.status) throw new AppError(msg("nTZS did not answer — try again in a moment."), "UNAVAILABLE");
@@ -630,7 +642,8 @@ export async function checkNtzsBalance(actor: WithdrawalActor, now = new Date())
   if (available === null) throw new AppError(msg("nTZS did not say the balance this time."), "UNAVAILABLE");
   await db.withdrawal.create({
     data: {
-      status: "CANCELLED", failureCode: "balance_check", amount: WITHDRAW_MIN_TZS, destinationKind: last.destinationKind, phone: last.phone, bankCode: last.bankCode, accountNumber: last.accountNumber,
+      status: "CANCELLED", failureCode: "balance_check", amount: WITHDRAW_MIN_TZS, destinationKind: destination.kind, phone: destination.kind === "PHONE" ? destination.phone : null,
+      bankCode: destination.kind === "BANK" ? destination.bankCode : null, accountNumber: destination.kind === "BANK" ? destination.accountNumber : null,
       availableTzs: available, requestedById: actor.userId, livemode: ntzsLive(), businessDate: toDbDate(businessDateOf(now, businessDayConfig(await getSettings()))),
     },
   });
