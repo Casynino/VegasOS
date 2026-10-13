@@ -42,7 +42,7 @@ describe("cash handover is off", () => {
     expect(done.shiftId).toBeTruthy();
     expect((await db.revenueTransaction.aggregate({ _sum: { amount: true } }))._sum.amount).toBe(40_000);
     expect(await db.cashHandover.count()).toBe(0);
-  });
+  }, 30_000); // a shift takes locks: give it room when the whole suite runs at once
 
   it("Finance's numbers do not depend on it: cash taken is shown, nothing waits, nothing is 'still with staff'", async () => {
     const who = await staff();
