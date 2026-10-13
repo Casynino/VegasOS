@@ -107,7 +107,7 @@ describe("the trends", () => {
   const kpis = [{ label: "Occupancy", value: "42%", sub: "13 of 31 room nights" }, { label: "Average room rate", value: "—" }];
   it("shows the months with their net and the movement of each part", () => {
     const html = renderToStaticMarkup(createElement(TrendsView, {
-      t, today: "2026-10-13", kpis,
+      t, kpis,
       months: [{ key: "2026-09", income: 2_000_000, expenses: 1_500_000, received: 1_800_000 }, { key: "2026-10", income: 956_000, expenses: 0, received: 696_000 }],
       streams: [{ name: "Rooms", now: 900_000, before: 600_000 }, { name: "Bar", now: 0, before: 50_000 }, { name: "Meeting room", now: 56_000, before: 0 }],
       categories: [{ name: "Utilities", now: 250_000, before: 100_000 }],
@@ -128,7 +128,7 @@ describe("the trends", () => {
   });
 
   it("with too few days, the week pattern waits; with no months, it says there are no records", () => {
-    const html = renderToStaticMarkup(createElement(TrendsView, { t, today: "2026-10-13", kpis: [], months: [], streams: [], categories: [], weekdays: null, closedDays: 1, weeks: 8, links: {} }));
+    const html = renderToStaticMarkup(createElement(TrendsView, { t, kpis: [], months: [], streams: [], categories: [], weekdays: null, closedDays: 1, weeks: 8, links: {} }));
     clean(html);
     expect(text(html)).toContain("No records yet.");
     expect(text(html)).toContain("Only 1 closed day of records so far");

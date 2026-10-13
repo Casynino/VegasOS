@@ -287,8 +287,10 @@ export function AttentionCards({ items, emptyTitle, emptyDetail, t = englishT }:
  * Rooms at a glance (dark card): a ring split by status around the total,
  * with the counts beside it — fills its space on every screen size.
  */
-export function RoomsGlance({ total, parts, footer, href, title, unit, center, t = englishT }: {
+export function RoomsGlance({ total, parts, footer, href, title, unit, center, format, t = englishT }: {
   total: number; parts: { label: string; value: number; color: string }[]; footer?: React.ReactNode; href?: string;
+  /** How a part's figure is written beside the ring (money, for the accounts); the plain number when none. */
+  format?: (n: number) => string;
   /** The heading and the word under the number (the tables use it too). */
   title?: string; unit?: string;
   /** What the middle of the ring says (e.g. "35%" / "full tonight") — instead of the total everyone knows. */
@@ -316,7 +318,7 @@ export function RoomsGlance({ total, parts, footer, href, title, unit, center, t
             <li key={p.label} className="flex items-center gap-2">
               <span className="size-2.5 shrink-0 rounded-full" style={{ background: p.color }} />
               <span className="min-w-0 flex-1 truncate text-white/70">{p.label}</span>
-              <span className="font-semibold tabular-nums">{p.value}</span>
+              <span className="font-semibold tabular-nums">{format ? format(p.value) : p.value}</span>
             </li>
           ))}
         </ul>

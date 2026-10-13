@@ -4,9 +4,11 @@ import type { T } from "@/i18n/translate";
 import { COVER_CAP_DAYS, coverDays, MIN_DAYS_FOR_PACE, percent, type Insight } from "@/lib/finance-insights";
 import type { ReceivablesAging, MonthRow } from "@/server/services/finance-outlook";
 import type { supplierSnapshot } from "@/server/services/finance-home";
+import { Hourglass, Landmark, Truck, Wallet } from "lucide-react";
 import { MoneyChart, type MoneyPoint } from "@/components/staff/finance/money-chart";
-import { Panel, PanelLink } from "./kit";
-import { DataTable, FigureCards, HBars, InsightList, KpiCards, SplitBar } from "./finance-panels";
+import { Panel, PanelLink, StatTile } from "./kit";
+import { AreaTrend } from "./light-charts";
+import { DataTable, FigureCards, InsightList, KpiCards, SplitBar, WeekColumns, type PanelTone } from "./finance-panels";
 
 /**
  * The two analysis views of Finance's Home — the cash outlook (what the money looks like from here: what is in the accounts, what is
@@ -16,7 +18,7 @@ import { DataTable, FigureCards, HBars, InsightList, KpiCards, SplitBar } from "
  */
 
 const shortDay = (d: string, t: T) => new Intl.DateTimeFormat(t.intl, { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${d}T00:00:00Z`));
-const weekdayName = (weekday: number, t: T) => new Intl.DateTimeFormat(t.intl, { weekday: "long", timeZone: "UTC" }).format(new Date(Date.UTC(2024, 0, weekday)));
+const weekdayName = (weekday: number, t: T, style: "long" | "short" = "long") => new Intl.DateTimeFormat(t.intl, { weekday: style, timeZone: "UTC" }).format(new Date(Date.UTC(2024, 0, weekday)));
 const sign = (n: number) => (n > 0 ? "+" : n < 0 ? "−" : "");
 
 // ───────────────────────── What stands out ─────────────────────────
@@ -80,22 +82,21 @@ export function OutlookView({ t, money, aging, suppliers, pace, pending, booked,
   const dueLabel = { overdue: t("Past its due date"), week: t("Due within a week"), month: t("Due in 8–30 days"), later: t("Due later than that"), none: t("No due date set") } as const;
   const bills = (n: number) => (n > 0 ? t.plural(n, "{n} bill", "{n} bills") : undefined);
   const invoices = (n: number) => (n > 0 ? t.plural(n, "{n} invoice", "{n} invoices") : undefined);
+  const coverTone: "rose" | "amber" | "emerald" = cover !== null && cover < 14 ? "rose" : cover !== null && cover < 30 ? "amber" : "emerald";
 
   return (
     <>
-      <Panel title={t("Where the money stands")} subtitle={t("Side by side and never added: what is owed to the hotel is not money yet, and what is owed to suppliers is not yet spent")}
-        action={links.accounts ? <PanelLink href={links.accounts}>{t("Accounts")}</PanelLink> : null}>
-        <FigureCards items={[
-          { label: t("In the accounts"), value: formatTZS(money), sub: t("the hotel's own records") },
-          ...(aging ? [{ label: t("Owed to the hotel"), value: formatTZS(aging.total), sub: t("not money yet"), tone: aging.lateOverWeek.amount > 0 ? ("warn" as const) : undefined }] : []),
-          ...(suppliers ? [{ label: t("Owed to suppliers"), value: formatTZS(suppliers.owed.amount), sub: t.plural(suppliers.owed.count, "{n} invoice", "{n} invoices"), tone: suppliers.overdue.count > 0 ? ("bad" as const) : undefined }] : []),
-          { label: t("Expenses waiting for approval"), value: formatTZS(pending.amount), sub: t.plural(pending.count, "{n} expense", "{n} expenses"), tone: pending.count > 0 ? ("warn" as const) : undefined },
-          { label: t("Days the money lasts"), value: coverWords,
-            sub: cover !== null && pace ? t("at the recent pace of {amount} a day", { amount: formatTZS(Math.round(pace.perDay)) })
-              : enough ? t("nothing was spent recently") : t("needs {n} days of records", { n: MIN_DAYS_FOR_PACE }),
-            tone: cover !== null && cover < 14 ? ("bad" as const) : cover !== null && cover < 30 ? ("warn" as const) : undefined },
-        ]} />
-      </Panel>
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        <StatTile label={t("In the accounts")} value={formatTZS(money)} icon={<Landmark />} tone="sky" sub={t("the hotel's own records")} href={links.accounts} />
+        {aging && <StatTile label={t("Owed to the hotel")} value={formatTZS(aging.total)} icon={<Wallet />} tone="amber" href={links.receivables}
+          sub={aging.lateOverWeek.amount > 0 ? t("{amount} is more than a week late", { amount: formatTZS(aging.lateOverWeek.amount) }) : t("not money yet")} />}
+        {suppliers && <StatTile label={t("Owed to suppliers")} value={formatTZS(suppliers.owed.amount)} icon={<Truck />} tone="rose" href={links.procurement}
+          sub={suppliers.overdue.count > 0 ? t("{amount} is past its due date", { amount: formatTZS(suppliers.overdue.amount) }) : t.plural(suppliers.owed.count, "{n} invoice", "{n} invoices")} />}
+        <StatTile label={t("Days the money lasts")} value={coverWords} icon={<Hourglass />} tone={coverTone}
+          sub={cover !== null && pace ? t("at the recent pace of {amount} a day", { amount: formatTZS(Math.round(pace.perDay)) })
+            : enough ? t("nothing was spent recently") : t("needs {n} days of records", { n: MIN_DAYS_FOR_PACE })} />
+      </div>
+      <p className="-mt-2 text-xs text-muted-foreground">{t("Side by side and never added: what is owed to the hotel is not money yet, and what is owed to suppliers is not yet spent")}</p>
 
       <div className="grid gap-4 lg:grid-cols-2">
         {aging && (
@@ -132,7 +133,7 @@ export function OutlookView({ t, money, aging, suppliers, pace, pending, booked,
             <FigureCards items={[
               { label: t("Spent a day, on average"), value: formatTZS(Math.round(pace.perDay)) },
               { label: t("Spent in all"), value: formatTZS(pace.total), sub: t.plural(pace.days, "{n} day", "{n} days") },
-              { label: t("Days the money lasts"), value: coverWords, tone: cover !== null && cover < 14 ? "bad" : cover !== null && cover < 30 ? "warn" : undefined },
+              { label: t("Expenses waiting for approval"), value: formatTZS(pending.amount), sub: t.plural(pending.count, "{n} expense", "{n} expenses"), tone: pending.count > 0 ? "warn" : undefined },
             ]} />
           ) : (
             <p className="text-sm text-muted-foreground">{pace ? t.plural(pace.days, "Only {n} closed day of records so far — a daily pace needs at least {min}.", "Only {n} closed days of records so far — a daily pace needs at least {min}.", { min: MIN_DAYS_FOR_PACE }) : t("No day has closed since the records began — a daily pace needs at least {min} days.", { min: MIN_DAYS_FOR_PACE })}</p>
@@ -140,7 +141,7 @@ export function OutlookView({ t, money, aging, suppliers, pace, pending, booked,
           <p className="mt-3 text-[11px] text-muted-foreground">{t("Only costs that were recorded count — a cost nobody recorded is not in this pace.")}</p>
         </Panel>
 
-        {booked && (
+        {booked ? (
           <Panel title={t("Rooms booked ahead")} subtitle={t("The next 30 nights — money still to be earned, not money received")}>
             {booked.nights > 0 ? (
               <FigureCards items={[
@@ -149,7 +150,7 @@ export function OutlookView({ t, money, aging, suppliers, pace, pending, booked,
               ]} />
             ) : <p className="text-sm text-muted-foreground">{t("No rooms are booked for the next 30 nights.")}</p>}
           </Panel>
-        )}
+        ) : null}
       </div>
     </>
   );
@@ -161,9 +162,10 @@ export interface Movement { name: string; now: number; before: number }
 
 export interface TrendsProps {
   t: T;
-  today: string;
-  kpis: { label: string; value: string; change?: React.ReactNode; sub?: string }[];
+  kpis: { label: string; value: string; change?: React.ReactNode; sub?: string; icon?: React.ReactNode; tone?: PanelTone }[];
   months: MonthRow[];
+  /** Occupancy day by day over the period (percent), for the chart. */
+  occupancySeries?: { date: string; value: number }[];
   streams: Movement[];
   categories: Movement[];
   /** The average earned on each day of the week over closed days; null when there are too few days to say. */
@@ -196,33 +198,58 @@ function MovementTable({ rows, label, costs, t }: { rows: Movement[]; label: str
   );
 }
 
-export function TrendsView({ t, kpis, months, streams, categories, weekdays, closedDays, weeks, links }: TrendsProps) {
+export function TrendsView({ t, kpis, months, occupancySeries, streams, categories, weekdays, closedDays, weeks, links }: TrendsProps) {
   const month = (key: string, style: "short" | "long") => new Date(`${key}-01T00:00:00Z`).toLocaleDateString(t.intl, style === "short" ? { month: "short", timeZone: "UTC" } : { month: "long", year: "numeric", timeZone: "UTC" });
-  const points: MoneyPoint[] = months.map((m) => ({ key: m.key, label: month(m.key, "short"), income: m.income, expenses: m.expenses, received: m.received }));
+  // Months before the first record are left out: they are empty, not "zero".
+  const first = months.findIndex((m) => m.income !== 0 || m.expenses !== 0 || m.received !== 0);
+  const shown = first < 0 ? [] : months.slice(first);
+  const points: MoneyPoint[] = shown.map((m) => ({ key: m.key, label: month(m.key, "short"), income: m.income, expenses: m.expenses, received: m.received }));
   const best = weekdays ? Math.max(0, ...weekdays.map((d) => d.average)) : 0;
   return (
     <>
-      <Panel title={t("How the hotel is doing")} subtitle={t("Each figure against the period before")}>
-        <KpiCards items={kpis} />
-      </Panel>
+      {kpis.length > 0 && (
+        <Panel title={t("The key figures")} subtitle={t("Each figure against the period before")}>
+          <KpiCards items={kpis} />
+        </Panel>
+      )}
 
-      <Panel title={t("The last six months")} subtitle={t("Month by month — this month so far; the first month starts when the hotel's records began")}
-        action={links.ledger ? <PanelLink href={links.ledger}>{t("Ledger")}</PanelLink> : null}>
-        {months.length === 0 ? <p className="text-sm text-muted-foreground">{t("No records yet.")}</p> : (
-          <div className="space-y-5">
-            <MoneyChart data={points} />
-            <DataTable label={t("The last six months")} empty="" head={[t.ctx("money", "Month"), t("Earned"), t("Received"), t("Expenses"), t("Net result"), t("Spent of earned")]} right={[1, 2, 3, 4, 5]}
-              rows={[...months].reverse().map((m) => {
-                const net = m.income - m.expenses;
-                return [
-                  <span key="m" className="font-medium">{month(m.key, "long")}</span>, formatTZS(m.income), formatTZS(m.received), formatTZS(m.expenses),
-                  <span key="n" className={cn("font-medium", net < 0 && "text-rose-600 dark:text-rose-400")}>{formatTZS(net)}</span>,
-                  <span key="p" className="text-muted-foreground">{percent(m.expenses, m.income) != null ? `${percent(m.expenses, m.income)}%` : "—"}</span>,
-                ];
-              })} />
-          </div>
-        )}
-      </Panel>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
+        <Panel title={t("The last six months")} subtitle={t("Month by month — this month so far; the first month starts when the hotel's records began")}
+          action={links.ledger ? <PanelLink href={links.ledger}>{t("Ledger")}</PanelLink> : null}>
+          {shown.length === 0 ? <p className="text-sm text-muted-foreground">{t("No records yet.")}</p> : (
+            <div className="space-y-5">
+              <MoneyChart data={points} />
+              <DataTable label={t("The last six months")} empty="" head={[t.ctx("money", "Month"), t("Earned"), t("Received"), t("Expenses"), t("Net result"), t("Spent of earned")]} right={[1, 2, 3, 4, 5]}
+                rows={[...shown].reverse().map((m) => {
+                  const net = m.income - m.expenses;
+                  return [
+                    <span key="m" className="font-medium">{month(m.key, "long")}</span>, formatTZS(m.income), formatTZS(m.received), formatTZS(m.expenses),
+                    <span key="n" className={cn("font-medium", net < 0 && "text-rose-600 dark:text-rose-400")}>{formatTZS(net)}</span>,
+                    <span key="p" className="text-muted-foreground">{percent(m.expenses, m.income) != null ? `${percent(m.expenses, m.income)}%` : "—"}</span>,
+                  ];
+                })} />
+            </div>
+          )}
+        </Panel>
+
+        <div className="grid content-start gap-4">
+          {occupancySeries && occupancySeries.length > 1 && (
+            <Panel title={t("Occupancy")} subtitle={t("Share of the guest rooms sold each night, over the period")}>
+              <AreaTrend data={occupancySeries} unit="percent" color="#8b5cf6" height={190} />
+            </Panel>
+          )}
+          <Panel title={t("Which days earn most")} subtitle={weekdays ? t("The average earned on each day of the week — the last {n} weeks, closed days only", { n: weeks }) : t("The average earned on each day of the week")}>
+            {weekdays ? (
+              <>
+                <WeekColumns best={best} days={weekdays.map((d) => ({ label: weekdayName(d.weekday, t, "short"), value: d.average, sub: t.plural(d.days, "{n} day", "{n} days") }))} />
+                <p className="sr-only">{weekdays.map((d) => `${weekdayName(d.weekday, t)}: ${formatTZS(d.average)}`).join("; ")}</p>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">{t.plural(closedDays, "Only {n} closed day of records so far — this needs at least {min}.", "Only {n} closed days of records so far — this needs at least {min}.", { min: MIN_DAYS_FOR_WEEK })}</p>
+            )}
+          </Panel>
+        </div>
+      </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
         <Panel title={t("Income against the period before")} subtitle={t("What each part of the business earned")}>
@@ -232,16 +259,6 @@ export function TrendsView({ t, kpis, months, streams, categories, weekdays, clo
           <MovementTable rows={categories} label={t("Expenses")} costs t={t} />
         </Panel>
       </div>
-
-      <Panel title={t("Which days earn most")} subtitle={weekdays ? t("The average earned on each day of the week — the last {n} weeks, closed days only", { n: weeks }) : t("The average earned on each day of the week")}>
-        {weekdays ? (
-          <HBars empty={t("Nothing was earned in these days.")} rows={weekdays.map((d) => ({
-            label: weekdayName(d.weekday, t), value: d.average, sub: t.plural(d.days, "{n} day", "{n} days"), color: d.average > 0 && d.average === best ? "#10b981" : "#8b5cf6",
-          }))} />
-        ) : (
-          <p className="text-sm text-muted-foreground">{t.plural(closedDays, "Only {n} closed day of records so far — this needs at least {min}.", "Only {n} closed days of records so far — this needs at least {min}.", { min: MIN_DAYS_FOR_WEEK })}</p>
-        )}
-      </Panel>
     </>
   );
 }
