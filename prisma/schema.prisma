@@ -92,6 +92,9 @@ model User {
   ledgerEntriesReversed     LedgerEntry[]            @relation("LedgerEntryReversedBy")
   cashCountsMade            CashCount[]              @relation("CashCountBy")
   cashCountsReviewed        CashCount[]              @relation("CashCountReviewedBy")
+  cashHandoversSubmitted    CashHandover[]           @relation("CashHandoverSubmittedBy")
+  cashHandoversReviewed     CashHandover[]           @relation("CashHandoverReviewedBy")
+  cashHandoverEvents        CashHandoverEvent[]
   expenseApprovals          ExpenseApproval[]
   roomStatusChanges         RoomStatusHistory[]
   roomBlocksCreated         RoomBlock[]
@@ -349,6 +352,8 @@ model HotelSettings {
   defaultLanguage            String    @default("en")
   /// The hotel's clean start (practice data cleared before official use): no automatic report covers a day before it.
   liveSince                  DateTime?
+  /// Cash handovers cover cash recorded from this moment on — nothing older is expected from anyone (set when the control began).
+  cashHandoverFrom           DateTime?
   updatedAt                  DateTime  @updatedAt
   updatedById                String?
   updatedBy                  User?     @relation(fields: [updatedById], references: [id])
@@ -1331,6 +1336,7 @@ model ActualShift {
   closeReason       String?
   /// The end-of-shift report, made automatically when the shift closes (one per shift).
   report            ShiftReport?
+  cashHandovers     CashHandover[]
 
   @@index([businessDate])
   @@index([userId])
@@ -2205,6 +2211,9 @@ model MoneyAccount {
   entries            LedgerEntry[]            @relation("LedgerEntryAccount")
   entriesIn          LedgerEntry[]            @relation("LedgerEntryToAccount")
   cashCounts         CashCount[]
+  /// Cash handed over to the Accountant: recorded in this account, and (when it differs) put into this one.
+  cashHandovers      CashHandover[]           @relation("CashHandoverAccount")
+  cashHandoversTo    CashHandover[]           @relation("CashHandoverTo")
   /// Withdrawals from nTZS that land in this hotel account (a transfer in the books).
   withdrawalsIn      Withdrawal[]
 
@@ -2246,6 +2255,8 @@ model LedgerEntry {
   attachmentFileId String?           @unique
   attachmentFile   StoredFile?       @relation(fields: [attachmentFileId], references: [id])
   cashCountId      String?           @unique
+  /// The cash handover this transfer put into another cash account (when the Accountant chose a different one).
+  cashHandover     CashHandover?
   createdById      String
   createdBy        User              @relation("LedgerEntryCreatedBy", fields: [createdById], references: [id])
   createdAt        DateTime          @default(now())
@@ -2285,6 +2296,94 @@ model CashCount {
 
   @@index([accountId, businessDate])
   @@map("cash_counts")
+}
+
+enum CashHandoverStatus {
+  /// Sent to the Accountant, waiting to be received.
+  SUBMITTED
+  /// The Accountant received it (the amount received and any difference are recorded).
+  ACCEPTED
+  /// Sent back to the person to correct and send again.
+  RETURNED
+  /// Refused; its cash is "not handed over yet" again.
+  REJECTED
+}
+
+/**
+ * Cash a person collected from customers and hands to the Accountant (reception, or the shared Restaurant Counter).
+ * It is a custody record, never a payment: the cash was already counted as received when it was recorded, and
+ * handing it over adds no revenue and no receipt. A handover covers one person's cash records in
+ * [periodStart, periodEnd) — each starts where that person's last one ended, so the same cash can never be handed over
+ * twice. What the person says they hand over, what the Accountant says arrived and the difference stay separate;
+ * nothing here changes a guest's payment. Never deleted — a mistake is returned or rejected, with the reason.
+ */
+model CashHandover {
+  id             String              @id @default(cuid())
+  /// CH-000001
+  number         String              @unique
+  status         CashHandoverStatus  @default(SUBMITTED)
+  department     ShiftDepartment
+  submittedById  String
+  submittedBy    User                @relation("CashHandoverSubmittedBy", fields: [submittedById], references: [id])
+  /// The shift the person was working (reception) — for the story; the cash is found by time, not by shift.
+  shiftId        String?
+  shift          ActualShift?        @relation(fields: [shiftId], references: [id])
+  /// The cash drawer account the cash was recorded in.
+  accountId      String
+  account        MoneyAccount        @relation("CashHandoverAccount", fields: [accountId], references: [id])
+  periodStart    DateTime
+  periodEnd      DateTime
+  /// The hotel day it was submitted.
+  businessDate   DateTime            @db.Date
+  /// Cash payments and sales recorded in the period (reversed ones are not counted), and how many.
+  collected      Int
+  collectedCount Int
+  /// Cash refunds given back in the period.
+  refunds        Int
+  /// collected − refunds: the cash the person should hand over.
+  expected       Int
+  /// What the person counted and hands over; a difference from `expected` needs their note.
+  declared       Int
+  declaredNote   String?
+  submittedAt    DateTime            @default(now())
+  /// The Accountant's side: what really arrived, the difference (received − expected) and the reason.
+  received       Int?
+  difference     Int?
+  reviewedById   String?
+  reviewedBy     User?               @relation("CashHandoverReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt     DateTime?
+  reviewNote     String?
+  /// Where the Accountant put the cash (an account for cash); a transfer is posted when it is not `accountId`.
+  toAccountId    String?
+  toAccount      MoneyAccount?       @relation("CashHandoverTo", fields: [toAccountId], references: [id])
+  ledgerEntryId  String?             @unique
+  ledgerEntry    LedgerEntry?        @relation(fields: [ledgerEntryId], references: [id])
+  events         CashHandoverEvent[]
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  /// Migration SQL adds: no two live handovers of one person start at the same moment, and amounts are never negative.
+  @@index([status, submittedAt])
+  @@index([submittedById, periodEnd])
+  @@index([businessDate])
+  @@map("cash_handovers")
+}
+
+/// The story of a handover: submitted, returned, sent again, received or rejected — who, when and why.
+model CashHandoverEvent {
+  id         String       @id @default(cuid())
+  handoverId String
+  handover   CashHandover @relation(fields: [handoverId], references: [id])
+  /// SUBMITTED · RESUBMITTED · RETURNED · ACCEPTED · REJECTED
+  kind       String
+  byId       String
+  by         User         @relation(fields: [byId], references: [id])
+  note       String?
+  amount     Int?
+  createdAt  DateTime     @default(now())
+
+  @@index([handoverId, createdAt])
+  @@map("cash_handover_events")
 }
 
 /// Payment method / reference corrected (e.g. recorded as Cash, really Bank). The amount never changes.
