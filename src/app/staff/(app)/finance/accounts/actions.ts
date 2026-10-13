@@ -6,7 +6,7 @@ import { authorize, requestMeta } from "@/server/auth";
 import { runAction, type ActionResult } from "@/server/errors";
 import { parseInput } from "@/server/validation";
 import { postMovement, recordCashCount, reverseMovement, reviewCashCount } from "@/server/services/finance";
-import { savePaymentAccount } from "@/server/services/payment-accounts";
+import { savePaymentAccount, setOpeningBalance } from "@/server/services/payment-accounts";
 import { msg } from "@/i18n/msg";
 
 async function actorWith(permission: "finance.manage" | "finance.view") {
@@ -90,4 +90,20 @@ export async function savePaymentAccountAction(_prev: unknown, formData: FormDat
     refresh();
     return null;
   }, msg("Account saved."));
+}
+
+const OpeningSchema = z.object({
+  accountId: z.string().min(1),
+  amount: z.coerce.number().int(msg("Whole shillings only.")).min(0, msg("Enter 0 or more.")),
+  reason: z.string().trim().min(5, msg("Say what this opening balance is — at least 5 letters.")).max(300),
+});
+/** The Boss and the MD: where an account's books begin (not income, not a payment). */
+export async function setOpeningBalanceAction(_prev: unknown, formData: FormData): Promise<ActionResult<null>> {
+  return runAction(async () => {
+    const user = await authorize("settings.manage");
+    const { ipAddress } = await requestMeta();
+    await setOpeningBalance(parseInput(OpeningSchema, Object.fromEntries(formData)), { userId: user.id, label: user.fullName, ipAddress });
+    refresh();
+    return null;
+  }, msg("Opening balance saved."));
 }

@@ -2,6 +2,12 @@
 import type { Catalog } from "../../../translate";
 
 const catalog: Catalog = {
+  "The money this account already held when the hotel's records began. It is not income and not a payment — nothing is added to sales or payments. It only sets where the books begin.": "这个账户在酒店开始记账时已有的资金。它不是收入，也不是付款——不会计入销售或付款，只是确定账簿的起点。",
+  "Now: opening {opening} · in the books {balance}": "当前：期初 {opening} · 账面 {balance}",
+  "Opening balance (TZS)": "期初余额（TZS）",
+  "e.g. Real money in the nTZS wallet from before the clean start, as shown by nTZS": "例如：清空数据前就在 nTZS 钱包中的真实资金，以 nTZS 显示为准",
+  "Save the opening balance": "保存期初余额",
+  "set an account's opening balance": "设置了账户的期初余额",
   "nTZS does not show its balance by itself — press Check balance to ask it.": "nTZS 不会单独显示余额——请点“查询余额”来询问。",
   "nTZS": "nTZS",
   "Check the nTZS balance": "查询 nTZS 余额",

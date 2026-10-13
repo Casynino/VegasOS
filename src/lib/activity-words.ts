@@ -29,7 +29,7 @@ const WORDS: Record<string, string> = {
   "stock_request.purchase_saved": msg("recorded a purchase (being bought)"), "stock_request.purchase_submitted": msg("sent a purchase for final approval"),
   "stock_request.purchase_sent_back": msg("sent a purchase back for correction"), "stock_request.final_approved": msg("approved a purchase — stock in, expense recorded"),
   "transport.requested": msg("arranged transport"), "transport.confirmed": msg("confirmed transport"), "transport.paid": msg("received a transport payment"),
-  "report.daily_generated": msg("sent the daily report"), "settings.updated": msg("changed settings"), "settings.order_sounds": msg("changed the restaurant sounds"),
+  "report.daily_generated": msg("sent the daily report"), "settings.updated": msg("changed settings"), "payment_account.opening_balance_set": msg("set an account's opening balance"), "settings.order_sounds": msg("changed the restaurant sounds"),
   "user.password_changed": msg("changed a password"), "user.profile_updated": msg("updated their profile"), "user.sessions_revoked": msg("signed out their other devices"),
   "user.created": msg("added a staff member"), "user.permission_changed": msg("changed staff permissions"),
   "request.created": msg("logged a guest request"), "request.accepted": msg("accepted a guest request"), "request.updated": msg("updated a guest request"),

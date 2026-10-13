@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 import { NativeCheckbox } from "@/components/ui/native-select";
 import { useT } from "@/i18n/client";
 import { msg } from "@/i18n/msg";
-import { postMovementAction, recordCashCountAction, reverseMovementAction, reviewCashCountAction, savePaymentAccountAction } from "./actions";
+import { postMovementAction, recordCashCountAction, reverseMovementAction, reviewCashCountAction, savePaymentAccountAction, setOpeningBalanceAction } from "./actions";
 
 type Account = { id: string; name: string; balance: number };
 const KINDS = [
@@ -203,6 +203,45 @@ export function PaymentAccountButton({ account }: { account?: EditableAccount })
                   <NativeCheckbox name="isActive" defaultChecked={account?.isActive ?? true} label={t.rich("<b>Active</b> — inactive accounts keep their history but cannot be chosen", { b: (c) => <strong>{c}</strong> })} />
                 </div>
                 <Button type="submit" className="w-full" disabled={pending}>{pending && <Loader2 className="animate-spin" />}{account ? t("Save changes") : t("Add account")}</Button>
+              </>
+            )}
+          </ActionForm>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+/** Where this account's books begin — for money it already held when the records started. Not income, not a payment. Boss and MD only. */
+export function OpeningBalanceButton({ account }: { account: { id: string; name: string; opening: number; balance: number } }) {
+  const t = useT();
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button variant="outline" size="sm" className="h-8 gap-1 rounded-lg px-2.5 text-xs" onClick={() => setOpen(true)}><Wallet className="size-3.5" />{t("Opening balance")}</Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader icon={<Wallet />} eyebrow={account.name} tone="emerald">
+            <DialogTitle>{t("Opening balance")}</DialogTitle>
+            <DialogDescription>{t("The money this account already held when the hotel's records began. It is not income and not a payment — nothing is added to sales or payments. It only sets where the books begin.")}</DialogDescription>
+          </DialogHeader>
+          <ActionForm action={setOpeningBalanceAction} onSuccess={() => { setOpen(false); router.refresh(); }} className="space-y-4">
+            {({ pending, fieldErrors: e }) => (
+              <>
+                <input type="hidden" name="accountId" value={account.id} />
+                <p className="rounded-2xl bg-muted/50 px-3 py-2 text-sm">{t("Now: opening {opening} · in the books {balance}", { opening: formatTZS(account.opening), balance: formatTZS(account.balance) })}</p>
+                <div className="space-y-1.5">
+                  <Label htmlFor={`ob-${account.id}`}>{t("Opening balance (TZS)")}</Label>
+                  <Input id={`ob-${account.id}`} name="amount" type="number" min={0} step={1} inputMode="numeric" defaultValue={account.opening || undefined} className="h-11 text-lg tabular-nums" />
+                  <FieldError message={e?.amount} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor={`obr-${account.id}`}>{t("What is it?")}</Label>
+                  <Textarea id={`obr-${account.id}`} name="reason" rows={3} maxLength={300} placeholder={t("e.g. Real money in the nTZS wallet from before the clean start, as shown by nTZS")} />
+                  <FieldError message={e?.reason} />
+                </div>
+                <Button type="submit" className="w-full" disabled={pending}>{pending && <Loader2 className="animate-spin" />}{t("Save the opening balance")}</Button>
               </>
             )}
           </ActionForm>

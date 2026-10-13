@@ -236,6 +236,29 @@ export interface AccountInput {
 }
 
 /**
+ * Set where an account's books begin: the money it already held when the hotel's records started (the nTZS wallet's real money from before the
+ * clean start, for one). It is NOT income and NOT a payment — no payment, sale or ledger line is made; the account's balance is opening + in − out.
+ * Needs a reason, is kept in the audit trail with the old and the new figure, and changes nothing that was recorded.
+ */
+export async function setOpeningBalance(input: { accountId: string; amount: number; reason: string }, actor: { userId: string; label?: string; ipAddress?: string | null }) {
+  if (!Number.isInteger(input.amount) || input.amount < 0 || input.amount > 2_000_000_000) throw new AppError("Enter the opening balance in whole shillings (0 or more).", "VALIDATION", { amount: msg("Invalid") });
+  const reason = input.reason.trim();
+  if (reason.length < 5) throw new AppError("Say what this opening balance is — at least 5 letters.", "VALIDATION", { reason: msg("Required") });
+  return db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "money_accounts" WHERE "id" = ${input.accountId} FOR UPDATE`;
+    const before = await tx.moneyAccount.findUnique({ where: { id: input.accountId } });
+    if (!before) throw new AppError("Account not found.", "NOT_FOUND");
+    if (before.openingBalance === input.amount) throw new AppError("That is already the opening balance.", "VALIDATION", { amount: msg("Same") });
+    const after = await tx.moneyAccount.update({ where: { id: before.id }, data: { openingBalance: input.amount } });
+    await audit(tx, actor, {
+      action: "payment_account.opening_balance_set", entityType: "MoneyAccount", entityId: before.id,
+      before: { account: before.name, openingBalance: before.openingBalance }, after: { account: before.name, openingBalance: input.amount, reason },
+    });
+    return after;
+  });
+}
+
+/**
  * Add or edit a payment account. Accounts are never deleted — an account with
  * history is deactivated: it disappears from new payments but its past stays linked.
  */

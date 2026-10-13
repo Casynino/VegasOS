@@ -11,7 +11,7 @@ import { accountActivity, ACTIVITY_LABEL, KIND_LABEL, sumIn, sumOut, type Activi
 import { accountBalances } from "@/server/services/finance";
 import { accountLook, spacedNumber } from "@/lib/account-look";
 import { CancelButton, ExpenseEditButton, PaymentEditButton, type EditableExpense, type EditablePayment, type PaymentAccountOption } from "@/components/staff/finance/fix-buttons";
-import { CashCountButton, MovementButton, PaymentAccountButton } from "../account-dialogs";
+import { CashCountButton, MovementButton, OpeningBalanceButton, PaymentAccountButton } from "../account-dialogs";
 import { ExpenseDialog, PurchaseChip } from "@/app/staff/(app)/expenses/expense-dialogs";
 import { expenseTypes } from "@/server/services/expenses";
 import { withdrawFromAccount } from "@/server/services/withdrawals";
@@ -205,6 +205,7 @@ export default async function AccountDetailPage({ params, searchParams }: PagePr
         {/* Pay something out of this account: it is preselected as "Paid from". */}
         {types && <ExpenseDialog types={types} methods={methods} accounts={[...paidFrom.filter((a) => a.id === account.id), ...paidFrom.filter((a) => a.id !== account.id)]} />}
         {can(user, "settings.manage") && <PaymentAccountButton account={{ id: account.id, name: account.name, kind: account.kind, accountNumber: account.accountNumber, holderName: account.holderName, acceptsPayments: account.acceptsPayments, acceptsExpenses: account.acceptsExpenses, isActive: account.isActive }} />}
+        {can(user, "settings.manage") && <OpeningBalanceButton account={{ id: account.id, name: account.name, opening: held?.openingBalance ?? 0, balance: held?.balance ?? 0 }} />}
         {account.isActive && (account.kind === "CASH" || account.kind === "PETTY_CASH") && (perms.movement || perms.correct) && <CashCountButton account={{ id: account.id, name: account.name, balance: held?.balance ?? 0 }} />}
         {perms.movement && <MovementButton accounts={books.filter((b) => all.some((x) => x.id === b.id)).map((b) => ({ id: b.id, name: b.name, balance: b.balance }))} />}
         {/* Taking money out of nTZS starts right here: the same form as on the Withdraw funds page, with the full history one tap away. */}

@@ -2,6 +2,11 @@
 import type { Catalog } from "../../../translate";
 
 const catalog: Catalog = {
+  "Enter 0 or more.": "请输入 0 或更大的数。",
+  "Say what this opening balance is — at least 5 letters.": "请说明这笔期初余额是什么——至少 5 个字。",
+  "Opening balance saved.": "期初余额已保存。",
+  "Enter the opening balance in whole shillings (0 or more).": "请以整数先令输入期初余额（0 或更大）。",
+  "That is already the opening balance.": "这已经是当前的期初余额。",
   "nTZS tells the balance only together with a price. Give a phone number to ask with — nothing is sent to it.": "nTZS 只会在报价时一并告知余额。请提供一个手机号用于询价——不会向它转账。",
   "This expense is the payment of supplier invoice {invoice} (order {order}) — it changes only from the purchase.": "这笔支出是供应商发票 {invoice}（订单 {order}）的付款——只能在采购中修改。",
   "Invoice {ref} is already on order {order} — its expense is made when Finance pays it. Don't record it twice.": "发票 {ref} 已在订单 {order} 上——财务付款时才会生成支出。请勿重复登记。",
