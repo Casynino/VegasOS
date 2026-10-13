@@ -29,6 +29,18 @@ async function adminActor() {
   return { user, actor: { userId: user.id, label: user.fullName, ipAddress } };
 }
 
+/**
+ * How much staff may discount — and who may — is the Boss's and the MD's rule. Whoever else keeps prices (the Accountant)
+ * sets room prices, promotions and date prices, but cannot raise what the Boss allowed staff to take off.
+ */
+async function bossOrMd() {
+  const who = await adminActor();
+  if (!who.user.permissions.has("dashboard.admin") && !who.user.permissions.has("dashboard.owner")) {
+    throw new AppError("Only the Boss or the MD can change how much staff may discount.", "FORBIDDEN");
+  }
+  return who;
+}
+
 const PriceSchema = z.object({
   roomTypeId: z.string().min(1),
   baseRate: z.coerce.number().int(msg("Whole shillings only.")).min(1000, msg("The price looks too low.")).max(10_000_000),
@@ -155,7 +167,7 @@ const RulesSchema = z.object({
 
 export async function saveDiscountRulesAction(_prev: unknown, formData: FormData): Promise<ActionResult<null>> {
   return runAction(async () => {
-    const { user, actor } = await adminActor();
+    const { user, actor } = await bossOrMd();
     const input = parseInput(RulesSchema, {
       manualDiscountMax: formData.get("manualDiscountMax"),
       receptionCanDiscount: formData.get("receptionCanDiscount") ?? false,
@@ -184,7 +196,7 @@ const RoomLimitSchema = z.object({
 /** One room type's own staff discount limit (the Twin room: 40,000); empty puts it back on the hotel's limit. */
 export async function saveRoomDiscountLimitAction(_prev: unknown, formData: FormData): Promise<ActionResult<null>> {
   return runAction(async () => {
-    const { actor } = await adminActor();
+    const { actor } = await bossOrMd();
     const input = parseInput(RoomLimitSchema, formData);
     await db.$transaction((tx) => setRoomTypeDiscountLimit(tx, input.roomTypeId, input.manualDiscountMax, actor));
     revalidatePath("/staff", "layout");

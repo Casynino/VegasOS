@@ -26,7 +26,9 @@ const CHANNEL = { ALL: msg("Everyone"), WEBSITE: msg("Website only"), STAFF: msg
  * the history of every change. The pricing engine applies all of it.
  */
 export default async function PricingPage() {
-  await requirePagePermission("pricing.manage");
+  const me = await requirePagePermission("pricing.manage");
+  // How much staff may discount is the Boss's and the MD's rule (the server refuses anyone else); others see it, not the buttons.
+  const setsLimits = me.permissions.has("dashboard.admin") || me.permissions.has("dashboard.owner");
   const t = await getT();
   const [today, settings, typesRaw, promotions, history] = await Promise.all([
     businessToday(),
@@ -245,8 +247,18 @@ export default async function PricingPage() {
 
         <div className="space-y-4">
           <Panel title={t("Staff discounts")} subtitle={t("The discount reception or a manager may give on one guest's room, on top of the price.")}>
-            <DiscountRulesForm rules={{ manualDiscountMax: settings.manualDiscountMax, receptionCanDiscount: settings.receptionCanDiscount, managerCanDiscount: settings.managerCanDiscount }} />
-            <RoomDiscountLimits types={roomLimits} hotelMax={settings.manualDiscountMax} />
+            {setsLimits ? (
+              <>
+                <DiscountRulesForm rules={{ manualDiscountMax: settings.manualDiscountMax, receptionCanDiscount: settings.receptionCanDiscount, managerCanDiscount: settings.managerCanDiscount }} />
+                <RoomDiscountLimits types={roomLimits} hotelMax={settings.manualDiscountMax} />
+              </>
+            ) : (
+              <div className="space-y-2 text-sm">
+                <p>{t("Staff may take off at most {amount} a night.", { amount: formatTZS(settings.manualDiscountMax) })}</p>
+                {roomLimits.filter((r) => r.limit != null).map((r) => <p key={r.id} className="text-muted-foreground">{t("{name}: most off per night (TZS)", { name: t(r.name) })} {formatTZS(r.limit ?? 0)}</p>)}
+                <p className="text-xs text-muted-foreground">{t("The Boss and the MD set these limits.")}</p>
+              </div>
+            )}
           </Panel>
 
           <Panel title={t("Price history")} subtitle={t("Who changed prices and promotions, and when.")}>

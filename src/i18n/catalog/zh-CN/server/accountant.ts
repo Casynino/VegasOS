@@ -29,5 +29,6 @@ const catalog: Catalog = {
   "This handover cannot be refused any more.": "这笔交接已不能再拒绝。",
   "A later handover already follows this one. Send this one back instead of refusing it.": "之后已有交接接续这一笔。请退回更正，而不是拒绝。",
   "This handover was changed just now. Open it again.": "这笔交接刚刚发生变化，请重新打开。",
+  "Only the Boss or the MD can change how much staff may discount.": "只有老板或总经理可以更改员工的折扣上限。",
 };
 export default catalog;

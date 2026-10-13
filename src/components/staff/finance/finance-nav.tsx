@@ -20,6 +20,10 @@ const TABS = [
   { href: "/staff/invoices", label: msg("Invoices") },
   { href: "/staff/corporate", label: msg("Companies") },
   { href: "/staff/reports/daily", label: msg("Daily reports") },
+  // The Accountant's own pages: what was taken off, what prices are, who handed over what.
+  { href: "/staff/accountant/discounts", label: msg("Discounts") },
+  { href: "/staff/accountant/prices", label: msg("Price control") },
+  { href: "/staff/accountant/reports", label: msg("Cash reports") },
 ] as const;
 
 /** What front-desk staff (ledger access, no full finance) can open — Accounts first. */
