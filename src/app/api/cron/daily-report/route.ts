@@ -33,13 +33,15 @@ export async function GET(req: Request) {
   if (!authorized(req)) return new Response("Unauthorized", { status: 401 });
   const t0 = Date.now();
   try {
-    await refreshOverdueInvoices();
+    // Housekeeping first — but a step that fails must never stop the day's report (the Boss's report comes before everything).
+    const safely = (what: string, step: Promise<unknown>) => step.catch((e) => console.error(`[cron] ${what} failed`, e));
+    await safely("overdue invoices", refreshOverdueInvoices());
     // Payments nTZS confirmed but we have not recorded yet are found first — before unpaid bookings are released.
-    await sweepMobilePayments(new Date(), Date.now() + 8_000).catch((e) => console.error("[cron] mobile payments failed", e));
-    await refreshBookingStates();
+    await safely("mobile payments", sweepMobilePayments(new Date(), Date.now() + 8_000));
+    await safely("booking states", refreshBookingStates());
     // Housekeeping: expired sessions and stale rate-limit windows.
-    await db.session.deleteMany({ where: { expiresAt: { lt: new Date() } } });
-    await db.rateLimitBucket.deleteMany({ where: { windowStart: { lt: new Date(Date.now() - 86_400_000) } } });
+    await safely("expired sessions", db.session.deleteMany({ where: { expiresAt: { lt: new Date() } } }));
+    await safely("rate-limit windows", db.rateLimitBucket.deleteMany({ where: { windowStart: { lt: new Date(Date.now() - 86_400_000) } } }));
     // One time limit for the whole run (Vercel stops it at 60 s): every WhatsApp send starts only with time to finish.
     const until = t0 + 44_000;
     const left = () => Math.max(0, until - Date.now());

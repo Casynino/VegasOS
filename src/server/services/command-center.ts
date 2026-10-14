@@ -49,7 +49,8 @@ export interface CommandInput {
   tables: { seated: number; bill: number; free: number; total: number };
   shiftOpen: string | null;
   expensesPending: { count: number; amount: number };
-  reportFailedId: string | null;
+  /** What is wrong with the Boss's daily / room report for the last closed day (see reportTroubles). */
+  reportTroubles: { daily: { kind: "failed" | "unsent" | "missing"; id: string | null } | null; room: { kind: "failed" | "unsent" | "missing" } | null };
   /** Anything else the home already knows about (e.g. guests who left without paying). */
   extra?: Decision[];
 }
@@ -257,7 +258,25 @@ export async function commandCenter(input: CommandInput) {
       minutes: shiftMinutes, href: `/staff/shifts/${openShift.id}`, act: t("Close the shift (with the reason)"),
     });
   }
-  if (input.reportFailedId) push({ id: "report", area: "Staff", tone: "rose", title: t("The daily report did not reach the Boss"), detail: t("The report is saved — send it again"), minutes: null, href: `/staff/reports/daily/${input.reportFailedId}`, act: t("Retry send") });
+  const { daily, room } = input.reportTroubles;
+  if (daily) {
+    const missing = daily.kind === "missing" || !daily.id;
+    push({
+      id: "report", area: "Staff", tone: "rose",
+      title: missing ? t("The daily report was not made") : t("The daily report did not reach the Boss"),
+      detail: missing ? t("It was not made at 07:00 — make it now from Reports") : daily.kind === "unsent" ? t("The report has not been sent yet — send it now") : t("The report is saved — send it again"),
+      minutes: null, href: missing ? "/staff/reports/daily" : `/staff/reports/daily/${daily.id}`, act: missing ? t("Make the report") : t("Retry send"),
+    });
+  }
+  if (room) {
+    const missing = room.kind === "missing";
+    push({
+      id: "room-report", area: "Staff", tone: "rose",
+      title: missing ? t("The room report was not made") : t("The room report did not reach the Boss"),
+      detail: missing ? t("It was not made at 06:30 — make it now from Reports") : room.kind === "unsent" ? t("The report has not been sent yet — send it now") : t("The report is saved — send it again"),
+      minutes: null, href: "/staff/reports/room", act: missing ? t("Make the report") : t("Retry send"),
+    });
+  }
 
   d.push(...(input.extra ?? []));
   const rank: Record<Tone, number> = { rose: 0, amber: 1, gold: 2, sky: 3, slate: 4 };

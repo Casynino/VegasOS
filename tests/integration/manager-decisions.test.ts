@@ -92,7 +92,7 @@ describe("staff supervision", () => {
       rooms: [{ roomTypeId: room.roomTypeId, roomId: room.id, adults: 1, children: 0, discountPerNight: 0 }],
     }, rec);
     await checkIn(r.id, rec);
-    const c = await commandCenter({ today, now: new Date(), tablesWaiting: [], tables: { seated: 0, bill: 0, free: 0, total: 0 }, shiftOpen: null, expensesPending: { count: 0, amount: 0 }, reportFailedId: null });
+    const c = await commandCenter({ today, now: new Date(), tablesWaiting: [], tables: { seated: 0, bill: 0, free: 0, total: 0 }, shiftOpen: null, expensesPending: { count: 0, amount: 0 }, reportTroubles: { daily: null, room: null } });
     const reception = c.activity.find((g) => g.department === "Reception")!;
     expect(reception.people[0].things).toEqual(expect.arrayContaining(["Checked in 1 guest", "Created 1 reservation"]));
     expect(reception.people[0].id).toBe(rec.userId);

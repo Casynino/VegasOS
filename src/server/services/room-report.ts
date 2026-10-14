@@ -2,7 +2,7 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import { db } from "../db";
 import { getSettings, businessDayConfig, liveSinceDate } from "../settings";
-import { addDays, businessDateOf, toDbDate, type BusinessDate } from "@/lib/time/business-date";
+import { addDays, businessDateOf, businessDayBounds, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import { buildDailyReport } from "./daily-report";
 import { buildRoomReportData, withDayMoney, type RoomReportData } from "./room-report-data";
 import { deliverToRecipients } from "./report-delivery";
@@ -91,7 +91,11 @@ export function roomReportLink(token: string): string {
  */
 export async function ensureRoomReport(date: BusinessDate, o: { by?: string; automatic?: boolean; regenerate?: boolean; reason?: string | null } = {}) {
   const existing = await db.roomReport.findUnique({ where: { businessDate: toDbDate(date) } });
-  if (existing && !o.regenerate) return existing;
+  // A report made BEFORE its day closed (someone sent or opened it by hand while the day was still running) is an unfinished picture,
+  // and it was already sent: the automatic run makes it again from the closed day — the earlier one is kept in its history — so the Boss
+  // always gets the day's real figures (owner, 2026-10-14: a report of zeros reached the Boss for a day that had sales).
+  const unfinished = !!existing && !!o.automatic && !o.regenerate && existing.generatedAt < businessDayBounds(date, businessDayConfig(await getSettings())).end;
+  if (existing && !o.regenerate && !unfinished) return existing;
   const data = await buildRoomReportData(date);
   const generatedBy = o.by ?? "system";
   if (!existing) {
@@ -106,7 +110,7 @@ export async function ensureRoomReport(date: BusinessDate, o: { by?: string; aut
   const history = [...(existing.history as unknown as unknown[]), { version: existing.version, generatedAt: existing.generatedAt, generatedBy: existing.generatedBy, reason: existing.reason, data: existing.data }];
   return db.roomReport.update({
     where: { id: existing.id },
-    data: { data: json(data), version: existing.version + 1, generatedAt: new Date(data.generatedAt), generatedBy, automatic: !!o.automatic, reason: o.reason ?? null, history: json(history), revokedAt: null },
+    data: { data: json(data), version: existing.version + 1, generatedAt: new Date(data.generatedAt), generatedBy, automatic: !!o.automatic, reason: o.reason ?? (unfinished ? "Made again after the day closed (the earlier one was made while the day was still running)" : null), history: json(history), revokedAt: null },
   });
 }
 
