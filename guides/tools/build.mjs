@@ -106,7 +106,7 @@ const files = fs.readdirSync(path.join(ROOT, "books")).filter((f) => f.endsWith(
 if (!files.length) { console.error("No such book."); process.exit(1); }
 for (const d of ["html", "pdf"]) fs.mkdirSync(path.join(ROOT, d), { recursive: true });
 
-const chrome = await launch({ port: 9344 });
+const chrome = await launch({ port: 9900 + Math.floor(Math.random() * 500) });
 try {
   const tab = await (await chrome.context()).page();
   for (const id of files) {

@@ -26,6 +26,9 @@ export function guideDbUrl(root = process.cwd()) {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const [mode, ...rest] = process.argv.slice(2);
   const env = { ...process.env, DATABASE_URL: guideDbUrl(), DIRECT_URL: "" };
+  // The practice app talks to a pretend nTZS on this computer (guides/tools/mock-ntzs.mjs) with a pretend key, so the withdraw
+  // screens can be shown — nothing real can move: the address is this computer's own.
+  if (mode === "dev" && process.env.GUIDE_REAL_NTZS !== "1") Object.assign(env, { NTZS_API_KEY: "ntzs_live_guidebook_pretend", NTZS_BASE_URL: "http://127.0.0.1:3199/api/v1", NTZS_USER_ID: "" });
   const [cmd, args] = mode === "dev" ? ["npx", ["next", "dev", "-p", String(GUIDE_PORT)]] : mode === "run" && rest.length ? [rest[0], rest.slice(1)] : [null, []];
   if (!cmd) { console.error("Use: local.mjs run <command…> | local.mjs dev"); process.exit(1); }
   const child = spawn(cmd, args, { env, stdio: "inherit" });
