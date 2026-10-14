@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/server/db";
 import { audit } from "@/server/audit";
-import { authorize, requestMeta } from "@/server/auth";
+import { authorize, authorizeDecision, requestMeta } from "@/server/auth";
 import { AppError, runAction, type ActionResult } from "@/server/errors";
 import { parseInput } from "@/server/validation";
 import { normalizePhone } from "@/server/services/guests";
@@ -36,7 +36,8 @@ const Schema = z.object({
 
 export async function saveCorporateAction(_prev: unknown, formData: FormData): Promise<ActionResult<{ id: string }>> {
   const res = await runAction(async () => {
-    const user = await authorize("corporate.manage");
+    // The company page sets the credit limit, the payment terms and whether the account is on hold: money decisions, never the Developer's.
+    const user = await authorizeDecision("corporate.manage");
     const { id, ...data } = parseInput(Schema, { ...Object.fromEntries(formData), defaultCovers: formData.getAll("defaultCovers") });
     const clean = { ...data, phone: normalizePhone(data.phone) };
     const { ipAddress } = await requestMeta();

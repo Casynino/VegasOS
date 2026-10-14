@@ -3,6 +3,7 @@ import Link from "next/link";
 import { BedDouble, CheckCircle2, Clock, Wallet } from "lucide-react";
 import { can, requirePagePermission } from "@/server/auth";
 import { db } from "@/server/db";
+import { operationalOnly } from "@/server/staff-pickers";
 import { businessToday } from "@/server/settings";
 import { accountOptions } from "@/server/services/payment-accounts";
 import { OPEN_TRIP, transportReport, transportServices, tripMoney } from "@/server/services/transport";
@@ -65,7 +66,7 @@ export default async function TransportPage({ searchParams }: PageProps<"/staff/
     }),
     transportServices(),
     can(user, "transport.manage") || can(user, "settings.manage") ? transportServices({ includeInactive: true }) : Promise.resolve([]),
-    db.user.findMany({ where: { isActive: true, role: { permissions: { some: { permission: { code: "transport.driver" } } } } }, select: { id: true, fullName: true, phone: true }, orderBy: { fullName: "asc" } }),
+    db.user.findMany({ where: operationalOnly({ isActive: true, role: { permissions: { some: { permission: { code: "transport.driver" } } } } }), select: { id: true, fullName: true, phone: true }, orderBy: { fullName: "asc" } }),
     db.vehicle.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, plateNumber: true, capacity: true } }),
     accountOptions("payments"),
     db.reservation.findMany({ where: { status: "CHECKED_IN" }, include: { guest: true, rooms: { where: { status: "CHECKED_IN" }, include: { room: { select: { number: true } } } } } }),

@@ -19,7 +19,8 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 /** The words the sign-in form shows — the browser gets only these here (the staff app's strings come after sign-in). */
-const FORM_WORDS = [msg("Email"), msg("you@vegashoteltz.com"), msg("Password"), msg("Hide password"), msg("Show password"), msg("Signing in…"), msg("Sign in")];
+const FORM_WORDS = [msg("Email"), msg("you@vegashoteltz.com"), msg("Password"), msg("Hide password"), msg("Show password"), msg("Signing in…"), msg("Sign in"),
+  msg("Account type"), msg("Staff account"), msg("Developer account"), msg("Developer sign-in — every action is recorded as a Developer action.")];
 
 /**
  * The staff door. Always dark, over a real photo of the hotel, because the
@@ -27,8 +28,11 @@ const FORM_WORDS = [msg("Email"), msg("you@vegashoteltz.com"), msg("Password"), 
  * the login of a product bought off a shelf. One form for every role; the
  * right dashboard opens after sign-in.
  */
-export default async function LoginPage() {
+export default async function LoginPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await guestLocale();
+  // ?as=developer / ?as=staff picks the door (Staff otherwise). Only a preselection — nothing is signed in by it.
+  const { as: door } = await searchParams;
+  const initialType = door === "developer" ? "DEVELOPER" : "STAFF";
   if (await getCurrentUser()) redirect("/staff");
   const settings = await getSettings();
   const [first, ...rest] = settings.hotelName.split(" ");
@@ -72,17 +76,20 @@ export default async function LoginPage() {
             <p className="mt-6 text-sm text-white/50">{t("Reception · Management · Administration — one sign-in for the whole hotel.")}</p>
           </div>
 
-          <div className="relative w-full">
-            <div aria-hidden="true" className="absolute -inset-px rounded-[1.4rem] bg-gradient-to-b from-gold/35 via-white/5 to-transparent sm:rounded-[1.75rem]" />
+          <div className="group/card relative w-full">
+            <div aria-hidden="true" className="absolute -inset-px rounded-[1.4rem] bg-gradient-to-b from-gold/35 via-white/5 to-transparent group-has-[input[value=DEVELOPER]:checked]/card:from-fuchsia-500/60 sm:rounded-[1.75rem]" />
             <div className="relative rounded-[1.4rem] border border-white/10 bg-[#15120e]/80 p-5 shadow-[0_24px_80px_-20px_rgba(0,0,0,0.9)] backdrop-blur-xl sm:rounded-[1.75rem] sm:p-8">
-              <span className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.2em] text-white/55">
-                <Lock className="size-3" aria-hidden="true" /> {t("Staff access only")}
+              {/* While the Developer choice is picked the card takes the Developer's colour — pure CSS on the picked radio, so it also works before the page is interactive. */}
+              <span className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.2em] text-white/55 group-has-[input[value=DEVELOPER]:checked]/card:text-fuchsia-300">
+                <Lock className="size-3" aria-hidden="true" />
+                <span className="group-has-[input[value=DEVELOPER]:checked]/card:hidden">{t("Staff access only")}</span>
+                <span className="hidden group-has-[input[value=DEVELOPER]:checked]/card:inline">{t("Developer access only")}</span>
               </span>
               <h2 className="mt-2 font-display text-[28px] leading-tight sm:mt-4 sm:text-4xl">{t("Sign in")}</h2>
               <p className="mt-1 text-[13px] text-white/55 sm:text-sm">{t("Your dashboard opens for your role.")}</p>
               <div className="mt-5 sm:mt-7">
                 <I18nProvider locale={t.locale} catalog={formWords}>
-                  <LoginForm />
+                  <LoginForm initialType={initialType} />
                 </I18nProvider>
               </div>
               <p className="mt-5 flex items-start gap-2 border-t border-white/10 pt-4 text-[12px] leading-relaxed text-white/45 sm:mt-6 sm:pt-5">

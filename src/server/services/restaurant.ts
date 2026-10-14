@@ -4,7 +4,9 @@ import { db } from "../db";
 import type { Prisma } from "@/generated/prisma/client";
 import type { MenuItemType, OrderPaymentStatus, RestaurantOrderStatus, RestaurantOrderType, RevenueKind } from "@/generated/prisma/enums";
 import { audit } from "../audit";
+import { actsAsDeveloper, DECIDER_RIGHTS, refuseDeveloper } from "../developer-wall";
 import { AppError } from "../errors";
+import { operationalOnly } from "../staff-pickers";
 import { getSettings, getSettingsTx, stayConfig } from "../settings";
 import { businessDateOf, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import { lineDescription } from "@/lib/charge-types";
@@ -116,6 +118,11 @@ export interface MenuItemInput {
 /** Add or edit a menu item (admin / manager). A price change is logged with the old and new price. */
 export async function saveMenuItem(input: MenuItemInput, actor: Actor & { userId: string }) {
   if (!actor.permissions?.has("restaurant.menu")) throw new AppError("Only a manager or admin can change the menu.", "FORBIDDEN");
+  // Whatever rights the Developer holds, it never changes what a dish costs: no new priced dish, no new price (it holds no menu right today — this keeps it so).
+  if (actsAsDeveloper(actor)) {
+    const was = input.id ? await db.menuItem.findUnique({ where: { id: input.id }, select: { price: true } }) : null;
+    if (!input.id || (was && was.price !== input.price)) await refuseDeveloper(actor, "restaurant.menu");
+  }
   const name = input.name.trim();
   if (name.length < 2) throw new AppError("Give the item a name.", "VALIDATION", { name: "Required" });
   if (!Number.isInteger(input.price) || input.price <= 0) throw new AppError("Enter the price in whole shillings.", "VALIDATION", { price: "Invalid" });
@@ -409,7 +416,7 @@ async function postOrderToRoomTx(tx: Tx, order: { id: string; number: string; ty
 /** Reception, managers and the MD check who is staying (see every staying room); waiters cannot. */
 export const canVerifyRoom = (actor: Actor) => !!actor.permissions?.has("reservations.view");
 /** Only a manager, the MD or the owner moves a bill onto ANOTHER guest's room (with the reason) — never a waiter or reception. */
-export const canBillAnotherRoom = (actor: Actor) => ["dashboard.manager", "dashboard.owner", "dashboard.admin"].some((p) => !!actor.permissions?.has(p as never));
+export const canBillAnotherRoom = (actor: Actor) => !actsAsDeveloper(actor) && ["dashboard.manager", "dashboard.owner", "dashboard.admin"].some((p) => !!actor.permissions?.has(p as never));
 
 /**
  * An order FOR a staying guest picked from the list — reception's orders, and room service by anyone who takes orders
@@ -536,6 +543,8 @@ export async function createRestaurantOrderTx(tx: Tx, input: OrderInput, actor: 
   let roomIsTheirs = true;
   if (!ctx.byCustomer && reservation && (input.settlement === "ROOM" || input.type === "ROOM_SERVICE")) {
     if (!actor.permissions?.has("restaurant.orders")) throw new AppError("Only waiters and reception put orders on a room.", "FORBIDDEN");
+    // An order on a room bill (or room service) adds to what a guest owes: never put there by the Developer.
+    await refuseDeveloper(actor, "restaurant.orders");
     // Who is eating: the customer named (by id, phone or pick) and everyone at the table.
     // (The table's people count only when the order joins that table — a dine-in order there.)
     const atTable = ctx.sessionId ?? (location?.kind === "TABLE" && input.type === "DINE_IN" ? (await tx.diningSession.findUnique({ where: { openAtId: location.id }, select: { id: true } }))?.id ?? null : null);
@@ -979,6 +988,7 @@ const shortNo = (n: string) => `#${n.replace(/^ORD-\d{4}-0*/, "")}`;
  * (assertRoomForCustomerTx); reception and managers say why when it is another guest's room.
  */
 export async function chargeOrderToRoomTx(tx: Tx, id: string, reservationId: string, actor: Actor, now: Date, opts: { reason?: string | null } = {}) {
+  await refuseDeveloper(actor, "restaurant.orders");
   if (!actor.userId || !actor.permissions?.has("restaurant.orders")) throw new AppError("You cannot charge orders to rooms.", "FORBIDDEN");
   await tx.$queryRaw`SELECT "id" FROM "restaurant_orders" WHERE "id" = ${id} FOR UPDATE`;
   const o = await tx.restaurantOrder.findUnique({ where: { id } });
@@ -1030,6 +1040,7 @@ export async function chargeOrderToRoom(id: string, reservationId: string, actor
  * lines are voided (kept) before new ones are posted, and the history says from where to where.
  */
 export async function changeOrderBilling(id: string, to: string | null, reason: string, actor: Actor, now = new Date()) {
+  await refuseDeveloper(actor, "restaurant.orders");
   if (!canVerifyRoom(actor) || !actor.permissions?.has("restaurant.orders")) throw new AppError("Changing who pays an order is for reception and managers.", "FORBIDDEN");
   const why = reason.trim();
   if (why.length < 3) throw new AppError("Say why the bill changes.", "VALIDATION", { reason: "Required" });
@@ -1074,6 +1085,8 @@ export async function addOrderItemsTx(tx: Tx, id: string, items: { menuItemId: s
   const o = await tx.restaurantOrder.findUnique({ where: { id } });
   if (!o) throw new AppError("Order not found.", "NOT_FOUND");
   if (o.isGift) throw new AppError("This is a complimentary Spin to Win gift — start a new order for anything else.");
+  // New items on a room-bill order are new charges on a guest's bill: not the Developer's to add.
+  if (!opts.byCustomer && o.settlement === "ROOM") await refuseDeveloper(actor, "restaurant.serve");
   if (CLOSED_STATUSES.includes(o.status)) throw new AppError(o.status === "CANCELLED" ? msg("This order was cancelled.") : msg("This order is closed — start a new order."));
   if (o.status === "READY" || o.status === "OUT_FOR_DELIVERY") throw new AppError("This order is already on its way — add the new items once it is served.");
   // Take out never starts unpaid: once the kitchen has it (paid), or once it was paid with the customer's proof, more
@@ -1168,6 +1181,8 @@ export async function removeOrderItem(orderId: string, itemId: string, quantity:
     await tx.$queryRaw`SELECT "id" FROM "restaurant_orders" WHERE "id" = ${orderId} FOR UPDATE`;
     const o = await tx.restaurantOrder.findUnique({ where: { id: orderId }, include: { items: { orderBy: { id: "asc" } } } });
     if (!o) throw new AppError("Order not found.", "NOT_FOUND");
+    // Taking an item off a room-bill (or part-paid) order changes what the guest owes: not the Developer's.
+    if (actsAsDeveloper(actor) && (o.settlement === "ROOM" || o.paidAmount > 0)) await refuseDeveloper(actor, "restaurant.orders");
     if (CLOSED_STATUSES.includes(o.status)) throw new AppError(o.status === "CANCELLED" ? msg("This order was cancelled.") : msg("This order is closed."));
     // Paid online and not checked yet: the customer paid for every line — nothing comes off before the check.
     if ((await awaitingOnlineTx(tx, [orderId])).length) throw new AppError("The customer paid this order online — confirm or decline their payment first.", "CONFLICT");
@@ -1216,7 +1231,7 @@ const decides = (a: Actor) => ["dashboard.manager", "dashboard.owner", "dashboar
 /** The waiters (never the shared restaurant screen, never management) — for handing work to someone. */
 export async function waitersToAssign() {
   const users = await db.user.findMany({
-    where: { isActive: true, role: { permissions: { some: { permission: { code: "restaurant.serve" } } } } },
+    where: operationalOnly({ isActive: true, role: { permissions: { some: { permission: { code: "restaurant.serve" } } } } }),
     orderBy: { fullName: "asc" }, select: { id: true, fullName: true, staffCode: true, role: { select: { code: true, name: true, permissions: { where: { permission: { code: "restaurant.device" } }, select: { permissionId: true } } } } },
   });
   // `number`: the waiter's number (WTR-001…) shown beside their name.
@@ -1284,6 +1299,7 @@ export async function assignOrder(orderId: string, toUserId: string | null, acto
  * posted to the room again as it is now. Recorded with who, how much and why.
  */
 export async function discountOrders(orderIds: string[], input: { amount?: number | null; percent?: number | null; reason: string }, actor: Actor, now = new Date()) {
+  await refuseDeveloper(actor, DECIDER_RIGHTS);
   if (!actor.userId || !decides(actor)) throw new AppError("Only a manager, the MD or the owner gives discounts.", "FORBIDDEN");
   const why = input.reason.trim();
   if (why.length < 3) throw new AppError("Say why the discount is given.", "VALIDATION", { reason: "Required" });
@@ -1495,6 +1511,10 @@ export async function cancelRestaurantOrder(id: string, reason: string, actor: A
 /** A cancelled / declined order's money: its payments reversed (sales voided, kept), its room-bill items voided and the stay recalculated. */
 async function voidOrderMoneyTx(tx: Tx, o: { id: string; reservationId: string | null; settlement: string }, reason: string, actor: Actor, now: Date) {
   const payments = await tx.restaurantOrderPayment.findMany({ where: { orderId: o.id, status: "POSTED" }, select: { id: true } });
+  // Cancelling or declining an order that has money on it reverses payments and voids sales or room-bill lines: never the Developer's.
+  if (actsAsDeveloper(actor) && (payments.length || o.settlement === "ROOM"
+    || await tx.revenueTransaction.count({ where: { restaurantOrderId: o.id, isVoided: false } })
+    || await tx.reservationCharge.count({ where: { restaurantOrderId: o.id, isVoided: false } }))) await refuseDeveloper(actor, "revenue.void");
   for (const p of payments) await reversePaymentTx(tx, p.id, reason, actor, now);
   // Older sales without a payment record.
   await tx.revenueTransaction.updateMany({ where: { restaurantOrderId: o.id, isVoided: false }, data: { isVoided: true, voidReason: reason, voidedAt: now } });

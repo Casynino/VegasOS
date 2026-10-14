@@ -16,6 +16,7 @@ import { tellBossSoon } from "./report-delivery";
 import { readerT, roomStatusWord, setRoomStatusTx } from "./rooms";
 import { postRoomChargesTx, recordPaymentTx, type ChargeLine } from "./payments";
 import { createRestaurantOrderTx } from "./restaurant";
+import { actsAsDeveloper, DECIDER_RIGHTS, DEVELOPER_DECISION_REFUSAL, refuseDeveloper } from "../developer-wall";
 import { assertCompanyCredit, billCompanyTx, type InvoiceMode } from "./company-billing";
 import { expireUnpaidHolds, holdDeadline, isPayLater, secureRoomsTx } from "./booking-holds";
 import { BILLING_GROUP_CODES, companyPays } from "@/lib/billing";
@@ -151,6 +152,8 @@ const bookingStatusWord = (t: T, status: ReservationStatus) => (t.locale === DEF
  * the room type's own limit when it has one (`typeMax`), the hotel's otherwise.
  */
 export function assertManualDiscount(perNight: number, actor: Actor, settings: HotelSettings, typeMax?: number | null) {
+  // The Developer holds the pricing right only to look: it never gives a discount (owner, 2026-10-14).
+  if (actsAsDeveloper(actor)) throw new AppError(DEVELOPER_DECISION_REFUSAL, "FORBIDDEN");
   const staff = discountLimit(actor.permissions, settings);
   if (staff === 0) throw new AppError("You are not allowed to give discounts.", "FORBIDDEN");
   const limit = roomDiscountLimit(staff, typeMax);
@@ -164,6 +167,7 @@ export function assertManualDiscount(perNight: number, actor: Actor, settings: H
  */
 export async function assertRoomDiscount(reservationRoomId: string, perNight: number, actor: Actor, movingToRoomId?: string | null) {
   if (perNight <= 0) return;
+  await refuseDeveloper(actor, "reservations.discount_override");
   const [settings, rr, target] = await Promise.all([
     db.hotelSettings.findUniqueOrThrow({ where: { id: 1 } }),
     db.reservationRoom.findUnique({ where: { id: reservationRoomId }, select: { roomType: { select: { manualDiscountMax: true } } } }),
@@ -360,6 +364,8 @@ export async function createReservationTx(tx: Tx, input: CreateReservationInput,
     if (billTo !== "GUEST" && !input.groupId && companyPays(billTo, covers, "ROOM")) {
       // Estimate of what this stay puts on the company's account (the room part).
       const estimate = assignments.reduce((sum, a) => sum + a.net, 0);
+      // Going over a company's credit limit is a manager's decision — never the Developer's.
+      if (input.creditOverride) await refuseDeveloper(actor, "corporate.manage");
       await assertCompanyCredit(tx, { companyId: corp.id, amount: estimate, override: input.creditOverride }, actor);
     }
   }
@@ -465,6 +471,8 @@ export async function createReservationTx(tx: Tx, input: CreateReservationInput,
   }
 
   if (input.charges?.length) {
+    // Charges typed in with a price of their own are money written by hand: never by the Developer.
+    await refuseDeveloper(actor, "payments.record");
     await postRoomChargesTx(tx, { reservationId: reservation.id, lines: input.charges }, actor);
   }
   const menuItems = (input.menuItems ?? []).filter((m) => m.quantity > 0);
@@ -750,8 +758,15 @@ export async function cancelCheckIn(reservationId: string, actor: Actor, reason:
       where: { entityType: "Reservation", entityId: r.id, action: { in: ["reservation.checked_in", "reservation.walk_in"] } },
       select: { id: true, action: true, actorLabel: true, createdAt: true },
     });
-    for (const o of originals) {
-      await tx.auditLog.update({ where: { id: o.id }, data: { action: o.action === "reservation.walk_in" ? "reservation.created" : "reservation.checked_in_voided" } });
+    // THE ONLY place the app changes an audit row. The audit trail is locked by a database trigger (no UPDATE, no DELETE), so this one
+    // step opens the "maintenance" door for THIS transaction only (set_config(..., true) lasts until the transaction ends), changes
+    // just the action word of the entries found above, and closes the door again right after. Everything else stays locked.
+    if (originals.length) {
+      await tx.$executeRaw`SELECT set_config('vegas.audit_maintenance', 'on', true)`;
+      for (const o of originals) {
+        await tx.auditLog.update({ where: { id: o.id }, data: { action: o.action === "reservation.walk_in" ? "reservation.created" : "reservation.checked_in_voided" } });
+      }
+      await tx.$executeRaw`SELECT set_config('vegas.audit_maintenance', 'off', true)`;
     }
     const [guest, checker] = await Promise.all([
       tx.guest.findUnique({ where: { id: r.guestId }, select: { fullName: true } }),
@@ -803,6 +818,8 @@ export interface CheckOutOptions {
 }
 
 export async function checkOut(reservationId: string, actor: Actor, opts: CheckOutOptions = {}, now = new Date()) {
+  // Not charging the extra nights of a guest who stayed past the departure is a decision about what the guest owes.
+  if (opts.chargeOverstay === false) await refuseDeveloper(actor, "reservations.check_out");
   const res = await run((tx) => checkOutTx(tx, reservationId, actor, opts, now));
   // The guest's thank-you note, from the finished stay (made after the check-out is saved; never blocks it).
   await thankYouAfterCheckout(reservationId, actor);
@@ -1130,6 +1147,8 @@ export async function cancelReservation(reservationId: string, actor: Actor, rea
     const r = await loadForUpdate(tx, reservationId);
     const cancellable = r.rooms.filter((x) => ["INQUIRY", "RESERVED", "CONFIRMED"].includes(x.status));
     if (cancellable.length === 0) throw new AppError("This booking cannot be cancelled (guest already checked in, or it is closed).");
+    // A cancelled booking that was paid is settled by a money decision (payment kept, or a refund due): not the Developer's.
+    if (actsAsDeveloper(actor) && r.paidAmount > 0) await refuseDeveloper(actor, "reservations.cancel");
     for (const rr of cancellable) {
       await tx.reservationRoom.update({ where: { id: rr.id }, data: { status: "CANCELLED" } });
       await syncRoomNights(tx, rr.id);
@@ -1196,6 +1215,8 @@ async function releaseNoShowTx(tx: Tx, reservationId: string, actor: Actor, now:
   const r = await tx.reservation.findUniqueOrThrow({ where: { id: reservationId }, include: { rooms: { include: { room: true } } } });
   const held = r.rooms.filter((x) => x.status === "NO_SHOW" && !x.releasedAt);
   if (held.length === 0) throw new AppError("No room is being held for this no-show.");
+  // Releasing a paid no-show applies the payment policy (kept, or a refund due): a money decision, not the Developer's.
+  if (actsAsDeveloper(actor) && r.paidAmount > 0) await refuseDeveloper(actor, "reservations.cancel");
   for (const rr of held) await tx.reservationRoom.update({ where: { id: rr.id }, data: { releasedAt: now, releasedById: actor.userId ?? null } });
   const settings = await getSettingsTx(tx);
   const keep = settings.noShowPolicy === "RETAIN_PAYMENT";
@@ -1291,6 +1312,8 @@ async function reassignRoomTx(
     const newRoom = await tx.room.findUnique({ where: { id: newRoomId }, include: { roomType: true } });
     if (!newRoom || !newRoom.isActive) throw new AppError("Room not found.", "NOT_FOUND");
     if (newRoom.id === rr.roomId) throw new AppError("The guest is already in this room.");
+    // Moving a guest to a dearer room means deciding whether the difference is charged or given: not the Developer's.
+    if (actsAsDeveloper(actor) && !rr.isDayUse && newRoom.roomType.baseRate > rr.ratePerNight) await refuseDeveloper(actor, "reservations.edit");
     await lockRoomTypes(tx, [rr.roomTypeId, newRoom.roomTypeId]);
 
     const now = new Date();
@@ -1698,6 +1721,8 @@ async function changeStayDatesTx(
 
 /** Authorised discount override on one room of a booking (audited). */
 export async function changeDiscount(reservationRoomId: string, discountPerNight: number, reasonIn: string, actor: Actor) {
+  // Setting, raising or taking away a discount all change what the guest owes: never the Developer's.
+  await refuseDeveloper(actor, "reservations.discount_override");
   await assertRoomDiscount(reservationRoomId, discountPerNight, actor);
   const reason = reasonIn.trim() || "Discount given at the desk";
   return run(async (tx) => {
@@ -1857,6 +1882,7 @@ function share(total: number, weights: number[]) {
  * (one per kind). Recorded with who, role, before / after, when and why.
  */
 export async function discountStayBill(reservationId: string, input: { amount?: number | null; percent?: number | null; reason: string }, actor: Actor, now = new Date()) {
+  await refuseDeveloper(actor, DECIDER_RIGHTS);
   if (!["dashboard.manager", "dashboard.owner", "dashboard.admin"].some((p) => actor.permissions?.has(p as never))) {
     throw new AppError("Only a manager, the MD or the owner gives a discount on the whole bill.", "FORBIDDEN");
   }
@@ -1923,6 +1949,7 @@ export async function discountStayBill(reservationId: string, input: { amount?: 
  * stays on the guest (Who owes us). Recorded with who, why and when.
  */
 export async function approveLeaveOwing(reservationId: string, reason: string, actor: Actor, now = new Date()) {
+  await refuseDeveloper(actor, DECIDER_RIGHTS);
   if (!["dashboard.manager", "dashboard.owner", "dashboard.admin"].some((p) => actor.permissions?.has(p as never)) || !actor.permissions?.has("reservations.checkout_override")) {
     throw new AppError("Only a manager, the MD or the owner lets a guest leave owing.", "FORBIDDEN");
   }
@@ -1944,6 +1971,7 @@ export async function approveLeaveOwing(reservationId: string, reason: string, a
 
 /** Withdraw the approval — the guest must pay before checking out again. */
 export async function withdrawLeaveOwing(reservationId: string, actor: Actor) {
+  await refuseDeveloper(actor, DECIDER_RIGHTS);
   if (!["dashboard.manager", "dashboard.owner", "dashboard.admin"].some((p) => actor.permissions?.has(p as never))) throw new AppError("Only a manager, the MD or the owner can change this.", "FORBIDDEN");
   return run(async (tx) => {
     const r = await tx.reservation.findUnique({ where: { id: reservationId } });
@@ -1954,6 +1982,7 @@ export async function withdrawLeaveOwing(reservationId: string, actor: Actor) {
 }
 
 export async function extendStayFree(reservationRoomId: string, newDeparture: BusinessDate, reason: string, actor: Actor) {
+  await refuseDeveloper(actor, DECIDER_RIGHTS);
   if (!["dashboard.manager", "dashboard.owner", "dashboard.admin"].some((p) => actor.permissions?.has(p as never))) {
     throw new AppError("Only a manager, the MD or the owner gives free nights.", "FORBIDDEN");
   }
@@ -1983,6 +2012,8 @@ export async function extendStayFree(reservationRoomId: string, newDeparture: Bu
 export async function approveLateCheckout(
   reservationRoomId: string, input: { until: string; fee?: number | null; note?: string | null }, actor: Actor,
 ) {
+  // A late checkout's fee (charged, reduced or free) is a decision about what the guest owes: not the Developer's.
+  await refuseDeveloper(actor, "reservations.edit");
   return run(async (tx) => {
     const settings = await getSettingsTx(tx);
     const cfg = stayConfig(settings);

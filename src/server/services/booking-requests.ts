@@ -3,6 +3,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { db } from "../db";
 import { audit, type AuditActor } from "../audit";
 import { AppError } from "../errors";
+import { operationalOnly } from "../staff-pickers";
 import { msg, msgf } from "@/i18n/msg";
 import { getT, rememberGuestLanguage } from "@/i18n/server";
 import { englishT, type T } from "@/i18n/translate";
@@ -322,7 +323,7 @@ export async function assignRequest(id: string, userId: string | null, actor: St
   const r = await load(id);
   await db.$transaction(async (tx) => {
     if (userId) {
-      const u = await tx.user.findUnique({ where: { id: userId } });
+      const u = await tx.user.findFirst({ where: operationalOnly({ id: userId }) });
       if (!u || !u.isActive) throw new AppError("Choose an active staff member.");
     }
     await tx.bookingRequest.update({ where: { id }, data: { assignedToId: userId } });

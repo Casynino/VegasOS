@@ -2,6 +2,7 @@ import "server-only";
 import { db, type Tx } from "../db";
 import { audit, type AuditActor } from "../audit";
 import { AppError } from "../errors";
+import { operationalOnly } from "../staff-pickers";
 import { getSettingsTx, stayConfig } from "../settings";
 import { businessDateOf, toDbDate } from "@/lib/time/business-date";
 import type { RequestPriority, RequestStatus, RequestType } from "@/generated/prisma/enums";
@@ -25,10 +26,10 @@ async function statusWord(status: RequestStatus) {
   return t.ctx("guest-request", status.toLowerCase().replace("_", " "));
 }
 
-/** Who can be given a request: active staff whose role handles requests (reception first). */
+/** Who can be given a request: active staff whose role handles requests (reception first). Never the Developer or a system account. */
 export async function requestHandlers() {
   const users = await db.user.findMany({
-    where: { isActive: true, role: { permissions: { some: { permission: { code: "requests.manage" } } } } },
+    where: operationalOnly({ isActive: true, role: { permissions: { some: { permission: { code: "requests.manage" } } } } }),
     select: { id: true, fullName: true, role: { select: { code: true, name: true } } },
     orderBy: { fullName: "asc" },
   });
@@ -38,10 +39,13 @@ export async function requestHandlers() {
 }
 export type RequestHandler = Awaited<ReturnType<typeof requestHandlers>>[number];
 
-/** Someone who can take a request: active, with a role that handles requests. */
+/**
+ * Someone who can take a request: active, with a role that handles requests — and never the Developer account or a system account,
+ * not even when its id is sent directly (the Developer is not part of the team and nobody can give it work).
+ */
 async function assigneeTx(tx: Tx, userId: string) {
   const u = await tx.user.findFirst({
-    where: { id: userId, isActive: true, role: { permissions: { some: { permission: { code: "requests.manage" } } } } },
+    where: operationalOnly({ id: userId, isActive: true, role: { permissions: { some: { permission: { code: "requests.manage" } } } } }),
     select: { id: true, fullName: true },
   });
   if (!u) throw new AppError("That person cannot take guest requests.", "VALIDATION");

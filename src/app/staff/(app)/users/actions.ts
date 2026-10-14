@@ -4,228 +4,98 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/server/db";
 import { audit } from "@/server/audit";
-import { authorize, hashPassword, requestMeta, validatePasswordStrength, type CurrentUser } from "@/server/auth";
-import { AppError, isUniqueViolation, runAction, type ActionResult } from "@/server/errors";
+import { authorize, requestMeta } from "@/server/auth";
+import { AppError, runAction, type ActionResult } from "@/server/errors";
 import { parseInput } from "@/server/validation";
-import { isRestaurantDevice, PERMISSIONS } from "@/lib/permissions";
-import { numberWaitersTx } from "@/server/services/waiter-number";
+import { isRestaurantDevice } from "@/lib/permissions";
+import { createStaffAccount, deleteStaffAccount, resetStaffPassword, setRolePermission, updateStaffAccount } from "@/server/services/staff-accounts";
 import { msg } from "@/i18n/msg";
+
+/*
+ * Every rule (who may see or change a Developer account, who may give a right, the Developer's reason, the audit entries) lives
+ * in server/services/staff-accounts.ts. Here: the signed-in person's own right to manage staff, the form, and the page refresh.
+ * Who is acting — and whether it is the Developer — comes from the server's session, never from the form.
+ */
+
+/** The Developer's reason (only asked of a Developer; the server decides whether it is needed). */
+const reason = z.string().trim().max(500).optional().transform((v) => v || null);
 
 const CreateUserSchema = z.object({
   fullName: z.string().trim().min(2, msg("Full name is required.")).max(100),
   email: z.string().trim().toLowerCase().email(msg("Enter a valid email.")),
   // Not asked for the restaurant screen's own login.
   phone: z.string().trim().max(30).optional().transform((v) => v || null),
-  roleId: z.string().min(1, msg("Choose a role.")),
+  roleId: z.string().min(1, msg("Choose a role.")).max(64),
   password: z.string().min(1, msg("Set a temporary password.")),
+  reason,
 });
-
-/** "Online · nTZS" — the system account that records what customers pay online; never a person's role. */
-const SYSTEM_ROLE = "SYSTEM_ONLINE";
-
-async function assertCanAssignRole(actor: CurrentUser, roleId: string) {
-  const role = await db.role.findUnique({ where: { id: roleId } });
-  if (!role) throw new AppError("Role not found.", "NOT_FOUND");
-  if (role.code === SYSTEM_ROLE) throw new AppError("That role is for the system only.", "FORBIDDEN");
-  if (role.code === "OWNER" && actor.roleCode !== "OWNER") {
-    throw new AppError("Only an owner can grant the Owner role.", "FORBIDDEN");
-  }
-  return role;
-}
 
 export async function createUserAction(_prev: unknown, formData: FormData): Promise<ActionResult<null>> {
   return runAction(async () => {
     const actor = await authorize("users.manage");
     const input = parseInput(CreateUserSchema, formData);
-    const weak = validatePasswordStrength(input.password);
-    if (weak) throw new AppError(weak, "VALIDATION", { password: weak });
-    const role = await assertCanAssignRole(actor, input.roleId);
-    // The restaurant screen's login is not a person: its password stays the one set here (no change at first sign-in).
-    const roleCodes = (await db.rolePermission.findMany({ where: { roleId: role.id }, select: { permission: { select: { code: true } } } })).map((p) => p.permission.code);
-    const screen = isRestaurantDevice(new Set(roleCodes));
-    const { ipAddress } = await requestMeta();
-    try {
-      await db.$transaction(async (tx) => {
-        const user = await tx.user.create({
-          data: {
-            fullName: input.fullName, email: input.email, phone: input.phone, roleId: role.id,
-            passwordHash: await hashPassword(input.password), mustChangePassword: false,
-          },
-        });
-        await numberWaitersTx(tx); // a new waiter gets the next WTR number
-        await audit(tx, { userId: actor.id, label: actor.fullName, ipAddress }, {
-          action: "user.created", entityType: "User", entityId: user.id,
-          after: { fullName: user.fullName, email: user.email, role: role.code },
-        });
-      });
-    } catch (e) {
-      if (isUniqueViolation(e)) throw new AppError("A staff account with this email already exists.", "CONFLICT", { email: msg("Already in use") });
-      throw e;
-    }
+    await createStaffAccount(actor, input, await requestMeta());
     revalidatePath("/staff/users");
     return null;
   }, msg("Staff account created. They must change the temporary password at first sign-in."));
 }
 
 const UpdateUserSchema = z.object({
-  userId: z.string().min(1),
+  userId: z.string().min(1).max(64),
   fullName: z.string().trim().min(2).max(100),
   email: z.string().trim().toLowerCase().email(msg("Enter a valid email.")),
   phone: z.string().trim().max(30).transform((v) => v || null),
-  roleId: z.string().min(1),
+  roleId: z.string().min(1).max(64),
   isActive: z.preprocess((v) => v === "on" || v === "true", z.boolean()),
+  reason,
 });
 
 export async function updateUserAction(_prev: unknown, formData: FormData): Promise<ActionResult<null>> {
   return runAction(async () => {
     const actor = await authorize("users.manage");
     const input = parseInput(UpdateUserSchema, formData);
-    const target = await db.user.findUnique({ where: { id: input.userId }, include: { role: true } });
-    if (target?.role.code === SYSTEM_ROLE) throw new AppError("User not found.", "NOT_FOUND");
-    if (!target) throw new AppError("Staff member not found.", "NOT_FOUND");
-    if (target.role.code === "OWNER" && actor.roleCode !== "OWNER") {
-      throw new AppError("Only an owner can change an owner account.", "FORBIDDEN");
-    }
-    const newRole = await assertCanAssignRole(actor, input.roleId);
-    if (target.id === actor.id && (!input.isActive || newRole.id !== target.roleId)) {
-      throw new AppError("You cannot deactivate yourself or change your own role.");
-    }
-    const losingOwner = target.role.code === "OWNER" && target.isActive && (newRole.code !== "OWNER" || !input.isActive);
-    if (losingOwner) {
-      const owners = await db.user.count({ where: { isActive: true, role: { code: "OWNER" } } });
-      if (owners <= 1) throw new AppError("There must always be at least one active owner.");
-    }
-
-    const { ipAddress } = await requestMeta();
-    try {
-      await db.$transaction(async (tx) => {
-        await tx.user.update({
-          where: { id: target.id },
-          data: { fullName: input.fullName, email: input.email, phone: input.phone, roleId: newRole.id, isActive: input.isActive },
-        });
-        if (!input.isActive || newRole.id !== target.roleId || input.email !== target.email) {
-          await tx.session.deleteMany({ where: { userId: target.id } }); // force re-login
-        }
-        if (newRole.id !== target.roleId) await numberWaitersTx(tx); // became a waiter: they get a WTR number
-        await audit(tx, { userId: actor.id, label: actor.fullName, ipAddress }, {
-          action: newRole.id !== target.roleId ? "user.role_changed" : "user.updated",
-          entityType: "User", entityId: target.id,
-          before: { fullName: target.fullName, email: target.email, phone: target.phone, role: target.role.code, isActive: target.isActive },
-          after: { fullName: input.fullName, email: input.email, phone: input.phone, role: newRole.code, isActive: input.isActive },
-        });
-      });
-    } catch (e) {
-      if (isUniqueViolation(e)) throw new AppError("A staff account with this email already exists.", "CONFLICT", { email: msg("Already in use") });
-      throw e;
-    }
+    await updateStaffAccount(actor, input, await requestMeta());
     revalidatePath("/staff/users");
     return null;
   }, msg("Staff member updated."));
 }
 
-const ResetSchema = z.object({ userId: z.string().min(1), password: z.string().min(1, msg("Enter a temporary password.")) });
+const ResetSchema = z.object({ userId: z.string().min(1).max(64), password: z.string().min(1, msg("Enter a temporary password.")), reason });
 
 export async function resetPasswordAction(_prev: unknown, formData: FormData): Promise<ActionResult<null>> {
   return runAction(async () => {
     const actor = await authorize("users.manage");
     const input = parseInput(ResetSchema, formData);
-    const weak = validatePasswordStrength(input.password);
-    if (weak) throw new AppError(weak, "VALIDATION", { password: weak });
-    const target = await db.user.findUnique({ where: { id: input.userId }, include: { role: true } });
-    if (target?.role.code === SYSTEM_ROLE) throw new AppError("User not found.", "NOT_FOUND");
-    if (!target) throw new AppError("Staff member not found.", "NOT_FOUND");
-    if (target.role.code === "OWNER" && actor.roleCode !== "OWNER") {
-      throw new AppError("Only an owner can reset an owner's password.", "FORBIDDEN");
-    }
-    const { ipAddress } = await requestMeta();
-    await db.$transaction(async (tx) => {
-      await tx.user.update({
-        where: { id: target.id },
-        data: { passwordHash: await hashPassword(input.password), mustChangePassword: false },
-      });
-      await tx.session.deleteMany({ where: { userId: target.id } });
-      await audit(tx, { userId: actor.id, label: actor.fullName, ipAddress }, {
-        action: "user.password_reset", entityType: "User", entityId: target.id,
-      });
-    });
+    await resetStaffPassword(actor, input, await requestMeta());
     return null;
   }, msg("Password reset. Share the temporary password with the staff member privately."));
 }
 
 const PermissionToggleSchema = z.object({
-  roleId: z.string().min(1),
-  permission: z.string().refine((p) => p in PERMISSIONS, msg("Unknown permission.")),
+  roleId: z.string().min(1).max(64),
+  // The server decides what may be given (a right that exists, and never a Developer-only one).
+  permission: z.string().min(1).max(100),
   granted: z.boolean(),
+  reason: z.string().trim().max(500).optional().nullable().transform((v) => v || null),
 });
 
 export async function setRolePermissionAction(input: z.input<typeof PermissionToggleSchema>): Promise<ActionResult<null>> {
   return runAction(async () => {
     const actor = await authorize("users.manage");
     const data = parseInput(PermissionToggleSchema, input);
-    const role = await db.role.findUnique({ where: { id: data.roleId } });
-    if (!role) throw new AppError("Role not found.", "NOT_FOUND");
-    if (role.code === "OWNER") throw new AppError("The Owner role always has every permission.");
-    if (role.code === SYSTEM_ROLE) throw new AppError("That role is for the system only.", "FORBIDDEN");
-    if (actor.roleCode !== "OWNER" && role.code === "MANAGER") {
-      throw new AppError("Only an owner can change manager permissions.", "FORBIDDEN");
-    }
-    const permission = await db.permission.findUniqueOrThrow({ where: { code: data.permission } });
-    const { ipAddress } = await requestMeta();
-    await db.$transaction(async (tx) => {
-      if (data.granted) {
-        await tx.rolePermission.createMany({ data: [{ roleId: role.id, permissionId: permission.id }], skipDuplicates: true });
-      } else {
-        await tx.rolePermission.deleteMany({ where: { roleId: role.id, permissionId: permission.id } });
-      }
-      await numberWaitersTx(tx); // a role that now works waiter shifts: its people get WTR numbers
-      await audit(tx, { userId: actor.id, label: actor.fullName, ipAddress }, {
-        action: "user.permission_changed", entityType: "Role", entityId: role.id,
-        before: { role: role.code, permission: data.permission, granted: !data.granted },
-        after: { role: role.code, permission: data.permission, granted: data.granted },
-      });
-    });
+    await setRolePermission(actor, data, await requestMeta());
     revalidatePath("/staff/users");
     return null;
   });
 }
 
-const isFkViolation = (err: unknown) => {
-  const e = err as { code?: string };
-  if (e?.code === "P2003" || e?.code === "P2014") return true;
-  const text = JSON.stringify(err, Object.getOwnPropertyNames(err ?? {}));
-  return text.includes("23503") || text.includes("foreign key");
-};
+const DeleteSchema = z.object({ userId: z.string().min(1).max(64), reason });
 
 export async function deleteUserAction(_prev: unknown, formData: FormData): Promise<ActionResult<null>> {
   return runAction(async () => {
     const actor = await authorize("users.manage");
-    const userId = String(formData.get("userId") ?? "");
-    const target = await db.user.findUnique({ where: { id: userId }, include: { role: true } });
-    if (!target || target.role.code === SYSTEM_ROLE) throw new AppError("Staff member not found.", "NOT_FOUND");
-    if (target.id === actor.id) throw new AppError("You cannot delete your own account.");
-    if (target.role.code === "OWNER" && actor.roleCode !== "OWNER") {
-      throw new AppError("Only an owner can delete an owner account.", "FORBIDDEN");
-    }
-    if (target.role.code === "OWNER") {
-      const owners = await db.user.count({ where: { isActive: true, role: { code: "OWNER" } } });
-      if (owners <= 1) throw new AppError("There must always be at least one active owner.");
-    }
-    const { ipAddress } = await requestMeta();
-    try {
-      await db.$transaction(async (tx) => {
-        await tx.session.deleteMany({ where: { userId: target.id } });
-        await tx.user.delete({ where: { id: target.id } });
-        await audit(tx, { userId: actor.id, label: actor.fullName, ipAddress }, {
-          action: "user.deleted", entityType: "User", entityId: target.id,
-          before: { fullName: target.fullName, email: target.email, role: target.role.code },
-        });
-      });
-    } catch (e) {
-      if (isFkViolation(e)) {
-        throw new AppError("This person has records in the system (shifts, payments, etc.). Deactivate their account instead.", "CONFLICT");
-      }
-      throw e;
-    }
+    const input = parseInput(DeleteSchema, formData);
+    await deleteStaffAccount(actor, input, await requestMeta());
     revalidatePath("/staff/users");
     return null;
   }, msg("Staff account removed."));

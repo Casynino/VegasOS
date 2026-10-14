@@ -1,4 +1,5 @@
 import { getCurrentUser } from "@/server/auth";
+import { guardDeveloperExport } from "@/server/services/developer-view-log";
 import { occupancy, profitLoss } from "@/server/services/reporting";
 import { buildReport } from "@/server/services/reports";
 import { businessToday } from "@/server/settings";
@@ -43,6 +44,10 @@ export async function GET(req: Request) {
 
   // A report from the Reports page (?r=summary|daily|…): the same numbers as the document.
   const r = REPORTS.find((x) => x.key === url.searchParams.get("r"))?.key as ReportKey | undefined;
+  // A Developer's export is written to the audit trail BEFORE any figure is read or sent — and nothing is sent when it cannot be written.
+  const name = r ?? "financial-and-occupancy";
+  const blocked = await guardDeveloperExport(user, { kind: "exported", module: "Report", entityId: name, after: { path: url.pathname, report: name, from, to } });
+  if (blocked) return blocked;
   if (r) {
     const report = await buildReport(r, { from, to }, await businessToday());
     return new Response(reportCsv(report), {

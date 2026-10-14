@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { requirePagePermission } from "@/server/auth";
 import { db } from "@/server/db";
-import { PERMISSIONS } from "@/lib/permissions";
+import { DEVELOPER_ROLE_CODE, isDeveloperOnly, PERMISSIONS } from "@/lib/permissions";
+import { blocksDeveloper, DEVELOPER_NO_BACK_DOOR, staffDirectory } from "@/server/services/staff-accounts";
 import { deviceLabel } from "@/lib/device-label";
 import { PageHeader } from "@/components/staff/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -22,19 +23,9 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function UsersPage() {
   const actor = await requirePagePermission("users.manage");
   const t = await getT();
-  const [users, roles] = await Promise.all([
-    // The PIN's state only (set / locked) — never its hash.
-    // "Online · nTZS" (records what customers pay online themselves) is not a person — never listed or edited here.
-    db.user.findMany({
-      where: { role: { code: { not: "SYSTEM_ONLINE" } } },
-      select: {
-        id: true, fullName: true, email: true, phone: true, roleId: true, isActive: true, mustChangePassword: true, lastLoginAt: true,
-        role: { select: { code: true, name: true } },
-      },
-      orderBy: [{ isActive: "desc" }, { fullName: "asc" }],
-    }),
-    db.role.findMany({ where: { code: { not: "SYSTEM_ONLINE" } }, include: { permissions: { include: { permission: true } } }, orderBy: { createdAt: "asc" } }),
-  ]);
+  const dev = actor.actorType === "DEVELOPER";
+  // A Developer account and the Developer role are listed only for a Developer (the server decides — not this page alone).
+  const { users, roles } = await staffDirectory(actor);
   // The shared restaurant screen's role: its account is the restaurant's own login, not a person.
   const isScreen = (r: (typeof roles)[number]) => {
     const codes = r.permissions.map((p) => p.permission.code);
@@ -46,16 +37,21 @@ export default async function UsersPage() {
     where: { expiresAt: { gt: new Date() }, userId: { in: users.filter((u) => screenRoleIds.has(u.roleId)).map((u) => u.id) } },
     orderBy: { lastSeenAt: "desc" }, select: { id: true, userId: true, userAgent: true, lastSeenAt: true },
   });
+  const roleOption = (r: (typeof roles)[number]) => ({ id: r.id, name: r.name, department: ROLE_DEPARTMENT[r.code] ?? (r.code === DEVELOPER_ROLE_CODE ? msg("Developer") : msg("Other")), screen: screenRoleIds.has(r.id) });
+  // A role with money access (or the right to manage staff) is out of the Developer's reach: it cannot give it, or change such an account.
+  // The server enforces it; this only keeps the page from offering what always fails.
+  const outOfReach = new Set(dev ? roles.filter((r) => r.code !== DEVELOPER_ROLE_CODE && blocksDeveloper(r.permissions.map((p) => p.permission.code))).map((r) => r.id) : []);
+  // Nobody can be given the Developer role here (it comes only from the setup script).
   const assignableRoles = roles
-    .filter((r) => actor.roleCode === "OWNER" || r.code !== "OWNER")
-    .map((r) => ({ id: r.id, name: r.name, department: ROLE_DEPARTMENT[r.code] ?? msg("Other"), screen: screenRoleIds.has(r.id) }));
+    .filter((r) => r.code !== DEVELOPER_ROLE_CODE && !outOfReach.has(r.id) && (actor.roleCode === "OWNER" || r.code !== "OWNER"))
+    .map(roleOption);
 
   return (
     <div className="w-full">
       <PageHeader
         title={t("Staff & roles")}
         description={t("Accounts, roles and what each role is allowed to do. Permissions are enforced on the server.")}
-        actions={<CreateUserDialog roles={assignableRoles}
+        actions={<CreateUserDialog roles={assignableRoles} isDeveloper={dev}
           screenLogins={users.filter((u) => u.isActive && screenRoleIds.has(u.roleId)).map((u) => `${u.fullName} · ${u.email}`)} />}
       />
       <Tabs defaultValue="staff">
@@ -80,6 +76,10 @@ export default async function UsersPage() {
                 <TableBody>
                   {users.map((u) => {
                     const editable = actor.roleCode === "OWNER" || u.role.code !== "OWNER";
+                    const devAccount = u.role.code === DEVELOPER_ROLE_CODE;
+                    // An account with money access: the Developer can change its name and phone and switch it off, nothing more.
+                    const limited = dev && !devAccount && outOfReach.has(u.roleId);
+                    const ownRole = roles.find((r) => r.id === u.roleId);
                     return (
                       <TableRow key={u.id}>
                         <TableCell className="font-medium">
@@ -104,8 +104,12 @@ export default async function UsersPage() {
                         <TableCell>
                           {editable && (
                             <EditUserDialog
-                              roles={assignableRoles}
+                              roles={ownRole && !assignableRoles.some((r) => r.id === ownRole.id) ? [...assignableRoles, roleOption(ownRole)] : assignableRoles}
                               isSelf={u.id === actor.id}
+                              isDeveloper={dev}
+                              roleLocked={devAccount || limited}
+                              limited={limited}
+                              passwordLocked={devAccount}
                               user={{ id: u.id, fullName: u.fullName, phone: u.phone ?? "", roleId: u.roleId, isActive: u.isActive, email: u.email }}
                               screens={screenRoleIds.has(u.roleId) ? screenSessions.filter((x) => x.userId === u.id).map((x) => ({ id: x.id, label: deviceLabel(x.userAgent, t).label, lastSeen: t.dateTime(x.lastSeenAt) })) : null}
                             />
@@ -129,12 +133,18 @@ export default async function UsersPage() {
             </CardHeader>
             <CardContent>
               <PermissionMatrix
-                permissions={Object.entries(PERMISSIONS).map(([code, description]) => ({ code, description }))}
+                // The Developer-only right is shown only to a Developer, and no one can switch it (it is the Developer role's alone).
+                permissions={Object.entries(PERMISSIONS).filter(([code]) => dev || !isDeveloperOnly(code)).map(([code, description]) => ({ code, description }))}
+                lockedPermissions={Object.keys(PERMISSIONS).filter(isDeveloperOnly)}
+                isDeveloper={dev}
+                // What a Developer cannot switch (the server refuses it too): money rights and staff management are never given by it, the audit right is never taken away.
+                developerLocked={dev ? [...DEVELOPER_NO_BACK_DOOR] : []}
+                developerKeepOn={dev ? ["audit.view"] : []}
                 roles={roles.map((r) => ({
                   id: r.id,
                   code: r.code,
                   name: r.name,
-                  locked: r.code === "OWNER" || (r.code === "MANAGER" && actor.roleCode !== "OWNER"),
+                  locked: r.code === "OWNER" || r.code === DEVELOPER_ROLE_CODE || (r.code === "MANAGER" && actor.roleCode !== "OWNER"),
                   granted: r.permissions.map((p) => p.permission.code),
                 }))}
               />

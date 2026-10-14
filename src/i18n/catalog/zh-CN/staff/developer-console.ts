@@ -1,0 +1,85 @@
+// The Developer console (/staff/developer): who you are, system checks, refusals, and the "who can do what" inspector.
+import type { Catalog } from "../../../translate";
+
+const catalog: Catalog = {
+  // Page
+  "Read-only. Nothing here changes anything, and no password, key or secret is ever shown. Your visits to sensitive pages and every look at someone's rights are kept in the audit trail.": "只读。此处不会改动任何内容，也不会显示任何密码、密钥或机密。您访问敏感页面的记录，以及每一次查看他人权限的操作，都会记入审计记录。",
+  "Open the audit trail of Developer actions": "打开开发者操作的审计记录",
+
+  // You
+  "The account you are signed in as, taken from the server — not from the page.": "您当前登录的账号，来自服务器，而不是来自页面。",
+  "Signed in at": "登录时间",
+  "Time left": "剩余时间",
+  "Signs out at {time} unless you keep working (after {n} minutes without use).": "除非您继续操作，否则将在 {time} 退出登录（闲置 {n} 分钟后）。",
+  "Signs out at {time} at the latest ({n} hours after signing in).": "最迟在 {time} 退出登录（登录后 {n} 小时）。",
+  "Rights you hold": "您拥有的权限",
+  "This account holds {n} money right(s) the Developer role is meant never to hold: {codes}. Fix the role.": "此账号拥有 {n} 项开发者角色本应永远不具备的资金权限：{codes}。请修正该角色。",
+  "Rights you do not hold (money)": "您不具备的权限（资金）",
+  "The Developer can see and fix everything in the system but never writes money — so a test or a mistake can never change the hotel's money, and every money entry stays with the person who made it (Finance, the Boss or the MD).": "开发者可以查看并修复系统中的一切，但从不写入资金——因此测试或失误永远不会改动酒店的资金，每一笔资金记录都归其经办人（财务、老板或总经理）负责。",
+
+  // System checks
+  "System checks": "系统检查",
+  "Checked {when}. Only yes / no and numbers — a key or a password is never read out.": "检查时间：{when}。只显示“是 / 否”和数字，绝不读出密钥或密码。",
+  "Database": "数据库",
+  "Reachable": "可连接",
+  "Not reachable": "无法连接",
+  "Database updates (migrations)": "数据库更新（迁移）",
+  "{n} applied": "已应用 {n} 项",
+  "Could not be read": "无法读取",
+  "Latest: {name}": "最新：{name}",
+  "{n} failed or not finished": "{n} 项失败或未完成",
+  "Online payment (nTZS)": "在线支付（nTZS）",
+  "Webhook secret is set": "已设置 Webhook 密钥",
+  "Webhook secret is missing": "缺少 Webhook 密钥",
+  "WhatsApp reports (CallMeBot)": "WhatsApp 报告（CallMeBot）",
+  "No report recipients are set": "尚未设置报告接收人",
+  "{ready} of {total} recipients can be reached": "{total} 位接收人中有 {ready} 位可以送达",
+  "The default key is set": "已设置默认密钥",
+  "No default key is set": "未设置默认密钥",
+  "Scheduled reports (cron secret)": "定时报告（定时任务密钥）",
+  "Set": "已设置",
+  "Missing": "缺少",
+  "Deployment": "部署",
+  "Commit {sha}": "提交 {sha}",
+  "Commit not known": "提交未知",
+  "Environment: {name}": "环境：{name}",
+  "Active staff accounts": "启用的员工账号",
+  "Open shifts": "进行中的班次",
+  "Withdrawals not settled": "未结清的提现",
+  "sent, answer not known yet": "已发送，尚未得到答复",
+  "Failed messages": "发送失败的消息",
+  "in the last 24 hours": "最近 24 小时",
+  "Active staff by role": "按角色统计的启用员工",
+
+  // Refusals
+  "Refused to you": "被拒绝的操作",
+  "The last {n} times a page or an action was refused to a Developer account.": "开发者账号最近 {n} 次被拒绝访问页面或执行操作的记录。",
+  "Nothing was refused to a Developer account.": "没有开发者账号被拒绝过。",
+  "What was refused": "被拒绝的内容",
+  "The right it needs": "所需权限",
+  "A page": "页面",
+  "An action": "操作",
+
+  // Who can do what
+  "Who can do what": "谁能做什么",
+  "Pick a person and a right: you see yes or no, which role gives it, and everything that person can do.": "选择一个人和一项权限：可看到“是”或“否”、由哪个角色授予，以及此人能做的全部事项。",
+  "Choose a person": "选择一个人",
+  "not active": "未启用",
+  "Right": "权限",
+  "Choose a right": "选择一项权限",
+  "Check": "检查",
+  "Yes — {name} can do this": "是 — {name} 可以执行此操作",
+  "No — {name} cannot do this": "否 — {name} 不能执行此操作",
+  "Given by the role {role}.": "由角色“{role}”授予。",
+  "The role {role} does not give it.": "角色“{role}”未授予此权限。",
+  "This account is not active, so it cannot sign in.": "此账号未启用，无法登录。",
+  "Only the Developer role holds this right. It cannot be given to any other role.": "只有开发者角色拥有此权限，不能授予任何其他角色。",
+  "The Developer role never holds this right, because it writes money.": "开发者角色永远不具备此权限，因为它会写入资金记录。",
+  "Roles that hold this right:": "拥有此权限的角色：",
+  "Everything {name} can do ({n} rights)": "{name} 能做的全部事项（{n} 项权限）",
+  "Choose a person.": "请选择一个人。",
+  "Choose a right from the list.": "请从列表中选择一项权限。",
+  "That person was not found.": "找不到此人。",
+};
+
+export default catalog;

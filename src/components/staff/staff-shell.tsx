@@ -15,6 +15,9 @@ import { StaffBottomBar } from "@/components/staff/bottom-bar";
 import { StaffDarkMode } from "@/components/staff/theme-switch";
 import { Initials } from "@/components/dashboard/kit";
 import { logoutAction } from "@/app/staff/(auth)/login/actions";
+import { IdentityBanner, IdentityCard, IdentityChip, DEV_STRIP_VARS, type Identity } from "./identity-banner";
+import { switchToStaffAccountAction } from "./identity-actions";
+import { cn } from "@/lib/utils";
 import { ReceptionSearch } from "./reception/search";
 import { StaffAlerts } from "./staff-alerts";
 import { StackTableLabels } from "./stack-table-labels";
@@ -36,6 +39,9 @@ import { LanguageSwitch } from "@/components/i18n/language-switch";
  */
 export async function StaffShell({ children }: { children: ReactNode }) {
   const user = await requireUser();
+  // Who is signed in — from the session (the account's role in the database), never from the page or the browser.
+  const identity: Identity = { actorType: user.actorType, name: user.fullName, role: user.roleName };
+  const developer = identity.actorType === "DEVELOPER";
   const pathname = (await headers()).get("x-pathname") ?? "";
   // Stock requests to review and purchases to approve: counted for the managers who decide them.
   const reviewsStock = can(user, "expenses.approve");
@@ -81,10 +87,13 @@ export async function StaffShell({ children }: { children: ReactNode }) {
 
   return (
     <I18nProvider locale={locale} catalog={catalog}>
-    <div id="staff-root" lang={LOCALE_META[locale].html} className="dark flex min-h-svh flex-1 bg-canvas text-foreground">
+    <div id="staff-root" lang={LOCALE_META[locale].html} className={cn("dark flex min-h-svh flex-1 flex-col bg-canvas text-foreground", developer && DEV_STRIP_VARS)}>
+      {/* A Developer: one unmistakable strip across every page (nothing for staff). Its height is the offset of the sticky parts below. */}
+      <IdentityBanner identity={identity} t={t} signOut={logoutAction} switchToStaff={switchToStaffAccountAction} />
+      <div className="flex min-w-0 flex-1">
       <StaffDarkMode />
       <StackTableLabels />
-      <aside className="sticky top-0 hidden h-svh w-72 shrink-0 p-3 lg:block print:!hidden">
+      <aside className="sticky top-[var(--dev-strip,0px)] hidden h-[calc(100svh-var(--dev-strip,0px))] w-72 shrink-0 p-3 lg:block print:!hidden">
         <div className="flex h-full flex-col rounded-[1.75rem] border border-border/70 bg-card p-4 shadow-[0_2px_4px_rgba(15,23,42,0.03),0_20px_40px_-24px_rgba(15,23,42,0.25)]">
           <Link href={home} className="mb-6 flex items-center gap-3 rounded-2xl px-1 py-1">
             <Image src="/brand/logo-192.png" alt="" width={44} height={44} className="rounded-full shadow-[0_6px_14px_-6px_rgba(0,0,0,0.5)]" />
@@ -97,7 +106,9 @@ export async function StaffShell({ children }: { children: ReactNode }) {
             <StaffNav sections={sections} home={home} />
           </div>
           {/* Sign out — the same plain button for everyone, the Restaurant Counter too (owner, 2026-10-04). */}
-          <div className="mt-3 border-t border-dashed border-border pt-3">
+          <div className="mt-3 space-y-2.5 border-t border-dashed border-border pt-3">
+            {/* Who is signed in, at laptop width where the top bar shows the name only (from xl the top bar shows name and role). */}
+            <IdentityCard identity={identity} t={t}><Initials name={user.fullName} className={cn("size-9 text-xs", developer && "ring-2 ring-fuchsia-500")} /></IdentityCard>
             <form action={logoutAction}>
               <button type="submit" className="flex w-full items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-xs font-medium text-muted-foreground transition-colors hover:border-rose-400/40 hover:bg-rose-500/10 hover:text-rose-300">
                 <LogOut className="size-3.5" />{t("Sign out")}
@@ -108,7 +119,7 @@ export async function StaffShell({ children }: { children: ReactNode }) {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 px-3 pt-3 lg:pl-0 print:hidden">
+        <header className="sticky top-[var(--dev-strip,0px)] z-30 px-3 pt-3 lg:pl-0 print:hidden">
           <div className="flex h-16 items-center gap-3 rounded-[1.5rem] border border-border/70 bg-card/85 px-3 shadow-[0_10px_30px_-20px_rgba(15,23,42,0.35)] backdrop-blur-xl sm:px-4">
             <Link href={home} className="shrink-0 lg:hidden"><Image src="/brand/logo-192.png" alt={settings.hotelName} width={36} height={36} className="rounded-full" /></Link>
             <div className="min-w-0 shrink">
@@ -140,9 +151,11 @@ export async function StaffShell({ children }: { children: ReactNode }) {
             {/* The bell: rings for what is waiting for this person (bookings, requests, orders, bills…) on every page */}
             <StaffAlerts sound={{ enabled: settings.orderSoundsEnabled, volume: settings.orderSoundVolume, newSound: settings.newOrderSound, readySound: settings.readyOrderSound }}
               soundOff={user.soundOff} />
+            {/* Who is signed in: the real name and role, always. Top bar: name + role from xl, the name alone at lg (role in the tooltip and the side menu's card), hidden below lg — the bottom bar's Menu shows both on a tablet and a phone. */}
             <Link href="/staff/account" title={t("{name} · {role} — your account", { name: user.fullName, role: t(user.roleName) })} aria-label={t("Your account — {name}, {role}", { name: user.fullName, role: t(user.roleName) })}
-              className="shrink-0 rounded-full ring-2 ring-transparent transition hover:ring-border">
-              <Initials name={user.fullName} className="size-10 text-xs" />
+              className="flex min-w-0 shrink-0 items-center gap-2.5 rounded-full ring-2 ring-transparent transition hover:ring-border">
+              <Initials name={user.fullName} className={cn("size-10 text-xs", developer && "ring-2 ring-fuchsia-500")} />
+              <IdentityChip identity={identity} t={t} className="pr-2" />
             </Link>
             <form action={logoutAction} className="hidden shrink-0 sm:block">
               <button type="submit" aria-label={t("Sign out")} title={t("Sign out")} className="grid size-10 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
@@ -155,7 +168,8 @@ export async function StaffShell({ children }: { children: ReactNode }) {
         <main className="flex-1 px-3 pb-28 pt-5 sm:px-4 lg:pb-8 lg:pl-2 lg:pr-5 print:p-0"><WaiterPinProvider device={device}><CustomerFinderAccess allowed={can(user, "guests.view")}>{children}</CustomerFinderAccess></WaiterPinProvider></main>
       </div>
 
-      <StaffBottomBar home={home} sections={sections} requests={newRequests} canBook={can(user, "reservations.view")} user={{ name: user.fullName, role: user.roleName }} signOut />
+      <StaffBottomBar home={home} sections={sections} requests={newRequests} canBook={can(user, "reservations.view")} user={{ name: user.fullName, role: user.roleName, developer }} signOut />
+      </div>
     </div>
     {/* After a check-out done in place: the thank-you message, ready to send (opened by showCheckoutThanks). */}
     <CheckoutThanksHost />

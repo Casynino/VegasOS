@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { authorize, requestMeta, type CurrentUser } from "@/server/auth";
+import { authorize, authorizeDecision, requestMeta, type CurrentUser } from "@/server/auth";
 import { db } from "@/server/db";
 import { AppError, runAction, type ActionResult } from "@/server/errors";
 import { approveLateCheckout, approveLeaveOwing, changeDiscount, discountStayBill, extendStayFree, withdrawLeaveOwing } from "@/server/services/reservations";
@@ -15,6 +15,11 @@ import { msg } from "@/i18n/msg";
  * The decisions managers, the MD and the owner make (reception and waiters do the routine work):
  * free extra nights, a free late checkout, a discount on a room or a table's bill. Every one is
  * recorded with who, how much and why.
+ *
+ * The Developer account holds the Boss-level dashboard rights only to LOOK at every dashboard; it never DECIDES about money
+ * (owner, 2026-10-14). The decisions that change what a guest owes go through authorizeDecision, which always refuses it
+ * (and writes the refusal to the audit trail). Handing work to a waiter or logging a complaint changes no money, so those stay
+ * on authorize.
  */
 const DECIDERS = ["dashboard.manager", "dashboard.owner", "dashboard.admin"] as const;
 async function actor(user: CurrentUser) {
@@ -30,7 +35,7 @@ const Reason = z.string().trim().min(3, msg("Say why.")).max(200);
 /** Extra nights on the house — the guest stays, the bill does not change. */
 export async function freeNightsAction(input: { reservationRoomId: string; nights: number; reason: string }): Promise<ActionResult<{ until: string }>> {
   return runAction(async () => {
-    const user = await authorize(...DECIDERS);
+    const user = await authorizeDecision(...DECIDERS);
     const d = z.object({ reservationRoomId: Id, nights: z.coerce.number().int().min(1).max(14), reason: Reason }).parse(input);
     const rr = await db.reservationRoom.findUnique({ where: { id: d.reservationRoomId }, select: { departureDate: true } });
     if (!rr) throw new AppError("Booking room not found.", "NOT_FOUND");
@@ -44,7 +49,7 @@ export async function freeNightsAction(input: { reservationRoomId: string; night
 /** A later checkout today, free. */
 export async function freeLateCheckoutAction(input: { reservationRoomId: string; until: string; reason: string }): Promise<ActionResult<null>> {
   return runAction(async () => {
-    const user = await authorize(...DECIDERS);
+    const user = await authorizeDecision(...DECIDERS);
     const d = z.object({ reservationRoomId: Id, until: z.string().regex(/^\d{2}:\d{2}$/, msg("Choose a time.")), reason: Reason }).parse(input);
     await approveLateCheckout(d.reservationRoomId, { until: d.until, fee: 0, note: `Free — ${d.reason}` }, await actor(user));
     refresh();
@@ -55,7 +60,7 @@ export async function freeLateCheckoutAction(input: { reservationRoomId: string;
 /** A discount on the room price, per night (within the hotel's limit). */
 export async function roomDiscountAction(input: { reservationRoomId: string; perNight: number; reason: string }): Promise<ActionResult<null>> {
   return runAction(async () => {
-    const user = await authorize(...DECIDERS);
+    const user = await authorizeDecision(...DECIDERS);
     const d = z.object({ reservationRoomId: Id, perNight: z.coerce.number().int().min(0).max(10_000_000), reason: Reason }).parse(input);
     await changeDiscount(d.reservationRoomId, d.perNight, d.reason, await actor(user));
     refresh();
@@ -66,7 +71,7 @@ export async function roomDiscountAction(input: { reservationRoomId: string; per
 /** A discount on a table's bill (all its orders still to pay) or on one order. */
 export async function billDiscountAction(input: { sessionId?: string | null; orderIds?: string[]; amount?: number | null; percent?: number | null; reason: string }): Promise<ActionResult<{ amount: number }>> {
   return runAction(async () => {
-    const user = await authorize(...DECIDERS);
+    const user = await authorizeDecision(...DECIDERS);
     const d = z.object({
       sessionId: Id.nullish(), orderIds: z.array(Id).max(50).optional(), reason: Reason,
       amount: z.coerce.number().int().min(1).max(100_000_000).nullish(), percent: z.coerce.number().min(1).max(100).nullish(),
@@ -107,7 +112,7 @@ export async function cancelClosureAction(input: { blockId: string; reason?: str
 /** Let a guest check out still owing (reception can then check them out). */
 export async function leaveOwingAction(input: { reservationId: string; reason: string }): Promise<ActionResult<{ upTo: number }>> {
   return runAction(async () => {
-    const user = await authorize(...DECIDERS);
+    const user = await authorizeDecision(...DECIDERS);
     const d = z.object({ reservationId: Id, reason: Reason }).parse(input);
     const r = await approveLeaveOwing(d.reservationId, d.reason, await actor(user));
     refresh();
@@ -117,7 +122,7 @@ export async function leaveOwingAction(input: { reservationId: string; reason: s
 
 export async function withdrawLeaveOwingAction(input: { reservationId: string }): Promise<ActionResult<null>> {
   return runAction(async () => {
-    const user = await authorize(...DECIDERS);
+    const user = await authorizeDecision(...DECIDERS);
     await withdrawLeaveOwing(z.object({ reservationId: Id }).parse(input).reservationId, await actor(user));
     refresh();
     return null;
@@ -173,7 +178,7 @@ export async function roomServiceWaiterAction(input: { roomId: string; waiterId:
 /** A discount on the guest's whole bill — room nights and everything charged to the room. */
 export async function stayBillDiscountAction(input: { reservationId: string; amount?: number | null; percent?: number | null; reason: string }): Promise<ActionResult<{ amount: number; toPay: number }>> {
   return runAction(async () => {
-    const user = await authorize(...DECIDERS);
+    const user = await authorizeDecision(...DECIDERS);
     const d = z.object({
       reservationId: Id, reason: Reason,
       amount: z.coerce.number().int().min(1).max(100_000_000).nullish(), percent: z.coerce.number().min(1).max(100).nullish(),

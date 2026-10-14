@@ -1,4 +1,5 @@
 import { getCurrentUser } from "@/server/auth";
+import { guardDeveloperExport } from "@/server/services/developer-view-log";
 import { handoverList } from "@/server/services/cash-handover";
 import { CASH_HANDOVER_ON } from "@/lib/cash-handover";
 import { isBusinessDate, presetRange, type PeriodPreset } from "@/lib/time/business-date";
@@ -20,6 +21,9 @@ export async function GET(req: Request) {
   }
   if (!isBusinessDate(from) || !isBusinessDate(to) || from > to) return new Response("Invalid range", { status: 400 });
   if ((Date.parse(to) - Date.parse(from)) / 86_400_000 > 366) return new Response("Range too long (max 1 year)", { status: 400 });
+  // A Developer's export is written to the audit trail BEFORE any figure is read or sent — and nothing is sent when it cannot be written.
+  const blocked = await guardDeveloperExport(user, { kind: "exported", module: "CashHandover", entityId: "cash-handovers", after: { path: url.pathname, report: "cash-handovers", from, to } });
+  if (blocked) return blocked;
   const rows = await handoverList({ from, to, take: 2000 });
   const esc = (v: unknown) => {
     const s = v === null || v === undefined ? "" : String(v);

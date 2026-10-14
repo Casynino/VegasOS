@@ -648,11 +648,19 @@ export async function shiftReportLink(token: string) {
 const newToken = () => randomBytes(24).toString("base64url");
 const json = (v: unknown) => v as Prisma.InputJsonValue;
 
+/** The signed-in person behind a manual run (shown in the audit trail under their own identity). */
+export interface ReportActor { userId: string; label: string; ipAddress?: string | null }
+
 /**
  * Make a closed shift's report — once. Called again (a double click, a retry, the scheduled run) it returns the report
  * already made. `regenerate` (MD / owner, with a reason) makes a new version and keeps the earlier one.
  */
-export async function generateShiftReport(shiftId: string, opts: { regenerate?: { by: string; reason: string } } = {}) {
+export async function generateShiftReport(
+  shiftId: string,
+  // `userId` / `ipAddress` (with the regeneration) and `actor` (a person pressing "make the report now"): the signed-in person behind a manual run, so the audit trail names them —
+  // a Developer included. The scheduled run has neither: it stays the system's.
+  opts: { regenerate?: { by: string; reason: string; userId?: string | null; ipAddress?: string | null }; actor?: ReportActor } = {},
+) {
   const existing = await db.shiftReport.findUnique({ where: { shiftId } });
   if (existing && !opts.regenerate) return existing;
   const settings = await getSettings();
@@ -684,7 +692,10 @@ export async function generateShiftReport(shiftId: string, opts: { regenerate?: 
       return { report: created, made: true, prev: null };
     });
     if (made) {
-      await audit(db, { label: opts.regenerate?.by ?? "system" }, {
+      const who = opts.regenerate
+        ? { userId: opts.regenerate.userId ?? null, label: opts.regenerate.by, ipAddress: opts.regenerate.ipAddress ?? null }
+        : { userId: opts.actor?.userId ?? null, label: opts.actor?.label ?? "system", ipAddress: opts.actor?.ipAddress ?? null };
+      await audit(db, who, {
         action: prev ? "report.shift_regenerated" : "report.shift_generated", entityType: "ShiftReport", entityId: report.id,
         before: prev ? { version: prev.version, generatedBy: prev.generatedBy } : undefined,
         after: { shiftId, person: data.person.name, department: data.shift.department, version: report.version, reason: opts.regenerate?.reason ?? null },
@@ -722,9 +733,9 @@ export async function shiftReportTextIn(d: ShiftReportData, token: string, lang:
  * After a shift closes (run after the close is saved — never inside it): make the report, then send it. Nothing here
  * can undo or block the close; a failure is logged and the scheduled run tries again.
  */
-export async function afterShiftClosed(shiftId: string, opts: { send?: boolean; deadline?: number } = {}) {
+export async function afterShiftClosed(shiftId: string, opts: { send?: boolean; deadline?: number; actor?: ReportActor } = {}) {
   try {
-    const report = await generateShiftReport(shiftId);
+    const report = await generateShiftReport(shiftId, { actor: opts.actor });
     const settings = await getSettings();
     if (!settings.shiftReportEnabled) {
       // Sending is off: say so on the report, so it is not sent in a heap when sending is turned back on.

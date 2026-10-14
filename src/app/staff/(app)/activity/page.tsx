@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requirePagePermission } from "@/server/auth";
-import { db } from "@/server/db";
 import { businessToday } from "@/server/settings";
-import { addDays, isBusinessDate, toDbDate } from "@/lib/time/business-date";
+import { addDays, isBusinessDate } from "@/lib/time/business-date";
 import { PageHeader, EmptyState } from "@/components/staff/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -12,15 +11,16 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AuditDetail } from "./audit-detail";
+import { ACTIVITY_PAGE_SIZE as PAGE_SIZE, loadActivity } from "./data";
+import { ActorBadge } from "../audit/audit-rows";
 import { getT } from "@/i18n/server";
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getT())("Staff activity") };
 }
-const PAGE_SIZE = 50;
 
 export default async function ActivityPage({ searchParams }: PageProps<"/staff/activity">) {
-  await requirePagePermission("staff.activity.view");
+  const viewer = await requirePagePermission("staff.activity.view");
   const sp = await searchParams;
   const today = await businessToday();
   const t = await getT();
@@ -31,24 +31,8 @@ export default async function ActivityPage({ searchParams }: PageProps<"/staff/a
   const area = str(sp.area) || undefined;
   const page = Math.max(1, Number(str(sp.page)) || 1);
 
-  const where = {
-    businessDate: { gte: toDbDate(from), lte: toDbDate(to) },
-    ...(userId ? { userId } : {}),
-    ...(area ? { action: { startsWith: `${area}.` } } : {}),
-  };
-
-  const [rows, total, users, areas] = await Promise.all([
-    db.auditLog.findMany({
-      where,
-      include: { user: { select: { fullName: true } } },
-      orderBy: { createdAt: "desc" },
-      take: PAGE_SIZE,
-      skip: (page - 1) * PAGE_SIZE,
-    }),
-    db.auditLog.count({ where }),
-    db.user.findMany({ select: { id: true, fullName: true }, orderBy: { fullName: "asc" } }),
-    db.$queryRaw<{ area: string }[]>`SELECT DISTINCT split_part("action", '.', 1) AS area FROM "audit_logs" ORDER BY 1`,
-  ]);
+  // Who sees what is decided in ./data.ts: a Developer's rows (and the Developer's account in the list) only for whoever holds "audit.view".
+  const { rows, total, users, areas, developers } = await loadActivity(viewer, { from, to, userId, area, page });
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const qs = (p: number) => new URLSearchParams({ from, to, ...(userId && { user: userId }), ...(area && { area }), page: String(p) }).toString();
 
@@ -69,7 +53,7 @@ export default async function ActivityPage({ searchParams }: PageProps<"/staff/a
           <Label htmlFor="area">{t.ctx("activity", "Area")}</Label>
           <NativeSelect id="area" name="area" defaultValue={area ?? ""}>
             <option value="">{t("All areas")}</option>
-            {areas.map((a) => <option key={a.area} value={a.area}>{a.area}</option>)}
+            {areas.map((a) => <option key={a} value={a}>{a}</option>)}
           </NativeSelect>
         </div>
         <Button type="submit">{t("Filter")}</Button>
@@ -94,10 +78,15 @@ export default async function ActivityPage({ searchParams }: PageProps<"/staff/a
                 {rows.map((r) => (
                   <TableRow key={r.id}>
                     <TableCell className="whitespace-nowrap text-muted-foreground">{t.dateTime(r.createdAt)}</TableCell>
-                    <TableCell>{r.user?.fullName ?? r.actorLabel ?? t("System")}</TableCell>
+                    <TableCell>
+                      <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
+                        {r.who ?? t("System")}
+                        {developers && <ActorBadge type={r.actorType} t={t} />}
+                      </span>
+                    </TableCell>
                     <TableCell className="font-mono text-xs">{r.action}</TableCell>
                     <TableCell className="hidden md:table-cell text-muted-foreground">{r.entityType}{r.entityId ? ` · ${r.entityId.slice(-8)}` : ""}</TableCell>
-                    <TableCell>{(r.before || r.after) && <AuditDetail action={r.action} before={r.before} after={r.after} />}</TableCell>
+                    <TableCell>{(r.before != null || r.after != null) && <AuditDetail action={r.action} before={r.before} after={r.after} />}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

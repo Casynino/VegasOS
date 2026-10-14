@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/server/db";
 import { audit } from "@/server/audit";
-import { authorize, requestMeta, type CurrentUser } from "@/server/auth";
+import { authorize, authorizeDecision, requestMeta, type CurrentUser } from "@/server/auth";
 import { AppError, isUniqueViolation, runAction, type ActionResult } from "@/server/errors";
 import { parseInput } from "@/server/validation";
 import { siteOrigin } from "@/server/site-origin";
@@ -95,7 +95,8 @@ export async function tripStatusAction(input: { tripId: string; status: "CONFIRM
 
 export async function adjustTripPriceAction(input: { tripId: string; price: number; reason: string }) {
   return runAction(async () => {
-    const user = await authorize("transport.manage");
+    // A special price for a trip decides what the guest pays: never the Developer (owner, 2026-10-14).
+    const user = await authorizeDecision("transport.manage");
     await adjustTripPrice(input.tripId, Math.round(Number(input.price)), input.reason ?? "", await actor(user));
     refresh();
     return null;
@@ -148,7 +149,8 @@ export async function saveTransportServiceAction(input: {
   options?: { id?: string; name: string; description?: string; price: number; isActive?: boolean }[];
 }) {
   return runAction(async () => {
-    const user = await authorize("transport.manage", "settings.manage");
+    // The transport price list: prices are set by the Boss, the MD or a manager — never the Developer.
+    const user = await authorizeDecision("transport.manage", "settings.manage");
     await saveTransportService({ ...input, price: Math.round(Number(input.price)), options: input.options?.map((o) => ({ ...o, price: Math.round(Number(o.price)) })) }, await actor(user));
     refresh();
     revalidatePath("/transport");

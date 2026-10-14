@@ -345,8 +345,13 @@ export async function dailyReportByToken(token: string) {
  * numbers, the full document and the message. Regenerating keeps the earlier version (who replaced
  * it, when, why) and records a new version.
  */
-export async function generateDailyReport(date: BusinessDate, who: string | { by: string; automatic?: boolean; reason?: string | null } = "system") {
-  const o = typeof who === "string" ? { by: who, automatic: who === "system", reason: null } : { automatic: false, reason: null, ...who };
+export async function generateDailyReport(
+  date: BusinessDate,
+  // `userId` / `ipAddress`: the signed-in person behind a manual run (the audit trail names them — a Developer included). The scheduled run has neither: it stays the system's.
+  who: string | { by: string; userId?: string | null; ipAddress?: string | null; automatic?: boolean; reason?: string | null } = "system",
+) {
+  const o: { by: string; userId?: string | null; ipAddress?: string | null; automatic: boolean; reason: string | null } =
+    typeof who === "string" ? { by: who, automatic: who === "system", reason: null } : { automatic: false, reason: null, ...who };
   const settings = await getSettings();
   const data = await buildDailyReport(date);
   const { buildDailyDocument } = await import("./daily-document");
@@ -370,7 +375,7 @@ export async function generateDailyReport(date: BusinessDate, who: string | { by
   });
   const summaryText = renderReportText(data, settings.hotelName, await reportLink(report.id));
   const saved = await db.dailyReport.update({ where: { id: report.id }, data: { summaryText } });
-  await audit(db, { label: o.by }, {
+  await audit(db, { userId: o.userId ?? null, label: o.by, ipAddress: o.ipAddress ?? null }, {
     action: existing ? "report.daily_regenerated" : "report.daily_generated", entityType: "DailyReport", entityId: report.id,
     before: existing ? { version: existing.version, generatedBy: existing.generatedBy } : undefined,
     after: { businessDate: date, version: saved.version, automatic: o.automatic, reason: o.reason },

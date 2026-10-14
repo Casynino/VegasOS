@@ -154,6 +154,8 @@ export const NAV: NavSection[] = [
       // Everyone's shifts (waiters and reception) with the report made when each ended — managers, the MD and the owner.
       { href: "/staff/shifts/all", label: msg("Staff shifts"), icon: "History", anyOf: ["shifts.manage", "reports.view"] },
       { href: "/staff/activity", label: msg("Activity"), icon: "Activity", anyOf: ["staff.activity.view"] },
+      // The full record of who did what — Developer actions included — read-only: the Boss, the MD and the Developer.
+      { href: "/staff/audit", label: msg("Audit trail"), icon: "History", anyOf: ["audit.view"] },
       { href: "/staff/users", label: msg("Staff & roles"), icon: "UserCog", anyOf: ["users.manage"] },
     ],
   },
@@ -180,6 +182,8 @@ export const NAV: NavSection[] = [
       // Which languages guests are offered, and how much of the hotel's text is in Chinese.
       { href: "/staff/settings/languages", label: msg("Languages"), icon: "Languages", anyOf: ["settings.manage"] },
       { href: "/staff/guests", label: msg("Customers"), icon: "Contact", anyOf: ["reservations.view"] },
+      // The Developer's own console (system status and diagnostics): the Developer role only — never the Boss, the MD or staff.
+      { href: "/staff/developer", label: msg("Developer console"), icon: "Layers", anyOf: ["developer.access"] },
     ],
   },
 ];

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { validPhone } from "@/lib/guest-messages";
 import { db } from "@/server/db";
-import { authorize, requestMeta, type CurrentUser } from "@/server/auth";
+import { authorize, authorizeDecision, requestMeta, type CurrentUser } from "@/server/auth";
 import { AppError, runAction, type ActionResult } from "@/server/errors";
 import { parseInput } from "@/server/validation";
 import { getSettings, stayConfig, businessToday } from "@/server/settings";
@@ -301,6 +301,8 @@ export async function createReservationAction(input: z.input<typeof CreateSchema
   return runAction(async () => {
     const user = await authorize("reservations.create");
     const { prompt, ...data } = parseInput(CreateSchema, input);
+    // A discount on a booking is a decision about what the guest pays: refused for the Developer before anything is made, and kept in the audit trail.
+    if (user.actorType === "DEVELOPER" && data.rooms.some((r) => (r.discountPerNight ?? 0) > 0)) await authorizeDecision("reservations.create");
     if (data.checkInNow && !user.permissions.has("reservations.check_in")) throw new AppError("You cannot check guests in.", "FORBIDDEN");
     if ((data.payment || prompt) && !user.permissions.has("payments.record")) throw new AppError("You cannot record payments.", "FORBIDDEN");
     if (prompt && data.payment) throw new AppError("Choose one way to pay — mobile money or another payment method.", "VALIDATION");
@@ -700,7 +702,8 @@ export async function releaseNoShowAction(input: { reservationId: string; reason
 
 export async function changeDiscountAction(input: { reservationId: string; reservationRoomId: string; discountPerNight: number; reason: string }) {
   return runAction(async () => {
-    const user = await authorize("reservations.edit");
+    // A discount (given, changed or taken away) decides what the guest pays: never the Developer (owner, 2026-10-14).
+    const user = await authorizeDecision("reservations.edit");
     const amount = Number(input.discountPerNight);
     if (!Number.isInteger(amount) || amount < 0) throw new AppError("Enter a valid discount.");
     await changeDiscount(input.reservationRoomId, amount, input.reason, await actorFor(user));
@@ -872,7 +875,8 @@ export async function extendStayAction(input: {
 
 export async function lateCheckoutAction(input: { reservationId: string; reservationRoomId: string; until: string; fee?: number | null; note?: string }) {
   return runAction(async () => {
-    const user = await authorize("reservations.edit");
+    // The fee of a late checkout (charged, changed or free) decides what the guest pays: never the Developer.
+    const user = await authorizeDecision("reservations.edit");
     const fee = input.fee === null || input.fee === undefined || Number.isNaN(Number(input.fee)) ? null : Number(input.fee);
     await approveLateCheckout(input.reservationRoomId, { until: input.until, fee, note: input.note }, await actorFor(user));
     refresh(input.reservationId);
@@ -920,7 +924,8 @@ const BillingSchema = z.object({
 /** Who pays for this stay: the guest, the company, or split. */
 export async function changeBillingAction(input: z.input<typeof BillingSchema>) {
   return runAction(async () => {
-    const user = await authorize("reservations.edit");
+    // Who pays for the stay (the guest, a company, split) decides who owes the bill: never the Developer.
+    const user = await authorizeDecision("reservations.edit");
     const d = parseInput(BillingSchema, input);
     await changeBilling(d.reservationId, d, await actorFor(user));
     refresh(d.reservationId);

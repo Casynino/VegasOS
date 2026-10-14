@@ -1433,6 +1433,10 @@ model AuditLog {
   userId       String?
   user         User?    @relation(fields: [userId], references: [id])
   actorLabel   String? // "website", "system", or user name snapshot
+  /// Who it really was, taken from the signed-in account at the moment of writing: DEVELOPER | STAFF | SYSTEM | WEBSITE. Never inferred from a page or a department.
+  actorType    String?
+  /// The role code the account held at that moment (e.g. DEVELOPER, RECEPTIONIST).
+  actorRole    String?
   action       String // e.g. reservation.created
   entityType   String
   entityId     String?
@@ -1446,6 +1450,7 @@ model AuditLog {
   @@index([userId, createdAt])
   @@index([businessDate])
   @@index([action])
+  @@index([actorType, createdAt])
   @@map("audit_logs")
 }
 

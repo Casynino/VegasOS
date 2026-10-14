@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { authorize, can, type CurrentUser } from "@/server/auth";
+import { authorize, authorizeDecision, can, requestMeta, type CurrentUser } from "@/server/auth";
+import { audit } from "@/server/audit";
 import { db } from "@/server/db";
 import { AppError, runAction } from "@/server/errors";
 import { parseInput } from "@/server/validation";
@@ -12,6 +13,12 @@ import { getT } from "@/i18n/server";
 
 const Id = z.string().min(1).max(40);
 const manager = (u: CurrentUser) => can(u, "shifts.manage") || can(u, "reports.view");
+
+/** Who pressed the button, as the audit trail and the reports name them: under their own account, whatever kind it is. */
+async function whoPressed(user: CurrentUser) {
+  const { ipAddress } = await requestMeta();
+  return { userId: user.id, label: `${user.fullName} (${user.roleName})`, ipAddress };
+}
 
 /** Their own report, or anyone's for a manager. */
 async function viewer(shiftId: string) {
@@ -27,7 +34,7 @@ async function viewer(shiftId: string) {
 export async function makeShiftReportAction(input: { shiftId: string }) {
   return runAction(async () => {
     const { shiftId } = parseInput(z.object({ shiftId: Id }), input);
-    await viewer(shiftId);
+    const user = await viewer(shiftId);
     // Sent to the boss only when it is made now for a shift that ended in the last day — exactly as at the close. An
     // older shift (or one already reported) is only made here; a manager decides whether to send it.
     const [before, shift] = await Promise.all([
@@ -35,7 +42,8 @@ export async function makeShiftReportAction(input: { shiftId: string }) {
       db.actualShift.findUniqueOrThrow({ where: { id: shiftId }, select: { endedAt: true } }),
     ]);
     const fresh = !before && !!shift.endedAt && shift.endedAt.getTime() >= Date.now() - 86_400_000;
-    const report = await afterShiftClosed(shiftId, { send: fresh });
+    // Made now by this person (the trail names them); made automatically at the close, it is the system's, as before.
+    const report = await afterShiftClosed(shiftId, { send: fresh, actor: await whoPressed(user) });
     if (!report) throw new AppError("The report could not be made just now — try again in a moment.", "CONFLICT");
     if (!fresh && !report.sendSkipped && !(await db.notificationDelivery.count({ where: { shiftReportId: report.id } }))) {
       await db.shiftReport.update({ where: { id: report.id }, data: { sendSkipped: true } });
@@ -48,8 +56,10 @@ export async function makeShiftReportAction(input: { shiftId: string }) {
 /** Send the report's message to the boss again (or retry a failed one). */
 export async function sendShiftReportAction(input: { reportId: string; force?: boolean }) {
   return runAction(async () => {
-    await authorize("shifts.manage", "reports.daily.manage");
+    const user = await authorize("shifts.manage", "reports.daily.manage");
     const d = parseInput(z.object({ reportId: Id, force: z.boolean().optional() }), input);
+    // Sending it again is written down under the real person, before the send (so even one that fails half way is on record).
+    await audit(db, await whoPressed(user), { action: "report.shift_sent", entityType: "ShiftReport", entityId: d.reportId, after: { force: !!d.force } });
     const r = await deliverShiftReport(d.reportId, { force: d.force, manual: true });
     const report = await db.shiftReport.findUnique({ where: { id: d.reportId }, select: { shiftId: true } });
     if (report) revalidatePath(`/staff/shifts/${report.shiftId}/report`);
@@ -64,9 +74,12 @@ export async function sendShiftReportAction(input: { reportId: string; force?: b
 export async function regenerateShiftReportAction(input: { shiftId: string; reason: string }) {
   return runAction(async () => {
     const user = await authorize("shifts.manage", "reports.view");
+    // Regenerating a financial report is a decision: a Developer is always refused (and the refusal is written down); the MD and the owner are as before.
+    if (user.actorType === "DEVELOPER") await authorizeDecision("dashboard.admin", "dashboard.owner");
     if (!(can(user, "dashboard.admin") || can(user, "dashboard.owner"))) throw new AppError("Only the MD or the owner can regenerate a shift report.", "FORBIDDEN");
     const d = parseInput(z.object({ shiftId: Id, reason: z.string().trim().min(5, msg("Say why (at least a few words).")).max(300) }), input);
-    const report = await generateShiftReport(d.shiftId, { regenerate: { by: `${user.fullName} (${user.roleName})`, reason: d.reason } });
+    const who = await whoPressed(user);
+    const report = await generateShiftReport(d.shiftId, { regenerate: { by: who.label, reason: d.reason, userId: who.userId, ipAddress: who.ipAddress } });
     revalidatePath(`/staff/shifts/${d.shiftId}`, "layout");
     return { id: report.id, version: report.version };
   }, msg("New version made — the earlier one is kept."));

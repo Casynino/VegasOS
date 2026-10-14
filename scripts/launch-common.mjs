@@ -48,7 +48,7 @@ export const WORK = {
 export const MIXED = ["audit_logs", "inventory_movements", "room_blocks", "shift_schedules", "stored_files"];
 
 /** History rows about set-up and sign-ins, and about what was done with guests, orders and money — by the first word of the action. */
-export const AUDIT_SETUP = ["auth", "user", "settings", "pricing", "role", "system", "menu", "setup"];
+export const AUDIT_SETUP = ["auth", "user", "settings", "pricing", "role", "system", "menu", "setup", "developer", "audit"];
 export const AUDIT_WORK = [
   "reservation", "restaurant_order", "room", "payment", "expense", "revenue", "spin", "shift", "guest", "table_reservation", "booking_request",
   "request", "invoice", "group", "transport", "report", "dining_session", "finance", "thank_you", "meeting", "restaurant_table", "corporate",

@@ -2,7 +2,7 @@ import { msg } from "@/i18n/msg";
 
 /** Plain-English words for what staff did (from the history log), and which part of the hotel it was. */
 const WORDS: Record<string, string> = {
-  "auth.login": msg("signed in"), "auth.logout": msg("signed out"),
+  "auth.login": msg("signed in"), "auth.logout": msg("signed out"), "auth.login_failed": msg("Failed sign-in (not signed in)"),
   "reservation.created": msg("made a booking"), "reservation.checked_in": msg("checked a guest in"), "reservation.checked_in_voided": msg("checked a guest in — cancelled later"), "reservation.checkin_cancelled": msg("cancelled a check-in"), "reservation.checked_out": msg("checked a guest out"),
   "reservation.extended": msg("extended a stay"), "reservation.overstay_charged": msg("put extra nights on the bill"), "reservation.room_assigned": msg("moved a guest to another room"), "reservation.room_changed": msg("changed a guest's room"),
   "reservation.cancelled": msg("cancelled a booking"), "reservation.confirmed": msg("confirmed a booking"), "reservation.confirmed_by_payment": msg("confirmed a booking by payment"),
@@ -32,6 +32,8 @@ const WORDS: Record<string, string> = {
   "report.daily_generated": msg("sent the daily report"), "settings.updated": msg("changed settings"), "payment_account.opening_balance_set": msg("set an account's opening balance"), "settings.order_sounds": msg("changed the restaurant sounds"),
   "user.password_changed": msg("changed a password"), "user.profile_updated": msg("updated their profile"), "user.sessions_revoked": msg("signed out their other devices"),
   "user.created": msg("added a staff member"), "user.permission_changed": msg("changed staff permissions"),
+  "user.updated": msg("changed a staff account's details"), "user.role_changed": msg("changed a staff account's role"),
+  "user.deactivated": msg("switched a staff account off"), "user.reactivated": msg("switched a staff account back on"), "user.password_reset": msg("reset a password"),
   "request.created": msg("logged a guest request"), "request.accepted": msg("accepted a guest request"), "request.updated": msg("updated a guest request"),
   "complaint.logged": msg("logged a complaint"), "complaint.resolved": msg("resolved a complaint"),
   "transport.driver_assigned": msg("assigned a driver"), "transport.driver_changed": msg("changed the driver"), "transport.completed": msg("completed a trip"), "transport.cancelled": msg("cancelled a trip"),
@@ -40,6 +42,9 @@ const WORDS: Record<string, string> = {
   "reservation.occupant_added": msg("added a guest to a booking"), "reservation.occupant_removed": msg("removed a guest from a booking"), "reservation.extended_free": msg("extended a stay (free)"),
   "reservation.charge_added": msg("added a charge to a bill"), "reservation.late_arrival": msg("noted a late arrival"),
   "report.shift_generated": msg("made a shift report"), "report.shift_regenerated": msg("regenerated a shift report"), "report.daily_regenerated": msg("regenerated the daily report"),
+  "report.room_generated": msg("made the room report"), "report.room_regenerated": msg("regenerated the room report"),
+  "report.daily_sent": msg("sent the daily report to the recipients"), "report.room_sent": msg("sent the room report to the recipients"),
+  "report.shift_sent": msg("sent a shift report to the recipients"), "report.staff_sent": msg("sent a staff report to the recipients"),
   "shift.started": msg("started a shift"), "shift.ended": msg("closed their shift"), "shift.closed_by_manager": msg("closed someone's shift (manager, with the reason)"), "shift.taken_over": msg("took over a shift"), "shift.note_added": msg("left a handover note"),
   "hotel_qr.created": msg("made a Hotel QR"), "hotel_qr.renamed": msg("renamed a Hotel QR"), "hotel_qr.regenerated": msg("made a new Hotel QR code (the old card stopped working)"),
   "hotel_qr.enabled": msg("switched a Hotel QR on"), "hotel_qr.disabled": msg("switched a Hotel QR off"), "hotel_qr.archived": msg("archived a Hotel QR"),

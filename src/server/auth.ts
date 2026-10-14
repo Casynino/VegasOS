@@ -7,11 +7,16 @@ import { hash, verify } from "@node-rs/argon2";
 import { db } from "./db";
 import { AppError } from "./errors";
 import { msg } from "@/i18n/msg";
-import { isRestaurantDevice, needsOwnShift, SHIFT_FREE_CODES, type PermissionCode } from "@/lib/permissions";
+import { audit } from "./audit";
+import { trackDeveloperView } from "./services/developer-view-log";
+import { DEVELOPER_ROLE_CODE, isRestaurantDevice, needsOwnShift, SHIFT_FREE_CODES, type PermissionCode } from "@/lib/permissions";
 
 export const STAFF_HINT_COOKIE = "vlh_staff";
 export const SESSION_COOKIE = "vlh_session";
 const SESSION_HOURS = 14; // covers a full reception shift
+/** The Developer account is more powerful, so its session is short: 4 hours at most, and 30 minutes without use ends it. */
+export const DEVELOPER_SESSION_HOURS = 4;
+export const DEVELOPER_IDLE_MINUTES = 30;
 const SLIDING_REFRESH_MINUTES = 15;
 /** The shared restaurant screen stays signed in: 30 days from its last use, renewed while it is used. */
 const DEVICE_SESSION_DAYS = 30;
@@ -55,8 +60,9 @@ export async function requestMeta(): Promise<{ ipAddress: string | null; userAge
 export async function createSession(userId: string): Promise<void> {
   const token = randomBytes(32).toString("base64url");
   const perms = await db.permission.findMany({ where: { roles: { some: { role: { users: { some: { id: userId } } } } } }, select: { code: true } });
-  const device = isRestaurantDevice(new Set(perms.map((p) => p.code)));
-  const expiresAt = new Date(Date.now() + (device ? DEVICE_SESSION_DAYS * 24 : SESSION_HOURS) * 3600_000);
+  const developer = (await db.user.findUnique({ where: { id: userId }, select: { role: { select: { code: true } } } }))?.role.code === DEVELOPER_ROLE_CODE;
+  const device = !developer && isRestaurantDevice(new Set(perms.map((p) => p.code)));
+  const expiresAt = new Date(Date.now() + (developer ? DEVELOPER_SESSION_HOURS : device ? DEVICE_SESSION_DAYS * 24 : SESSION_HOURS) * 3600_000);
   const cookieExpires = device ? new Date(Date.now() + DEVICE_COOKIE_DAYS * 24 * 3600_000) : expiresAt;
   const meta = await requestMeta();
   await db.session.create({
@@ -110,14 +116,19 @@ export interface CurrentUser {
   locale: string;
   roleCode: string;
   roleName: string;
+  /** DEVELOPER only for an account whose role is the Developer role — read from the database on every request, never from the browser. */
+  actorType: "DEVELOPER" | "STAFF";
   mustChangePassword: boolean;
   /** Switched the alert bell off (for them, everywhere). */
   soundOff: boolean;
   permissions: ReadonlySet<PermissionCode>;
 }
 
-/** The authenticated staff user for this request, or null. Cached per request. */
-export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
+/**
+ * The signed-in person for this request. `touch` says whether this request counts as the person USING the system: the page loads and
+ * actions do; a background poll (the alert bell) does not — otherwise an open tab would keep a Developer's 30-minute idle rule from ever ending the session.
+ */
+async function loadCurrentUser(touch: boolean): Promise<CurrentUser | null> {
   const jar = await cookies();
   const token = jar.get(SESSION_COOKIE)?.value;
   if (!token) return null;
@@ -132,10 +143,13 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
 
   const { user } = session;
   const permissions = new Set(user.role.permissions.map((rp) => rp.permission.code as PermissionCode));
-  const device = isRestaurantDevice(permissions);
-  // Only the restaurant screen keeps a long session: anyone else (a role changed since) is back to 14 hours.
-  if (!device && Date.now() > session.createdAt.getTime() + SESSION_HOURS * 3600_000) return null;
-  if (Date.now() - session.lastSeenAt.getTime() > SLIDING_REFRESH_MINUTES * 60_000) {
+  const developer = user.role.code === DEVELOPER_ROLE_CODE;
+  const device = !developer && isRestaurantDevice(permissions);
+  // The Developer's session is short and ends when unused; the restaurant screen keeps a long one; anyone else is back to 14 hours.
+  if (developer && (Date.now() > session.createdAt.getTime() + DEVELOPER_SESSION_HOURS * 3600_000 || Date.now() - session.lastSeenAt.getTime() > DEVELOPER_IDLE_MINUTES * 60_000)) return null;
+  if (!developer && !device && Date.now() > session.createdAt.getTime() + SESSION_HOURS * 3600_000) return null;
+  // The Developer's "last seen" is kept fresh every minute, so the 30-minute idle rule means 30 minutes of real inactivity (not 15 to 30).
+  if ((touch || !developer) && Date.now() - session.lastSeenAt.getTime() > (developer ? 1 : SLIDING_REFRESH_MINUTES) * 60_000) {
     // The shared restaurant screen never signs itself out while it is in use.
     const renew = device ? { expiresAt: new Date(Date.now() + DEVICE_SESSION_DAYS * 24 * 3600_000) } : {};
     await db.session.update({ where: { id: session.id }, data: { lastSeenAt: new Date(), ...renew } });
@@ -148,14 +162,30 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
     locale: user.preferredLanguage,
     roleCode: user.role.code,
     roleName: user.role.name,
+    actorType: developer ? "DEVELOPER" : "STAFF",
     mustChangePassword: user.mustChangePassword,
     soundOff: user.alertSoundOff,
     permissions,
   };
-});
+}
+
+/** The authenticated staff user for this request, or null. Cached per request. */
+export const getCurrentUser = cache(() => loadCurrentUser(true));
+
+/** The same person, for background polls only (the alert bell): never counts as the person using the system, so it cannot keep a Developer session awake. */
+export const getCurrentUserQuiet = cache(() => loadCurrentUser(false));
 
 export function can(user: CurrentUser | null, permission: PermissionCode): boolean {
   return !!user && user.permissions.has(permission);
+}
+
+/**
+ * Like can(), for a right that lets someone DECIDE about money — discount a bill, give free nights, let a guest leave owing, bill another
+ * guest's room, change a limit, regenerate a financial report. The Developer holds the Boss-level dashboard rights so that it can look at
+ * everything, but those rights never let it decide: only the Boss, the MD and the managers make these decisions (owner, 2026-10-14).
+ */
+export function canDecide(user: CurrentUser | null, permission: PermissionCode): boolean {
+  return !!user && user.actorType !== "DEVELOPER" && user.permissions.has(permission);
 }
 
 /** For pages/layouts: redirect to login when signed out. */
@@ -179,13 +209,44 @@ async function withoutShift(user: CurrentUser, anyOf: PermissionCode[]) {
   return !(await getMyOpenShift(user.id));
 }
 
+/**
+ * The Developer's refused attempts (a page or an action they may not use) are kept in the audit trail — they show a permission
+ * problem to investigate. Best effort: it never changes what the person sees.
+ */
+export async function logDeveloperDenied(user: CurrentUser, anyOf: PermissionCode[], kind: "page" | "action"): Promise<void> {
+  if (user.actorType !== "DEVELOPER") return;
+  try {
+    const { ipAddress } = await requestMeta();
+    await audit(db, { userId: user.id, label: user.fullName, ipAddress }, { action: "developer.denied", entityType: "Permission", entityId: anyOf.join(","), after: { kind, needs: anyOf, path: (await headers()).get("x-pathname") } });
+  } catch { /* the audit trail must never break a request */ }
+}
+
 /** For pages: redirect when the permission is missing — and a receptionist without an open shift to "Start shift". */
 export async function requirePagePermission(...anyOf: PermissionCode[]): Promise<CurrentUser> {
   const user = await requireUser();
-  if (!anyOf.some((p) => user.permissions.has(p))) redirect("/staff/forbidden");
+  if (!anyOf.some((p) => user.permissions.has(p))) {
+    await logDeveloperDenied(user, anyOf, "page");
+    redirect("/staff/forbidden");
+  }
   if (await withoutShift(user, anyOf)) {
     const path = (await headers()).get("x-pathname");
     redirect(`/staff/start-shift${path && /^\/(staff|reception)\//.test(path) ? `?next=${encodeURIComponent(path)}` : ""}`);
+  }
+  // A Developer's visit to a sensitive page is written to the audit trail (once per page per 10 minutes, after the page is sent; it never blocks).
+  // This covers the older /finance pages too, which do not sit under the /staff layout.
+  if (user.actorType === "DEVELOPER") await trackDeveloperView(user);
+  return user;
+}
+
+/**
+ * For server actions where a person DECIDES about money (see canDecide): the same as authorize(), but a Developer is always refused — the
+ * refusal is written to the audit trail like any other refused Developer attempt.
+ */
+export async function authorizeDecision(...anyOf: PermissionCode[]): Promise<CurrentUser> {
+  const user = await authorize(...anyOf);
+  if (user.actorType === "DEVELOPER") {
+    await logDeveloperDenied(user, anyOf, "action");
+    throw new AppError("The Developer account cannot make this decision. Use the Boss, the MD or a manager account.", "FORBIDDEN");
   }
   return user;
 }
@@ -195,6 +256,7 @@ export async function authorize(...anyOf: PermissionCode[]): Promise<CurrentUser
   const user = await getCurrentUser();
   if (!user) throw new AppError("Your session has expired. Please sign in again.", "UNAUTHENTICATED");
   if (anyOf.length && !anyOf.some((p) => user.permissions.has(p))) {
+    await logDeveloperDenied(user, anyOf, "action");
     throw new AppError("You do not have permission to do this.", "FORBIDDEN");
   }
   if (await withoutShift(user, anyOf)) throw new AppError("You have no active shift — start your shift (or ask a manager) before doing reception work.", "FORBIDDEN");

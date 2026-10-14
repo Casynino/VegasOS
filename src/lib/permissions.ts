@@ -104,11 +104,104 @@ export const PERMISSIONS = {
   "inventory.manage": msg("Set up inventory: items, categories, departments, suppliers, units and recipes"),
   "assets.view": msg("See the hotel's assets (furniture, equipment, electronics)"),
   "assets.manage": msg("Add and update hotel assets"),
+
+  // Audit and the Developer account
+  "audit.view": msg("See the full audit trail: who did what, when, as a Developer or as staff (read-only; nobody can change or delete it)"),
+  "developer.access": msg("Developer super user: the developer console and system diagnostics. Held only by the Developer role — never by the Boss, the MD or any staff role"),
 } as const;
 
 export type PermissionCode = keyof typeof PERMISSIONS;
 
-export const ALL_PERMISSIONS = Object.keys(PERMISSIONS) as PermissionCode[];
+/** Rights only the Developer role holds. No business role — not even the Boss or the MD — may be given them. */
+export const DEVELOPER_ONLY: readonly PermissionCode[] = ["developer.access"];
+/** The Developer account's role. The account type shown on the sign-in page and in every audit entry comes from this. */
+export const DEVELOPER_ROLE_CODE = "DEVELOPER";
+export const isDeveloperOnly = (code: string) => (DEVELOPER_ONLY as readonly string[]).includes(code);
+
+/** Every right a BUSINESS role (the Boss, the MD…) can hold — all of them except the Developer-only ones. */
+export const ALL_PERMISSIONS = (Object.keys(PERMISSIONS) as PermissionCode[]).filter((c) => !isDeveloperOnly(c));
+
+/**
+ * THE DEVELOPER ROLE (owner, 2026-10-14) — an explicit allow-list, never "everything except…".
+ *
+ * The Developer looks at everything and runs the system, but can NEVER write, change, approve, pay, reverse or void money, decide
+ * what a guest, a company or a supplier owes, change stock costs, move where guests pay, change an approval or spending limit, or
+ * make or send a financial report. Money work is done (and attributed) by Finance, the Boss, the MD or a manager; a test account to
+ * try a money flow is made by the Boss or the MD — the Developer cannot make one.
+ *
+ * Every right is in exactly ONE of the three lists below (DEVELOPER_ALLOWED, DEVELOPER_DENIED, DEVELOPER_ONLY) — the unit test
+ * fails for a right that is in none, so a NEW right is never given to the Developer until a person decides which list it belongs to.
+ */
+
+/** Every right the Developer holds besides the Developer-only one — written out, one by one. Looking is allowed; so is running the hotel's operations and the system. */
+export const DEVELOPER_ALLOWED: readonly PermissionCode[] = [
+  // Dashboards (looking only: the buttons on them need their own rights, and a decision about money is refused on the server)
+  "dashboard.admin", "dashboard.owner", "dashboard.manager", "dashboard.front_desk", "dashboard.finance", "dashboard.procurement",
+  // Reports, the books and the money screens — read only
+  "reports.view", "finance.view", "ledger.view", "invoices.view", "corporate.view", "expenses.view_all", "cash.handover.view",
+  // The front desk's operations (the bill-shaping actions among them are fenced on the server for a Developer)
+  "reservations.view", "reservations.create", "reservations.edit", "reservations.check_in", "reservations.check_out", "reservations.checkin_override",
+  "guests.view", "guests.manage", "guests.delete",
+  "rooms.view", "rooms.status.update", "rooms.manage", "rooms.block",
+  "meeting.view", "meeting.manage",
+  "hotel_qr.manage",
+  // Staff, shifts and the system's configuration
+  "shifts.view", "shifts.work", "shifts.manage", "staff.activity.view", "users.manage", "settings.manage",
+  // Guests' requests, transport, website, booking requests
+  "contact.view", "requests.view", "requests.manage",
+  "transport.view", "transport.request", "transport.manage", "transport.driver",
+  "website.manage", "booking_requests.view", "booking_requests.manage",
+  // The restaurant: orders, serving, the kitchen and the bar (payments are the Counter's — see DEVELOPER_DENIED)
+  "restaurant.orders", "restaurant.serve", "restaurant.shift", "kitchen.orders", "bar.orders",
+  // Stock: look, ask, record what was used (waste waits for a manager); assets register
+  "inventory.view", "inventory.request", "inventory.use", "assets.view", "assets.manage",
+  // The full audit trail
+  "audit.view",
+];
+
+/**
+ * Rights the Developer must never hold, whatever the interface. Each one lets someone record, alter, approve, authorize, pay, reverse
+ * or void money; change what a guest, company or supplier owes; change stock costs; change where guests pay or an approval or spending
+ * limit; or make or send a financial report.
+ */
+export const DEVELOPER_DENIED: readonly PermissionCode[] = [
+  // Record, reverse, approve, pay, withdraw, confirm, waive — money itself
+  "payments.record", "payments.reverse", "revenue.record", "revenue.void", "expenses.record", "expenses.approve", "expenses.void",
+  "purchases.pay", "purchases.authorize", "finance.manage", "withdrawals.manage", "withdrawals.reconcile", "restaurant.payments.confirm",
+  "cash.handover.submit", "cash.handover.review", "cash.handover.discrepancy", "reservations.confirm_unpaid", "reservations.checkout_override",
+  "invoices.manage",
+  // Added 2026-10-14 after the code behind each was read:
+  "reservations.discount_override", // lowers a booking's bill (the discount limit and the booking-request discount)
+  "reservations.cancel",            // cancelling or a no-show settles a paid booking: keeps the payment as income or leaves a refund due
+  "pricing.manage",                 // room prices, seasons and promotions: what every guest pays
+  "restaurant.menu",                // menu set-up includes every item's selling price (saveMenuItem)
+  "restaurant.prices",              // changes a menu item's selling price
+  "restaurant.device",              // the Restaurant Counter's own shared login (it records the restaurant's payments) — never a person's right
+  "spin.manage",                    // the gift budgets and the menu items given free: a spending limit on gifts
+  "corporate.manage",               // a company's credit limit and payment terms, and the credit-limit override on a booking
+  "procurement.manage",             // supplier quotations, purchase orders, deliveries and supplier invoices with amounts
+  "inventory.receive",              // records stock received: the price paid becomes the item's cost
+  "inventory.approve",              // approves waste, counts stock and corrects quantities: changes the stock's value
+  "inventory.manage",               // sets an item's cost per unit and its opening quantity (stock valuation)
+  "reports.daily.manage",           // makes, regenerates and sends the daily financial reports to the Boss
+];
+
+/**
+ * Settings the Developer can NOT change even though it holds "settings.manage": they decide where guests pay, who may approve or
+ * spend, what a guest owes (fees, tax, policies) or where the financial reports go. Checked on the server when the settings are saved
+ * (updateSettingsAction) — a save that leaves these as they are works as before. Names are the HotelSettings fields.
+ */
+export const DEVELOPER_LOCKED_SETTINGS: readonly string[] = [
+  // Where guests pay (printed on every invoice and bill)
+  "bankName", "bankAccountName", "bankAccountNumber", "bankBranch", "bankSwift", "mobileMoneyName", "mobileMoneyNumber", "mobileMoneyAccountName", "invoiceTerms",
+  // Who may approve or spend, and how much
+  "expenseApprovalThreshold", "financeAuthorizationLimit", "purchaseApproverMustDiffer",
+  // What a guest owes: fees, prices, tax, and what happens to money already paid
+  "lateCheckoutFee", "roomServiceFee", "airportTransferPrice", "taxName", "taxRatePercent", "taxIncludedInRates",
+  "earlyDeparturePolicy", "noShowPolicy", "dateChangeExcessPolicy", "dateChangePayNow",
+  // Where the financial reports go, and whether they go
+  "reportEnabled", "shiftReportEnabled", "reportRecipients",
+];
 
 const RECEPTIONIST: PermissionCode[] = [
   "dashboard.front_desk",
@@ -278,6 +371,11 @@ export const DEFAULT_ROLES: Record<
     name: msg("Owner / Boss"),
     description: msg("Business authority: receives the reports, reviews performance and makes the high-level decisions; does not run the hotel day to day."),
     permissions: ALL_PERMISSIONS,
+  },
+  DEVELOPER: {
+    name: msg("Developer (super user)"),
+    description: msg("The system's developer: sees and troubleshoots every department, the settings, the staff accounts and the audit trail, with every action recorded as a Developer action. Cannot record, change, approve, pay, reverse or void money, decide what a guest or supplier owes, or change where guests pay or the money limits. Created only by a controlled setup — never from the Users page."),
+    permissions: [...DEVELOPER_ALLOWED, ...DEVELOPER_ONLY],
   },
   MANAGER: {
     name: msg("Manager"),

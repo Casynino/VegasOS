@@ -2,7 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { authorize } from "@/server/auth";
+import { authorize, requestMeta } from "@/server/auth";
+import { audit } from "@/server/audit";
+import { db } from "@/server/db";
 import { runAction } from "@/server/errors";
 import { parseInput } from "@/server/validation";
 import { businessToday } from "@/server/settings";
@@ -12,8 +14,11 @@ import { getT } from "@/i18n/server";
 /** Send the weekly / monthly report's message to the boss (again, or retry a failed one). */
 export async function sendStaffReportAction(input: { reportId: string; force?: boolean }) {
   return runAction(async () => {
-    await authorize("shifts.manage", "reports.daily.manage");
+    const user = await authorize("shifts.manage", "reports.daily.manage");
     const d = parseInput(z.object({ reportId: z.string().min(1).max(40), force: z.boolean().optional() }), input);
+    // Sending it again is written down under the real person, before the send (so even one that fails half way is on record).
+    const { ipAddress } = await requestMeta();
+    await audit(db, { userId: user.id, label: `${user.fullName} (${user.roleName})`, ipAddress }, { action: "report.staff_sent", entityType: "StaffReport", entityId: d.reportId, after: { force: !!d.force } });
     const r = await deliverStaffReport(d.reportId, { force: d.force, manual: true });
     revalidatePath("/staff/reports/staff", "layout");
     const sent = r.results.filter((x) => x.status === "SENT").length;

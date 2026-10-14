@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/server/db";
 import { audit } from "@/server/audit";
-import { authorize, requestMeta } from "@/server/auth";
+import { authorizeDecision, requestMeta } from "@/server/auth";
 import { AppError, runAction, type ActionResult } from "@/server/errors";
 import { parseInput } from "@/server/validation";
 import { toDbDate } from "@/lib/time/business-date";
@@ -24,7 +24,9 @@ function refresh() {
 }
 
 async function adminActor() {
-  const user = await authorize("pricing.manage");
+  // Every price, promotion, date price and discount rule goes through here. The Developer holds "pricing.manage" only to look —
+  // it never sets a price or a discount limit (owner, 2026-10-14), so it is always refused (and the refusal is kept).
+  const user = await authorizeDecision("pricing.manage");
   const { ipAddress } = await requestMeta();
   return { user, actor: { userId: user.id, label: user.fullName, ipAddress } };
 }

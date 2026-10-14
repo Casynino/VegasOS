@@ -11,7 +11,7 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { hash } from "@node-rs/argon2";
 import { PrismaClient } from "../src/generated/prisma/client";
-import { DEFAULT_ROLES, PERMISSIONS } from "../src/lib/permissions";
+import { DEFAULT_ROLES, DEVELOPER_ROLE_CODE, PERMISSIONS } from "../src/lib/permissions";
 import { EXPENSE_CATALOG } from "../src/lib/expense-catalog";
 import { MENU_CATALOG } from "../src/lib/menu-catalog";
 import { MENU_PHOTOS, SUPPLIED_MENU_PHOTOS } from "../src/lib/menu-photos";
@@ -146,6 +146,13 @@ async function main() {
         data: def.permissions.map((p) => ({ roleId: role.id, permissionId: permId.get(p)! })),
         skipDuplicates: true,
       });
+    }
+    // The Developer role is exactly its allow-list (DEVELOPER_ALLOWED + the developer-only right): whatever else it holds — a hand
+    // edit in the database, an older and wider list — is taken away here. It never holds a right that writes or decides about money.
+    if (roleCode === DEVELOPER_ROLE_CODE) {
+      const allowed = def.permissions.map((p) => permId.get(p)!);
+      await db.rolePermission.deleteMany({ where: { roleId: role.id, permissionId: { notIn: allowed } } });
+      await db.rolePermission.createMany({ data: allowed.map((permissionId) => ({ roleId: role.id, permissionId })), skipDuplicates: true });
     }
   }
 

@@ -1,4 +1,4 @@
-import { getCurrentUser, getMyOpenShift, refreshDeviceCookies } from "@/server/auth";
+import { getCurrentUserQuiet, getMyOpenShift, refreshDeviceCookies } from "@/server/auth";
 import { isRestaurantDevice, needsOwnShift } from "@/lib/permissions";
 import { staffAlerts } from "@/server/services/staff-alerts";
 
@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 /** The top-bar bell asks every few seconds "what is waiting for me?" — only this person's own things. */
 export async function GET() {
-  const user = await getCurrentUser();
+  const user = await getCurrentUserQuiet();
   if (!user) return new Response("Unauthorized", { status: 401 });
   // The restaurant screen stays signed in: its cookies are renewed as it keeps asking.
   if (isRestaurantDevice(user.permissions)) await refreshDeviceCookies();

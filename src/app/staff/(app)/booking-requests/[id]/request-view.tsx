@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, CheckCircle2, Clock, Mail, MessageCircle, MessageSquarePlus, Phone, Plane, Quote } from "lucide-react";
 import { can, type CurrentUser } from "@/server/auth";
 import { db } from "@/server/db";
+import { operationalOnly } from "@/server/staff-pickers";
 import { getRequestDetail, meetingRequestFree, requestAvailability } from "@/server/services/booking-requests";
 import { billMenu } from "@/server/services/restaurant";
 import { getSettings } from "@/server/settings";
@@ -50,7 +51,7 @@ export async function BookingRequestView({ id, user, inline = false }: { id: str
   const canConvert = isOpen && manage && can(user, "reservations.create");
   const [availability, staff, meetingFree, menu, settings] = await Promise.all([
     isOpen && !meeting ? requestAvailability(r.checkIn, r.checkOut) : Promise.resolve(null),
-    db.user.findMany({ where: { isActive: true, role: { code: { not: "DRIVER" } } }, select: { id: true, fullName: true }, orderBy: { fullName: "asc" } }),
+    db.user.findMany({ where: operationalOnly({ isActive: true, role: { code: { not: "DRIVER" } } }), select: { id: true, fullName: true }, orderBy: { fullName: "asc" } }),
     isOpen && meeting ? meetingRequestFree({ meetingStartAt: meeting.start, meetingEndAt: meeting.end, roomTypeId: r.roomTypeId }) : Promise.resolve(null),
     canConvert ? billMenu() : Promise.resolve(null),
     getSettings(),

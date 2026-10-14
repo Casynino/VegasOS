@@ -1,6 +1,7 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
 import { db } from "../db";
+import { audit } from "../audit";
 import { getSettings, businessDayConfig, liveSinceDate } from "../settings";
 import { addDays, businessDateOf, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import { buildDailyReport } from "./daily-report";
@@ -85,29 +86,48 @@ export function roomReportLink(token: string): string {
   return `${base}/room-report/${token}`;
 }
 
+/** The signed-in person behind a manual run (shown in the audit trail under their own identity). */
+export interface RoomReportActor { userId: string; label: string; ipAddress?: string | null }
+
 /**
  * Make (or, with a reason, re-make) the day's room report. One per business day: calling it again returns the stored
  * report; regenerating keeps the earlier version in its history and the same link.
  */
-export async function ensureRoomReport(date: BusinessDate, o: { by?: string; automatic?: boolean; regenerate?: boolean; reason?: string | null } = {}) {
+export async function ensureRoomReport(
+  date: BusinessDate,
+  // `actor`: the signed-in person behind a manual run, so the audit trail names them under their own identity (a Developer included). It changes nothing in the report itself
+  // (`by` is still what the report says). The scheduled run has no actor and writes nothing, as before.
+  o: { by?: string; actor?: RoomReportActor; automatic?: boolean; regenerate?: boolean; reason?: string | null } = {},
+) {
   const existing = await db.roomReport.findUnique({ where: { businessDate: toDbDate(date) } });
   if (existing && !o.regenerate) return existing;
   const data = await buildRoomReportData(date);
   const generatedBy = o.by ?? "system";
+  /** A person's own run is kept in the audit trail under their identity. */
+  const note = (id: string, action: "report.room_generated" | "report.room_regenerated", version: number, before?: unknown) =>
+    o.actor
+      ? audit(db, { userId: o.actor.userId, label: o.actor.label, ipAddress: o.actor.ipAddress ?? null }, { action, entityType: "RoomReport", entityId: id, before, after: { businessDate: date, version, reason: o.reason ?? null } })
+      : undefined;
   if (!existing) {
+    let made: Awaited<ReturnType<typeof db.roomReport.create>>;
     try {
-      return await db.roomReport.create({
+      made = await db.roomReport.create({
         data: { businessDate: toDbDate(date), data: json(data), generatedBy, automatic: !!o.automatic, shareToken: newToken(), generatedAt: new Date(data.generatedAt) },
       });
     } catch {
+      // Made at the same moment by another run — that one is the report (and nothing new is recorded here).
       return db.roomReport.findUniqueOrThrow({ where: { businessDate: toDbDate(date) } });
     }
+    await note(made.id, "report.room_generated", made.version);
+    return made;
   }
   const history = [...(existing.history as unknown as unknown[]), { version: existing.version, generatedAt: existing.generatedAt, generatedBy: existing.generatedBy, reason: existing.reason, data: existing.data }];
-  return db.roomReport.update({
+  const updated = await db.roomReport.update({
     where: { id: existing.id },
     data: { data: json(data), version: existing.version + 1, generatedAt: new Date(data.generatedAt), generatedBy, automatic: !!o.automatic, reason: o.reason ?? null, history: json(history), revokedAt: null },
   });
+  await note(updated.id, "report.room_regenerated", updated.version, { version: existing.version, generatedBy: existing.generatedBy });
+  return updated;
 }
 
 /** The delivery rows hang on the day's daily-report record (made empty here if the 07:00 job has not made it yet). */
@@ -125,9 +145,9 @@ async function deliveryAnchor(date: BusinessDate) {
 }
 
 /** Send (or resend) the room report for a business date. Makes the report first if it does not exist. */
-export async function deliverRoomReportByDate(date: BusinessDate, opts: { force?: boolean; manual?: boolean; deadline?: number; automatic?: boolean; by?: string } = {}) {
+export async function deliverRoomReportByDate(date: BusinessDate, opts: { force?: boolean; manual?: boolean; deadline?: number; automatic?: boolean; by?: string; actor?: RoomReportActor } = {}) {
   const [settings, report, anchor] = await Promise.all([
-    getSettings(), ensureRoomReport(date, { automatic: opts.automatic, by: opts.by }), deliveryAnchor(date),
+    getSettings(), ensureRoomReport(date, { automatic: opts.automatic, by: opts.by, actor: opts.actor }), deliveryAnchor(date),
   ]);
   if (report.revokedAt) await db.roomReport.update({ where: { id: report.id }, data: { revokedAt: null } });
   const text = renderRoomReportText(await withDayMoney(report.data as unknown as RoomReportData), settings.hotelName, roomReportLink(report.shareToken));
@@ -138,7 +158,7 @@ export async function deliverRoomReportByDate(date: BusinessDate, opts: { force?
 }
 
 /** Send the room report kept with a daily-report record (same day). */
-export async function deliverRoomReport(dailyReportId: string, opts: { force?: boolean; manual?: boolean; deadline?: number } = {}) {
+export async function deliverRoomReport(dailyReportId: string, opts: { force?: boolean; manual?: boolean; deadline?: number; by?: string; actor?: RoomReportActor } = {}) {
   const r = await db.dailyReport.findUniqueOrThrow({ where: { id: dailyReportId }, select: { businessDate: true } });
   return deliverRoomReportByDate(r.businessDate.toISOString().slice(0, 10), opts);
 }

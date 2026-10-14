@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { authorize, requestMeta } from "@/server/auth";
+import { authorize, authorizeDecision, requestMeta } from "@/server/auth";
 import { audit } from "@/server/audit";
 import { db } from "@/server/db";
 import { AppError, runAction, type ActionResult } from "@/server/errors";
@@ -19,10 +19,13 @@ const Save = z.object({
   services: z.record(z.enum(ONLINE_SERVICES.map((s) => s.key) as [string, ...string[]]), z.boolean()),
 });
 
-/** Admin turns online payment on or off — for everything, or service by service. Nothing else changes; past payments stay. */
+/**
+ * Admin turns online payment on or off — for everything, or service by service. Nothing else changes; past payments stay.
+ * This decides how guests may pay, so the Developer account is refused (authorizeDecision) — the Boss or the MD does it.
+ */
 export async function saveOnlinePaySettingsAction(input: z.input<typeof Save>): Promise<ActionResult<null>> {
   return runAction(async () => {
-    const user = await authorize("settings.manage");
+    const user = await authorizeDecision("settings.manage");
     const d = parseInput(Save, input);
     const before = await db.hotelSettings.findUniqueOrThrow({ where: { id: 1 } });
     const data: Record<string, boolean> = { onlinePayEnabled: d.enabled };
@@ -50,10 +53,13 @@ export async function testNtzsConnectionAction(): Promise<ActionResult<{ live: b
 
 const STATUS_WORD: Record<string, string> = { COMPLETED: msg("Paid — recorded"), PENDING: msg("Still waiting"), FAILED: msg("Not paid"), EXPIRED: msg("Not paid (timed out)"), CANCELLED: msg("Not paid (stopped)") };
 
-/** "Check with nTZS": ask nTZS about one payment now — money it has is recorded (once), whatever our side said. */
+/**
+ * "Check with nTZS": ask nTZS about one payment now — money it has is recorded (once), whatever our side said.
+ * It records a payment, so the Developer account is refused (authorizeDecision) even though it can see this page.
+ */
 export async function checkOnlinePaymentAction(input: { id: string }): Promise<ActionResult<{ status: string; text: string }>> {
   return runAction(async () => {
-    await authorize("finance.view", "payments.record", "revenue.record");
+    await authorizeDecision("finance.view", "payments.record", "revenue.record");
     const id = z.string().min(10).max(40).parse(input.id);
     const r = await checkMobilePaymentWithAnswer(id, "check");
     revalidatePath("/staff", "layout");
@@ -65,10 +71,10 @@ export async function checkOnlinePaymentAction(input: { id: string }): Promise<A
   });
 }
 
-/** "Check all with nTZS": every payment of the last two days not recorded yet. */
+/** "Check all with nTZS": every payment of the last two days not recorded yet. It records payments, so the Developer account is refused. */
 export async function checkAllOnlinePaymentsAction(): Promise<ActionResult<{ checked: number }>> {
   return runAction(async () => {
-    await authorize("finance.view", "payments.record", "revenue.record");
+    await authorizeDecision("finance.view", "payments.record", "revenue.record");
     const r = await sweepMobilePayments(new Date(), Date.now() + 20_000);
     revalidatePath("/staff", "layout");
     return { checked: r.checked };

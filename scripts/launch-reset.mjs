@@ -179,6 +179,9 @@ async function main() {
   }
 
   await client.query("BEGIN");
+  // The audit trail is locked by a database trigger (no UPDATE, no DELETE). This clean start removes its practice rows on purpose, so —
+  // for THIS transaction only (the `true` means it ends with the transaction) — the maintenance door is opened.
+  await client.query(`SELECT set_config('vegas.audit_maintenance', 'on', true)`);
   await client.query(`SET LOCAL TIME ZONE 'UTC'`); // the app keeps its times in UTC; now() must mean the same here
   await client.query(`SET LOCAL lock_timeout = '20s'`);
   await client.query(`SET LOCAL statement_timeout = '300s'`);

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArrowRight, History, Search } from "lucide-react";
 import { requirePagePermission } from "@/server/auth";
 import { db } from "@/server/db";
+import { withoutDeveloper } from "@/server/staff-pickers";
 import { businessToday } from "@/server/settings";
 import { financeHistory, HISTORY_GROUPS, type HistoryGroup } from "@/server/services/finance-history";
 import { Initials } from "@/components/dashboard/kit";
@@ -39,7 +40,7 @@ export default async function EditHistoryPage({ searchParams }: PageProps<"/staf
   const q = str(sp.q).trim();
   const [items, users] = await Promise.all([
     financeHistory({ from: p.from, to: p.to, group: group || null, userId, q }),
-    db.user.findMany({ where: { role: { code: { not: "DRIVER" } } }, select: { id: true, fullName: true }, orderBy: { fullName: "asc" } }),
+    db.user.findMany({ where: withoutDeveloper({ role: { code: { not: "DRIVER" } } }), select: { id: true, fullName: true }, orderBy: { fullName: "asc" } }),
   ]);
   const keep = Object.fromEntries(Object.entries({ group, user: userId ?? "", q, ...(p.key === "custom" ? { from: p.from, to: p.to } : { period: p.key }) }).filter(([, v]) => v));
 

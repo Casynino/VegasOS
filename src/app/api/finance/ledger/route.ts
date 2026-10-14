@@ -1,4 +1,5 @@
 import { getCurrentUser } from "@/server/auth";
+import { guardDeveloperExport } from "@/server/services/developer-view-log";
 import { getLedger } from "@/server/services/finance";
 import { isBusinessDate } from "@/lib/time/business-date";
 
@@ -12,11 +13,18 @@ export async function GET(req: Request) {
   const to = url.searchParams.get("to");
   if (!isBusinessDate(from) || !isBusinessDate(to) || from > to) return new Response("Invalid range", { status: 400 });
   if ((Date.parse(to) - Date.parse(from)) / 86_400_000 > 366) return new Response("Range too long (max 1 year)", { status: 400 });
-  const view = url.searchParams.get("view");
-  const { rows, totals } = await getLedger({
-    from, to, view: view === "income" || view === "expense" || view === "money" ? view : "all",
-    accountId: url.searchParams.get("account"), userId: url.searchParams.get("user"), q: url.searchParams.get("q"),
+  const rawView = url.searchParams.get("view");
+  const view = rawView === "income" || rawView === "expense" || rawView === "money" ? rawView : "all";
+  const accountId = url.searchParams.get("account");
+  const userId = url.searchParams.get("user");
+  const q = url.searchParams.get("q");
+  // A Developer's export is written to the audit trail BEFORE any figure is read or sent — and nothing is sent when it cannot be written.
+  const blocked = await guardDeveloperExport(user, {
+    kind: "exported", module: "Ledger", entityId: "general-ledger",
+    after: { path: url.pathname, report: "general-ledger", from, to, view, account: accountId ?? undefined, user: userId ?? undefined, q: q ?? undefined },
   });
+  if (blocked) return blocked;
+  const { rows, totals } = await getLedger({ from, to, view, accountId, userId, q });
   const esc = (v: unknown) => {
     const s = v === null || v === undefined ? "" : String(v);
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;

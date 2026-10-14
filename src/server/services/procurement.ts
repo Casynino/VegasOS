@@ -1,6 +1,7 @@
 import "server-only";
 import { db, type Tx } from "../db";
 import { audit } from "../audit";
+import { actsAsDeveloper, refuseDeveloper } from "../developer-wall";
 import { AppError, isUniqueViolation } from "../errors";
 import { getSettingsTx } from "../settings";
 import { formatQty, round3 } from "@/lib/inventory";
@@ -24,8 +25,15 @@ import { msg, msgf } from "@/i18n/msg";
  */
 
 const can = (a: StockActor, code: string) => !!a.permissions?.has(code);
-const isBoss = (a: StockActor) => can(a, "dashboard.admin") || can(a, "dashboard.owner");
-function need(a: StockActor, codes: string[], text: string) {
+/** The Boss or the MD (who may authorize above Finance's limit) — never the Developer, which holds the same dashboard right only to look. */
+const isBoss = (a: StockActor) => !actsAsDeveloper(a) && (can(a, "dashboard.admin") || can(a, "dashboard.owner"));
+/**
+ * The gate of every step that writes a purchase document (a quotation, an order, a delivery, a supplier invoice, a payment).
+ * Each one fixes what the hotel owes a supplier or what stock is worth, so the Developer — which holds some of these rights
+ * to look and to troubleshoot — is refused here too, whatever the action in front of it says (owner, 2026-10-14).
+ */
+async function need(a: StockActor, codes: string[], text: string) {
+  await refuseDeveloper(a, codes);
   if (!a.userId || !codes.some((c) => can(a, c))) throw new AppError(text, "FORBIDDEN");
 }
 const money = (n: number) => `TZS ${n.toLocaleString("en-US")}`;
@@ -60,7 +68,7 @@ export interface QuoteInput {
 
 /** Record one supplier's quotation: who, line by line what they would charge, how long it holds, and their document. Nothing is bought. */
 export async function saveQuote(requestId: string, input: QuoteInput, file: File | null, actor: StockActor, now = new Date()) {
-  need(actor, ["procurement.manage"], "Only Finance or the Accountant records quotations.");
+  await need(actor, ["procurement.manage"], "Only Finance or the Accountant records quotations.");
   if (input.validUntil && (!DATE.test(input.validUntil) || input.validUntil < eatToday(now))) throw new AppError("The quotation must still be valid — check the date.", "VALIDATION", { validUntil: msg("Invalid") });
   if (input.deliveryDays != null && (!Number.isInteger(input.deliveryDays) || input.deliveryDays < 0 || input.deliveryDays > 365)) throw new AppError("Delivery days must be a whole number.", "VALIDATION", { deliveryDays: msg("Invalid") });
   if (!input.lines.length) throw new AppError("Price at least one item.", "VALIDATION", { lines: msg("Empty") });
@@ -125,7 +133,7 @@ export async function saveQuote(requestId: string, input: QuoteInput, file: File
  * has to be asked again); above it — or when no budget was approved — it goes to Finance to be authorized.
  */
 export async function proposeQuote(requestId: string, quoteId: string, actor: StockActor, now = new Date()) {
-  need(actor, ["procurement.manage"], "Only Finance or the Accountant proposes a quotation.");
+  await need(actor, ["procurement.manage"], "Only Finance or the Accountant proposes a quotation.");
   return db.$transaction(async (tx) => {
     const r = await lockRequestTx(tx, requestId, ["APPROVED"], msg("This request is not waiting for a quotation."));
     if (r.chosenQuoteId) throw new AppError("A quotation is already proposed.", "CONFLICT");
@@ -149,7 +157,7 @@ export async function proposeQuote(requestId: string, quoteId: string, actor: St
 
 /** Finance's answer to a proposed quotation that is above the budget: authorize it, or return it to the Accountant (with the reason). */
 export async function authorizeQuote(requestId: string, decision: "AUTHORIZE" | "RETURN", note: string | null, actor: StockActor, now = new Date()) {
-  need(actor, ["purchases.authorize"], "Only Finance can authorize a purchase price.");
+  await need(actor, ["purchases.authorize"], "Only Finance can authorize a purchase price.");
   const why = clean(note, 300);
   if (decision === "RETURN" && (why?.length ?? 0) < 3) throw new AppError("Say what the Accountant should do — e.g. ask for a better price.", "VALIDATION", { note: msg("Required") });
   return db.$transaction(async (tx) => {
@@ -178,7 +186,7 @@ export async function authorizeQuote(requestId: string, decision: "AUTHORIZE" | 
 
 /** Issue the purchase order for the authorized quotation. Nothing has arrived and nothing is paid; the amount is committed. */
 export async function issueOrder(requestId: string, input: { expectedDeliveryOn: string; note?: string | null }, actor: StockActor, now = new Date()) {
-  need(actor, ["procurement.manage"], "Only Finance or the Accountant issues purchase orders.");
+  await need(actor, ["procurement.manage"], "Only Finance or the Accountant issues purchase orders.");
   if (!DATE.test(input.expectedDeliveryOn ?? "")) throw new AppError("When will it be delivered?", "VALIDATION", { expectedDeliveryOn: msg("Required") });
   return db.$transaction(async (tx) => {
     const r = await lockRequestTx(tx, requestId, ["APPROVED"], msg("This request is not ready to be ordered."));
@@ -216,7 +224,7 @@ export interface DeliveryInput {
  * arrived damaged or wrong is recorded, does NOT go into stock and is still owed. Several deliveries are fine (a partial one).
  */
 export async function recordDelivery(requestId: string, input: DeliveryInput, file: File | null, actor: StockActor, now = new Date()) {
-  need(actor, ["procurement.manage", "inventory.receive"], "You cannot record deliveries.");
+  await need(actor, ["procurement.manage", "inventory.receive"], "You cannot record deliveries.");
   if (!input.lines.length) throw new AppError("Say what arrived.", "VALIDATION", { lines: msg("Empty") });
   return db.$transaction(async (tx) => {
     const r = await lockRequestTx(tx, requestId, ["ORDERED", "PART_DELIVERED"], msg("This order is not waiting for a delivery."));
@@ -277,7 +285,7 @@ export async function recordDelivery(requestId: string, input: DeliveryInput, fi
 
 /** The rest will not come: close the order as delivered, with the reason (the supplier is owed the difference — the invoice covers what arrived). */
 export async function closeDeliveryShort(requestId: string, reason: string, actor: StockActor, now = new Date()) {
-  need(actor, ["procurement.manage"], "Only Finance or the Accountant closes an order.");
+  await need(actor, ["procurement.manage"], "Only Finance or the Accountant closes an order.");
   const why = clean(reason, 300);
   if ((why?.length ?? 0) < 5) throw new AppError("Say why the rest is not coming.", "VALIDATION", { reason: msg("Required") });
   return db.$transaction(async (tx) => {
@@ -308,7 +316,7 @@ const deliveredValue = (items: ItemRow[]) => live(items).reduce((s, i) => s + Ma
 
 /** The Accountant records the supplier's invoice (with its document). It is not a payment and not an expense. */
 export async function recordInvoice(requestId: string, input: { number: string; amount: number; invoiceDate: string; dueOn?: string | null; note?: string | null }, file: File | null, actor: StockActor, now = new Date()) {
-  need(actor, ["procurement.manage"], "Only Finance or the Accountant records supplier invoices.");
+  await need(actor, ["procurement.manage"], "Only Finance or the Accountant records supplier invoices.");
   const number = input.number.trim().slice(0, 60);
   if (!number) throw new AppError("What is the invoice number?", "VALIDATION", { number: msg("Required") });
   if (!Number.isInteger(input.amount) || input.amount <= 0 || input.amount > 2_000_000_000) throw new AppError("Enter the invoice amount in whole shillings.", "VALIDATION", { amount: msg("Invalid") });
@@ -334,7 +342,7 @@ export async function recordInvoice(requestId: string, input: { number: string; 
 
 /** Finance checks the invoice against the order and what arrived: verified (may be paid) or disputed. */
 export async function verifyInvoice(invoiceId: string, decision: "VERIFY" | "DISPUTE", note: string | null, actor: StockActor, now = new Date()) {
-  need(actor, ["purchases.pay"], "Only Finance verifies supplier invoices.");
+  await need(actor, ["purchases.pay"], "Only Finance verifies supplier invoices.");
   const why = clean(note, 300);
   if (decision === "DISPUTE" && (why?.length ?? 0) < 3) throw new AppError("Say what is wrong with the invoice.", "VALIDATION", { note: msg("Required") });
   return db.$transaction(async (tx) => {
@@ -356,7 +364,7 @@ export async function verifyInvoice(invoiceId: string, decision: "VERIFY" | "DIS
 
 /** Take a wrongly recorded invoice out (never after money was paid against it). It stays on the record, cancelled, with the reason. */
 export async function cancelInvoice(invoiceId: string, reason: string, actor: StockActor, now = new Date()) {
-  need(actor, ["procurement.manage", "purchases.pay"], "You cannot cancel invoices.");
+  await need(actor, ["procurement.manage", "purchases.pay"], "You cannot cancel invoices.");
   const why = clean(reason, 300);
   if ((why?.length ?? 0) < 5) throw new AppError("Say why the invoice is cancelled.", "VALIDATION", { reason: msg("Required") });
   return db.$transaction(async (tx) => {
@@ -389,7 +397,7 @@ export interface SupplierPaymentInput {
  * the expense of this purchase (once); the ledger, the account and the reports read it. A verified invoice only.
  */
 export async function paySupplier(invoiceId: string, input: SupplierPaymentInput, actor: StockActor, now = new Date()) {
-  need(actor, ["purchases.pay"], "Only Finance pays suppliers.");
+  await need(actor, ["purchases.pay"], "Only Finance pays suppliers.");
   if (!Number.isInteger(input.amount) || input.amount <= 0) throw new AppError("Enter the amount paid in whole shillings.", "VALIDATION", { amount: msg("Invalid") });
   if (!DATE.test(input.paidOn) || input.paidOn > eatToday(now)) throw new AppError("The payment date cannot be in the future.", "VALIDATION", { paidOn: msg("Invalid") });
   if (!input.accountId) throw new AppError("Which company account paid?", "VALIDATION", { accountId: msg("Required") });
@@ -456,7 +464,7 @@ export async function completeWhenReady(requestId: string, actor: StockActor, no
 
 /** Cancel an order that was never delivered (the supplier cannot supply): the request is closed with the reason; nothing was paid. */
 export async function cancelOrder(requestId: string, reason: string, actor: StockActor, now = new Date()) {
-  need(actor, ["procurement.manage", "purchases.authorize"], "You cannot cancel an order.");
+  await need(actor, ["procurement.manage", "purchases.authorize"], "You cannot cancel an order.");
   const why = clean(reason, 300);
   if ((why?.length ?? 0) < 5) throw new AppError("Say why the order is cancelled.", "VALIDATION", { reason: msg("Required") });
   return db.$transaction(async (tx) => {

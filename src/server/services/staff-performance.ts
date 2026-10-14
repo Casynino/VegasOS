@@ -1,5 +1,6 @@
 import "server-only";
 import { db } from "../db";
+import { operationalOnly } from "../staff-pickers";
 import { staffActivity } from "./finance";
 import { addDays, diffDays, eachDate, fromDbDate, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import { ROLE_DEPARTMENT } from "@/lib/permissions";
@@ -26,7 +27,7 @@ export async function staffPerformance(r: Range) {
     db.auditLog.groupBy({ by: ["userId", "businessDate"], where: { businessDate: bd, userId: { not: null }, action: { notIn: NOT_COUNTED } }, _count: true, _min: { createdAt: true }, _max: { createdAt: true } }),
     db.auditLog.groupBy({ by: ["userId"], where: { businessDate: bd, userId: { not: null }, action: { notIn: NOT_COUNTED } }, _count: true, _max: { createdAt: true } }),
     db.restaurantOrder.groupBy({ by: ["createdById"], where: { businessDate: bd, status: { not: "CANCELLED" }, createdById: { not: null } }, _count: true, _sum: { total: true } }),
-    db.user.findMany({ where: { isActive: true }, select: { id: true, fullName: true, role: { select: { name: true, code: true } } } }),
+    db.user.findMany({ where: operationalOnly({ isActive: true }), select: { id: true, fullName: true, role: { select: { name: true, code: true } } } }),
   ]);
   const people = users.map((u) => {
     const m = money.find((x) => x.id === u.id);

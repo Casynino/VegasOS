@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { z } from "zod";
-import { authorize, requestMeta, type CurrentUser } from "@/server/auth";
+import { authorize, authorizeDecision, requestMeta, type CurrentUser } from "@/server/auth";
 import { AppError, runAction, type ActionResult } from "@/server/errors";
 import { db } from "@/server/db";
 import { parseInput } from "@/server/validation";
@@ -269,7 +269,8 @@ const ToRoom = z.object({ id: z.string().min(1).max(40), reservationId: z.string
 /** A pay-later order goes on a staying guest's room bill (the customer's own room — or, for reception, another guest's with the reason). */
 export async function chargeOrderToRoomAction(input: z.input<typeof ToRoom>): Promise<ActionResult<null>> {
   return runAction(async () => {
-    const user = await authorize("restaurant.orders");
+    // Putting a bill on a guest's room changes what the guest owes: never the Developer (owner, 2026-10-14).
+    const user = await authorizeDecision("restaurant.orders");
     const d = parseInput(ToRoom, input);
     await deskOnlyHotelOrders(user, [d.id]);
     await chargeOrderToRoom(d.id, d.reservationId, await actor(user), new Date(), { reason: d.reason || null });
@@ -285,7 +286,8 @@ const Billing = z.object({ id: z.string().min(1).max(40), to: z.string().min(1).
 /** Change who pays an order (reception, managers, the MD): restaurant ↔ room, or another room — with the reason, nothing charged twice. */
 export async function changeOrderBillingAction(input: z.input<typeof Billing>): Promise<ActionResult<{ from: string; to: string }>> {
   return runAction(async () => {
-    const user = await authorize("restaurant.orders");
+    // Who pays an order decides who owes it: never the Developer.
+    const user = await authorizeDecision("restaurant.orders");
     const d = parseInput(Billing, input);
     await deskOnlyHotelOrders(user, [d.id]);
     const r = await changeOrderBilling(d.id, d.to, d.reason, await actor(user));

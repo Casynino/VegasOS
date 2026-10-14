@@ -1,6 +1,7 @@
 import "server-only";
 import { db, type Tx } from "../db";
 import { audit } from "../audit";
+import { actsAsDeveloper, refuseDeveloper } from "../developer-wall";
 import { AppError, isUniqueViolation } from "../errors";
 import { getSettingsTx } from "../settings";
 import type { Prisma } from "@/generated/prisma/client";
@@ -42,10 +43,12 @@ export const OPEN_STOCK = ["SUBMITTED", "SENT_BACK", "APPROVED", "PURCHASING", "
 
 /** Asking: the kitchen, the waiters, reception (for housekeeping, maintenance…). */
 export const canRequestStock = (a: Actor) => !!a.permissions?.has("inventory.request");
-/** Reviewing and the final approval: managers, the MD, the owner. */
-export const canReviewStock = (a: Actor) => !!a.permissions?.has("expenses.approve");
-/** Buying and recording the purchase. */
-export const canBuyStock = (a: Actor) => !!a.permissions?.has("inventory.receive");
+/** Reviewing and the final approval: managers, the MD, the owner. (Never the Developer: it cannot approve spending.) */
+export const canReviewStock = (a: Actor) => !actsAsDeveloper(a) && !!a.permissions?.has("expenses.approve");
+/** Buying and recording the purchase. (Never the Developer: what was bought, at what price, is a money record.) */
+export const canBuyStock = (a: Actor) => !actsAsDeveloper(a) && !!a.permissions?.has("inventory.receive");
+/** The Boss or the MD — who approve above Finance's limit (never the Developer, which holds the same dashboard right only to look). */
+const isBossOrMd = (a: Actor) => !actsAsDeveloper(a) && !!(a.permissions?.has("dashboard.admin") || a.permissions?.has("dashboard.owner"));
 
 /** What each department's purchases are, as an expense (the approver may choose another). */
 export const EXPENSE_GROUP: Record<string, string> = {
@@ -229,6 +232,7 @@ export async function editStockRequest(id: string, input: { items: StockRequestI
 
 /** Approve for purchase (permission to buy — not an expense), send back to be changed, or reject. */
 export async function reviewStockRequest(id: string, decision: "APPROVE" | "SEND_BACK" | "REJECT", note: string | null, actor: StockActor, now = new Date(), opts: { approvedBudget?: number | null } = {}) {
+  await refuseDeveloper(actor, "expenses.approve");
   if (!actor.userId || !canReviewStock(actor)) throw new AppError("Only Finance or a manager can review purchase requests.", "FORBIDDEN");
   const why = clean(note);
   const budget = decision === "APPROVE" ? moneyOrNull(opts.approvedBudget, "The approved budget") : null;
@@ -246,7 +250,7 @@ export async function reviewStockRequest(id: string, decision: "APPROVE" | "SEND
     const approvedBudget = decision === "APPROVE" ? (budget ?? r.estimatedTotal ?? null) : r.approvedBudget;
     // Finance authorizes up to its limit on its own; above it the Boss or the MD does (Settings → the limit; none set = no limit).
     const limit = (await getSettingsTx(tx)).financeAuthorizationLimit;
-    if (decision === "APPROVE" && limit != null && (approvedBudget ?? 0) > limit && !actor.permissions?.has("dashboard.admin") && !actor.permissions?.has("dashboard.owner")) {
+    if (decision === "APPROVE" && limit != null && (approvedBudget ?? 0) > limit && !isBossOrMd(actor)) {
       throw new AppError(msgf("TZS {amount} is above what Finance may approve alone (TZS {limit}) — the Boss or the MD approves it.", { amount: (approvedBudget ?? 0).toLocaleString("en-US"), limit: limit.toLocaleString("en-US") }), "FORBIDDEN");
     }
     await tx.stockRequest.update({ where: { id }, data: { status: to, decidedById: actor.userId, decidedAt: now, decisionNote: why ?? r.decisionNote, approvedBudget } });
@@ -299,6 +303,7 @@ export interface PurchaseInput {
  * buying (Being bought), then sent for the final approval. Still no expense and no stock.
  */
 export async function savePurchase(id: string, input: PurchaseInput, receipt: File | null, actor: StockActor, now = new Date()) {
+  await refuseDeveloper(actor, "inventory.receive");
   if (!actor.userId || !canBuyStock(actor)) throw new AppError("You cannot record purchases.", "FORBIDDEN");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.purchasedOn)) throw new AppError("When was it bought?", "VALIDATION", { purchasedOn: msg("Required") });
   const purchasedAt = new Date(`${input.purchasedOn}T12:00:00+03:00`);
@@ -370,6 +375,7 @@ export async function savePurchase(id: string, input: PurchaseInput, receipt: Fi
 
 /** Something is wrong with the purchase (too much bought, a price, no receipt): back to the buyer to correct. */
 export async function sendBackPurchase(id: string, reason: string, actor: StockActor, now = new Date()) {
+  await refuseDeveloper(actor, "expenses.approve");
   if (!actor.userId || !canReviewStock(actor)) throw new AppError("Only a manager can check purchases.", "FORBIDDEN");
   const why = clean(reason);
   if ((why?.length ?? 0) < 3) throw new AppError("Say what to correct.", "VALIDATION", { reason: msg("Required") });
@@ -389,6 +395,7 @@ export async function sendBackPurchase(id: string, reason: string, actor: StockA
  * record; when the MD requires it, the buyer cannot give the final approval themselves.
  */
 export async function approvePurchase(id: string, opts: { categoryId?: string | null }, actor: StockActor, now = new Date()) {
+  await refuseDeveloper(actor, "expenses.approve");
   if (!actor.userId || !canReviewStock(actor)) throw new AppError("Only a manager can approve purchases.", "FORBIDDEN");
   return db.$transaction(async (tx) => {
     const r = await lockRequestTx(tx, id, ["PENDING_APPROVAL"], msg("This purchase is not waiting for approval."));
@@ -407,7 +414,7 @@ export async function approvePurchase(id: string, opts: { categoryId?: string | 
     if (!bought.length || amount <= 0) throw new AppError("Nothing was bought on this purchase.", "VALIDATION");
     // Finance gives the final approval on its own up to its limit; above it the Boss or the MD does (the same rule as the budget and a quotation).
     const limit = settings.financeAuthorizationLimit;
-    if (limit != null && amount > limit && !actor.permissions?.has("dashboard.admin") && !actor.permissions?.has("dashboard.owner")) {
+    if (limit != null && amount > limit && !isBossOrMd(actor)) {
       throw new AppError(msgf("TZS {amount} is above what Finance may approve alone (TZS {limit}) — the Boss or the MD approves it.", { amount: amount.toLocaleString("en-US"), limit: limit.toLocaleString("en-US") }), "FORBIDDEN");
     }
     const ref = `${r.purchaseNumber} · ${r.number}`;

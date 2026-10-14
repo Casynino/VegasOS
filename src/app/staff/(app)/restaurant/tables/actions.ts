@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { authorize, requestMeta, type CurrentUser } from "@/server/auth";
+import { authorize, authorizeDecision, requestMeta, type CurrentUser } from "@/server/auth";
 import { AppError, runAction, type ActionResult } from "@/server/errors";
 import { parseInput } from "@/server/validation";
 import { msg } from "@/i18n/msg";
@@ -125,7 +125,8 @@ const ToRoom = z.object({ sessionId: Id, reservationId: Id, reason: z.string().t
 /** The whole table bill on the customer's room (reception may choose another guest's room, saying why). */
 export async function chargeSessionToRoomAction(input: z.input<typeof ToRoom>): Promise<ActionResult<{ orders: number; total: number; room: string }>> {
   return runAction(async () => {
-    const user = await authorize("restaurant.orders");
+    // A table's bill put on a guest's room changes what that guest owes: never the Developer (owner, 2026-10-14).
+    const user = await authorizeDecision("restaurant.orders");
     const d = parseInput(ToRoom, input);
     await deskOnlyHotelTable(user, d.sessionId);
     const r = await chargeSessionToRoom(d.sessionId, d.reservationId, { reason: d.reason || null }, await actor(user));

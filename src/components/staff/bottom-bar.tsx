@@ -14,7 +14,7 @@ import type { NavSection } from "./nav-config";
 
 /** Phone navigation: a flat bottom tab bar (Home · Find · Bookings · Requests · Menu). */
 export function StaffBottomBar({ home, sections, requests, canBook, user, signOut = true }: {
-  home: string; sections: NavSection[]; requests: number; canBook: boolean; user: { name: string; role: string };
+  home: string; sections: NavSection[]; requests: number; canBook: boolean; user: { name: string; role: string; /** A Developer account — the menu says so too. */ developer?: boolean };
   /** Not on the shared restaurant screen (it stays signed in; sign it out in My account). */
   signOut?: boolean;
 }) {
@@ -47,12 +47,15 @@ export function StaffBottomBar({ home, sections, requests, canBook, user, signOu
             <Menu className="size-5" />{t("Menu")}
           </SheetTrigger>
           <SheetContent side="left" className="flex w-72 flex-col bg-card p-4 text-foreground">
-            <SheetHeader className="px-0"><SheetTitle className="font-display text-xl text-[oklch(0.55_0.1_75)] dark:text-gold">Vegas Luxury Hotel</SheetTitle></SheetHeader>
+            <SheetHeader className="px-0">
+              <SheetTitle className="font-display text-xl text-[oklch(0.55_0.1_75)] dark:text-gold">Vegas Luxury Hotel</SheetTitle>
+              {user.developer && <p className="rounded-md bg-fuchsia-700 px-2.5 py-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-white">{t("DEVELOPER MODE — SUPER USER")}</p>}
+            </SheetHeader>
             <div className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1"><StaffNav sections={sections} home={home} onNavigate={() => setOpen(false)} /></div>
             <div className="space-y-2.5 border-t border-dashed border-border pt-3">
               <Link href="/staff/account" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-2xl bg-muted p-2.5">
                 <Initials name={user.name} className="size-9 text-xs" />
-                <span className="min-w-0 flex-1 leading-tight"><span className="block truncate text-sm font-semibold">{user.name}</span><span className="block truncate text-[11px] text-muted-foreground">{t(user.role)}</span></span>
+                <span className="min-w-0 flex-1 leading-tight"><span className="block truncate text-sm font-semibold">{user.name}</span><span className={cn("block truncate text-[11px]", user.developer ? "font-semibold text-fuchsia-700 dark:text-fuchsia-300" : "text-muted-foreground")}>{t(user.role)}</span></span>
                 <ChevronRight className="size-4 text-muted-foreground" />
               </Link>
               {signOut && <form action={logoutAction}>

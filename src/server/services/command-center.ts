@@ -1,5 +1,6 @@
 import "server-only";
 import { db } from "../db";
+import { operationalOnly } from "../staff-pickers";
 import { businessDayBounds, localMinutesOfDay, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import { businessDayConfig, getSettings } from "../settings";
 import { formatQty } from "@/lib/inventory";
@@ -308,7 +309,7 @@ async function staffActivity(today: BusinessDate, t: T = englishT) {
     db.restaurantOrderEvent.groupBy({ by: ["byId", "orderId"], where: { order: { businessDate: day }, byId: { not: null } } }),
     db.restaurantOrderPayment.groupBy({ by: ["collectedById"], where: { order: { businessDate: day }, status: "POSTED", collectedById: { not: null } }, _sum: { amount: true }, _count: true }),
     db.roomStatusHistory.groupBy({ by: ["changedById"], where: { toStatus: "READY", changedById: { not: null }, room: { isActive: true }, changedAt: { gte: start, lt: end } }, _count: true, _max: { changedAt: true } }),
-    db.user.findMany({ where: { isActive: true }, select: { id: true, fullName: true, role: { select: { code: true, name: true } } } }),
+    db.user.findMany({ where: operationalOnly({ isActive: true }), select: { id: true, fullName: true, role: { select: { code: true, name: true } } } }),
   ]);
   type P = { id: string; name: string; role: string; roleCode: string; things: Record<string, number>; money: number; last: Date | null };
   const people = new Map<string, P>();

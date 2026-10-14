@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { db } from "../db";
 import { audit, type AuditActor } from "../audit";
 import { AppError } from "../errors";
+import { isPickableRole } from "../staff-pickers";
 import { getSettings, getSettingsTx, stayConfig } from "../settings";
 import { addDays, businessDateOf, parseTimeToMinutes, toDbDate, zonedInstant, type BusinessDate } from "@/lib/time/business-date";
 import { recalculateReservation } from "./reservation-financials";
@@ -274,7 +275,7 @@ export async function recordDriver(tripId: string, input: { driverId?: string | 
     let driverName = input.driverName?.trim() || null, driverPhone = input.driverPhone?.trim() || null;
     if (input.driverId) {
       const d = await tx.user.findUnique({ where: { id: input.driverId }, include: { role: { include: { permissions: { include: { permission: true } } } } } });
-      if (!d || !d.isActive || !d.role.permissions.some((p) => p.permission.code === "transport.driver")) throw new AppError("Choose an active driver.");
+      if (!d || !d.isActive || !d.role.permissions.some((p) => p.permission.code === "transport.driver") || !isPickableRole(d.role.code)) throw new AppError("Choose an active driver.");
       driverName ??= d.fullName; driverPhone ??= d.phone;
     }
     if (!driverName) throw new AppError("Enter the driver's name.", "VALIDATION", { driverName: msg("Required") });

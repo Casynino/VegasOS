@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Download, Paperclip, Search } from "lucide-react";
 import { can, requirePagePermission } from "@/server/auth";
 import { db } from "@/server/db";
+import { operationalOnly } from "@/server/staff-pickers";
 import { businessToday } from "@/server/settings";
 import { balanceBefore, getLedger, type LedgerRow } from "@/server/services/finance";
 import { formatTZS } from "@/lib/format";
@@ -52,7 +53,7 @@ export default async function LedgerPage({ searchParams }: PageProps<"/staff/fin
   const [{ rows: allRows }, accounts, users, categories, methods] = await Promise.all([
     getLedger({ from: p.from, to: p.to, view, accountId, userId, q }),
     db.moneyAccount.findMany({ orderBy: { sortOrder: "asc" }, include: { paymentMethods: { where: { isActive: true }, select: { id: true } } } }),
-    db.user.findMany({ where: { isActive: true, role: { code: { not: "DRIVER" } } }, select: { id: true, fullName: true }, orderBy: { fullName: "asc" } }),
+    db.user.findMany({ where: operationalOnly({ isActive: true, role: { code: { not: "DRIVER" } } }), select: { id: true, fullName: true }, orderBy: { fullName: "asc" } }),
     db.expenseCategory.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true } }),
     db.paymentMethod.findMany({ select: { id: true, accountId: true } }),
   ]);

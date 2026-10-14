@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/server/db";
 import { audit } from "@/server/audit";
-import { authorize, requestMeta } from "@/server/auth";
+import { authorize, logDeveloperDenied, requestMeta, type CurrentUser } from "@/server/auth";
+import { DEVELOPER_LOCKED_SETTINGS } from "@/lib/permissions";
 import { AppError, runAction, type ActionResult } from "@/server/errors";
 import { parseInput } from "@/server/validation";
 import { parseTimeToMinutes } from "@/lib/time/business-date";
@@ -109,11 +110,51 @@ function parseRecipients(text: string) {
     });
 }
 
+const LOCKED_SETTINGS: ReadonlySet<string> = new Set(DEVELOPER_LOCKED_SETTINGS);
+
+/** Thrown inside the save when the Developer's form would change a money setting: the whole save is rolled back, nothing is written. */
+class LockedSettingsRefused extends Error {
+  constructor(readonly fields: string[], readonly attempted: Record<string, { from: unknown; to: unknown }>) { super("locked settings"); }
+}
+
+/** A setting as the form can say it, so a save that changes nothing is never mistaken for a change (a Decimal and a number, the recipients as typed). */
+function asTyped(key: string, v: unknown): unknown {
+  if (v === null || v === undefined || v === "") return null;
+  if (key === "reportRecipients") {
+    return (Array.isArray(v) ? v : []).map((r) => {
+      const x = (r ?? {}) as { name?: string | null; phone?: string | null; apiKeyRef?: string | null; lang?: string | null };
+      return [x.name ?? "", String(x.phone ?? "").replace(/\s/g, ""), x.apiKeyRef ?? "", x.lang === "zh-CN" ? "zh-CN" : ""].join("|");
+    }).sort();
+  }
+  if (typeof v === "object" && typeof (v as { toNumber?: unknown }).toNumber === "function") return (v as { toNumber(): number }).toNumber(); // a Prisma Decimal
+  return v;
+}
+const sameSetting = (key: string, a: unknown, b: unknown) => JSON.stringify(asTyped(key, a)) === JSON.stringify(asTyped(key, b));
+
+/** The Developer's refused attempt, in the audit trail: the usual refusal entry, and one that names the settings and what it tried to put there. */
+async function logLockedSettingsRefused(user: CurrentUser, e: LockedSettingsRefused) {
+  await logDeveloperDenied(user, ["settings.manage"], "action");
+  try {
+    const { ipAddress } = await requestMeta();
+    await audit(db, { userId: user.id, label: user.fullName, ipAddress }, {
+      action: "settings.update.refused", entityType: "HotelSettings", entityId: "1",
+      before: Object.fromEntries(Object.entries(e.attempted).map(([k, v]) => [k, v.from])),
+      after: { refused: Object.fromEntries(Object.entries(e.attempted).map(([k, v]) => [k, v.to])), why: "The Developer cannot change where guests pay, the money limits or the fees and policies" },
+    });
+  } catch { /* the audit trail must never break a request */ }
+}
+
 export async function updateSettingsAction(_prev: unknown, formData: FormData): Promise<ActionResult<null>> {
   return runAction(async () => {
     const user = await authorize("settings.manage");
     const input = parseInput(SettingsSchema, formData);
     const recipients = parseRecipients(input.reportRecipients);
+    // Why the settings were changed: optional for staff; the Developer must say why whenever the form carries the field (the audit entry keeps it).
+    const rawReason = formData.get("reason");
+    const reason = typeof rawReason === "string" ? rawReason.trim().slice(0, 300) : "";
+    if (user.actorType === "DEVELOPER" && formData.has("reason") && reason.length < 5) {
+      throw new AppError("Say why you are changing the settings (at least 5 characters).", "VALIDATION", { reason: msg("Required — at least 5 characters") });
+    }
     // 0 = Sunday … 6 = Saturday.
     const breakfastDays = [input.breakfastDay0, input.breakfastDay1, input.breakfastDay2, input.breakfastDay3, input.breakfastDay4, input.breakfastDay5, input.breakfastDay6]
       .flatMap((on, day) => (on ? [day] : []));
@@ -201,6 +242,16 @@ export async function updateSettingsAction(_prev: unknown, formData: FormData): 
     const { ipAddress } = await requestMeta();
     await db.$transaction(async (tx) => {
       const before = await tx.hotelSettings.findUniqueOrThrow({ where: { id: 1 } });
+      // The Developer never changes where guests pay, a money limit, a fee or policy, or where the reports go — checked here, against what is
+      // stored right now, before anything is written. A save that leaves these as they are goes through as always.
+      if (user.actorType === "DEVELOPER") {
+        const attempted: Record<string, { from: unknown; to: unknown }> = {};
+        for (const [k, to] of Object.entries(data)) {
+          const from = before[k as keyof typeof before];
+          if (LOCKED_SETTINGS.has(k) && !sameSetting(k, from, to)) attempted[k] = { from, to };
+        }
+        if (Object.keys(attempted).length) throw new LockedSettingsRefused(Object.keys(attempted), attempted);
+      }
       const after = await tx.hotelSettings.update({ where: { id: 1 }, data });
       const changed: Record<string, unknown[]> = Object.fromEntries(
         Object.keys(data)
@@ -221,8 +272,15 @@ export async function updateSettingsAction(_prev: unknown, formData: FormData): 
         entityType: "HotelSettings",
         entityId: "1",
         before: Object.fromEntries(Object.entries(changed).map(([k, v]) => [k, v[0]])),
-        after: Object.fromEntries(Object.entries(changed).map(([k, v]) => [k, v[1]])),
+        after: { ...Object.fromEntries(Object.entries(changed).map(([k, v]) => [k, v[1]])), ...(reason ? { reason } : {}) },
       });
+    }).catch(async (e: unknown) => {
+      if (!(e instanceof LockedSettingsRefused)) throw e;
+      await logLockedSettingsRefused(user, e);
+      throw new AppError(
+        "The Developer account cannot change where guests pay, the approval limits, the fees and policies that decide what a guest owes, or where the reports go. Ask the Boss or the MD to change them.",
+        "FORBIDDEN", Object.fromEntries(e.fields.map((f) => [f, msg("Boss or MD only")])),
+      );
     });
     revalidatePath("/", "layout");
     return null;
@@ -264,10 +322,18 @@ function delegate(kind: ListKind) {
   };
 }
 
+/** The list of payment methods decides how guests can pay: the Developer does not change it (the refusal is audited). Nobody else is affected. */
+async function refuseDeveloperPaymentMethods(user: CurrentUser) {
+  if (user.actorType !== "DEVELOPER") return;
+  await logDeveloperDenied(user, ["settings.manage"], "action");
+  throw new AppError("The Developer account cannot change the payment methods. Ask the Boss or the MD.", "FORBIDDEN");
+}
+
 export async function addListItemAction(_prev: unknown, formData: FormData): Promise<ActionResult<null>> {
   return runAction(async () => {
     const user = await authorize("settings.manage");
     const input = parseInput(AddItemSchema, formData);
+    if (input.kind === "paymentMethod") await refuseDeveloperPaymentMethods(user);
     const code = toCode(input.name);
     if (!code) throw new AppError("Use letters or numbers in the name.");
     const model = delegate(input.kind);
@@ -297,6 +363,7 @@ export async function updateListItemAction(input: z.input<typeof UpdateItemSchem
   return runAction(async () => {
     const user = await authorize("settings.manage");
     const data = parseInput(UpdateItemSchema, input);
+    if (data.kind === "paymentMethod") await refuseDeveloperPaymentMethods(user);
     const model = delegate(data.kind);
     const existing = await model.findUnique({ where: { id: data.id } });
     if (!existing) throw new AppError("Item not found.", "NOT_FOUND");
