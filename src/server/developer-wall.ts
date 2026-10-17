@@ -1,7 +1,8 @@
 import "server-only";
-import { db } from "./db";
+import { db, workAsOfRequest } from "./db";
 import { audit } from "./audit";
 import { AppError } from "./errors";
+import { isMarkedWorkingAs } from "./work-as-session";
 
 /**
  * THE MONEY WALL, inside the services (owner, 2026-10-14).
@@ -20,8 +21,12 @@ export const DEVELOPER_DECISION_REFUSAL = "The Developer account cannot make thi
 
 type Who = { userId?: string | null; label?: string; ipAddress?: string | null; permissions?: ReadonlySet<string> | null };
 
-/** True when the person acting is the Developer account. */
-export const actsAsDeveloper = (actor: { permissions?: ReadonlySet<string> | null } | null | undefined): boolean => !!actor?.permissions?.has("developer.access");
+/**
+ * True when the person acting is the Developer account — also while it WORKS AS someone (owner, 2026-10-17): then it holds that person's
+ * rights instead and no "developer.access", but its set of rights carries the mark (see work-as-session.ts), so the wall stays up.
+ */
+export const actsAsDeveloper = (actor: { permissions?: ReadonlySet<string> | null } | null | undefined): boolean =>
+  !!actor?.permissions && (actor.permissions.has("developer.access") || isMarkedWorkingAs(actor.permissions));
 
 /** What a refused Developer looks like in the audit trail: the same entry the actions write ("developer.denied", kind "action"). */
 async function logRefusal(actor: Who, needs: string[]) {
@@ -38,7 +43,12 @@ async function logRefusal(actor: Who, needs: string[]) {
  * `needs` names the rights the gate was built on (what the Developer "held" but may not use to decide).
  */
 export async function refuseDeveloper(actor: Who | null | undefined, needs: string | readonly string[]): Promise<void> {
-  if (!actor || !actsAsDeveloper(actor)) return;
+  if (!actor) return;
+  // Not marked? Then ask the request itself: is this the person a Developer is working as right now? (A copy of the rights loses the mark.)
+  if (!actsAsDeveloper(actor)) {
+    const working = actor.userId ? await workAsOfRequest() : null;
+    if (!working || working.targetId !== actor.userId) return;
+  }
   await logRefusal(actor, typeof needs === "string" ? [needs] : [...needs]);
   throw new AppError(DEVELOPER_DECISION_REFUSAL, "FORBIDDEN");
 }

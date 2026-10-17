@@ -3,14 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Activity, Armchair, ArrowLeftRight, Banknote, BanknoteArrowUp, BarChart3, Coins, BedDouble, BookOpenText, Boxes, Building2, BusFront, CalendarCheck, CalendarClock, CalendarDays, CalendarPlus, CalendarRange, Car, CirclePlus, ClipboardCheck, ClipboardList, Clock, ConciergeBell, Contact, DoorClosed, DoorOpen, FileChartColumn, FileText, Gift, Globe, HandCoins, HandPlatter, History, Hotel, Inbox, Landmark, Languages, Layers, LayoutDashboard, LayoutGrid, MessageSquareText, NotebookText, Presentation, QrCode, Receipt, ReceiptText, Settings, ShieldCheck, Smartphone, Sofa, Tags, TrendingUp, UserCog, Users, UtensilsCrossed, Wallet, type LucideIcon,
+  Activity, Armchair, ArrowLeftRight, Banknote, BanknoteArrowUp, BarChart3, Coins, BedDouble, BookOpenText, Boxes, Building2, BusFront, CalendarCheck, CalendarClock, CalendarDays, CalendarPlus, CalendarRange, Car, CirclePlus, ClipboardCheck, ClipboardList, Clock, ConciergeBell, Contact, DoorClosed, DoorOpen, FileChartColumn, FileText, Gift, Globe, HandCoins, HandPlatter, History, Hotel, Inbox, Landmark, Languages, Layers, LayoutDashboard, LayoutGrid, MessageSquareText, NotebookText, Presentation, QrCode, Receipt, ReceiptText, ScrollText, Settings, ShieldCheck, Smartphone, Sofa, Tags, TrendingUp, UserCog, Users, UtensilsCrossed, Wallet, type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { NavSection } from "./nav-config";
 import { useT } from "@/i18n/client";
 
 const ICONS: Record<string, LucideIcon> = {
-  Activity, Armchair, ArrowLeftRight, Banknote, BanknoteArrowUp, BarChart3, Coins, BedDouble, BookOpenText, Boxes, Building2, BusFront, CalendarCheck, CalendarClock, CalendarDays, CalendarPlus, CalendarRange, Car, CirclePlus, ClipboardCheck, ClipboardList, Clock, ConciergeBell, Contact, DoorClosed, DoorOpen, FileChartColumn, FileText, Gift, Globe, HandCoins, HandPlatter, History, Hotel, Inbox, Landmark, Languages, Layers, LayoutDashboard, MessageSquareText, NotebookText, Presentation, QrCode, Receipt, ReceiptText, Settings, ShieldCheck, Smartphone, Sofa, Tags, TrendingUp, UserCog, Users, UtensilsCrossed, Wallet,
+  Activity, Armchair, ArrowLeftRight, Banknote, BanknoteArrowUp, BarChart3, Coins, BedDouble, BookOpenText, Boxes, Building2, BusFront, CalendarCheck, CalendarClock, CalendarDays, CalendarPlus, CalendarRange, Car, CirclePlus, ClipboardCheck, ClipboardList, Clock, ConciergeBell, Contact, DoorClosed, DoorOpen, FileChartColumn, FileText, Gift, Globe, HandCoins, HandPlatter, History, Hotel, Inbox, Landmark, Languages, Layers, LayoutDashboard, LayoutGrid, MessageSquareText, NotebookText, Presentation, QrCode, Receipt, ReceiptText, ScrollText, Settings, ShieldCheck, Smartphone, Sofa, Tags, TrendingUp, UserCog, Users, UtensilsCrossed, Wallet,
 };
 
 /**
@@ -39,8 +39,9 @@ export function StaffNav({ sections, home, onNavigate }: { sections: NavSection[
       )}
       {sections.map((section) => {
         const SIcon = ICONS[section.icon] ?? LayoutDashboard;
-        // Only one part of the hotel (e.g. the restaurant): no heading — the items right under Home.
-        const single = sections.length === 1;
+        // Only one part of the hotel (e.g. the restaurant): no heading — the items right under Home. (The Developer console is also
+        // only one section, but it has its own heading, as it stands alone with no Home pill above it.)
+        const single = sections.length === 1 && !section.titled;
         return (
           <div key={section.title} className={cn(single && "-mt-4")}>
             {!single && (

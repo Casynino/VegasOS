@@ -5,14 +5,19 @@ import m_audit_trail from "./audit-trail";
 import m_content_admin from "./content-admin";
 import m_daily_lists from "./daily-lists";
 import m_dashboards from "./dashboards";
+import m_developer_access from "./developer-access";
 import m_developer_attribution from "./developer-attribution";
 import m_developer_console from "./developer-console";
 import m_developer_gates from "./developer-gates";
 import m_developer_hidden from "./developer-hidden";
+import m_developer_home from "./developer-home";
 import m_developer_logging from "./developer-logging";
 import m_developer_login from "./developer-login";
+import m_developer_pages from "./developer-pages";
 import m_developer_rights from "./developer-rights";
+import m_developer_shell from "./developer-shell";
 import m_developer_users from "./developer-users";
+import m_developer_workas from "./developer-workas";
 import m_finance_home from "./finance-home";
 import m_finance from "./finance";
 import m_fix_people_misc from "./fix-people-misc";
@@ -51,14 +56,19 @@ const catalog: Catalog = {
   ...m_content_admin,
   ...m_daily_lists,
   ...m_dashboards,
+  ...m_developer_access,
   ...m_developer_attribution,
   ...m_developer_console,
   ...m_developer_gates,
   ...m_developer_hidden,
+  ...m_developer_home,
   ...m_developer_logging,
   ...m_developer_login,
+  ...m_developer_pages,
   ...m_developer_rights,
+  ...m_developer_shell,
   ...m_developer_users,
+  ...m_developer_workas,
   ...m_finance_home,
   ...m_finance,
   ...m_fix_people_misc,

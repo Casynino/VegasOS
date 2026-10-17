@@ -1,5 +1,9 @@
 import { createHash, randomBytes, randomInt, randomUUID } from "node:crypto";
-import { db } from "@/server/db";
+
+// The database client is loaded on first use, never at the top: next/headers is mocked with a factory that imports THIS file, and the
+// client (server/db.ts) now reads the request's cookie through next/headers for the "work as" write fence — a top-level import here
+// would make the two wait for each other forever (every test that mocks next/headers would hang on its first import).
+const getDb = async () => (await import("@/server/db")).db;
 
 /**
  * Small helpers for the Developer-account tests: a fake browser (cookies + request headers behind the mocked
@@ -71,6 +75,7 @@ export interface MadeUser { id: string; email: string; fullName: string; passwor
 /** A real account (real argon2 hash) with a known password. Removed again by removeMadeUsers(). */
 export async function makeUser(role: string, opts: { fullName?: string; password?: string; isActive?: boolean } = {}): Promise<MadeUser> {
   const { hashPassword } = await import("@/server/auth");
+  const db = await getDb();
   const r = await db.role.findUniqueOrThrow({ where: { code: role } });
   const password = opts.password ?? `Tst${randomUUID().slice(0, 8)}-9x`;
   const email = `t-${randomUUID().slice(0, 10)}@devtest.local`;
@@ -82,6 +87,7 @@ export async function makeUser(role: string, opts: { fullName?: string; password
 }
 
 export async function setRole(userId: string, role: string) {
+  const db = await getDb();
   const r = await db.role.findUniqueOrThrow({ where: { code: role } });
   await db.user.update({ where: { id: userId }, data: { roleId: r.id } });
 }
@@ -89,11 +95,13 @@ export async function setRole(userId: string, role: string) {
 /** Remove the accounts this file made (their sessions go with them; the audit rows stay, with the link to the account blanked by the database). */
 export async function removeMadeUsers() {
   if (!made.length) return;
+  const db = await getDb();
   await db.user.deleteMany({ where: { id: { in: made.splice(0) } } });
 }
 
 /** A session row written straight into the database (ages in minutes), and — by default — the cookie for it in the fake browser. */
 export async function makeSession(userId: string, opts: { createdMinAgo?: number; seenMinAgo?: number; expiresInMin?: number; setCookie?: boolean } = {}): Promise<string> {
+  const db = await getDb();
   const token = randomBytes(32).toString("base64url");
   const now = Date.now();
   const min = 60_000;
@@ -110,10 +118,12 @@ export async function makeSession(userId: string, opts: { createdMinAgo?: number
 }
 
 /** The audit entries written by one account, oldest first (optionally only one action). */
-export function auditOf(userId: string, action?: string) {
+export async function auditOf(userId: string, action?: string) {
+  const db = await getDb();
   return db.auditLog.findMany({ where: { userId, ...(action ? { action } : {}) }, orderBy: { createdAt: "asc" } });
 }
 
 export async function dropLoginBuckets(...keys: string[]) {
+  const db = await getDb();
   if (keys.length) await db.rateLimitBucket.deleteMany({ where: { key: { in: keys } } });
 }

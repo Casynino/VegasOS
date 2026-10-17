@@ -54,7 +54,8 @@ export const withoutConfirming = (a: Actor): Actor => ({ ...a, permissions: new 
 export const websiteActor: Actor = { userId: null, label: "website", permissions: new Set() };
 
 export async function roomType(code: string) {
-  return db.roomType.findUniqueOrThrow({ where: { code }, include: { rooms: true } });
+  // Rooms in room-number order: without an ORDER BY the database returns them in storage order, which changes as room rows are updated (a test that picks rooms[0] and rooms[2] then meets the same room twice).
+  return db.roomType.findUniqueOrThrow({ where: { code }, include: { rooms: { orderBy: { number: "asc" } } } });
 }
 
 /** An instant in Dar es Salaam local time. */

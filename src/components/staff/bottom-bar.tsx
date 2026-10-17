@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarDays, ChevronRight, Home, Inbox, LogOut, Menu, Search } from "lucide-react";
+import { BarChart3, CalendarDays, ChevronRight, Home, Inbox, LogOut, Menu, ScrollText, Search, ShieldCheck } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { StaffNav } from "./staff-nav";
@@ -13,19 +13,35 @@ import { useT } from "@/i18n/client";
 import type { NavSection } from "./nav-config";
 
 /** Phone navigation: a flat bottom tab bar (Home · Find · Bookings · Requests · Menu). */
-export function StaffBottomBar({ home, sections, requests, canBook, user, signOut = true }: {
-  home: string; sections: NavSection[]; requests: number; canBook: boolean; user: { name: string; role: string; /** A Developer account — the menu says so too. */ developer?: boolean };
+export function StaffBottomBar({ home, sections, requests, canBook, user, signOut = true, console: consoleMode = false }: {
+  home: string; sections: NavSection[]; requests: number; canBook: boolean;
+  user: {
+    name: string; role: string;
+    /** A Developer account — the menu says so too. */
+    developer?: boolean;
+    /** The Developer is working as this person (name / role are theirs) — the menu says so, and the card is not a link to an account page that is not the Developer's. */
+    workAs?: boolean;
+  };
+  /** The Developer's own console (not working as anyone): the tabs are the console's pages, not the hotel's. */
+  console?: boolean;
   /** Not on the shared restaurant screen (it stays signed in; sign it out in My account). */
   signOut?: boolean;
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const t = useT();
-  const tabs = [
-    { href: home, label: t("Home"), icon: Home, exact: true },
-    { href: "/staff/search", label: t("Find"), icon: Search },
-    ...(canBook ? [{ href: "/staff/reservations", label: t("Bookings"), icon: CalendarDays }, { href: "/staff/booking-requests", label: t.ctx("nav", "Online"), icon: Inbox, badge: requests }] : []),
-  ];
+  const tabs = consoleMode
+    ? [
+      { href: home, label: t("Home"), icon: Home, exact: true },
+      { href: "/staff/developer/audit", label: t.ctx("nav", "Audit"), icon: ScrollText },
+      { href: "/staff/developer/business", label: t.ctx("nav", "Business"), icon: BarChart3 },
+      { href: "/staff/developer/access", label: t.ctx("nav", "Access"), icon: ShieldCheck },
+    ]
+    : [
+      { href: home, label: t("Home"), icon: Home, exact: true },
+      { href: "/staff/search", label: t("Find"), icon: Search },
+      ...(canBook ? [{ href: "/staff/reservations", label: t("Bookings"), icon: CalendarDays }, { href: "/staff/booking-requests", label: t.ctx("nav", "Online"), icon: Inbox, badge: requests }] : []),
+    ];
   const tab = "relative flex flex-1 flex-col items-center gap-1 pb-1 pt-2.5 text-[11px] font-medium";
   return (
     <nav aria-label={t("Quick navigation")} className="fixed inset-x-0 bottom-0 z-40 print:hidden border-t border-border bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden">
@@ -49,15 +65,23 @@ export function StaffBottomBar({ home, sections, requests, canBook, user, signOu
           <SheetContent side="left" className="flex w-72 flex-col bg-card p-4 text-foreground">
             <SheetHeader className="px-0">
               <SheetTitle className="font-display text-xl text-[oklch(0.55_0.1_75)] dark:text-gold">Vegas Luxury Hotel</SheetTitle>
-              {user.developer && <p className="rounded-md bg-fuchsia-700 px-2.5 py-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-white">{t("DEVELOPER MODE — SUPER USER")}</p>}
+              {user.developer && <p className="rounded-md bg-fuchsia-700 px-2.5 py-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-white">{user.workAs ? t("DEVELOPER MODE — you are working as {name} ({role})", { name: user.name, role: t(user.role) }) : t("DEVELOPER MODE — SUPER USER")}</p>}
             </SheetHeader>
-            <div className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1"><StaffNav sections={sections} home={home} onNavigate={() => setOpen(false)} /></div>
+            <div className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1"><StaffNav sections={sections} home={consoleMode ? undefined : home} onNavigate={() => setOpen(false)} /></div>
             <div className="space-y-2.5 border-t border-dashed border-border pt-3">
-              <Link href="/staff/account" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-2xl bg-muted p-2.5">
-                <Initials name={user.name} className="size-9 text-xs" />
-                <span className="min-w-0 flex-1 leading-tight"><span className="block truncate text-sm font-semibold">{user.name}</span><span className={cn("block truncate text-[11px]", user.developer ? "font-semibold text-fuchsia-700 dark:text-fuchsia-300" : "text-muted-foreground")}>{t(user.role)}</span></span>
-                <ChevronRight className="size-4 text-muted-foreground" />
-              </Link>
+              {(() => {
+                const card = (
+                  <>
+                    <Initials name={user.name} className={cn("size-9 text-xs", user.developer && "ring-2 ring-fuchsia-500")} />
+                    <span className="min-w-0 flex-1 leading-tight"><span className="block truncate text-sm font-semibold">{user.name}</span><span className={cn("block truncate text-[11px]", user.developer ? "font-semibold text-fuchsia-700 dark:text-fuchsia-300" : "text-muted-foreground")}>{t(user.role)}</span></span>
+                    {!user.workAs && <ChevronRight className="size-4 text-muted-foreground" />}
+                  </>
+                );
+                // While working as someone the card shows that person and goes nowhere (their account page is theirs).
+                return user.workAs
+                  ? <div className="flex items-center gap-3 rounded-2xl bg-muted p-2.5">{card}</div>
+                  : <Link href="/staff/account" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-2xl bg-muted p-2.5">{card}</Link>;
+              })()}
               {signOut && <form action={logoutAction}>
                 <button type="submit" className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-border py-2.5 text-sm font-medium text-muted-foreground hover:bg-rose-500/10 hover:text-rose-600">
                   <LogOut className="size-4" />{t("Sign out")}

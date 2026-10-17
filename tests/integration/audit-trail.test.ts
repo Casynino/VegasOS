@@ -23,9 +23,12 @@ import { addDays, businessDateOf, toDbDate, zonedInstant } from "@/lib/time/busi
 import { makeT } from "@/i18n/translate";
 import {
   AUDIT_DEFAULT_DAYS, AUDIT_MAX_DAYS, AUDIT_MAX_PAGE, AUDIT_PAGE_SIZE, auditActionWords, auditFilterChoices, auditToday, auditWhere,
-  isFailureAction, isFailureEntry, parseAuditFilter, queryAuditTrail, type AuditFilter, type AuditRow, type AuditViewer,
+  isFailureAction, isFailureEntry, parseAuditFilter, parseDeveloperAuditFilter, queryAuditTrail, type AuditFilter, type AuditRow, type AuditViewer,
 } from "@/server/services/audit-trail";
 import { AuditList, showJson } from "@/app/staff/(app)/audit/audit-rows";
+import { DeveloperAuditList, auditSentence, auditWho } from "@/app/staff/(app)/developer/audit/developer-audit-rows";
+import DeveloperAuditPage from "@/app/staff/(app)/developer/audit/page";
+import { staffHome } from "@/lib/staff-home";
 import type { Prisma } from "@/generated/prisma/client";
 import { browser, makeSession, makeUser, redirectOf, removeMadeUsers, thrownBy, type MadeUser } from "../support/developer";
 
@@ -464,7 +467,7 @@ describe("failures are told apart from what worked", () => {
 
   it("an action has plain words: the activity list's, ours for the failures and the audit trail, the readable name otherwise", () => {
     expect(auditActionWords("reservation.checked_in")).toBe("checked a guest in");
-    expect(auditActionWords("auth.login_failed")).toBe("failed to sign in");
+    expect(auditActionWords("auth.login_failed")).toBe("Failed sign-in (not signed in)"); // a failed sign-in is nobody's action (the entry is the system's): the words stand alone
     expect(auditActionWords("developer.denied")).toMatch(/refused/);
     expect(auditActionWords("developer.viewed")).toBe("looked at a page");
     expect(auditActionWords("something.new_thing")).toBe("something · new thing");
@@ -532,5 +535,281 @@ describe("developer actions can be left out for a viewer who may not see them", 
     expect(await names(true)).toEqual(["h.dev", "h.dev.legacy", "h.staff"]);
     expect(await names(false)).toEqual(["h.staff"]);
     for (const role of ["OWNER", "ADMIN"] as const) expect(actions(await queryAuditTrail(viewerOf(role), f)).sort(), role).toEqual(["h.dev", "h.dev.legacy", "h.staff"]);
+  });
+});
+
+
+// ───────────────────────────────────────────── 6. the Developer's Audit page (owner, 2026-10-17) ─────────────────────────────────────────────
+describe("the Developer's Audit page: the address, the chips, the search", () => {
+  const today = "2026-10-17";
+  const p = (raw: Record<string, string | string[] | undefined>) => parseDeveloperAuditFilter(raw, today);
+
+  it("the three chips: Everything, Developer actions, Failures — anything else is Everything", () => {
+    expect(p({})).toMatchObject({ view: "all", filter: { actor: "ALL", failures: false } });
+    expect(p({ view: "developer" })).toMatchObject({ view: "developer", filter: { actor: "DEVELOPER", failures: false } });
+    expect(p({ view: "DEVELOPER" }).view).toBe("developer");
+    expect(p({ view: "failures" })).toMatchObject({ view: "failures", filter: { actor: "ALL", failures: true } });
+    for (const bad of ["staff", "", "all ", "'; drop table", ["failures", "developer"] as unknown as string]) expect(p({ view: bad }).view, String(bad)).toMatch(/^(all|failures)$/);
+  });
+
+  it("the search words are plain text from the address: trimmed, no control characters, at most 80 letters", () => {
+    expect(p({ q: "  Neema  " }).filter.q).toBe("Neema");
+    expect(p({ q: "ab\u0000c\n" }).filter.q).not.toMatch(/[\u0000-\u001f]/);
+    expect(p({ q: "x".repeat(500) }).filter.q!.length).toBe(80);
+    expect(p({ q: "   " }).filter.q).toBeUndefined();
+    expect(p({}).filter.q).toBeUndefined();
+  });
+
+  it("only view, q, from, to and page are read — the Boss's own parameters (who, user, action, module) change nothing here", () => {
+    expect(p({ who: "STAFF", user: "someone", action: "payment", module: "Payment" }).filter).toMatchObject({ actor: "ALL", userId: "", action: "", module: "" });
+  });
+
+  it("the dates keep the same bounds as the Boss's page: last 7 days, swapped when backwards, never more than a year, never deeper than the last page", () => {
+    expect(p({}).filter).toMatchObject({ from: addDays(today, -(AUDIT_DEFAULT_DAYS - 1)), to: today, page: 1 });
+    expect(p({ from: "2026-10-10", to: "2026-10-01" }).filter).toMatchObject({ from: "2026-10-01", to: "2026-10-10" });
+    const wide = p({ from: "2000-01-01", to: today });
+    expect(wide.rangeShortened).toBe(true);
+    expect(wide.filter.from).toBe(addDays(today, -(AUDIT_MAX_DAYS - 1)));
+    expect(p({ page: "999999" }).filter.page).toBe(AUDIT_MAX_PAGE);
+    expect(p({ page: "-3" }).filter.page).toBe(1);
+  });
+});
+
+describe("the Developer's Audit page: what it lists", () => {
+  const M = `${MOD}DevPage`;
+  const DEVV = viewerOf("DEVELOPER");
+  let acting: string;
+  const dayNow = () => auditToday(tz);
+  const q = (over: Partial<AuditFilter> = {}) => queryAuditTrail(DEVV, { ...base, module: M, from: dayNow(), to: dayNow(), ...over });
+  const names = async (over: Partial<AuditFilter> = {}) => (await q(over)).rows.map((r) => r.action).sort();
+  const rowOf = async (action: string) => (await q()).rows.find((r) => r.action === action)!;
+  const t = makeT("en", null);
+
+  beforeAll(async () => {
+    acting = `${dev.fullName} (Developer) as ${rec.fullName} (Receptionist)`;
+    await put({ user: dev, type: "DEVELOPER", role: "DEVELOPER", action: "developer.viewed", module: M, entityId: "/staff/finance", after: { path: "/staff/finance" } });
+    // A Developer's work while working as Reception: the Developer's own id, the "as" label, and who it was done as.
+    await put({ user: dev, label: acting, type: "DEVELOPER", role: "DEVELOPER", action: "reservation.checked_in", module: M, entityId: "res1", after: { actingAs: { id: rec.id, name: rec.fullName, role: "Receptionist" }, room: "101" } });
+    await put({ user: rec, action: "reservation.created", module: M, entityId: "res2" });
+    // Nobody but a Developer's entry can say "acting as": a staff row that carries it is read as plain staff work, and a half-written one is ignored.
+    await put({ user: rec, action: "staff.forged", module: M, after: { actingAs: { id: dev.id, name: "Boss", role: "Owner" } } });
+    await put({ user: dev, type: "DEVELOPER", role: "DEVELOPER", action: "dev.half_written", module: M, after: { actingAs: { name: "No id" } } });
+    await put({ user: rec, action: "user.update_failed", module: M, after: { error: "That role is for the system only." } });
+    // The sign-in page's own entry for a failed sign-in: nobody is signed in.
+    await audit(db, { label: "Sign-in page (not signed in)" }, { action: "auth.login_failed", entityType: M, entityId: rec.id, after: { accountType: "STAFF", accountExists: true, reasonKind: "bad password" } });
+    await put({ user: dev, type: "DEVELOPER", role: "DEVELOPER", action: "developer.work_as_refused", module: M, after: { reason: "That person is a Developer account." } });
+    await put({ user: dev, type: "DEVELOPER", role: "DEVELOPER", action: "developer.inspected", module: M, after: { ok: false, problem: "That person was not found." } });
+    await put({ user: rec, action: "payment.noted", module: M, before: { password: "hunter2" }, after: { note: "ok" } });
+  });
+
+  it("Everything lists all of it, newest first", async () => {
+    expect(await names()).toEqual(["auth.login_failed", "dev.half_written", "developer.inspected", "developer.viewed", "developer.work_as_refused", "payment.noted", "reservation.checked_in", "reservation.created", "staff.forged", "user.update_failed"]);
+  });
+
+  it("Developer actions: only a Developer's — the work done while working as someone included", async () => {
+    expect(await names({ actor: "DEVELOPER" })).toEqual(["dev.half_written", "developer.inspected", "developer.viewed", "developer.work_as_refused", "reservation.checked_in"]);
+  });
+
+  it("Failures: a failed attempt, a refusal and an entry that says ok: false — not what worked", async () => {
+    expect(await names({ failures: true })).toEqual(["auth.login_failed", "developer.inspected", "developer.work_as_refused", "user.update_failed"]);
+    for (const r of (await q({ failures: true })).rows) expect(r.ok, r.action).toBe(false);
+    // the same rule as the badge: everything the database filter lets through is a failure, and every failure is let through
+    const everything = (await q()).rows;
+    expect(everything.filter((r) => !r.ok).map((r) => r.action).sort()).toEqual(await names({ failures: true }));
+  });
+
+  it("a refused attempt to work as someone is a failure by its name; so is every name that ends _failed, _refused, .denied or .refused", () => {
+    for (const a of ["developer.work_as_refused", "withdrawal.refused", "developer.denied", "auth.login_failed"]) expect(isFailureAction(a), a).toBe(true);
+    for (const a of ["developer.work_as_started", "developer.work_as_ended", "user.suspended", "user.reactivated", "user.signed_out_everywhere", "developer.business_viewed"]) expect(isFailureAction(a), a).toBe(false);
+  });
+
+  it("Failures can be narrowed to the Developer's own", async () => {
+    expect(await names({ failures: true, actor: "DEVELOPER" })).toEqual(["developer.inspected", "developer.work_as_refused"]);
+  });
+
+  it("a row written while working as someone says so: the Developer's own name, 'as' the person, and who it was done as", async () => {
+    const row = await rowOf("reservation.checked_in");
+    expect(row).toMatchObject({ actorType: "DEVELOPER", userId: dev.id, actorName: acting, actingAs: { id: rec.id, name: rec.fullName, role: "Receptionist" } });
+    expect(auditWho(row, t)).toBe(acting);
+    expect(auditSentence(row, t)).toBe(`Developer (as ${rec.fullName}) checked a guest in.`);
+  });
+
+  it("only a Developer's entry can carry 'acting as' — a staff row that has it, or a half-written one, does not", async () => {
+    expect((await rowOf("staff.forged")).actingAs).toBeNull();
+    expect((await rowOf("dev.half_written")).actingAs).toBeNull();
+    expect((await rowOf("developer.viewed")).actingAs).toBeNull();
+    expect((await rowOf("reservation.created")).actingAs ?? null).toBeNull();
+  });
+
+  it("the Developer's own entries read 'Name (Developer)'; staff read 'Name (Role)'; the sentence names the page that was looked at", async () => {
+    const viewed = await rowOf("developer.viewed");
+    expect(auditWho(viewed, t)).toBe(`${dev.fullName} (Developer)`);
+    expect(auditSentence(viewed, t)).toBe("Developer looked at a page (/staff/finance).");
+    const staff = await rowOf("reservation.created");
+    expect(auditWho(staff, t)).toMatch(new RegExp(`^${rec.fullName} \\(.+\\)$`));
+    expect(auditSentence(staff, t)).toBe(`${rec.fullName} made a booking.`);
+  });
+
+  it("a failed sign-in is shown as System: the system's entry about an account someone tried, with no one's name on it", async () => {
+    const row = await rowOf("auth.login_failed");
+    expect(row).toMatchObject({ actorType: "SYSTEM", userId: null, ok: false });
+    expect(auditWho(row, t)).toBe("System");
+    expect(auditSentence(row, t)).toBe("Failed sign-in (not signed in).");
+    expect(await names({ actor: "SYSTEM" })).toEqual(["auth.login_failed"]);
+  });
+
+  it("search: by who (the name written with the entry), by what (its code or its plain words), by where (the kind of record or its id)", async () => {
+    // who
+    expect(await names({ q: dev.fullName })).toEqual(["dev.half_written", "developer.inspected", "developer.viewed", "developer.work_as_refused", "reservation.checked_in"]);
+    expect(await names({ q: rec.fullName.toUpperCase() })).toEqual(["payment.noted", "reservation.checked_in", "reservation.created", "staff.forged", "user.update_failed"]);
+    // what: a part of the code, the code written as words, and the plain words
+    expect(await names({ q: "payment.noted" })).toEqual(["payment.noted"]);
+    expect(await names({ q: "checked in" })).toEqual(["reservation.checked_in"]);
+    expect(await names({ q: "login failed" })).toEqual(["auth.login_failed"]);
+    expect(await names({ q: "looked at a page" })).toEqual(["developer.viewed"]);
+    expect(await names({ q: "refused when trying to work" })).toEqual(["developer.work_as_refused"]);
+    // where
+    expect(await names({ q: "/staff/finance" })).toEqual(["developer.viewed"]);
+    expect(await names({ q: "res2" })).toEqual(["reservation.created"]);
+    expect((await names({ q: M })).length).toBe(10);
+    // nothing matches nothing; a % or _ is just a letter
+    expect(await names({ q: "zzz-no-such-thing" })).toEqual([]);
+    expect(await names({ q: "%" })).toEqual([]);
+    expect(await names({ q: "pay_ent" })).toEqual([]);
+  });
+
+  it("search and chips work together: the chip narrows, the words narrow further", async () => {
+    expect(await names({ actor: "DEVELOPER", q: "inspected" })).toEqual(["developer.inspected"]);
+    expect(await names({ failures: true, q: rec.fullName })).toEqual(["user.update_failed"]);
+    expect(await names({ failures: true, actor: "DEVELOPER", q: rec.fullName })).toEqual([]);
+  });
+
+  it("the Boss's page, which never sets the new fields, lists exactly what it always listed", async () => {
+    const f = { ...base, module: M, from: dayNow(), to: dayNow() };
+    expect(f).not.toHaveProperty("q");
+    expect((await queryAuditTrail(BOSS, f)).rows).toHaveLength(10);
+  });
+
+  it("the list is drawn: a dot, the sentence, who · date · code, and badges — and nothing in it can be pressed", async () => {
+    const rows = (await q()).rows;
+    const html = renderToStaticMarkup(createElement(DeveloperAuditList, { rows, t, timezone: tz }));
+    expect(html).toContain(acting);
+    expect(html).toContain(`Developer (as ${rec.fullName}) checked a guest in.`);
+    expect(html).toContain("Failed sign-in (not signed in).");
+    expect(html).not.toContain("Sign-in page (not signed in)");
+    expect(html.match(/data-entry/g)).toHaveLength(10);
+    for (const w of ["Developer", "Succeeded", "Failed", "auth.login_failed", "developer.viewed"]) expect(html).toContain(w);
+    // red for what failed (the Developer's refusals included), gold for the Developer, blue for staff, grey for the system
+    expect(html.match(/data-dot="failed"/g)).toHaveLength(4);
+    expect(html.match(/data-dot="DEVELOPER"/g)).toHaveLength(3);
+    expect(html.match(/data-dot="STAFF"/g)).toHaveLength(3);
+    expect(html.match(/data-badge="developer"/g)).toHaveLength(5);
+    // the entry that was done as someone names who
+    expect(html).toContain(`data-acting-as="${rec.id}"`);
+    for (const tag of ["<button", "<form", "<input", "<textarea", "<select", "<a ", "<script", "contenteditable", "onclick"]) expect(html.toLowerCase(), tag).not.toContain(tag);
+  });
+
+  it("secrets are hidden when it is drawn", async () => {
+    const html = renderToStaticMarkup(createElement(DeveloperAuditList, { rows: (await q()).rows, t, timezone: tz }));
+    expect(html).not.toContain("hunter2");
+    expect(html).toContain("[hidden]");
+  });
+
+  it("the page and its list hold no form that posts, no server action, and no link out of the console", () => {
+    const page = readFileSync("src/app/staff/(app)/developer/audit/page.tsx", "utf8");
+    const list = readFileSync("src/app/staff/(app)/developer/audit/developer-audit-rows.tsx", "utf8");
+    for (const src of [page, list]) expect(src).not.toMatch(/use server|method="post"|\.(create|update|delete|upsert)\(/i);
+    expect(list).not.toMatch(/<form|<button|<input|href=/);
+    expect([...page.matchAll(/method="(\w+)"/g)].map((m) => m[1])).toEqual(["get"]);
+    for (const m of page.matchAll(/href=\{?["`]?([^"`}\s]+)/g)) expect(m[1], m[1]).toMatch(/^(\?\$\{|\/staff\/developer\/audit|addressOf)/);
+  });
+});
+
+describe("the Developer's Audit page: written by the system itself while working as someone", () => {
+  const M = `${MOD}WorkAs`;
+  const t = makeT("en", null);
+  const DEVV = viewerOf("DEVELOPER");
+
+  it("an entry the staff member's action writes during Work as is the Developer's — and one written by someone else at the same moment is left alone", async () => {
+    const roleName = (await db.role.findUniqueOrThrow({ where: { code: "RECEPTIONIST" } })).name;
+    browser.reset();
+    await makeSession(dev.id);
+    await db.session.updateMany({ where: { userId: dev.id }, data: { workAsUserId: rec.id, workAsStartedAt: new Date() } });
+    try {
+      await audit(db, { userId: rec.id, label: rec.fullName }, { action: "reservation.checked_in", entityType: M, entityId: "w1", after: { room: "205" } });
+      await audit(db, { userId: mgr.id, label: mgr.fullName }, { action: "reservation.created", entityType: M, entityId: "w2" });
+    } finally {
+      browser.reset(); // (the write fence refuses session changes while the browser is working as someone)
+      await db.session.updateMany({ where: { userId: dev.id }, data: { workAsUserId: null, workAsStartedAt: null } });
+    }
+    const label = `${dev.fullName} (Developer) as ${rec.fullName} (${roleName})`;
+    const today = auditToday(tz);
+    const rows = (await queryAuditTrail(DEVV, { ...base, module: M, from: today, to: today })).rows;
+    const done = rows.find((r) => r.entityId === "w1")!;
+    expect(done).toMatchObject({ userId: dev.id, actorType: "DEVELOPER", actorName: label, actingAs: { id: rec.id, name: rec.fullName, role: roleName }, ok: true });
+    expect(done.after).toMatchObject({ room: "205", actingAs: { id: rec.id } });
+    expect(auditWho(done, t)).toBe(label);
+    const other = rows.find((r) => r.entityId === "w2")!;
+    expect(other).toMatchObject({ userId: mgr.id, actorType: "STAFF", actorName: mgr.fullName });
+    expect(other.actingAs ?? null).toBeNull();
+    // under "Developer actions" for the Developer; not under Reception's own name
+    expect((await queryAuditTrail(DEVV, { ...base, module: M, from: today, to: today, actor: "DEVELOPER" })).rows.map((r) => r.entityId)).toEqual(["w1"]);
+    expect((await queryAuditTrail(DEVV, { ...base, module: M, from: today, to: today, userId: rec.id })).rows).toEqual([]);
+  });
+});
+
+describe("the Developer's Audit page: who may open it", () => {
+  const open = (search: Record<string, string> = {}) => DeveloperAuditPage({ searchParams: Promise.resolve(search), params: Promise.resolve({}) } as never);
+
+  it("the Developer opens it; the Boss, the MD, a manager, Finance and Reception are sent to 'no access'; nobody signed in goes to the sign-in", async () => {
+    await makeSession(dev.id);
+    expect(await redirectOf(() => open({ view: "failures", q: "login" }))).toBeNull();
+    for (const u of [boss, md, mgr, fin, rec]) {
+      browser.reset();
+      await makeSession(u.id);
+      expect(await redirectOf(() => open()), u.fullName).toBe("/staff/forbidden");
+    }
+    browser.reset();
+    expect(await redirectOf(() => open())).toBe("/staff/login");
+  });
+
+  it("the whole page: title, how to read it, the three chips (the chosen one marked), the search box with its dates, and the list", async () => {
+    browser.reset();
+    await makeSession(dev.id);
+    const draw = async (search: Record<string, string>) => renderToStaticMarkup((await open(search)) as never);
+    const html = await draw({ view: "failures", q: "login" });
+    expect(html).toContain("Audit");
+    expect(html).toContain("The permanent diary of the system");
+    expect(html).toContain("not even from the database");
+    expect(html).toContain("How to read this page");
+    expect(html).toMatch(/<strong[^>]*>Developer<\/strong> tag mean it was done by you/);
+    for (const chip of ["Everything", "Developer actions", "Failures"]) expect(html).toContain(chip);
+    expect(html.match(/aria-current="page"/g)).toHaveLength(1);
+    expect(html).toMatch(/aria-current="page"[^>]*>Failures</);
+    expect(html).toContain('placeholder="Search who, what or where…"');
+    expect(html).toContain('name="q"');
+    expect(html).toContain('value="login"');
+    expect(html.match(/type="date"/g)).toHaveLength(2);
+    expect(html).toMatch(/<form[^>]*method="get"/);
+    expect(html).toContain('name="view" value="failures"');
+    expect(html).not.toMatch(/method="post"/i);
+    // a chip keeps the search words and the dates
+    expect(html).toMatch(/href="\?from=[^"]+&amp;to=[^"]+&amp;q=login"/);
+    // the plain page: no search, no chip
+    const plain = await draw({});
+    expect(plain).not.toContain('name="view"');
+    expect(plain).toMatch(/aria-current="page"[^>]*>Everything</);
+  });
+
+  it("a Developer working as someone is sent to that person's own home — the console and the Work as world are kept apart", async () => {
+    browser.reset();
+    await makeSession(dev.id);
+    await db.session.updateMany({ where: { userId: dev.id }, data: { workAsUserId: rec.id, workAsStartedAt: new Date() } });
+    try {
+      expect(await redirectOf(() => open())).toBe(staffHome(new Set(DEFAULT_ROLES.RECEPTIONIST.permissions)));
+    } finally {
+      browser.reset();
+      await db.session.updateMany({ where: { userId: dev.id }, data: { workAsUserId: null, workAsStartedAt: null } });
+    }
   });
 });

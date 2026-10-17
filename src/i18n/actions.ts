@@ -37,6 +37,8 @@ export async function setMyLanguage(locale: string) {
   const l = toLocale(locale);
   const user = await getCurrentUser();
   if (!l || !user) return { ok: false as const };
+  // A Developer working as someone never changes that person's own preferences (their language stays theirs).
+  if (user.workAs) return { ok: false as const };
   await db.user.update({ where: { id: user.id }, data: { preferredLanguage: l } });
   return { ok: true as const };
 }

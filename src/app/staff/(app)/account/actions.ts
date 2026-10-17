@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/server/db";
 import { audit } from "@/server/audit";
-import { authorize, currentSessionTokenHash, hashPassword, requestMeta, validatePasswordStrength, verifyPassword } from "@/server/auth";
+import { assertNotWorkAs, authorize, currentSessionTokenHash, hashPassword, requestMeta, validatePasswordStrength, verifyPassword } from "@/server/auth";
 import { isRestaurantDevice } from "@/lib/permissions";
 import { normalizePhone } from "@/server/services/guests";
 import { AppError, runAction, type ActionResult } from "@/server/errors";
@@ -26,6 +26,7 @@ const Schema = z
 export async function changePasswordAction(_prev: unknown, formData: FormData): Promise<ActionResult<null>> {
   const result = await runAction(async () => {
     const actor = await authorize();
+    assertNotWorkAs(actor, "change a password");
     const input = parseInput(Schema, formData);
     await rateLimit(`pwchange:${actor.id}`, 10, 15 * 60);
     const weak = validatePasswordStrength(input.newPassword);
@@ -66,6 +67,7 @@ const ProfileSchema = z.object({
 export async function updateProfileAction(_prev: unknown, formData: FormData): Promise<ActionResult<null>> {
   return runAction(async () => {
     const actor = await authorize();
+    assertNotWorkAs(actor, "change a name, a phone number or a login email");
     const input = parseInput(ProfileSchema, formData);
     const user = await db.user.findUniqueOrThrow({ where: { id: actor.id } });
     const phone = normalizePhone(input.phone);
@@ -107,6 +109,7 @@ export async function updateProfileAction(_prev: unknown, formData: FormData): P
 export async function signOutOtherDevicesAction(): Promise<ActionResult<null>> {
   return runAction(async () => {
     const actor = await authorize();
+    assertNotWorkAs(actor, "sign people out of their devices");
     // The restaurant screen's login may be on more than one screen: never signed out from one of them.
     if (isRestaurantDevice(actor.permissions)) throw new AppError("The restaurant screen's other screens are signed out by the MD (Staff & roles).", "FORBIDDEN");
     const current = await currentSessionTokenHash();

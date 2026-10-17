@@ -1,18 +1,14 @@
-// Developer account: the sign-in choice (Staff account / Developer account) and the identity strip shown on every staff page.
+// Developer account: the names of its role and rights, and the strip shown on every staff page. (The sign-in is one plain door: no choice of account type.)
 import type { Catalog } from "../../../translate";
 
 const catalog: Catalog = {
-  // Sign-in choice
+  // Account kinds (named in the audit trail and the Users page)
   "Account type": "账号类型",
   "Staff account": "员工账号",
   "Developer account": "开发者账号",
-  "Developer access only": "仅限开发者",
-  "Developer sign-in — every action is recorded as a Developer action.": "开发者登录 — 每一步操作都会记为开发者操作。",
-  "Incorrect email or password for this account type.": "此账号类型的邮箱或密码不正确。",
 
   // The strip on every page while a Developer is signed in
   "DEVELOPER MODE — SUPER USER": "开发者模式 — 超级用户",
-  "Switch to a staff account": "切换到员工账号",
   // The role's name, shown beside the picture in the top bar and in the phone menu
   "Developer (super user)": "开发者（超级用户）",
 

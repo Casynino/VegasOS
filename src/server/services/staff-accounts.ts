@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "../db";
 import { audit } from "../audit";
-import { hashPassword, validatePasswordStrength } from "../auth";
+import { assertNotWorkAs, hashPassword, validatePasswordStrength } from "../auth";
 import { AppError, isUniqueViolation } from "../errors";
 import { DEVELOPER_DENIED, DEVELOPER_ROLE_CODE, isDeveloperOnly, PERMISSIONS } from "@/lib/permissions";
 import { numberWaitersTx } from "./waiter-number";
@@ -24,6 +24,10 @@ import { msg } from "@/i18n/msg";
  *      b. no money right (and not "users.manage") can be given to any role, and "audit.view" can never be taken away (oversight stays);
  *      c. nobody can reset a Developer account's password here (only the setup script's --rotate does), the Developer's own included.
  *    The Boss, the MD and everyone else keep exactly what they have today.
+ *  - WORKING AS SOMEONE (owner, 2026-10-17): while a Developer works as another person NOTHING here may be changed — no account made,
+ *    changed, re-emailed, reset or removed, no right given or taken. Every changing function starts with assertNotWorkAs (a refused
+ *    attempt is audited like any other), and the database refuses the same writes underneath (the fence in server/db.ts). Looking at the
+ *    list (staffDirectory) stays open.
  */
 
 /** "Online · nTZS" — the system account that records what customers pay online; never a person's role. */
@@ -37,6 +41,8 @@ export interface AccountActor {
   fullName: string;
   roleCode: string;
   actorType: "DEVELOPER" | "STAFF";
+  /** Set (by authorize()) while a Developer works as someone: nothing here may then be changed. */
+  workAs?: object | null;
 }
 export interface AccountMeta { ipAddress?: string | null }
 
@@ -55,7 +61,7 @@ const moneyBlocked = () => new AppError(msg("The Developer account cannot do thi
  * Does this role (read from the database now) hold any right that puts it out of the Developer's reach? The Developer role is the one
  * exception: it holds "users.manage" itself, and its accounts are fenced by their own rules (its role is never given, changed or reset here).
  */
-async function roleBlocksDeveloper(roleId: string): Promise<boolean> {
+export async function roleBlocksDeveloper(roleId: string): Promise<boolean> {
   return (await db.rolePermission.count({ where: { roleId, role: { code: { not: DEVELOPER_ROLE_CODE } }, permission: { code: { in: [...DEVELOPER_NO_BACK_DOOR] } } } })) > 0;
 }
 /**
@@ -158,6 +164,7 @@ export interface CreateAccountInput { fullName: string; email: string; phone: st
 
 export async function createStaffAccount(actor: AccountActor, input: CreateAccountInput, meta: AccountMeta = {}): Promise<string> {
   return sensitive(actor, meta, { action: "user.create_failed", entityType: "User", context: { email: input.email, roleId: input.roleId, reason: input.reason?.trim() || undefined } }, async () => {
+    assertNotWorkAs(actor, "create accounts");
     const weak = validatePasswordStrength(input.password);
     if (weak) throw new AppError(weak, "VALIDATION", { password: weak });
     const role = await assertCanAssignRole(actor, input.roleId);
@@ -188,6 +195,7 @@ export interface UpdateAccountInput { userId: string; fullName: string; email: s
 
 export async function updateStaffAccount(actor: AccountActor, input: UpdateAccountInput, meta: AccountMeta = {}): Promise<void> {
   return sensitive(actor, meta, { action: "user.update_failed", entityType: "User", entityId: input.userId, context: { roleId: input.roleId, isActive: input.isActive, reason: input.reason?.trim() || undefined } }, async () => {
+    assertNotWorkAs(actor, "change accounts, roles or login emails");
     const target = await loadTarget(actor, input.userId);
     if (target.role.code === "OWNER" && actor.roleCode !== "OWNER") {
       throw new AppError("Only an owner can change an owner account.", "FORBIDDEN");
@@ -239,6 +247,7 @@ export async function updateStaffAccount(actor: AccountActor, input: UpdateAccou
 
 export async function resetStaffPassword(actor: AccountActor, input: { userId: string; password: string; reason?: string | null }, meta: AccountMeta = {}): Promise<void> {
   return sensitive(actor, meta, { action: "user.password_reset_failed", entityType: "User", entityId: input.userId, context: { reason: input.reason?.trim() || undefined } }, async () => {
+    assertNotWorkAs(actor, "change a password");
     // A Developer's reset follows the same password rule as everyone's.
     const weak = validatePasswordStrength(input.password);
     if (weak) throw new AppError(weak, "VALIDATION", { password: weak });
@@ -270,6 +279,7 @@ export interface RolePermissionInput { roleId: string; permission: string; grant
 
 export async function setRolePermission(actor: AccountActor, input: RolePermissionInput, meta: AccountMeta = {}): Promise<void> {
   return sensitive(actor, meta, { action: "user.permission_change_failed", entityType: "Role", entityId: input.roleId, context: { permission: input.permission, granted: input.granted, reason: input.reason?.trim() || undefined } }, async () => {
+    assertNotWorkAs(actor, "change roles or rights");
     // Own keys only: "constructor" or "toString" are not rights (they would pass an `in` check and then fail as a server error).
     if (!Object.hasOwn(PERMISSIONS, input.permission)) throw new AppError("Unknown permission.", "VALIDATION");
     // "developer.access" belongs to the Developer role alone — no one can give it to a role, not even the Developer.
@@ -324,6 +334,7 @@ const isFkViolation = (err: unknown) => {
 
 export async function deleteStaffAccount(actor: AccountActor, input: { userId: string; reason?: string | null }, meta: AccountMeta = {}): Promise<void> {
   return sensitive(actor, meta, { action: "user.delete_failed", entityType: "User", entityId: input.userId, context: { reason: input.reason?.trim() || undefined } }, async () => {
+    assertNotWorkAs(actor, "remove accounts");
     const target = await loadTarget(actor, input.userId);
     if (target.id === actor.id) throw new AppError("You cannot delete your own account.");
     if (target.role.code === "OWNER" && actor.roleCode !== "OWNER") {

@@ -68,3 +68,9 @@ BEGIN
 END;
 $$;
 CREATE TRIGGER "audit_logs_no_change" BEFORE UPDATE OR DELETE ON "audit_logs" FOR EACH ROW EXECUTE FUNCTION "audit_logs_guard"();
+
+-- 6. "Work as" (owner, 2026-10-17): a Developer session can open a staff member's dashboard without their password. The session row says who it is
+--    working as and since when (honoured only for a session whose own user holds the Developer role, for at most 4 hours — checked on every request).
+--    Additive: two empty columns and a link that is blanked (not removed) when the person's account is removed.
+ALTER TABLE "sessions" ADD COLUMN "workAsUserId" TEXT, ADD COLUMN "workAsStartedAt" TIMESTAMP(3);
+ALTER TABLE "sessions" ADD CONSTRAINT "sessions_workAsUserId_fkey" FOREIGN KEY ("workAsUserId") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;

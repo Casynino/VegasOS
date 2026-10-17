@@ -325,7 +325,7 @@ async function main() {
     if (!piped) console.log(`\n${PASSWORD_HELP}\n`);
     const password = await askNewPassword(email);
     await create({ email, name, password });
-    console.log(`\nDONE — the Developer account was created.\n  Name:      ${name}\n  Email:     ${email}\n  Role:      Developer (super user)\n  Password:  set — it is not shown and not stored anywhere readable (only its hash is)\n\nSign in at /staff/login and choose "Developer account". The setup is written in the audit trail (/staff/audit).\n`);
+    console.log(`\nDONE — the Developer account was created.\n  Name:      ${name}\n  Email:     ${email}\n  Role:      Developer (super user)\n  Password:  set — it is not shown and not stored anywhere readable (only its hash is)\n\nSign in at /staff/login with this email and password (the same page as everyone) — it opens the Developer console. The setup is written in the audit trail (Developer console → Audit).\n`);
     return;
   }
 

@@ -2,17 +2,18 @@ import "server-only";
 import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { hash, verify } from "@node-rs/argon2";
-import { db } from "./db";
+import { db, rawDb } from "./db";
 import { AppError } from "./errors";
 import { msg } from "@/i18n/msg";
 import { audit } from "./audit";
 import { trackDeveloperView } from "./services/developer-view-log";
-import { DEVELOPER_ROLE_CODE, isRestaurantDevice, needsOwnShift, SHIFT_FREE_CODES, type PermissionCode } from "@/lib/permissions";
+import { canBeWorkedAs, markWorkingAs, SESSION_COOKIE, sha256, trueActor, withActingAs, withinWorkAsLimit } from "./work-as-session";
+import { DEVELOPER_DENIED, DEVELOPER_ONLY, DEVELOPER_ROLE_CODE, isRestaurantDevice, needsOwnShift, SHIFT_FREE_CODES, type PermissionCode } from "@/lib/permissions";
 
 export const STAFF_HINT_COOKIE = "vlh_staff";
-export const SESSION_COOKIE = "vlh_session";
+export { SESSION_COOKIE };
 const SESSION_HOURS = 14; // covers a full reception shift
 /** The Developer account is more powerful, so its session is short: 4 hours at most, and 30 minutes without use ends it. */
 export const DEVELOPER_SESSION_HOURS = 4;
@@ -47,10 +48,6 @@ export function validatePasswordStrength(password: string): string | null {
   return null;
 }
 
-function sha256(value: string): string {
-  return createHash("sha256").update(value).digest("hex");
-}
-
 export async function requestMeta(): Promise<{ ipAddress: string | null; userAgent: string | null }> {
   const h = await headers();
   const forwarded = h.get("x-forwarded-for")?.split(",")[0]?.trim();
@@ -65,7 +62,8 @@ export async function createSession(userId: string): Promise<void> {
   const expiresAt = new Date(Date.now() + (developer ? DEVELOPER_SESSION_HOURS : device ? DEVICE_SESSION_DAYS * 24 : SESSION_HOURS) * 3600_000);
   const cookieExpires = device ? new Date(Date.now() + DEVICE_COOKIE_DAYS * 24 * 3600_000) : expiresAt;
   const meta = await requestMeta();
-  await db.session.create({
+  // The sign-in code writes the person's OWN session through the plain client (the write fence on sessions is for work done AS someone).
+  await rawDb.session.create({
     data: { tokenHash: sha256(token), userId, expiresAt, ipAddress: meta.ipAddress, userAgent: meta.userAgent },
   });
   const jar = await cookies();
@@ -97,7 +95,8 @@ export async function refreshDeviceCookies(): Promise<void> {
 export async function destroySession(): Promise<void> {
   const jar = await cookies();
   const token = jar.get(SESSION_COOKIE)?.value;
-  if (token) await db.session.deleteMany({ where: { tokenHash: sha256(token) } });
+  // Signing out ends THIS session — also a Developer's, also while working as someone (the person's own session, not an account change).
+  if (token) await rawDb.session.deleteMany({ where: { tokenHash: sha256(token) } });
   jar.delete(SESSION_COOKIE);
   jar.delete(STAFF_HINT_COOKIE);
 }
@@ -122,6 +121,15 @@ export interface CurrentUser {
   /** Switched the alert bell off (for them, everywhere). */
   soundOff: boolean;
   permissions: ReadonlySet<PermissionCode>;
+  /**
+   * The TRUE authenticated identity: the account whose password opened this session. It is the Developer's own id while working as someone
+   * (then id / fullName / roleCode… are the person's being worked as), otherwise the same as id. Everything that says WHO DID IT (the audit
+   * trail, a Developer's logs) uses these two; everything that says WHAT THEY MAY DO / WHOSE DATA uses id and permissions.
+   */
+  actorId: string;
+  actorName: string;
+  /** Set while a Developer works as someone else: who they really are and since when. Null for everyone else. */
+  workAs: { developerId: string; developerName: string; startedAt: Date } | null;
 }
 
 /**
@@ -152,10 +160,10 @@ async function loadCurrentUser(touch: boolean): Promise<CurrentUser | null> {
   if ((touch || !developer) && Date.now() - session.lastSeenAt.getTime() > (developer ? 1 : SLIDING_REFRESH_MINUTES) * 60_000) {
     // The shared restaurant screen never signs itself out while it is in use.
     const renew = device ? { expiresAt: new Date(Date.now() + DEVICE_SESSION_DAYS * 24 * 3600_000) } : {};
-    await db.session.update({ where: { id: session.id }, data: { lastSeenAt: new Date(), ...renew } });
+    await rawDb.session.update({ where: { id: session.id }, data: { lastSeenAt: new Date(), ...renew } });
   }
 
-  return {
+  const own: CurrentUser = {
     id: user.id,
     email: user.email,
     fullName: user.fullName,
@@ -166,7 +174,50 @@ async function loadCurrentUser(touch: boolean): Promise<CurrentUser | null> {
     mustChangePassword: user.mustChangePassword,
     soundOff: user.alertSoundOff,
     permissions,
+    actorId: user.id,
+    actorName: user.fullName,
+    workAs: null,
   };
+
+  // WORK AS: honoured only for a session whose OWN user is the Developer, for 4 hours, and only for an active staff account — otherwise
+  // (a staff session with a forged row, an old one, a switched-off or removed person) the Developer is simply themselves.
+  if (!developer || !session.workAsUserId || !withinWorkAsLimit(session.workAsStartedAt)) return own;
+  const target = await db.user.findUnique({ where: { id: session.workAsUserId }, include: { role: { include: { permissions: { include: { permission: true } } } } } });
+  if (!target || !canBeWorkedAs(target)) return own;
+  return {
+    id: target.id,
+    email: target.email,
+    fullName: target.fullName,
+    locale: target.preferredLanguage,
+    roleCode: target.role.code,
+    roleName: target.role.name,
+    actorType: "DEVELOPER", // still the Developer: money stays walled off and the decision gates keep refusing
+    mustChangePassword: false, // the Developer never meets the person's "choose a new password" gate
+    soundOff: target.alertSoundOff,
+    permissions: permissionsWhileWorkingAs(target.role.permissions.map((rp) => rp.permission.code as PermissionCode)),
+    actorId: user.id,
+    actorName: user.fullName,
+    workAs: { developerId: user.id, developerName: user.fullName, startedAt: session.workAsStartedAt as Date },
+  };
+}
+
+/**
+ * What a Developer holds while working as someone: the person's rights MINUS every right that moves or decides about money (DEVELOPER_DENIED)
+ * and minus the Developer-only rights — so the ordinary rights checks refuse money by themselves. Also used to find the person's home page.
+ */
+export function permissionsWhileWorkingAs(theirs: Iterable<string>): Set<PermissionCode> {
+  const blocked = new Set<string>([...DEVELOPER_DENIED, ...DEVELOPER_ONLY]);
+  // Marked: the money wall inside the services still sees a Developer (see work-as-session.ts and developer-wall.ts).
+  return markWorkingAs(new Set([...theirs].filter((p) => !blocked.has(p)) as PermissionCode[]));
+}
+
+/**
+ * For every server action that must NOT be done as someone else — accounts, passwords, login emails, rights, sign-outs, a person's own
+ * preferences: throws while a Developer is working as someone. (The database also refuses the writes — see the fence in server/db.ts.)
+ * `what` finishes the sentence: "While you are working as someone you cannot {what}."
+ */
+export function assertNotWorkAs(user: { workAs?: object | null } | null | undefined, what: string): void {
+  if (user?.workAs) throw new AppError(`While you are working as someone you cannot ${what}.`, "FORBIDDEN");
 }
 
 /** The authenticated staff user for this request, or null. Cached per request. */
@@ -205,6 +256,8 @@ export const getMyOpenShift = cache(async (userId: string) =>
  * collections (any shifts.* code) stay open — so does their account (no code at all).
  */
 async function withoutShift(user: CurrentUser, anyOf: PermissionCode[]) {
+  // A Developer working as someone is not on that person's shift and never starts one for them.
+  if (user.workAs) return false;
   if (!anyOf.length || !needsOwnShift(user.permissions) || anyOf.some((p) => SHIFT_FREE_CODES.has(p))) return false;
   return !(await getMyOpenShift(user.id));
 }
@@ -217,7 +270,12 @@ export async function logDeveloperDenied(user: CurrentUser, anyOf: PermissionCod
   if (user.actorType !== "DEVELOPER") return;
   try {
     const { ipAddress } = await requestMeta();
-    await audit(db, { userId: user.id, label: user.fullName, ipAddress }, { action: "developer.denied", entityType: "Permission", entityId: anyOf.join(","), after: { kind, needs: anyOf, path: (await headers()).get("x-pathname") } });
+    // The refusal is the DEVELOPER's (also while working as someone: then it says as whom).
+    const who = trueActor(user);
+    await audit(db, { userId: who.id, label: who.label, ipAddress }, {
+      action: "developer.denied", entityType: "Permission", entityId: anyOf.join(","),
+      after: withActingAs({ kind, needs: anyOf, path: (await headers()).get("x-pathname") }, who.actingAs),
+    });
   } catch { /* the audit trail must never break a request */ }
 }
 

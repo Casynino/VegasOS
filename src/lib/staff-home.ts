@@ -2,9 +2,14 @@
  * Where a staff member lands after signing in, by permission (not role name,
  * so custom roles work): Admin → /admin, Manager → /manager, Reception →
  * /reception, Finance → /finance, waiters, the restaurant screen and the Mpishi → the Restaurant Portal (Live),
- * drivers → their trips.
+ * drivers → their trips. The Developer lands on its own console (/staff/developer).
+ *
+ * A Developer WORKING AS someone is given that person's rights (minus the money rights and the Developer-only right), so it has no
+ * "developer.access" then and its home is the person's own — the console is only reached again by pressing Stop.
  */
 export function staffHome(permissions: ReadonlySet<string>): string {
+  // First, before the Boss-level dashboard rights the Developer also holds: the Developer's world is its console.
+  if (permissions.has("developer.access")) return "/staff/developer";
   if (permissions.has("dashboard.admin")) return "/admin/dashboard";
   if (permissions.has("dashboard.manager") || permissions.has("dashboard.owner")) return "/manager/dashboard";
   // Finance's own portal, and the Accountant's procurement desk (the Boss and the MD land on their own homes above).

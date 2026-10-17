@@ -26,8 +26,14 @@ import { audit } from "@/server/audit";
 import { authorize, DEVELOPER_IDLE_MINUTES, DEVELOPER_SESSION_HOURS, getCurrentUser, requirePagePermission, type CurrentUser } from "@/server/auth";
 import { AppError } from "@/server/errors";
 import {
-  assertConsoleAccess, AUDIT_DEVELOPER_HREF, developerConsole, developerIdentity, inspectPermission, listInspectableUsers, recentDenied, systemDiagnostics,
+  assertConsoleAccess, AUDIT_DEVELOPER_HREF, CONSOLE_HREF, CONSOLE_TABS, developerGreeting, developerIdentity, firstNameOf, inspectPermission, listInspectableUsers, myActions, parseTab,
+  peopleTab, recentDenied, settingsTab, systemDiagnostics,
 } from "@/server/services/developer-console";
+import { activityData, ACTIVITY_DAYS, crashData, healthReport, LOGIN_LIMITS, moduleWords, speedData } from "@/server/services/developer-health";
+import { businessDayConfig, getSettings } from "@/server/settings";
+import { addDays, businessDateOf, toDbDate, zonedInstant } from "@/lib/time/business-date";
+import { renderToStaticMarkup } from "react-dom/server";
+import DeveloperHomePage from "@/app/staff/(app)/developer/page";
 import { logDeveloperView, trackDeveloperView, trackDeveloperViewNow, VIEW_BURST_LIMIT, VIEW_LIMIT_ACTION } from "@/server/services/developer-view-log";
 import { recordDeveloperView } from "@/app/staff/(app)/developer/actions";
 import { HARMLESS_AREAS, HARMLESS_EXACT_PATHS, isHarmlessPath, isLoggedPath } from "@/lib/developer-paths";
@@ -76,6 +82,7 @@ beforeAll(async () => {
   savedRecipients = (await db.hotelSettings.findUnique({ where: { id: 1 } }))?.reportRecipients;
 });
 afterAll(async () => {
+  browser.reset(); // no browser is "working as" anyone while the accounts are removed
   for (const k of ENV_KEYS) { if (savedEnv[k] === undefined) delete process.env[k]; else process.env[k] = savedEnv[k]; }
   if (savedRecipients !== undefined) await db.hotelSettings.update({ where: { id: 1 }, data: { reportRecipients: savedRecipients as never } }).catch(() => undefined);
   await removeMadeUsers();
@@ -110,7 +117,14 @@ describe("the door: the Developer account only", () => {
     expect(await redirectOf(() => requirePagePermission("developer.access"))).toBe("/staff/forbidden");
     expect(user.permissions.has("developer.access")).toBe(false);
     for (const call of [
-      () => developerConsole(user, hash),
+      () => developerGreeting(user),
+      () => healthReport(user),
+      () => activityData(user),
+      () => speedData(user),
+      () => crashData(user),
+      () => settingsTab(user, hash),
+      () => peopleTab(user),
+      () => myActions(user),
       () => developerIdentity(user, hash),
       () => systemDiagnostics(user),
       () => recentDenied(user),
@@ -217,7 +231,8 @@ describe("system checks: counters and yes / no", () => {
     const d = await systemDiagnostics(user);
     expect(d.database.reachable).toBe(true);
     const folders = readdirSync(path.join(process.cwd(), "prisma", "migrations")).filter((f) => /^\d{14}_/.test(f)).sort();
-    expect(d.migrations).toEqual({ applied: folders.length, failed: 0, latest: folders.at(-1) });
+    expect(d.migrations).toEqual({ applied: folders.length, failed: 0, rolledBack: 0, latest: folders.at(-1) });
+    expect(d.database.ms).toBeGreaterThan(0);
   });
 
   it("staff accounts are counted by role (active only, the online-payments system account never)", async () => {
@@ -303,7 +318,10 @@ describe("system checks: counters and yes / no", () => {
     const { user, hash } = await as(dev);
     await db.session.update({ where: { tokenHash: hash }, data: { lastSeenAt: new Date() } });
     const everything = JSON.stringify({
-      console: await developerConsole(user, hash),
+      console: {
+        greeting: await developerGreeting(user), health: await healthReport(user), activity: await activityData(user), speed: await speedData(user), crashes: await crashData(user),
+        settings: await settingsTab(user, hash), people: await peopleTab(user), diagnostics: await systemDiagnostics(user), identity: await developerIdentity(user, hash),
+      },
       inspection: await inspectPermission(user, { userId: rec.id, code: "reservations.view" }),
     });
     for (const [name, value] of Object.entries(secrets)) {
@@ -316,19 +334,19 @@ describe("system checks: counters and yes / no", () => {
     expect(everything).not.toContain(hash);
     expect(everything).not.toMatch(/passwordHash|tokenHash|pinHash|apiKey|argon2/i);
     // and the yes / no answers are right
-    expect(JSON.parse(everything).console.diagnostics).toMatchObject({ ntzs: { configured: true, live: true, webhookSecret: true }, cron: { secretConfigured: true }, whatsapp: { defaultKey: true } });
+    expect(JSON.parse(everything).console.settings.config).toMatchObject({ ntzs: { configured: true, live: true, webhookSecret: true }, cron: { secretConfigured: true }, whatsapp: { defaultKey: true } });
   });
 
-  it("the page's one call returns everything the page shows, and the people list holds only a name, a role and a flag", async () => {
-    const { user, hash } = await as(dev);
-    const data = await developerConsole(user, hash);
-    expect(data.auditHref).toBe(AUDIT_DEVELOPER_HREF);
-    expect(AUDIT_DEVELOPER_HREF).toBe("/staff/audit?who=DEVELOPER");
-    expect(data.denied.length).toBeLessThanOrEqual(20);
+  it("the people list holds only a name, a role and a flag, and the console's links are the Developer's own pages", async () => {
+    const { user } = await as(dev);
+    const data = await peopleTab(user);
+    expect(AUDIT_DEVELOPER_HREF).toBe("/staff/developer/audit");
+    expect(CONSOLE_HREF).toEqual({ home: "/staff/developer", audit: "/staff/developer/audit", business: "/staff/developer/business", access: "/staff/developer/access" });
     expect(data.rights.length).toBe(Object.keys(PERMISSIONS).length);
     expect(data.people.some((p) => p.id === dev.id)).toBe(true);
     // people: a name, a role and a flag — nothing else
     expect(Object.keys(data.people[0]).sort()).toEqual(["active", "id", "name", "roleName"]);
+    expect(data.myActions.length).toBeLessThanOrEqual(30);
   });
 });
 
@@ -694,5 +712,446 @@ describe("a Developer's visits: from a page, a layout and an action", () => {
     browser.reset();
     browser.headers.set("x-pathname", "/staff/finance");
     await expect(recordDeveloperView()).resolves.toBeUndefined();
+  });
+});
+
+// ═════════════════════════════════════════════ the home (owner, 2026-10-17) ═════════════════════════════════════════════
+// Time is passed in, so the windows are tested on days far in the future, where no other test has written anything.
+const TZ_NOW = new Date("2042-03-15T10:00:00Z"); // 13:00 hotel time: the hotel day is 2042-03-15
+const TODAY = "2042-03-15";
+let cfg: ReturnType<typeof businessDayConfig>;
+const dayBack = (n: number) => addDays(TODAY, -n);
+/** The instant of a wall-clock time at the hotel on a calendar date. */
+const local = (date: string, hhmm: string) => zonedInstant(date, Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3)), cfg.timezone);
+
+/** An entry written at an exact instant, its hotel day taken from the app's own rule (businessDateOf). */
+async function put(at: Date, f: { action: string; userId?: string | null; type?: string; role?: string | null; entityType?: string; entityId?: string | null; ip?: string | null }) {
+  return db.auditLog.create({ data: {
+    userId: f.userId ?? null, actorLabel: "t", actorType: f.type ?? "STAFF", actorRole: f.role ?? null, action: f.action, entityType: f.entityType ?? "Reservation",
+    entityId: f.entityId ?? null, ipAddress: f.ip ?? null, businessDate: toDbDate(businessDateOf(at, cfg)), createdAt: at,
+  } });
+}
+/** Entries in the far future are removed again (the audit trail forbids deleting — its maintenance door is opened for this transaction only). */
+async function wipeFuture() {
+  await db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('vegas.audit_maintenance', 'on', true)`;
+    await tx.auditLog.deleteMany({ where: { createdAt: { gte: new Date("2042-01-01T00:00:00Z") } } });
+    await tx.$executeRaw`SELECT set_config('vegas.audit_maintenance', 'off', true)`;
+  });
+}
+
+describe("the home: greeting and tabs", () => {
+  it("the tab comes from the address; anything unknown (or nothing, or a list) is the first tab", () => {
+    expect([...CONSOLE_TABS]).toEqual(["activity", "speed", "crashes", "settings", "people"]);
+    for (const tab of CONSOLE_TABS) expect(parseTab(tab)).toBe(tab);
+    expect(parseTab(undefined)).toBe("activity");
+    expect(parseTab("")).toBe("activity");
+    expect(parseTab("audit")).toBe("activity");
+    expect(parseTab("__proto__")).toBe("activity");
+    expect(parseTab(["speed", "crashes"])).toBe("speed");
+  });
+
+  it("the first name is the first word, without a '(Developer)' tag", () => {
+    expect(firstNameOf("Nino")).toBe("Nino");
+    expect(firstNameOf("Nino Casmiry (Developer)")).toBe("Nino");
+    expect(firstNameOf("  (Developer)  ")).toBe("(Developer)");
+  });
+
+  it("good morning / afternoon / evening by the HOTEL's clock, with the hotel's own calendar date", async () => {
+    const { user } = await as(dev);
+    const at = async (iso: string) => developerGreeting(user, new Date(iso));
+    expect((await at("2042-03-15T01:59:00Z")).partOfDay).toBe("evening");   // 04:59, still the small hours
+    expect((await at("2042-03-15T02:00:00Z")).partOfDay).toBe("morning");   // 05:00
+    expect((await at("2042-03-15T02:59:00Z")).partOfDay).toBe("morning");   // 05:59
+    expect((await at("2042-03-15T05:30:00Z")).partOfDay).toBe("morning");   // 08:30
+    expect((await at("2042-03-15T08:59:00Z")).partOfDay).toBe("morning");   // 11:59
+    expect((await at("2042-03-15T09:00:00Z")).partOfDay).toBe("afternoon"); // 12:00
+    expect((await at("2042-03-15T13:59:00Z")).partOfDay).toBe("afternoon"); // 16:59
+    expect((await at("2042-03-15T14:00:00Z")).partOfDay).toBe("evening");   // 17:00
+    const late = await at("2042-03-15T21:30:00Z");                           // 00:30 on the 16th at the hotel
+    expect(late.partOfDay).toBe("evening");
+    expect(late.today).toBe("2042-03-16");
+    expect(await at("2042-03-15T20:59:00Z")).toMatchObject({ today: "2042-03-15" }); // 23:59 is still the 15th
+    const g = await at("2042-03-15T10:00:00Z");
+    expect(g.firstName).toBe(firstNameOf(dev.fullName));
+    expect(g.hotelName).toBe((await getSettings()).hotelName);
+    expect(g.timezone).toBe((await getSettings()).timezone);
+  });
+});
+
+describe("activity: the charts' data", () => {
+  let user: CurrentUser;
+  beforeAll(async () => {
+    cfg = businessDayConfig(await getSettings());
+  });
+  beforeEach(async () => {
+    await wipeFuture();
+    user = (await as(dev)).user;
+  });
+  afterAll(async () => { await wipeFuture(); });
+
+  it("sign-ins per day: 14 hotel days, oldest first, ending today, stacked by the role at the time; the 15th day back is left out", async () => {
+    const login = (day: string, hhmm: string, who: MadeUser, role: string) => put(local(day, hhmm), { action: "auth.login", userId: who.id, role, entityType: "User", entityId: who.id });
+    await login(TODAY, "09:00", rec, "RECEPTIONIST");
+    await login(TODAY, "09:05", rec, "RECEPTIONIST");
+    await login(TODAY, "09:10", mgr, "MANAGER");
+    await login(dayBack(1), "09:00", fin, "FINANCE");
+    await login(dayBack(13), "10:00", mgr, "MANAGER");
+    await login(dayBack(13), "11:00", dev, "DEVELOPER");
+    await login(dayBack(14), "10:00", mgr, "MANAGER"); // outside the window
+
+    const a = await activityData(user, TZ_NOW);
+    expect(a.today).toBe(TODAY);
+    expect(a.days).toHaveLength(ACTIVITY_DAYS);
+    expect([a.days[0], a.days.at(-1)]).toEqual([dayBack(13), TODAY]);
+    const perDay = a.signInsPerDay!;
+    expect(perDay.map((d) => d.date)).toEqual(a.days);
+    expect(perDay.at(-1)).toMatchObject({ date: TODAY, total: 3, byRole: { RECEPTIONIST: 2, MANAGER: 1 } });
+    expect(perDay.at(-2)).toMatchObject({ date: dayBack(1), total: 1, byRole: { FINANCE: 1 } });
+    expect(perDay[0]).toMatchObject({ date: dayBack(13), total: 2, byRole: { MANAGER: 1, DEVELOPER: 1 } });
+    expect(perDay.reduce((n, d) => n + d.total, 0)).toBe(6);
+    // the legend: roles that signed in, the most first (ties by code), with their names
+    expect(a.roles.map((r) => r.code)).toEqual(["MANAGER", "RECEPTIONIST", "DEVELOPER", "FINANCE"]);
+    expect(a.roles.find((r) => r.code === "MANAGER")!.name).toBe("Manager");
+    // the four cards: 3 sign-ins and 2 people in the last 24 hours; 3 people in 7 days
+    expect(a.stats).toMatchObject({ signIns24h: 3, peopleSignedIn24h: 2, peopleSignedIn7d: 3 });
+  });
+
+  it("actions per day: the team and the Developer apart; sign-ins, looking, refusals and the system's own work are not actions", async () => {
+    const at = (hhmm: string, day = TODAY) => local(day, hhmm);
+    await put(at("08:00"), { action: "reservation.created", userId: rec.id });
+    await put(at("08:10"), { action: "reservation.created", userId: rec.id });
+    await put(at("08:20"), { action: "payment.recorded", userId: fin.id, entityType: "Payment" });
+    await put(at("08:30"), { action: "user.updated", userId: dev.id, type: "DEVELOPER", entityType: "User" });
+    for (const action of ["developer.viewed", "developer.inspected", "developer.denied", "developer.viewed_limit"]) await put(at("08:40"), { action, userId: dev.id, type: "DEVELOPER" });
+    for (const action of ["auth.login", "auth.logout"]) await put(at("08:50"), { action, userId: rec.id });
+    await put(at("08:55"), { action: "auth.login_failed", type: "SYSTEM" });
+    await put(at("09:00"), { action: "report.daily_generated", type: "SYSTEM" });
+    await put(at("09:01"), { action: "booking_request.submitted", type: "WEBSITE" });
+    await put(at("12:00", dayBack(2)), { action: "reservation.created", userId: rec.id });
+    await put(at("12:00", dayBack(14)), { action: "reservation.created", userId: rec.id }); // outside
+
+    const a = await activityData(user, TZ_NOW);
+    expect(a.actionsPerDay).toHaveLength(ACTIVITY_DAYS);
+    expect(a.actionsPerDay!.at(-1)).toEqual({ date: TODAY, team: 3, developer: 1, total: 4 });
+    expect(a.actionsPerDay!.find((d) => d.date === dayBack(2))).toEqual({ date: dayBack(2), team: 1, developer: 0, total: 1 });
+    expect(a.actionsPerDay!.reduce((n, d) => n + d.team + d.developer, 0)).toBe(5);
+    expect(a.stats).toMatchObject({ teamActions24h: 3, developerActions24h: 1 });
+  });
+
+  it("the hotel day turns over at 04:00, not at midnight: 23:59, 00:00 and 03:59 belong to one day, 04:00 to the next", async () => {
+    const x = dayBack(5);
+    const next = addDays(x, 1);
+    const moments = [local(x, "23:59"), local(next, "00:00"), local(next, "03:59"), local(next, "04:00"), local(next, "04:30")];
+    expect(moments.map((m) => businessDateOf(m, cfg))).toEqual([x, x, x, next, next]);
+
+    const check = async () => {
+      const a = await activityData(user, TZ_NOW);
+      const day = (d: string) => a.actionsPerDay!.find((r) => r.date === d)!;
+      expect(day(x).team).toBe(3);
+      expect(day(next).team).toBe(2);
+      // the busiest HOURS are the hotel's wall clock: 23h, 0h, 3h once each, 4h twice
+      const hours = Object.fromEntries(a.busiestHours!.map((h) => [h.hour, h.count]));
+      expect([hours[23], hours[0], hours[3], hours[4]]).toEqual([1, 1, 1, 2]);
+      expect(a.busiestHours!.reduce((n, h) => n + h.count, 0)).toBe(5);
+      expect(a.stats.busiestHour).toBe(4);
+    };
+    // rows written straight at those instants …
+    for (const m of moments) await put(m, { action: "reservation.created", userId: rec.id });
+    await check();
+    await wipeFuture();
+    // … and rows written by audit() itself, with the clock set to those instants (the rule that decides the day is the app's own)
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      for (const [i, m] of moments.entries()) {
+        vi.setSystemTime(m);
+        await audit(db, { userId: rec.id, label: rec.fullName }, { action: "reservation.created", entityType: "Reservation", entityId: `edge-${i}` });
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+    await check();
+  });
+
+  it("the 24-hour cards: a minute inside the day counts, a minute outside does not", async () => {
+    await put(new Date(TZ_NOW.getTime() - (24 * 60 - 1) * 60_000), { action: "reservation.created", userId: rec.id });
+    await put(new Date(TZ_NOW.getTime() - (24 * 60 + 1) * 60_000), { action: "reservation.created", userId: rec.id });
+    await put(new Date(TZ_NOW.getTime() - (24 * 60 - 1) * 60_000), { action: "auth.login_failed", type: "SYSTEM", entityId: rec.id, entityType: "User" });
+    await put(new Date(TZ_NOW.getTime() - (24 * 60 + 1) * 60_000), { action: "auth.login_failed", type: "SYSTEM", entityId: rec.id, entityType: "User" });
+    const a = await activityData(user, TZ_NOW);
+    expect(a.stats.teamActions24h).toBe(1);
+    expect(a.stats.failedSignIns24h).toBe(1);
+  });
+
+  it("where the work happens: kinds of record in plain words, several kinds with one name added together, 7 days only", async () => {
+    const at = (day = dayBack(1)) => local(day, "10:00");
+    for (let i = 0; i < 3; i++) await put(at(), { action: "reservation.created", userId: rec.id, entityType: "Reservation" });
+    for (let i = 0; i < 2; i++) await put(at(), { action: "reservation.room_assigned", userId: rec.id, entityType: "ReservationRoom" });
+    for (let i = 0; i < 4; i++) await put(at(), { action: "restaurant_order.created", userId: rec.id, entityType: "RestaurantOrder" });
+    await put(at(), { action: "payment.recorded", userId: fin.id, entityType: "Payment" });
+    await put(at(), { action: "thing.done", userId: rec.id, entityType: "SomeNewThing" });
+    await put(at(), { action: "developer.viewed", userId: dev.id, type: "DEVELOPER", entityType: "Page", entityId: "/staff/reports" }); // looking is not work
+    await put(at(dayBack(8)), { action: "reservation.created", userId: rec.id, entityType: "Reservation" }); // older than 7 days
+    const a = await activityData(user, TZ_NOW);
+    expect(a.where).toEqual([
+      { label: "Bookings and stays", count: 5 }, { label: "Restaurant orders", count: 4 }, { label: "Payments", count: 1 }, { label: "Some New Thing", count: 1 },
+    ]);
+    expect(moduleWords("Reservation")).toBe("Bookings and stays");
+    expect(moduleWords("ReservationRoom")).toBe(moduleWords("Reservation"));
+    expect(moduleWords("RestaurantLocation")).toBe("Restaurant tables");
+    expect(moduleWords("")).toBe("Other");
+  });
+
+  it("most active people: busiest first, with name, role and the Developer flag; the system and the last-7-days rule", async () => {
+    const at = (day = dayBack(1)) => local(day, "10:00");
+    for (let i = 0; i < 5; i++) await put(at(), { action: "reservation.created", userId: rec.id });
+    for (let i = 0; i < 3; i++) await put(at(), { action: "payment.recorded", userId: fin.id, entityType: "Payment" });
+    for (let i = 0; i < 2; i++) await put(at(), { action: "user.updated", userId: dev.id, type: "DEVELOPER", entityType: "User" });
+    await put(at(), { action: "reservation.created", userId: mgr.id });
+    await put(at(), { action: "report.daily_generated", type: "SYSTEM" });
+    await put(at(dayBack(9)), { action: "reservation.created", userId: mgr.id });
+    const a = await activityData(user, TZ_NOW);
+    expect(a.mostActive!.map((p) => [p.name, p.count, p.developer])).toEqual([[rec.fullName, 5, false], [fin.fullName, 3, false], [dev.fullName, 2, true], [mgr.fullName, 1, false]]);
+    expect(a.mostActive![0].roleName).toBe("Receptionist");
+  });
+
+  it("recent sign-ins: the last 12, newest first; the device comes from the session of that sign-in, the address from the entry", async () => {
+    const mac = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+    const iphone = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";
+    const times = Array.from({ length: 14 }, (_, i) => new Date(TZ_NOW.getTime() - (i + 1) * 3600_000)); // newest first
+    for (const [i, t] of times.entries()) await put(t, { action: "auth.login", userId: rec.id, role: "RECEPTIONIST", entityType: "User", entityId: rec.id, ip: `41.0.0.${i + 1}` });
+    const session = (createdAt: Date, userAgent: string) => db.session.create({ data: { tokenHash: sha256(`s-${createdAt.getTime()}`), userId: rec.id, createdAt, expiresAt: new Date(createdAt.getTime() + 3600_000), userAgent, ipAddress: "9.9.9.9" } });
+    await session(new Date(times[0].getTime() + 800), mac);     // the newest sign-in's session (made a moment after it)
+    await session(new Date(times[1].getTime() - 900), iphone);
+    const a = await activityData(user, TZ_NOW);
+    const r = a.recentSignIns!;
+    expect(r).toHaveLength(12);
+    expect(r.map((x) => x.at.getTime())).toEqual(times.slice(0, 12).map((t) => t.getTime()));
+    expect(r[0]).toMatchObject({ name: rec.fullName, roleName: "Receptionist", ip: "41.0.0.1", device: { label: "Chrome · Mac", phone: false } });
+    expect(r[1].device).toEqual({ label: "Safari · iPhone", phone: true });
+    expect(r[2]).toMatchObject({ device: null, ip: "41.0.0.3" }); // its session is gone: the device is not known, the address still is
+  });
+
+  it("accounts nobody uses: never signed in, or not for 30 days — a shared screen counts as in use while its session is; the Developer, system and switched-off accounts never", async () => {
+    const days = (n: number) => new Date(Date.now() - n * 86_400_000);
+    const before = (await activityData(user)).notUsingTotal;
+    const never = await makeUser("RECEPTIONIST", { fullName: "Nobody Never" });
+    const stale = await makeUser("RECEPTIONIST", { fullName: "Nobody Stale" });
+    const fresh = await makeUser("RECEPTIONIST", { fullName: "Nobody Fresh" });
+    const screen = await makeUser("RESTAURANT_SCREEN", { fullName: "Nobody Screen" });
+    const off = await makeUser("RECEPTIONIST", { fullName: "Nobody Off", isActive: false });
+    const system = await makeUser("SYSTEM_ONLINE", { fullName: "Nobody System" });
+    await db.user.update({ where: { id: stale.id }, data: { lastLoginAt: days(40) } });
+    await db.user.update({ where: { id: fresh.id }, data: { lastLoginAt: days(10) } });
+    await db.user.update({ where: { id: screen.id }, data: { lastLoginAt: days(60) } });
+    await makeSession(screen.id, { setCookie: false, seenMinAgo: 5 });
+    const a = await activityData(user);
+    expect(a.notUsingTotal).toBe(before + 2); // never + stale
+    const listed = new Set(a.notUsing!.map((u) => u.id));
+    for (const gone of [fresh, screen, off, system, dev]) expect(listed.has(gone.id), gone.fullName).toBe(false);
+    expect(a.notUsing!.length).toBeLessThanOrEqual(12);
+    // the oldest first: those never seen, then the longest away
+    const times = a.notUsing!.map((u) => u.lastUsedAt?.getTime() ?? 0);
+    expect(times).toEqual([...times].sort((x, y) => x - y));
+    expect(never.id && stale.id).toBeTruthy();
+  });
+});
+
+describe("speed, sign-in trouble, settings and my actions", () => {
+  let user: CurrentUser;
+  let hash: string;
+  beforeEach(async () => {
+    cfg = businessDayConfig(await getSettings());
+    await wipeFuture();
+    ({ user, hash } = await as(dev));
+  });
+  afterAll(async () => {
+    await wipeFuture();
+    await db.rateLimitBucket.deleteMany({ where: { key: { in: BUCKETS.map((b) => b[0]) } } });
+  });
+  const BUCKETS: [string, number, number][] = [ // key, count, minutes since the window began
+    ["login:email:dev:probe-a@x.test", 6, 1], ["login:email:dev:probe-b@x.test", 5, 1], ["login:email:probe-c@x.test", 9, 1], ["login:email:probe-d@x.test", 8, 1],
+    ["login:ip:7.7.7.7", 21, 1], ["login:trail:unknown-developer", 99, 1], ["login:email:probe-old@x.test", 50, 60],
+  ];
+
+  it("speed: three quick samples, their average, the counts and size of the biggest tables, and the running version (short)", async () => {
+    process.env.VERCEL_GIT_COMMIT_SHA = "0123456789abcdef0123456789abcdef01234567";
+    process.env.VERCEL_ENV = "preview";
+    const s = await speedData(user);
+    expect(s.latency.samples).toHaveLength(3);
+    for (const n of s.latency.samples) expect(Number.isInteger(n) && n > 0).toBe(true);
+    expect(s.latency.average).toBe(Math.round(s.latency.samples.reduce((a, b) => a + b, 0) / 3));
+    expect(s.latency.slowest).toBe(Math.max(...s.latency.samples));
+    expect(s.tables.map((t) => t.label)).toEqual(["Audit trail entries", "Sign-in sessions", "Bookings", "Payments", "Messages sent"]);
+    expect(s.tables[0].rows).toBe(await db.auditLog.count());
+    expect(s.tables[2].rows).toBe(await db.reservation.count());
+    for (const t of s.tables) expect(t.bytes).toBeGreaterThan(0);
+    expect(s.databaseBytes).toBeGreaterThan(0);
+    expect(s.deployment).toEqual({ commit: "0123456", environment: "preview" });
+  });
+
+  it("crashes and sign-ins: failed tries in 24 hours and 7 days, by hotel day and by account — an unknown email counts but names no one; the 8th day back is left out", async () => {
+    const failed = (day: string, hhmm: string, who: MadeUser | null) => put(local(day, hhmm), { action: "auth.login_failed", type: "SYSTEM", entityType: "User", entityId: who?.id ?? null });
+    await failed(TODAY, "08:00", rec);
+    await failed(TODAY, "08:05", rec);
+    await failed(TODAY, "08:10", fin);
+    await failed(TODAY, "08:15", null); // an email nobody holds, tried at the Developer door
+    await failed(dayBack(2), "12:00", rec);
+    await failed(dayBack(8), "12:00", rec); // outside the 7 days
+    const c = await crashData(user, TZ_NOW);
+    expect(c.errorTracking).toBe(false);
+    expect(c.failed!.last24h).toBe(4);
+    expect(c.failed!.last7d).toBe(5);
+    expect(c.failed!.byDay).toHaveLength(7);
+    expect([c.failed!.byDay[0].date, c.failed!.byDay.at(-1)!.date]).toEqual([dayBack(6), TODAY]);
+    expect(c.failed!.byDay.at(-1)).toEqual({ date: TODAY, count: 4 });
+    expect(c.failed!.byDay.find((d) => d.date === dayBack(2))!.count).toBe(1);
+    expect(c.failed!.byAccount).toEqual([{ name: rec.fullName, count: 3 }, { name: fin.fullName, count: 1 }]);
+    expect(c.denied.length).toBeLessThanOrEqual(20);
+  });
+
+  it("paused sign-ins are counted from the limits (the Developer account's own lock 5, then 8 per email and 20 per place, in 15 minutes) — and an email or an address is never returned", async () => {
+    expect([LOGIN_LIMITS.developerEmail, LOGIN_LIMITS.staffEmail, LOGIN_LIMITS.staffPlace, LOGIN_LIMITS.windowMinutes]).toEqual([5, 8, 20, 15]);
+    await db.rateLimitBucket.deleteMany({ where: { key: { in: BUCKETS.map((b) => b[0]) } } });
+    const before = (await crashData(user)).paused!; // other test files leave sign-in buckets of their own: count what MY buckets add
+    for (const [key, count, ago] of BUCKETS) await db.rateLimitBucket.upsert({ where: { key }, update: { count, windowStart: new Date(Date.now() - ago * 60_000) }, create: { key, count, windowStart: new Date(Date.now() - ago * 60_000) } });
+    const c = await crashData(user);
+    // over the limit now: the Developer's lock a (6>5), staff email c (9>8), a place (21>20); at the limit, or old, or not a sign-in key: not
+    expect(c.paused).toEqual({ developer: before.developer + 1, staff: before.staff + 2 });
+    const json = JSON.stringify(c);
+    for (const needle of ["probe-a", "probe-c", "7.7.7.7", "unknown-developer", "x.test"]) expect(json).not.toContain(needle);
+  });
+
+  it("settings: your session, the money rights you do not hold, and how much of your doing is on record (24 hours, 7 days, ever)", async () => {
+    await put(new Date(TZ_NOW.getTime() - 3600_000), { action: "developer.viewed", userId: dev.id, type: "DEVELOPER", entityType: "Page", entityId: "/staff/reports" });
+    await put(new Date(TZ_NOW.getTime() - 3 * 86_400_000), { action: "user.updated", userId: dev.id, type: "DEVELOPER", entityType: "User" });
+    await put(new Date(TZ_NOW.getTime() - 20 * 86_400_000), { action: "user.updated", userId: dev.id, type: "DEVELOPER", entityType: "User" });
+    await put(new Date(TZ_NOW.getTime() - 3600_000), { action: "reservation.created", userId: rec.id }); // staff: not counted
+    const s = await settingsTab(user, hash, TZ_NOW);
+    expect(s.recorded).toMatchObject({ last24h: 1, last7d: 2 });
+    expect(s.recorded!.total).toBeGreaterThanOrEqual(3);
+    expect(s.identity.name).toBe(dev.fullName);
+    expect(s.identity.notHeld.map((r) => r.code).sort()).toEqual([...DEVELOPER_DENIED].sort());
+    expect(s.config.database.reachable).toBe(true);
+  });
+
+  it("my last 30 actions: only mine, newest first, in plain words, with who I was working as and what failed", async () => {
+    const at = (m: number) => new Date(TZ_NOW.getTime() - m * 60_000);
+    for (let i = 0; i < 33; i++) await put(at(100 + i), { action: "developer.viewed", userId: dev.id, type: "DEVELOPER", entityType: "Page", entityId: `/staff/page-${i}` });
+    await db.auditLog.create({ data: { userId: dev.id, actorLabel: "Dev (Developer) as Neema (Reception)", actorType: "DEVELOPER", actorRole: "DEVELOPER", action: "reservation.checked_in", entityType: "Reservation", entityId: "r1",
+      after: { actingAs: { id: rec.id, name: "Neema", role: "Reception" } }, businessDate: toDbDate(TODAY), createdAt: at(1) } });
+    await db.auditLog.create({ data: { userId: dev.id, actorLabel: "x", actorType: "DEVELOPER", action: "developer.inspected", entityType: "User", after: { ok: false }, businessDate: toDbDate(TODAY), createdAt: at(3) } });
+    await put(at(4), { action: "developer.viewed", userId: dev2.id, type: "DEVELOPER", entityType: "Page", entityId: "/staff/other-developer" }); // another Developer
+    await put(at(4), { action: "reservation.created", userId: rec.id });                                                                      // a staff member
+
+    const mine = await myActions(user);
+    expect(mine).toHaveLength(30);
+    for (let i = 1; i < mine.length; i++) expect(mine[i - 1].at.getTime()).toBeGreaterThanOrEqual(mine[i].at.getTime());
+    expect(mine[0]).toMatchObject({ action: "reservation.checked_in", words: "checked a guest in", actingAs: { name: "Neema", role: "Reception" }, failed: false });
+    expect(mine.find((m) => m.action === "developer.inspected" && m.failed)).toBeTruthy();
+    expect(mine.find((m) => m.action === "developer.viewed")).toMatchObject({ words: "looked at a page", actingAs: null });
+    expect(mine.find((m) => m.action === "developer.viewed")!.path).toMatch(/^\/staff\/page-/);
+    expect(JSON.stringify(mine)).not.toContain("other-developer");
+    expect(mine.every((m) => m.actingAs === null || m.action === "reservation.checked_in")).toBe(true);
+    expect(await myActions(user, 5)).toHaveLength(5);
+    expect((await myActions(user, 5000)).length).toBeLessThanOrEqual(100);
+    // and the people tab carries the same list
+    expect((await peopleTab(user)).myActions).toHaveLength(30);
+  });
+});
+
+describe("the home: a Developer working as someone is shut out of the console", () => {
+  it("every console call refuses a session that is working as another person", async () => {
+    const { user, hash } = await as(dev);
+    const working = { ...user, workAs: { developerId: dev.id, developerName: dev.fullName, startedAt: new Date() } } as unknown as CurrentUser;
+    for (const call of [
+      () => developerGreeting(working), () => healthReport(working), () => activityData(working), () => speedData(working), () => crashData(working), () => settingsTab(working, hash),
+      () => peopleTab(working), () => myActions(working), () => developerIdentity(working, hash), () => systemDiagnostics(working), () => recentDenied(working), () => listInspectableUsers(working),
+      () => inspectPermission(working, { userId: rec.id, code: "reservations.view" }),
+    ]) {
+      expect(((await thrownBy(call)) as AppError).code).toBe("FORBIDDEN");
+    }
+    expect(() => assertConsoleAccess(working)).toThrow(AppError);
+  });
+});
+
+// ═════════════════════════════════════════════ the page itself, drawn with real data ═════════════════════════════════════════════
+describe("the Developer home page draws, on every tab, from real data", () => {
+  const draw = async (search: Record<string, string> = {}) => {
+    const tree = await DeveloperHomePage({ searchParams: Promise.resolve(search) } as never);
+    return renderToStaticMarkup(tree);
+  };
+  beforeAll(async () => { cfg = businessDayConfig(await getSettings()); });
+  afterAll(async () => { await wipeFuture(); });
+
+  it("the Developer sees the greeting, the health card, the cards, the shortcuts, the tab bar and the first tab", async () => {
+    await as(dev);
+    const html = await draw();
+    expect(html).toMatch(/Good (morning|afternoon|evening), /);
+    expect(html).toContain("Your control room for");
+    expect(html).toContain("out of 100");
+    expect(html).toContain("Needs your attention");
+    for (const w of ["Open Access (work as someone)", "Open Audit", "Open Business", "Activity", "Speed &amp; size", "Crashes &amp; sign-ins", "Settings", "People &amp; my actions"]) expect(html).toContain(w);
+    for (const href of Object.values(CONSOLE_HREF)) expect(html).toContain(`href="${href}`);
+    for (const w of ["Sign-ins per day", "Actions per day", "Busiest hours of the day", "Where the work happens", "Recent sign-ins", "Most active people", "Not using the system"]) expect(html).toContain(w);
+    expect(html).not.toContain("undefined");
+    expect(html).not.toContain("NaN");
+  });
+
+  it("every tab draws; the right one is marked as the page you are on; a bad ?tab= falls back to the first", async () => {
+    await as(dev);
+    const marks: Record<string, string> = { activity: "Sign-ins per day", speed: "The biggest tables", crashes: "Error tracking is not part of this system", settings: "What you cannot do", people: "My last 30 actions" };
+    for (const [tab, text] of Object.entries(marks)) {
+      const html = await draw({ tab });
+      expect(html, tab).toContain(text);
+      expect(html, tab).not.toContain("undefined");
+      expect(html, tab).not.toContain("NaN");
+      expect(html, tab).toMatch(new RegExp(`aria-current="page"[^>]*>[^<]*${{ activity: "Activity", speed: "Speed &amp; size", crashes: "Crashes &amp; sign-ins", settings: "Settings", people: "People &amp; my actions" }[tab]}`));
+    }
+    expect(await draw({ tab: "nonsense" })).toContain("Sign-ins per day");
+  });
+
+  it("the inspector on the People tab answers, and the look is written to the audit trail", async () => {
+    await as(dev);
+    const before = (await auditOf(dev.id, "developer.inspected")).length;
+    const html = await draw({ tab: "people", person: rec.id, right: "reservations.view" });
+    expect(html).toMatch(/Yes — .* can do this/);
+    expect((await auditOf(dev.id, "developer.inspected")).length).toBe(before + 1);
+    // …and nothing is looked up on the other tabs
+    await draw({ tab: "speed", person: rec.id, right: "reservations.view" });
+    expect((await auditOf(dev.id, "developer.inspected")).length).toBe(before + 1);
+  });
+
+  it("a mix of real trouble is drawn as cards and is readable in Chinese too", async () => {
+    await as(dev);
+    await db.hotelSettings.update({ where: { id: 1 }, data: { reportEnabled: true, reportRecipients: [{ name: "A", phone: "+255700000001", apiKeyRef: "CALLMEBOT_KEY_TESTA" }] } });
+    const html = await draw();
+    expect(html).toContain("The scheduled jobs have no secret");           // no cron secret is set in the test environment
+    expect(html).toContain("WhatsApp cannot reach everyone");
+    expect(html).toMatch(/Fix now/);
+    await db.user.update({ where: { id: dev.id }, data: { preferredLanguage: "zh-CN" } });
+    await as(dev);
+    const zh = await draw();
+    expect(zh).toMatch(/(早上|下午|晚上)好，/);
+    expect(zh).toContain("需要您处理");
+    expect(zh).toContain("定时任务没有设置密钥");
+    expect(zh).not.toContain("The scheduled jobs have no secret");
+    await db.user.update({ where: { id: dev.id }, data: { preferredLanguage: "en" } });
+  });
+
+  it("a Developer who is working as someone is sent to that person's home; anyone else to 'forbidden'; nobody signed in to the sign-in page", async () => {
+    const { user } = await as(dev);
+    // working as the receptionist: the session names that person (the loader of the real app does this on every request)
+    await db.session.updateMany({ where: { userId: dev.id }, data: { workAsUserId: rec.id, workAsStartedAt: new Date() } });
+    const working = await getCurrentUser();
+    expect(working?.workAs).toBeTruthy();
+    expect(await redirectOf(() => draw())).toMatch(/^\/(reception|staff)\//);
+    browser.reset(); // the database's own fence refuses writes to sessions for a request that is working as someone: clean up from a plain one
+    await db.session.updateMany({ where: { userId: dev.id }, data: { workAsUserId: null, workAsStartedAt: null } });
+    expect(user.actorType).toBe("DEVELOPER");
+    await as(rec);
+    expect(await redirectOf(() => draw())).toBe("/staff/forbidden");
+    browser.reset();
+    expect(await redirectOf(() => draw())).toBe("/staff/login");
   });
 });

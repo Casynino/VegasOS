@@ -44,6 +44,10 @@ export interface AuditFilter {
   from: string;
   to: string;
   page: number;
+  /** Only entries that did not work (a failed or refused attempt). Used by the Developer's Audit page; the Boss/MD page never sets it. */
+  failures?: boolean;
+  /** Free text: who (the name written with the entry), what (the action's name or its plain words) or where (the kind of record, its id). Developer's Audit page only. */
+  q?: string;
 }
 
 /** Whoever is looking: only the rights matter here. */
@@ -61,8 +65,8 @@ export function assertCanViewAuditTrail(v: AuditViewer | null | undefined): asse
 /** Boss and MD see Developer actions (accountability); so does the Developer. Kept as one rule so it can only be narrowed in one place. */
 export const seesDeveloperActions = (v: AuditViewer): boolean => canViewAuditTrail(v);
 
-/** A failed attempt by its name: ending "_failed" (a sign-in, a staff change), or a refusal ("developer.denied", "….refused"). */
-export const isFailureAction = (action: string): boolean => /(_failed|\.denied|\.refused)$/.test(action);
+/** A failed attempt by its name: ending "_failed" (a sign-in, a staff change), or a refusal ("developer.denied", "….refused", "developer.work_as_refused"). */
+export const isFailureAction = (action: string): boolean => /(_failed|_refused|\.denied|\.refused)$/.test(action);
 
 /** A failure by its name, or by the entry itself saying so (a Developer's inspection that ended with `ok: false`). */
 export const isFailureEntry = (action: string, after: unknown): boolean => isFailureAction(action) || field(after, "ok") === false;
@@ -79,6 +83,10 @@ const WORDS: Record<string, string> = {
   "developer.exported": msg("exported records to a file"),
   "developer.downloaded": msg("downloaded a file"),
   "developer.inspected": msg("checked what a person can do"),
+  "developer.business_viewed": msg("looked at the business data"),
+  "developer.work_as_started": msg("started working as another person"),
+  "developer.work_as_ended": msg("stopped working as another person"),
+  "developer.work_as_refused": msg("was refused when trying to work as another person"),
   "developer.provisioned": msg("set up the Developer account"),
   "developer.password_rotated": msg("changed the Developer password"),
   "developer.deactivated": msg("switched the Developer account off"),
@@ -88,6 +96,8 @@ const WORDS: Record<string, string> = {
   "user.role_changed": msg("changed a staff account's role"),
   "user.deactivated": msg("switched a staff account off"),
   "user.reactivated": msg("switched a staff account back on"),
+  "user.suspended": msg("suspended a staff account"),
+  "user.signed_out_everywhere": msg("signed a person out of every device"),
   "user.password_reset": msg("reset a password"),
   "user.create_failed": msg("could not add a staff account"),
   "user.update_failed": msg("could not change a staff account"),
@@ -142,6 +152,28 @@ export function parseAuditFilter(raw: Raw, today: string): ParsedFilter {
   };
 }
 
+/** The three chips of the Developer's Audit page. */
+export type DeveloperAuditView = "all" | "developer" | "failures";
+export const DEVELOPER_AUDIT_VIEWS: readonly DeveloperAuditView[] = ["all", "developer", "failures"];
+
+export interface ParsedDeveloperFilter extends ParsedFilter { view: DeveloperAuditView }
+
+/**
+ * The address bar of the Developer's Audit page (view, q, from, to, page) as one safe filter — the same bounds as parseAuditFilter
+ * (at most MAX_DAYS, at most MAX_PAGE). Only these five parameters are read: the Boss/MD page's own (who, user, action, module) are not.
+ */
+export function parseDeveloperAuditFilter(raw: Raw, today: string): ParsedDeveloperFilter {
+  const v = text(raw.view, 12).toLowerCase();
+  const view: DeveloperAuditView = (DEVELOPER_AUDIT_VIEWS as readonly string[]).includes(v) ? (v as DeveloperAuditView) : "all";
+  const parsed = parseAuditFilter({ from: raw.from, to: raw.to, page: raw.page }, today);
+  const q = text(raw.q, 80);
+  return {
+    ...parsed,
+    view,
+    filter: { ...parsed.filter, actor: view === "developer" ? "DEVELOPER" : "ALL", failures: view === "failures", ...(q ? { q } : {}) },
+  };
+}
+
 /** The hotel's calendar today (the page's default end of the range). */
 export const auditToday = (timezone: string, now: Date = new Date()) => localCalendarDate(now, timezone);
 
@@ -163,6 +195,40 @@ function dateWhere(from: string, to: string, timezone: string): Prisma.AuditLogW
 /** What was typed, as plain text for a LIKE search: a % or _ is itself, not a wildcard (Postgres's escape character is the backslash). */
 const likeLiteral = (s: string) => s.replace(/[\\%_]/g, "\\$&");
 
+/** Rows that did not work: the same rule as isFailureEntry, as a database filter (a name ending _failed / _refused / .denied / .refused, or `after.ok` = false). */
+const FAILURE_ROWS: Prisma.AuditLogWhereInput = {
+  OR: [
+    { action: { endsWith: "_failed" } },
+    { action: { endsWith: "_refused" } },
+    { action: { endsWith: ".denied" } },
+    { action: { endsWith: ".refused" } },
+    { after: { path: ["ok"], equals: false } },
+  ],
+};
+
+/** The actions whose plain words (the sentence a person reads) contain what was typed — so "suspended" or "business data" finds them. */
+function actionsWithWords(q: string): string[] {
+  const needle = q.toLowerCase();
+  return Object.entries(WORDS).filter(([, words]) => words.toLowerCase().includes(needle)).map(([action]) => action);
+}
+
+/** The "Search who, what or where" box: the name written with the entry, the action's name or words, the kind of record or its id. */
+function searchWhere(q: string): Prisma.AuditLogWhereInput {
+  const literal = likeLiteral(q);
+  const asCode = likeLiteral(q.replace(/\s+/g, "_")); // "login failed" finds "auth.login_failed"
+  const byWords = actionsWithWords(q);
+  return {
+    OR: [
+      { actorLabel: { contains: literal, mode: "insensitive" } },
+      { action: { contains: literal, mode: "insensitive" } },
+      ...(asCode !== literal ? [{ action: { contains: asCode, mode: "insensitive" as const } }] : []),
+      { entityType: { contains: literal, mode: "insensitive" } },
+      { entityId: { contains: literal, mode: "insensitive" } },
+      ...(byWords.length ? [{ action: { in: byWords } }] : []),
+    ],
+  };
+}
+
 /** The database filter for a search. `developers` = may the viewer see a Developer's actions. */
 export function auditWhere(f: AuditFilter, o: { developers: boolean; timezone: string }): Prisma.AuditLogWhereInput {
   const and: Prisma.AuditLogWhereInput[] = dateWhere(f.from, f.to, o.timezone);
@@ -173,6 +239,8 @@ export function auditWhere(f: AuditFilter, o: { developers: boolean; timezone: s
   if (f.userId) and.push({ userId: f.userId });
   if (f.action) and.push({ action: { contains: likeLiteral(f.action), mode: "insensitive" } });
   if (f.module) and.push({ entityType: f.module });
+  if (f.failures) and.push(FAILURE_ROWS);
+  if (f.q) and.push(searchWhere(f.q));
   return { AND: and };
 }
 
@@ -186,8 +254,10 @@ export interface AuditRow {
   /** The role code the account held when it acted, and its name now (the code when the role is gone). */
   actorRole: string | null;
   roleName: string | null;
-  /** The name written with the entry (a snapshot — it stays even when the account is renamed or removed). */
+  /** The name written with the entry (a snapshot — it stays even when the account is renamed or removed). A Developer working as someone: "Nino (Developer) as Neema (Reception)". */
   actorName: string | null;
+  /** Set only on a Developer's entry written while working as someone (from the entry's "after"): who the Developer was working as. */
+  actingAs?: ActingAs | null;
   userId: string | null;
   action: string;
   entityType: string;
@@ -210,6 +280,16 @@ export interface AuditPage {
   hasNext: boolean;
   /** On the deepest page with more behind it: the person must narrow the dates. */
   limitReached: boolean;
+}
+
+export interface ActingAs { id: string; name: string; role: string | null }
+
+/** `after.actingAs` of a Developer's entry (written by the audit writer while working as someone). Anything that is not shaped like it is ignored. */
+function readActingAs(after: unknown): ActingAs | null {
+  const v = field(after, "actingAs");
+  const name = short(field(v, "name"), 120);
+  const id = short(field(v, "id"), 64);
+  return name && id ? { id, name, role: short(field(v, "role"), 120) } : null;
 }
 
 const short = (v: unknown, max: number): string | null => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null);
@@ -251,7 +331,9 @@ export async function queryAuditTrail(viewer: AuditViewer, filter: AuditFilter):
         actorType,
         actorRole: code,
         roleName: code ? roles.get(code) ?? code : null,
-        actorName: short(r.actorLabel, 120),
+        actorName: short(r.actorLabel, 160),
+        // Only a Developer's entry can say it was written while working as someone.
+        actingAs: actorType === "DEVELOPER" ? readActingAs(after) : null,
         userId: r.userId,
         action: r.action,
         entityType: r.entityType,

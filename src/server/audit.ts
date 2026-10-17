@@ -1,9 +1,10 @@
 import "server-only";
-import { db, type Tx } from "./db";
+import { db, workAsOfRequest, type Tx } from "./db";
 import { getSettings, businessDayConfig } from "./settings";
 import { businessDateOf, toDbDate } from "@/lib/time/business-date";
 import { Prisma } from "@/generated/prisma/client";
 import { DEVELOPER_ROLE_CODE } from "@/lib/permissions";
+import { withActingAs, workAsLabel } from "./work-as-session";
 
 /** Who acted — always read from the signed-in account's role at the moment of writing, never from a page, a department or the caller. */
 export type ActorType = "DEVELOPER" | "STAFF" | "SYSTEM" | "WEBSITE";
@@ -50,12 +51,30 @@ export async function actorKind(tx: Tx | typeof db, actor: AuditActor): Promise<
 }
 
 /**
+ * WORK AS (owner, 2026-10-17): when this request is a Developer working as a staff member and the entry says that staff member acted, the
+ * entry is written as what really happened — the DEVELOPER acted: their id, the label "Nino (Developer) as Neema (Receptionist)", and
+ * after.actingAs = who they were acting as. The hotel's own records (who checked a guest in) still carry the staff member's id; only the
+ * audit trail tells the whole truth. Read from the request's own session (never from an argument), so an entry written by anyone else in
+ * the same moment — or in a job, a webhook, the person's own browser — is never touched.
+ */
+async function asWhoReallyActed(actor: AuditActor, entry: AuditEntry): Promise<{ actor: AuditActor; entry: AuditEntry }> {
+  if (!actor.userId) return { actor, entry };
+  const state = await workAsOfRequest();
+  if (!state || state.targetId !== actor.userId) return { actor, entry };
+  return {
+    actor: { ...actor, userId: state.developerId, label: workAsLabel(state.developerName, state.targetName, state.targetRoleName) },
+    entry: { ...entry, after: withActingAs(entry.after, { id: state.targetId, name: state.targetName, role: state.targetRoleName }) },
+  };
+}
+
+/**
  * Record an audit entry. Pass the transaction client so the audit row commits
  * or rolls back together with the change it describes.
  */
-export async function audit(tx: Tx | typeof db, actor: AuditActor, entry: AuditEntry): Promise<void> {
+export async function audit(tx: Tx | typeof db, actorAsGiven: AuditActor, entryAsGiven: AuditEntry): Promise<void> {
   const settings = await getSettings();
   const now = new Date();
+  const { actor, entry } = await asWhoReallyActed(actorAsGiven, entryAsGiven);
   const kind = await actorKind(tx, actor);
   await tx.auditLog.create({
     data: {

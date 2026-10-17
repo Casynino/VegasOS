@@ -2,13 +2,10 @@
 
 import { useActionState } from "react";
 import { loginAction, type LoginState } from "./actions";
-import { LoginFormView, type AccountType } from "./login-form-view";
+import { LoginFormView } from "./login-form-view";
 
-/**
- * The sign-in form: a choice of door (Staff account / Developer account) above the email and password. The choice is sent
- * as `accountType`; the server checks the account against it and never trusts the choice as proof of anything.
- */
-export function LoginForm({ initialType = "STAFF" }: { initialType?: AccountType }) {
+/** The sign-in form: an email and a password. The same for everyone — the server decides, from the account, where the person lands. */
+export function LoginForm() {
   const [state, action, pending] = useActionState<LoginState, FormData>(loginAction, undefined);
-  return <LoginFormView state={state} pending={pending} action={action} initialType={initialType} />;
+  return <LoginFormView state={state} pending={pending} action={action} />;
 }

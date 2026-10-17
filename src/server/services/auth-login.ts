@@ -9,10 +9,12 @@ import { DEVELOPER_ROLE_CODE } from "@/lib/permissions";
 import { msg } from "@/i18n/msg";
 
 /**
- * Signing in to one of the two kinds of account. The choice on the sign-in page ("Developer account" / "Staff account") is NOT
- * proof of anything: the password is checked on the server for the account asked, and the account's own role decides which kind
- * it is. A Developer's email and password on the Staff form fails; a staff member's on the Developer form fails — with the same
- * answer as a wrong password, so the form says nothing about which accounts exist.
+ * Signing in — ONE door for everybody (owner, 2026-10-17): an email and a password, exactly as a normal user's. There is no choice of
+ * "Developer" or "Staff" on the page and nothing the visitor sends says which kind of account it is: the password is checked on the
+ * server and the account's own role decides (a Developer lands on the Developer console, everyone else as before).
+ *
+ * The visitor is told the same thing whatever went wrong — wrong password, an email nobody holds, a switched-off account — and every
+ * path checks a real password hash, so the answer says nothing about which accounts exist.
  */
 export type AccountType = "STAFF" | "DEVELOPER";
 
@@ -21,22 +23,45 @@ export type Failure = {
   /** The account the email belongs to, when there is one (for the audit trail of a failed attempt). */
   userId: string | null;
   actual: AccountType | null;
-  /** Was the password right? Only for the audit trail (a right password at the wrong door is worth a second look) — never shown to the visitor. */
+  /** Was the password right? Only for the audit trail (a right password on a switched-off account is worth a second look) — never shown to the visitor. */
   passwordOk: boolean;
+  /** Is the account switched on? Only for the audit trail. */
+  active: boolean;
 };
 
+/** Where a Developer lands after signing in: the console. (Everyone else is sent to /staff, which opens their own dashboard.) */
+export const DEVELOPER_LANDING = "/staff/developer";
+
 export type Authentication = { ok: true; userId: string; fullName: string; accountType: AccountType } | Failure;
+
+/** A Developer's account keeps a stricter lock than staff accounts: 5 tries in 15 minutes (the staff limit of 8 per email still applies first). */
+export const DEVELOPER_TRIES = 5;
+export const DEVELOPER_WINDOW_SECONDS = 15 * 60;
+export const developerLockKey = (email: string) => `login:email:dev:${email}`;
 
 // A real hash of a random value, so an unknown email takes as long as a wrong password.
 let dummyHash: Promise<string> | undefined;
 const getDummyHash = () => (dummyHash ??= hashPassword(crypto.randomUUID()));
 
-export async function authenticate(email: string, password: string, asked: AccountType): Promise<Authentication> {
+/**
+ * Look the account up, apply the Developer's stricter lock when the email turns out to be a Developer's (BEFORE its password is
+ * checked, so a flood of guesses is stopped, not answered), then check the password. The lock throws the same "Too many attempts"
+ * AppError the other limits throw; a refused try still costs one real hash, like any other answer.
+ */
+export async function authenticate(email: string, password: string): Promise<Authentication> {
   const user = await db.user.findUnique({ where: { email }, select: { id: true, fullName: true, passwordHash: true, isActive: true, role: { select: { code: true } } } });
-  const passwordOk = await verifyPassword(user?.passwordHash ?? (await getDummyHash()), password);
   const actual: AccountType | null = user ? (user.role.code === DEVELOPER_ROLE_CODE ? "DEVELOPER" : "STAFF") : null;
-  if (!user || !passwordOk || !user.isActive || actual !== asked) return { ok: false, userId: user?.id ?? null, actual, passwordOk: !!user && passwordOk };
-  return { ok: true, userId: user.id, fullName: user.fullName, accountType: actual };
+  if (actual === "DEVELOPER") {
+    try {
+      await rateLimit(developerLockKey(email), DEVELOPER_TRIES, DEVELOPER_WINDOW_SECONDS);
+    } catch (e) {
+      if (e instanceof AppError) await verifyPassword(await getDummyHash(), password);
+      throw e;
+    }
+  }
+  const passwordOk = await verifyPassword(user?.passwordHash ?? (await getDummyHash()), password);
+  if (!user || !passwordOk || !user.isActive) return { ok: false, userId: user?.id ?? null, actual, passwordOk: !!user && passwordOk, active: !!user?.isActive };
+  return { ok: true, userId: user.id, fullName: user.fullName, accountType: actual! };
 }
 
 // ───────────────────────────────────────────── a failed sign-in, in the audit trail ─────────────────────────────────────────────
@@ -48,35 +73,19 @@ export async function authenticate(email: string, password: string, asked: Accou
  */
 export const FAILED_SIGN_IN_LABEL = msg("Sign-in page (not signed in)");
 
-/** The most "nobody holds this Developer email" entries written in one hour, from the whole system (a flood costs a few rows, not the table). */
-export const UNKNOWN_DEVELOPER_ENTRIES_PER_HOUR = 20;
-export const UNKNOWN_DEVELOPER_KEY = "login:trail:unknown-developer";
-
 /**
  * Write down one failed attempt (never throws — the answer the visitor gets is the same whether or not this works).
- *  - a real account (right or wrong door, wrong password, switched off): one entry naming the account as the record, with what was asked and why it failed;
- *  - an email nobody holds, tried at the DEVELOPER door: one entry without any account, at most UNKNOWN_DEVELOPER_ENTRIES_PER_HOUR an hour
- *    (then it stops writing, but the sign-in is refused exactly the same);
- *  - an email nobody holds at the Staff door: nothing (the rate limits already hold it, and it is only noise).
+ *  - a real account: one entry naming the account as the record, with the account's kind and why it failed;
+ *  - an email nobody holds: nothing (the rate limits already hold it, and it is only noise).
  * Neither the typed password nor the typed email of an unknown account is ever written.
  */
-export async function recordFailedSignIn(failure: Failure, asked: AccountType, ipAddress: string | null): Promise<void> {
+export async function recordFailedSignIn(failure: Failure, ipAddress: string | null): Promise<void> {
   try {
-    const actor = { label: FAILED_SIGN_IN_LABEL, ipAddress };
-    if (failure.userId) {
-      await audit(db, actor, {
-        action: "auth.login_failed", entityType: "User", entityId: failure.userId,
-        after: { accountType: asked, accountExists: true, reasonKind: failure.passwordOk && failure.actual !== asked ? "wrong account type" : "bad password" },
-      });
-    } else if (asked === "DEVELOPER") {
-      try {
-        await rateLimit(UNKNOWN_DEVELOPER_KEY, UNKNOWN_DEVELOPER_ENTRIES_PER_HOUR, 60 * 60);
-      } catch (e) {
-        if (e instanceof AppError) return; // this hour's entries are used up: keep refusing, stop writing
-        throw e;
-      }
-      await audit(db, actor, { action: "auth.login_failed", entityType: "User", entityId: null, after: { accountType: "DEVELOPER", accountExists: false } });
-    }
+    if (!failure.userId) return;
+    await audit(db, { label: FAILED_SIGN_IN_LABEL, ipAddress }, {
+      action: "auth.login_failed", entityType: "User", entityId: failure.userId,
+      after: { accountType: failure.actual, accountExists: true, reasonKind: failure.passwordOk && !failure.active ? "account switched off" : "bad password" },
+    });
   } catch {
     /* the answer must be the same for every kind of failure — a trail that cannot be written never turns it into an error page */
     console.error("auth.login_failed could not be written to the audit trail");

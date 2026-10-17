@@ -3,6 +3,7 @@ import { after } from "next/server";
 import { headers } from "next/headers";
 import { db } from "../db";
 import { audit } from "../audit";
+import { trueActor, withActingAs, type IdentityFields } from "../work-as-session";
 import { isLoggedPath, normalizePath } from "@/lib/developer-paths";
 import { msg } from "@/i18n/msg";
 
@@ -19,7 +20,8 @@ import { msg } from "@/i18n/msg";
  *     is sent, every single time (no 10-minute rule, no limit), and it FAILS CLOSED: when the entry cannot be written, nothing is sent.
  *
  * Only an account whose role is the Developer role is ever written (the type is read from the database when the entry is written, by
- * audit()). The page's address is read on the SERVER (the x-pathname header the proxy sets from the real request) — never taken from a
+ * audit()). While a Developer WORKS AS someone (owner, 2026-10-17) every entry is still the Developer's own — their id and name, labelled
+ * "Nino (Developer) as Neema (Receptionist)", with after.actingAs — and the 10-minute rule counts per person acted as. The page's address is read on the SERVER (the x-pathname header the proxy sets from the real request) — never taken from a
  * form, a department or anything the browser says about itself.
  */
 export const VIEW_ACTION = "developer.viewed";
@@ -30,7 +32,8 @@ export const VIEW_DEDUPE_MINUTES = 10;
 /** A safety valve: one person writes at most this many "viewed" entries in 10 minutes, whatever the addresses. Past it, one marker entry is written for the window. */
 export const VIEW_BURST_LIMIT = 100;
 
-export interface ViewActor { id: string; fullName: string; actorType: "DEVELOPER" | "STAFF" }
+/** A CurrentUser fits: while working as someone id / fullName are the person's, actorId / actorName the Developer's own. */
+export interface ViewActor extends IdentityFields { actorType: "DEVELOPER" | "STAFF" }
 export type ViewOutcome =
   | "logged"       // written
   | "repeat"       // the same page was already written within the last 10 minutes
@@ -41,7 +44,7 @@ export type ViewOutcome =
 /** A failure to write is never shown to the person, but it is never silent either: one line in the server log, with nothing secret in it. */
 function traceFailure(what: string, user: ViewActor, path: string | null | undefined, e: unknown) {
   const code = e && typeof e === "object" && "code" in e && typeof (e as { code: unknown }).code === "string" ? (e as { code: string }).code : undefined;
-  console.error(`[developer-audit] ${what}`, { developerId: user.id, path: path ? normalizePath(path) ?? "(unreadable address)" : null, error: e instanceof Error ? e.name : "unknown", code });
+  console.error(`[developer-audit] ${what}`, { developerId: trueActor(user).id, path: path ? normalizePath(path) ?? "(unreadable address)" : null, error: e instanceof Error ? e.name : "unknown", code });
 }
 
 /** Write the visit (when it is a Developer's, to a page that is logged, and not a repeat). `now` is for tests. Throws when the database refuses the write. */
@@ -51,21 +54,24 @@ export async function logDeveloperView(user: ViewActor, rawPath: string | null |
   const path = normalizePath(rawPath) ?? "(unreadable address)";
   const now = opts.now ?? new Date();
   const since = new Date(now.getTime() - VIEW_DEDUPE_MINUTES * 60_000);
-  const actor = { userId: user.id, label: user.fullName, ipAddress: opts.ipAddress ?? null };
+  const who = trueActor(user);
+  const actor = { userId: who.id, label: who.label, ipAddress: opts.ipAddress ?? null };
 
   return db.$transaction(async (tx) => {
     // This person's visits are written one at a time: two requests for the same page at the same moment (the page and its data) make
     // one entry, never two — and the safety valve below writes its marker once, never twice.
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`developer-view:${user.id}`}))::text`;
-    const same = await tx.auditLog.findFirst({ where: { action: VIEW_ACTION, userId: user.id, entityType: "Page", entityId: path, createdAt: { gte: since } }, select: { id: true } });
-    if (same) return "repeat" as const;
-    if ((await tx.auditLog.count({ where: { action: VIEW_ACTION, userId: user.id, createdAt: { gte: since } } })) >= VIEW_BURST_LIMIT) {
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`developer-view:${who.id}`}))::text`;
+    // The same page as the same person acted as (or as themselves) within the window is a repeat; the same page as someone else is a new visit.
+    const recent = await tx.auditLog.findMany({ where: { action: VIEW_ACTION, userId: who.id, entityType: "Page", entityId: path, createdAt: { gte: since } }, select: { after: true }, take: 50 });
+    const actingId = (after: unknown) => ((after as { actingAs?: { id?: string } } | null)?.actingAs?.id) ?? null;
+    if (recent.some((r) => actingId(r.after) === (who.actingAs?.id ?? null))) return "repeat" as const;
+    if ((await tx.auditLog.count({ where: { action: VIEW_ACTION, userId: who.id, createdAt: { gte: since } } })) >= VIEW_BURST_LIMIT) {
       // The valve is shut: the visit is not written, but the trail says so — once for the window, whatever happens after.
-      const marked = await tx.auditLog.findFirst({ where: { action: VIEW_LIMIT_ACTION, userId: user.id, createdAt: { gte: since } }, select: { id: true } });
+      const marked = await tx.auditLog.findFirst({ where: { action: VIEW_LIMIT_ACTION, userId: who.id, createdAt: { gte: since } }, select: { id: true } });
       if (!marked) await audit(tx, actor, { action: VIEW_LIMIT_ACTION, entityType: "Page", after: { limit: VIEW_BURST_LIMIT, windowMinutes: VIEW_DEDUPE_MINUTES } });
       return "limit" as const;
     }
-    await audit(tx, actor, { action: VIEW_ACTION, entityType: "Page", entityId: path, after: { path } });
+    await audit(tx, actor, { action: VIEW_ACTION, entityType: "Page", entityId: path, after: withActingAs({ path }, who.actingAs) });
     return "logged" as const;
   });
 }
@@ -137,11 +143,12 @@ export async function logDeveloperExport(user: ViewActor, info: DeveloperExport,
     if (v === undefined) continue;
     after[k] = typeof v === "string" ? v.slice(0, MAX_VALUE_LENGTH) : v;
   }
-  await audit(db, { userId: user.id, label: user.fullName, ipAddress }, {
+  const who = trueActor(user);
+  await audit(db, { userId: who.id, label: who.label, ipAddress }, {
     action: info.kind === "exported" ? EXPORT_ACTION : DOWNLOAD_ACTION,
     entityType: info.module,
     entityId: info.entityId.slice(0, MAX_VALUE_LENGTH),
-    after,
+    after: withActingAs(after, who.actingAs),
   });
   return true;
 }

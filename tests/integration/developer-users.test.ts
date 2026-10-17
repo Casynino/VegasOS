@@ -497,7 +497,7 @@ describe("a Developer's password work follows the same strength rule as everyone
     }
     expect(await db.user.findUniqueOrThrow({ where: { id: victim.id } })).toEqual(before);
     expect(await db.session.count({ where: { userId: victim.id } })).toBe(1);
-    expect((await authenticate(victim.email, victim.password, "STAFF")).ok).toBe(true); // the old password still works
+    expect((await authenticate(victim.email, victim.password)).ok).toBe(true); // the old password still works
     const rows = await fresh();
     expect(rows.map((r) => r.action)).toEqual(weak.map(() => "user.password_reset_failed"));
     expect(rows.every((r) => r.actorType === "DEVELOPER" && afterOf(r).code === "VALIDATION")).toBe(true);
@@ -527,8 +527,8 @@ describe("a Developer's password work follows the same strength rule as everyone
     const row = await db.user.findUniqueOrThrow({ where: { id: victim.id } });
     expect(await verifyPassword(row.passwordHash, next)).toBe(true);
     expect(await verifyPassword(row.passwordHash, victim.password)).toBe(false);
-    expect((await authenticate(victim.email, next, "STAFF")).ok).toBe(true);
-    expect((await authenticate(victim.email, victim.password, "STAFF")).ok).toBe(false);
+    expect((await authenticate(victim.email, next)).ok).toBe(true);
+    expect((await authenticate(victim.email, victim.password)).ok).toBe(false);
     expect(await db.session.count({ where: { userId: victim.id } })).toBe(0);
 
     const rows = await fresh();
@@ -693,7 +693,7 @@ describe("through the Users actions: who acts comes from the session, never from
     expect(r5.ok).toBe(true);
     expect(await rightsOf(DEV)).toEqual(rightsBefore);
     expect(await developerAccessHolders()).toEqual([DEV]);
-    expect((await authenticate(victim.email, next, "STAFF")).ok).toBe(true);
+    expect((await authenticate(victim.email, next)).ok).toBe(true);
     const rows = await fresh();
     expect(rows.map((r) => r.action)).toEqual(["user.permission_change_failed", "user.permission_change_failed", "user.password_reset_failed", "user.password_reset_failed", "user.password_reset"]);
     expect(rows.every((r) => r.actorType === "DEVELOPER")).toBe(true);
@@ -813,7 +813,7 @@ describe("no back door to money: the Developer cannot make, take over or empower
     expect([err.code, err.message]).toEqual(["FORBIDDEN", MONEY_MESSAGE]);
     expect((await db.user.findUniqueOrThrow({ where: { id: victim.id } })).passwordHash).toBe(before.passwordHash);
     expect(await db.session.count({ where: { userId: victim.id } })).toBe(1);
-    expect((await authenticate(victim.email, victim.password, "STAFF")).ok).toBe(true);
+    expect((await authenticate(victim.email, victim.password)).ok).toBe(true);
     const rows = await fresh();
     expect(rows.map((r) => r.action)).toEqual(["user.password_reset_failed"]);
     expect(rows[0]).toMatchObject({ actorType: "DEVELOPER", entityId: victim.id });
@@ -823,7 +823,7 @@ describe("no back door to money: the Developer cannot make, take over or empower
       const next = pw();
       const freshStaff = await watch(a.id);
       await resetStaffPassword(actorOf(a), { userId: victim.id, password: next });
-      expect((await authenticate(victim.email, next, "STAFF")).ok, a.role).toBe(true);
+      expect((await authenticate(victim.email, next)).ok, a.role).toBe(true);
       expect((await freshStaff()).map((r) => r.action)).toEqual(["user.password_reset"]);
     }
     const calm = await makeUser("DRIVER", { fullName: "Victim Reset Calm" });
@@ -935,7 +935,7 @@ describe("no back door to money: the Developer cannot make, take over or empower
       expect([err.code, err.message], t.fullName).toEqual(["FORBIDDEN", SETUP_SCRIPT_MESSAGE]);
       expect((await db.user.findUniqueOrThrow({ where: { id: t.id } })).passwordHash, t.fullName).toBe(before.passwordHash);
       expect(await db.session.count({ where: { userId: t.id } }), t.fullName).toBe(sessions);
-      expect((await authenticate(t.email, t.password, "DEVELOPER")).ok, `${t.fullName}: the old password still signs in`).toBe(true);
+      expect((await authenticate(t.email, t.password)).ok, `${t.fullName}: the old password still signs in`).toBe(true);
     }
     const rows = await fresh();
     expect(rows.map((r) => r.action)).toEqual(["user.password_reset_failed", "user.password_reset_failed"]);
@@ -955,7 +955,7 @@ describe("no back door to money: the Developer cannot make, take over or empower
     for (const a of [md, boss]) {
       const next = pw();
       await resetStaffPassword(actorOf(a), { userId: a.id, password: next });
-      expect((await authenticate(a.email, next, "STAFF")).ok, a.role).toBe(true);
+      expect((await authenticate(a.email, next)).ok, a.role).toBe(true);
     }
   });
 

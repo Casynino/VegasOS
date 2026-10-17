@@ -78,7 +78,9 @@ model User {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  sessions                  Session[]
+  sessions                  Session[]                @relation("SessionUser")
+  /// Developer sessions that are at this moment working as this person (Session.workAsUserId; set null when the person is removed).
+  workAsSessions            Session[]                @relation("SessionWorkAs")
   auditLogs                 AuditLog[]
   reservationsCreated       Reservation[]            @relation("ReservationCreatedBy")
   leaveOwingApproved        Reservation[]            @relation("ReservationLeaveOwingBy")
@@ -182,12 +184,17 @@ model Session {
   id         String   @id @default(cuid())
   tokenHash  String   @unique // SHA-256 of the cookie token; raw token is never stored
   userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User     @relation("SessionUser", fields: [userId], references: [id], onDelete: Cascade)
   expiresAt  DateTime
   ipAddress  String?
   userAgent  String?
   createdAt  DateTime @default(now())
   lastSeenAt DateTime @default(now())
+  /// "Work as" (Developer sessions only): the person this session is working as right now, and since when. Honoured only when the
+  /// session's OWN user holds the Developer role, for at most 4 hours, and only while that person is an active staff account.
+  workAsUserId    String?
+  workAsUser      User?     @relation("SessionWorkAs", fields: [workAsUserId], references: [id], onDelete: SetNull)
+  workAsStartedAt DateTime?
 
   @@index([userId])
   @@index([expiresAt])

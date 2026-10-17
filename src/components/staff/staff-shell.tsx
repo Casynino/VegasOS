@@ -9,14 +9,14 @@ import { businessToday, getSettings } from "@/server/settings";
 import { newRequestCount } from "@/server/services/booking-requests";
 import { newStockRequestCount } from "@/server/services/stock-requests";
 import { staffHome } from "@/lib/staff-home";
-import { visibleNav } from "@/components/staff/nav-config";
+import { navFor } from "@/components/staff/nav-config";
 import { StaffNav } from "@/components/staff/staff-nav";
 import { StaffBottomBar } from "@/components/staff/bottom-bar";
 import { StaffDarkMode } from "@/components/staff/theme-switch";
 import { Initials } from "@/components/dashboard/kit";
 import { logoutAction } from "@/app/staff/(auth)/login/actions";
-import { IdentityBanner, IdentityCard, IdentityChip, DEV_STRIP_VARS, type Identity } from "./identity-banner";
-import { switchToStaffAccountAction } from "./identity-actions";
+import { stopWorkAsAction } from "@/app/staff/(app)/developer/access/actions";
+import { IdentityBanner, IdentityCard, IdentityChip, stripVars, type Identity } from "./identity-banner";
 import { cn } from "@/lib/utils";
 import { ReceptionSearch } from "./reception/search";
 import { StaffAlerts } from "./staff-alerts";
@@ -40,22 +40,28 @@ import { LanguageSwitch } from "@/components/i18n/language-switch";
 export async function StaffShell({ children }: { children: ReactNode }) {
   const user = await requireUser();
   // Who is signed in — from the session (the account's role in the database), never from the page or the browser.
-  const identity: Identity = { actorType: user.actorType, name: user.fullName, role: user.roleName };
+  // While a Developer works as someone, name and role are THAT person's (what the Developer sees is exactly their screen) and
+  // `workAs` says who is really signed in and since when — the strip on every page is drawn from it.
+  const workAs = user.workAs;
+  const identity: Identity = { actorType: user.actorType, name: user.fullName, role: user.roleName, workAs: workAs ? { developerName: user.actorName, startedAt: workAs.startedAt } : undefined };
   const developer = identity.actorType === "DEVELOPER";
+  // A Developer signed in as itself lives in its console: its own menu, none of the hotel's desks, counters or searches.
+  const consoleMode = developer && !workAs;
   const pathname = (await headers()).get("x-pathname") ?? "";
   // Stock requests to review and purchases to approve: counted for the managers who decide them.
-  const reviewsStock = can(user, "expenses.approve");
+  const reviewsStock = !consoleMode && can(user, "expenses.approve");
   const [settings, today, newRequests, newStock, myShift] = await Promise.all([
-    getSettings(), businessToday(), can(user, "booking_requests.view") ? newRequestCount() : Promise.resolve(0),
+    getSettings(), businessToday(), !consoleMode && can(user, "booking_requests.view") ? newRequestCount() : Promise.resolve(0),
     reviewsStock ? newStockRequestCount() : Promise.resolve(0),
-    needsOwnShift(user.permissions) ? getMyOpenShift(user.id) : Promise.resolve(undefined),
+    !consoleMode && needsOwnShift(user.permissions) ? getMyOpenShift(user.id) : Promise.resolve(undefined),
   ]);
   // A receptionist without their own open shift: a small reminder in the top bar (the pages themselves are gated in auth.ts).
-  const noShift = myShift === null && !pathname.startsWith("/staff/start-shift");
+  // Not while a Developer works as them: the shift gate is skipped then, and the Developer starts no shift for anybody.
+  const noShift = !workAs && myShift === null && !pathname.startsWith("/staff/start-shift");
   const home = staffHome(user.permissions);
   // The shared restaurant screen (one login for the restaurant) — it signs out like any account.
   const device = isRestaurantDevice(user.permissions);
-  const grouped = visibleNav(user.permissions, { badges: { "/staff/booking-requests": newRequests, "/staff/stock-requests": newStock }, home });
+  const grouped = navFor(user, { badges: { "/staff/booking-requests": newRequests, "/staff/stock-requests": newStock }, home });
   // The main restaurant screen: one plain list under Home — no "Finance" or "Restaurant & Bar" headings —
   // ending with Collections, then Customers.
   const LAST = ["/staff/collections", "/staff/guests"];
@@ -66,7 +72,7 @@ export async function StaffShell({ children }: { children: ReactNode }) {
     .sort((a, b) => a.item.label.length - b.item.label.length || a.n - b.n).map((x) => x.item);
   // Reception (not management): the desk's own work first — Finance last with Collections only, and Companies
   // with the bookings (owner, 2026-10-04: Income and Expenses are managers').
-  const desk = user.permissions.has("dashboard.front_desk") && !["dashboard.manager", "dashboard.owner", "dashboard.admin"].some((p) => user.permissions.has(p as never));
+  const desk = !consoleMode && user.permissions.has("dashboard.front_desk") && !["dashboard.manager", "dashboard.owner", "dashboard.admin"].some((p) => user.permissions.has(p as never));
   const deskSections = desk ? (() => {
     const finance = grouped.find((g) => g.title === "Finance");
     const companies = finance?.items.filter((i) => i.href === "/staff/corporate") ?? [];
@@ -77,7 +83,7 @@ export async function StaffShell({ children }: { children: ReactNode }) {
     const at = people >= 0 ? people : rest.length;
     return [...rest.slice(0, at), ...(money?.items.length ? [money] : []), ...rest.slice(at)];
   })() : null;
-  const sections = deskSections ?? (device && grouped.length
+  const sections = consoleMode ? grouped : deskSections ?? (device && grouped.length
     ? [{ ...grouped[0], items: [...flat.filter((i) => !LAST.includes(i.href)), ...LAST.flatMap((h) => flat.filter((i) => i.href === h))] }]
     : worksWaiterShift(user.permissions) && !device && grouped.length ? [{ ...grouped[0], items: waiterList }] : grouped);
 
@@ -87,9 +93,10 @@ export async function StaffShell({ children }: { children: ReactNode }) {
 
   return (
     <I18nProvider locale={locale} catalog={catalog}>
-    <div id="staff-root" lang={LOCALE_META[locale].html} className={cn("dark flex min-h-svh flex-1 flex-col bg-canvas text-foreground", developer && DEV_STRIP_VARS)}>
-      {/* A Developer: one unmistakable strip across every page (nothing for staff). Its height is the offset of the sticky parts below. */}
-      <IdentityBanner identity={identity} t={t} signOut={logoutAction} switchToStaff={switchToStaffAccountAction} />
+    <div id="staff-root" lang={LOCALE_META[locale].html} className={cn("dark flex min-h-svh flex-1 flex-col bg-canvas text-foreground", stripVars(identity))}>
+      {/* A Developer: one unmistakable strip across every page (nothing for staff) — while working as someone, a taller one that says whom,
+          for how long, and has Stop. Its height is the offset of the sticky parts below. */}
+      <IdentityBanner identity={identity} t={t} signOut={logoutAction} stopWorkAs={stopWorkAsAction} now={new Date()} />
       <div className="flex min-w-0 flex-1">
       <StaffDarkMode />
       <StackTableLabels />
@@ -103,7 +110,7 @@ export async function StaffShell({ children }: { children: ReactNode }) {
             </div>
           </Link>
           <div className="-mx-1 flex-1 overflow-y-auto px-1 pb-2 [scrollbar-width:thin]">
-            <StaffNav sections={sections} home={home} />
+            <StaffNav sections={sections} home={consoleMode ? undefined : home} />
           </div>
           {/* Sign out — the same plain button for everyone, the Restaurant Counter too (owner, 2026-10-04). */}
           <div className="mt-3 space-y-2.5 border-t border-dashed border-border pt-3">
@@ -127,7 +134,7 @@ export async function StaffShell({ children }: { children: ReactNode }) {
               <p className="hidden text-xs text-muted-foreground sm:block">{t("Hotel day 04:00 → 04:00")}</p>
             </div>
             <div className="flex min-w-0 flex-1 justify-center">
-              {can(user, "reservations.view") && <ReceptionSearch className="hidden w-full max-w-md md:block" />}
+              {!consoleMode && can(user, "reservations.view") && <ReceptionSearch className="hidden w-full max-w-md md:block" />}
             </div>
             {/* On shift: one small pill to her shift (what she did and collected so far) */}
             {myShift && (
@@ -142,21 +149,29 @@ export async function StaffShell({ children }: { children: ReactNode }) {
                 <Clock className="size-3.5" /><span className="sm:hidden">{t("Start shift")}</span><span className="hidden sm:inline">{t("No active shift · Start")}</span>
               </Link>
             )}
-            {/* EN | 中文 — this person's own language (saved on their account; nobody else's changes). */}
-            <LanguageSwitch staff tone="light" languages={settings.enabledLanguages} className="shrink-0" />
+            {/* EN | 中文 — this person's own language (saved on their account; nobody else's changes). Not while a Developer works as someone: it would change THEIR account. */}
+            {!workAs && <LanguageSwitch staff tone="light" languages={settings.enabledLanguages} className="shrink-0" />}
             <a href="/" target="_blank" rel="noopener" title={t("The hotel website (opens in a new tab)")} aria-label={t("The hotel website (opens in a new tab)")}
               className="hidden size-10 shrink-0 place-items-center rounded-full border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:grid">
               <Globe className="size-4" />
             </a>
             {/* The bell: rings for what is waiting for this person (bookings, requests, orders, bills…) on every page */}
             <StaffAlerts sound={{ enabled: settings.orderSoundsEnabled, volume: settings.orderSoundVolume, newSound: settings.newOrderSound, readySound: settings.readyOrderSound }}
-              soundOff={user.soundOff} />
+              soundOff={user.soundOff} locked={!!workAs} />
             {/* Who is signed in: the real name and role, always. Top bar: name + role from xl, the name alone at lg (role in the tooltip and the side menu's card), hidden below lg — the bottom bar's Menu shows both on a tablet and a phone. */}
-            <Link href="/staff/account" title={t("{name} · {role} — your account", { name: user.fullName, role: t(user.roleName) })} aria-label={t("Your account — {name}, {role}", { name: user.fullName, role: t(user.roleName) })}
-              className="flex min-w-0 shrink-0 items-center gap-2.5 rounded-full ring-2 ring-transparent transition hover:ring-border">
-              <Initials name={user.fullName} className={cn("size-10 text-xs", developer && "ring-2 ring-fuchsia-500")} />
-              <IdentityChip identity={identity} t={t} className="pr-2" />
-            </Link>
+            {/* While a Developer works as someone, this shows that person and goes nowhere: their account page is theirs. */}
+            {workAs ? (
+              <div title={t("{name} · {role} — your account", { name: user.fullName, role: t(user.roleName) })} className="flex min-w-0 shrink-0 items-center gap-2.5 rounded-full">
+                <Initials name={user.fullName} className="size-10 text-xs ring-2 ring-fuchsia-500" />
+                <IdentityChip identity={identity} t={t} className="pr-2" />
+              </div>
+            ) : (
+              <Link href="/staff/account" title={t("{name} · {role} — your account", { name: user.fullName, role: t(user.roleName) })} aria-label={t("Your account — {name}, {role}", { name: user.fullName, role: t(user.roleName) })}
+                className="flex min-w-0 shrink-0 items-center gap-2.5 rounded-full ring-2 ring-transparent transition hover:ring-border">
+                <Initials name={user.fullName} className={cn("size-10 text-xs", developer && "ring-2 ring-fuchsia-500")} />
+                <IdentityChip identity={identity} t={t} className="pr-2" />
+              </Link>
+            )}
             <form action={logoutAction} className="hidden shrink-0 sm:block">
               <button type="submit" aria-label={t("Sign out")} title={t("Sign out")} className="grid size-10 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
                 <LogOut className="size-4" />
@@ -165,10 +180,11 @@ export async function StaffShell({ children }: { children: ReactNode }) {
           </div>
         </header>
         {/* On the shared restaurant screen, money and taking charge ask the waiter's PIN. */}
-        <main className="flex-1 px-3 pb-28 pt-5 sm:px-4 lg:pb-8 lg:pl-2 lg:pr-5 print:p-0"><WaiterPinProvider device={device}><CustomerFinderAccess allowed={can(user, "guests.view")}>{children}</CustomerFinderAccess></WaiterPinProvider></main>
+        <main className="flex-1 px-3 pb-28 pt-5 sm:px-4 lg:pb-8 lg:pl-2 lg:pr-5 print:p-0"><WaiterPinProvider device={device}><CustomerFinderAccess allowed={!consoleMode && can(user, "guests.view")}>{children}</CustomerFinderAccess></WaiterPinProvider></main>
       </div>
 
-      <StaffBottomBar home={home} sections={sections} requests={newRequests} canBook={can(user, "reservations.view")} user={{ name: user.fullName, role: user.roleName, developer }} signOut />
+      <StaffBottomBar home={home} sections={sections} requests={newRequests} canBook={!consoleMode && can(user, "reservations.view")} console={consoleMode}
+        user={{ name: user.fullName, role: user.roleName, developer, workAs: !!workAs }} signOut />
       </div>
     </div>
     {/* After a check-out done in place: the thank-you message, ready to send (opened by showCheckoutThanks). */}

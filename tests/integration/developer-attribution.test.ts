@@ -32,7 +32,6 @@ import { getSettings } from "@/server/settings";
 import { generateDailyReport } from "@/server/services/daily-report";
 import { ensureRoomReport } from "@/server/services/room-report";
 import { generateShiftReport } from "@/server/services/shift-report";
-import { UNKNOWN_DEVELOPER_ENTRIES_PER_HOUR, UNKNOWN_DEVELOPER_KEY } from "@/server/services/auth-login";
 import { auditActionWords, auditToday, parseAuditFilter, queryAuditTrail, type AuditViewer } from "@/server/services/audit-trail";
 import { toDbDate } from "@/lib/time/business-date";
 import { loginAction, type LoginState } from "@/app/staff/(auth)/login/actions";
@@ -52,7 +51,7 @@ import { auditOf, browser, makeSession, makeUser, Redirected, removeMadeUsers, t
  */
 const SIGN_IN_PAGE = "Sign-in page (not signed in)";
 const STAFF_FAIL = "Incorrect email or password.";
-const DEV_FAIL = "Incorrect email or password for the Developer account.";
+const DEV_FAIL = STAFF_FAIL; // one door for everybody: the same words whoever the account belongs to
 const MD_ONLY = "Only the MD or the owner can regenerate a report — it is kept as a record.";
 // Past days nobody has a report for (the test's own; cleaned before and after).
 const D = { devMake: "2019-03-11", service: "2019-03-12", system: "2019-03-13", md: "2019-03-14", mgr: "2019-03-15", refuse: "2019-03-16", room: "2019-03-17", roomSend: "2019-03-18", send: "2019-03-19" };
@@ -123,16 +122,15 @@ const entries = (action: string, where: Record<string, unknown> = {}) => db.audi
 async function trail(raw: Record<string, string>) {
   return queryAuditTrail(viewer, parseAuditFilter(raw, auditToday(timezone)).filter);
 }
-const form = (email: string, password: string, accountType: string) => {
+const form = (email: string, password: string) => {
   const f = new FormData();
   f.set("email", email);
   f.set("password", password);
-  f.set("accountType", accountType);
   return f;
 };
-async function signIn(email: string, password: string, door: "STAFF" | "DEVELOPER"): Promise<LoginState | "signed-in"> {
+async function signIn(email: string, password: string): Promise<LoginState | "signed-in"> {
   try {
-    return await loginAction(undefined, form(email, password, door));
+    return await loginAction(undefined, form(email, password));
   } catch (e) {
     if (e instanceof Redirected) return "signed-in";
     throw e;
@@ -367,9 +365,9 @@ describe("even if a Developer were ever given the daily-report right, the server
 // ───────────────────────────────────────────── failed sign-ins ─────────────────────────────────────────────
 describe("a failed sign-in is the system's entry — never the account's own", () => {
   it("a wrong password on the Developer account and on a staff account: SYSTEM entries naming the account as the record, found under 'who = System' and nowhere else", async () => {
-    expect(errorOf(await signIn(dev.email, "not-the-password-1", "DEVELOPER"))).toBe(DEV_FAIL);
-    expect(errorOf(await signIn(rec.email, "not-the-password-1", "STAFF"))).toBe(STAFF_FAIL);
-    expect(errorOf(await signIn(rec.email, rec.password, "DEVELOPER"))).toBe(DEV_FAIL);
+    expect(errorOf(await signIn(dev.email, "not-the-password-1"))).toBe(DEV_FAIL);
+    expect(errorOf(await signIn(rec.email, "not-the-password-1"))).toBe(STAFF_FAIL);
+    expect(errorOf(await signIn(rec.email, "not-the-password-2"))).toBe(STAFF_FAIL);
 
     const devRows = await failedAbout(dev.id);
     const recRows = await failedAbout(rec.id);
@@ -379,7 +377,7 @@ describe("a failed sign-in is the system's entry — never the account's own", (
     expect(devRows[0].after).toEqual({ accountType: "DEVELOPER", accountExists: true, reasonKind: "bad password" });
     expect(recRows.map((r) => r.after)).toEqual([
       { accountType: "STAFF", accountExists: true, reasonKind: "bad password" },
-      { accountType: "DEVELOPER", accountExists: true, reasonKind: "wrong account type" },
+      { accountType: "STAFF", accountExists: true, reasonKind: "bad password" },
     ]);
     // nothing under either account's own activity
     expect(await auditOf(dev.id, "auth.login_failed")).toHaveLength(0);
@@ -406,6 +404,7 @@ describe("a failed sign-in is the system's entry — never the account's own", (
     for (const a of [
       "auth.login_failed", "user.role_changed", "user.updated", "user.deactivated", "user.reactivated", "user.password_reset", "developer.viewed", "developer.viewed_limit",
       "developer.exported", "developer.downloaded", "developer.inspected", "developer.denied", "developer.provisioned", "developer.password_rotated", "developer.deactivated",
+      "developer.work_as_started", "developer.work_as_ended", "developer.work_as_refused", "user.suspended", "user.signed_out_everywhere",
       "report.room_generated", "report.room_regenerated", "report.daily_sent", "report.room_sent", "report.shift_sent", "report.staff_sent",
     ]) {
       const words = auditActionWords(a);
@@ -414,75 +413,55 @@ describe("a failed sign-in is the system's entry — never the account's own", (
     }
   });
 
-  it("an unknown email at the Developer door is written with no account and no typed text; at the Staff door nothing is written", async () => {
+  it("an email nobody holds writes nothing — no account, no typed text", async () => {
     const typed = `ghost-${randomUUID()}@devtest.local`;
     const since = new Date();
-    expect(errorOf(await signIn(typed, "ghost-typed-pass-1", "DEVELOPER"))).toBe(DEV_FAIL);
-    expect(errorOf(await signIn(`staff-${typed}`, "ghost-typed-pass-1", "STAFF"))).toBe(STAFF_FAIL);
+    expect(errorOf(await signIn(typed, "ghost-typed-pass-1"))).toBe(STAFF_FAIL);
     const rows = (await failedAbout(null)).filter((r) => r.createdAt >= since);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ userId: null, actorType: "SYSTEM", actorLabel: SIGN_IN_PAGE, entityId: null, ipAddress: browser.ip });
-    expect(rows[0].after).toEqual({ accountType: "DEVELOPER", accountExists: false });
-    expect(JSON.stringify(rows)).not.toContain("ghost");
+    expect(rows).toHaveLength(0);
+    expect(JSON.stringify(await db.auditLog.findMany({ where: { createdAt: { gte: since } } }))).not.toContain("ghost");
   });
 
-  it("the entry is written AFTER the answer: the answer to a real account, an unknown email and a staff try all do the same work before they go out", async () => {
+  it("the entry is written AFTER the answer: a real account and an unknown email both do the same work before they go out", async () => {
     h.mode.schedule = true;
     const total = () => db.auditLog.count({ where: { action: "auth.login_failed" } });
     const start = await total();
 
     // a real account, a wrong password
-    expect(errorOf(await signIn(rec.email, "not-the-password-2", "STAFF"))).toBe(STAFF_FAIL);
+    expect(errorOf(await signIn(rec.email, "not-the-password-2"))).toBe(STAFF_FAIL);
     expect(h.scheduled).toHaveLength(1);
     expect(await total()).toBe(start); // nothing written yet — the answer did not wait for it
-    // an unknown email at the Developer door
-    expect(errorOf(await signIn(`ghost-${randomUUID()}@devtest.local`, "x1y2z3-abc", "DEVELOPER"))).toBe(DEV_FAIL);
+    // an unknown email (it will write nothing, but it is scheduled the same way)
+    expect(errorOf(await signIn(`ghost-${randomUUID()}@devtest.local`, "x1y2z3-abc"))).toBe(STAFF_FAIL);
     expect(h.scheduled).toHaveLength(2);
     expect(await total()).toBe(start);
-    // an unknown email at the Staff door (it will write nothing, but it is scheduled the same way)
-    expect(errorOf(await signIn(`ghost-${randomUUID()}@devtest.local`, "x1y2z3-abc", "STAFF"))).toBe(STAFF_FAIL);
-    expect(h.scheduled).toHaveLength(3);
 
     await Promise.all(h.scheduled.map((run) => run()));
-    expect(await total()).toBe(start + 2); // the real account's and the Developer door's unknown email
+    expect(await total()).toBe(start + 1); // only the real account's
   });
 
   it("an entry that cannot be written never changes the answer (and nothing in the console names the account or the email)", async () => {
     const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
     vi.mocked(audit).mockRejectedValueOnce(new Error("audit down"));
     try {
-      expect(errorOf(await signIn(rec.email, "not-the-password-3", "STAFF"))).toBe(STAFF_FAIL);
+      expect(errorOf(await signIn(rec.email, "not-the-password-3"))).toBe(STAFF_FAIL);
       expect(quiet).toHaveBeenCalledTimes(1);
       expect(String(quiet.mock.calls[0])).not.toContain(rec.email);
     } finally {
       quiet.mockRestore();
     }
   });
-});
 
-// ───────────────────────────────────────────── the flood bound ─────────────────────────────────────────────
-describe("unknown Developer emails: written, but capped", () => {
-  it(`at most ${UNKNOWN_DEVELOPER_ENTRIES_PER_HOUR} entries an hour from the whole system — every attempt is still refused with the same words, and real accounts are still written`, async () => {
-    const since = new Date();
-    const answers = new Set<string | undefined>();
-    for (let i = 1; i <= UNKNOWN_DEVELOPER_ENTRIES_PER_HOUR + 7; i++) {
-      browser.reset(); // another visitor each time (the per-address limits count per address)
-      answers.add(errorOf(await signIn(`flood-${i}-${randomUUID()}@devtest.local`, "x1y2z3-abc", "DEVELOPER")));
+  it("a Developer who signs in lands on the console; a wrong password and a right one on a switched-off account both say the same words", async () => {
+    expect(await signIn(dev.email, dev.password)).toBe("signed-in");
+    browser.reset();
+    await db.user.update({ where: { id: rec.id }, data: { isActive: false } });
+    try {
+      expect(errorOf(await signIn(rec.email, rec.password))).toBe(STAFF_FAIL);
+      const rows = (await failedAbout(rec.id)).filter((r) => (r.after as { reasonKind?: string } | null)?.reasonKind === "account switched off");
+      expect(rows.length).toBeGreaterThanOrEqual(1);
+    } finally {
+      await db.user.update({ where: { id: rec.id }, data: { isActive: true } });
     }
-    expect([...answers]).toEqual([DEV_FAIL]); // never "too many attempts", never different words
-    const written = (await failedAbout(null)).filter((r) => r.createdAt >= since);
-    expect(written).toHaveLength(UNKNOWN_DEVELOPER_ENTRIES_PER_HOUR);
-    for (const r of written) expect(r.after).toEqual({ accountType: "DEVELOPER", accountExists: false });
-
-    // the cap is only about emails nobody holds: a real account's failed try is written as always
-    browser.reset();
-    expect(errorOf(await signIn(dev.email, "not-the-password-4", "DEVELOPER"))).toBe(DEV_FAIL);
-    expect((await failedAbout(dev.id)).filter((r) => r.createdAt >= since)).toHaveLength(1);
-
-    // ... and the next hour starts a new count
-    await db.$executeRaw`UPDATE "rate_limit_buckets" SET "windowStart" = now() - interval '61 minutes' WHERE "key" = ${UNKNOWN_DEVELOPER_KEY}`;
-    browser.reset();
-    expect(errorOf(await signIn(`flood-after-${randomUUID()}@devtest.local`, "x1y2z3-abc", "DEVELOPER"))).toBe(DEV_FAIL);
-    expect((await failedAbout(null)).filter((r) => r.createdAt >= since)).toHaveLength(UNKNOWN_DEVELOPER_ENTRIES_PER_HOUR + 1);
   });
 });

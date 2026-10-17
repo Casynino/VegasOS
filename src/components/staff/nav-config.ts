@@ -24,6 +24,8 @@ export interface NavSection {
   items: NavItem[];
   /** Keep the items in the order listed (the owner's order), not sorted by name. */
   ordered?: boolean;
+  /** Show the heading even when this is the only section (the Developer console is only one, and says so). */
+  titled?: boolean;
 }
 
 /**
@@ -182,11 +184,39 @@ export const NAV: NavSection[] = [
       // Which languages guests are offered, and how much of the hotel's text is in Chinese.
       { href: "/staff/settings/languages", label: msg("Languages"), icon: "Languages", anyOf: ["settings.manage"] },
       { href: "/staff/guests", label: msg("Customers"), icon: "Contact", anyOf: ["reservations.view"] },
-      // The Developer's own console (system status and diagnostics): the Developer role only — never the Boss, the MD or staff.
-      { href: "/staff/developer", label: msg("Developer console"), icon: "Layers", anyOf: ["developer.access"] },
     ],
   },
 ];
+
+/**
+ * THE DEVELOPER'S OWN WORLD (owner, 2026-10-17): while a Developer is signed in as itself, its menu is this section and nothing else —
+ * the hotel is seen through Business (read-only) or by pressing "Work as" on the Access page. It needs the Developer-only right, which
+ * no business role (not even the Boss or the MD) can hold. The Boss and the MD keep "Audit trail" (People) in the normal menu.
+ */
+export const DEVELOPER_CONSOLE: NavSection = {
+  title: msg("Developer console"), icon: "Layers", ordered: true, titled: true,
+  items: [
+    { href: "/staff/developer", label: msg("Home"), icon: "LayoutGrid", anyOf: ["developer.access"] },
+    { href: "/staff/developer/audit", label: msg("Audit"), icon: "ScrollText", anyOf: ["developer.access"] },
+    { href: "/staff/developer/business", label: msg("Business"), icon: "BarChart3", anyOf: ["developer.access"] },
+    { href: "/staff/developer/access", label: msg("Access"), icon: "ShieldCheck", anyOf: ["developer.access"] },
+  ],
+};
+
+/** The console's menu for someone who holds the Developer-only right (nothing for anyone else). */
+export function developerConsoleNav(permissions: ReadonlySet<string>): NavSection[] {
+  return DEVELOPER_CONSOLE.items.some((i) => i.anyOf.some((p) => permissions.has(p))) ? [DEVELOPER_CONSOLE] : [];
+}
+
+/**
+ * The menu for the person looking at the page. A Developer signed in as itself sees its console only; a Developer WORKING AS someone
+ * (user.workAs set) sees that person's own menu, computed from the rights it was given for it (which never include the Developer-only
+ * right); everyone else sees the usual menu for their rights.
+ */
+export function navFor(user: { actorType: "DEVELOPER" | "STAFF"; workAs?: unknown; permissions: ReadonlySet<string> }, opts: { badges?: Record<string, number>; home?: string } = {}): NavSection[] {
+  if (user.actorType === "DEVELOPER" && !user.workAs) return developerConsoleNav(user.permissions);
+  return visibleNav(user.permissions, opts);
+}
 
 /** Pinned items keep their listed order; everything else comes after. */
 const pinOrder = (i: NavItem) => (i.pinned ? NAV.flatMap((s) => s.items).findIndex((x) => x.href === i.href && x.label === i.label) : Number.MAX_SAFE_INTEGER);
