@@ -7,6 +7,7 @@ import {
 import { can, requireUser } from "@/server/auth";
 import { tablesOnHome } from "@/server/services/table-performance";
 import { commandCenter, type Area } from "@/server/services/command-center";
+import { reportTroubles } from "@/server/services/report-health";
 import { purchasesAboveFinanceLimit } from "@/server/services/procurement-desk";
 import { LiveBoard, StaffToday } from "./command-center";
 import { db } from "@/server/db";
@@ -161,9 +162,8 @@ export async function OwnerOverview({ searchParams, basePath }: {
   const floor = tables.places.filter((p) => p.kind === "TABLE");
   const tablesAt = (s: (keyof typeof TABLE_META)[]) => floor.filter((p) => s.includes(p.state)).length;
   const slowPay = tables.places.filter((p) => p.state === "BILL" && (p.now?.billAsked ?? 0) >= 15);
-  // The Boss's daily report message that did not go out (the report itself is kept).
-  const lastReport = await db.dailyReport.findFirst({ orderBy: { businessDate: "desc" }, select: { id: true, generatedAt: true, deliveries: { select: { status: true, sentAt: true } } } });
-  const reportFailed = !!lastReport && lastReport.deliveries.some((x) => x.status === "FAILED") && !lastReport.deliveries.some((x) => x.status === "SENT" && x.sentAt && x.sentAt >= lastReport.generatedAt);
+  // The Boss's reports that did not reach him (daily, room): failed, not sent yet, or never made — once their time has passed.
+  const reportProblems = await reportTroubles(now);
   // The command centre: what needs a decision now (timed), the live board and staff activity.
   const aboveLimit = can(user, "purchases.authorize") ? await purchasesAboveFinanceLimit() : { count: 0, limit: null };
   const command = await commandCenter({
@@ -172,7 +172,7 @@ export async function OwnerOverview({ searchParams, basePath }: {
     tables: { seated: tablesAt(["SEATED", "BILL"]), bill: tablesAt(["BILL"]), free: tablesAt(["FREE"]), total: floor.length },
     shiftOpen: shift.openAll.map((o) => o.user.fullName).join(" & ") || null,
     expensesPending: { count: pl.expenseSummary.pending.count, amount: pl.expenseSummary.pending.amount },
-    reportFailedId: reportFailed ? lastReport!.id : null,
+    reportTroubles: reportProblems,
     extra: [
       // What Finance cannot decide alone — a purchase price above its limit — is the Boss's to authorize (Finance's own work stays on Finance's Home).
       ...(can(user, "purchases.authorize") && aboveLimit.count ? [{ id: "purchase-above-limit", area: "Payments" as const, tone: "rose" as const, title: t.plural(aboveLimit.count, "{n} purchase price above Finance's limit", "{n} purchase prices above Finance's limit"), detail: t("Finance may authorize up to {limit} — the rest is yours", { limit: formatTZS(aboveLimit.limit ?? 0) }), minutes: null, href: "/staff/procurement?tab=authorize", act: t("Authorize or send it back") }] : []),

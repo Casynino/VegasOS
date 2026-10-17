@@ -54,4 +54,20 @@ describe("the automatic daily report", () => {
     expect(await db.dailyReportVersion.count({ where: { dailyReportId: manual.id } })).toBe(2);
     expect(await db.auditLog.count({ where: { action: "report.daily_regenerated", entityId: manual.id } })).toBe(2);
   });
+
+  it("04:05: a report made by hand earlier in the day (an unfinished picture) is never sent by the early run — only the 07:00 automatic report goes out", async () => {
+    // Someone pressed "make the report" for 13 Oct while that day was still running: nothing was sent, and it holds only what was recorded so far.
+    const handmade = await generateDailyReport("2026-10-13", { by: "Dev Admin (Managing Director (MD))", automatic: false, reason: null });
+    expect(handmade.automatic).toBe(false);
+
+    // 04:05 on 14 Oct (the cron that sent a report of zeros): it must not pick that report up.
+    const early = await runDailyReportJob(zonedInstant("2026-10-14", 4 * 60 + 5, TZ));
+    expect(early).toMatchObject({ skipped: "not yet 07:00" });
+    expect(early).not.toHaveProperty("delivery");
+
+    // 07:00: the automatic report replaces it with the real figures, and that is what is sent.
+    const seven = await runDailyReportJob(zonedInstant("2026-10-14", 7 * 60, TZ));
+    expect(seven).toMatchObject({ reportId: handmade.id, generated: true, businessDate: "2026-10-13" });
+    expect(await db.dailyReport.findUniqueOrThrow({ where: { id: handmade.id } })).toMatchObject({ automatic: true, version: 2 });
+  });
 });

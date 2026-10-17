@@ -2,25 +2,27 @@ import { chapter, task, tour, flow, tip, warn, rule, p, h, dots, table, pair, ke
 
 export default {
   id: "driver", file: "Vegas-Guide-06-Driver.pdf", name: "Driver guide", dept: "driver", accent: "#4b5a9a", soft: "#eceef7",
+  lastTitle: "Golden rules and problems",
+  lastLead: "The few things that must always be done the same way, and what to do when something goes wrong.",
   kind: "Transport", kicker: "Guide book 06", title: "Driver",
   sub: "My trips on your phone — see the trips given to you, call the guest, and press three buttons from the hotel gate to the end of the trip.",
   cover: { shots: ["d-trip-1"], frame: "phone" },
   lead: "This book is for the **drivers** of Vegas Luxury Hotel. You work from your phone. The system gives you one page — **My trips** — with every trip that was given to you: the time, the guest, the phone number, where from and where to. At each step of the trip you press one button, and Reception sees where you are. You see only what you need to do the trip: no bills and no booking details.",
 
   place: [
-    h("What the driver hands over"),
-    table(["What", "Goes to", "How it gets there"], [
-      ["You have left for the pickup", "Reception", "You press **I'm on the way**. On Reception's **Transport** page the trip shows **In progress**."],
-      ["The guest is in the car", "Reception", "You press **Guest picked up**. It is saved with your name and the time."],
-      ["The trip is finished", "Reception", "You press **Trip completed**. The trip shows **Completed** and Reception can bill it."],
-      ["A guest who did not come", "Reception", "You call Reception. They press **No show** — your phone has no such button."],
-    ]),
-    h("What comes to the driver"),
-    table(["What", "From", "Where you see it"], [
-      ["A trip", "Reception or a manager", "They press **Assign**, choose your name and press **Save driver**. The trip is on **My trips**."],
-      ["The guest's details", "The guest's request", "On the trip card: name, phone, number of passengers, flight number and a note."],
-      ["A cancelled or changed trip", "A manager", "A cancelled trip, or a trip given to another driver, leaves your list."],
-    ]),
+    '<div style="height:5mm"></div>',
+    keep(
+      h("What passes through the driver's hands"),
+      table(["What", "With whom", "How it moves"], [
+        ["**To** — you leave for the pickup", "Reception", "**I'm on the way**. The trip shows **In progress**."],
+        ["**To** — the guest is in the car", "Reception", "**Guest picked up**, with your name and the time."],
+        ["**To** — the trip is finished", "Reception", "**Trip completed**. Reception can bill it."],
+        ["**To** — a guest who did not come", "Reception", "You call. They press **No show** — you have no such button."],
+        ["**From** — a trip", "Reception, manager", "They press **Assign** and **Save driver**: it is on **My trips**."],
+        ["**From** — the guest's details", "The guest's request", "On the card: name, phone, flight, note."],
+        ["**From** — a cancelled trip", "A manager", "It leaves your list."],
+      ]),
+    ),
   ],
 
   chapters: [
@@ -65,7 +67,7 @@ export default {
           "**Save driver** — the trip now shows **Driver assigned** and is on your **My trips** page.",
         ],
         cols: false,
-        notes: [tip("Reception can also pick the hotel car for the trip. The system refuses a car that has fewer seats than the trip has passengers.")],
+        notes: [tip("Reception can also pick the hotel car for the trip. The system refuses a car that has fewer seats than the trip has passengers."), tip("Reception can also **type** a driver's name and phone instead of choosing from the list. That trip is then on **no** phone — Reception tells the driver by phone.")],
       }),
       keep(
         h("What Reception sees while you drive"),
@@ -115,7 +117,7 @@ export default {
           "**Only your trips** — trips given to other drivers are not shown.",
           "**From yesterday to seven days ahead** — so you can plan the week.",
           "**A completed trip stays, in a paler colour** — you can still see what you did today.",
-          "**A cancelled trip is gone** — it leaves the list.",
+          "**A cancelled trip is gone** — it leaves the list. A trip Reception marked **No show** stays, with the red word **No show** and no button.",
           "**No trips assigned** — this message means nothing has been given to you yet.",
         ]),
         tip("The page shows what the system knew when you opened it. Before you start work, and after Reception says they gave you a trip, **open My trips again** or pull the page down to reload it."),
@@ -127,7 +129,7 @@ export default {
         steps: [
           "**EN / 中文** — the language of your screen. It changes only your own screen.",
           "**Home** — back to **My trips**.",
-          "**Find** — the front desk's search for bookings. It is not for drivers.",
+          "**Find** — the front desk's search for bookings. It is not for drivers: if you tap it, the page only says **You don't have access to this page**.",
           "**Menu** — opens the menu.",
           "**Your name and your role** — check that it is you who is signed in.",
           "**Sign out** — always sign out when you share the phone with somebody.",
@@ -176,6 +178,7 @@ export default {
       keep(
         h("The money"),
         p("You do not record any payment in the system. When you press **Trip completed**, Reception sees the trip with its price and bills it: on the guest's **room bill**, or as a **direct payment**. A special price can only be given by a manager."),
+        p("A guest who asked on the website may already have paid by mobile money from the page of their trip. Then the trip shows as paid, and you collect nothing."),
         tip("If a guest pays you by hand, bring the money to Reception the same day and tell them which trip it is for. They record it under the trip."),
       ),
     ),
@@ -199,7 +202,7 @@ export default {
     ["Reception gave you a trip but you do not see it.", "Pull the page down to reload it. Check that you are signed in with your own account."],
     ["A trip that was on your list is gone.", "It was cancelled, or a manager gave it to another driver. Ask Reception."],
     ["You pressed a step by mistake.", "Call Reception at once. You cannot take it back from your phone."],
-    ["There is no button on the card.", "The trip is **Completed**. Nothing more to press."],
+    ["There is no button on the card.", "The trip is **Completed**, or Reception marked it **No show**. Nothing more to press."],
     ["The time or the place on the card is wrong.", "Do not drive on a guess. Call Reception — they correct the trip."],
     ["The guest's phone number is missing or wrong.", "Ask Reception for the right number. They can call the guest from the hotel."],
     ["More passengers than the car has seats.", "Call Reception before you leave. They choose another car or a second trip."],

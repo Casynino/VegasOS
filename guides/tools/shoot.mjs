@@ -130,7 +130,8 @@ async function run() {
   await db.connect();
   const made = [];
   const langBefore = new Map();
-  const browser = await launch();
+  // each run takes its own Chrome port, so two pictures-runs (or a picture-run and a build) can work at the same time
+  const browser = await launch({ port: 9400 + Math.floor(Math.random() * 500) });
   const problems = [];
   try {
     // one browser profile per person and language

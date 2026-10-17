@@ -2,25 +2,27 @@ import { chapter, task, tour, tip, warn, rule, p, h, dots, table, shot, keep } f
 
 export default {
   id: "housekeeping", file: "Vegas-Guide-05-Housekeeping.pdf", name: "Housekeeping guide", dept: "housekeeping", accent: "#6b7f2a", soft: "#f0f3e4",
+  lastTitle: "Golden rules and problems",
+  lastLead: "The few things that must always be done the same way, and what to do when something goes wrong.",
   kind: "Rooms", kicker: "Guide book 05", title: "Housekeeping",
   sub: "The Daily Housekeeping Checklist — how to read it, which room comes first, what to tick, and how a cleaned room goes back to Reception.",
   cover: { shots: ["h-cover"], frame: "paper" },
   lead: "This book is for the **housekeeping team** of Vegas Luxury Hotel. Housekeeping does not sign in to the system. Your work comes on one sheet of paper — the **Daily Housekeeping Checklist** — that Reception prints from the system. The system follows every room: who has left, who is staying, who arrives today. So the sheet already tells you which rooms to clean, which one comes first and which ones to leave alone. When a room is done you tell Reception, and Reception marks it **Clean & ready**. Every page shows the real sheet and the real screen.",
 
   place: [
-    h("What housekeeping hands over"),
-    table(["What", "Goes to", "How it gets there"], [
-      ["A room you have started", "Reception", "You tell Reception the room number. They press **Start cleaning** and the room shows **Cleaning**."],
-      ["A cleaned room", "Reception", "You tell Reception. They check the room and press **Clean & ready** — only then can it be given to a guest."],
-      ["The finished sheet", "Reception", "Ticked, with your name, the times and your signature. Reception signs **Reception verification**."],
-      ["Something broken or missing in a room", "Reception", "You tell Reception. They write it down as a **guest request**, so somebody takes it and it is not forgotten."],
-    ]),
-    h("What comes to housekeeping"),
-    table(["What", "From", "Where you see it"], [
-      ["The checklist", "Reception", "Printed from **Daily lists** — every guest room of the hotel on one sheet."],
-      ["A room to clean after check-out", "Reception", "At check-out the room turns to **Needs cleaning** by itself. It is on the sheet under **1. Check-out cleaning**."],
-      ["A guest's wish", "The guest, from the QR card in the room", "The guest taps **Cleaning** or **Fresh towels** on their phone. Reception gets it and tells you. An open cleaning wish is also printed in **Notes**."],
-    ]),
+    '<div style="height:5mm"></div>',
+    keep(
+      h("What passes through housekeeping"),
+      table(["What", "With whom", "How it moves"], [
+        ["**To** — a room started or done", "Reception", "You tell the room number. They press **Start cleaning**, then **Clean & ready**."],
+        ["**To** — the finished sheet", "Reception", "Ticked and signed. They sign **Reception verification**."],
+        ["**To** — a broken or missing thing", "Reception", "They write a **guest request**."],
+        ["**To** — supplies running low", "Reception", "They ask in **Purchase requests**."],
+        ["**From** — the checklist", "Reception", "Printed from **Daily lists**, every room on one sheet."],
+        ["**From** — a room to clean", "Reception", "A check-out turns it to **Needs cleaning**: part 1 of the sheet."],
+        ["**From** — a guest's wish", "The guest, Reception", "**Cleaning** or **Fresh towels**; printed in **Notes**."],
+      ]),
+    ),
   ],
 
   chapters: [
@@ -30,35 +32,35 @@ export default {
         table(["What happens", "Who does it", "What the room shows"], [
           ["The guest checks out", "Reception", "**Needs cleaning** — by itself, at once. The room cannot be given to a new guest."],
           ["The sheet is printed", "Reception", "The room is in **1. Check-out cleaning**: **Yes — full clean**, **Waiting to be cleaned**."],
-          ["You start the room", "You tell Reception — they press **Start cleaning**", "**Cleaning**. A sheet printed now says **Cleaning in progress**."],
+          ["You start the room", "You tell Reception — they press **Start cleaning**", "**Cleaning** (**Being cleaned** on the Rooms page). A sheet printed now says **Cleaning in progress**."],
           ["You finish the room", "You tell Reception — they check it and press **Clean & ready**", "**Clean / Ready**. The room can be given to the next guest."],
         ]),
         rule("A room is ready for a guest only after Reception has pressed **Clean & ready**. A tick on the paper changes nothing in the system."),
       ),
       tour("The rooms, as Reception sees them", {
-        shot: "h-rooms",
+        shot: "ck3-h-rooms", w: 72,
         intro: "Reception's page **Rooms** shows every room as a tile. This is where your work is watched during the day.",
         items: [
           "**Available** — clean and empty. Nothing to do.",
-          "**Occupied** — a guest is in the room.",
-          "**Needs cleaning** — the guest has left. | The tile shows how long the room has been waiting: **Waiting 1 h**.",
-          "**Room QR codes** — the card that stands in every room. | The guest scans it with their phone to order, to see the bill and to ask for things.",
+          "**Occupied** — a guest is in the room. | The tile also says the guest's bill in coloured words: **Paid**, **Not paid**, **Part paid**, **Group pays**. That is for Reception — it does not change your work.",
+          "**Needs cleaning** — the guest has left. | The tile shows how long it has waited (**Waiting 1 h**), or **Guest due — clean first**. **Being cleaned** shows after **Start cleaning**.",
+          "**Room QR codes** — the card that stands in every room.",
         ],
       }),
       tour("What a guest can ask for from the room", {
-        shot: "h-ask",
+        shot: "ck3-g-room-2c", frame: "phone",
         intro: "The guest scans the QR card in the room and gets their own page. At the bottom is **Your room** — “Ask here and reception takes care of it.”",
         items: [
           "**Late check-out** — Leave after 11:00. | Reception answers the guest. The room is cleaned after the guest has gone.",
           "**Cleaning** — Tidy up, fresh sheets. | Reception gets it at once. If it is still open when the sheet is printed, it is printed in **Notes**.",
-          "**Something else** — the guest writes what they need.",
+          "**Something else** — the guest writes what they need. | Under it, **Your requests** shows what the guest asked and **Done** when it is finished.",
         ],
         notes: [
           tip("On the same list: **Fresh towels** (towels, bathrobe, toiletries) and **Something is not working** (AC, TV, water, lights). Every one of them goes to Reception first."),
         ],
       }),
       tour("Where the wish lands — Guest requests", {
-        shot: "h-req", w: 80,
+        shot: "h-req", w: 58,
         intro: "Reception's page **Guest requests** — “Towels, cleaning, repairs, help — accept it, handle it, mark it done.”",
         items: [
           "**Log a request** — Reception writes down what a guest asked at the desk or on the phone, and what you found in a room.",
@@ -88,6 +90,15 @@ export default {
           tip("If the hotel changes the rule, the line reads **on request — serviced only when the guest asks**. Then an occupied room is work only when its line says **Yes — the guest asked**."),
         ],
       }),
+      keep(
+        h("The four parts of the sheet"),
+        table(["Part", "What is in it", "Your work"], [
+          ["**1. Check-out cleaning**", "Rooms the guest has left, or is leaving today.", "A full clean — after the guest has gone."],
+          ["**2. Occupied rooms**", "Rooms where the guest stays on.", "The daily service — tick **Serviced**, **Do not disturb** or **Guest declined**."],
+          ["**3. Already clean and ready**", "Rooms that are clean and empty.", "None — the part is only there so every room is on the sheet once."],
+          ["**4. Other rooms needing attention**", "Closed rooms, or rooms where the system and the bookings do not agree.", "Do not prepare them before you ask Reception."],
+        ]),
+      ),
       tour("The seven columns", {
         shot: "h-part1", frame: "paper", w: 80,
         items: [
@@ -137,12 +148,21 @@ export default {
           ["**A guest is checked in, but the room is not marked occupied**", "The same — the other way round.", "**Check with reception first.** Somebody may be in the room."],
         ]),
       ),
+      keep(
+        h("Read three lines of the sheet"),
+        p("These are three lines of the sheet in the picture of part 1. Read each line from left to right, then do what the last column says."),
+        table(["The line", "What it tells you", "What you do"], [
+          ["**105** · **Needs cleaning** · **Yes — full clean** · **Waiting to be cleaned**, since 17:00", "The guest has left and nobody has started the room.", "Clean it now. Tell Reception you start; tick the box and write your initials when it is done."],
+          ["**104** · **Occupied**, check-out time passed · **Yes — after the guest checks out** · **Guest still in the room** · Notes: **Guest arriving today — clean first**", "The guest is still inside, and a new guest arrives today.", "Do not go in. Ask Reception. When the guest has gone, clean this room before every other room."],
+          ["**106** · **Occupied**, check-out time passed · **Guest still in the room** · Notes: **Guest asked: Please clean the room after 14:00**", "The guest is still inside and asked for the cleaning at a time.", "Come back after 14:00 or after the check-out, whichever Reception says. Tell Reception when it is done."],
+        ]),
+      ),
     ),
 
     chapter("Clean a room and hand it back", "The paper is yours. The system is Reception's. A room goes back to the hotel in two steps: you finish it and tick it, then Reception checks it and marks it.",
       task("Work through the sheet", {
         when: "Every day, as soon as Reception gives you the sheet.",
-        shot: "h-cover", frame: "paper", side: 88,
+        shot: "h-cover", frame: "paper",
         steps: [
           "Read the top: **Requiring cleaning** is the number of rooms that need you today.",
           "Start with part 1. First the rooms with **Guest arriving today — clean first**, then the rooms that say **Waiting to be cleaned**.",
@@ -203,6 +223,7 @@ export default {
           ["The guest is still in a check-out room", "The room number", "Speaks to the guest. You clean after the check-out."],
           ["Something is broken or missing — AC, TV, water, lights, towels", "The room and what is wrong", "**Log a request**, so somebody takes it."],
           ["A guest left something behind", "The room and what it is — and bring it to the desk", "Keeps it for the guest."],
+          ["Towels, sheets, toiletries or cleaning supplies are running low", "What it is, and how many you need", "Asks for it in **Purchase requests**. You do not buy anything yourself."],
         ]),
       ),
     ),
@@ -231,6 +252,7 @@ export default {
     ["A guest stops you in the corridor and asks for towels or cleaning", "Help if you can, and tell Reception, so it is written in **Guest requests**. The guest can also ask from the QR card in the room."],
     ["Notes says “Guest asked: …”", "Do what the guest asked — for example clean after 14:00 — and tell Reception when it is done, so the request is marked done."],
     ["Something in the room is broken", "Do not try to repair it. Tell Reception the room and what is wrong."],
+    ["Towels, sheets or cleaning supplies are running out", "Tell Reception what and how many. They ask for it in **Purchase requests** — Finance decides. Do not buy it yourself."],
     ["The sheet got wet, torn or lost", "Ask Reception to print it again. A printed copy is kept in the system and prints exactly the same."],
     ["Many rooms changed since the morning", "Ask Reception to press **Refresh** and print a new sheet. Carry your ticks over by hand."],
     ["Something on the sheet or in this book is not clear", "Ask Reception or the Manager. For the system itself: write to Nino — the last page of this book."],

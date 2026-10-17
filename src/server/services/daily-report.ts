@@ -414,7 +414,7 @@ export const REPORT_HOUR = 7;
 /**
  * Cron entry point. At 07:00 EAT it makes the report for the business day that ended at 04:00 (the
  * previous calendar date), sends it to the Boss, and never makes a duplicate. Runs before 07:00 only
- * retry failed sends from the last report.
+ * retry failed sends of the last AUTOMATIC report (never a report made by hand earlier).
  */
 export async function runDailyReportJob(now = new Date(), deadline?: number) {
   const settings = await getSettings();
@@ -423,7 +423,11 @@ export async function runDailyReportJob(now = new Date(), deadline?: number) {
   if (!settings.reportEnabled) return { skipped: "disabled", businessDate: today };
   const hour = localParts(now, cfg.timezone).hour;
   if (hour < REPORT_HOUR && hour >= 4) {
-    const last = await db.dailyReport.findFirst({ where: { businessDate: { lt: toDbDate(today) } }, orderBy: { businessDate: "desc" } });
+    // Only an AUTOMATIC report is retried here — those are made after their day closed. A report made by hand may be an early,
+    // unfinished picture of a day that was still running (nothing was sent when it was made); it waits for the 07:00 automatic
+    // report, which replaces it with the day's real figures. It is never sent by this early run (owner, 2026-10-14: a report of
+    // zeros reached the Boss at 04:05 for a day that had sales).
+    const last = await db.dailyReport.findFirst({ where: { businessDate: { lt: toDbDate(today) }, automatic: true }, orderBy: { businessDate: "desc" } });
     if (!last) return { skipped: "not yet 07:00", businessDate: today };
     return { businessDate: fromDbDate(last.businessDate), reportId: last.id, generated: false, delivery: await deliverDailyReport(last.id, { deadline }) };
   }
