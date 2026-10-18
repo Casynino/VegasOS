@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Crown, Loader2, Lock, LogIn, LogOut, Search, UserCheck, UserX, Users } from "lucide-react";
+import { Crown, Loader2, Lock, LogIn, LogOut, Search, Trash2, UserCheck, UserX, Users } from "lucide-react";
 import { ActionForm } from "@/components/staff/action-form";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { useT } from "@/i18n/client";
 import { AccessForm, FormProblem } from "./access-form";
 import { ago, filterGroups } from "./access-helpers";
-import { reactivateAction, signOutEverywhereAction, startWorkAsAction, suspendAction } from "./actions";
+import { deleteAccountAction, reactivateAction, signOutEverywhereAction, startWorkAsAction, suspendAction } from "./actions";
 
 /** One account, as the page draws it (plain values: dates are ISO text so the page can be sent to the browser as it is). */
 export interface AccessPersonView {
@@ -24,6 +24,7 @@ export interface AccessPersonView {
   canSuspend: boolean;
   canReactivate: boolean;
   canSignOut: boolean;
+  canDelete: boolean;
   /** Why a button is missing, in English (e.g. "Can't be suspended or signed out here"). */
   note: string | null;
 }
@@ -34,7 +35,7 @@ export interface AccessGroupView {
   people: AccessPersonView[];
 }
 
-type DialogKind = "suspend" | "reactivate" | "signout";
+type DialogKind = "suspend" | "reactivate" | "signout" | "delete";
 
 /**
  * Everyone the Developer can work as, grouped by role, with a search box and the buttons. "Work as" is a form posting the person to the
@@ -94,6 +95,7 @@ export function AccessPeople({ groups, nowIso, timezone }: { groups: AccessGroup
             {target.kind === "suspend" && <SuspendDialog key={target.person.id} person={target.person} close={() => setOpen(false)} />}
             {target.kind === "reactivate" && <ReactivateDialog key={target.person.id} person={target.person} close={() => setOpen(false)} />}
             {target.kind === "signout" && <SignOutDialog key={target.person.id} person={target.person} close={() => setOpen(false)} />}
+            {target.kind === "delete" && <DeleteDialog key={target.person.id} person={target.person} close={() => setOpen(false)} />}
           </DialogContent>
         )}
       </Dialog>
@@ -150,6 +152,9 @@ function PersonRow({ p, now, timezone, ask }: { p: AccessPersonView; now: Date; 
         {p.canSignOut && (
           <Button type="button" {...plain} onClick={() => ask("signout", p)} aria-label={t("Sign {name} out everywhere", { name: p.fullName })}><LogOut />{t("Sign out")}</Button>
         )}
+        {p.canDelete && (
+          <Button type="button" {...plain} onClick={() => ask("delete", p)} aria-label={t("Delete {name}", { name: p.fullName })}><Trash2 />{t("Delete")}</Button>
+        )}
       </div>
     </li>
   );
@@ -193,6 +198,46 @@ function SuspendDialog({ person, close }: { person: AccessPersonView; close: () 
             <DialogFooter>
               <Cancel close={close} pending={pending} />
               <Button type="submit" variant="destructive" disabled={pending || !ready}>{pending ? <Loader2 className="animate-spin" /> : <UserX />}{t("Suspend")}</Button>
+            </DialogFooter>
+          </>
+        )}
+      </AccessForm>
+    </>
+  );
+}
+
+function DeleteDialog({ person, close }: { person: AccessPersonView; close: () => void }) {
+  const t = useT();
+  const [reason, setReason] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const ready = reason.trim().length >= 5 && confirm === "DELETE";
+  return (
+    <>
+      <DialogHeader icon={<Trash2 />} eyebrow={t("Access")} tone="amber">
+        <DialogTitle>{t("Delete {name}?", { name: person.fullName })}</DialogTitle>
+        <DialogDescription>{person.email}</DialogDescription>
+      </DialogHeader>
+      <AccessForm action={deleteAccountAction} onSuccess={close} className="space-y-3">
+        {({ pending, error, fieldErrors: e }) => (
+          <>
+            <input type="hidden" name="userId" value={person.id} />
+            <p className="rounded-xl border border-rose-500/40 bg-rose-500/[0.08] px-3 py-2 text-sm text-rose-900 dark:text-rose-200">
+              {t("{name} loses all access and the account is removed from the system. Everything {name} did stays recorded under their name. This cannot be undone. The Boss is told.", { name: person.fullName })}
+            </p>
+            <div className="space-y-1.5">
+              <Label htmlFor="delete-reason">{t("Reason (written in the audit trail)")}</Label>
+              <Input id="delete-reason" name="reason" value={reason} onChange={(ev) => setReason(ev.target.value)} maxLength={500} autoComplete="off" placeholder={t("At least 5 characters")} aria-invalid={!!e?.reason} />
+              {e?.reason && <p className="text-xs text-destructive">{e.reason}</p>}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="delete-confirm">{t("Type DELETE to go on")}</Label>
+              <Input id="delete-confirm" name="confirm" value={confirm} onChange={(ev) => setConfirm(ev.target.value)} autoComplete="off" autoCapitalize="characters" spellCheck={false} placeholder="DELETE" aria-invalid={!!e?.confirm} />
+              {e?.confirm && <p className="text-xs text-destructive">{e.confirm}</p>}
+            </div>
+            <FormProblem message={error && !e ? error : undefined} />
+            <DialogFooter>
+              <Cancel close={close} pending={pending} />
+              <Button type="submit" variant="destructive" disabled={pending || !ready}>{pending ? <Loader2 className="animate-spin" /> : <Trash2 />}{t("Delete")}</Button>
             </DialogFooter>
           </>
         )}

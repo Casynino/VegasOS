@@ -225,6 +225,7 @@ export interface InspectableUser { id: string; name: string; roleName: string; a
 export async function listInspectableUsers(user: ConsoleCaller): Promise<InspectableUser[]> {
   assertConsoleAccess(user);
   const rows = await db.user.findMany({
+    where: { removedAt: null },
     orderBy: [{ isActive: "desc" }, { fullName: "asc" }], take: 1000,
     select: { id: true, fullName: true, isActive: true, role: { select: { name: true } } },
   });

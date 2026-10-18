@@ -369,7 +369,10 @@ describe("every change is audited with before and after, as the person who made 
     expect(byAction["user.permission_changed"].before).toMatchObject({ permission: "assets.view", granted: false });
     expect(afterOf(byAction["user.permission_changed"])).toMatchObject({ permission: "assets.view", granted: true });
     expect(byAction["user.deleted"].before).toMatchObject({ fullName: doomed.fullName, email: doomed.email, role: "RECEPTIONIST" });
-    expect(await db.user.count({ where: { id: doomed.id } })).toBe(0);
+    // "Delete" removes the person's access and the account from the lists, but the row — and so every record's name — stays.
+    expect(await db.user.findUniqueOrThrow({ where: { id: doomed.id } })).toMatchObject({ fullName: doomed.fullName, isActive: false, email: `removed-${doomed.id}@removed.invalid` });
+    expect((await db.user.findUniqueOrThrow({ where: { id: doomed.id } })).removedAt).toBeInstanceOf(Date);
+    expect((await staffDirectory()).users.map((u) => u.id)).not.toContain(doomed.id);
   });
 
   it("the entries hold no password and no hash — neither the ones typed nor the stored ones — success or refusal", async () => {
@@ -645,6 +648,7 @@ describe("the MD and the Boss still create accounts in every kind of role, exact
     await resetStaffPassword(actorOf(boss), { userId: victim.id, password: next });
     expect((await authenticate(moved, next)).ok).toBe(true);
     await deleteStaffAccount(actorOf(boss), { userId: victim.id });
-    expect(await db.user.count({ where: { id: victim.id } })).toBe(0);
+    expect((await db.user.findUniqueOrThrow({ where: { id: victim.id } })).removedAt).toBeInstanceOf(Date); // removed from the lists; the row (and its records) stay
+    expect((await staffDirectory()).users.map((u) => u.id)).not.toContain(victim.id);
   });
 });

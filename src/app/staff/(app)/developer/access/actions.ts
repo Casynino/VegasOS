@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { runAction, type ActionResult } from "@/server/errors";
 import { parseInput } from "@/server/validation";
-import { createAccount, endWorkAs, reactivateAccount, requireDeveloperSession, signOutEverywhere, startWorkAs, suspendAccount } from "@/server/services/work-as";
+import { createAccount, deleteAccount, endWorkAs, reactivateAccount, requireDeveloperSession, signOutEverywhere, startWorkAs, suspendAccount } from "@/server/services/work-as";
 import { msg } from "@/i18n/msg";
 
 /*
@@ -32,6 +32,11 @@ const SuspendSchema = z.object({
   reason,
   // Exactly the word, in capitals: the service checks it again.
   confirm: z.string().refine((v) => v === "CONFIRM", msg("Type CONFIRM, in capital letters, to go on.")),
+});
+const DeleteSchema = z.object({
+  userId,
+  reason,
+  confirm: z.string().refine((v) => v === "DELETE", msg("Type DELETE, in capital letters, to go on.")),
 });
 const ReactivateSchema = z.object({ userId, reason });
 
@@ -73,6 +78,17 @@ export async function suspendAction(first?: unknown, second?: unknown): Promise<
     revalidatePath(ACCESS);
     return null;
   }, msg("Account suspended. The person is signed out and cannot sign in."));
+}
+
+/** DELETE — removes the account for good (never the Boss's or the MD's, never one with records). Needs a reason (5+ characters) and the word DELETE. */
+export async function deleteAccountAction(first?: unknown, second?: unknown): Promise<ActionResult<null>> {
+  return runAction(async () => {
+    const developer = await requireDeveloperSession();
+    const input = parseInput(DeleteSchema, formOf(first, second));
+    await deleteAccount(developer, input.userId, { reason: input.reason, confirm: input.confirm });
+    revalidatePath(ACCESS);
+    return null;
+  }, msg("Account deleted."));
 }
 
 /** RE-ACTIVATE — only an account this Developer suspended; needs a reason. */

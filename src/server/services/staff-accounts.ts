@@ -1,4 +1,6 @@
 import "server-only";
+import { isPermanentOwner, PERMANENT_OWNER_REFUSAL } from "@/lib/permanent-owners";
+import { removeAccountAccess, unusablePasswordHash } from "./account-removal";
 import { db } from "../db";
 import { audit } from "../audit";
 import { hashPassword, validatePasswordStrength } from "../auth";
@@ -93,7 +95,7 @@ async function assertCanAssignRole(actor: AccountActor, roleId: string) {
 /** The target account — a system account is never listed, and a Developer account is not there for anyone who reaches this. */
 async function loadTarget(userId: string) {
   const target = await db.user.findUnique({ where: { id: userId }, include: { role: true } });
-  if (!target || target.role.code === SYSTEM_ROLE || target.role.code === DEVELOPER_ROLE_CODE) throw notFound();
+  if (!target || target.removedAt || target.role.code === SYSTEM_ROLE || target.role.code === DEVELOPER_ROLE_CODE) throw notFound();
   return target;
 }
 
@@ -105,7 +107,7 @@ export async function staffDirectory() {
   const [users, roles] = await Promise.all([
     // The PIN's state only (set / locked) — never its hash. "Online · nTZS" is not a person — never listed or edited here.
     db.user.findMany({
-      where: { role: { code: { notIn: hidden } } },
+      where: { removedAt: null, role: { code: { notIn: hidden } } },
       select: {
         id: true, fullName: true, email: true, phone: true, roleId: true, isActive: true, mustChangePassword: true, lastLoginAt: true,
         role: { select: { code: true, name: true } },
@@ -163,6 +165,7 @@ export async function updateStaffAccount(actor: AccountActor, input: UpdateAccou
     if (target.id === actor.id && (!input.isActive || newRole.id !== target.roleId)) {
       throw new AppError("You cannot deactivate yourself or change your own role.");
     }
+    if (target.isActive && !input.isActive && isPermanentOwner({ email: target.email, roleCode: target.role.code })) throw new AppError(PERMANENT_OWNER_REFUSAL, "FORBIDDEN");
     const losingOwner = target.role.code === "OWNER" && target.isActive && (newRole.code !== "OWNER" || !input.isActive);
     if (losingOwner) {
       const owners = await db.user.count({ where: { isActive: true, role: { code: "OWNER" } } });
@@ -255,17 +258,11 @@ export async function setRolePermission(actor: AccountActor, input: RolePermissi
   });
 }
 
-const isFkViolation = (err: unknown) => {
-  const e = err as { code?: string };
-  if (e?.code === "P2003" || e?.code === "P2014") return true;
-  const text = JSON.stringify(err, Object.getOwnPropertyNames(err ?? {}));
-  return text.includes("23503") || text.includes("foreign key");
-};
-
 export async function deleteStaffAccount(actor: AccountActor, input: { userId: string }, meta: AccountMeta = {}): Promise<void> {
   return sensitive(actor, meta, { action: "user.delete_failed", entityType: "User", entityId: input.userId }, async () => {
     const target = await loadTarget(input.userId);
     if (target.id === actor.id) throw new AppError("You cannot delete your own account.");
+    if (isPermanentOwner({ email: target.email, roleCode: target.role.code })) throw new AppError(PERMANENT_OWNER_REFUSAL, "FORBIDDEN");
     if (target.role.code === "OWNER" && actor.roleCode !== "OWNER") {
       throw new AppError("Only an owner can delete an owner account.", "FORBIDDEN");
     }
@@ -273,20 +270,15 @@ export async function deleteStaffAccount(actor: AccountActor, input: { userId: s
       const owners = await db.user.count({ where: { isActive: true, role: { code: "OWNER" } } });
       if (owners <= 1) throw new AppError("There must always be at least one active owner.");
     }
-    try {
-      await db.$transaction(async (tx) => {
-        await tx.session.deleteMany({ where: { userId: target.id } });
-        await tx.user.delete({ where: { id: target.id } });
-        await audit(tx, { userId: actor.id, label: actor.fullName, ipAddress: meta.ipAddress ?? null }, {
-          action: "user.deleted", entityType: "User", entityId: target.id,
-          before: { fullName: target.fullName, email: target.email, role: target.role.code },
-        });
+    // The account is REMOVED, not erased: the person loses all access and the account leaves the lists, but everything they did stays under their name.
+    const unusable = await unusablePasswordHash();
+    await db.$transaction(async (tx) => {
+      await removeAccountAccess(tx, target.id, unusable);
+      await audit(tx, { userId: actor.id, label: actor.fullName, ipAddress: meta.ipAddress ?? null }, {
+        action: "user.deleted", entityType: "User", entityId: target.id,
+        before: { fullName: target.fullName, email: target.email, role: target.role.code },
+        after: { removed: true, recordsKept: true },
       });
-    } catch (e) {
-      if (isFkViolation(e)) {
-        throw new AppError("This person has records in the system (shifts, payments, etc.). Deactivate their account instead.", "CONFLICT");
-      }
-      throw e;
-    }
+    });
   });
 }

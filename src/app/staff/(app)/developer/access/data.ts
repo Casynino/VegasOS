@@ -42,6 +42,7 @@ export async function loadAccessPage(): Promise<AccessPageData> {
       canWorkAs: p.canWorkAs,
       canSuspend: p.canSuspend,
       canReactivate: p.canReactivate,
+      canDelete: p.canDelete,
       canSignOut: p.canSignOut,
       note: p.note,
     })),

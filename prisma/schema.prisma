@@ -68,6 +68,9 @@ model User {
   /// This person's interface language: "en" | "zh-CN" (their own — never anyone else's; never affects permissions).
   preferredLanguage  String    @default("en")
   lastLoginAt        DateTime?
+  /// "Account deleted" (owner, 2026-10-19): the person lost all access and the account left every list, but the row STAYS so that everything they did
+  /// keeps their name. Set by the deletion (sign-in off, password unusable, e-mail address freed); null for every account in use.
+  removedAt          DateTime?
   /// (No longer used: a waiter is now picked from the list on the Restaurant Counter — no code.)
   staffCode          String?   @unique
   /// (Earlier: a hashed PIN for the same purpose — no longer used; the staff ID replaced it.)

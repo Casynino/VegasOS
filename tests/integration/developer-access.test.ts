@@ -85,14 +85,15 @@ afterAll(async () => {
   await removeMadeUsers();
 });
 beforeEach(() => {
+  delete process.env.PERMANENT_OWNER_EMAILS;
   browser.reset();
   revalidated.mockClear();
 });
 
 // ═════════════════════════════════════ the five actions, and nothing else ═════════════════════════════════════
 describe("the actions file", () => {
-  it("exports exactly the six actions", () => {
-    expect(Object.keys(actionsModule).sort()).toEqual(["addAccountAction", "reactivateAction", "signOutEverywhereAction", "startWorkAsAction", "stopWorkAsAction", "suspendAction"]);
+  it("exports exactly the seven actions", () => {
+    expect(Object.keys(actionsModule).sort()).toEqual(["addAccountAction", "deleteAccountAction", "reactivateAction", "signOutEverywhereAction", "startWorkAsAction", "stopWorkAsAction", "suspendAction"]);
   });
 });
 
@@ -103,7 +104,7 @@ describe("the page's data", () => {
     await makeSession(dev.id);
     const page = await loadAccessPage();
 
-    const expected = await db.user.findMany({ where: { role: { code: { notIn: ["DEVELOPER", "SYSTEM_ONLINE"] } } }, select: { id: true, isActive: true, role: { select: { code: true } } } });
+    const expected = await db.user.findMany({ where: { removedAt: null, role: { code: { notIn: ["DEVELOPER", "SYSTEM_ONLINE"] } } }, select: { id: true, isActive: true, role: { select: { code: true } } } });
     const listed = page.groups.flatMap((g) => g.people.map((p) => ({ id: p.id, group: g.roleCode, isActive: p.isActive })));
     expect(listed.map((p) => p.id).sort()).toEqual(expected.map((u) => u.id).sort());
     expect(page.count).toBe(expected.length);
@@ -125,15 +126,16 @@ describe("the page's data", () => {
     for (const p of page.groups.flatMap((g) => g.people)) expect(p.lastSignedInAt === null || typeof p.lastSignedInAt === "string").toBe(true);
   });
 
-  it("the flags say what each button may do: work as an active person; not suspend the Boss (and say why); re-activate what this Developer suspended", async () => {
+  it("the flags say what each button may do: work as an active person; not suspend or delete a permanent owner (and say why); re-activate what this Developer suspended", async () => {
+    process.env.PERMANENT_OWNER_EMAILS = boss.email;
     const victim = await makeUser("DRIVER", { fullName: "Flags Access" });
     await makeSession(dev.id);
     expect((await suspendAction(undefined, form({ userId: victim.id, reason: "flags check", confirm: "CONFIRM" }))).ok).toBe(true);
     const page = await loadAccessPage();
     const all = page.groups.flatMap((g) => g.people);
     const find = (id: string) => all.find((p) => p.id === id)!;
-    expect(find(rec.id)).toMatchObject({ isActive: true, canWorkAs: true, canSuspend: true, canSignOut: true, canReactivate: false });
-    expect(find(boss.id)).toMatchObject({ canSuspend: false, note: "Can't be suspended or signed out here" });
+    expect(find(rec.id)).toMatchObject({ isActive: true, canWorkAs: true, canSuspend: true, canSignOut: true, canDelete: true, canReactivate: false });
+    expect(find(boss.id)).toMatchObject({ canSuspend: false, canSignOut: false, canDelete: false, note: "Permanent owner: can't be suspended or deleted" });
     expect(find(victim.id)).toMatchObject({ isActive: false, canWorkAs: false, canSuspend: false, canReactivate: true });
   });
 
@@ -306,12 +308,13 @@ describe("Suspend", () => {
     expect(revalidated).toHaveBeenCalledWith(ACCESS);
   });
 
-  it("never the Boss, a Developer account, the system account or the Developer itself — each stays active with its sessions", async () => {
+  it("never a permanent owner, a Developer account, the system account or the Developer itself — each stays active with its sessions", async () => {
+    process.env.PERMANENT_OWNER_EMAILS = boss.email;
     await makeSession(dev.id);
     await makeSession(boss.id, { setCookie: false });
     await makeSession(dev2.id, { setCookie: false });
     const fresh = await watch(dev.id);
-    for (const [name, target] of [["the Boss", boss], ["a Developer", dev2], ["the system account", system], ["itself", dev]] as const) {
+    for (const [name, target] of [["a permanent owner", boss], ["a Developer", dev2], ["the system account", system], ["itself", dev]] as const) {
       const sessionsBefore = await sessions(target.id);
       const r = await suspendAction(undefined, form({ userId: target.id, reason: "a good reason", confirm: "CONFIRM" }));
       expect(r, name).toMatchObject({ ok: false });
@@ -452,7 +455,7 @@ describe("while working as someone: no Suspend, no Re-activate, no Sign out — 
 // ═════════════════════════════════════ the search box ═════════════════════════════════════
 const person = (over: Partial<AccessPersonView>): AccessPersonView => ({
   id: randomUUID(), fullName: "Person", email: "person@example.test", roleName: "Kitchen", isActive: true, lastSignedInAt: null,
-  canWorkAs: true, canSuspend: true, canReactivate: false, canSignOut: true, note: null, ...over,
+  canWorkAs: true, canSuspend: true, canReactivate: false, canSignOut: true, canDelete: true, note: null, ...over,
 });
 const group = (roleCode: string, roleName: string, people: AccessPersonView[], roleDescription = ""): AccessGroupView => ({ roleCode, roleName, roleDescription, people });
 /** The language provider, taking its children as createElement's third argument. */

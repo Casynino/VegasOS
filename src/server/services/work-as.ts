@@ -8,7 +8,9 @@ import { tellBossSoon } from "./report-delivery";
 import { numberWaitersTx } from "./waiter-number";
 import { recordWorkAsEnded } from "./work-as-expired";
 import { keepEndpointRefusal } from "./endpoint-refusal";
+import { removeAccountAccess, unusablePasswordHash } from "./account-removal";
 import { DEVELOPER_DENIED, DEVELOPER_ROLE_CODE } from "@/lib/permissions";
+import { isPermanentOwner, LAST_BOSS_REFUSAL, PERMANENT_OWNER_REFUSAL } from "@/lib/permanent-owners";
 import { staffHome } from "@/lib/staff-home";
 import { msg } from "@/i18n/msg";
 
@@ -117,13 +119,16 @@ export interface AccessPerson {
   canSuspend: boolean;
   canReactivate: boolean;
   canSignOut: boolean;
+  /** Delete (not only suspend) — everyone except the Boss, the MD and the Developers; refused again by the server when the person has records. */
+  canDelete: boolean;
   /** Why a button is missing, in English ("Can't be suspended or signed out here") — shown with t(). */
   note: string | null;
 }
 
 /** The order the roles are listed in: the Boss first, then management, then the departments; any other role after them by name. */
 const ROLE_ORDER = ["OWNER", "ADMIN", "MANAGER", "FINANCE", "ACCOUNTANT", "RECEPTIONIST", "RESTAURANT", "KITCHEN", "RESTAURANT_SCREEN", "DRIVER"];
-const NOTE_BOSS = msg("Can't be suspended or signed out here");
+const NOTE_PERMANENT = msg("Permanent owner: can't be suspended or deleted");
+const NOTE_LAST_BOSS = msg("The only Boss: can't be suspended or deleted");
 const NOTE_REACTIVATE = msg("Only the Boss or the MD can switch this account back on");
 
 /** What changes whether an account is on or off, as the audit trail kept it. */
@@ -161,7 +166,7 @@ export async function accessPeople(developer: CurrentUser): Promise<{ roleCode: 
   const dev = await verifiedDeveloper(developer);
   const busy = !!developer.workAs; // working as someone: only Stop is available
   const users = await db.user.findMany({
-    where: { role: { code: { notIn: [DEVELOPER_ROLE_CODE, SYSTEM_ROLE_CODE] } } },
+    where: { removedAt: null, role: { code: { notIn: [DEVELOPER_ROLE_CODE, SYSTEM_ROLE_CODE] } } },
     select: { id: true, fullName: true, email: true, isActive: true, lastLoginAt: true, roleId: true, role: { select: { code: true, name: true, description: true } } },
     orderBy: [{ isActive: "desc" }, { fullName: "asc" }],
   });
@@ -173,18 +178,22 @@ export async function accessPeople(developer: CurrentUser): Promise<{ roleCode: 
   ]);
   const blockedRoles = new Set(blockedList.filter((r): r is string => r !== null));
 
+  const activeBosses = users.filter((u) => u.role.code === "OWNER" && u.isActive).length;
   const groups = new Map<string, { roleCode: string; roleName: string; roleDescription: string; people: AccessPerson[] }>();
   for (const u of users) {
-    const boss = u.role.code === "OWNER";
+    const permanent = isPermanentOwner({ email: u.email, roleCode: u.role.code });
+    const lastBoss = u.role.code === "OWNER" && u.isActive && activeBosses <= 1;
+    const protectedOne = permanent || lastBoss;
     const canReactivate = !busy && !u.isActive && mine.has(u.id) && !blockedRoles.has(u.roleId);
     const person: AccessPerson = {
       id: u.id, fullName: u.fullName, email: u.email, roleCode: u.role.code, roleName: u.role.name, roleDescription: u.role.description ?? "",
       isActive: u.isActive, lastSignedInAt: u.lastLoginAt,
       canWorkAs: !busy && u.isActive,
-      canSuspend: !busy && u.isActive && !boss,
+      canSuspend: !busy && u.isActive && !protectedOne,
       canReactivate,
-      canSignOut: !busy && u.isActive && !boss,
-      note: boss ? NOTE_BOSS : !u.isActive && !canReactivate ? NOTE_REACTIVATE : null,
+      canSignOut: !busy && u.isActive && !permanent,
+      canDelete: !busy && !protectedOne,
+      note: permanent ? NOTE_PERMANENT : lastBoss ? NOTE_LAST_BOSS : !u.isActive && !canReactivate ? NOTE_REACTIVATE : null,
     };
     const g = groups.get(u.role.code) ?? { roleCode: u.role.code, roleName: u.role.name, roleDescription: u.role.description ?? "", people: [] };
     g.people.push(person);
@@ -291,9 +300,16 @@ export async function endWorkAs(user: CurrentUser): Promise<void> {
 /** The account the Developer may act on: a Developer account and the system's own are never touched here. */
 async function loadAccount(userId: string) {
   const target = await db.user.findUnique({ where: { id: userId }, include: { role: true } });
-  if (!target || target.role.code === SYSTEM_ROLE_CODE) throw notFound();
+  if (!target || target.removedAt || target.role.code === SYSTEM_ROLE_CODE) throw notFound();
   if (target.role.code === DEVELOPER_ROLE_CODE) throw new AppError(msg("A Developer account cannot be changed here."), "FORBIDDEN");
   return target;
+}
+
+/** The last active Boss can be neither suspended nor deleted: there must always be one. */
+async function assertNotLastBoss(target: { id: string; isActive: boolean; role: { code: string } }): Promise<void> {
+  if (target.role.code !== "OWNER" || !target.isActive) return;
+  const others = await db.user.count({ where: { isActive: true, role: { code: "OWNER" }, id: { not: target.id } } });
+  if (others === 0) throw new AppError(LAST_BOSS_REFUSAL, "FORBIDDEN");
 }
 
 function checkReason(raw: string | null | undefined): string {
@@ -313,7 +329,7 @@ const shortReason = (reason: string, max = 200) => (reason.length > max ? `${rea
  */
 function tellBossAboutAccess(
   developer: CurrentUser, ipAddress: string | null, now: Date,
-  what: { kind: "suspended"; reason: string } | { kind: "signed_out_everywhere" } | { kind: "created" },
+  what: { kind: "suspended"; reason: string } | { kind: "deleted"; reason: string } | { kind: "signed_out_everywhere" } | { kind: "created" },
   target: { id: string; fullName: string; role: { name: string } },
 ) {
   const developerName = developer.actorName;
@@ -322,6 +338,7 @@ function tellBossAboutAccess(
   tellBossSoon((t, settings) => {
     const vars = { developer: developerName, person, role: t(roleName), time: t.time(now, settings.timezone) };
     if (what.kind === "created") return t("{developer} (Developer) created an account for {person} ({role}) at {time}.", vars);
+    if (what.kind === "deleted") return t("{developer} (Developer) deleted the account of {person} ({role}) at {time}. Reason: {reason}. Everything they did stays recorded under their name.", { ...vars, reason: shortReason(what.reason) });
     return what.kind === "suspended"
       ? t("{developer} (Developer) suspended {person} ({role}) at {time}. Reason: {reason}. You can switch the account back on in Staff & roles.", { ...vars, reason: shortReason(what.reason) })
       : t("{developer} (Developer) signed {person} ({role}) out of every phone and computer at {time}. They can sign straight back in.", vars);
@@ -343,8 +360,9 @@ export async function suspendAccount(developer: CurrentUser, targetUserId: strin
     if (input.confirm !== "CONFIRM") throw new AppError(msg("Type CONFIRM to suspend this account."), "VALIDATION", { confirm: msg("Type CONFIRM exactly.") });
     const target = await loadAccount(targetUserId);
     if (target.id === developer.actorId) throw new AppError(msg("You cannot suspend your own account."), "FORBIDDEN");
-    if (target.role.code === "OWNER") throw new AppError(msg("Can't be suspended here: this is the Boss's account."), "FORBIDDEN");
+    if (isPermanentOwner({ email: target.email, roleCode: target.role.code })) throw new AppError(PERMANENT_OWNER_REFUSAL, "FORBIDDEN");
     if (!target.isActive) throw new AppError(msg("This account is already suspended."), "CONFLICT");
+    await assertNotLastBoss(target);
     const ipAddress = await callerIp();
     await db.$transaction(async (tx) => {
       await tx.user.update({ where: { id: target.id }, data: { isActive: false } });
@@ -357,6 +375,40 @@ export async function suspendAccount(developer: CurrentUser, targetUserId: strin
     });
     // Told only once the suspension stands (a refused or failed one tells nobody).
     tellBossAboutAccess(developer, ipAddress, new Date(), { kind: "suspended", reason }, target);
+  });
+}
+
+/**
+ * DELETE an account (owner, 2026-10-19: "as Developer I should be able to delete an account, not only suspend it" — and "delete an account does not
+ * delete the data: the records stay, with that name and who did what"). Needs a reason and the word DELETE. The person is signed out, can never sign in
+ * again and the account leaves every list; the account row stays, so everything they did (bookings, payments, shifts, orders, audit entries) keeps
+ * their name — which is why even a person with records can be deleted. Any account can be deleted — the Boss's and the MD's too — except another
+ * Developer's, the system's, your own, a permanent owner's and the last active Boss's.
+ * Written to the audit trail under the Developer, and the Boss is told.
+ */
+export async function deleteAccount(developer: CurrentUser, targetUserId: string, input: { reason: string; confirm: string }): Promise<void> {
+  await verifiedDeveloper(developer);
+  return attempt(developer, "user.delete_failed", targetUserId, {}, async () => {
+    assertNotWorkAs(developer, "delete accounts");
+    const reason = checkReason(input.reason);
+    if (input.confirm !== "DELETE") throw new AppError(msg("Type DELETE to delete this account."), "VALIDATION", { confirm: msg("Type DELETE exactly.") });
+    const target = await loadAccount(targetUserId);
+    if (target.id === developer.actorId) throw new AppError(msg("You cannot delete your own account."), "FORBIDDEN");
+    if (isPermanentOwner({ email: target.email, roleCode: target.role.code })) throw new AppError(PERMANENT_OWNER_REFUSAL, "FORBIDDEN");
+    await assertNotLastBoss(target);
+    const ipAddress = await callerIp();
+    // The account is REMOVED, not erased: the person loses all access and the account leaves the lists, but everything they did stays under their name.
+    const unusable = await unusablePasswordHash();
+    await db.$transaction(async (tx) => {
+      await removeAccountAccess(tx, target.id, unusable);
+      await audit(tx, { userId: developer.actorId, label: developer.actorName, ipAddress }, {
+        action: "user.deleted", entityType: "User", entityId: target.id,
+        before: { fullName: target.fullName, email: target.email, role: target.role.code, isActive: target.isActive },
+        after: { reason, removed: true, recordsKept: true },
+      });
+    });
+    // Told only once the account is gone (a refused or failed one tells nobody).
+    tellBossAboutAccess(developer, ipAddress, new Date(), { kind: "deleted", reason }, target);
   });
 }
 
@@ -396,8 +448,8 @@ export async function signOutEverywhere(developer: CurrentUser, targetUserId: st
     assertNotWorkAs(developer, "sign people out everywhere");
     const target = await loadAccount(targetUserId);
     if (target.id === developer.actorId) throw new AppError(msg("You cannot sign yourself out here: use Sign out."), "FORBIDDEN");
-    // The Boss is never signed out from here (the Access page hides the button; the server refuses it too).
-    if (target.role.code === "OWNER") throw new AppError(msg("Can't sign the Boss out here"), "FORBIDDEN");
+    // A permanent owner is never signed out from here (the Access page hides the button; the server refuses it too).
+    if (isPermanentOwner({ email: target.email, roleCode: target.role.code })) throw new AppError(msg("Can't sign a permanent owner out here"), "FORBIDDEN");
     const ipAddress = await callerIp();
     const done = await db.$transaction(async (tx) => {
       const ended = await tx.session.deleteMany({ where: { userId: target.id } });

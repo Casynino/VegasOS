@@ -178,6 +178,14 @@ The Access page lists the accounts (every account except Developer accounts and 
 
 So Work as can never be used to take over an account.
 
+## 5b. Delete an account, and the permanent owners (owner, 2026-10-19)
+
+- **Delete** (a button next to Suspend on the Access page; a reason and the word DELETE) works on **any account** — the Boss's and the MD's too — except the permanent owners, another Developer, yourself and the last active Boss. The Boss is told on WhatsApp, and the deletion is in the Audit under the Developer.
+- **Delete never deletes data.** The person is signed out everywhere, can never sign in again (password made unusable, e-mail address freed so it can be used again) and the account leaves every list (`users.removedAt`; `src/server/services/account-removal.ts`) — but the account row stays, so every booking, payment, shift, order and audit entry keeps their name and "who did what". The same applies to the Boss's/MD's Delete in Staff & roles (it no longer fails when the person has records).
+- **Permanent owners** (`src/lib/permanent-owners.ts`): every Developer account, and the e-mail addresses listed in the hosting setting **`PERMANENT_OWNER_EMAILS`** (comma-separated; never written in the code, which is public). They can never be suspended, switched off or deleted — not by the Developer, the MD or the Boss (the Access page shows "Permanent owner: can't be suspended or deleted"; the server refuses it again). Set the setting in the hosting provider's environment variables and redeploy; without it only the Developer accounts are permanent.
+- **The last active Boss** can be neither suspended nor deleted (there must always be one): add or promote another Boss first.
+- The Developer still cannot edit, re-role or reset the password of an existing account.
+
 ## 6. Changing the password, switching the account off
 
 All three jobs use the same command, in the same safe way as the setup (section 2, Steps 2 and 3). They ask you to type the database name first, like the setup does.

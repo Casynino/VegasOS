@@ -71,6 +71,7 @@ afterAll(async () => {
   await removeMadeUsers();
 });
 beforeEach(async () => {
+  delete process.env.PERMANENT_OWNER_EMAILS;
   vi.mocked(tellBossSoon).mockClear();
   browser.reset();
   await db.$executeRawUnsafe(`TRUNCATE "audit_logs"`); // every test counts its own entries
@@ -570,10 +571,11 @@ describe("suspendAccount / reactivateAccount / signOutEverywhere", () => {
     expect((await entries("user.suspend_failed", { userId: dev.id })).length, "every refused try by a Developer is kept").toBe(5);
   });
 
-  it("never the Boss, a Developer account, a system account, itself — or one that is already off; and not while working as someone", async () => {
+  it("never a permanent owner, a Developer account, a system account, itself — or one that is already off; and not while working as someone", async () => {
+    process.env.PERMANENT_OWNER_EMAILS = boss.email;
     const d = await developerUser();
     expect(code(await thrownBy(() => suspendAccount(d, boss.id, ok)))).toBe("FORBIDDEN");
-    expect(await thrownBy(() => suspendAccount(d, boss.id, ok))).toMatchObject({ message: expect.stringContaining("Can't be suspended here") });
+    expect(await thrownBy(() => suspendAccount(d, boss.id, ok))).toMatchObject({ message: expect.stringContaining("permanent owner") });
     expect(code(await thrownBy(() => suspendAccount(d, dev2.id, ok)))).toBe("FORBIDDEN");
     expect(code(await thrownBy(() => suspendAccount(d, dev.id, ok)))).toBe("FORBIDDEN");
     expect(code(await thrownBy(() => suspendAccount(d, system.id, ok)))).toBe("NOT_FOUND");
@@ -680,6 +682,7 @@ describe("suspendAccount / reactivateAccount / signOutEverywhere", () => {
 // ───────────────────────────────────────── the Access list ─────────────────────────────────────────
 describe("accessPeople", () => {
   it("lists every account but the Developer's and the system's, grouped by role with the Boss first, with what may be pressed", async () => {
+    process.env.PERMANENT_OWNER_EMAILS = boss.email;
     const d = await developerUser();
     await suspendAccount(d, driver.id, { reason: "Phone reported lost", confirm: "CONFIRM" });
     await suspendAccount(d, fin.id, { reason: "Phone reported lost", confirm: "CONFIRM" });
@@ -695,8 +698,8 @@ describe("accessPeople", () => {
     expect(groups.every((g) => typeof g.roleDescription === "string" && g.people.every((p) => p.roleCode === g.roleCode))).toBe(true);
 
     const p = (u: MadeUser) => everyoneListed.find((x) => x.id === u.id)!;
-    expect(p(boss)).toMatchObject({ roleCode: "OWNER", isActive: true, canWorkAs: true, canSuspend: false, canSignOut: false, canReactivate: false, note: "Can't be suspended or signed out here" });
-    expect(p(md)).toMatchObject({ canWorkAs: true, canSuspend: true, canSignOut: true, canReactivate: false, note: null });
+    expect(p(boss)).toMatchObject({ roleCode: "OWNER", isActive: true, canWorkAs: true, canSuspend: false, canSignOut: false, canDelete: false, canReactivate: false, note: "Permanent owner: can't be suspended or deleted" });
+    expect(p(md)).toMatchObject({ canWorkAs: true, canSuspend: true, canSignOut: true, canDelete: true, canReactivate: false, note: null });
     expect(p(rec)).toMatchObject({ fullName: rec.fullName, email: rec.email, roleName: "Receptionist", canWorkAs: true, canSuspend: true, canSignOut: true });
     expect(p(driver)).toMatchObject({ isActive: false, canWorkAs: false, canSuspend: false, canSignOut: false, canReactivate: true, note: null });
     expect(p(fin)).toMatchObject({ isActive: false, canReactivate: false, note: "Only the Boss or the MD can switch this account back on" });
