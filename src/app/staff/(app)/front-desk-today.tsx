@@ -175,7 +175,7 @@ export async function FrontDeskToday() {
         { href: "/staff/rooms", label: t("Rooms"), hint: t("Board & cleaning"), icon: <BedDouble />, tone: "sky", perm: "rooms.view" },
         { href: "/staff/requests", label: t("Guest request"), hint: t("Room service & needs"), icon: <ConciergeBell />, tone: "violet", perm: "requests.view" },
         { href: "/staff/expenses", label: t("Expense"), hint: t("Money paid out"), icon: <Banknote />, tone: "teal", perm: "expenses.record" },
-      ] as const).filter((a) => can(user, a.perm as never)).map((a) => ({ href: a.href, label: a.label, hint: a.hint, icon: a.icon, tone: a.tone, badge: "badge" in a ? a.badge : undefined })), ...(guideLabel(t, user.permissions) ? [{ href: "/staff/guides", label: guideLabel(t, user.permissions)!, hint: undefined, icon: <BookOpenText />, tone: "violet" as const, badge: undefined }] : [])]} />
+      ] as const).filter((a) => can(user, a.perm as never)).map((a) => ({ href: a.href, label: a.label, hint: a.hint, icon: a.icon, tone: a.tone, badge: "badge" in a ? a.badge : undefined })), ...(guideLabel(t, user.permissions) ? [{ href: "/staff/guides", label: guideLabel(t, user.permissions)!, hint: undefined, icon: <BookOpenText />, tone: "violet" as const, badge: undefined, guide: true }] : [])]} />
         </div>
         {worksShift ? (
           <span className="flex items-center gap-1.5">

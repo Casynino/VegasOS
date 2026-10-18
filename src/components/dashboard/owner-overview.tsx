@@ -218,8 +218,8 @@ export async function OwnerOverview({ searchParams, basePath }: {
     ] : []),
     { id: "online", label: t("Online bookings"), icon: <Inbox /> },
     { id: "detail", label: t("In detail"), icon: <BarChart3 /> },
-    // The guide books (every department's), one small pill at the end of the row — a link to its page, not a part of this one.
-    { id: "guides", label: t("Guide books"), icon: <BookOpenText />, href: "/staff/guides" },
+    // The guide books (every department's), one small pill at the end of the row — it opens a pop-up with them, it is not a part of this page.
+    { id: "guides", label: t("Guide books"), icon: <BookOpenText />, guide: true },
   ];
 
   return (

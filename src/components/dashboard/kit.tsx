@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { GuideBookTrigger } from "@/components/staff/guide-book-dialog";
 import Link from "next/link";
 import { TrendingDown, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -231,12 +232,13 @@ const QA_TINT = {
   teal: { chip: "bg-teal-500/15 text-teal-600 dark:text-teal-300", badge: "bg-teal-500 text-white" },
 } as const;
 export type QuickTone = keyof typeof QA_TINT;
+const QA_PILL = "group inline-flex h-10 shrink-0 items-center gap-2 rounded-full border border-border/70 bg-card pl-1.5 pr-3.5 text-sm font-medium text-foreground/90 transition-colors hover:border-border hover:bg-muted/60 hover:text-foreground";
 /**
  * Quick actions as one slim row of pills: the main job (the gold one — New
  * booking) first, then every other everyday job with a small tinted icon and a
  * live count where it helps. Scrolls sideways on a phone instead of stacking.
  */
-export function QuickActions({ items, t = englishT }: { items: { href: string; label: string; hint?: string; icon: React.ReactNode; tone: QuickTone; badge?: number }[]; t?: T }) {
+export function QuickActions({ items, t = englishT }: { items: { href: string; label: string; hint?: string; icon: React.ReactNode; tone: QuickTone; badge?: number; guide?: boolean }[]; t?: T }) {
   const primary = items.find((a) => a.tone === "gold");
   const rest = items.filter((a) => a !== primary);
   return (
@@ -248,9 +250,14 @@ export function QuickActions({ items, t = englishT }: { items: { href: string; l
           {primary.label}
         </Link>
       )}
-      {rest.map((a) => (
-        <Link key={a.label} href={a.href} title={a.hint}
-          className="group inline-flex h-10 shrink-0 items-center gap-2 rounded-full border border-border/70 bg-card pl-1.5 pr-3.5 text-sm font-medium text-foreground/90 transition-colors hover:border-border hover:bg-muted/60 hover:text-foreground">
+      {rest.map((a) => a.guide ? (
+        // The guide book: a button that opens its pop-up, in the same look as the other pills.
+        <GuideBookTrigger key={a.label} className={QA_PILL}>
+          <span className={cn("grid size-7 place-items-center rounded-full transition-transform group-hover:scale-105 [&_svg]:size-[15px]", QA_TINT[a.tone].chip)}>{a.icon}</span>
+          {a.label}
+        </GuideBookTrigger>
+      ) : (
+        <Link key={a.label} href={a.href} title={a.hint} className={QA_PILL}>
           <span className={cn("grid size-7 place-items-center rounded-full transition-transform group-hover:scale-105 [&_svg]:size-[15px]", QA_TINT[a.tone].chip)}>{a.icon}</span>
           {a.label}
           {a.badge ? <span className={cn("-mr-1 min-w-5 rounded-full px-1.5 text-center text-[11px] font-bold leading-5 tabular-nums", QA_TINT[a.tone].badge)}>{a.badge}</span> : null}

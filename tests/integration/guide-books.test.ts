@@ -31,6 +31,7 @@ import { db } from "@/server/db";
 import { POST } from "@/app/api/guides/upload/route";
 import { recordGuideUploadsAction, removeGuideBookAction } from "@/app/staff/(app)/guides/actions";
 import { GET } from "@/app/api/guides/[file]/route";
+import { GET as listBooks } from "@/app/api/guides/route";
 import { GUIDE_ANY_RIGHTS, GUIDE_CATALOG, GUIDE_FILE, GUIDE_VIEW_RIGHTS, guideBooksFor, guideInfo } from "@/lib/guide-books";
 import { guideStorageReady, storedGuides } from "@/server/services/guide-books";
 import { browser, makeSession, makeUser, removeMadeUsers, type MadeUser } from "../support/developer";
@@ -161,6 +162,40 @@ describe("the download route (/api/guides/<book>)", () => {
     delete process.env.BLOB_READ_WRITE_TOKEN;
     await makeSession(mgr.id);
     expect((await getBook("Vegas-Guide-02-Waiters.pdf")).status).toBe(404);
+  });
+});
+
+describe("the pop-up's list (/api/guides)", () => {
+  beforeEach(() => { process.env.BLOB_READ_WRITE_TOKEN = "test"; storage.blobs = [blob("Vegas-Guide-02-Waiters.pdf"), blob("Vegas-Guide-11-Finance.pdf")]; });
+  const list = async () => (await listBooks()).json() as Promise<{ all: boolean; listed: boolean; books: { file: string; uploaded: boolean; size: number | null; title: string }[] }>;
+  it("a signed-out caller gets 401", async () => {
+    expect((await listBooks()).status).toBe(401);
+  });
+  it("a waiter gets only the waiters' book, marked as uploaded with its size", async () => {
+    await makeSession(others.RESTAURANT.id);
+    const r = await list();
+    expect(r.all).toBe(false);
+    expect(r.books.map((b) => b.file)).toEqual(["Vegas-Guide-02-Waiters.pdf"]);
+    expect(r.books[0]).toMatchObject({ uploaded: true, size: 5, title: "Waiters" });
+  });
+  it("reception gets its three books; the one not uploaded yet says so", async () => {
+    await makeSession(others.RECEPTIONIST.id);
+    const r = await list();
+    expect(r.books.map((b) => b.file)).toEqual(["Vegas-Guide-01-Reception.pdf", "Vegas-Guide-05-Housekeeping.pdf", "Vegas-Guide-10-Guests-and-Website.pdf"]);
+    expect(r.books.every((b) => !b.uploaded)).toBe(true);
+    expect(r.listed).toBe(true);
+  });
+  it("the Manager gets all twelve; with no file storage nothing is listed as uploaded and the list says it could not look", async () => {
+    await makeSession(mgr.id);
+    expect((await list()).books).toHaveLength(12);
+    delete process.env.BLOB_READ_WRITE_TOKEN;
+    const r = await list();
+    expect(r.all).toBe(true);
+    expect(r.listed).toBe(false);
+  });
+  it("the Accountant gets the purchasing book", async () => {
+    await makeSession(others.ACCOUNTANT.id);
+    expect((await list()).books.map((b) => b.file)).toEqual(["Vegas-Guide-12-Purchasing.pdf"]);
   });
 });
 

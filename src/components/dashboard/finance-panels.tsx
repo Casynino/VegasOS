@@ -1,3 +1,4 @@
+import { GuideBookTrigger } from "@/components/staff/guide-book-dialog";
 import Link from "next/link";
 import { AlertCircle, Banknote, BadgeCheck, Coins, CreditCard, Info, Landmark, Smartphone, TrendingUp, Wallet } from "lucide-react";
 import { formatTZS } from "@/lib/format";
@@ -201,12 +202,17 @@ export function PartHeading({ id, icon, tone = "violet", title, subtitle, action
   );
 }
 
+const JUMP_PILL = "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border/70 bg-card px-3 text-xs font-medium text-muted-foreground transition-colors hover:border-border hover:bg-muted/60 hover:text-foreground [&_svg]:size-3.5";
+
 /** "Jump to": the parts of this long page as small links (no tabs — everything is on the page). */
-export function JumpNav({ label, items }: { label: string; items: { id: string; label: string; icon: React.ReactNode; href?: string }[] }) {
+export function JumpNav({ label, items }: { label: string; items: { id: string; label: string; icon: React.ReactNode; guide?: boolean }[] }) {
   return (
     <nav aria-label={label} className="-mx-1 flex items-center gap-1.5 overflow-x-auto px-1 py-0.5 [scrollbar-width:none] md:flex-wrap md:overflow-visible">
-      {items.map((i) => (
-        <a key={i.id} href={i.href ?? `#${i.id}`} className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border/70 bg-card px-3 text-xs font-medium text-muted-foreground transition-colors hover:border-border hover:bg-muted/60 hover:text-foreground [&_svg]:size-3.5">
+      {items.map((i) => i.guide ? (
+        // The guide book: a button that opens its pop-up, in the same look as the pills.
+        <GuideBookTrigger key={i.id} className={JUMP_PILL}>{i.icon}{i.label}</GuideBookTrigger>
+      ) : (
+        <a key={i.id} href={`#${i.id}`} className={JUMP_PILL}>
           {i.icon}{i.label}
         </a>
       ))}

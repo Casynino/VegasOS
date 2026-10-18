@@ -109,8 +109,8 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
     has("ledger.view", "finance.view") && { href: "/staff/finance/ledger", label: t("General ledger"), icon: <Scale />, tone: "sky" as const },
     has("reports.view") && { href: "/staff/reports", label: t("Reports"), icon: <FileText />, tone: "teal" as const },
     // The guide book (Finance's own), one small pill at the end of the row.
-    guideLabel(t, user.permissions) && { href: "/staff/guides", label: guideLabel(t, user.permissions)!, icon: <BookOpenText />, tone: "violet" as const },
-  ].filter(Boolean)) as { href: string; label: string; icon: React.ReactNode; tone: "gold" | "violet" | "rose" | "emerald" | "amber" | "sky" | "teal"; badge?: number }[];
+    guideLabel(t, user.permissions) && { href: "/staff/guides", label: guideLabel(t, user.permissions)!, icon: <BookOpenText />, tone: "violet" as const, guide: true },
+  ].filter(Boolean)) as { href: string; label: string; icon: React.ReactNode; tone: "gold" | "violet" | "rose" | "emerald" | "amber" | "sky" | "teal"; badge?: number; guide?: boolean }[];
 
   // ── The day-by-day chart (months for long periods) and the income mix ──
   const byMonth = trend.length > 62;

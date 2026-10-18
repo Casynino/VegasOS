@@ -4,6 +4,7 @@ import type { Catalog } from "../../../translate";
 const catalog: Catalog = {
   "Guide books": "使用手册",
   "Guide book": "使用手册",
+  "Share the books from the Guide books page": "在“使用手册”页面分享手册",
   "Your guide book": "您的使用手册",
   "Your guide books": "您的使用手册",
   "Download it to keep, or open it to read and print.": "下载保存，或打开阅读和打印。",
