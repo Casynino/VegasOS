@@ -39,9 +39,9 @@ const PART_OF_CHECK: Record<string, string> = {
 
 /**
  * THE DEVELOPER HOME (owner, 2026-10-17; ONE PAGE since 2026-10-18; arranged like his other consoles, Target Express and Swift Cargo): the
- * Developer's control room. At the top how healthy the system is and what needs attention; then, one under the other: Activity (who is
- * using the system), People & my actions, and the group "The system": the system's checks, errors and automatic jobs, whether the Boss gets
- * his reports, how fast it is, who signed in and who was refused, how it is set up.
+ * Developer's control room. At the top how healthy the system is and what needs attention; then, one under the other: whether the Boss gets
+ * his reports (Messages & reports: the most important to the owner, so it is first), Activity (who is using the system), People & my actions,
+ * and the group "The system": errors and automatic jobs, how fast it is, who signed in and who was refused, how it is set up.
  * NOTHING about the hotel's own work (guests, rooms, bookings, orders, money, messages to guests): the Developer's job is the system, not
  * operations. A "business for awareness" group (Hotel, Money, Messages & requests, counts only) was built on 2026-10-18 after his Target
  * console and removed the same day because he said "these are operations data" — they must NOT come back unless the owner asks for them in
@@ -104,13 +104,15 @@ export default async function DeveloperHomePage({ searchParams }: PageProps<"/st
         <AttentionPanel t={t} items={health.items} checks={health.checks} />
       </div>
 
+      {/* The owner (2026-10-18): the Boss's reports are the most important thing to him: right under the attention panel, not far down the page. */}
+      {section("messages", t("Messages & reports"), t("Is the Boss getting his reports and messages?"), chipFor("messages"), <MessagesSection ctx={ctx} />)}
+
       {section("activity", t("Activity"), t("Who is signing in and what the team is doing."), undefined, <ActivitySection ctx={ctx} />)}
 
       {section("people", t("People & my actions"), t("Who has an account, and what you have done."), chipFor("people"), <PeopleSection ctx={ctx} person={person} right={right} />)}
 
       <GroupLabel>{t("The system")}</GroupLabel>
       {section("errors", t("Errors & jobs"), t("Server errors, the automatic jobs and the payment confirmations."), chipFor("errors"), <ErrorsSection ctx={ctx} />)}
-      {section("messages", t("Messages & reports"), t("Is the Boss getting his reports and messages?"), chipFor("messages"), <MessagesSection ctx={ctx} />)}
       {section("speed", t("Speed & size"), t("How fast the database answers and how the system grows."), health.database.ms !== null ? { tone: health.database.ms >= 500 ? "warn" : "ok", text: t("{ms} ms", { ms: health.database.ms }) } : undefined, <SpeedSection ctx={ctx} checks={health.checks} />)}
       {section("security", t("Sign-ins & security"), t("Wrong passwords, paused sign-ins and what was refused to you."), chipFor("security"), <SecuritySection ctx={ctx} />)}
       {section("settings", t("Settings"), t("How the system is set up."), chipFor("settings"), <SettingsSection ctx={ctx} />)}

@@ -2,7 +2,7 @@ import { FileText, MailWarning, Send } from "lucide-react";
 import type { T } from "@/i18n/translate";
 import { msg } from "@/i18n/msg";
 import { Panel } from "@/components/dashboard/kit";
-import { MESSAGE_ROWS, type MessagesData, type ReportKindRow, type ReportState } from "@/server/services/developer-messages";
+import { MESSAGE_ROWS, PURPOSE_WORDS, type MessagesData, type ReportKindRow, type ReportState } from "@/server/services/developer-messages";
 import { BarChart, type BarColumn } from "./console-charts";
 import { DataTable } from "./console-table";
 import { dayLabel, num, Quiet, StatBlock, Tag, type TagTone } from "./console-ui";
@@ -50,8 +50,33 @@ export function MessagesTab({ t, d, when }: { t: T; d: MessagesData; when: (x: D
         : unread}
     </Panel>
   );
+  // The Boss's other reports: when the newest of each kind went out and how the last 7 days went (the daily and room reports are in the table above).
+  const others = (
+    <Panel title={t("Shift, weekly and monthly reports")} subtitle={t("When the newest went out, and the last 7 days.")}>
+      {d.otherReports
+        ? <DataTable
+            compact empty={nothing}
+            cols={[{ label: t("Report") }, { label: t("Last sent") }, { label: t("Last 7 days") }, { label: t("Result") }]}
+            rows={d.otherReports.map((r) => ({
+              key: r.key,
+              cells: [
+                <span key="n" className="font-medium">{t(PURPOSE_WORDS[r.key])}</span>,
+                r.lastSentAt ? <span key="l" className="whitespace-nowrap">{when(r.lastSentAt)}</span> : <span key="l" className="text-muted-foreground">{t("None yet")}</span>,
+                <span key="w" className="text-muted-foreground">{[t("{n} sent", { n: r.sent7d }), ...(r.failed7d > 0 ? [t("{n} failed", { n: r.failed7d })] : []), ...(r.waiting7d > 0 ? [t("{n} waiting", { n: r.waiting7d })] : [])].join(" · ")}</span>,
+                r.failed7d > 0 ? <Tag key="s" tone="rose">{t("Look at it")}</Tag> : r.sent7d > 0 || r.lastSentAt ? <Tag key="s" tone="emerald">{t("OK")}</Tag> : <Tag key="s" tone="slate">{t("None yet")}</Tag>,
+              ],
+            }))}
+          />
+        : unread}
+    </Panel>
+  );
   const reports = (
-    <Panel title={t("The last closed days: reports")} subtitle={t("Did it reach the Boss? Last 7 closed days.")}>
+    <Panel
+      title={t("The last closed days: reports")} subtitle={t("Did it reach the Boss? Last 7 closed days.")}
+      action={d.recipients > 0
+        ? <span className="shrink-0 text-xs text-muted-foreground">{t.plural(d.recipients, "Sent to {n} person", "Sent to {n} people")}</span>
+        : <span className="shrink-0 text-xs font-medium text-amber-700 dark:text-amber-300">{t("Nobody is set to receive them")}</span>}
+    >
       {d.reportDays
         ? <DataTable
             compact empty={nothing}
@@ -92,15 +117,17 @@ export function MessagesTab({ t, d, when }: { t: T; d: MessagesData; when: (x: D
         />
       </div>
 
+      {/* The closed days first (the owner: "this is more important for me"), then the other reports and how many went out each day. */}
+      {reports}
       {perDay && !hasDeliveries ? (
         <>
+          {others}
           <Quiet>{t("Deliveries per day: nothing in the last 14 days.")}</Quiet>
-          {reports}
         </>
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
+          {others}
           {chart}
-          {reports}
         </div>
       )}
 

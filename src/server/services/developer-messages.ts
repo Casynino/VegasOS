@@ -60,6 +60,9 @@ export interface CronJob {
   lastByPerson: { at: Date; date: BusinessDate } | null;
 }
 
+/** The Boss's other reports: the shift-end reports, and the weekly and monthly reports. When the newest was sent, and how the last 7 days went. */
+export interface OtherReportRow { key: "SHIFT_REPORT" | "STAFF_REPORT"; lastSentAt: Date | null; sent7d: number; failed7d: number; waiting7d: number }
+
 export interface MessagesData {
   today: BusinessDate;
   dayStart: string;
@@ -76,6 +79,8 @@ export interface MessagesData {
   perDay: { date: BusinessDate; sent: number; failed: number; pending: number }[] | null;
   byPurpose: { key: string; count: number; failed: number }[] | null;
   reportDays: ReportDayRow[] | null;
+  /** Shift-end reports and weekly / monthly reports (the daily and room reports are in `reportDays`). */
+  otherReports: OtherReportRow[] | null;
   problems: ProblemRow[] | null;
   jobs: CronJob[] | null;
   maxAttempts: number;
@@ -123,7 +128,7 @@ export async function messagesData(user: ConsoleUser, now = new Date()): Promise
     return { row: model === "dailyReport" ? await db.dailyReport.findFirst(args) : await db.roomReport.findFirst(args) };
   });
 
-  const [sent24, failed24, waiting, underMax, atMax, guestSent, guestFailed, rows14, guestWeek, dailyRows, roomRows, problemRows, reminderRows, troubles, lastDaily, lastRoom, handDaily, handRoom] = await Promise.all([
+  const [sent24, failed24, waiting, underMax, atMax, guestSent, guestFailed, rows14, guestWeek, dailyRows, roomRows, problemRows, reminderRows, troubles, lastDaily, lastRoom, handDaily, handRoom, lastShift, lastStaff] = await Promise.all([
     safe(() => db.notificationDelivery.count({ where: { status: { in: [...sentOrDelivered] }, sentAt: { gte: since24 } } })),
     safe(() => db.notificationDelivery.count({ where: { status: "FAILED", updatedAt: { gte: since24 } } })),
     safe(() => db.notificationDelivery.count({ where: { status: "PENDING", createdAt: { gte: since7d } } })),
@@ -143,6 +148,10 @@ export async function messagesData(user: ConsoleUser, now = new Date()): Promise
     safe(() => db.notificationDelivery.findMany({ where: { ...unfinished, purpose: "ARRIVAL_REMINDER" }, orderBy: newestFirst, take: REMINDER_WINDOW, select: problemSelect })),
     safe(() => reportTroubles(now)),
     newestReport("dailyReport", true), newestReport("roomReport", true), newestReport("dailyReport", false), newestReport("roomReport", false),
+    // When the newest shift report / weekly or monthly report really went out (`{ at }` keeps "never sent" apart from "could not be read").
+    ...(["SHIFT_REPORT", "STAFF_REPORT"] as const).map((purpose) => safe(async () => ({
+      at: (await db.notificationDelivery.findFirst({ where: { purpose, status: { in: [...sentOrDelivered] }, sentAt: { not: null } }, orderBy: { sentAt: "desc" }, select: { sentAt: true } }))?.sentAt ?? null,
+    }))),
   ]);
 
   // ── the closed days × the two reports ──
@@ -191,6 +200,18 @@ export async function messagesData(user: ConsoleUser, now = new Date()): Promise
     byPurpose = [...tally].map(([key, v]) => ({ key, ...v })).sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
   }
 
+  // ── the shift-end, weekly and monthly reports: last sent, and the last 7 days ──
+  let otherReports: MessagesData["otherReports"] = null;
+  if (rows14 && lastShift && lastStaff) {
+    otherReports = (["SHIFT_REPORT", "STAFF_REPORT"] as const).map((key) => {
+      const week = rows14.filter((r) => r.purpose === key && r.createdAt >= f.weekStart);
+      return {
+        key, lastSentAt: (key === "SHIFT_REPORT" ? lastShift : lastStaff).at,
+        sent7d: week.filter((r) => r.status === "SENT" || r.status === "DELIVERED").length, failed7d: week.filter((r) => r.status === "FAILED").length, waiting7d: week.filter((r) => r.status === "PENDING").length,
+      };
+    });
+  }
+
   // ── failed or waiting deliveries: the KIND of trouble only, never the provider's words ──
   type Pending = { id: string; purpose: string; status: string; recipient: string; attempts: number; lastError: string | null; updatedAt: Date; reservationId: string | null };
   const line = (r: Pending, reminder: boolean, attempts: number): ProblemRow => ({
@@ -228,7 +249,7 @@ export async function messagesData(user: ConsoleUser, now = new Date()): Promise
     lastClosed,
     retry: underMax !== null && atMax !== null ? { underMax, atMax } : null,
     guestMessages24h: guestSent !== null && guestFailed !== null ? { sent: guestSent, failed: guestFailed } : null,
-    perDay, byPurpose, reportDays, problems, jobs,
+    perDay, byPurpose, reportDays, otherReports, problems, jobs,
     maxAttempts: MAX_ATTEMPTS,
   };
 }

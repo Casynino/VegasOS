@@ -948,7 +948,7 @@ describe("the Developer home page draws, on every tab, from real data", () => {
     // Audit and Business are links; Work as and Add an account open a popup (the Access page is in the side menu and in the popup)
     for (const href of [CONSOLE_HREF.home, CONSOLE_HREF.audit, CONSOLE_HREF.business]) expect(html).toContain(`href="${href}`);
     // no tabs and no jump row: eight parts, each with its anchor and its heading, one under the other (Activity, People, then the system)
-    const ids = ["problems", "activity", "people", "errors", "messages", "speed", "security", "settings"];
+    const ids = ["problems", "messages", "activity", "people", "errors", "speed", "security", "settings"];
     for (const id of ids) expect(html, id).toContain(`id="${id}"`);
     for (const id of ["hotel", "money", "requests"]) expect(html, id).not.toContain(`id="${id}"`);
     expect(html).not.toContain('aria-label="Jump to"');

@@ -403,12 +403,12 @@ describe("the Messages & reports tab", () => {
     expect(html).not.toContain("255700000412");
   });
 
-  it("compact: the chart and the closed days sit side by side, a day is ONE line, the failed list scrolls inside its panel — and none of it repeats itself", () => {
+  it("compact: the closed days come first, then the other reports beside the chart; a day is ONE line, the failed list scrolls inside its panel — and none of it repeats itself", () => {
     const html = renderToStaticMarkup(createElement(MessagesTab, { t, d: msgs, when }));
-    // the chart and the table of closed days share one row of two columns
-    expect(html).toMatch(/lg:grid-cols-2[^>]*>[\s\S]*?Deliveries per day[\s\S]*?The last closed days: reports/);
+    // the table of closed days comes first (the owner: the most important), then one row of two columns: the other reports and the chart
+    expect(html).toMatch(/The last closed days: reports[\s\S]*?lg:grid-cols-2[^>]*>[\s\S]*?Shift, weekly and monthly reports[\s\S]*?Deliveries per day/);
     // one line a day: the state, then when it was sent, muted; who made it and which version is only the hover text (no second line)
-    const table = html.slice(html.indexOf("The last closed days: reports"), html.indexOf("Failed or waiting deliveries"));
+    const table = html.slice(html.indexOf("The last closed days: reports"), html.indexOf("Shift, weekly and monthly reports"));
     expect(table.match(/<tr class="align-middle">/g)).toHaveLength(msgs.reportDays!.length);
     expect(table).toMatch(/sent \d/);
     expect(table).toMatch(/title="Made [^"]*version \d+[^"]*(automatic|made by a person)/);
@@ -418,6 +418,28 @@ describe("the Messages & reports tab", () => {
     expect(html).toContain('aria-label="Failed or waiting deliveries"');
     // no explanatory paragraph under the chart or the table
     for (const gone of ["Was each report made, and did it reach the Boss?", "WhatsApp deliveries each hotel day, by how they went. Last 14 days."]) expect(html, gone).not.toContain(gone);
+  });
+
+  it("the Boss's other reports: when the newest shift / weekly / monthly report went out and how the last 7 days went — the same rows as the by-purpose count, never a word of a message", () => {
+    const rows = msgs.otherReports!;
+    expect(rows.map((r) => r.key)).toEqual(["SHIFT_REPORT", "STAFF_REPORT"]);
+    const shift = rows[0];
+    const byPurpose = msgs.byPurpose!.find((p) => p.key === "SHIFT_REPORT")!;
+    expect(shift.sent7d + shift.failed7d + shift.waiting7d).toBe(byPurpose.count);
+    expect(shift.failed7d).toBe(byPurpose.failed);
+    expect(shift.sent7d).toBeGreaterThan(0);
+    expect(shift.failed7d).toBeGreaterThan(0);
+    // none was ever made of the weekly / monthly kind here: "None yet", not an error
+    expect(rows[1]).toEqual({ key: "STAFF_REPORT", lastSentAt: null, sent7d: 0, failed7d: 0, waiting7d: 0 });
+    const html = renderToStaticMarkup(createElement(MessagesTab, { t, d: msgs, when }));
+    const panel = html.slice(html.indexOf("Shift, weekly and monthly reports"), html.indexOf("Deliveries per day", html.indexOf("Shift, weekly and monthly reports")));
+    for (const w of ["Shift reports", "Weekly and monthly reports", "Last sent", "Last 7 days", "None yet", "Look at it"]) expect(panel, w).toContain(w);
+    expect(panel).toMatch(/\d+ sent/);
+    expect(panel).not.toContain(BODY);
+    // who it goes to: how many recipients (never a phone number here)
+    expect(html).toContain("Sent to 1 person");
+    expect(renderToStaticMarkup(createElement(MessagesTab, { t, d: { ...msgs, recipients: 0 }, when }))).toContain("Nobody is set to receive them");
+    expect(html).not.toMatch(/undefined|NaN/);
   });
 
   it("the list of failed or waiting deliveries is drawn ONLY when there are any (the 'Failed deliveries' card already says none); an empty chart is one quiet line", () => {
@@ -443,7 +465,7 @@ describe("the Developer home draws every part on one page, in the owner's arrang
     await wipe();
     await as(dev);
     const html = await draw();
-    const ids = ["problems", "activity", "people", "errors", "messages", "speed", "security", "settings"];
+    const ids = ["problems", "messages", "activity", "people", "errors", "speed", "security", "settings"];
     for (const id of ids) expect(html, id).toContain(`id="${id}"`);
     const at = ids.map((id) => html.indexOf(`id="${id}"`));
     expect(at).toEqual([...at].sort((x, y) => x - y)); // in this order on the page
