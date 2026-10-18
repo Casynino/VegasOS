@@ -6,6 +6,7 @@ import m_content_admin from "./content-admin";
 import m_daily_lists from "./daily-lists";
 import m_dashboards from "./dashboards";
 import m_developer_access from "./developer-access";
+import m_developer_activity_people from "./developer-activity-people";
 import m_developer_adduser from "./developer-adduser";
 import m_developer_attribution from "./developer-attribution";
 import m_developer_checks from "./developer-checks";
@@ -27,6 +28,7 @@ import m_developer_rights from "./developer-rights";
 import m_developer_session2 from "./developer-session2";
 import m_developer_session3 from "./developer-session3";
 import m_developer_shell from "./developer-shell";
+import m_developer_speed_settings from "./developer-speed-settings";
 import m_developer_team from "./developer-team";
 import m_developer_ui2 from "./developer-ui2";
 import m_developer_users from "./developer-users";
@@ -73,6 +75,7 @@ const catalog: Catalog = {
   ...m_daily_lists,
   ...m_dashboards,
   ...m_developer_access,
+  ...m_developer_activity_people,
   ...m_developer_adduser,
   ...m_developer_attribution,
   ...m_developer_checks,
@@ -94,6 +97,7 @@ const catalog: Catalog = {
   ...m_developer_session2,
   ...m_developer_session3,
   ...m_developer_shell,
+  ...m_developer_speed_settings,
   ...m_developer_team,
   ...m_developer_ui2,
   ...m_developer_users,

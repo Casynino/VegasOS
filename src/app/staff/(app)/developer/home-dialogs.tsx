@@ -15,13 +15,13 @@ import { TILE, TILE_ICON } from "./tile-style";
 /** The two shortcut cards on the Developer Home that open a popup: "Work as someone" and "Add an account". */
 export interface PersonChoice { id: string; fullName: string; roleName: string }
 
-function CardBody({ icon, title, text, arrow }: { icon: ReactNode; title: string; text: string; arrow?: boolean }) {
+function CardBody({ icon, title, text }: { icon: ReactNode; title: string; text: string }) {
   return (
     <>
       <span className={TILE_ICON}>{icon}</span>
       <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-1.5 text-sm font-semibold text-foreground">{title}{arrow && <ArrowRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden />}</span>
-        <span className="mt-1 block text-sm leading-snug text-muted-foreground">{text}</span>
+        <span className="block truncate text-base font-semibold text-foreground">{title}</span>
+        <span className="mt-0.5 block truncate text-sm text-muted-foreground">{text}</span>
       </span>
     </>
   );
@@ -40,7 +40,7 @@ export function WorkAsCard({ people }: { people: PersonChoice[] }) {
   return (
     <>
       <button type="button" className={TILE} onClick={() => { setQuery(""); setOpen(true); }}>
-        <CardBody icon={<LogIn className="size-5" aria-hidden />} title={t("Work as")} text={t("Use the app as any staff member, as you.")} />
+        <CardBody icon={<LogIn className="size-5" aria-hidden />} title={t("Work as")} text={t.plural(people.length, "{n} person to pick from", "{n} people to pick from")} />
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
@@ -93,7 +93,7 @@ export function AddAccountCard({ roles }: { roles: RoleChoice[] }) {
   return (
     <>
       <button type="button" className={TILE} onClick={() => { setRound((n) => n + 1); setOpen(true); }}>
-        <CardBody icon={<UserPlus className="size-5" aria-hidden />} title={t("Add an account")} text={t("Staff, manager or owner.")} />
+        <CardBody icon={<UserPlus className="size-5" aria-hidden />} title={t("Add an account")} text={t("Create a login")} />
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>

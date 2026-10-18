@@ -32,6 +32,7 @@ import { toDbDate } from "@/lib/time/business-date";
 import { getSettings } from "@/server/settings";
 import { reportTrouble } from "@/lib/report-trouble";
 import DeveloperHomePage from "@/app/staff/(app)/developer/page";
+import { BossReports } from "@/app/staff/(app)/developer/boss-reports";
 import { MessagesTab } from "@/app/staff/(app)/developer/tab-messages";
 import { makeT } from "@/i18n/translate";
 import { eat, resetBusinessData } from "../support/helpers";
@@ -314,7 +315,6 @@ describe("the Messages & reports tab", () => {
     expect(html).toContain("Failed deliveries, 7 days");
     for (const w of ["will be tried again by themselves", "tries left", "given up", "being tried", "On time", "trimmed and cleaned"]) expect(html, w).not.toContain(w);
     expect(msgs.lastClosed!.daily.state).toBe("ok");
-    expect(html).toMatch(/Daily report<\/p>[\s\S]{0,2000}?>Sent</);
     // a stacked chart's picture says each part of a day, not only the sum
     expect(html).toMatch(/aria-label="Deliveries per day: [^"]*\(Sent \d+/);
   });
@@ -392,32 +392,40 @@ describe("the Messages & reports tab", () => {
     } finally { spy.mockRestore(); }
   });
 
-  it("the tab draws: states in plain words, masked phones, the schedule, the numbers table", () => {
+  it("the tab draws: the sending figures, masked phones, the numbers table — and NOT the Boss's report days (they are the panels under the attention panel)", () => {
     const html = renderToStaticMarkup(createElement(MessagesTab, { t, d: msgs, when }));
-    for (const w of ["WhatsApp deliveries, 24 hours", "Daily report", "Room report", "Sent", "Send failed", "Failed deliveries, 7 days", "Deliveries per day",
-      "The last closed days: reports", "Failed or waiting deliveries", "•••• ", "Show the numbers", "data-stack", "Not sent", "Not made"]) {
+    for (const w of ["WhatsApp deliveries, 24 hours", "Failed deliveries, 7 days", "Deliveries per day", "Failed or waiting deliveries", "•••• ", "Show the numbers", "data-stack"]) {
       expect(html, w).toContain(w);
     }
+    for (const w of ["The last closed days: reports", "Shift, weekly and monthly reports"]) expect(html, w).not.toContain(w);
     expect(html).not.toContain("undefined");
     expect(html).not.toContain("NaN");
     expect(html).not.toContain("255700000412");
   });
 
-  it("compact: the closed days come first, then the other reports beside the chart; a day is ONE line, the failed list scrolls inside its panel — and none of it repeats itself", () => {
+  it("compact: the failed list scrolls inside its panel, nothing repeats itself", () => {
     const html = renderToStaticMarkup(createElement(MessagesTab, { t, d: msgs, when }));
-    // the table of closed days comes first (the owner: the most important), then one row of two columns: the other reports and the chart
-    expect(html).toMatch(/The last closed days: reports[\s\S]*?lg:grid-cols-2[^>]*>[\s\S]*?Shift, weekly and monthly reports[\s\S]*?Deliveries per day/);
-    // one line a day: the state, then when it was sent, muted; who made it and which version is only the hover text (no second line)
-    const table = html.slice(html.indexOf("The last closed days: reports"), html.indexOf("Shift, weekly and monthly reports"));
-    expect(table.match(/<tr class="align-middle">/g)).toHaveLength(msgs.reportDays!.length);
-    expect(table).toMatch(/sent \d/);
-    expect(table).toMatch(/title="Made [^"]*version \d+[^"]*(automatic|made by a person)/);
-    expect(table).not.toContain("mt-1 block text-[11px]");
     // the long list scrolls inside its panel (about six rows show), reachable with the keyboard
     expect(html).toMatch(/max-h-\[21\.5rem\][^>]*tabindex="0"|tabindex="0"[^>]*max-h-\[21\.5rem\]/);
     expect(html).toContain('aria-label="Failed or waiting deliveries"');
-    // no explanatory paragraph under the chart or the table
+    // no explanatory paragraph under the chart
     for (const gone of ["Was each report made, and did it reach the Boss?", "WhatsApp deliveries each hotel day, by how they went. Last 14 days."]) expect(html, gone).not.toContain(gone);
+  });
+
+  it("the Boss's reports (ORA look): a panel for the daily report and one for the room report, three days then 'Earlier days', a pill and the time for each day", () => {
+    const html = renderToStaticMarkup(createElement(BossReports, { t, d: msgs, now: NOW, timezone: "Africa/Dar_es_Salaam" }));
+    const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+    for (const w of ["Daily report to Boss", "Room report to Boss", "Made when the hotel day closes at", "sent on WhatsApp.", "Earlier days · 4", "Yesterday", "Sent", "Not sent — failed", "Not made", "Weekly and monthly reports", "Shift reports", "1 of 7 sent"]) expect(text, w).toContain(w);
+    // the daily report of the last closed day went out at 07:01; the days are one line each: 3 shown + 4 behind 'Earlier days', in each of the two panels
+    expect(text).toContain("07:01");
+    expect(html.match(/<li[ >]/g)).toHaveLength(msgs.reportDays!.length * 2);
+    expect(html.match(/<details/g)).toHaveLength(2);
+    expect(html).not.toMatch(/undefined|NaN/);
+    // who it goes to is a name, never a phone number or a message's words
+    expect(html).not.toContain("255700000412");
+    expect(html).not.toContain("report text");
+    // reports that could not be read say so, once
+    expect(renderToStaticMarkup(createElement(BossReports, { t, d: { ...msgs, reportDays: null }, now: NOW, timezone: "Africa/Dar_es_Salaam" }))).toContain("This could not be read just now.");
   });
 
   it("the Boss's other reports: when the newest shift / weekly / monthly report went out and how the last 7 days went — the same rows as the by-purpose count, never a word of a message", () => {
@@ -431,14 +439,14 @@ describe("the Messages & reports tab", () => {
     expect(shift.failed7d).toBeGreaterThan(0);
     // none was ever made of the weekly / monthly kind here: "None yet", not an error
     expect(rows[1]).toEqual({ key: "STAFF_REPORT", lastSentAt: null, sent7d: 0, failed7d: 0, waiting7d: 0 });
-    const html = renderToStaticMarkup(createElement(MessagesTab, { t, d: msgs, when }));
-    const panel = html.slice(html.indexOf("Shift, weekly and monthly reports"), html.indexOf("Deliveries per day", html.indexOf("Shift, weekly and monthly reports")));
-    for (const w of ["Shift reports", "Weekly and monthly reports", "Last sent", "Last 7 days", "None yet", "Look at it"]) expect(panel, w).toContain(w);
-    expect(panel).toMatch(/\d+ sent/);
-    expect(panel).not.toContain(BODY);
-    // who it goes to: how many recipients (never a phone number here)
-    expect(html).toContain("Sent to 1 person");
-    expect(renderToStaticMarkup(createElement(MessagesTab, { t, d: { ...msgs, recipients: 0 }, when }))).toContain("Nobody is set to receive them");
+    const html = renderToStaticMarkup(createElement(BossReports, { t, d: msgs, now: NOW, timezone: "Africa/Dar_es_Salaam" }));
+    for (const w of ["Shift reports", "Weekly and monthly reports", "None yet"]) expect(html, w).toContain(w);
+    expect(html).not.toContain(BODY);
+    expect(html).not.toMatch(/undefined|NaN/);
+    // who it goes to: a name in the title (never a phone number); nobody at all is said in amber, once per panel
+    expect(html).toContain("Daily report to Boss");
+    expect(html).not.toContain("Nobody is set to receive them");
+    expect(renderToStaticMarkup(createElement(BossReports, { t, d: { ...msgs, recipients: 0, recipientNames: [] }, now: NOW, timezone: "Africa/Dar_es_Salaam" }))).toContain("Nobody is set to receive them");
     expect(html).not.toMatch(/undefined|NaN/);
   });
 
@@ -449,7 +457,6 @@ describe("the Messages & reports tab", () => {
     const quiet = renderToStaticMarkup(createElement(MessagesTab, { t, d: { ...msgs, problems: [], perDay: msgs.perDay!.map((r) => ({ ...r, sent: 0, failed: 0, pending: 0 })) }, when }));
     expect(quiet).toContain("Deliveries per day: nothing in the last 14 days.");
     expect(quiet).not.toContain("Show the numbers"); // no chart, no numbers table of zeros
-    expect(quiet).toContain("The last closed days: reports");
     // a list that could not be read says so, once, without drawing a table
     const unread = renderToStaticMarkup(createElement(MessagesTab, { t, d: { ...msgs, problems: null }, when }));
     expect(unread).toContain("Failed or waiting deliveries: This could not be read just now.");
@@ -465,16 +472,16 @@ describe("the Developer home draws every part on one page, in the owner's arrang
     await wipe();
     await as(dev);
     const html = await draw();
-    const ids = ["problems", "messages", "activity", "people", "errors", "speed", "security", "settings"];
+    const ids = ["problems", "activity", "people", "messages", "errors", "speed", "security", "settings"];
     for (const id of ids) expect(html, id).toContain(`id="${id}"`);
     const at = ids.map((id) => html.indexOf(`id="${id}"`));
     expect(at).toEqual([...at].sort((x, y) => x - y)); // in this order on the page
     for (const id of ["hotel", "money", "requests"]) expect(html, id).not.toContain(`id="${id}"`);
-    expect(html).not.toContain('aria-label="Jump to"');
+    expect(html).toContain('aria-label="Jump to"'); // the pills under the Boss's reports (the ORA look)
     expect(html).toContain("The system");
     // the owner (2026-10-18): "these are operations data" — none of the business parts, in any wording
     for (const text of ["The business, for awareness", "What is happening in the hotel", "Where the money is", "Rooms with a guest", "Bookings in the system", "Bills issued", "Messages sent (14 days)", "Received today", "Money accounts", "The last payments", "Today&#x27;s arrivals"]) expect(html, text).not.toContain(text);
-    for (const text of ["Is the Boss getting his reports and messages?", "The last closed days: reports"]) expect(html, text).toContain(text);
+    for (const text of ["How the sending of the reports and messages went.", "Daily report", "Room report", "Earlier days"]) expect(html, text).toContain(text);
     // nothing was delivered: the chart is not drawn as an empty box, ONE quiet line says so — and the list of failed deliveries is not drawn at all
     expect(html).toContain("Deliveries per day: nothing in the last 14 days.");
     expect(html).not.toContain("Failed or waiting deliveries");
@@ -487,8 +494,8 @@ describe("the Developer home draws every part on one page, in the owner's arrang
     try {
       await as(dev);
       const html = await draw();
-      for (const w of ["老板是否收到了报告和消息？", "登录与安全", "错误与自动任务"]) expect(html, w).toContain(w);
-      expect(html).not.toContain("Is the Boss getting his reports and messages?");
+      for (const w of ["报告和消息的发送情况", "登录与安全", "错误与自动任务"]) expect(html, w).toContain(w);
+      expect(html).not.toContain("How the sending of the reports and messages went.");
       expect(html).not.toContain("Sign-ins & security");
       expect(html).not.toContain("undefined");
       expect(html).not.toContain("NaN");
@@ -535,7 +542,7 @@ describe("the Developer home draws every part on one page, in the owner's arrang
     const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
     try {
       const html = await draw();
-      expect(html).toContain("Is the Boss getting his reports and messages?");
+      expect(html).toContain("How the sending of the reports and messages went.");
     } finally { spy.mockRestore(); logged.mockRestore(); }
   });
 });

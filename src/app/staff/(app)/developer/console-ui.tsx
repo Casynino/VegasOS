@@ -68,19 +68,20 @@ export function Tag({ tone = "slate", children, className }: { tone?: TagTone; c
 
 // ───────────────────────────────────────────── banner ─────────────────────────────────────────────
 /**
- * The greeting at the top (copied from the owner's Target console, 2026-10-18: "the same look exactly"): a solid gradient in the hotel's own
- * colours (gold into dark brown) with a faint grid, the date and the Developer tag, a big greeting and one line.
+ * The greeting at the top (copied from the owner's ORA / Target consoles, 2026-10-18: "copy this look exactly"): a vivid gradient in the
+ * hotel's own colours (gold) with a faint grid, a dot and the date, the Developer tag, a big greeting and one line.
  */
 export function ConsoleBanner({ date, tag, title, subtitle }: { date: string; tag: string; title: string; subtitle: string }) {
   return (
-    <section className="relative isolate overflow-hidden rounded-[1.5rem] bg-[linear-gradient(105deg,#2a1c07_0%,#5f4110_45%,#b9841f_100%)] px-6 py-7 text-white shadow-[0_24px_60px_-30px_rgba(40,25,5,0.75)] sm:px-8 sm:py-8">
+    <section className="relative isolate overflow-hidden rounded-[1.75rem] bg-[linear-gradient(100deg,#7a4f0c_0%,#b8801d_42%,#e3ad47_72%,#c98a1f_100%)] px-6 py-6 text-white shadow-[0_24px_60px_-30px_rgba(40,25,5,0.75)] sm:px-8 sm:py-7">
       <div aria-hidden className="absolute inset-0 -z-10 opacity-[0.1] [background-image:linear-gradient(white_1px,transparent_1px),linear-gradient(90deg,white_1px,transparent_1px)] [background-size:28px_28px]" />
-      <div className="flex flex-wrap items-center gap-2 text-sm text-white/85">
+      <div className="flex flex-wrap items-center gap-2 text-sm text-white/90">
+        <span className="size-1.5 rounded-full bg-white" aria-hidden />
         <span>{date}</span>
-        <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-white">{tag}</span>
+        <span className="rounded-full bg-white/25 px-2.5 py-0.5 text-xs font-semibold text-white">{tag}</span>
       </div>
-      <h1 className="mt-2.5 text-3xl font-bold leading-tight tracking-tight sm:text-4xl">{title}</h1>
-      <p className="mt-1.5 max-w-4xl text-sm leading-relaxed text-white/85 sm:text-base">{subtitle}</p>
+      <h1 className="mt-2 text-3xl font-bold leading-tight tracking-tight sm:text-4xl">{title}</h1>
+      <p className="mt-1 max-w-4xl text-sm leading-relaxed text-white/90 sm:text-base">{subtitle}</p>
     </section>
   );
 }
@@ -99,6 +100,9 @@ export function SectionTitle({ title, hint, count, id }: { title: string; hint?:
   );
 }
 
+/** The icon box of a figure card (ORA look): the hotel's accent colour (gold), whatever the tag says. */
+const ICON_BOX = "bg-[oklch(0.72_0.12_80/0.16)] text-[oklch(0.5_0.11_75)] dark:text-[oklch(0.84_0.11_82)]";
+
 /**
  * A figure with its words, as a compact card: a small label with an icon on the right, a big number, what it counts and one small tag.
  * The longer explanation of the figure (`note`) is not printed: it is the hover text of the card, so the page stays short (owner, 2026-10-18: "do not be repetitive").
@@ -112,8 +116,8 @@ export function StatBlock({ label, value, caption, tag, tagTone = "slate", note,
   return (
     <div title={note} className="flex min-w-0 flex-col rounded-2xl border border-border/70 bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-5">
       <div className="flex items-start justify-between gap-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
-        {Icon && <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground" aria-hidden><Icon className="size-4" /></span>}
+        <p className="text-[15px] text-muted-foreground">{label}</p>
+        {Icon && <span className={cn("grid size-10 shrink-0 place-items-center rounded-xl", ICON_BOX)} aria-hidden><Icon className="size-[18px]" /></span>}
       </div>
       <p className={cn("mt-2 break-words font-semibold leading-none tracking-tight tabular-nums", small ? "text-2xl" : "text-3xl", warn && "text-amber-700 dark:text-amber-300")}>{value}</p>
       <p className="mt-1.5 text-sm text-muted-foreground">{caption}</p>

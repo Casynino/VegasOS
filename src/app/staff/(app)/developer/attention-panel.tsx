@@ -14,8 +14,8 @@ import { Card } from "./attention";
  */
 
 function Verdict({ t, fix, look }: { t: T; fix: number; look: number }) {
-  const [text, tone] = fix > 0 ? [t("{n} to fix now", { n: fix }), "bg-rose-500 text-white"] : look > 0 ? [t("{n} to look at", { n: look }), "bg-amber-500 text-amber-950"] : [t("All clear"), "bg-emerald-500 text-white"];
-  return <span className={cn("shrink-0 rounded-full px-3 py-1 text-xs font-semibold", tone)}>{text}</span>;
+  const [text, tone] = fix > 0 ? [t("{n} to fix now", { n: fix }), "text-rose-500"] : look > 0 ? [t("{n} to look at", { n: look }), "text-amber-500"] : [t("All clear"), "text-emerald-500"];
+  return <span className={cn("shrink-0 pt-0.5 text-sm font-medium", tone)}>{text}</span>;
 }
 
 function Row({ icon: Icon, iconTone, title, summary, hover, status }: {

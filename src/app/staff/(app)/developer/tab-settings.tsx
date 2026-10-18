@@ -3,12 +3,13 @@ import { ChevronDown, CircleAlert } from "lucide-react";
 import type { T } from "@/i18n/translate";
 import type { Diagnostics, EnvSetting, HotelSetup, SettingsTab as SettingsData } from "@/server/services/developer-console";
 import { Panel } from "@/components/dashboard/kit";
-import { num, Quiet, Tag } from "./console-ui";
+import { num, Tag } from "./console-ui";
 
 /**
- * SETTINGS: what the system needs to run (yes / no and counters — never a key or a password) next to how the hotel is set up (the numbers
- * prices and bills are worked out from), each setting on ONE line (what it is for is the hover text); and, under them, one slim strip about
- * your own session with the rights the Developer role does NOT hold (money, and why). Accounts by role are in People, not here.
+ * SETTINGS, laid out like the owner's other console (Target Express, 2026-10-18: "copy this look exactly"): ONE panel "Settings" — each setting
+ * the system needs to run by its name, its code and a line saying what it is for, with "Set" or "Missing" (yes / no only — never a key or a
+ * password), in two columns; under it "How the hotel is set up" (the numbers prices and bills are worked out from, one line each) and ONE slim
+ * strip about your own session with the rights the Developer role does NOT hold (money, and why). Accounts by role are in People, not here.
  */
 
 function minutesWords(t: T, total: number) {
@@ -17,11 +18,22 @@ function minutesWords(t: T, total: number) {
   return h > 0 ? t("{h} h {m} min", { h, m }) : t("{m} min", { m });
 }
 
+/** A list in two columns with a line between the columns and a line above every row (one column on a phone). An odd last row leaves its neighbour empty, so the line still runs to the bottom. */
+function TwoCols({ count, label, children }: { count: number; label: string; children: ReactNode }) {
+  return (
+    <ul aria-label={label} className="grid md:grid-cols-2">
+      {children}
+      {count % 2 === 1 && <li aria-hidden className="hidden border-t border-border/60 md:block md:border-l" />}
+    </ul>
+  );
+}
+const CELL = "min-w-0 border-t border-border/60 px-4 sm:px-6 md:[&:nth-child(even)]:border-l";
+
 /** One line of "How the hotel is set up": the name on the left, the value on the right; what it is for is the hover text. */
 function SetupRow({ label, hint, children }: { label: string; hint: string; children: ReactNode }) {
   return (
-    <li title={hint} className="flex items-center justify-between gap-4 border-b border-border/60 px-4 py-2 last:border-b-0 sm:px-6">
-      <span className="min-w-0 text-sm">{label}</span>
+    <li title={hint} className={`${CELL} flex items-center justify-between gap-4 py-2.5`}>
+      <span className="min-w-0 text-sm text-muted-foreground">{label}</span>
       <span className="shrink-0 text-right text-sm font-semibold tabular-nums">{children}</span>
     </li>
   );
@@ -35,9 +47,9 @@ function HotelPanel({ t, h }: { t: T; h: HotelSetup }) {
   const count = (v: number | null) => (v === null ? <Unread t={t} /> : num(t, v));
   const unread = Object.values(h).every((v) => v === null);
   return (
-    <Panel title={t("How the hotel is set up")} subtitle={t("The numbers prices and bills are worked out from.")} bodyClassName="-mx-4 -mb-4 sm:-mx-6 sm:-mb-6">
-      {unread ? <div className="px-4 pb-4 sm:px-6 sm:pb-6"><Quiet>{t("This could not be read just now.")}</Quiet></div> : (
-        <ul className="border-t border-border/60">
+    <Panel level={3} title={t("How the hotel is set up")} subtitle={t("The numbers prices and bills are worked out from.")} bodyClassName="-mx-4 -mb-4 sm:-mx-6 sm:-mb-6">
+      {unread ? <p className="px-4 pb-4 text-center text-sm text-muted-foreground sm:px-6 sm:pb-6">{t("This could not be read just now.")}</p> : (
+        <TwoCols count={10} label={t("How the hotel is set up")}>
           <SetupRow label={t("Business day starts")} hint={t("Every figure is counted from this hour to the same hour next morning.")}>{h.dayStart ?? <Unread t={t} />}</SetupRow>
           <SetupRow label={t("Time zone")} hint={t("The clock the hotel's days and times follow.")}>{h.timezone ?? <Unread t={t} />}</SetupRow>
           <SetupRow label={t("Guest rooms in use")} hint={t("Rooms that can be sold.")}>{h.guestRooms ? t("{a} of {b}", { a: h.guestRooms.active, b: h.guestRooms.total }) : <Unread t={t} />}</SetupRow>
@@ -50,46 +62,49 @@ function HotelPanel({ t, h }: { t: T; h: HotelSetup }) {
             {h.unpaidHoldHours === null ? <Unread t={t} /> : h.unpaidHoldHours === 0 ? t("until the arrival day") : t.plural(h.unpaidHoldHours, "{n} hour", "{n} hours")}
           </SetupRow>
           <SetupRow label={t("Online payment")} hint={t("Whether guests can pay online.")}>{onOff(h.onlinePayment)}</SetupRow>
-        </ul>
+        </TwoCols>
       )}
     </Panel>
   );
 }
 
-/** The settings the system runs on: each by NAME with "Set" or "Not set" — a key or a password is never read out. */
+/** The settings the system runs on, as in the owner's other console: each by NAME, its code and what it is for, with "Set" or "Missing" — a key or a password is never read out. */
 function EnvPanel({ t, env, d }: { t: T; env: EnvSetting[]; d: Diagnostics }) {
   const m = d.migrations;
   const missing = env.filter((e) => e.required && !e.set).length;
   const setCount = env.filter((e) => e.set).length;
   const updatesOk = !!m && m.failed === 0 && m.rolledBack === 0;
-  const row = "flex items-center justify-between gap-3 border-b border-border/60 px-4 py-2 last:border-b-0 sm:px-6";
+  const cell = `${CELL} py-3.5`;
   return (
     <Panel
-      title={t("What the system needs to run")}
-      subtitle={<span title={missing === 0 ? t("All required settings are in place. Only whether a setting exists is shown, never its value.") : t("{n} required settings are missing. Only whether a setting exists is shown, never its value.", { n: missing })}>{missing === 0 ? t("All required settings are in place.") : t("{n} required settings are missing.", { n: missing })}</span>}
+      level={3} title={t("Settings")}
+      subtitle={missing === 0 ? t("All required settings are in place. Only whether a setting exists is shown, never its value.") : t("{n} required settings are missing. Only whether a setting exists is shown, never its value.", { n: missing })}
       action={<Tag tone={missing === 0 ? "emerald" : "rose"}>{t("{a} of {b} set", { a: setCount, b: env.length })}</Tag>}
       bodyClassName="-mx-4 -mb-4 sm:-mx-6 sm:-mb-6"
     >
-      <ul className="border-t border-border/60">
+      <TwoCols count={env.length + 1} label={t("Settings")}>
         {env.map((e) => (
-          <li key={e.key} title={t(e.description)} className={row}>
-            <span className="min-w-0 text-sm">
-              <span className="font-medium">{t(e.label)}</span>
-              <span className="ml-2 break-all font-mono text-[11px] text-muted-foreground">{e.key}</span>
-            </span>
-            <Tag tone={e.set ? "emerald" : e.required ? "rose" : "slate"}>{e.set ? t("Set") : e.required ? t("Missing") : t("Not set")}</Tag>
+          <li key={e.key} className={cell}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">{t(e.label)}</p>
+                <p className="break-all font-mono text-[11px] text-muted-foreground">{e.key}</p>
+              </div>
+              <Tag tone={e.set ? "emerald" : e.required ? "rose" : "slate"}>{e.set ? t("Set") : e.required ? t("Missing") : t("Not set")}</Tag>
+            </div>
+            <p className="mt-2 text-[13px] leading-snug text-muted-foreground">{t(e.description)}</p>
           </li>
         ))}
-        <li className={row}>
-          <span className="min-w-0 text-sm">
-            <span className="font-medium">{t("Database updates (migrations)")}</span>
-            <span className="ml-2 break-all text-[11px] text-muted-foreground">
-              {m ? [t("{n} applied", { n: m.applied }), m.latest ? t("Latest: {name}", { name: m.latest }) : null, m.failed > 0 ? t("{n} failed or not finished", { n: m.failed }) : null, m.rolledBack > 0 ? t("{n} undone", { n: m.rolledBack }) : null].filter(Boolean).join(" · ") : t("Could not be read")}
-            </span>
-          </span>
-          <Tag tone={updatesOk ? "emerald" : "rose"}>{updatesOk ? t("OK") : t("Look at it")}</Tag>
+        <li className={cell}>
+          <div className="flex items-start justify-between gap-3">
+            <p className="min-w-0 text-sm font-medium">{t("Database updates (migrations)")}</p>
+            <Tag tone={updatesOk ? "emerald" : "rose"}>{updatesOk ? t("OK") : t("Look at it")}</Tag>
+          </div>
+          <p className="mt-2 break-all text-[13px] leading-snug text-muted-foreground">
+            {m ? [t("{n} applied", { n: m.applied }), m.latest ? t("Latest: {name}", { name: m.latest }) : null, m.failed > 0 ? t("{n} failed or not finished", { n: m.failed }) : null, m.rolledBack > 0 ? t("{n} undone", { n: m.rolledBack }) : null].filter(Boolean).join(" · ") : t("Could not be read")}
+          </p>
         </li>
-      </ul>
+      </TwoCols>
     </Panel>
   );
 }
@@ -143,10 +158,8 @@ function YouStrip({ t, id, when }: { t: T; id: SettingsData["identity"]; when: (
 export function SettingsTab({ t, s, when }: { t: T; s: SettingsData; when: (x: Date) => string }) {
   return (
     <div className="space-y-4">
-      <div className="grid items-start gap-4 lg:grid-cols-2">
-        <EnvPanel t={t} env={s.env} d={s.config} />
-        <HotelPanel t={t} h={s.hotel} />
-      </div>
+      <EnvPanel t={t} env={s.env} d={s.config} />
+      <HotelPanel t={t} h={s.hotel} />
       <YouStrip t={t} id={s.identity} when={when} />
     </div>
   );

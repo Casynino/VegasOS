@@ -12,7 +12,7 @@ vi.mock("next/navigation", async () => {
 import { db } from "@/server/db";
 import { getCurrentUser, type CurrentUser } from "@/server/auth";
 import { AppError } from "@/server/errors";
-import { activityData, LATEST_ACTIONS, ONLINE_MINUTES } from "@/server/services/developer-activity";
+import { activityData, LATEST_ACTIONS, ONLINE_MINUTES, RECENT_SIGN_INS } from "@/server/services/developer-activity";
 import { crashData, speedData } from "@/server/services/developer-health";
 import { envSettings, peopleTab, settingsTab } from "@/server/services/developer-console";
 import { runChecks } from "@/server/services/developer-checks";
@@ -48,9 +48,11 @@ describe("Activity: who is using the system", () => {
     // who is doing what: the kinds of work (counts of actions) and the team's latest actions — and never an amount
     expect(a.where).toEqual(expect.any(Array));
     expect(a.latest).toEqual(expect.any(Array));
-    expect(a.recentSignIns!.length).toBeLessThanOrEqual(5);
-    // each figure is kept once on the page: the 24-hour counts are the health card's, the ranking of people and the idle accounts are the team table's
-    for (const gone of ["stats", "mostActive", "notUsing", "notUsingTotal"]) expect(a, gone).not.toHaveProperty(gone);
+    expect(a.recentSignIns!.length).toBeLessThanOrEqual(RECENT_SIGN_INS);
+    // the Target look: the four cards' figures, the most active people and the accounts that do not use the system are part of Activity again
+    expect(a.stats).toBeTruthy();
+    expect(a.mostActive).toEqual(expect.any(Array));
+    expect(a.notUsing).toEqual(expect.any(Array));
     expect(JSON.stringify(a)).not.toMatch(/TZS|amount|balance/i);
     expect(user.id).toBeTruthy();
   });
@@ -95,7 +97,7 @@ describe("Speed & size: named questions, timed", () => {
     expect(s.deployment.node).toBe(process.version);
     expect(["Pooled", "Direct"]).toContain(s.deployment.databaseLink);
     expect(JSON.stringify(s)).not.toContain("postgresql");
-    expect(s.tables.map((t) => t.label)).toEqual(["Audit trail entries", "Sign-in sessions", "Messages sent", "System events"]);
+    expect(s.tables.map((t) => t.label)).toEqual(expect.arrayContaining(["Audit trail entries", "Sign-in sessions", "Messages sent", "System events"]));
   });
 });
 

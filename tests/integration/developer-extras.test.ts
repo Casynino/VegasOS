@@ -22,6 +22,8 @@ import { makeT } from "@/i18n/translate";
 import zhExtras from "@/i18n/catalog/zh-CN/staff/developer-extras";
 import zhCompactCb from "@/i18n/catalog/zh-CN/staff/developer-compact-cb";
 import zhCompactCc from "@/i18n/catalog/zh-CN/staff/developer-compact-cc";
+import zhFixes from "@/i18n/catalog/zh-CN/staff/developer-fixes";
+import zhSpeedSettings from "@/i18n/catalog/zh-CN/staff/developer-speed-settings";
 import { NOT_WORK_ACTIONS, settingsTab, type SettingsTab as SettingsData } from "@/server/services/developer-console";
 import { crashData, healthReport, speedData, type CrashData, type SpeedData } from "@/server/services/developer-health";
 import { SecurityTab } from "@/app/staff/(app)/developer/tab-crashes";
@@ -124,7 +126,7 @@ describe("Sign-ins & security: failed tries by address, and the 14-day figures",
     expect(after.failed!.last7d - before.failed!.last7d).toBe(8);
     expect(after.successful14d! - before.successful14d!).toBe(3);
     // every field the page already had is still there
-    expect(Object.keys(after).sort()).toEqual(["byAddress", "denied", "deniedByDay", "failed", "failed14d", "paused", "successful14d", "system"]);
+    expect(Object.keys(after).sort()).toEqual(["byAddress", "denied", "deniedByDay", "failed", "failed14d", "paused", "perDay", "successful14d", "system"]);
     expect(Object.keys(after.failed!).sort()).toEqual(["byAccount", "byDay", "last24h", "last7d", "latest", "own24h"]);
   });
 });
@@ -137,8 +139,8 @@ describe("Speed & size: the bookings question and the size of the database", () 
     expect(s.probes.every((p) => p.ms !== null && p.ms > 0)).toBe(true);
     expect(s.latency.samples).toHaveLength(6);
     expect(s.latency.average).toBe(Math.round(s.latency.samples.reduce((a, b) => a + b, 0) / 6));
-    // the older figures are untouched
-    expect(s.tables.map((t) => t.label)).toEqual(["Audit trail entries", "Sign-in sessions", "Messages sent", "System events"]);
+    // the older tables are untouched; the stored files (kept in the database itself) and the rate-limit counters come after them
+    expect(s.tables.map((t) => t.label)).toEqual(["Audit trail entries", "Sign-in sessions", "Messages sent", "System events", "Stored files", "Rate-limit counters"]);
   });
 
   it("the table sizes are plain counts, and the hotel's own records (guests, bookings, payments, orders) are NOT counted any more — they are the hotel's work, not the system's", async () => {
@@ -148,6 +150,8 @@ describe("Speed & size: the bookings question and the size of the database", () 
     expect(s.tables[1].rows).toBe(await db.session.count());
     expect(s.tables[2].rows).toBe(await db.notificationDelivery.count());
     expect(s.tables[3].rows).toBe(await db.systemEvent.count());
+    expect(s.tables[4].rows).toBe(await db.storedFile.count());
+    expect(s.tables[5].rows).toBe(await db.rateLimitBucket.count());
     // nothing but numbers: no record, no name
     expect(Object.keys(s.tables[0]).sort()).toEqual(["bytes", "label", "rows"]);
   });
@@ -272,21 +276,22 @@ describe("what is drawn, in English and in 中文", () => {
   it("English: the three parts say what the owner asked, with the figures filled in", () => {
     const h = draw(en);
     for (const html of Object.values(h)) clean(html);
-    // ONE line of chips (no stat cards), ONE merged "Failed tries" list (the chart is drawn because there are wrong tries in the window)
-    for (const w of ["Failed sign-ins in 14 days:", "Successful:", "Locked out now:", "Failed tries", "Accounts tried", "Last try", "One address trying many accounts is a warning sign.", "Your Developer sign-in", "Failed sign-ins and refused Developer actions per day"]) expect(h.security, w).toContain(w);
-    for (const w of ["Successful sign-ins", "Failed tries by address", "Latest failed tries", "Page crashes"]) expect(h.security, w).not.toContain(w);
-    expect(h.security).toContain("refused for 15 minutes after 20 wrong passwords"); // the explanation of the lock is the chip's hover text
+    // the Target look: the cards, then each panel with its content (the chart is drawn because there are wrong tries in the window)
+    for (const w of ["Failed sign-ins", "Successful sign-ins", "Developer sign-in locked", "Locked out now", "Latest failed tries", "Failed tries by address", "Address", "Tries", "Accounts", "Refused to you", "Your Developer sign-in", "Failed sign-ins and refused Developer actions per day"]) expect(h.security, w).toContain(w);
+    for (const w of ["Page crashes", "Failed tries</"]) expect(h.security, w).not.toContain(w);
+    expect(h.security).toContain("refused for 15 minutes after 20 wrong passwords"); // the explanation of the lock is the card's hover text
     expect(h.security).toContain(ip("a"));
     expect(h.security).toContain(ip("b"));
-    // the account names tried at an address are a muted line under it; a try with no address on record is one last row with only the names
-    for (const w of ["Asha Extras", "Boss Extras", "No address on record"]) expect(h.security, w).toContain(w);
+    // the account names tried are in the latest list
+    for (const w of ["Asha Extras", "Boss Extras"]) expect(h.security, w).toContain(w);
     // the footnote about real accounts: once, as a hover text, never a paragraph
     expect(h.security.split("Only real accounts are written down").length - 1).toBe(1);
-    // Speed & size: four panels, each figure once — the three cards that repeated them, and the hotel's own record counts, are gone
-    for (const w of ["Load newest 50 bookings", "Database speed", "Database size", "Data checks", "This deployment", "under 150 ms is fast", "Audit trail entries"]) expect(h.speed, w).toContain(w);
+    // Speed & size (the owner's other console): speed, size and what is running in a row, the rules under them — the stat cards and the hotel's own record counts are not drawn
+    for (const w of ["Load newest 50 bookings", "Database speed", "Database size", "Data checks", "This deployment", "under 150 ms is fast", "Audit trail entries", "Stored files", "Rate-limit counters", "Build", "Environment", "Node", "Working as someone"]) expect(h.speed, w).toContain(w);
     for (const w of ["Database answer", "Bookings list", "Audit lines", "in the permanent diary", "What the system holds", "The audit log reaches back to", "Guests", "Booked rooms", "Restaurant orders", "Invoices", "Guest messages", "Report messages"]) expect(h.speed, w).not.toContain(w);
-    // Settings: one line each; who is on the team and what you cannot do are not here (People says them once); your session is one strip
-    for (const w of ["How the hotel is set up", "Business day starts", "Time zone", "Guest rooms in use", "Room types", "Payment accounts open", "Report recipients", "Daily report", "Room report", "Unpaid booking hold", "Online payment", "What the system needs to run", `You: ${settings.identity.name}`, "Rights you do not hold ("]) expect(h.settings, w).toContain(w);
+    // Settings: one panel with every setting by name and code, then the hotel's set-up; who is on the team and what you cannot do are not here (People says them once); your session is one strip
+    for (const w of ["How the hotel is set up", "Business day starts", "Time zone", "Guest rooms in use", "Room types", "Payment accounts open", "Report recipients", "Daily report", "Room report", "Unpaid booking hold", "Online payment", "Database updates (migrations)", "DATABASE_URL", "NTZS_USER_ID", "GUEST_NOTIFY_WEBHOOK_URL", `You: ${settings.identity.name}`, "Rights you do not hold ("]) expect(h.settings, w).toContain(w);
+    expect(h.settings).not.toContain("What the system needs to run");
     for (const w of ["Who is on the team", "Active accounts by role.", "What you cannot do", "Time left", "Rights you hold", "Account type"]) expect(h.settings, w).not.toContain(w);
     expect(h.settings).toContain("04:00");
   });
@@ -295,34 +300,62 @@ describe("what is drawn, in English and in 中文", () => {
     const h = draw(zh);
     for (const html of Object.values(h)) clean(html);
     // the chips and the merged list have their Chinese in the compact catalog
-    const zhSecurity = renderToStaticMarkup(createElement(SecurityTab, { t: makeT("zh-CN", { ...zhExtras, ...zhCompactCb }), c: after, when, now: NOW }));
-    for (const w of ["14 天内登录失败：", "登录成功：", "当前被锁定：", "失败的尝试", "被尝试的账户", "最近一次尝试", "没有记录地址", "同一个地址尝试多个账户是危险信号。"]) expect(zhSecurity, w).toContain(w);
+    const zhSecurity = renderToStaticMarkup(createElement(SecurityTab, { t: makeT("zh-CN", { ...zhExtras, ...zhCompactCb, ...zhFixes }), c: after, when, now: NOW }));
+    for (const w of ["开发者登录已锁定", "登录失败", "最近的失败尝试"]) expect(zhSecurity, w).toContain(w);
     expect(zhSecurity).not.toMatch(/\{(n|m|a|b|ms|fast|slow|date)\}/);
-    expect(zhSecurity).not.toContain("Failed sign-ins in 14 days");
-    const zhSpeed = renderToStaticMarkup(createElement(SpeedTab, { t: makeT("zh-CN", { ...zhExtras, ...zhCompactCc }), s: speed }));
-    for (const w of ["每条横条代表一项典型操作，越短越快。", "最大的数据表及其大致行数。", "必须始终成立的规则。"]) expect(zhSpeed, w).toContain(w);
-    for (const w of ["酒店的设置", "时区", "系统运行所需的设置"]) expect(h.settings, w).toContain(w);
+    expect(zhSecurity).not.toContain("Developer sign-in locked");
+    const zhAll = makeT("zh-CN", { ...zhExtras, ...zhCompactCc, ...zhFixes, ...zhSpeedSettings });
+    const zhSpeed = renderToStaticMarkup(createElement(SpeedTab, { t: zhAll, s: speed }));
+    for (const w of ["每一条代表应用做的一件典型的事。越短越快。", "最大的几张表，以及每张表大约有多少行。", "必须始终成立的规则。", "已存文件", "频率限制计数"]) expect(zhSpeed, w).toContain(w);
+    expect(zhSpeed).not.toMatch(/\{(n|m|a|b|ms|fast|slow|date|size)\}/);
+    for (const w of ["酒店的设置", "时区"]) expect(h.settings, w).toContain(w);
+    // the settings panel in Chinese: the sentence under its title, and the two settings added with it
+    const zhSettings = renderToStaticMarkup(createElement(SettingsTab, { t: zhAll, s: settings, when }));
+    for (const w of ["设置", "只显示设置是否存在", "nTZS 钱包", "住客消息服务商"]) expect(zhSettings, w).toContain(w);
+    expect(zhSettings).not.toMatch(/\{(n|m|a|b|ms|time|name)\}/);
     // no placeholder is left unfilled in the Chinese either
     for (const html of Object.values(h)) expect(html).not.toMatch(/\{(n|m|a|b|ms|fast|slow|date)\}/);
   });
 
-  it("compact: Speed & size is four panels in two columns, Settings is two columns of one-line rows and ONE slim strip — each fact once, no paragraph", () => {
+  it("laid out like the owner's other console: Speed & size is three panels in a row (speed, size, deployment) with the rules under them; Settings is ONE panel in two columns, then the hotel's set-up and ONE slim strip — each fact once", () => {
     const sp = renderToStaticMarkup(createElement(SpeedTab, { t: en, s: speed }));
-    expect(sp).toMatch(/lg:grid-cols-2/);
-    // the three cards and the hotel's record counts are gone; the table sizes carry the rows and the bytes on ONE line
-    expect(sp).not.toContain("tracking-[0.14em]"); // the stat-card label
-    expect(sp).toMatch(/about [\d,]+ rows · [\d.,]+ (B|KB|MB|GB)/);
-    expect(sp).toContain("Rules that must always be true.");
-    expect(sp).toContain("One bar per typical task. Shorter is faster.");
-    for (const gone of ["Each bar is one typical thing the app does.", "The biggest tables, and roughly how many rows each holds."]) expect(sp, gone).not.toContain(gone);
+    expect(sp).toMatch(/lg:grid-cols-3/);
+    expect(sp).not.toMatch(/lg:grid-cols-2/);
+    expect(sp).not.toContain("tracking-[0.14em]"); // no stat card
+    // the sentences the owner's other console has, each once; the old shorter wording is gone
+    const spText = sp.replace(/<[^>]+>/g, " "); // (a longer explanation may sit in a hover text: only the words on the page are counted)
+    for (const w of ["Each bar is one typical thing the app does. Shorter is faster.", "The biggest tables, and roughly how many rows each holds.", "What is running right now.", "Rules that must always be true."]) expect(spText.split(w).length - 1, w).toBe(1);
+    for (const gone of ["One bar per typical task.", "Biggest tables, with about how many rows."]) expect(sp, gone).not.toContain(gone);
+    // size: the biggest first, the size on the right and "about N rows" under the bar (never beside the size)
+    const bySize = speed.tables.map((x, i) => ({ ...x, i })).sort((a, b) => (b.bytes ?? -1) - (a.bytes ?? -1) || a.i - b.i).map((x) => x.label);
+    const places = bySize.map((label) => sp.indexOf(`>${label}</span>`));
+    expect(places.every((p) => p > 0)).toBe(true);
+    expect(places).toEqual([...places].sort((a, b) => a - b));
+    expect(sp).toMatch(/>[\d.,]+ (B|KB|MB|GB)<\/span><\/div><div[^>]*><div class="h-full rounded-full bg-cyan-500"[^>]*><\/div><\/div><p[^>]*>about [\d,]+ rows<\/p>/);
+    expect(sp).not.toMatch(/about [\d,]+ rows · /);
+    // the build and the version are in the code font
+    expect(sp).toMatch(/<dd class="[^"]*font-mono[^"]*">v?\d+\.\d+\.\d+/);
 
     const session = { startedAt: new Date(Date.UTC(2041, 2, 11, 6, 0)), lastSeenAt: NOW, hardLimitAt: NOW, idleLimitAt: NOW, endsAt: new Date(Date.UTC(2041, 2, 11, 9, 0)), endsBecause: "idle" as const, minutesLeft: 135, limitHours: 4, idleMinutes: 30 };
     const withSession: SettingsData = { ...settings, identity: { ...settings.identity, session } };
     const st = renderToStaticMarkup(createElement(SettingsTab, { t: en, s: withSession, when }));
-    // the environment on the left, the hotel on the right, one line each (what a setting is for is the hover text)
-    expect(st.indexOf("What the system needs to run")).toBeLessThan(st.indexOf("How the hotel is set up"));
-    expect(st).toMatch(/title="Lets the reports, payment checks and clean-up prove they come from the scheduler\."/);
-    expect(st).not.toContain("mt-1 block text-xs text-muted-foreground"); // the description line under a setting's name
+    // ONE panel of settings in two columns (name, code, what it is for, Set / Missing), then the hotel's set-up in two columns of one line each
+    expect(st).toContain("md:grid-cols-2");
+    expect(st.indexOf(">Settings</h3>")).toBeGreaterThan(0);
+    expect(st.indexOf(">Settings</h3>")).toBeLessThan(st.indexOf("How the hotel is set up"));
+    expect(st.indexOf("DATABASE_URL")).toBeLessThan(st.indexOf("How the hotel is set up"));
+    const missing = settings.env.filter((e) => e.required && !e.set).length;
+    expect(st).toContain(missing === 0 ? "All required settings are in place. Only whether a setting exists is shown, never its value." : `${missing} required settings are missing. Only whether a setting exists is shown, never its value.`);
+    expect(st).toContain(`${settings.env.filter((e) => e.set).length} of ${settings.env.length} set`);
+    // what a setting is for is a visible line, printed once (not also as a hover text); the hotel's rows keep theirs as the hover text only
+    expect(st.split("Lets the reports, payment checks and clean-up prove they come from the scheduler.").length - 1).toBe(1);
+    expect(st).not.toMatch(/title="Lets the reports/);
+    expect(st).toMatch(/title="Whether guests can pay online\."/);
+    expect(st).not.toContain(">Whether guests can pay online.<");
+    // every setting shows whether it is set — and never its value
+    for (const e of settings.env) expect(st, e.key).toContain(e.key);
+    expect((st.match(/>(Set|Missing|Not set)<\/span>/g) ?? []).length).toBe(settings.env.length);
+    expect(st.indexOf("Database updates (migrations)")).toBeGreaterThan(st.indexOf(settings.env[settings.env.length - 1].key)); // the migrations row is the last one
     // ONE strip: who you are, the role, when you signed in, the time left and the number of rights; the rights you do not hold are folded inside
     expect(st).toContain(`You: ${settings.identity.name}`);
     expect(st).toContain("signed in 2041-03-11 06:00");
@@ -340,6 +373,7 @@ describe("what is drawn, in English and in 中文", () => {
     // every line of the compact catalog keeps the placeholders of its English
     const holes = (x: string) => [...x.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(",");
     for (const [key, value] of Object.entries(zhCompactCc)) expect(holes(value), key).toBe(holes(key));
+    for (const [key, value] of Object.entries(zhSpeedSettings)) expect(holes(value), key).toBe(holes(key));
   });
 
   it("a part that could not be read says so in plain words, and never draws a zero or NaN", () => {

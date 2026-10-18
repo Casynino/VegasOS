@@ -1079,7 +1079,7 @@ describe("the Problems tab and the Crashes tab", () => {
     expect(none).not.toMatch(/undefined|NaN/);
   });
 
-  it("Crashes & sign-ins: an empty log draws no empty box (one quiet line for the jobs and one for the webhooks, no 'Server errors' panel); with records it shows the errors, the jobs and the webhooks", async () => {
+  it("Errors & jobs (the Target look): an empty log still draws its panels, each with ONE short quiet line; with records it shows the errors, the jobs and the webhooks", async () => {
     await db.$executeRaw`DELETE FROM "system_events"`;
     const user = await as(dev);
     const en = makeT("en", null);
@@ -1089,22 +1089,19 @@ describe("the Problems tab and the Crashes tab", () => {
     const none = await crashData(user);
     const quiet = { ...none, system: { ...none.system!, jobs: none.system!.jobs.map((j) => ({ ...j, overdue: false })) } };
     const empty = renderToStaticMarkup(createElement(CrashesTab, { t: en, c: quiet, when }));
-    expect(textOf(empty)).toContain("No automatic job has run since the system started recording.");
-    expect(textOf(empty)).toContain("No message from other services has arrived yet.");
-    expect(textOf(empty)).not.toContain("Nothing yet");
-    expect(textOf(empty)).not.toContain("No unexpected server error has been recorded.");
-    expect(textOf(empty)).not.toContain("one line for each different error"); // the 'Server errors' panel is not drawn when there is no error: the card above already says 0
+    expect(textOf(empty)).toContain("Nothing yet. No unexpected server error has been recorded.");
+    expect(textOf(empty)).toContain("Mistakes people make, like a wrong password or a refused action, are not errors and are not recorded here.");
+    for (const w of ["Server errors", "Automatic jobs", "Messages from other services (webhooks)", "Not recorded yet"]) expect(textOf(empty), w).toContain(w);
     expect(textOf(empty)).not.toContain("Error tracking is not part of this system");
     expect(empty).not.toMatch(/undefined|NaN/);
     const emptyZh = renderToStaticMarkup(createElement(CrashesTab, { t: zh, c: quiet, when }));
-    expect(textOf(emptyZh)).toContain("没有任何自动任务运行过");
+    expect(textOf(emptyZh)).toContain("暂无。没有记录到意外的服务器错误。");
     expect(emptyZh).not.toMatch(/undefined|NaN/);
     // a job that never ran and is late is NOT hidden behind the quiet line: it keeps its row
     const lateOne = { ...none, system: { ...none.system!, jobs: none.system!.jobs.map((j, i) => ({ ...j, overdue: i === 0 })) } };
     const lateText = textOf(renderToStaticMarkup(createElement(CrashesTab, { t: en, c: lateOne, when })));
     expect(lateText).toContain("Late");
     expect(lateText).toContain(none.system!.jobs[0].job);
-    expect(lateText).not.toContain("No automatic job has run since the system started recording.");
 
     // records
     await seedJobs();
@@ -1130,7 +1127,7 @@ describe("the Problems tab and the Crashes tab", () => {
     for (const w of ["服务器错误", "自动任务", "来自其他服务的消息（Webhook）", "登录失败"]) expect(zhText).toContain(w);
   });
 
-  it("the Security part draws only what it has: one line of chips when all is quiet; the chart, ONE 'Failed tries' list and 'Refused to you' when there are wrong tries and refusals", async () => {
+  it("the Security part (the Target look): the cards, then each panel with its content — or ONE short quiet line when it has none; the footnote about real accounts is a hover text, never a paragraph", async () => {
     const user = await as(dev);
     const en = makeT("en", null);
     const when = (d: Date) => en.dateTime(d, "Africa/Dar_es_Salaam");
@@ -1141,8 +1138,9 @@ describe("the Problems tab and the Crashes tab", () => {
       failed: { last24h: 0, last7d: 0, byDay: base.failed!.byDay.map((d) => ({ ...d, count: 0 })), byAccount: [], latest: [], own24h: 0 },
     };
     const quiet = textOf(renderToStaticMarkup(createElement(CrashesTab, { t: en, c: calm, when })));
-    for (const w of ["Failed sign-ins in 14 days:", "Successful:", "Locked out now:", "No wrong tries in the last 7 days", "Your Developer sign-in"]) expect(quiet, w).toContain(w);
-    for (const w of ["Failed sign-ins and refused Developer actions per day", "Failed tries", "Refused to you", "Page crashes", "Latest failed tries", "Failed tries by address", "Only real accounts are written down"]) expect(quiet, w).not.toContain(w);
+    for (const w of ["Failed sign-ins", "Successful sign-ins", "Developer sign-in locked", "Locked out now", "Failed sign-ins and refused Developer actions per day", "Latest failed tries", "Failed tries by address", "Refused to you", "Your Developer sign-in",
+      "Nothing yet. No failed sign-in and no refused Developer action in the last 14 days.", "Nothing yet. No account was tried wrongly in the last 7 days.", "Nothing yet. No wrong try with an address in the last 7 days.", "Nothing was refused to a Developer account.", "No wrong-password tries on your account in the last 24 hours."]) expect(quiet, w).toContain(w);
+    expect(quiet).not.toContain("Page crashes");
 
     const busy: typeof base = {
       ...base,
@@ -1152,10 +1150,10 @@ describe("the Problems tab and the Crashes tab", () => {
     };
     const html = renderToStaticMarkup(createElement(CrashesTab, { t: en, c: busy, when }));
     const text = textOf(html);
-    for (const w of ["Failed sign-ins and refused Developer actions per day", "Failed tries", "Accounts tried", "Last try", "198.51.100.7", "Zed Tried", "No address on record", "Nameless Place", "Refused to you", "Refused to you: 1", "/staff/cashbook", "finance.view", "1 wrong-password tries on your account"]) expect(text, w).toContain(w);
-    expect(text).not.toContain("No wrong tries in the last 7 days");
-    for (const w of ["Page crashes", "Latest failed tries", "Failed tries by address"]) expect(text, w).not.toContain(w);
-    // the footnote about real accounts is a hover text on the list's title, said once
+    for (const w of ["Failed sign-ins and refused Developer actions per day", "Latest failed tries", "Zed Tried", "Nameless Place", "Failed tries by address", "Address", "Tries", "Accounts", "198.51.100.7", "Refused to you", "/staff/cashbook", "finance.view", "1 wrong-password try on your account in the last 24 hours."]) expect(text, w).toContain(w);
+    expect(text).not.toContain("Nothing was refused to a Developer account.");
+    expect(text).not.toContain("Nothing yet. No account was tried wrongly in the last 7 days.");
+    // the footnote about real accounts is a hover text on the list's subtitle, said once
     expect(html.split("Only real accounts are written down").length - 1).toBe(1);
     expect(text).not.toContain("Only real accounts are written down");
     expect(html).not.toMatch(/undefined|NaN/);

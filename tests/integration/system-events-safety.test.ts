@@ -231,9 +231,9 @@ describe("the Developer Home when the system log cannot be read", () => {
     await as();
     await db.systemEvent.deleteMany({});
     const html = await draw();
-    // an empty log draws no empty box: no list of errors; the jobs say they have not run (or, on an old database, that they are late)
-    expect(html).not.toContain("one line for each different error");
-    expect(html).toMatch(/No automatic job has run since the system started recording\.|Not recorded yet/);
+    // an empty log is drawn the way the owner's other console draws it: the panels stay, each with ONE short quiet line (nothing recorded; the jobs have not run, or on an old database are late)
+    expect(html).toContain("Nothing yet. No unexpected server error has been recorded.");
+    expect(html).toMatch(/Not recorded yet|Late/);
     expect(html).not.toMatch(/undefined|NaN/);
   }, 60_000);
 });

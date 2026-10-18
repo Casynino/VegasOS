@@ -435,7 +435,6 @@ describe("a list of people that staff see leaves out the Developer and the syste
     "src/server/services/audit-trail.ts": { count: 1, why: "the Audit pages list everyone on purpose; the Developer only for those who may see Developer actions" },
     "src/server/services/developer-health.ts": { count: 1, why: "a timing probe on the Speed part: it finds one account id only to time the lookup — nothing about the person is read or shown" },
     "src/server/services/developer-console.ts": { count: 1, why: "the Developer's own console (inspect a person's rights): full on purpose" },
-    "src/server/services/developer-team.ts": { count: 1, why: "the Developer's own console: the team table; it leaves out the Developer and the system account" },
     "src/server/services/developer-checks.ts": { count: 1, why: "the Developer's own system check: is there an active Boss account (it counts Boss accounts only, nothing else about anyone)" },
     "src/server/services/work-as.ts": { count: 1, why: "the Developer's Access page; leaves out the Developer and the system account" },
     "src/server/services/staff-accounts.ts": { count: 3, why: "the Users page for the Boss and the MD (it never lists the Developer), and two counts of active Bosses" },

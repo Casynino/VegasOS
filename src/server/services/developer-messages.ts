@@ -69,6 +69,8 @@ export interface MessagesData {
   days: BusinessDate[];
   reportsOn: boolean;
   recipients: number;
+  /** The first names the Boss's reports go to (names only, at most 3; never a phone number). */
+  recipientNames: string[];
   /** Deliveries of the last 24 hours: sent (by the time it went), failed (by the time of its last try), waiting (made in the last 7 days and not sent yet). */
   deliveries24h: { sent: number; failed: number; waiting: number } | null;
   /** The last closed day's two reports: the state, and the trouble the Boss's home would show (null = none). */
@@ -115,7 +117,9 @@ export async function messagesData(user: ConsoleUser, now = new Date()): Promise
   const since24 = new Date(now.getTime() - DAY_MS);
   const since7d = new Date(now.getTime() - 7 * DAY_MS);
   const closed = Array.from({ length: TABLE_DAYS }, (_, i) => addDays(today, -(i + 1)));
-  const recipients = Array.isArray(settings.reportRecipients) ? (settings.reportRecipients as unknown[]).length : 0;
+  const recipientList = Array.isArray(settings.reportRecipients) ? (settings.reportRecipients as { name?: unknown }[]) : [];
+  const recipients = recipientList.length;
+  const recipientNames = recipientList.flatMap((r) => (typeof r?.name === "string" && r.name.trim() ? [r.name.trim().slice(0, 60)] : [])).slice(0, 3);
   const live = liveSinceDate(settings);
   const sentOrDelivered = ["SENT", "DELIVERED"] as const;
   const failed7d = { status: "FAILED" as const, createdAt: { gte: since7d } };
@@ -244,7 +248,7 @@ export async function messagesData(user: ConsoleUser, now = new Date()): Promise
     : null;
 
   return {
-    today, dayStart: f.dayStart, days, reportsOn, recipients,
+    today, dayStart: f.dayStart, days, reportsOn, recipients, recipientNames,
     deliveries24h: sent24 !== null && failed24 !== null && waiting !== null ? { sent: sent24, failed: failed24, waiting } : null,
     lastClosed,
     retry: underMax !== null && atMax !== null ? { underMax, atMax } : null,

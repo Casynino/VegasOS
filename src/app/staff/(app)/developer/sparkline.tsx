@@ -17,7 +17,7 @@ export function Sparkline({ values, label, className }: { values: number[]; labe
   const area = `${line} L${x(n - 1).toFixed(2)} ${H} L${x(0).toFixed(2)} ${H} Z`;
   const id = `spark-${label.length}-${values.join("-").slice(0, 40)}`;
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={label} className={cn("h-10 w-full text-foreground/70", className)}>
+    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={label} className={cn("h-10 w-full text-[oklch(0.62_0.13_78)] dark:text-[oklch(0.8_0.12_82)]", className)}>
       <defs>
         <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="currentColor" stopOpacity="0.28" />

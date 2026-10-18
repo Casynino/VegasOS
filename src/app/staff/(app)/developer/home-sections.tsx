@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { cache, type ReactNode } from "react";
+import type { LucideIcon } from "lucide-react";
 import type { T } from "@/i18n/translate";
 import type { CurrentUser } from "@/server/auth";
 import { inspectPermission, peopleTab, settingsTab, type Inspection } from "@/server/services/developer-console";
@@ -7,7 +8,7 @@ import { activityData } from "@/server/services/developer-activity";
 import { crashData, speedData } from "@/server/services/developer-health";
 import { noteHomeTabView } from "@/server/services/developer-business";
 import { messagesData } from "@/server/services/developer-messages";
-import { teamData } from "@/server/services/developer-team";
+import { BossReports } from "./boss-reports";
 import { recordError } from "@/server/services/system-events";
 import { ErrorsTab, SecurityTab } from "./tab-crashes";
 import { Tag, type TagTone } from "./console-ui";
@@ -40,16 +41,32 @@ const STATUS_TONE: Record<AreaStatus["tone"], TagTone> = { ok: "emerald", warn: 
  * One part of the page, always open (owner, 2026-10-18: "one page, nice arrangement, I do not want to be clicking"): a heading with one short
  * line saying what it is for and one chip saying how it is doing, then its content. The anchor is on the section so a link such as "#errors" goes to it.
  */
-export function ConsoleSection({ id, title, hint, status, children }: { id: string; title: string; hint: string; status?: AreaStatus; children: ReactNode }) {
+export function ConsoleSection({ id, title, hint, status, icon: Icon, children }: { id: string; title: string; hint: string; status?: AreaStatus; icon?: LucideIcon; children: ReactNode }) {
   return (
-    <section id={id} aria-labelledby={`${id}-title`} className="scroll-mt-24 space-y-4">
-      <header className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/60 pb-3">
-        <h2 id={`${id}-title`} className="text-xl font-semibold tracking-tight">{title}</h2>
-        {status && <Tag tone={STATUS_TONE[status.tone]}>{status.text}</Tag>}
-        <p className="basis-full text-sm text-muted-foreground sm:basis-auto">{hint}</p>
+    <section id={id} aria-labelledby={`${id}-title`} className="scroll-mt-24 space-y-5">
+      <header className="flex items-start gap-4">
+        {Icon && <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-[oklch(0.72_0.12_80/0.16)] text-[oklch(0.5_0.11_75)] dark:text-[oklch(0.84_0.11_82)]" aria-hidden><Icon className="size-6" /></span>}
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <h2 id={`${id}-title`} className="text-2xl font-bold tracking-tight">{title}</h2>
+            {status && <Tag tone={STATUS_TONE[status.tone]}>{status.text}</Tag>}
+          </div>
+          <p className="mt-0.5 text-sm text-muted-foreground sm:text-base">{hint}</p>
+        </div>
       </header>
       {children}
     </section>
+  );
+}
+
+/** The row of pills under the Boss's reports (copied from the owner's ORA console): each one jumps to a part of this page. */
+export function JumpRow({ label, items }: { label: string; items: { id: string; text: string }[] }) {
+  return (
+    <nav aria-label={label} className="flex flex-wrap gap-2">
+      {items.map((i) => (
+        <a key={i.id} href={`#${i.id}`} className="rounded-full border border-border bg-card px-4 py-2 text-sm text-foreground/90 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold">{i.text}</a>
+      ))}
+    </nav>
   );
 }
 
@@ -90,10 +107,19 @@ export async function ErrorsSection({ ctx }: { ctx: SectionCtx }) {
 export async function SecuritySection({ ctx }: { ctx: SectionCtx }) {
   return guard(ctx.t, "security", async () => <SecurityTab t={ctx.t} c={await crashData(ctx.user, ctx.now)} when={ctx.when} now={ctx.now} />);
 }
+// The Boss's reports (under the attention panel) and the Messages & reports part read the same figures: one read per request.
+const readMessages = cache((user: CurrentUser, nowMs: number) => messagesData(user, new Date(nowMs)));
+
+export async function ReportsSection({ ctx }: { ctx: SectionCtx }) {
+  return guard(ctx.t, "reports", async () => {
+    await noteHomeTabView(ctx.user, "messages", { ipAddress: ctx.ipAddress, now: ctx.now });
+    return <BossReports t={ctx.t} d={await readMessages(ctx.user, ctx.now.getTime())} now={ctx.now} timezone={ctx.timezone} />;
+  });
+}
 export async function MessagesSection({ ctx }: { ctx: SectionCtx }) {
   return guard(ctx.t, "messages", async () => {
-    await noteHomeTabView(ctx.user, "messages", { ipAddress: ctx.ipAddress, now: ctx.now });
-    return <MessagesTab t={ctx.t} d={await messagesData(ctx.user, ctx.now)} when={ctx.when} />;
+    // (the look at the Boss's reports is written once, by ReportsSection: the two read the same figures)
+    return <MessagesTab t={ctx.t} d={await readMessages(ctx.user, ctx.now.getTime())} when={ctx.when} />;
   });
 }
 export async function SpeedSection({ ctx, checks }: { ctx: SectionCtx; checks: CheckResult[] }) {
@@ -106,8 +132,8 @@ export async function PeopleSection({ ctx, person, right }: { ctx: SectionCtx; p
   return guard(ctx.t, "people", async () => {
     // A look at someone's rights is itself written to the audit trail (by the service).
     const inspection: Inspection | null = person || right ? await inspectPermission(ctx.user, { userId: person, code: right }, { ipAddress: ctx.ipAddress }) : null;
-    const [data, team] = await Promise.all([peopleTab(ctx.user), teamData(ctx.user, ctx.now)]);
-    return <PeopleTab t={ctx.t} data={data} team={team} now={ctx.now} person={person} right={right} inspection={inspection} when={ctx.when} timezone={ctx.timezone} />;
+    const data = await peopleTab(ctx.user);
+    return <PeopleTab t={ctx.t} data={data} now={ctx.now} person={person} right={right} inspection={inspection} when={ctx.when} timezone={ctx.timezone} />;
   });
 }
 export async function SettingsSection({ ctx }: { ctx: SectionCtx }) {

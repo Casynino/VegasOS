@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { Activity, Bug, Gauge, Send, Settings, ShieldCheck, Users, type LucideIcon } from "lucide-react";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { currentSessionTokenHash, getCurrentUser, requestMeta, requirePagePermission } from "@/server/auth";
@@ -12,7 +13,7 @@ import { AttentionPanel } from "./attention-panel";
 import { ConsoleBanner } from "./console-ui";
 import { HealthCard } from "./health-card";
 import {
-  ActivitySection, ConsoleSection, ErrorsSection, GroupLabel, MessagesSection, PeopleSection, SectionSkeleton, SecuritySection, SettingsSection, SpeedSection,
+  ActivitySection, ConsoleSection, ErrorsSection, GroupLabel, JumpRow, MessagesSection, PeopleSection, ReportsSection, SectionSkeleton, SecuritySection, SettingsSection, SpeedSection,
   type AreaStatus,
   type SectionCtx,
 } from "./home-sections";
@@ -86,8 +87,8 @@ export default async function DeveloperHomePage({ searchParams }: PageProps<"/st
     if (look > 0) return { tone: "warn", text: t("{n} to look at", { n: look }) };
     return { tone: "ok", text: t("All fine") };
   };
-  const section = (id: string, title: string, hint: string, status: AreaStatus | undefined, body: React.ReactNode) => (
-    <ConsoleSection id={id} title={title} hint={hint} status={status}>
+  const section = (id: string, title: string, hint: string, status: AreaStatus | undefined, icon: LucideIcon, body: React.ReactNode) => (
+    <ConsoleSection id={id} title={title} hint={hint} status={status} icon={icon}>
       <Suspense fallback={<SectionSkeleton label={loading} />}>{body}</Suspense>
     </ConsoleSection>
   );
@@ -99,23 +100,31 @@ export default async function DeveloperHomePage({ searchParams }: PageProps<"/st
           date={t.date(greeting.today, true)} tag={t("Developer")} title={hello}
           subtitle={t("Your control room for {hotel} — health, people and everything done, in one place.", { hotel: greeting.hotelName })}
         />
-        <Shortcuts t={t} people={people} roles={roles.map((r) => ({ id: r.id, name: r.name }))} />
+        <Shortcuts t={t} people={people} roles={roles.map((r) => ({ id: r.id, name: r.name }))} actionsToday={health.actionsToday} />
         <HealthCard t={t} h={health} />
         <AttentionPanel t={t} items={health.items} checks={health.checks} />
       </div>
 
-      {/* The owner (2026-10-18): the Boss's reports are the most important thing to him: right under the attention panel, not far down the page. */}
-      {section("messages", t("Messages & reports"), t("Is the Boss getting his reports and messages?"), chipFor("messages"), <MessagesSection ctx={ctx} />)}
+      {/* The owner (2026-10-18): the Boss's reports are the most important thing to him — right under the attention panel (the look of his ORA console), then a row of pills that jump to every part. */}
+      <Suspense fallback={<SectionSkeleton label={loading} />}><ReportsSection ctx={ctx} /></Suspense>
+      <JumpRow
+        label={t("Jump to")}
+        items={[
+          { id: "activity", text: t("Activity") }, { id: "people", text: t("People") }, { id: "messages", text: t("Messages & reports") }, { id: "errors", text: t("Errors & jobs") },
+          { id: "speed", text: t("Speed & size") }, { id: "security", text: t("Sign-ins & security") }, { id: "settings", text: t("Settings") },
+        ]}
+      />
 
-      {section("activity", t("Activity"), t("Who is signing in and what the team is doing."), undefined, <ActivitySection ctx={ctx} />)}
+      {section("activity", t("Activity"), t("Who is using the system, and what they are doing."), undefined, Activity, <ActivitySection ctx={ctx} />)}
 
-      {section("people", t("People & my actions"), t("Who has an account, and what you have done."), chipFor("people"), <PeopleSection ctx={ctx} person={person} right={right} />)}
+      {section("people", t("People & my actions"), t("Who has an account, and what you have done."), chipFor("people"), Users, <PeopleSection ctx={ctx} person={person} right={right} />)}
 
       <GroupLabel>{t("The system")}</GroupLabel>
-      {section("errors", t("Errors & jobs"), t("Server errors, the automatic jobs and the payment confirmations."), chipFor("errors"), <ErrorsSection ctx={ctx} />)}
-      {section("speed", t("Speed & size"), t("How fast the database answers and how the system grows."), health.database.ms !== null ? { tone: health.database.ms >= 500 ? "warn" : "ok", text: t("{ms} ms", { ms: health.database.ms }) } : undefined, <SpeedSection ctx={ctx} checks={health.checks} />)}
-      {section("security", t("Sign-ins & security"), t("Wrong passwords, paused sign-ins and what was refused to you."), chipFor("security"), <SecuritySection ctx={ctx} />)}
-      {section("settings", t("Settings"), t("How the system is set up."), chipFor("settings"), <SettingsSection ctx={ctx} />)}
+      {section("messages", t("Messages & reports"), t("How the sending of the reports and messages went."), chipFor("messages"), Send, <MessagesSection ctx={ctx} />)}
+      {section("errors", t("Errors & jobs"), t("Server errors, the automatic jobs and the payment confirmations."), chipFor("errors"), Bug, <ErrorsSection ctx={ctx} />)}
+      {section("speed", t("Speed & size"), t("How fast the database answers and how the system grows."), health.database.ms !== null ? { tone: health.database.ms >= 500 ? "warn" : "ok", text: t("{ms} ms", { ms: health.database.ms }) } : undefined, Gauge, <SpeedSection ctx={ctx} checks={health.checks} />)}
+      {section("security", t("Sign-ins & security"), t("Wrong passwords, paused sign-ins and what was refused to you."), chipFor("security"), ShieldCheck, <SecuritySection ctx={ctx} />)}
+      {section("settings", t("Settings"), t("How the system is set up."), chipFor("settings"), Settings, <SettingsSection ctx={ctx} />)}
     </div>
   );
 }

@@ -818,9 +818,11 @@ describe("speed, sign-in trouble, settings and my actions", () => {
     for (const n of s.latency.samples) expect(Number.isInteger(n) && n > 0).toBe(true);
     expect(s.latency.average).toBe(Math.round(s.latency.samples.reduce((a, b) => a + b, 0) / 6));
     expect(s.latency.slowest).toBe(Math.max(...s.latency.samples));
-    expect(s.tables.map((t) => t.label)).toEqual(["Audit trail entries", "Sign-in sessions", "Messages sent", "System events"]);
+    expect(s.tables.map((t) => t.label)).toEqual(["Audit trail entries", "Sign-in sessions", "Messages sent", "System events", "Stored files", "Rate-limit counters"]);
     expect(s.tables[0].rows).toBe(await db.auditLog.count());
     expect(s.tables[2].rows).toBe(await db.notificationDelivery.count());
+    expect(s.tables[4].rows).toBe(await db.storedFile.count());
+    expect(s.tables[5].rows).toBe(await db.rateLimitBucket.count());
     expect(s.tables.map((t) => t.label)).not.toContain("Bookings"); // the hotel's own records are not the Developer's to count
     for (const t of s.tables) expect(t.bytes).toBeGreaterThan(0);
     expect(s.databaseBytes).toBeGreaterThan(0);
@@ -944,17 +946,18 @@ describe("the Developer home page draws, on every tab, from real data", () => {
     expect(html).toMatch(/Good (morning|afternoon|evening), /);
     expect(html).toContain("health, people and everything done, in one place.");
     expect(html).toContain("out of 100");
-    for (const w of ["Work as", "Add an account", "Everything done in the system, by staff and by you.", "The hotel&#x27;s data in read-only tables.", "Signed in today", "Failed sign-ins", "Server errors (24 h)"]) expect(html).toContain(w);
+    for (const w of ["Work as", "Add an account", "people to pick from", "Create a login", "Stays, money and stock", "Signed in today", "Failed sign-ins", "Server errors (24 h)"]) expect(html).toContain(w);
+    expect(html).toMatch(/\d+ actions? today/); // the Audit tile says how much was done today
     // Audit and Business are links; Work as and Add an account open a popup (the Access page is in the side menu and in the popup)
     for (const href of [CONSOLE_HREF.home, CONSOLE_HREF.audit, CONSOLE_HREF.business]) expect(html).toContain(`href="${href}`);
     // no tabs and no jump row: eight parts, each with its anchor and its heading, one under the other (Activity, People, then the system)
-    const ids = ["problems", "messages", "activity", "people", "errors", "speed", "security", "settings"];
+    const ids = ["problems", "activity", "people", "messages", "errors", "speed", "security", "settings"];
     for (const id of ids) expect(html, id).toContain(`id="${id}"`);
     for (const id of ["hotel", "money", "requests"]) expect(html, id).not.toContain(`id="${id}"`);
-    expect(html).not.toContain('aria-label="Jump to"');
+    expect(html).toContain('aria-label="Jump to"'); // the pills under the Boss's reports (the ORA look)
     expect(html).not.toContain("aria-current=\"page\"");
     // what each part says
-    const marks = ["Sign-ins per day", "Busiest hours of the day", "Recent sign-ins", "Online right now", "Who did what, just now", "Where the work happens", "accounts", "Your recent actions", "Everything you do is on record", "Who can do what", "Needs your attention", "What was checked", "Is the Boss getting his reports and messages?", "Database speed", "Database size", "Data checks", "This deployment", "Your Developer sign-in", "Required settings", "Your session"].filter((m) => m !== "Required settings");
+    const marks = ["Sign-ins per day", "Busiest hours of the day", "Recent sign-ins", "Online right now", "Who did what, just now", "Where the work happens", "accounts", "Your recent actions", "Everything you do is on record", "Who can do what", "Needs your attention", "What was checked", "How the sending of the reports and messages went.", "Database speed", "Database size", "Data checks", "This deployment", "Your Developer sign-in", "Required settings", "Your session"].filter((m) => m !== "Required settings");
     for (const m of marks) expect(html, m).toContain(m);
     // drawn only when they have something to show: the webhooks table (else one quiet line), the chart of wrong tries (else the chips say there were none)
     expect(html).toMatch(/Messages from other services \(webhooks\)|No message from other services has arrived yet\./);

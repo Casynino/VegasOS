@@ -370,6 +370,8 @@ export function envSettings(): EnvSetting[] {
     ["NTZS_API_KEY", msg("Online payments (nTZS)"), msg("Lets customers pay by mobile money; without it online payment is off."), false],
     ["NTZS_WEBHOOK_SECRET", msg("nTZS webhook secret"), msg("Checks that payment messages really come from nTZS."), false],
     ["CALLMEBOT_API_KEY", msg("WhatsApp key (CallMeBot)"), msg("The default key for sending reports and messages by WhatsApp."), false],
+    ["NTZS_USER_ID", msg("nTZS wallet"), msg("Collects payments into this wallet instead of the platform's own."), false],
+    ["GUEST_NOTIFY_WEBHOOK_URL", msg("Guest message provider"), msg("Sends texts to guests by itself; without it reception sends them in one tap."), false],
   ];
   return list.map(([key, label, description, required]) => ({ key, label, description, set: has(key), required }));
 }

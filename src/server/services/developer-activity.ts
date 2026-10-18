@@ -6,19 +6,31 @@ import { msg } from "@/i18n/msg";
 import { formatMinutesLabel } from "@/lib/format";
 import { addDays, businessDateOf, businessRangeBounds, eachDate, fromDbDate, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import { deviceLabel } from "@/lib/device-label";
+import { DEVELOPER_ROLE_CODE } from "@/lib/permissions";
+import { operationalOnly } from "../staff-pickers";
 import { assertConsoleAccess, NOT_WORK_ACTIONS, safe, short, type ConsoleUser } from "./developer-console";
 import { SYSTEM_ROLE } from "./staff-accounts";
 
 /**
- * WHO IS USING THE SYSTEM (owner, 2026-10-18): sign-ins per day, how much the team saves per day and at which hours, the latest sign-ins with
- * their device and place, who is online right now — and WHO IS DOING WHAT (owner, 2026-10-18: "I want to know what the system is doing, who is
- * doing what"): the kinds of record the team's actions were about (counts of actions only) and the team's latest actions in plain words. Never
- * an amount, a guest's name or a payment: the Developer sees WHO does WHAT in the system, not the hotel's figures (those stay out: the owner said
- * so three times). Each figure is kept ONCE on the page (owner, 2026-10-18: "do not be repetitive"): the numbers of people, sign-ins and actions
- * of the last 24 hours are in the health card, the people and their last sign-in in the team table, so they are not read again here.
+ * WHO IS USING THE SYSTEM (owner, 2026-10-18): four figures (who signed in today, the team's actions and the sign-ins in 14 days, the failed
+ * tries), sign-ins per day, how much the team saves per day and at which hours, the latest sign-ins with their device and place, who is online
+ * right now, the most active people and the accounts that do not use the system — and WHO IS DOING WHAT (owner, 2026-10-18: "I want to know what
+ * the system is doing, who is doing what"): the kinds of record the team's actions were about (counts of actions only) and the team's latest
+ * actions in plain words. Never an amount, a guest's name or a payment: the Developer sees WHO does WHAT in the system, not the hotel's figures
+ * (those stay out: the owner said so three times). The same part of his Target / ORA consoles was copied here ("nice table, nice charts, nice
+ * cards"), so the figures, the ranking of people and the idle accounts are back (they were taken out in the "compaction" of the same day; the
+ * team table that came with it stays out: the ranking and the idle accounts carry the same facts).
  */
+const HOUR = 3600_000;
+const DAY = 24 * HOUR;
 export const ACTIVITY_DAYS = 14;
-export const RECENT_SIGN_INS = 5;
+export const NOT_USING_DAYS = 30;
+/** How many sign-ins the "Recent sign-ins" table lists (it scrolls inside its panel). */
+export const RECENT_SIGN_INS = 10;
+/** How many idle accounts "Not using the system" lists before "and n more". */
+export const NOT_USING_SHOWN = 12;
+/** How many people "Most active people" ranks. */
+export const MOST_ACTIVE_SHOWN = 8;
 /** "Online right now" = used the system in the last this-many minutes. */
 export const ONLINE_MINUTES = 10;
 
@@ -53,6 +65,19 @@ export interface ActivityData {
   dayStart: string;
   /** The last 14 hotel days, oldest first, ending today. */
   days: BusinessDate[];
+  /** The four figures at the top of the part (null = could not be read). Counts only. */
+  stats: {
+    /** Different people who signed in during the last 24 hours. */
+    peopleSignedIn24h: number | null;
+    /** Different people who signed in during the last 7 days. */
+    peopleSignedIn7d: number | null;
+    /** What the team (staff, not the Developer) saved in the last 14 hotel days: the same sum as the "Actions per day" chart's Team part. */
+    teamActions14d: number | null;
+    /** Successful sign-ins in the last 14 hotel days: the same sum as the "Sign-ins per day" chart. */
+    signIns14d: number | null;
+    /** Wrong passwords and blocked accounts in the last 24 hours. */
+    failedSignIns24h: number | null;
+  };
   /** The busiest hour of the day (0–23) over the last 14 days, null when nothing was done. */
   busiestHour: number | null;
   /** The roles that signed in during the 14 days (the chart's series), most sign-ins first. */
@@ -63,11 +88,17 @@ export interface ActivityData {
   busiestHours: { hour: number; count: number }[] | null;
   /** The kinds of record the work was about in the last 7 days, most first (several kinds with the same plain name are added together). Counts of actions only. */
   where: { label: string; count: number }[] | null;
+  /** The people who saved the most in the last 7 days (the Developer's own account is marked), most first. Counts of actions only. */
+  mostActive: { userId: string; name: string; roleName: string | null; developer: boolean; count: number }[] | null;
   /** The team's latest actions, newest first: who, in what role, what they did (as the audit trail words it) and when. Never an amount or a guest's name. */
   latest: { id: string; name: string; roleName: string | null; action: string; at: Date }[] | null;
   /** Who has used the system in the last 10 minutes (a name, a role, when). */
   online: { id: string; name: string; roleName: string; lastSeenAt: Date }[] | null;
   recentSignIns: { id: string; name: string; roleCode: string | null; roleName: string | null; device: { label: string; phone: boolean } | null; ip: string | null; at: Date }[] | null;
+  /** Active accounts that never signed in, or not for 30 days (a name and a role; the longest idle first). The Developer and the system account are not part of it. */
+  notUsing: { id: string; name: string; roleName: string; lastUsedAt: Date | null }[] | null;
+  /** How many such accounts there are (the list shows the first few). */
+  notUsingTotal: number;
 }
 
 /** "Chrome · Mac" from a user-agent (browser first, then the device). */
@@ -85,14 +116,17 @@ export async function activityData(user: ConsoleUser, now = new Date()): Promise
   const days = eachDate(addDays(today, -(ACTIVITY_DAYS - 1)), addDays(today, 1));
   const { start: start14, end: end14 } = businessRangeBounds(days[0], today, cfg);
   const start7 = businessRangeBounds(addDays(today, -(WORK_DAYS - 1)), today, cfg).start;
+  const since24 = new Date(now.getTime() - DAY);
+  const since7d = new Date(now.getTime() - 7 * DAY);
   const people = { actorType: { in: ["STAFF", "DEVELOPER"] }, action: { notIn: [...NOT_WORK_ACTIONS] } };
 
-  const [roles, logins, byDayRaw, hoursRaw, whereRaw, latestRaw, onlineRaw, recentRaw] = await Promise.all([
+  const [roles, logins, sessions24, byDayRaw, hoursRaw, whereRaw, activeRaw, latestRaw, onlineRaw, recentRaw, usersRaw, failed24] = await Promise.all([
     safe(() => db.role.findMany({ select: { code: true, name: true } })),
     safe(() => db.auditLog.findMany({
       where: { action: "auth.login", createdAt: { gte: start14, lt: end14 } },
-      select: { actorRole: true, businessDate: true }, orderBy: { createdAt: "desc" }, take: 5000,
+      select: { userId: true, actorRole: true, businessDate: true, createdAt: true }, orderBy: { createdAt: "desc" }, take: 5000,
     })),
+    safe(() => db.session.findMany({ where: { createdAt: { gte: since24 } }, select: { userId: true }, take: 2000 })),
     safe(() => db.auditLog.groupBy({
       by: ["businessDate", "actorType"],
       where: { ...people, businessDate: { gte: toDbDate(days[0]), lte: toDbDate(today) }, createdAt: { gte: start14, lt: end14 } },
@@ -111,6 +145,11 @@ export async function activityData(user: ConsoleUser, now = new Date()): Promise
       where: { ...people, createdAt: { gte: start7 }, businessDate: { gte: toDbDate(addDays(today, -(WORK_DAYS - 1))), lte: toDbDate(today) } },
       _count: { id: true }, orderBy: { _count: { id: "desc" } }, take: 40,
     })),
+    safe(() => db.auditLog.groupBy({
+      by: ["userId"],
+      where: { ...people, userId: { not: null }, createdAt: { gte: start7 }, businessDate: { gte: toDbDate(addDays(today, -(WORK_DAYS - 1))), lte: toDbDate(today) } },
+      _count: { id: true }, orderBy: { _count: { id: "desc" } }, take: MOST_ACTIVE_SHOWN,
+    })),
     safe(() => db.auditLog.findMany({
       where: { ...people, actorType: "STAFF" }, orderBy: { createdAt: "desc" }, take: LATEST_ACTIONS,
       select: { id: true, userId: true, actorLabel: true, actorRole: true, action: true, createdAt: true },
@@ -123,6 +162,13 @@ export async function activityData(user: ConsoleUser, now = new Date()): Promise
       where: { action: "auth.login" }, orderBy: { createdAt: "desc" }, take: RECENT_SIGN_INS,
       select: { id: true, userId: true, actorLabel: true, actorRole: true, ipAddress: true, createdAt: true },
     })),
+    // Active accounts of the team (never the Developer's or the system account), with their newest session: bounded, sorted and cut below.
+    safe(() => db.user.findMany({
+      where: operationalOnly({ isActive: true }),
+      select: { id: true, fullName: true, lastLoginAt: true, role: { select: { name: true } }, sessions: { orderBy: { lastSeenAt: "desc" }, take: 1, select: { lastSeenAt: true } } },
+      orderBy: { fullName: "asc" }, take: 300,
+    })),
+    safe(() => db.auditLog.count({ where: { action: "auth.login_failed", createdAt: { gte: since24 } } })),
   ]);
 
   // ── sign-ins ──
@@ -145,6 +191,11 @@ export async function activityData(user: ConsoleUser, now = new Date()): Promise
       return { date, total: Object.values(byRole).reduce((n, v) => n + v, 0), byRole };
     });
   }
+  const loginIds = (since: Date) => (logins ?? []).filter((l) => l.createdAt >= since).map((l) => l.userId);
+  const distinct = (ids: (string | null)[]) => new Set(ids.filter((id): id is string => !!id)).size;
+  const peopleSignedIn24h = logins && sessions24 ? distinct([...loginIds(since24), ...sessions24.map((s) => s.userId)]) : null;
+  const peopleSignedIn7d = logins ? distinct(loginIds(since7d)) : null;
+  const signIns14d = signInsPerDay ? signInsPerDay.reduce((n, d) => n + d.total, 0) : null;
 
   // ── actions per day ──
   let actionsPerDay: ActivityData["actionsPerDay"] = null;
@@ -158,6 +209,7 @@ export async function activityData(user: ConsoleUser, now = new Date()): Promise
     }
     actionsPerDay = days.map((date) => { const b = perDay.get(date)!; return { date, ...b, total: b.team + b.developer }; });
   }
+  const teamActions14d = actionsPerDay ? actionsPerDay.reduce((n, d) => n + d.team, 0) : null;
 
   // ── busiest hours ──
   let busiestHours: ActivityData["busiestHours"] = null;
@@ -176,6 +228,18 @@ export async function activityData(user: ConsoleUser, now = new Date()): Promise
     const byLabel = new Map<string, number>();
     for (const r of whereRaw) { const label = moduleWords(r.entityType); byLabel.set(label, (byLabel.get(label) ?? 0) + r._count.id); }
     where = [...byLabel].map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)).slice(0, WHERE_SHOWN);
+  }
+
+  // ── most active people ──
+  let mostActive: ActivityData["mostActive"] = null;
+  if (activeRaw) {
+    const ids = activeRaw.map((r) => r.userId).filter((id): id is string => !!id);
+    const names = ids.length ? (await safe(() => db.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true, role: { select: { code: true, name: true } } } }))) ?? [] : [];
+    const byId = new Map(names.map((u) => [u.id, u]));
+    mostActive = activeRaw.flatMap((r) => {
+      const u = r.userId ? byId.get(r.userId) : undefined;
+      return u ? [{ userId: u.id, name: u.fullName, roleName: u.role.name, developer: u.role.code === DEVELOPER_ROLE_CODE, count: r._count.id }] : [];
+    });
   }
 
   // ── who did what, just now (the team's latest actions) ──
@@ -226,10 +290,27 @@ export async function activityData(user: ConsoleUser, now = new Date()): Promise
     });
   }
 
+  // ── not using the system (never signed in, or not for 30 days; a shared screen counts as in use while its session is) ──
+  let notUsing: ActivityData["notUsing"] = null;
+  let notUsingTotal = 0;
+  if (usersRaw) {
+    const cutoff = new Date(now.getTime() - NOT_USING_DAYS * DAY);
+    const idle = usersRaw
+      .map((u) => {
+        const seen = [u.lastLoginAt, u.sessions[0]?.lastSeenAt].filter((d): d is Date => !!d);
+        return { id: u.id, name: u.fullName, roleName: u.role.name, lastUsedAt: seen.length ? new Date(Math.max(...seen.map((d) => d.getTime()))) : null };
+      })
+      .filter((u) => !u.lastUsedAt || u.lastUsedAt < cutoff)
+      .sort((a, b) => (a.lastUsedAt?.getTime() ?? 0) - (b.lastUsedAt?.getTime() ?? 0));
+    notUsingTotal = idle.length;
+    notUsing = idle.slice(0, NOT_USING_SHOWN);
+  }
+
   return {
     today, dayStart: formatMinutesLabel(cfg.businessDayStartMinutes), days,
+    stats: { peopleSignedIn24h, peopleSignedIn7d, teamActions14d, signIns14d, failedSignIns24h: failed24 },
     busiestHour,
-    roles: roleList, signInsPerDay, actionsPerDay, busiestHours, where, latest, online, recentSignIns,
+    roles: roleList, signInsPerDay, actionsPerDay, busiestHours, where, mostActive, latest, online, recentSignIns, notUsing, notUsingTotal,
   };
 }
 

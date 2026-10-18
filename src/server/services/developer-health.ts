@@ -309,6 +309,9 @@ const BIG_TABLES = [
   { table: "sessions", label: msg("Sign-in sessions") },
   { table: "notification_deliveries", label: msg("Messages sent") },
   { table: "system_events", label: msg("System events") },
+  // The receipts and payment proofs are kept in the database itself, so this is a table whose SIZE moves (a count and a size only: no file is read).
+  { table: "stored_files", label: msg("Stored files") },
+  { table: "rate_limit_buckets", label: msg("Rate-limit counters") },
 ] as const;
 
 /** A handful of real, small questions asked of the database, each timed (system records only: never the hotel's own tables). */
@@ -348,6 +351,7 @@ export async function speedData(user: ConsoleUser, now = new Date()): Promise<Sp
   const [counts, sizes, dbSize, diag] = await Promise.all([
     Promise.all([
       safe(() => db.auditLog.count()), safe(() => db.session.count()), safe(() => db.notificationDelivery.count()), safe(() => db.systemEvent.count()),
+      safe(() => db.storedFile.count()), safe(() => db.rateLimitBucket.count()),
     ]),
     safe(() => db.$queryRaw<{ name: string; bytes: bigint }[]>`
       SELECT c.relname AS name, pg_total_relation_size(c.oid)::bigint AS bytes
@@ -403,6 +407,8 @@ export interface CrashData {
   byAddress: AddressTries[] | null;
   /** The Developer's refused actions per hotel day (the last 7 days, oldest first), to read beside the failed sign-ins. null = could not be read. */
   deniedByDay: { date: BusinessDate; count: number }[] | null;
+  /** The chart: wrong tries and refused Developer actions for each of the last 14 hotel days, oldest first (the same window as "Failed sign-ins in 14 days"). null = could not be read. */
+  perDay: { date: BusinessDate; failed: number; denied: number }[] | null;
   /** Sign-in places or emails paused right now (their wrong tries went over the limit in the last 15 minutes): the Developer account's own lock, and the shared ones. Counts only — never the email or the address. */
   paused: { developer: number; staff: number } | null;
   denied: DeniedEntry[];
@@ -427,8 +433,9 @@ export async function crashData(user: ConsoleUser, now = new Date()): Promise<Cr
   const since24 = new Date(now.getTime() - DAY);
   const { start, end } = businessRangeBounds(days[0], today, cfg);
   const start14 = businessRangeBounds(addDays(today, -13), today, cfg).start;
+  const days14 = eachDate(addDays(today, -13), addDays(today, 1));
 
-  const [system, failedRows, buckets, denied, deniedRaw, failed14d, successful14d] = await Promise.all([
+  const [system, failedRows, buckets, denied, deniedRaw, failed14d, successful14d, failedRaw14] = await Promise.all([
     safe(() => loadSystemEvents(user as Parameters<typeof loadSystemEvents>[0], now)),
     safe(() => db.auditLog.findMany({
       where: { action: "auth.login_failed", createdAt: { gte: start, lt: end } },
@@ -439,9 +446,10 @@ export async function crashData(user: ConsoleUser, now = new Date()): Promise<Cr
       select: { key: true, count: true }, take: 500,
     })),
     recentDenied(user, 20),
-    safe(() => db.auditLog.groupBy({ by: ["businessDate"], where: { action: "developer.denied", createdAt: { gte: start, lt: end } }, _count: { _all: true } })),
+    safe(() => db.auditLog.groupBy({ by: ["businessDate"], where: { action: "developer.denied", createdAt: { gte: start14, lt: end } }, _count: { _all: true } })),
     safe(() => db.auditLog.count({ where: { action: "auth.login_failed", createdAt: { gte: start14, lt: end } } })),
     safe(() => db.auditLog.count({ where: { action: "auth.login", createdAt: { gte: start14, lt: end } } })),
+    safe(() => db.auditLog.groupBy({ by: ["businessDate"], where: { action: "auth.login_failed", createdAt: { gte: start14, lt: end } }, _count: { _all: true } })),
   ]);
 
   let failed: CrashData["failed"] = null;
@@ -508,5 +516,7 @@ export async function crashData(user: ConsoleUser, now = new Date()): Promise<Cr
 
   const deniedPerDay = deniedRaw ? new Map(deniedRaw.map((r) => [fromDbDate(r.businessDate), r._count._all])) : null;
   const deniedByDay = deniedPerDay ? days.map((date) => ({ date, count: deniedPerDay.get(date) ?? 0 })) : null;
-  return { system, failed, failed14d, successful14d, byAddress, paused, denied, deniedByDay };
+  const failedPerDay = failedRaw14 ? new Map(failedRaw14.map((r) => [fromDbDate(r.businessDate), r._count._all])) : null;
+  const perDay = failedPerDay && deniedPerDay ? days14.map((date) => ({ date, failed: failedPerDay.get(date) ?? 0, denied: deniedPerDay.get(date) ?? 0 })) : null;
+  return { system, failed, failed14d, successful14d, byAddress, paused, denied, deniedByDay, perDay };
 }
