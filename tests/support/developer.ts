@@ -142,3 +142,22 @@ export async function resolveAsync(node: ReactNode): Promise<ReactNode> {
   if (el.type === Suspense) return resolveAsync(el.props.children);
   return el.props?.children === undefined ? el : ({ ...el, props: { ...el.props, children: await resolveAsync(el.props.children) } } as ReactElement);
 }
+
+/**
+ * DEFENCE IN DEPTH. The Developer role no longer holds the rights that do the hotel's work (DEVELOPER_BY_WORK_AS, 2026-10-18): it reaches
+ * them only by Work as. The money-wall tests prove that, even if those rights were handed back to the role by mistake (a hand edit in the
+ * database), every fence on the server still refuses what a Developer must never do. So those files give the role the rights for the length
+ * of the file, and take them away again — the integration tests run one file at a time, so no other file ever sees them.
+ */
+export async function giveDeveloperRoleHotelWork(): Promise<void> {
+  const db = await getDb();
+  const { DEVELOPER_BY_WORK_AS } = await import("@/lib/permissions");
+  const role = await db.role.findUniqueOrThrow({ where: { code: "DEVELOPER" }, select: { id: true } });
+  const perms = await db.permission.findMany({ where: { code: { in: [...DEVELOPER_BY_WORK_AS] } }, select: { id: true } });
+  await db.rolePermission.createMany({ data: perms.map((p) => ({ roleId: role.id, permissionId: p.id })), skipDuplicates: true });
+}
+export async function takeHotelWorkFromDeveloperRole(): Promise<void> {
+  const db = await getDb();
+  const { DEVELOPER_BY_WORK_AS } = await import("@/lib/permissions");
+  await db.rolePermission.deleteMany({ where: { role: { code: "DEVELOPER" }, permission: { code: { in: [...DEVELOPER_BY_WORK_AS] } } } });
+}

@@ -38,7 +38,7 @@ import {
   saveDiscountRulesAction, savePriceRuleAction, savePromotionAction, saveRoomDiscountLimitAction, setPriceRuleActiveAction, setPromotionActiveAction, updateRoomPriceAction,
 } from "@/app/staff/(app)/settings/pricing/actions";
 import { managerActor, resetBusinessData, roomType, waiterActor } from "../support/helpers";
-import { browser, makeSession, makeUser, removeMadeUsers, thrownBy, type MadeUser } from "../support/developer";
+import { browser, makeSession, makeUser, removeMadeUsers, thrownBy, giveDeveloperRoleHotelWork, takeHotelWorkFromDeveloperRole, type MadeUser } from "../support/developer";
 
 /**
  * THE MONEY WALL (owner, 2026-10-14). The Developer account looks at everything and runs the system, but it never DECIDES about money:
@@ -580,3 +580,7 @@ describe("purchases and suppliers: a Developer — even given every purchasing r
     expect(await db.auditLog.count({ where: { action: "developer.denied" } })).toBe(0);
   });
 });
+
+// The Developer role does not hold the hotel's-work rights any more (they come only through Work as); these tests prove the fences hold even if it did.
+beforeAll(async () => { await giveDeveloperRoleHotelWork(); });
+afterAll(async () => { await takeHotelWorkFromDeveloperRole(); });

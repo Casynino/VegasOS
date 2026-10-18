@@ -31,7 +31,7 @@ import { convertRequestAction } from "@/app/staff/(app)/booking-requests/actions
 import { createGroupAction } from "@/app/staff/(app)/groups/actions";
 import { saveServiceAction } from "@/app/staff/(app)/website/actions";
 import { managerActor, resetBusinessData, roomType } from "../support/helpers";
-import { browser, makeSession, makeUser, redirectOf, removeMadeUsers, thrownBy, type MadeUser } from "../support/developer";
+import { browser, makeSession, makeUser, redirectOf, removeMadeUsers, thrownBy, giveDeveloperRoleHotelWork, takeHotelWorkFromDeveloperRole, type MadeUser } from "../support/developer";
 
 /**
  * THE WALL, THIRD PASS (owner, 2026-10-18). The last review found one critical back door and six smaller holes:
@@ -592,3 +592,7 @@ describe("ending 'work as': the end and its line in the trail are one transactio
     expect((await ended()).slice(before)).toHaveLength(1);
   });
 });
+
+// The Developer role does not hold the hotel's-work rights any more (they come only through Work as); these tests prove the fences hold even if it did.
+beforeAll(async () => { await giveDeveloperRoleHotelWork(); });
+afterAll(async () => { await takeHotelWorkFromDeveloperRole(); });

@@ -42,7 +42,7 @@ import StartShiftPage from "@/app/staff/(app)/start-shift/page";
 import { ManagerCloseShift, ShiftControls } from "@/components/staff/shift-controls";
 import { formatRecipientLine } from "@/lib/report-recipients";
 import { managerActor, receptionistActor, resetBusinessData, roomType } from "../support/helpers";
-import { browser, makeSession, makeUser, redirectOf, removeMadeUsers, thrownBy, type MadeUser } from "../support/developer";
+import { browser, makeSession, makeUser, redirectOf, removeMadeUsers, thrownBy, giveDeveloperRoleHotelWork, takeHotelWorkFromDeveloperRole, type MadeUser } from "../support/developer";
 
 /**
  * THE MONEY WALL, SECOND PASS (owner, 2026-10-17). The first review found holes the first wall left: payment accounts and opening balances,
@@ -726,3 +726,7 @@ describe("shifts: a Developer never starts, ends, closes or re-plans a person's 
     expect(await ManagerCloseShift({ shiftId: "x", name: "Neema" })).not.toBeNull();
   });
 });
+
+// The Developer role does not hold the hotel's-work rights any more (they come only through Work as); these tests prove the fences hold even if it did.
+beforeAll(async () => { await giveDeveloperRoleHotelWork(); });
+afterAll(async () => { await takeHotelWorkFromDeveloperRole(); });

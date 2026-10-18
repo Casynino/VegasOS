@@ -55,7 +55,7 @@ import { GET as storedFile } from "@/app/api/files/[id]/route";
 import { GET as pulse } from "@/app/api/restaurant/pulse/route";
 import { activityWhere, loadActivity } from "@/app/staff/(app)/activity/data";
 import { DOWNLOAD_ACTION, EXPORT_ACTION, VIEW_BURST_LIMIT } from "@/server/services/developer-view-log";
-import { auditOf, browser, makeSession, makeUser, removeMadeUsers, sha256, type MadeUser } from "../support/developer";
+import { auditOf, browser, makeSession, makeUser, removeMadeUsers, sha256, giveDeveloperRoleHotelWork, takeHotelWorkFromDeveloperRole, type MadeUser } from "../support/developer";
 
 /**
  * A Developer's reading of data leaves a trace too (owner, 2026-10-14), against a real database:
@@ -404,3 +404,7 @@ describe("the Staff activity page hides a Developer's rows from anyone who may n
     expect(JSON.stringify(activityWhere(q, false))).toContain("developer.");
   });
 });
+
+// The Developer role does not hold the hotel's-work rights any more (they come only through Work as); these tests prove the fences hold even if it did.
+beforeAll(async () => { await giveDeveloperRoleHotelWork(); });
+afterAll(async () => { await takeHotelWorkFromDeveloperRole(); });

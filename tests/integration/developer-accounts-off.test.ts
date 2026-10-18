@@ -321,7 +321,7 @@ describe("the Developer holds no 'users.manage': the Users page and its actions 
 
   it("the Developer role holds no 'users.manage' in the database; the Boss and the MD do", async () => {
     expect(await rightsOf(DEV)).not.toContain("users.manage");
-    expect((await rightsOf(DEV)).length).toBe(56);
+    expect((await rightsOf(DEV)).length).toBe(28);
     for (const code of ["OWNER", "ADMIN"]) expect(await rightsOf(code), code).toContain("users.manage");
     expect(DEVELOPER_DENIED).toContain("users.manage");
   });

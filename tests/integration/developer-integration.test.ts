@@ -22,7 +22,7 @@ import { quickAddCompanyAction } from "@/app/staff/(app)/corporate/actions";
 import { saveExpenseItemAction } from "@/app/staff/(app)/expenses/actions";
 import { toDbDate, businessDateOf } from "@/lib/time/business-date";
 import { eat, managerActor, resetBusinessData, roomType } from "../support/helpers";
-import { browser, makeSession, makeUser, removeMadeUsers, thrownBy, type MadeUser } from "../support/developer";
+import { browser, makeSession, makeUser, removeMadeUsers, thrownBy, giveDeveloperRoleHotelWork, takeHotelWorkFromDeveloperRole, type MadeUser } from "../support/developer";
 
 /**
  * THE INTEGRATION PASS (owner, 2026-10-17): the doors the second money review found that no fixer owned. Each one is tried as the Developer on
@@ -215,3 +215,7 @@ describe("an expense type sets the payee and amount that expenses start from", (
     expect((await db.expenseItem.findFirstOrThrow({ where: { name: item.name } })).defaultAmount).toBe(250_000);
   });
 });
+
+// The Developer role does not hold the hotel's-work rights any more (they come only through Work as); these tests prove the fences hold even if it did.
+beforeAll(async () => { await giveDeveloperRoleHotelWork(); });
+afterAll(async () => { await takeHotelWorkFromDeveloperRole(); });

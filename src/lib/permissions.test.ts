@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { ALL_PERMISSIONS, DEFAULT_ROLES, DEVELOPER_ACCOUNT_RIGHTS, DEVELOPER_ALLOWED, DEVELOPER_DENIED, DEVELOPER_LOCKED_SETTINGS, DEVELOPER_ONLY, DEVELOPER_ROLE_CODE, isDeveloperOnly, PERMISSIONS } from "./permissions";
+import { ALL_PERMISSIONS, DEFAULT_ROLES, DEVELOPER_ACCOUNT_RIGHTS, DEVELOPER_ALLOWED, DEVELOPER_BY_WORK_AS, DEVELOPER_DENIED, DEVELOPER_LOCKED_SETTINGS, DEVELOPER_ONLY, DEVELOPER_ROLE_CODE, isDeveloperOnly, PERMISSIONS } from "./permissions";
 
 /** Manager = hotel operations authority; Admin (MD) = everything the Manager has, plus set-up and control. */
 describe("manager and admin roles", () => {
@@ -196,23 +196,37 @@ describe("the Developer account's rights", () => {
     expect(DEVELOPER_ACCOUNT_RIGHTS).toEqual(["users.manage"]);
     for (const code of DEVELOPER_ACCOUNT_RIGHTS) expect(denied.has(code), `${code} is one of the denied rights`).toBe(true);
     for (const code of ["OWNER", "ADMIN"]) expect(roleSet(code).has("users.manage"), code).toBe(true);
-    // It holds 56 rights: the allowed ones and its own (it was 57 while it held 'users.manage').
-    expect(developer.size).toBe(56);
-    expect(DEVELOPER_ALLOWED.length + DEVELOPER_ONLY.length).toBe(56);
+    // It holds 28 rights: the allowed ones (looking, settings, audit) and its own. It held 56 until the hotel's own work was taken out
+    // (2026-10-18, now reached only by Work as), and 57 while it held 'users.manage'.
+    expect(developer.size).toBe(28);
+    expect(DEVELOPER_ALLOWED.length + DEVELOPER_ONLY.length).toBe(28);
   });
 
-  it("the Developer holds the operational rights: reservations, rooms, settings, reports, ledger, finance view", () => {
+  it("the Developer LOOKS at everything (reservations, guests, rooms, shifts, reports, ledger, finance, stock, audit) and holds the settings right", () => {
     for (const p of [
-      "reservations.view", "reservations.create", "reservations.edit", "reservations.check_in", "reservations.check_out",
-      "rooms.view", "rooms.status.update", "rooms.manage", "rooms.block", "settings.manage", "reports.view", "ledger.view", "finance.view",
-      "shifts.view", "audit.view", "staff.activity.view", "guests.view", "inventory.view", "assets.view",
+      "reservations.view", "guests.view", "rooms.view", "meeting.view", "settings.manage", "reports.view", "ledger.view", "finance.view",
+      "shifts.view", "audit.view", "staff.activity.view", "inventory.view", "assets.view", "requests.view", "transport.view", "booking_requests.view",
     ] as const) expect(developer.has(p), p).toBe(true);
-    // Every reservations.* and rooms.* right the Developer is not explicitly denied.
-    for (const p of Object.keys(PERMISSIONS).filter((c) => /^(reservations|rooms)\./.test(c) && !denied.has(c))) expect(developer.has(p), p).toBe(true);
   });
 
-  it("the Developer holds every right a business role can hold, except the denied ones — nothing is quietly left out (and nothing is added by accident)", () => {
-    const missing = ALL_PERMISSIONS.filter((p) => !developer.has(p) && !denied.has(p));
+  it("the hotel's own work is NOT in the Developer's account (owner, 2026-10-18): checking in, rooms, shifts, requests, the restaurant, stock use — only Work as reaches it", () => {
+    for (const p of [
+      "reservations.create", "reservations.edit", "reservations.check_in", "reservations.check_out", "reservations.checkin_override",
+      "guests.manage", "guests.delete", "rooms.status.update", "rooms.manage", "rooms.block", "shifts.work", "shifts.manage", "requests.manage",
+      "restaurant.orders", "restaurant.serve", "restaurant.shift", "kitchen.orders", "bar.orders", "inventory.request", "inventory.use", "assets.manage",
+      "website.manage", "booking_requests.manage", "transport.manage", "meeting.manage", "hotel_qr.manage",
+    ] as const) {
+      expect(developer.has(p), `${p} is not held`).toBe(false);
+      expect((DEVELOPER_BY_WORK_AS as readonly string[]), p).toContain(p);
+      // …and the Boss, the MD and the managers who do the work still hold what they held
+      expect((ALL_PERMISSIONS as readonly string[]), p).toContain(p);
+    }
+    // a "..._BY_WORK_AS" right is never a money right: the two lists are apart, so Work as never hands over what the Developer is denied
+    for (const p of DEVELOPER_BY_WORK_AS) expect(denied.has(p), `${p} is also denied`).toBe(false);
+  });
+
+  it("the Developer holds every right a business role can hold, except the denied ones and the hotel's work (reached by Work as) — nothing is quietly left out (and nothing is added by accident)", () => {
+    const missing = ALL_PERMISSIONS.filter((p) => !developer.has(p) && !denied.has(p) && !(DEVELOPER_BY_WORK_AS as readonly string[]).includes(p));
     expect(missing).toEqual([]);
     const extra = [...developer].filter((p) => !(ALL_PERMISSIONS as readonly string[]).includes(p) && !isDeveloperOnly(p));
     expect(extra).toEqual([]);
@@ -242,20 +256,21 @@ describe("the Developer account's rights", () => {
  */
 describe("the Developer role is an explicit allow-list", () => {
   const allowed = new Set<string>(DEVELOPER_ALLOWED);
+  const byWorkAs = new Set<string>(DEVELOPER_BY_WORK_AS);
   const denied = new Set<string>(DEVELOPER_DENIED);
   const only = new Set<string>(DEVELOPER_ONLY);
   const developer = DEFAULT_ROLES.DEVELOPER.permissions as readonly string[];
 
-  it("every right is in exactly one of DEVELOPER_ALLOWED, DEVELOPER_DENIED or DEVELOPER_ONLY", () => {
+  it("every right is in exactly one of DEVELOPER_ALLOWED, DEVELOPER_BY_WORK_AS, DEVELOPER_DENIED or DEVELOPER_ONLY", () => {
     for (const code of Object.keys(PERMISSIONS)) {
-      const lists = [["DEVELOPER_ALLOWED", allowed], ["DEVELOPER_DENIED", denied], ["DEVELOPER_ONLY", only]].filter(([, set]) => (set as Set<string>).has(code)).map(([name]) => name);
-      expect(lists.length > 0, `${code}: classify this new right for the Developer role (put it in DEVELOPER_ALLOWED or DEVELOPER_DENIED in src/lib/permissions.ts, and in the migration if allowed)`).toBe(true);
+      const lists = [["DEVELOPER_ALLOWED", allowed], ["DEVELOPER_BY_WORK_AS", byWorkAs], ["DEVELOPER_DENIED", denied], ["DEVELOPER_ONLY", only]].filter(([, set]) => (set as Set<string>).has(code)).map(([name]) => name);
+      expect(lists.length > 0, `${code}: classify this new right for the Developer role (put it in DEVELOPER_ALLOWED, DEVELOPER_BY_WORK_AS or DEVELOPER_DENIED in src/lib/permissions.ts, and in a migration if allowed)`).toBe(true);
       expect(lists, `${code} is in more than one Developer list`).toHaveLength(1);
     }
   });
 
-  it("the three lists share nothing, hold no repeats and name only real rights", () => {
-    for (const [name, list] of [["DEVELOPER_ALLOWED", DEVELOPER_ALLOWED], ["DEVELOPER_DENIED", DEVELOPER_DENIED], ["DEVELOPER_ONLY", DEVELOPER_ONLY]] as const) {
+  it("the four lists share nothing, hold no repeats and name only real rights", () => {
+    for (const [name, list] of [["DEVELOPER_ALLOWED", DEVELOPER_ALLOWED], ["DEVELOPER_BY_WORK_AS", DEVELOPER_BY_WORK_AS], ["DEVELOPER_DENIED", DEVELOPER_DENIED], ["DEVELOPER_ONLY", DEVELOPER_ONLY]] as const) {
       expect(new Set(list).size, `${name} has a repeated right`).toBe(list.length);
       for (const code of list) expect(code in PERMISSIONS, `${name}: ${code} is not a real right`).toBe(true);
     }
@@ -279,13 +294,18 @@ describe("the Developer role is an explicit allow-list", () => {
     }
   });
 
-  it("the database migration grants the Developer role exactly the allowed rights and the developer-only right", () => {
+  it("the database: the first migration granted the allowed rights, the hotel's work (taken out again) and the developer-only right; the second takes exactly the hotel's work out", () => {
+    const second = readFileSync(path.resolve(import.meta.dirname, "../../prisma/migrations/20261018150000_developer_via_work_as/migration.sql"), "utf8");
+    const removed = [...second.split("IN (").slice(-1)[0].matchAll(/'([a-z_.]+)'/g)].map((m) => m[1]);
+    expect([...removed].sort()).toEqual([...DEVELOPER_BY_WORK_AS].sort());
+    expect(second).toMatch(/"code" = 'DEVELOPER'/);
+    expect(second).not.toMatch(/\bDROP\b|\bTRUNCATE\b|DELETE FROM "(?!role_permissions)/);
     const sql = readFileSync(path.resolve(import.meta.dirname, "../../prisma/migrations/20261014090000_developer_account/migration.sql"), "utf8");
     const block = sql.match(/r\."code" = 'DEVELOPER' AND p\."code" IN \(([\s\S]*?)\)\s*ON CONFLICT/);
     expect(block, "the migration's list of the Developer's rights was not found").not.toBeNull();
     const granted = [...block![1].matchAll(/'([a-z_.]+)'/g)].map((m) => m[1]);
     expect(new Set(granted).size, "a right is repeated in the migration").toBe(granted.length);
-    expect([...granted].sort()).toEqual([...DEVELOPER_ALLOWED, ...DEVELOPER_ONLY].sort());
+    expect([...granted].sort()).toEqual([...DEVELOPER_ALLOWED, ...DEVELOPER_BY_WORK_AS, ...DEVELOPER_ONLY].sort());
   });
 
   it("the settings the Developer cannot change include where guests pay and every money limit, and each is a real settings field", () => {

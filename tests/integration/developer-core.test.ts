@@ -263,10 +263,11 @@ describe("rights: the Developer-only right, the audit right, and no money for th
     const has = new Set<string>(DEFAULT_ROLES.DEVELOPER.permissions);
     for (const denied of DEVELOPER_DENIED) expect(has.has(denied), denied).toBe(false);
     expect(DEVELOPER_DENIED, "creating and changing accounts, passwords, emails, roles and rights is the Boss's and the MD's alone (owner, 2026-10-18)").toContain("users.manage");
-    expect(has.size, "56 rights").toBe(56);
+    expect(has.size, "28 rights").toBe(28);
     expect(DEVELOPER_DENIED).toEqual(expect.arrayContaining(["payments.record", "payments.reverse", "expenses.approve", "purchases.pay", "withdrawals.manage", "finance.manage", "restaurant.payments.confirm"]));
-    // but it inspects and runs everything else
-    for (const code of ["reservations.view", "settings.manage", "audit.view", "developer.access", "ledger.view", "shifts.manage"] as PermissionCode[]) expect(has.has(code), code).toBe(true);
+    // but it inspects everything else — and does not do the hotel's work (that is reached only by Work as)
+    for (const code of ["reservations.view", "settings.manage", "audit.view", "developer.access", "ledger.view", "shifts.view"] as PermissionCode[]) expect(has.has(code), code).toBe(true);
+    for (const code of ["shifts.manage", "shifts.work", "reservations.check_in", "restaurant.orders"] as PermissionCode[]) expect(has.has(code), code).toBe(false);
   });
 
   it("in the database: only the DEVELOPER role holds developer.access", async () => {
@@ -283,7 +284,7 @@ describe("rights: the Developer-only right, the audit right, and no money for th
     const has = await codesOf(DEVELOPER_ROLE_CODE);
     for (const denied of DEVELOPER_DENIED) expect(has.has(denied), denied).toBe(false);
     expect(has.has("users.manage")).toBe(false);
-    expect(has.size).toBe(56);
+    expect(has.size).toBe(28);
     const missing = DEFAULT_ROLES.DEVELOPER.permissions.filter((p) => !has.has(p));
     expect(missing, "rights the code gives the Developer but the database does not").toEqual([]);
     const extra = [...has].filter((p) => !(DEFAULT_ROLES.DEVELOPER.permissions as string[]).includes(p));

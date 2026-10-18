@@ -13,7 +13,7 @@ import { isPickableRole, operationalOnly, operationalUser, withoutDeveloper } fr
 import { addDays } from "@/lib/time/business-date";
 import { DEFAULT_ROLES, DEVELOPER_ROLE_CODE } from "@/lib/permissions";
 import { managerActor as anyManager, resetBusinessData } from "../support/helpers";
-import { makeUser, removeMadeUsers, type MadeUser } from "../support/developer";
+import { makeUser, removeMadeUsers, giveDeveloperRoleHotelWork, takeHotelWorkFromDeveloperRole, type MadeUser } from "../support/developer";
 
 /**
  * The Developer account is never offered to other staff (owner, 2026-10-14). It holds nearly every right, so every list that finds
@@ -204,3 +204,7 @@ describe("every staff-facing list uses the helper (source check — the pages ar
     expect(text("src/server/services/restaurant.ts")).toMatch(/waitersToAssign[\s\S]{0,300}operationalOnly\(/);
   });
 });
+
+// The Developer role does not hold the hotel's-work rights any more (they come only through Work as); these tests prove the fences hold even if it did.
+beforeAll(async () => { await giveDeveloperRoleHotelWork(); });
+afterAll(async () => { await takeHotelWorkFromDeveloperRole(); });

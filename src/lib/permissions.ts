@@ -131,34 +131,49 @@ export const ALL_PERMISSIONS = (Object.keys(PERMISSIONS) as PermissionCode[]).fi
  * It also cannot create or change accounts, passwords, login emails, roles or rights (owner, 2026-10-18): "users.manage" is denied, and
  * the account service refuses a Developer whatever it holds. It can work as a person, suspend, sign out everywhere and re-activate.
  *
- * Every right is in exactly ONE of the three lists below (DEVELOPER_ALLOWED, DEVELOPER_DENIED, DEVELOPER_ONLY) — the unit test
- * fails for a right that is in none, so a NEW right is never given to the Developer until a person decides which list it belongs to.
+ * THE HOTEL'S OWN WORK IS NOT THE DEVELOPER'S (owner, 2026-10-18): he never checks a guest in, takes an order, starts a shift or answers a
+ * request. His job is to see what is wrong in the SYSTEM and what to fix. So the rights that DO the hotel's work (DEVELOPER_BY_WORK_AS) are
+ * not held by his own account; he reaches them only by "Work as" a person, which gives him that person's rights (minus money) and is
+ * written down and told to the Boss every time.
+ *
+ * Every right is in exactly ONE of the four lists below (DEVELOPER_ALLOWED, DEVELOPER_BY_WORK_AS, DEVELOPER_DENIED, DEVELOPER_ONLY) — the
+ * unit test fails for a right that is in none, so a NEW right is never given to the Developer until a person decides which list it belongs to.
  */
 
-/** Every right the Developer holds besides the Developer-only one — written out, one by one. Looking is allowed; so is running the hotel's operations and the system. */
+/** Every right the Developer's OWN account holds besides the Developer-only one — written out, one by one: looking at everything, the system's settings and the audit trail. */
 export const DEVELOPER_ALLOWED: readonly PermissionCode[] = [
   // Dashboards (looking only: the buttons on them need their own rights, and a decision about money is refused on the server)
   "dashboard.admin", "dashboard.owner", "dashboard.manager", "dashboard.front_desk", "dashboard.finance", "dashboard.procurement",
   // Reports, the books and the money screens — read only
   "reports.view", "finance.view", "ledger.view", "invoices.view", "corporate.view", "expenses.view_all", "cash.handover.view",
-  // The front desk's operations (the bill-shaping actions among them are fenced on the server for a Developer)
-  "reservations.view", "reservations.create", "reservations.edit", "reservations.check_in", "reservations.check_out", "reservations.checkin_override",
-  "guests.view", "guests.manage", "guests.delete",
-  "rooms.view", "rooms.status.update", "rooms.manage", "rooms.block",
-  "meeting.view", "meeting.manage",
-  "hotel_qr.manage",
-  // Staff, shifts and the system's configuration
-  "shifts.view", "shifts.work", "shifts.manage", "staff.activity.view", "settings.manage",
-  // Guests' requests, transport, website, booking requests
-  "contact.view", "requests.view", "requests.manage",
-  "transport.view", "transport.request", "transport.manage", "transport.driver",
-  "website.manage", "booking_requests.view", "booking_requests.manage",
-  // The restaurant: orders, serving, the kitchen and the bar (payments are the Counter's — see DEVELOPER_DENIED)
-  "restaurant.orders", "restaurant.serve", "restaurant.shift", "kitchen.orders", "bar.orders",
-  // Stock: look, ask, record what was used (waste waits for a manager); assets register
-  "inventory.view", "inventory.request", "inventory.use", "assets.view", "assets.manage",
+  // The hotel, looked at (never done)
+  "reservations.view", "guests.view", "rooms.view", "meeting.view",
+  // Staff, shifts and the system's configuration (looking at shifts; the settings the money-lock leaves open)
+  "shifts.view", "staff.activity.view", "settings.manage",
+  // Guests' requests, transport, website, booking requests — looking
+  "contact.view", "requests.view", "transport.view", "booking_requests.view",
+  // Stock and the assets register — looking
+  "inventory.view", "assets.view",
   // The full audit trail
   "audit.view",
+];
+
+/**
+ * The rights that DO the hotel's work: the front desk, rooms, shifts, requests, transport, the website, the restaurant, the kitchen and the
+ * bar, stock use, the assets register. The Developer's own account does NOT hold them (owner, 2026-10-18). "Work as" still gives them,
+ * because it hands over the person's own rights (minus DEVELOPER_DENIED and DEVELOPER_ONLY) — see permissionsWhileWorkingAs in auth.ts.
+ * The bill-shaping actions among them stay fenced on the server for a Developer either way.
+ */
+export const DEVELOPER_BY_WORK_AS: readonly PermissionCode[] = [
+  "reservations.create", "reservations.edit", "reservations.check_in", "reservations.check_out", "reservations.checkin_override",
+  "guests.manage", "guests.delete",
+  "rooms.status.update", "rooms.manage", "rooms.block",
+  "meeting.manage", "hotel_qr.manage",
+  "shifts.work", "shifts.manage",
+  "requests.manage", "transport.request", "transport.manage", "transport.driver",
+  "website.manage", "booking_requests.manage",
+  "restaurant.orders", "restaurant.serve", "restaurant.shift", "kitchen.orders", "bar.orders",
+  "inventory.request", "inventory.use", "assets.manage",
 ];
 
 /**

@@ -185,6 +185,8 @@ describe("a Developer session working as someone", () => {
     expect(d).toMatchObject({ id: dev.id, actorId: dev.id, actorType: "DEVELOPER", workAs: null });
     expect(d.permissions.has("developer.access")).toBe(true);
     expect(d.permissions.has("payments.record")).toBe(false); // the Developer's own money wall is unchanged
+    // the hotel's own work is not the Developer's: its own account does not hold it (2026-10-18) — only Work as hands it over (see above: reservations.check_in)
+    for (const p of ["reservations.check_in", "restaurant.orders", "shifts.work", "rooms.status.update"]) expect(d.permissions.has(p as never), p).toBe(false);
   });
 });
 
