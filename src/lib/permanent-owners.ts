@@ -6,7 +6,8 @@ import { msg } from "@/i18n/msg";
  *   • every Developer account (the role), and
  *   • the accounts whose e-mail is listed in the PERMANENT_OWNER_EMAILS setting (comma-separated, set in the hosting settings — never written in
  *     the code, which is public).
- * Everybody else — the Boss and the MD included — can be suspended or deleted by the Developer, except the last active Boss (there must always be one).
+ * Everybody else — the Boss and the MD included — can be suspended or deleted by the Developer, except the last active Boss (another Boss, or a permanent owner
+ * with the MD's role, must stay).
  */
 export const PERMANENT_OWNER_EMAILS_ENV = "PERMANENT_OWNER_EMAILS";
 
@@ -19,4 +20,4 @@ export function isPermanentOwner(account: { email: string; roleCode: string }): 
 }
 
 export const PERMANENT_OWNER_REFUSAL = msg("Can't be suspended or deleted: this is a permanent owner of the system.");
-export const LAST_BOSS_REFUSAL = msg("This is the only Boss account that is switched on — there must always be one. Add or promote another Boss first.");
+export const LAST_BOSS_REFUSAL = msg("This is the only Boss account that is switched on — the top authority must always be kept. Add or promote another Boss first.");

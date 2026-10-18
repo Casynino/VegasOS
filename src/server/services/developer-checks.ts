@@ -1,4 +1,5 @@
 import "server-only";
+import { isPermanentOwner } from "@/lib/permanent-owners";
 import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { db } from "../db";
@@ -722,7 +723,10 @@ const bossAccount: Def = {
   link: () => ({ href: CONSOLE_HREF.access, label: msgf("Open Access", {}) }),
   async run() {
     const n = await db.user.count({ where: { isActive: true, role: { code: "OWNER" } } });
-    return n > 0 ? { state: "ok" } : { state: "fix", count: 1, summary: msgf("No Boss account is switched on.", { n: 1 }) };
+    if (n > 0) return { state: "ok" };
+    // A permanent owner with the MD's role stands in for the Boss (owner, 2026-10-19).
+    const mds = await db.user.findMany({ where: { isActive: true, role: { code: "ADMIN" } }, select: { email: true } });
+    return mds.some((m) => isPermanentOwner({ email: m.email, roleCode: "ADMIN" })) ? { state: "ok" } : { state: "fix", count: 1, summary: msgf("No Boss account is switched on.", { n: 1 }) };
   },
 };
 

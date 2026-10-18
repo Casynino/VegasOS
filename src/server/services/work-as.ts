@@ -178,11 +178,12 @@ export async function accessPeople(developer: CurrentUser): Promise<{ roleCode: 
   ]);
   const blockedRoles = new Set(blockedList.filter((r): r is string => r !== null));
 
-  const activeBosses = users.filter((u) => u.role.code === "OWNER" && u.isActive).length;
+  // The top authority is kept: another Boss that is switched on, or a permanent owner of the MD's kind standing in for the Boss (owner, 2026-10-19).
+  const topAccounts = users.filter((u) => u.isActive && (u.role.code === "OWNER" || (u.role.code === "ADMIN" && isPermanentOwner({ email: u.email, roleCode: u.role.code }))));
   const groups = new Map<string, { roleCode: string; roleName: string; roleDescription: string; people: AccessPerson[] }>();
   for (const u of users) {
     const permanent = isPermanentOwner({ email: u.email, roleCode: u.role.code });
-    const lastBoss = u.role.code === "OWNER" && u.isActive && activeBosses <= 1;
+    const lastBoss = u.role.code === "OWNER" && u.isActive && !topAccounts.some((o) => o.id !== u.id);
     const protectedOne = permanent || lastBoss;
     const canReactivate = !busy && !u.isActive && mine.has(u.id) && !blockedRoles.has(u.roleId);
     const person: AccessPerson = {
@@ -305,11 +306,15 @@ async function loadAccount(userId: string) {
   return target;
 }
 
-/** The last active Boss can be neither suspended nor deleted: there must always be one. */
+/**
+ * The last active Boss can be neither suspended nor deleted: the top authority must always be kept. Another Boss that is switched on keeps it — and so
+ * does an active permanent owner with the MD's role (owner, 2026-10-19: bashleyair@gmail.com, the MD, stands in when the old Boss account is deleted).
+ */
 async function assertNotLastBoss(target: { id: string; isActive: boolean; role: { code: string } }): Promise<void> {
   if (target.role.code !== "OWNER" || !target.isActive) return;
-  const others = await db.user.count({ where: { isActive: true, role: { code: "OWNER" }, id: { not: target.id } } });
-  if (others === 0) throw new AppError(LAST_BOSS_REFUSAL, "FORBIDDEN");
+  const others = await db.user.findMany({ where: { isActive: true, id: { not: target.id }, role: { code: { in: ["OWNER", "ADMIN"] } } }, select: { email: true, role: { select: { code: true } } } });
+  const kept = others.some((o) => o.role.code === "OWNER" || isPermanentOwner({ email: o.email, roleCode: o.role.code }));
+  if (!kept) throw new AppError(LAST_BOSS_REFUSAL, "FORBIDDEN");
 }
 
 function checkReason(raw: string | null | undefined): string {

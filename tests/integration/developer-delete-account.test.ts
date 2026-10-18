@@ -129,6 +129,24 @@ describe("who can never be deleted", () => {
     expect(code(await thrownBy(() => deleteAccount(d, "no-such-person", ok)))).toBe("NOT_FOUND");
   });
 
+  it("the last active Boss can be deleted when a permanent owner with the MD's role stays active (the owner's own case: bashleyair@gmail.com)", async () => {
+    const lonely = await makeUser("OWNER");
+    const standIn = await makeUser("ADMIN");
+    process.env.PERMANENT_OWNER_EMAILS = standIn.email;
+    const others = await db.user.findMany({ where: { isActive: true, role: { code: "OWNER" }, id: { not: lonely.id } }, select: { id: true } });
+    await db.user.updateMany({ where: { id: { in: others.map((o) => o.id) } }, data: { isActive: false } });
+    try {
+      const d = await developerUser();
+      const flags = (await accessPeople(d)).flatMap((g) => g.people).find((p) => p.id === lonely.id)!;
+      expect(flags).toMatchObject({ canDelete: true, canSuspend: true }); // the old Boss's buttons are back
+      await deleteAccount(d, lonely.id, ok);
+      expect((await row(lonely.id)).removedAt).toBeInstanceOf(Date);
+      expect((await row(standIn.id)).removedAt).toBeNull(); // the permanent owner is untouched
+    } finally {
+      await db.user.updateMany({ where: { id: { in: others.map((o) => o.id) } }, data: { isActive: true } });
+    }
+  });
+
   it("the last active Boss: neither deleted nor — through the Developer — suspended", async () => {
     const others = await db.user.findMany({ where: { isActive: true, role: { code: "OWNER" }, id: { not: boss.id } }, select: { id: true } });
     await db.user.updateMany({ where: { id: { in: others.map((o) => o.id) } }, data: { isActive: false } });

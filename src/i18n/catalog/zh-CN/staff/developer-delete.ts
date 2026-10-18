@@ -9,7 +9,7 @@ const catalog: Catalog = {
   "Type DELETE, in capital letters, to go on.": "请用大写字母输入 DELETE 以继续。",
   "Account deleted.": "账号已删除。",
   "Can't be suspended or deleted: this is a permanent owner of the system.": "无法暂停或删除：这是系统的永久所有者。",
-  "This is the only Boss account that is switched on — there must always be one. Add or promote another Boss first.": "这是唯一启用的老板账号——必须始终保留一个。请先添加或提升另一个老板账号。",
+  "This is the only Boss account that is switched on — the top authority must always be kept. Add or promote another Boss first.": "这是唯一启用的老板账号——必须始终保留最高权限。请先添加或提升另一个老板账号。",
   "{developer} (Developer) deleted the account of {person} ({role}) at {time}. Reason: {reason}. Everything they did stays recorded under their name.": "{developer}（开发者）于 {time} 删除了 {person}（{role}）的账号。原因：{reason}。其做过的一切仍以其姓名保留在记录中。",
   "Permanent owner: can't be suspended or deleted": "永久所有者：不能被暂停或删除",
   "The only Boss: can't be suspended or deleted": "唯一的老板：不能被暂停或删除",
