@@ -2,12 +2,19 @@ import type { ReactNode } from "react";
 import type { T } from "@/i18n/translate";
 import type { CurrentUser } from "@/server/auth";
 import { inspectPermission, peopleTab, settingsTab, type Inspection } from "@/server/services/developer-console";
+import type { CheckResult } from "@/server/services/developer-checks";
+import { activityData } from "@/server/services/developer-activity";
 import { crashData, speedData } from "@/server/services/developer-health";
 import { noteHomeTabView } from "@/server/services/developer-business";
+import { hotelData } from "@/server/services/developer-hotel";
 import { messagesData } from "@/server/services/developer-messages";
+import { moneyData } from "@/server/services/developer-money";
 import { recordError } from "@/server/services/system-events";
 import { ErrorsTab, SecurityTab } from "./tab-crashes";
 import { Tag, type TagTone } from "./console-ui";
+import { ActivityTab } from "./tab-activity";
+import { HotelTab } from "./tab-hotel";
+import { MoneyTab } from "./tab-money";
 import { MessagesTab } from "./tab-messages";
 import { PeopleTab } from "./tab-people";
 import { SettingsTab } from "./tab-settings";
@@ -49,6 +56,16 @@ export function ConsoleSection({ id, title, hint, status, children }: { id: stri
   );
 }
 
+/** A small pill and a line between groups of parts ("The system"), so the page reads in blocks. */
+export function GroupLabel({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex items-center gap-4 pt-2" role="presentation">
+      <span className="rounded-full bg-muted px-3.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-foreground/80">{children}</span>
+      <span className="h-px flex-1 bg-border/70" aria-hidden />
+    </div>
+  );
+}
+
 /** What shows while a part is being read. */
 export function SectionSkeleton({ label }: { label: string }) {
   return <div role="status" aria-busy="true" className="h-56 animate-pulse rounded-3xl border border-border/60 bg-card/60"><span className="sr-only">{label}</span></div>;
@@ -74,7 +91,7 @@ export async function ErrorsSection({ ctx }: { ctx: SectionCtx }) {
   return guard(ctx.t, "errors", async () => <ErrorsTab t={ctx.t} c={await crashData(ctx.user, ctx.now)} when={ctx.when} now={ctx.now} />);
 }
 export async function SecuritySection({ ctx }: { ctx: SectionCtx }) {
-  return guard(ctx.t, "security", async () => <SecurityTab t={ctx.t} c={await crashData(ctx.user, ctx.now)} when={ctx.when} />);
+  return guard(ctx.t, "security", async () => <SecurityTab t={ctx.t} c={await crashData(ctx.user, ctx.now)} when={ctx.when} now={ctx.now} />);
 }
 export async function MessagesSection({ ctx }: { ctx: SectionCtx }) {
   return guard(ctx.t, "messages", async () => {
@@ -82,8 +99,23 @@ export async function MessagesSection({ ctx }: { ctx: SectionCtx }) {
     return <MessagesTab t={ctx.t} d={await messagesData(ctx.user, ctx.now)} when={ctx.when} />;
   });
 }
-export async function SpeedSection({ ctx }: { ctx: SectionCtx }) {
-  return guard(ctx.t, "speed", async () => <SpeedTab t={ctx.t} s={await speedData(ctx.user, ctx.now)} />);
+export async function SpeedSection({ ctx, checks }: { ctx: SectionCtx; checks: CheckResult[] }) {
+  return guard(ctx.t, "speed", async () => <SpeedTab t={ctx.t} s={await speedData(ctx.user, ctx.now)} dataChecks={checks.filter((c) => c.group === "Data")} />);
+}
+export async function ActivitySection({ ctx }: { ctx: SectionCtx }) {
+  return guard(ctx.t, "activity", async () => <ActivityTab t={ctx.t} a={await activityData(ctx.user, ctx.now)} now={ctx.now} timezone={ctx.timezone} />);
+}
+export async function HotelSection({ ctx }: { ctx: SectionCtx }) {
+  return guard(ctx.t, "hotel", async () => {
+    await noteHomeTabView(ctx.user, "hotel", { ipAddress: ctx.ipAddress, now: ctx.now });
+    return <HotelTab t={ctx.t} h={await hotelData(ctx.user, ctx.now)} when={ctx.when} />;
+  });
+}
+export async function MoneySection({ ctx }: { ctx: SectionCtx }) {
+  return guard(ctx.t, "money", async () => {
+    await noteHomeTabView(ctx.user, "money", { ipAddress: ctx.ipAddress, now: ctx.now });
+    return <MoneyTab t={ctx.t} m={await moneyData(ctx.user, ctx.now)} when={ctx.when} />;
+  });
 }
 export async function PeopleSection({ ctx, person, right }: { ctx: SectionCtx; person: string; right: string }) {
   return guard(ctx.t, "people", async () => {

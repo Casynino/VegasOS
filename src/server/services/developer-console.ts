@@ -3,6 +3,7 @@ import { db } from "../db";
 import { audit } from "../audit";
 import { AppError } from "../errors";
 import { DEVELOPER_IDLE_MINUTES, DEVELOPER_SESSION_HOURS } from "../auth";
+import { SYSTEM_ROLE } from "./staff-accounts";
 import { businessDayConfig, getSettings } from "../settings";
 import { localCalendarDate, localParts } from "@/lib/time/business-date";
 import { ntzsEnabled, ntzsLive } from "./ntzs";
@@ -325,7 +326,7 @@ export async function developerGreeting(user: ConsoleUser, now = new Date()): Pr
 
 // ───────────────────────────────────────────── the tabs ─────────────────────────────────────────────
 /** "Problems" comes first and is the page's default tab (owner, 2026-10-18): the Developer's job is that the system works, so what is wrong with it is the first thing he sees. */
-export const CONSOLE_TABS = ["problems", "messages", "speed", "crashes", "settings", "people"] as const;
+export const CONSOLE_TABS = ["problems", "activity", "hotel", "money", "messages", "speed", "crashes", "settings", "people"] as const;
 export type ConsoleTab = (typeof CONSOLE_TABS)[number];
 export const DEFAULT_TAB: ConsoleTab = "problems";
 /** The tab named in the address; anything else (or nothing) is the first one. */
@@ -353,7 +354,27 @@ export const NOT_WORK_ACTIONS: readonly string[] = [
 ];
 
 // ───────────────────────────────────────────── Settings tab ─────────────────────────────────────────────
+/** The settings the system runs on, by NAME only: whether each is set, never its value. */
+export interface EnvSetting { key: string; label: string; description: string; set: boolean; required: boolean }
+
+/** Every setting the system reads from its environment (the key's NAME is public; its value is never read out). English; the page shows them through t(). */
+export function envSettings(): EnvSetting[] {
+  const has = (k: string) => !!process.env[k]?.trim();
+  const list: [string, string, string, boolean][] = [
+    ["DATABASE_URL", msg("Database link"), msg("How every page reads and writes the hotel's records."), true],
+    ["DIRECT_URL", msg("Database direct link"), msg("Used for database updates (migrations) that cannot go through the pooled link."), false],
+    ["CRON_SECRET", msg("Scheduled jobs key"), msg("Lets the reports, payment checks and clean-up prove they come from the scheduler."), true],
+    ["NEXT_PUBLIC_SITE_URL", msg("Public site address"), msg("Used in links and QR codes that leave the app."), true],
+    ["BLOB_READ_WRITE_TOKEN", msg("File storage"), msg("Stores photos, payment proofs and documents outside the database."), true],
+    ["NTZS_API_KEY", msg("Online payments (nTZS)"), msg("Lets customers pay by mobile money; without it online payment is off."), false],
+    ["NTZS_WEBHOOK_SECRET", msg("nTZS webhook secret"), msg("Checks that payment messages really come from nTZS."), false],
+    ["CALLMEBOT_API_KEY", msg("WhatsApp key (CallMeBot)"), msg("The default key for sending reports and messages by WhatsApp."), false],
+  ];
+  return list.map(([key, label, description, required]) => ({ key, label, description, set: has(key), required }));
+}
+
 export interface SettingsTab {
+  env: EnvSetting[];
   identity: DeveloperIdentity;
   /** Yes / no and counters about the system's set-up — never a key or a secret. */
   config: Diagnostics;
@@ -377,7 +398,7 @@ export async function settingsTab(user: ConsoleUser, sessionTokenHash: string | 
       return { last24h, last7d, total };
     }),
   ]);
-  return { identity, config, recorded };
+  return { env: envSettings(), identity, config, recorded };
 }
 
 // ───────────────────────────────────────────── People & my actions tab ─────────────────────────────────────────────
@@ -422,7 +443,11 @@ export async function myActions(user: ConsoleUser, limit = MY_ACTIONS_LIMIT): Pr
   });
 }
 
+/** One role with how many accounts hold it (a count of accounts, never who they are). */
+export interface RoleCount { code: string; name: string; description: string | null; active: number; total: number }
+
 export interface PeopleTab {
+  roles: RoleCount[];
   people: InspectableUser[];
   rights: { code: string; description: string }[];
   myActions: MyAction[];
@@ -430,6 +455,13 @@ export interface PeopleTab {
 
 export async function peopleTab(user: ConsoleUser): Promise<PeopleTab> {
   assertConsoleAccess(user);
-  const [people, mine] = await Promise.all([listInspectableUsers(user), myActions(user)]);
-  return { people, rights: listRights(), myActions: mine };
+  const [people, mine, roles] = await Promise.all([
+    listInspectableUsers(user), myActions(user),
+    safe(() => db.role.findMany({
+      where: { code: { not: SYSTEM_ROLE } }, orderBy: { name: "asc" },
+      select: { code: true, name: true, description: true, users: { select: { isActive: true } } },
+    })),
+  ]);
+  const counts: RoleCount[] = (roles ?? []).map((r) => ({ code: r.code, name: r.name, description: r.description, active: r.users.filter((u) => u.isActive).length, total: r.users.length })).filter((r) => r.total > 0);
+  return { roles: counts, people, rights: listRights(), myActions: mine };
 }

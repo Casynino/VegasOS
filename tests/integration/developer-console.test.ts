@@ -755,8 +755,7 @@ async function wipeFuture() {
 
 describe("the home: greeting and tabs", () => {
   it("the tab comes from the address; anything unknown (or nothing, or a list) is the first tab — Problems", () => {
-    expect([...CONSOLE_TABS]).toEqual(["problems", "messages", "speed", "crashes", "settings", "people"]);
-    for (const gone of ["activity", "hotel", "money"]) expect(parseTab(gone)).toBe("problems");
+    expect([...CONSOLE_TABS]).toEqual(["problems", "activity", "hotel", "money", "messages", "speed", "crashes", "settings", "people"]);
     for (const tab of CONSOLE_TABS) expect(parseTab(tab)).toBe(tab);
     expect(parseTab(undefined)).toBe("problems");
     expect(parseTab("")).toBe("problems");
@@ -810,13 +809,14 @@ describe("speed, sign-in trouble, settings and my actions", () => {
     ["login:ip:7.7.7.7", 21, 1], ["login:trail:unknown-developer", 99, 1], ["login:email:probe-old@x.test", 50, 60],
   ];
 
-  it("speed: three quick samples, their average, the counts and size of the biggest tables, and the running version (short)", async () => {
+  it("speed: five named quick questions each timed, their average, the counts and size of the system's biggest tables, and the running version (short)", async () => {
     process.env.VERCEL_GIT_COMMIT_SHA = "0123456789abcdef0123456789abcdef01234567";
     process.env.VERCEL_ENV = "preview";
     const s = await speedData(user);
-    expect(s.latency.samples).toHaveLength(3);
+    expect(s.probes.map((p) => p.label)).toEqual(["Simple ping", "Find one account", "Count today's activity", "Load latest 50 activity lines", "Count sign-in sessions"]);
+    expect(s.latency.samples).toHaveLength(5);
     for (const n of s.latency.samples) expect(Number.isInteger(n) && n > 0).toBe(true);
-    expect(s.latency.average).toBe(Math.round(s.latency.samples.reduce((a, b) => a + b, 0) / 3));
+    expect(s.latency.average).toBe(Math.round(s.latency.samples.reduce((a, b) => a + b, 0) / 5));
     expect(s.latency.slowest).toBe(Math.max(...s.latency.samples));
     expect(s.tables.map((t) => t.label)).toEqual(["Audit trail entries", "Sign-in sessions", "Messages sent", "System events"]);
     expect(s.tables[0].rows).toBe(await db.auditLog.count());
@@ -824,7 +824,8 @@ describe("speed, sign-in trouble, settings and my actions", () => {
     expect(s.tables.map((t) => t.label)).not.toContain("Bookings"); // the hotel's own records are not the Developer's to count
     for (const t of s.tables) expect(t.bytes).toBeGreaterThan(0);
     expect(s.databaseBytes).toBeGreaterThan(0);
-    expect(s.deployment).toEqual({ commit: "0123456", environment: "preview" });
+    expect(s.deployment).toMatchObject({ commit: "0123456", environment: "preview", node: process.version, sessionHours: 4, workAsHours: 4 });
+    expect(["Pooled", "Direct"]).toContain(s.deployment.databaseLink); // which kind of address, never the address
   });
 
   it("crashes and sign-ins: failed tries in 24 hours and 7 days, by hotel day and by account — an unknown email counts but names no one; the 8th day back is left out", async () => {
@@ -932,36 +933,37 @@ describe("the Developer home page draws, on every tab, from real data", () => {
   beforeAll(async () => { cfg = businessDayConfig(await getSettings()); });
   afterAll(async () => { await wipeFuture(); });
 
-  it("the Developer sees the greeting, the health card, the cards, the shortcuts and EVERY system part on one page — and nothing of the hotel's own work", async () => {
+  it("the Developer sees the greeting, the health card, the cards, the shortcuts and EVERY part on one page, in the owner's arrangement", async () => {
     await as(dev);
     const html = await draw();
     expect(html).toMatch(/Good (morning|afternoon|evening), /);
     expect(html).toContain("working, and what is there to fix?");
     expect(html).toContain("out of 100");
-    for (const w of ["Work as", "Add an account", "Who did what, and when", "Read-only hotel tables", "Checks fine", "Automatic jobs"]) expect(html).toContain(w);
+    for (const w of ["Work as", "Add an account", "Who did what, and when", "Read-only hotel tables", "Signed in today", "Failed sign-ins", "Server errors (24 h)"]) expect(html).toContain(w);
     // Audit and Business are links; Work as and Add an account open a popup (the Access page is in the side menu and in the popup)
     for (const href of [CONSOLE_HREF.home, CONSOLE_HREF.audit, CONSOLE_HREF.business]) expect(html).toContain(`href="${href}`);
-    // no tabs and no jump row: seven system parts, each with its anchor and its heading, one under the other
-    for (const id of ["problems", "errors", "messages", "speed", "security", "people", "settings"]) expect(html, id).toContain(`id="${id}"`);
-    for (const id of ["activity", "hotel", "money"]) expect(html, id).not.toContain(`id="${id}"`);
+    // no tabs and no jump row: ten parts, each with its anchor and its heading, one under the other (Activity, the business for awareness, People, then the system)
+    const ids = ["activity", "hotel", "money", "people", "problems", "errors", "messages", "speed", "security", "settings"];
+    for (const id of ids) expect(html, id).toContain(`id="${id}"`);
     expect(html).not.toContain('aria-label="Jump to"');
     expect(html).not.toContain("aria-current=\"page\"");
-    // what each part says (System checks, Errors & jobs, Messages & reports, Speed & size, Sign-ins & security, People & my actions, Settings)
-    const marks = ["System checks", "Messages from other services", "Is the Boss getting his reports and messages?", "The biggest tables", "Failed sign-ins per day", "Who can do what", "Your session", "My last 30 actions"];
+    expect(html).toContain("The business, for awareness");
+    // what each part says
+    const marks = ["Sign-ins per day", "Busiest hours of the day", "Recent sign-ins", "Online right now", "What is happening in the hotel", "Where the money is", "accounts", "Your recent actions", "Everything you do is on record", "Who can do what", "System checks", "Messages from other services", "Is the Boss getting his reports and messages?", "Database speed", "Database size", "Data checks", "This deployment", "Failed sign-ins and refused Developer actions per day", "Your Developer sign-in", "Required settings", "Your session"].filter((m) => m !== "Required settings");
     for (const m of marks) expect(html, m).toContain(m);
-    // the hotel's own work and the staff's activity are not the Developer's: none of it is on the page
-    for (const gone of ["What is happening in the hotel", "Where the money is", "Sign-ins per day", "Actions per day", "Busiest hours of the day", "Recent sign-ins", "Open shifts", "Withdrawals not settled", "Active staff accounts", "New records per day", "Signed in today", "Actions today"]) expect(html, gone).not.toContain(gone);
+    // the staff's work is not listed (no kinds of record, no ranking of people by what they did)
+    for (const gone of ["Where the work happens", "Most active people", "Open shifts", "Withdrawals not settled", "Active staff accounts", "New records per day", "Actions today"]) expect(html, gone).not.toContain(gone);
     expect(html).not.toContain("undefined");
     expect(html).not.toContain("NaN");
   });
 
-  it("an old ?tab= link goes to that part's place on the one page; a link to a part that is gone, or a bad one, just draws the page", async () => {
+  it("an old ?tab= link goes to that part's place on the one page; a bad ?tab= just draws the page", async () => {
     await as(dev);
     const go = (tab: string) => redirectOf(() => DeveloperHomePage({ searchParams: Promise.resolve({ tab }) } as never));
+    expect(await go("hotel")).toBe(`${CONSOLE_HREF.home}#hotel`);
+    expect(await go("activity")).toBe(`${CONSOLE_HREF.home}#activity`);
     expect(await go("crashes")).toBe(`${CONSOLE_HREF.home}#errors`);
     expect(await go("people")).toBe(`${CONSOLE_HREF.home}#people`);
-    expect(await go("hotel")).toBeNull();
-    expect(await go("money")).toBeNull();
     expect(await go("nonsense")).toBeNull();
     expect(await draw({ tab: "nonsense" })).toContain("System checks");
   });

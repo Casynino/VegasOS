@@ -12,7 +12,7 @@ import { AttentionSection } from "./attention";
 import { ConsoleBanner } from "./console-ui";
 import { HealthCard } from "./health-card";
 import {
-  ConsoleSection, ErrorsSection, MessagesSection, PeopleSection, SectionSkeleton, SecuritySection, SettingsSection, SpeedSection,
+  ActivitySection, ConsoleSection, ErrorsSection, GroupLabel, HotelSection, MessagesSection, MoneySection, PeopleSection, SectionSkeleton, SecuritySection, SettingsSection, SpeedSection,
   type AreaStatus,
   type SectionCtx,
 } from "./home-sections";
@@ -27,13 +27,13 @@ export const dynamic = "force-dynamic";
 const str = (v: unknown) => (typeof v === "string" ? v : "");
 
 /** Old links that named a tab (?tab=hotel…) go to that part's place on the one page. */
-const OLD_TAB_TO_PART: Record<string, string> = { problems: "problems", crashes: "errors", messages: "messages", speed: "speed", people: "people", settings: "settings" };
+const OLD_TAB_TO_PART: Record<string, string> = { problems: "problems", crashes: "errors", messages: "messages", speed: "speed", activity: "activity", hotel: "hotel", money: "money", people: "people", settings: "settings" };
 
 /** Which part of the page each system check belongs to, so a part can say how it is doing in one chip. */
 const PART_OF_CHECK: Record<string, string> = {
   "errors-server": "errors", "jobs-overdue": "errors", "jobs-failed": "errors", "webhooks-failing": "errors", "webhooks-silent": "errors", "online-pending": "errors", withdrawals: "errors", "holds-not-released": "errors",
   "deliveries-failed": "messages", "report-daily": "messages", "report-room": "messages", "whatsapp-none": "messages", "whatsapp-keys": "messages",
-  "failed-sign-ins": "security", denied: "security",
+  "failed-sign-ins": "security", denied: "security", "audit-protected": "security",
   "cron-secret": "settings", "site-address": "settings", "ntzs-off": "settings", "ntzs-webhook": "settings", "payment-account": "settings", migrations: "settings", "migrations-pending": "settings",
   "boss-account": "people", "roles-no-rights": "people",
 };
@@ -101,14 +101,22 @@ export default async function DeveloperHomePage({ searchParams }: PageProps<"/st
         <AttentionSection t={t} items={health.items} />
       </div>
 
+      {section("activity", t("Activity"), t("Who is signing in and what the team is doing."), undefined, <ActivitySection ctx={ctx} />)}
+
+      <GroupLabel>{t("The business, for awareness")}</GroupLabel>
+      {section("hotel", t("Hotel"), t("What is happening in the hotel — the hotel's work, not yours (read-only)."), undefined, <HotelSection ctx={ctx} />)}
+      {section("money", t("Money"), t("Where the money is — Finance's work, not yours (read-only)."), undefined, <MoneySection ctx={ctx} />)}
+
+      {section("people", t("People & my actions"), t("What anyone may do, and what you did."), chipFor("people"), <PeopleSection ctx={ctx} person={person} right={right} />)}
+
+      <GroupLabel>{t("The system")}</GroupLabel>
       <ConsoleSection id="problems" title={t("System checks")} hint={t("What the system looked at just now.")} status={chipFor(null)}>
         <ProblemsTab t={t} checks={health.checks} />
       </ConsoleSection>
       {section("errors", t("Errors & jobs"), t("Server errors, the automatic jobs and the payment confirmations."), chipFor("errors"), <ErrorsSection ctx={ctx} />)}
       {section("messages", t("Messages & reports"), t("Is the Boss getting his reports and messages?"), chipFor("messages"), <MessagesSection ctx={ctx} />)}
-      {section("speed", t("Speed & size"), t("How fast the database answers and how the system grows."), health.database.ms !== null ? { tone: health.database.ms >= 500 ? "warn" : "ok", text: t("{ms} ms", { ms: health.database.ms }) } : undefined, <SpeedSection ctx={ctx} />)}
+      {section("speed", t("Speed & size"), t("How fast the database answers and how the system grows."), health.database.ms !== null ? { tone: health.database.ms >= 500 ? "warn" : "ok", text: t("{ms} ms", { ms: health.database.ms }) } : undefined, <SpeedSection ctx={ctx} checks={health.checks} />)}
       {section("security", t("Sign-ins & security"), t("Wrong passwords, paused sign-ins and what was refused to you."), chipFor("security"), <SecuritySection ctx={ctx} />)}
-      {section("people", t("People & my actions"), t("What anyone may do, and what you did."), chipFor("people"), <PeopleSection ctx={ctx} person={person} right={right} />)}
       {section("settings", t("Settings"), t("How the system is set up."), chipFor("settings"), <SettingsSection ctx={ctx} />)}
     </div>
   );

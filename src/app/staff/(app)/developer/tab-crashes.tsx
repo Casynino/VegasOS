@@ -5,7 +5,7 @@ import { FAILED_SIGN_IN_ROWS_PER_HOUR } from "@/server/services/auth-login";
 import type { DeniedEntry } from "@/server/services/developer-console";
 import type { ErrorGroup, JobStatus, SystemEvents, WebhookStatus } from "@/server/services/system-events";
 import { Panel } from "@/components/dashboard/kit";
-import { BarChart, RankBars } from "./console-charts";
+import { BarChart, type BarColumn } from "./console-charts";
 import { DataTable, Dash } from "./console-table";
 import { agoText, dayLabel, num, Quiet, StatBlock, Tag } from "./console-ui";
 
@@ -218,10 +218,16 @@ export function ErrorsTab({ t, c, when, now = new Date() }: { t: T; c: CrashData
   );
 }
 
-/** Failed and paused sign-ins and what was refused to the Developer. */
-export function SecurityTab({ t, c, when }: { t: T; c: CrashData; when: (x: Date) => string }) {
+/** Failed and paused sign-ins, the latest tries, and what was refused to the Developer. */
+export function SecurityTab({ t, c, when, now = new Date() }: { t: T; c: CrashData; when: (x: Date) => string; now?: Date }) {
   const f = c.failed;
   const paused = c.paused ? c.paused.developer + c.paused.staff : null;
+  const columns: BarColumn[] | null = f
+    ? f.byDay.map((d, i, all) => ({
+        key: d.date, tick: dayLabel(t, d.date), name: dayLabel(t, d.date),
+        values: { failed: d.count, denied: c.deniedByDay?.[i]?.count ?? 0 }, emphasise: i === all.length - 1,
+      }))
+    : null;
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-3">
@@ -239,17 +245,45 @@ export function SecurityTab({ t, c, when }: { t: T; c: CrashData; when: (x: Date
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-        <Panel title={t("Failed sign-ins per day")} subtitle={t("The last 7 days. Hover a bar for exact numbers; the table below has them all.")}>
-          {f
-            ? <BarChart t={t} caption={t("Failed sign-ins per day")} empty={t("No failed sign-ins in the last 7 days.")} series={[{ key: "count", label: t("Failed sign-ins"), color: FAILED }]}
-                columns={f.byDay.map((d, i, all) => ({ key: d.date, tick: dayLabel(t, d.date), name: dayLabel(t, d.date), values: { count: d.count }, emphasise: i === all.length - 1 }))} />
+        <Panel title={t("Failed sign-ins and refused Developer actions per day")} subtitle={f?.last24h ? t("{n} wrong tries in the last 24 hours.", { n: f.last24h }) : t("No failed sign-ins in the last 24 hours.")}>
+          {columns
+            ? <BarChart t={t} columns={columns} grouped caption={t("Failed sign-ins and refused Developer actions per day")} empty={t("No failed sign-ins in the last 7 days.")}
+                series={[{ key: "failed", label: t("Failed sign-ins"), color: FAILED }, { key: "denied", label: t("Developer actions refused"), color: "#c0392b" }]} />
             : <Quiet>{t("This could not be read just now.")}</Quiet>}
         </Panel>
-        <Panel title={t("Accounts most often tried")} subtitle={t("Failed tries by account, last 7 days.")}>
-          {f
-            ? <RankBars t={t} rows={f.byAccount.map((a) => ({ key: a.name, label: a.name, value: a.count }))} color={FAILED} caption={t("Accounts most often tried")} empty={t("No account was tried wrongly in the last 7 days.")} />
-            : <Quiet>{t("This could not be read just now.")}</Quiet>}
+        <Panel title={t("Failed sign-ins")} subtitle={t("Latest refused attempts. Passwords are never stored. Repeats within a minute are merged (×N).")}>
+          {!f ? <Quiet>{t("This could not be read just now.")}</Quiet> : f.latest.length === 0 ? <Quiet>{t("No account was tried wrongly in the last 7 days.")}</Quiet> : (
+            <ul className="divide-y divide-border/60 text-sm">
+              {f.latest.map((r) => (
+                <li key={r.id} className="py-2.5">
+                  <span className="block font-medium leading-tight">{r.name}{r.times > 1 && <span className="ml-1.5 text-xs font-normal text-muted-foreground">×{r.times}</span>}</span>
+                  <span className="block text-xs text-muted-foreground" title={when(r.at)}>{agoText(t, r.at, now)}{r.ip ? <> · <span className="font-mono">{r.ip}</span></> : null}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </Panel>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        <div className="flex items-start gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/[0.06] p-4">
+          <KeyRound className="mt-0.5 size-5 shrink-0 text-emerald-700 dark:text-emerald-300" aria-hidden />
+          <div className="min-w-0 text-sm">
+            <p className="font-semibold">{t("Your Developer sign-in")}</p>
+            <p className="mt-1 leading-relaxed text-muted-foreground">
+              {f && f.own24h > 0
+                ? t("{n} wrong-password tries on your account in the last 24 hours. After {max} wrong tries from one place it locks for {min} minutes.", { n: f.own24h, max: LOGIN_LIMITS.developerEmail, min: LOGIN_LIMITS.windowMinutes })
+                : t("No wrong-password tries on your account in the last 24 hours. After {max} wrong tries from one place it locks for {min} minutes.", { max: LOGIN_LIMITS.developerEmail, min: LOGIN_LIMITS.windowMinutes })}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-start gap-3 rounded-2xl border border-sky-500/30 bg-sky-500/[0.06] p-4">
+          <Bug className="mt-0.5 size-5 shrink-0 text-sky-700 dark:text-sky-300" aria-hidden />
+          <div className="min-w-0 text-sm">
+            <p className="font-semibold">{t("Page crashes")}</p>
+            <p className="mt-1 leading-relaxed text-muted-foreground">{t("An unexpected error on a page, an action or a job is written down by the system itself: see Errors & jobs, with how often, when and where in the code.")}</p>
+          </div>
+        </div>
       </div>
 
       <DeniedPanel t={t} rows={c.denied} when={when} />
@@ -262,7 +296,7 @@ export function CrashesTab({ t, c, when, now = new Date() }: { t: T; c: CrashDat
   return (
     <div className="space-y-6">
       <ErrorsTab t={t} c={c} when={when} now={now} />
-      <SecurityTab t={t} c={c} when={when} />
+      <SecurityTab t={t} c={c} when={when} now={now} />
     </div>
   );
 }

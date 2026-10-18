@@ -74,13 +74,10 @@ export function HealthCard({ t, h }: { t: T; h: HealthReport }) {
             label={t("Database")} value={offline ? t("Offline") : t("Online")} tone={offline ? "bad" : "ok"}
             caption={offline ? t("did not answer") : h.database.ms !== null ? t("{ms} ms to answer", { ms: h.database.ms }) : t("answers")}
           />
+          <Figure label={t("Signed in today")} value={num(t, h.signedInToday)} caption={t("different people")} />
           <Figure
-            label={t("Checks fine")} value={h.checksFine ? t("{ok} of {n}", { ok: h.checksFine.fine, n: h.checksFine.of }) : "—"}
-            tone={h.checksFine ? (h.checksFine.fine === h.checksFine.of ? "ok" : undefined) : undefined} caption={t("system checks just now")}
-          />
-          <Figure
-            label={t("Automatic jobs")} value={h.jobsWell ? t("{ok} of {n}", { ok: h.jobsWell.well, n: h.jobsWell.of }) : "—"}
-            tone={h.jobsWell ? (h.jobsWell.well === h.jobsWell.of ? "ok" : "warn") : undefined} caption={t("on time and well")}
+            label={t("Failed sign-ins")} value={num(t, h.failedSignIns24h)} tone={h.failedSignIns24h ? "warn" : h.failedSignIns24h === 0 ? "ok" : undefined}
+            caption={t("in 24 hours")}
           />
           <Figure
             label={t("Server errors (24 h)")} value={num(t, h.serverErrors24h)} tone={h.serverErrors24h ? "warn" : h.serverErrors24h === 0 ? "ok" : undefined}

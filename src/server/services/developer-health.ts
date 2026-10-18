@@ -3,10 +3,12 @@ import { db } from "../db";
 import { businessDayConfig, getSettings } from "../settings";
 import { Prisma } from "@/generated/prisma/client";
 import { msg, msgf, type Localized } from "@/i18n/msg";
-import { addDays, businessDateOf, businessRangeBounds, eachDate, fromDbDate, type BusinessDate } from "@/lib/time/business-date";
+import { addDays, businessDateOf, businessDayBounds, businessRangeBounds, eachDate, fromDbDate, type BusinessDate } from "@/lib/time/business-date";
 import {
-  assertConsoleAccess, CONSOLE_HREF, recentDenied, safe, systemDiagnostics, type ConsoleUser, type DeniedEntry,
+  assertConsoleAccess, CONSOLE_HREF, recentDenied, safe, short, systemDiagnostics, type ConsoleUser, type DeniedEntry,
 } from "./developer-console";
+import { DEVELOPER_IDLE_MINUTES, DEVELOPER_SESSION_HOURS } from "../auth";
+import { WORK_AS_HOURS } from "../work-as-session";
 import { DEVELOPER_TRIES, DEVELOPER_WINDOW_SECONDS } from "./auth-login";
 import { runChecks, type CheckResult } from "./developer-checks";
 import { loadSystemEvents, type SystemEvents } from "./system-events";
@@ -92,10 +94,8 @@ export const LOGIN_LIMITS = { developerEmail: DEVELOPER_TRIES, staffEmail: 8, st
 export interface HealthReport {
   checkedAt: Date;
   database: { online: boolean; ms: number | null };
-  /** How many of the system checks came out fine (a check that did not apply here is not counted as fine), of how many were run. null = they could not be run. */
-  checksFine: { fine: number; of: number } | null;
-  /** The automatic jobs that have run on time and well, of all of them. null = the log could not be read. */
-  jobsWell: { well: number; of: number } | null;
+  /** Distinct people who signed in during the hotel's day today (a count of PEOPLE, never of work). null = could not be read. */
+  signedInToday: number | null;
   /** How many DIFFERENT unexpected server errors were seen in the last 24 hours (the headline figure). null = could not be read. */
   serverErrors24h: number | null;
   failedSignIns24h: number | null;
@@ -120,6 +120,8 @@ function itemOfCheck(c: CheckResult): HealthItem {
 export async function healthReport(user: ConsoleUser, now = new Date()): Promise<HealthReport> {
   assertConsoleAccess(user);
   const settings = await getSettings();
+  const cfg = businessDayConfig(settings);
+  const dayBounds = businessDayBounds(businessDateOf(now, cfg), cfg);
   const since24 = new Date(now.getTime() - DAY);
 
   const diag = await systemDiagnostics(user, now);
@@ -132,8 +134,15 @@ export async function healthReport(user: ConsoleUser, now = new Date()): Promise
     safe(() => db.auditLog.count({ where: { action: "developer.denied", createdAt: { gte: since24 } } })),
     safe(() => db.session.findMany({ where: { workAsUserId: { not: null } }, select: { workAsStartedAt: true }, take: 50 })),
     safe(() => db.auditLog.count({ where: { action: "developer.work_as_started", createdAt: { gte: since24 } } })),
+    safe(async () => {
+      const [logins, sessions] = await Promise.all([
+        db.auditLog.findMany({ where: { action: "auth.login", createdAt: { gte: dayBounds.start, lt: dayBounds.end } }, select: { userId: true }, take: 2000 }),
+        db.session.findMany({ where: { createdAt: { gte: dayBounds.start, lt: dayBounds.end } }, select: { userId: true }, take: 2000 }),
+      ]);
+      return new Set([...logins.map((l) => l.userId), ...sessions.map((s) => s.userId)].filter((id): id is string => !!id)).size;
+    }),
   ]) : null;
-  const [events, failedSignIns, denied24, workAsOpen, workAsStarted24] = facts ?? [null, null, null, null, null];
+  const [events, failedSignIns, denied24, workAsOpen, workAsStarted24, signedInToday] = facts ?? [null, null, null, null, null, null];
   // The system checks (data that contradicts itself, jobs, integrations, set-up, errors) — read once here for the cards, the score and the Problems part.
   const checks: CheckResult[] = online ? (await safe(() => runChecks(user, now, { diag, events: events as SystemEvents | null }))) ?? [] : [];
 
@@ -231,8 +240,7 @@ export async function healthReport(user: ConsoleUser, now = new Date()): Promise
   return {
     checkedAt: now,
     database: { online, ms: diag.database.ms },
-    checksFine: checks.length ? { fine: checks.filter((c) => c.state === "ok" && !c.skipped).length, of: checks.length } : null,
-    jobsWell: events ? { well: (events as SystemEvents).jobs.filter((j) => j.lastRunAt !== null && !j.overdue && j.lastStatus !== "FAILED").length, of: (events as SystemEvents).jobs.length } : null,
+    signedInToday,
     serverErrors24h: events ? (events as SystemEvents).errors24h : null,
     failedSignIns24h: failedSignIns,
     checks,
@@ -243,7 +251,6 @@ export async function healthReport(user: ConsoleUser, now = new Date()): Promise
 }
 
 // ───────────────────────────────────────────── 4. speed and size ─────────────────────────────────────────────
-export const SPEED_SAMPLES = 3;
 /** The biggest tables, counted (counts only — no row is read). */
 const BIG_TABLES = [
   { table: "audit_logs", label: msg("Audit trail entries") },
@@ -252,21 +259,38 @@ const BIG_TABLES = [
   { table: "system_events", label: msg("System events") },
 ] as const;
 
+/** A handful of real, small questions asked of the database, each timed (system records only: never the hotel's own tables). */
+const PROBES: { label: string; ask: (now: Date) => Promise<unknown> }[] = [
+  { label: msg("Simple ping"), ask: () => db.$queryRaw`SELECT 1` },
+  { label: msg("Find one account"), ask: () => db.user.findFirst({ select: { id: true } }) },
+  { label: msg("Count today's activity"), ask: (now) => db.auditLog.count({ where: { createdAt: { gte: new Date(now.getTime() - DAY) } } }) },
+  { label: msg("Load latest 50 activity lines"), ask: () => db.auditLog.findMany({ select: { id: true }, orderBy: { createdAt: "desc" }, take: 50 }) },
+  { label: msg("Count sign-in sessions"), ask: () => db.session.count() },
+];
+
 export interface SpeedData {
+  /** Each probe with its time in milliseconds (null = it did not answer); `samples` are the answered ones. */
+  probes: { label: string; ms: number | null }[];
   latency: { samples: number[]; average: number | null; slowest: number | null };
   tables: { label: string; rows: number | null; bytes: number | null }[];
   databaseBytes: number | null;
-  deployment: { commit: string | null; environment: string | null };
+  deployment: {
+    commit: string | null; environment: string | null; node: string;
+    /** "Pooled" or "Direct" — only which kind of address is used, never the address. null = not known. */
+    databaseLink: "Pooled" | "Direct" | null;
+    sessionHours: number; idleMinutes: number; workAsHours: number;
+  };
 }
 
 export async function speedData(user: ConsoleUser, now = new Date()): Promise<SpeedData> {
   assertConsoleAccess(user);
-  const samples: number[] = [];
-  for (let i = 0; i < SPEED_SAMPLES; i++) {
+  const probes: SpeedData["probes"] = [];
+  for (const p of PROBES) {
     const started = performance.now();
-    const ok = (await safe(() => db.$queryRaw`SELECT 1`)) !== null;
-    if (ok) samples.push(Math.max(1, Math.round(performance.now() - started)));
+    const ok = (await safe(() => p.ask(now))) !== null;
+    probes.push({ label: p.label, ms: ok ? Math.max(1, Math.round(performance.now() - started)) : null });
   }
+  const samples = probes.flatMap((p) => (p.ms === null ? [] : [p.ms]));
   const [counts, sizes, dbSize, diag] = await Promise.all([
     Promise.all([
       safe(() => db.auditLog.count()), safe(() => db.session.count()), safe(() => db.notificationDelivery.count()), safe(() => db.systemEvent.count()),
@@ -279,11 +303,17 @@ export async function speedData(user: ConsoleUser, now = new Date()): Promise<Sp
     systemDiagnostics(user, now),
   ]);
   const sizeOf = new Map((sizes ?? []).map((s) => [s.name, Number(s.bytes)]));
+  const url = process.env.DATABASE_URL ?? "";
   return {
+    probes,
     latency: { samples, average: samples.length ? Math.round(samples.reduce((a, b) => a + b, 0) / samples.length) : null, slowest: samples.length ? Math.max(...samples) : null },
     tables: BIG_TABLES.map((t, i) => ({ label: t.label, rows: counts[i], bytes: sizeOf.get(t.table) ?? null })),
     databaseBytes: dbSize?.[0] ? Number(dbSize[0].bytes) : null,
-    deployment: diag.deployment,
+    deployment: {
+      ...diag.deployment, node: process.version,
+      databaseLink: url ? (/-pooler[.-]|pgbouncer=true/i.test(url) ? "Pooled" : "Direct") : null,
+      sessionHours: DEVELOPER_SESSION_HOURS, idleMinutes: DEVELOPER_IDLE_MINUTES, workAsHours: WORK_AS_HOURS,
+    },
   };
 }
 
@@ -298,7 +328,13 @@ export interface CrashData {
     byDay: { date: BusinessDate; count: number }[];
     /** The accounts most often tried, with how many failed tries (7 days). */
     byAccount: { name: string; count: number }[];
+    /** The latest tries, newest first; the same account from the same place within a minute is one line with a count (×N). */
+    latest: { id: string; name: string; at: Date; ip: string | null; times: number }[];
+    /** Wrong tries on the Developer's OWN account in the last 24 hours. */
+    own24h: number;
   } | null;
+  /** The Developer's refused actions per hotel day (the last 7 days, oldest first), to read beside the failed sign-ins. null = could not be read. */
+  deniedByDay: { date: BusinessDate; count: number }[] | null;
   /** Sign-in places or emails paused right now (their wrong tries went over the limit in the last 15 minutes): the Developer account's own lock, and the shared ones. Counts only — never the email or the address. */
   paused: { developer: number; staff: number } | null;
   denied: DeniedEntry[];
@@ -323,17 +359,18 @@ export async function crashData(user: ConsoleUser, now = new Date()): Promise<Cr
   const since24 = new Date(now.getTime() - DAY);
   const { start, end } = businessRangeBounds(days[0], today, cfg);
 
-  const [system, failedRows, buckets, denied] = await Promise.all([
+  const [system, failedRows, buckets, denied, deniedRaw] = await Promise.all([
     safe(() => loadSystemEvents(user as Parameters<typeof loadSystemEvents>[0], now)),
     safe(() => db.auditLog.findMany({
       where: { action: "auth.login_failed", createdAt: { gte: start, lt: end } },
-      select: { businessDate: true, entityId: true, createdAt: true }, orderBy: { createdAt: "desc" }, take: 5000,
+      select: { businessDate: true, entityId: true, createdAt: true, ipAddress: true }, orderBy: { createdAt: "desc" }, take: 5000,
     })),
     safe(() => db.rateLimitBucket.findMany({
       where: { key: { startsWith: "login:" }, windowStart: { gte: new Date(now.getTime() - LOGIN_LIMITS.windowMinutes * 60_000) } },
       select: { key: true, count: true }, take: 500,
     })),
     recentDenied(user, 20),
+    safe(() => db.auditLog.groupBy({ by: ["businessDate"], where: { action: "developer.denied", createdAt: { gte: start, lt: end } }, _count: { _all: true } })),
   ]);
 
   let failed: CrashData["failed"] = null;
@@ -346,13 +383,25 @@ export async function crashData(user: ConsoleUser, now = new Date()): Promise<Cr
       if (r.entityId) perAccount.set(r.entityId, (perAccount.get(r.entityId) ?? 0) + 1);
     }
     const top = [...perAccount].sort((a, b) => b[1] - a[1]).slice(0, 5);
-    const users = top.length ? (await safe(() => db.user.findMany({ where: { id: { in: top.map(([id]) => id) } }, select: { id: true, fullName: true } }))) ?? [] : [];
+    // the latest tries (rows are newest first): the same account from the same place within a minute is merged into one line
+    const merged: { id: string; entityId: string; at: Date; ip: string | null; times: number }[] = [];
+    for (const r of failedRows) {
+      if (!r.entityId) continue;
+      const last = merged[merged.length - 1];
+      if (last && last.entityId === r.entityId && last.ip === (r.ipAddress ?? null) && last.at.getTime() - r.createdAt.getTime() < 60_000) { last.times += 1; continue; }
+      merged.push({ id: `${r.entityId}:${r.createdAt.getTime()}`, entityId: r.entityId, at: r.createdAt, ip: r.ipAddress ?? null, times: 1 });
+      if (merged.length >= 8) break;
+    }
+    const wanted = [...new Set([...top.map(([id]) => id), ...merged.map((m) => m.entityId)])];
+    const users = wanted.length ? (await safe(() => db.user.findMany({ where: { id: { in: wanted } }, select: { id: true, fullName: true } }))) ?? [] : [];
     const name = new Map(users.map((u) => [u.id, u.fullName]));
     failed = {
       last24h: failedRows.filter((r) => r.createdAt >= since24).length,
       last7d: failedRows.length,
       byDay: days.map((date) => ({ date, count: perDay.get(date) ?? 0 })),
       byAccount: top.flatMap(([id, count]) => (name.has(id) ? [{ name: name.get(id)!, count }] : [])),
+      latest: merged.flatMap((m) => (name.has(m.entityId) ? [{ id: m.id, name: name.get(m.entityId)!, at: m.at, ip: short(m.ip, 64), times: m.times }] : [])),
+      own24h: failedRows.filter((r) => r.entityId === user.id && r.createdAt >= since24).length,
     };
   }
 
@@ -367,5 +416,7 @@ export async function crashData(user: ConsoleUser, now = new Date()): Promise<Cr
     paused = { developer, staff };
   }
 
-  return { system, failed, paused, denied };
+  const deniedPerDay = deniedRaw ? new Map(deniedRaw.map((r) => [fromDbDate(r.businessDate), r._count._all])) : null;
+  const deniedByDay = deniedPerDay ? days.map((date) => ({ date, count: deniedPerDay.get(date) ?? 0 })) : null;
+  return { system, failed, paused, denied, deniedByDay };
 }

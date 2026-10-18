@@ -167,9 +167,8 @@ describe("a clean system and a dead database", () => {
     expect(h.serverErrors24h).toBe(0);
     expect(h).not.toHaveProperty("alerts");
     // the card's figures are about the SYSTEM (checks, jobs), never about the hotel's staff or its work
-    expect(h).not.toHaveProperty("signedInToday");
-    expect(h).not.toHaveProperty("actionsToday");
-    expect(h.checksFine).toEqual({ fine: expect.any(Number), of: h.checks.length });
+    expect(h.signedInToday).toEqual(expect.any(Number));
+    expect(h).not.toHaveProperty("actionsToday"); // how much staff did is not a system figure
     expect(h.failedSignIns24h).toBe(await db.auditLog.count({ where: { action: "auth.login_failed", createdAt: { gte: new Date(Date.now() - 24 * 3600_000) } } }));
   });
 
@@ -192,6 +191,10 @@ describe("a clean system and a dead database", () => {
     healthyEnv();
     const user = await as(dev);
     const spy = vi.spyOn(db, "$queryRaw").mockRejectedValue(new Error("connection refused"));
+    const spies = [
+      vi.spyOn(db.user, "findFirst").mockRejectedValue(new Error("connection refused")), vi.spyOn(db.auditLog, "count").mockRejectedValue(new Error("connection refused")),
+      vi.spyOn(db.auditLog, "findMany").mockRejectedValue(new Error("connection refused")), vi.spyOn(db.session, "count").mockRejectedValue(new Error("connection refused")),
+    ];
     try {
       const h = await healthReport(user);
       expect(h.database).toEqual({ online: false, ms: null });
@@ -204,8 +207,10 @@ describe("a clean system and a dead database", () => {
       // the speed part does not fall over either: no sample, no average
       const speed = await speedData(user);
       expect(speed.latency).toEqual({ samples: [], average: null, slowest: null });
+      expect(speed.probes.every((p) => p.ms === null)).toBe(true);
     } finally {
       spy.mockRestore();
+      for (const s of spies) s.mockRestore();
     }
   });
 });

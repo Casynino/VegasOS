@@ -280,13 +280,14 @@ describe("a chart's exact numbers", () => {
   });
 
   it("every chart on the console says what is true: hover for a bar, the table below for all of them (never 'press a bar')", () => {
-    for (const f of ["src/app/staff/(app)/developer/tab-crashes.tsx"]) {
+    for (const f of ["src/app/staff/(app)/developer/tab-activity.tsx", "src/app/staff/(app)/developer/tab-crashes.tsx"]) {
       const text = read(f);
       expect(text, f).not.toContain("Hover or press a bar");
-      expect(text, f).toContain("Hover a bar for exact numbers; the table below has them all.");
     }
-    // every BarChart draws the table (one component), so the sentence holds for each of the four
+    expect(read("src/app/staff/(app)/developer/tab-activity.tsx")).toContain("Hover a bar for exact numbers; the table below has them all.");
+    // every BarChart draws the table (one component), so the sentence holds for each of them
     expect(read("src/app/staff/(app)/developer/console-charts.tsx").match(/<details/g)).toHaveLength(1);
+    expect(read("src/app/staff/(app)/developer/tab-activity.tsx").match(/<BarChart/g)).toHaveLength(3);
     expect(read("src/app/staff/(app)/developer/tab-crashes.tsx").match(/<BarChart/g)).toHaveLength(1);
   });
 });
@@ -294,7 +295,7 @@ describe("a chart's exact numbers", () => {
 // ───────────────────────────────────────────── 4. the health card ─────────────────────────────────────────────
 describe("the health card's four figures are a real definition list", () => {
   const report: HealthReport = {
-    checkedAt: new Date(), database: { online: true, ms: 7 }, checksFine: { fine: 27, of: 30 }, jobsWell: { well: 2, of: 2 }, serverErrors24h: 2, failedSignIns24h: 0, checks: [],
+    checkedAt: new Date(), database: { online: true, ms: 7 }, signedInToday: 3, serverErrors24h: 2, failedSignIns24h: 0, checks: [],
     items: [], counts: { fix: 0, look: 0, info: 0 }, score: 100, verdict: "well",
   };
   const html = renderToStaticMarkup(createElement(HealthCard, { t, h: report }));
@@ -312,7 +313,7 @@ describe("the health card's four figures are a real definition list", () => {
   });
 
   it("says the same words as before", () => {
-    for (const w of ["Database", "Online", "7 ms to answer", "Checks fine", "27 of 30", "Automatic jobs", "2 of 2", "Server errors (24 h)", "Open the Errors &amp; jobs part to see them."]) expect(dl).toContain(w);
+    for (const w of ["Database", "Online", "7 ms to answer", "Signed in today", "Failed sign-ins", "Server errors (24 h)", "Open the Errors &amp; jobs part to see them."]) expect(dl).toContain(w);
   });
 });
 
@@ -431,6 +432,8 @@ describe("a list of people that staff see leaves out the Developer and the syste
     "src/app/staff/(app)/activity/data.ts": { count: 1, why: "the staff activity page: the Developer is left out for everyone who may not see Developer actions" },
     "src/app/staff/(app)/shifts/page.tsx": { count: 1, why: "who works reception shifts = shifts.work WITHOUT shifts.manage; the Developer holds shifts.manage, so it can never be listed" },
     "src/server/services/audit-trail.ts": { count: 1, why: "the Audit pages list everyone on purpose; the Developer only for those who may see Developer actions" },
+    "src/server/services/developer-health.ts": { count: 1, why: "a timing probe on the Speed part: it finds one account id only to time the lookup — nothing about the person is read or shown" },
+    "src/server/services/developer-activity.ts": { count: 1, why: "the Developer's own console (the accounts that do not use the system); it already leaves out the Developer and the system account" },
     "src/server/services/developer-console.ts": { count: 1, why: "the Developer's own console (inspect a person's rights): full on purpose" },
     "src/server/services/developer-checks.ts": { count: 1, why: "the Developer's own system check: is there an active Boss account (it counts Boss accounts only, nothing else about anyone)" },
     "src/server/services/work-as.ts": { count: 1, why: "the Developer's Access page; leaves out the Developer and the system account" },

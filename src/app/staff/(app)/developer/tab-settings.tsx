@@ -1,8 +1,8 @@
-import { ChevronDown, CircleAlert, CircleCheck, ShieldCheck } from "lucide-react";
+import { ChevronDown, CircleAlert, ShieldCheck } from "lucide-react";
 import type { T } from "@/i18n/translate";
-import type { Diagnostics, SettingsTab as SettingsData } from "@/server/services/developer-console";
+import type { Diagnostics, EnvSetting, SettingsTab as SettingsData } from "@/server/services/developer-console";
 import { Panel } from "@/components/dashboard/kit";
-import { num, Quiet } from "./console-ui";
+import { num, Tag } from "./console-ui";
 
 /**
  * SETTINGS: your own session and limits, the rights the Developer role does NOT hold (money, and why), what the system is set up with
@@ -25,48 +25,39 @@ function Info({ label, value, hint }: { label: string; value: string; hint?: str
   );
 }
 
-function Fact({ ok, label, value, note }: { ok: boolean; label: string; value: string; note?: string }) {
-  return (
-    <div className="flex min-w-0 items-start gap-2 rounded-2xl bg-muted/40 px-3 py-2">
-      {ok ? <CircleCheck className="mt-0.5 size-4 shrink-0 text-emerald-600" aria-hidden /> : <CircleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" aria-hidden />}
-      <div className="min-w-0 leading-tight">
-        <dt className="text-xs text-muted-foreground">{label}</dt>
-        <dd className="mt-0.5 break-words text-sm">{value}</dd>
-        {note && <dd className="mt-0.5 break-words text-xs text-muted-foreground">{note}</dd>}
-      </div>
-    </div>
-  );
-}
-
-function ConfigPanel({ t, d, when }: { t: T; d: Diagnostics; when: (x: Date) => string }) {
+/** The settings the system runs on: each by NAME with "Set" or "Not set" — a key or a password is never read out. */
+function EnvPanel({ t, env, d }: { t: T; env: EnvSetting[]; d: Diagnostics }) {
   const m = d.migrations;
-  const w = d.whatsapp;
+  const missing = env.filter((e) => e.required && !e.set).length;
+  const setCount = env.filter((e) => e.set).length;
+  const updatesOk = !!m && m.failed === 0 && m.rolledBack === 0;
   return (
-    <Panel title={t("System set-up")} subtitle={t("Checked {when}. Only yes / no and numbers — a key or a password is never read out.", { when: when(d.checkedAt) })}>
-      <dl className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        <Fact ok={d.database.reachable} label={t("Database")} value={d.database.reachable ? t("Reachable") : t("Not reachable")} note={d.database.ms !== null ? t("{ms} ms to answer", { ms: d.database.ms }) : undefined} />
-        <Fact
-          ok={!!m && m.failed === 0 && m.rolledBack === 0} label={t("Database updates (migrations)")}
-          value={m ? t("{n} applied", { n: m.applied }) : t("Could not be read")}
-          note={m ? [m.latest ? t("Latest: {name}", { name: m.latest }) : null, m.failed > 0 ? t("{n} failed or not finished", { n: m.failed }) : null, m.rolledBack > 0 ? t("{n} undone", { n: m.rolledBack }) : null].filter(Boolean).join(" · ") || undefined : undefined}
-        />
-        <Fact
-          ok={d.ntzs.configured} label={t("Online payment (nTZS)")}
-          value={d.ntzs.configured ? (d.ntzs.live ? t("Set on the server (live)") : t("Set on the server (test)")) : t("Not set up")}
-          note={d.ntzs.webhookSecret ? t("Webhook secret is set") : t("Webhook secret is missing")}
-        />
-        <Fact
-          ok={!!w && w.recipients > 0 && w.recipientsReady === w.recipients} label={t("WhatsApp reports (CallMeBot)")}
-          value={w ? (w.recipients === 0 ? t("No report recipients are set") : t("{ready} of {total} recipients can be reached", { ready: w.recipientsReady, total: w.recipients })) : t("Could not be read")}
-          note={w ? (w.defaultKey ? t("The default key is set") : t("No default key is set")) : undefined}
-        />
-        <Fact ok={d.cron.secretConfigured} label={t("Scheduled reports (cron secret)")} value={d.cron.secretConfigured ? t("Set") : t("Missing")} />
-        <Fact
-          ok={!!d.deployment.commit} label={t("Deployment")}
-          value={d.deployment.commit ? t("Commit {sha}", { sha: d.deployment.commit }) : t("Commit not known")}
-          note={d.deployment.environment ? t("Environment: {name}", { name: d.deployment.environment }) : undefined}
-        />
-      </dl>
+    <Panel
+      title={t("Settings")} subtitle={missing === 0 ? t("All required settings are in place. Only whether a setting exists is shown, never its value.") : t("{n} required settings are missing. Only whether a setting exists is shown, never its value.", { n: missing })}
+      action={<Tag tone={missing === 0 ? "emerald" : "rose"}>{t("{a} of {b} set", { a: setCount, b: env.length })}</Tag>}
+      bodyClassName="-mx-4 -mb-4 sm:-mx-6 sm:-mb-6"
+    >
+      <ul className="grid border-t border-border/60 sm:grid-cols-2">
+        {env.map((e) => (
+          <li key={e.key} className="flex items-start justify-between gap-3 border-b border-border/60 px-4 py-3.5 sm:px-6 sm:odd:border-r">
+            <span className="min-w-0 text-sm leading-snug">
+              <span className="block font-medium">{t(e.label)}</span>
+              <span className="block font-mono text-[11px] text-muted-foreground">{e.key}</span>
+              <span className="mt-1 block text-xs text-muted-foreground">{t(e.description)}</span>
+            </span>
+            <Tag tone={e.set ? "emerald" : e.required ? "rose" : "slate"}>{e.set ? t("Set") : e.required ? t("Missing") : t("Not set")}</Tag>
+          </li>
+        ))}
+        <li className="flex items-start justify-between gap-3 px-4 py-3.5 sm:px-6 sm:odd:border-r">
+          <span className="min-w-0 text-sm leading-snug">
+            <span className="block font-medium">{t("Database updates (migrations)")}</span>
+            <span className="mt-1 block text-xs text-muted-foreground">
+              {m ? [t("{n} applied", { n: m.applied }), m.latest ? t("Latest: {name}", { name: m.latest }) : null, m.failed > 0 ? t("{n} failed or not finished", { n: m.failed }) : null, m.rolledBack > 0 ? t("{n} undone", { n: m.rolledBack }) : null].filter(Boolean).join(" · ") : t("Could not be read")}
+            </span>
+          </span>
+          <Tag tone={updatesOk ? "emerald" : "rose"}>{updatesOk ? t("OK") : t("Look at it")}</Tag>
+        </li>
+      </ul>
     </Panel>
   );
 }
@@ -76,6 +67,8 @@ export function SettingsTab({ t, s, when }: { t: T; s: SettingsData; when: (x: D
   const ses = id.session;
   return (
     <div className="space-y-4">
+      <EnvPanel t={t} env={s.env} d={s.config} />
+
       <Panel title={t("Your session")} subtitle={t("The account you are signed in as, taken from the server — not from the page.")}>
         <dl className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
           <Info label={t("Name")} value={id.name} />
@@ -116,27 +109,6 @@ export function SettingsTab({ t, s, when }: { t: T; s: SettingsData; when: (x: D
           </ul>
         </details>
         <p className="mt-3 text-xs text-muted-foreground">{t("The same wall holds while you work as someone: you hold their rights minus these, and the decisions about money stay refused.")}</p>
-      </Panel>
-
-      <ConfigPanel t={t} d={s.config} when={when} />
-
-      <Panel title={t("What is written down about you")} subtitle={t("Nothing you do here is secret from the owner. This is the whole list.")}>
-        <ul className="space-y-2 text-sm leading-relaxed text-foreground/90">
-          <li>{t("Every page you open is written to the audit trail, once per page every 10 minutes. Only the sign-in page and the “no access” page are left out.")}</li>
-          <li>{t("Everything you change is kept as a Developer action. While you work as someone it reads like “Nino (Developer) as Neema (Reception)” — under your name, never theirs.")}</li>
-          <li>{t("Developer entries cannot be edited or deleted — the database refuses it. The only change the system ever makes to an older line is marking a cancelled check-in as cancelled.")}</li>
-          <li>{t("The Boss and the other report recipients are told on WhatsApp every time you start working as someone, and the audit trail records whether they were reached.")}</li>
-          <li>{t("An export or a download is written down before the file is sent, and refused if it cannot be written.")}</li>
-          <li>{t("Every refusal you meet is kept, and every look at what a person can do.")}</li>
-        </ul>
-        {s.recorded ? (
-          <dl className="mt-4 grid grid-cols-3 gap-2">
-            <Info label={t("Last 24 hours")} value={num(t, s.recorded.last24h)} />
-            <Info label={t("Last 7 days")} value={num(t, s.recorded.last7d)} />
-            <Info label={t("Ever")} value={num(t, s.recorded.total)} />
-          </dl>
-        ) : <div className="mt-3"><Quiet>{t("This could not be read just now.")}</Quiet></div>}
-        <p className="mt-2 text-xs text-muted-foreground">{t("Entries of yours in the audit trail (every kind).")}</p>
       </Panel>
     </div>
   );

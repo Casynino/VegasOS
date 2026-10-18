@@ -347,6 +347,19 @@ const stockMovements: Def = {
   },
 };
 
+const auditProtected: Def = {
+  id: "audit-protected", group: "Data",
+  title: msgf("The audit trail cannot be changed", {}),
+  allClear: msgf("The database refuses any change or removal of an audit line.", {}),
+  what: msgf("Every action is written to the audit trail, and the database itself refuses to change or delete a line of it. That protection is missing, so a line could be altered and the trail could no longer be trusted.", {}),
+  todo: msgf("Apply the database update that creates the audit guard (the migration of the Developer account) again, and check the update log in Settings.", {}),
+  who: WHO_DEV(),
+  async run() {
+    const rows = await db.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS n FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid WHERE t.tgname = 'audit_logs_no_change' AND c.relname = 'audit_logs' AND NOT t.tgisinternal AND t.tgenabled <> 'D'`;
+    return (rows[0]?.n ?? 0) > 0 ? { state: "ok" } : { state: "fix", count: 1, summary: msgf("The audit trail is not protected by the database.", { n: 1 }) };
+  },
+};
+
 // ───────────────────────────────────────────── 4. the hold-release job ─────────────────────────────────────────────
 const holdsNotReleased: Def = {
   id: "holds-not-released", group: "Jobs & errors",
@@ -769,7 +782,7 @@ export const DEFINITIONS: readonly Def[] = [
   serverErrors, jobsOverdue, jobsFailed, webhooksFailing, webhooksSilent, messagesFailing, reportCheck("daily"), reportCheck("room"),
   roomOccupiedNoStay, stayRoomNotOccupied, roomTwoStays,
   reservationTotals, orderPayments, onlinePending, withdrawalsStuck,
-  stockMovements, holdsNotReleased,
+  stockMovements, auditProtected, holdsNotReleased,
   cronSecret, siteAddress, recipients, whatsappKeys, ntzsKey, ntzsWebhookSecret, paymentAccount, migrationsFailed, migrationsPending,
   bossAccount, rolesNoRights, failedSignIns, developerRefusals,
 ];
