@@ -7,17 +7,17 @@ import commonZh from "@/i18n/catalog/zh-CN/common";
 import staffZh from "@/i18n/catalog/zh-CN/staff";
 import shellZh from "@/i18n/catalog/zh-CN/staff/developer-shell";
 import { englishT as t, makeT } from "@/i18n/translate";
-import { IdentityBanner, IdentityCard, IdentityChip, WORK_AS_HOURS, WORK_AS_STRIP_VARS, spanWords, stripVars, workAsClock, type Identity } from "./identity-banner";
+import { IdentityBanner, IdentityCard, IdentityChip, WORK_AS_HOURS, spanWords, stripVars, workAsClock, type Identity } from "./identity-banner";
 
 /**
  * Who is signed in, always in view. THREE states:
  *  - staff: their own name and role in the menus, no strip;
  *  - a Developer signed in as itself: nothing (no strip);
- *  - a Developer WORKING AS someone: "DEVELOPER MODE — you are working as {name} ({role})", how long it has lasted, when it ends, a
- *    prominent Stop button and Sign out — on every page, phone, tablet and computer.
+ *  - a Developer WORKING AS someone: one small floating pill "Working as {name}" with a Stop button (time left in its tooltip) — on
+ *    every page, phone, tablet and computer; it takes no room in the page.
  * All drawn on the server from the session; here they are drawn without the database.
  */
-const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+const text = (html: string) => html.replace(/<script[\s\S]*?<\/script>/g, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 const noop = async () => {};
 // (the role names are in the common bundle; developer-shell is merged by hand until the bundle index is rebuilt)
 const zh = makeT("zh-CN", { ...commonZh, ...staffZh, ...shellZh });
@@ -29,7 +29,7 @@ const receptionist: Identity = { actorType: "STAFF", name: "Neema Reception", ro
 const workingAs: Identity = { actorType: "DEVELOPER", name: "Neema Reception", role: "Receptionist", workAs: { developerName: "Amani Developer", startedAt: STARTED } };
 const at = (minutesAfterStart: number) => new Date(STARTED.getTime() + minutesAfterStart * 60_000);
 
-const banner = (identity: Identity, tr = t, now?: Date) => renderToStaticMarkup(createElement(IdentityBanner, { identity, t: tr, signOut: noop, stopWorkAs: noop, now }));
+const banner = (identity: Identity, tr = t, now?: Date) => renderToStaticMarkup(createElement(IdentityBanner, { identity, t: tr, stopWorkAs: noop, now }));
 const chip = (identity: Identity, tr = t) => renderToStaticMarkup(createElement(IdentityChip, { identity, t: tr }));
 const card = (identity: Identity, tr = t) => renderToStaticMarkup(createElement(IdentityCard, { identity, t: tr }));
 const source = (file: string) => readFileSync(path.resolve(import.meta.dirname, file), "utf8");
@@ -59,32 +59,28 @@ describe("state 2 — a Developer signed in as itself (in its own console)", () 
 });
 
 describe("state 3 — a Developer WORKING AS someone", () => {
-  it("says whom, in capitals, with the time that has passed and when it ends, and offers Stop and Sign out", () => {
+  it("is one small pill: 'Working as {name}' and a Stop button, with the time left in its tooltip", () => {
     const html = banner(workingAs, t, at(12));
     expect(html).toContain('data-identity="work-as"');
     expect(html).toContain('role="region"');
-    const words = text(html);
-    expect(words).toContain("DEVELOPER MODE — you are working as Neema Reception (Receptionist)");
-    expect(words).toContain("Started 12 min ago · ends in 3 h 48 min");
-    expect(words).toContain("Stop");
-    expect(words).toContain("Sign out");
-    // Two real forms with a submit button each: Stop (the server action) and Sign out — not links that go nowhere.
-    expect(html.match(/<form\b/g)).toHaveLength(2);
-    expect(html.match(/<button type="submit"/g)).toHaveLength(2);
+    expect(text(html)).toBe("Working as Neema Reception Stop");
+    // one real form with one submit button: Stop (the server action) — not a link that goes nowhere; no Sign out here (it is in the side menu)
+    expect(html.match(/<form\b/g)).toHaveLength(1);
+    expect(html.match(/<button type="submit"/g)).toHaveLength(1);
     expect(html).toMatch(/<button type="submit" data-work-as-stop[^>]*>Stop<\/button>/);
-    expect(html).toContain('aria-label="DEVELOPER MODE — you are working as Neema Reception (Receptionist)"');
+    expect(html).not.toContain("Sign out");
+    expect(html).toContain('aria-label="Working as Neema Reception"');
+    expect(html).toContain('title="Neema Reception (Receptionist) · started 12 min ago · ends in 3 h 48 min"');
   });
 
-  it("is a different, taller strip than the plain one, out of print, sticky under the shell's offset variable", () => {
+  it("floats over the page (fixed, bottom right, above the phone's bottom bar), is out of print and adds no height to the page", () => {
     const html = banner(workingAs, t, at(5));
+    expect(html).toContain("fixed bottom-20 right-3");
+    expect(html).toContain("lg:bottom-5 lg:right-5");
     expect(html).toContain("print:hidden");
-    expect(html).toContain("var(--dev-strip)");
-    expect(html).toContain("sticky top-0");
-    expect(stripVars(workingAs)).toBe(WORK_AS_STRIP_VARS);
-    // taller on a phone (two lines of text and the buttons), one row from lg
-    expect(WORK_AS_STRIP_VARS).toMatch(/^\[--dev-strip:[\d.]+rem\] sm:\[--dev-strip:[\d.]+rem\] lg:\[--dev-strip:[\d.]+rem\]$/);
-    const rem = (re: RegExp) => Number(WORK_AS_STRIP_VARS.match(re)![1]);
-    expect(rem(/^\[--dev-strip:([\d.]+)rem\]/)).toBeGreaterThan(rem(/lg:\[--dev-strip:([\d.]+)rem\]/));
+    expect(html).not.toContain("sticky");
+    expect(stripVars(workingAs)).toBe("");
+    expect(stripVars(developer)).toBe("");
   });
 
   it("counts the time from when it started and from the 4-hour end — never negative", () => {
@@ -103,8 +99,8 @@ describe("state 3 — a Developer WORKING AS someone", () => {
     expect(spanWords(59 * 60_000, t)).toBe("59 min");
     expect(spanWords(60 * 60_000, t)).toBe("1 h");
     expect(spanWords(228 * 60_000, t)).toBe("3 h 48 min");
-    expect(text(banner(workingAs, t, at(0)))).toContain("Started less than a minute ago · ends in 4 h");
-    expect(text(banner(workingAs, t, at(239)))).toContain("Started 3 h 59 min ago · ends in 1 min");
+    expect(banner(workingAs, t, at(0))).toContain("started less than a minute ago · ends in 4 h");
+    expect(banner(workingAs, t, at(239))).toContain("started 3 h 59 min ago · ends in 1 min");
   });
 
   it("draws the person's name and role as plain text — a name can never inject markup", () => {
@@ -114,13 +110,11 @@ describe("state 3 — a Developer WORKING AS someone", () => {
     expect(html).toContain("&lt;img");
   });
 
-  it("is in Chinese for a Chinese-speaking person — same strip, same Stop", () => {
-    const words = text(banner(workingAs, zh, at(12)));
-    expect(words).toContain("开发者模式 — 当前以 Neema Reception（前台接待）的身份操作");
-    expect(words).toContain("已开始 12 分钟 · 3 小时 48 分钟后自动结束");
-    expect(words).toContain("停止");
-    expect(words).toContain("退出登录");
-    expect(words).not.toContain("DEVELOPER MODE");
+  it("is in Chinese for a Chinese-speaking person — same pill, same Stop", () => {
+    const html = banner(workingAs, zh, at(12));
+    expect(text(html)).toBe("正在以 Neema Reception 的身份操作 停止");
+    expect(html).toContain("已开始 12 分钟");
+    expect(html).not.toContain("Working as");
   });
 
   it("the menus show the PERSON being worked as — the Developer's own name is never the account shown", () => {
@@ -192,7 +186,7 @@ describe("the shell and the phone's Menu use them", () => {
     expect(shell).toContain('aria-label={t("Your account — {name}, {role}"');
   });
 
-  it("the shell draws the strip from the session's work-as record, with Stop wired to the Access page's action, on every page", () => {
+  it("the shell draws the pill from the session's work-as record, with Stop wired to the Access page's action, on every page", () => {
     const shell = source("staff-shell.tsx");
     // Server-rendered from the session — the identity comes from requireUser(), never from client state, a cookie or the page.
     expect(shell).toContain("await requireUser()");
@@ -200,7 +194,6 @@ describe("the shell and the phone's Menu use them", () => {
     expect(shell).toContain("stopWorkAs={stopWorkAsAction}");
     expect(shell).toContain('from "@/app/staff/(app)/developer/access/actions"');
     expect(shell).toContain("stripVars(identity)");
-    expect(shell).toContain("signOut={logoutAction}");
     // No client state in the banner: it is a server component.
     const banner = source("identity-banner.tsx");
     expect(banner).not.toMatch(/"use client"|useState|useEffect|localStorage|sessionStorage|document\.cookie/);

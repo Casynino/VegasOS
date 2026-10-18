@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { ShieldAlert } from "lucide-react";
 import type { T } from "@/i18n/translate";
 import { cn } from "@/lib/utils";
 import { WORK_AS_HOURS } from "@/server/work-as-session";
@@ -10,8 +9,8 @@ import { WORK_AS_HOURS } from "@/server/work-as-session";
  *
  * - A Developer signed in as itself (in its own console) sees NO strip — the console's side menu says where it is (owner, 2026-10-18); formerly one strip: "DEVELOPER MODE — SUPER USER",
  *   its name, and two plain links — Console, and Sign out.
- * - A Developer WORKING AS someone sees a different strip on every page, on a phone, a tablet and a computer: "DEVELOPER MODE — you
- *   are working as Neema (Receptionist)", how long it has lasted, when it ends by itself, and a prominent Stop button (and Sign out).
+ * - A Developer WORKING AS someone sees one small floating pill, bottom right, on every page: "Working as Neema" and a Stop button (owner, 2026-10-18:
+ *   the full-width bar was too much). It takes no room in the page; the time left is in its tooltip. Sign out is in the side menu.
  * - Everyone sees their own real name and role: beside the picture in the top bar from `xl`, the name alone at `lg` (the role is in the
  *   tooltip and in the side menu's account card), and in the bottom bar's Menu on a tablet or a phone. While a Developer works as
  *   someone, those show the PERSON being worked as.
@@ -34,12 +33,9 @@ export interface Identity {
 /** Work as ends by itself this many hours after it started — the server's own number (server/work-as-session.ts); here it is only told to the Developer. */
 export { WORK_AS_HOURS };
 
-/** The plain strip's height, set once on the shell: taller on a phone (two lines), one line from `sm` up. The sticky parts below it use it as their offset. */
-/** The working-as strip is taller: two rows below `lg` (the title, then the time and the buttons), one row from `lg` up. */
-export const WORK_AS_STRIP_VARS = "[--dev-strip:5rem] sm:[--dev-strip:4rem] lg:[--dev-strip:2.75rem]";
-
-/** The shell's offset variable for this identity (nothing for staff — there is no strip). */
-export const stripVars = (identity: Identity) => (identity.actorType === "DEVELOPER" && identity.workAs ? WORK_AS_STRIP_VARS : "");
+/** The shell's offset variable for this identity: none — the pill floats, it takes no space in the page (kept so the shell and its sticky parts need no change). */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export const stripVars = (_identity: Identity) => "";
 
 type SignOutAction = () => void | Promise<void>;
 
@@ -58,57 +54,37 @@ export function spanWords(ms: number, t: T): string {
   return h ? (m ? t("{h} h {m} min", { h, m }) : t("{h} h", { h })) : t("{m} min", { m });
 }
 
-const stripLink =
-  "whitespace-nowrap py-1.5 text-xs font-semibold underline decoration-white/55 underline-offset-4 transition-colors hover:decoration-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white";
-const stripBackground = { backgroundImage: "repeating-linear-gradient(135deg, rgba(255,255,255,0.1) 0 10px, transparent 10px 20px)" };
 
-export function IdentityBanner({ identity, t, signOut, stopWorkAs, now }: {
+export function IdentityBanner({ identity, t, stopWorkAs, now }: {
   identity: Identity;
   t: T;
-  /** The existing sign-out server action (while working as someone it signs the whole Developer session out). */
-  signOut: SignOutAction;
   /** Stop working as someone (the server action on the Access page): back to the console. */
   stopWorkAs: SignOutAction;
-  /** The moment the page is drawn (for the elapsed time). */
+  /** The moment the page is drawn (for the time left in the tooltip). */
   now?: Date;
 }) {
-  if (identity.actorType !== "DEVELOPER") return null;
-
-  if (identity.workAs) {
-    const clock = workAsClock(identity.workAs.startedAt, now);
-    const title = t("DEVELOPER MODE — you are working as {name} ({role})", { name: identity.name, role: t(identity.role) });
-    return (
-      <div
-        role="region"
-        aria-label={title}
-        data-identity="work-as"
-        className="sticky top-0 z-40 flex h-[var(--dev-strip)] shrink-0 flex-col justify-center gap-1 bg-fuchsia-700 px-3 text-white shadow-[0_2px_10px_rgba(0,0,0,0.35)] sm:px-5 lg:flex-row lg:items-center lg:gap-5 print:hidden"
-        style={stripBackground}
-      >
-        <p className="flex min-w-0 items-start gap-2 text-[11px] font-extrabold uppercase tracking-[0.1em] sm:items-center sm:text-xs">
-          <ShieldAlert className="mt-px size-4 shrink-0 sm:mt-0" aria-hidden="true" />
-          <span className="line-clamp-2 sm:line-clamp-1" title={title}>{title}</span>
-        </p>
-        <div className="flex min-w-0 items-center gap-3 lg:flex-1 lg:justify-end">
-          <p data-work-as-clock className="min-w-0 flex-1 truncate text-xs text-white/90 lg:text-right">
-            {t("Started {elapsed} ago · ends in {left}", { elapsed: spanWords(clock.elapsedMs, t), left: spanWords(clock.leftMs, t) })}
-          </p>
-          <form action={stopWorkAs} className="shrink-0">
-            <button type="submit" data-work-as-stop
-              className="inline-flex h-8 items-center rounded-full bg-white px-4 text-xs font-extrabold uppercase tracking-[0.08em] text-fuchsia-800 shadow-sm transition-colors hover:bg-fuchsia-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
-              {t("Stop")}
-            </button>
-          </form>
-          <form action={signOut} className="shrink-0">
-            <button type="submit" className={stripLink}>{t("Sign out")}</button>
-          </form>
-        </div>
-      </div>
-    );
-  }
-
-  // The Developer in its own console (not working as someone) has no strip: the console's side menu, the name and the sign-out say where you are (owner, 2026-10-18).
-  return null;
+  if (identity.actorType !== "DEVELOPER" || !identity.workAs) return null;
+  // A small pill, fixed bottom right (above the phone's bottom bar): who you are working as, and Stop. It floats over the page, so it adds no height.
+  const clock = workAsClock(identity.workAs.startedAt, now);
+  const label = t("Working as {name}", { name: identity.name });
+  const tip = t("{name} ({role}) · started {elapsed} ago · ends in {left}", { name: identity.name, role: t(identity.role), elapsed: spanWords(clock.elapsedMs, t), left: spanWords(clock.leftMs, t) });
+  return (
+    <div
+      role="region"
+      aria-label={label}
+      data-identity="work-as"
+      title={tip}
+      className="fixed bottom-20 right-3 z-50 flex max-w-[calc(100vw-1.5rem)] items-center gap-2 rounded-full bg-fuchsia-700 py-1 pl-3.5 pr-1 text-white shadow-lg shadow-black/30 lg:bottom-5 lg:right-5 print:hidden"
+    >
+      <span className="min-w-0 truncate text-xs font-semibold">{label}</span>
+      <form action={stopWorkAs} className="shrink-0">
+        <button type="submit" data-work-as-stop
+          className="inline-flex h-7 items-center rounded-full bg-white px-3.5 text-xs font-bold text-fuchsia-800 transition-colors hover:bg-fuchsia-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
+          {t("Stop")}
+        </button>
+      </form>
+    </div>
+  );
 }
 
 /**

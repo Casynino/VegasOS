@@ -4,6 +4,8 @@ import type { Catalog } from "../../../translate";
 const catalog: Catalog = {
   // The strip on every page while a Developer works as someone (the person's own name and role are never translated)
   "DEVELOPER MODE — you are working as {name} ({role})": "开发者模式 — 当前以 {name}（{role}）的身份操作",
+  "Working as {name}": "正在以 {name} 的身份操作",
+  "{name} ({role}) · started {elapsed} ago · ends in {left}": "{name}（{role}）· 已开始 {elapsed} · {left}后自动结束",
   "Started {elapsed} ago · ends in {left}": "已开始 {elapsed} · {left}后自动结束",
   "less than a minute": "不到 1 分钟",
   "Stop": "停止",

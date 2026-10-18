@@ -102,7 +102,7 @@ export async function StaffShell({ children }: { children: ReactNode }) {
     <div id="staff-root" lang={LOCALE_META[locale].html} className={cn("dark flex min-h-svh flex-1 flex-col bg-canvas text-foreground", stripVars(identity))}>
       {/* A Developer: one unmistakable strip across every page (nothing for staff) — while working as someone, a taller one that says whom,
           for how long, and has Stop. Its height is the offset of the sticky parts below. */}
-      <IdentityBanner identity={identity} t={t} signOut={logoutAction} stopWorkAs={stopWorkAsAction} now={new Date()} />
+      <IdentityBanner identity={identity} t={t} stopWorkAs={stopWorkAsAction} now={new Date()} />
       <div className="flex min-w-0 flex-1">
       <StaffDarkMode />
       <StackTableLabels />
