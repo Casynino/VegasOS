@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { DriverStepButton } from "./driver-step";
 import { getT } from "@/i18n/server";
+import { GuidePill, guideLabel } from "@/components/staff/guide-pill";
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getT())("My trips") };
@@ -30,7 +31,7 @@ export default async function DriverPage() {
   });
   return (
     <div className="w-full space-y-3">
-      <PageHeader title={t("My trips")} description={t("Hello {name} — your assigned trips for the coming week.", { name: user.fullName.split(" ")[0] })} />
+      <PageHeader title={t("My trips")} description={t("Hello {name} — your assigned trips for the coming week.", { name: user.fullName.split(" ")[0] })} actions={guideLabel(t, user.permissions) ? <GuidePill label={guideLabel(t, user.permissions)!} /> : undefined} />
       {trips.length === 0 ? <EmptyState icon={<Car />} title={t("No trips assigned")} description={t("New assignments from the manager will appear here.")} /> : trips.map((trip) => (
         <Card key={trip.id} className={trip.status === "COMPLETED" ? "opacity-60" : ""}>
           <CardContent className="space-y-3">

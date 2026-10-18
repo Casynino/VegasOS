@@ -2,10 +2,11 @@ import Link from "next/link";
 import { billMenu } from "@/server/services/restaurant";
 import { recentChargeItems } from "@/server/services/payments";
 import { discountLimit } from "@/lib/discounts";
-import { AlertTriangle, ArrowRight, Banknote, BedDouble, BedSingle, CalendarPlus, Car, CheckCircle2, ChevronRight, ClipboardCheck, Clock, Coffee, ConciergeBell, Inbox, KeyRound, LogIn, LogOut, Luggage, NotebookTabs, Plane, Printer, QrCode, Receipt, Sunrise, Users, Wallet, Wrench } from "lucide-react";
+import { AlertTriangle, ArrowRight, Banknote, BookOpenText, BedDouble, BedSingle, CalendarPlus, Car, CheckCircle2, ChevronRight, ClipboardCheck, Clock, Coffee, ConciergeBell, Inbox, KeyRound, LogIn, LogOut, Luggage, NotebookTabs, Plane, Printer, QrCode, Receipt, Sunrise, Users, Wallet, Wrench } from "lucide-react";
 import { REQUEST_TYPE_LABEL } from "@/lib/request-meta";
 import { mobilePaymentsNeedingAttention } from "@/server/services/mobile-payments";
 import { can, getMyOpenShift, requireUser } from "@/server/auth";
+import { guideLabel } from "@/components/staff/guide-pill";
 import { needsOwnShift } from "@/lib/permissions";
 import { businessToday, getSettings } from "@/server/settings";
 import { getArrivalsSummary, getFrontDeskSnapshot, getReceptionBoard } from "@/server/services/front-desk";
@@ -165,7 +166,7 @@ export async function FrontDeskToday() {
       {/* The quick actions — and my shift as one small switch at the end (like the waiter's): "Since 16:19", tap to end. */}
       <div id="shift" className="flex scroll-mt-24 flex-wrap items-center gap-x-3 gap-y-2">
         <div className="min-w-0 basis-full md:basis-0 md:flex-1">
-      <QuickActions t={t} items={([
+      <QuickActions t={t} items={[...([
         { href: "/staff/reservations/new", label: t("New booking"), hint: t("Walk-in or reserve"), icon: <CalendarPlus />, tone: "gold", perm: "reservations.create" },
         { href: "/staff/reservations", label: t("Reservations"), hint: t("All bookings"), icon: <NotebookTabs />, tone: "amber", perm: "reservations.view" },
         { href: "/staff/hotel-qr", label: t("Hotel QR"), hint: qrToday ? t("{n} booked from the QR today", { n: qrToday }) : t("Show · print · QR bookings"), icon: <QrCode />, tone: "violet", perm: "reservations.view", badge: qrToday },
@@ -174,7 +175,7 @@ export async function FrontDeskToday() {
         { href: "/staff/rooms", label: t("Rooms"), hint: t("Board & cleaning"), icon: <BedDouble />, tone: "sky", perm: "rooms.view" },
         { href: "/staff/requests", label: t("Guest request"), hint: t("Room service & needs"), icon: <ConciergeBell />, tone: "violet", perm: "requests.view" },
         { href: "/staff/expenses", label: t("Expense"), hint: t("Money paid out"), icon: <Banknote />, tone: "teal", perm: "expenses.record" },
-      ] as const).filter((a) => can(user, a.perm as never)).map((a) => ({ href: a.href, label: a.label, hint: a.hint, icon: a.icon, tone: a.tone, badge: "badge" in a ? a.badge : undefined })).slice()} />
+      ] as const).filter((a) => can(user, a.perm as never)).map((a) => ({ href: a.href, label: a.label, hint: a.hint, icon: a.icon, tone: a.tone, badge: "badge" in a ? a.badge : undefined })), ...(guideLabel(t, user.permissions) ? [{ href: "/staff/guides", label: guideLabel(t, user.permissions)!, hint: undefined, icon: <BookOpenText />, tone: "violet" as const, badge: undefined }] : [])]} />
         </div>
         {worksShift ? (
           <span className="flex items-center gap-1.5">

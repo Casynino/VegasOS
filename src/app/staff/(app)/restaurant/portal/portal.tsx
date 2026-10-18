@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { HeroBanner, QuickActions, SectionLabel } from "@/components/dashboard/kit";
 import { RestaurantQrButton, type RestaurantQr } from "../restaurant-qr-button";
+import { GuidePill } from "@/components/staff/guide-pill";
 import { TodayStrip, type TodayPart } from "@/components/staff/reception/today-strip";
 import type { PayAccount } from "@/lib/pay-account";
 import { cn } from "@/lib/utils";
@@ -58,7 +59,7 @@ const SHORTCUT_ICON: Record<Shortcut["icon"], React.ReactNode> = { plus: <Plus /
  * see ready orders first (take → deliver → mark delivered); managers see everything.
  * Updates arrive within seconds, with sounds and an alert bar so nothing is missed.
  */
-export function RestaurantPortal({ role, perms, meId, takesCharge, name, greeting, orders, sound, accounts, rooms, avgPrep, shortcuts, restaurantQr, money, activity, numbers, mainScreen, waiterShift }: {
+export function RestaurantPortal({ role, perms, meId, takesCharge, name, greeting, orders, sound, accounts, rooms, avgPrep, shortcuts, restaurantQr, guide, money, activity, numbers, mainScreen, waiterShift }: {
   role: PortalRole; perms: PortalPerms; name: string; greeting: string; orders: PortalOrder[]; sound: SoundConfig;
   /** The signed-in account (on the shared screen: the screen's own). */
   meId: string;
@@ -66,6 +67,8 @@ export function RestaurantPortal({ role, perms, meId, takesCharge, name, greetin
   takesCharge?: boolean;
   accounts: PayAccount[]; rooms: { id: string; label: string }[]; avgPrep: number | null;
   shortcuts: Shortcut[]; restaurantQr: RestaurantQr | null;
+  /** The small "Guide book" button's words (null = this person has no guide book): next to the Restaurant QR button, in the same style. */
+  guide?: string | null;
   /** Managers and the MD: the kitchen & bar, live (drawn on the server, refreshed with the board). */
   activity?: React.ReactNode;
   /** Managers: the day in numbers, drawn beside the live feed. */
@@ -338,7 +341,7 @@ export function RestaurantPortal({ role, perms, meId, takesCharge, name, greetin
       {main ? (
         // The main restaurant screen: "Vegas Restaurant & Bar", small, between the dining room and the bar.
         <MainBanner ready={readyOnes.length} fresh={count("new")} serving={count("out")} time={clock(new Date(now).toISOString(), t.intl)}
-          aside={restaurantQr ? <RestaurantQrButton qr={restaurantQr} /> : undefined} />
+          aside={restaurantQr || guide ? <span className="flex flex-wrap items-center gap-2">{restaurantQr && <RestaurantQrButton qr={restaurantQr} />}{guide && <GuidePill label={guide} />}</span> : undefined} />
       ) : plain ? header : <HeroBanner image="/images/illustrative/restaurant-lounge.webp"
         // One portal for the whole restaurant and bar — everyone signs in with their own account and sees what their role does.
         eyebrow={<>{t("Restaurant & Bar")}</>}
@@ -361,9 +364,10 @@ export function RestaurantPortal({ role, perms, meId, takesCharge, name, greetin
         <>
           {money && <MoneyStrip orders={orders} money={money} hotel={role === "desk"} />}
 
-          {(shortcuts.length > 0 || restaurantQr || waiterShift) && (
+          {(shortcuts.length > 0 || restaurantQr || waiterShift || guide) && (
             <div className="flex flex-wrap items-center gap-2">
               {restaurantQr && <RestaurantQrButton qr={restaurantQr} />}
+              {guide && <GuidePill label={guide} />}
               {waiterShift && <WaiterShiftSwitch me={meId} shift={waiterShift.shift} left={waiterShift.left} />}
               {shortcuts.length > 0 && <QuickActions items={shortcuts.map((x) => ({ ...x, label: t(x.label), hint: x.hint && t(x.hint), icon: SHORTCUT_ICON[x.icon] }))} t={t} />}
             </div>

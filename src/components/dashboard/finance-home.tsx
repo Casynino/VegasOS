@@ -1,8 +1,9 @@
 import { Suspense } from "react";
 import {
-  AlertCircle, AlarmClock, BadgeCheck, Banknote, BarChart3, BedDouble, Building2, CalendarCheck, CircleDollarSign, ClipboardCheck, Clock, FileText, HandCoins, Landmark, LineChart, Receipt, ReceiptText, Scale, Smartphone, TrendingUp, Truck, Users, Wallet, Waypoints,
+  AlertCircle, AlarmClock, BadgeCheck, Banknote, BarChart3, BedDouble, Building2, CalendarCheck, CircleDollarSign, ClipboardCheck, Clock, FileText, HandCoins, Landmark, LineChart, Receipt, ReceiptText, Scale, Smartphone, TrendingUp, Truck, Users, Wallet, Waypoints, BookOpenText,
 } from "lucide-react";
 import { requireUser } from "@/server/auth";
+import { guideLabel } from "@/components/staff/guide-pill";
 import type { PermissionCode } from "@/lib/permissions";
 import { businessToday, getSettings, liveSinceDate } from "@/server/settings";
 import { accountantOverview } from "@/server/services/accountant";
@@ -107,6 +108,8 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
     has("finance.view") && { href: "/staff/finance/receivables", label: t("Who owes us"), icon: <Wallet />, tone: "amber" as const, badge: count("companyOverdue", "guestsOwing") },
     has("ledger.view", "finance.view") && { href: "/staff/finance/ledger", label: t("General ledger"), icon: <Scale />, tone: "sky" as const },
     has("reports.view") && { href: "/staff/reports", label: t("Reports"), icon: <FileText />, tone: "teal" as const },
+    // The guide book (Finance's own), one small pill at the end of the row.
+    guideLabel(t, user.permissions) && { href: "/staff/guides", label: guideLabel(t, user.permissions)!, icon: <BookOpenText />, tone: "violet" as const },
   ].filter(Boolean)) as { href: string; label: string; icon: React.ReactNode; tone: "gold" | "violet" | "rose" | "emerald" | "amber" | "sky" | "teal"; badge?: number }[];
 
   // ── The day-by-day chart (months for long periods) and the income mix ──

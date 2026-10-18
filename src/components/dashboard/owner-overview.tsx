@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { inHouseBalances } from "@/server/services/guest-balances";
 import Link from "next/link";
 import {
-  Activity, Armchair, BadgeCheck, Banknote, BarChart3, BedDouble, Boxes, Building2, CircleDollarSign, Clock, HandCoins, Inbox, Landmark, LineChart, Percent, Receipt, Store, Timer, TrendingUp, Trophy, UserX, Users, UtensilsCrossed, Wallet, Wrench,
+  Activity, Armchair, BadgeCheck, Banknote, BarChart3, BedDouble, BookOpenText, Boxes, Building2, CircleDollarSign, Clock, HandCoins, Inbox, Landmark, LineChart, Percent, Receipt, Store, Timer, TrendingUp, Trophy, UserX, Users, UtensilsCrossed, Wallet, Wrench,
 } from "lucide-react";
 import { can, requireUser } from "@/server/auth";
 import { tablesOnHome } from "@/server/services/table-performance";
@@ -218,6 +218,8 @@ export async function OwnerOverview({ searchParams, basePath }: {
     ] : []),
     { id: "online", label: t("Online bookings"), icon: <Inbox /> },
     { id: "detail", label: t("In detail"), icon: <BarChart3 /> },
+    // The guide books (every department's), one small pill at the end of the row — a link to its page, not a part of this one.
+    { id: "guides", label: t("Guide books"), icon: <BookOpenText />, href: "/staff/guides" },
   ];
 
   return (

@@ -8,7 +8,7 @@ vi.mock("next/navigation", async () => {
   const m = await import("../support/developer");
   return { redirect: m.redirectMock };
 });
-vi.mock("next/cache", () => ({ revalidatePath: vi.fn(), unstable_cache: <T extends (...a: never[]) => unknown>(fn: T) => fn }));
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/server", async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()), after: () => undefined }));
 // The file storage: captured, never called.
 const storage = vi.hoisted(() => ({ blobs: [] as { pathname: string; size: number; uploadedAt: Date; url: string; downloadUrl: string }[] }));
@@ -26,15 +26,11 @@ vi.mock("@vercel/blob/client", () => ({
   upload: vi.fn(),
 }));
 
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 import { del } from "@vercel/blob";
 import { db } from "@/server/db";
 import { POST } from "@/app/api/guides/upload/route";
 import { recordGuideUploadsAction, removeGuideBookAction } from "@/app/staff/(app)/guides/actions";
 import { GET } from "@/app/api/guides/[file]/route";
-import { GuideBookStrip } from "@/components/staff/guide-book-strip";
-import { englishT } from "@/i18n/translate";
 import { GUIDE_ANY_RIGHTS, GUIDE_CATALOG, GUIDE_FILE, GUIDE_VIEW_RIGHTS, guideBooksFor, guideInfo } from "@/lib/guide-books";
 import { guideStorageReady, storedGuides } from "@/server/services/guide-books";
 import { browser, makeSession, makeUser, removeMadeUsers, type MadeUser } from "../support/developer";
@@ -165,36 +161,6 @@ describe("the download route (/api/guides/<book>)", () => {
     delete process.env.BLOB_READ_WRITE_TOKEN;
     await makeSession(mgr.id);
     expect((await getBook("Vegas-Guide-02-Waiters.pdf")).status).toBe(404);
-  });
-});
-
-describe("the strip on a person's own dashboard", () => {
-  const t = englishT;
-  const render = (files: string[], all: boolean, uploaded: string[] | null) => renderToStaticMarkup(createElement(GuideBookStrip, { t, access: { all, files }, uploaded }));
-  it("a waiter: their book with Download and Open and print, through the checked route", () => {
-    const html = render(["Vegas-Guide-02-Waiters.pdf"], false, ["Vegas-Guide-02-Waiters.pdf"]);
-    expect(html).toContain("Your guide book");
-    expect(html).toContain("Waiters");
-    expect(html).toContain('href="/api/guides/Vegas-Guide-02-Waiters.pdf"');
-    expect(html).toContain('href="/api/guides/Vegas-Guide-02-Waiters.pdf?open=1"');
-    expect(html).toContain("Open and print");
-    expect(html).not.toMatch(/undefined|NaN|\[object/);
-  });
-  it("several books are listed under one heading; one that is not uploaded yet says so and has no links", () => {
-    const html = render(["Vegas-Guide-01-Reception.pdf", "Vegas-Guide-05-Housekeeping.pdf"], false, ["Vegas-Guide-01-Reception.pdf"]);
-    expect(html).toContain("Your guide books");
-    expect(html).toContain('href="/api/guides/Vegas-Guide-01-Reception.pdf"');
-    expect(html).not.toContain("Vegas-Guide-05-Housekeeping.pdf");
-    expect(html).toContain("Coming soon.");
-  });
-  it("storage unknown (null): the links are shown", () => {
-    expect(render(["Vegas-Guide-06-Driver.pdf"], false, null)).toContain('href="/api/guides/Vegas-Guide-06-Driver.pdf"');
-  });
-  it("the Boss, the MD and the Manager: one line that opens the Guide books page; a person with no book: nothing", () => {
-    const all = render(GUIDE_CATALOG.map((b) => b.file), true, []);
-    expect(all).toContain('href="/staff/guides"');
-    expect(all).toContain("Guide books");
-    expect(render([], false, [])).toBe("");
   });
 });
 

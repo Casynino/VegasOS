@@ -20,6 +20,7 @@ import { worksWaiterShift } from "@/lib/permissions";
 import { deliveryPlace } from "@/server/services/restaurant";
 import { waiterResponsibilities } from "@/server/services/waiter-work";
 import { getT } from "@/i18n/server";
+import { guideLabel } from "@/components/staff/guide-pill";
 import { eventDoneBy, orderMarks } from "@/server/services/order-done-by";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -174,7 +175,7 @@ export default async function RestaurantPortalPage() {
 
   return (
     <div className="w-full space-y-6">
-      <RestaurantPortal role={role} perms={perms} meId={user.id} takesCharge={takesCharge} activity={perms.watch ? <ActivityFeed events={feed} /> : undefined} numbers={dayCard} name={user.fullName.replace(/\s*\(.*\)/, "").split(" ")[0]} greeting={greeting} orders={portal} accounts={accounts} rooms={rooms} avgPrep={avgPrep} shortcuts={shortcuts} restaurantQr={restaurantQr}
+      <RestaurantPortal role={role} perms={perms} meId={user.id} takesCharge={takesCharge} activity={perms.watch ? <ActivityFeed events={feed} /> : undefined} numbers={dayCard} name={user.fullName.replace(/\s*\(.*\)/, "").split(" ")[0]} greeting={greeting} orders={portal} accounts={accounts} rooms={rooms} avgPrep={avgPrep} shortcuts={shortcuts} restaurantQr={restaurantQr} guide={guideLabel(t, user.permissions)}
         money={money}
         sound={{ enabled: settings.orderSoundsEnabled, volume: settings.orderSoundVolume, newSound: settings.newOrderSound, readySound: settings.readyOrderSound, confirmPayments: settings.orderPaymentConfirm }}
         mainScreen={mainScreen} waiterShift={shiftBar} />

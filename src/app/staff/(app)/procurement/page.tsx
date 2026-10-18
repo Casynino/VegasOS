@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getT } from "@/i18n/server";
+import { GuidePill, guideLabel } from "@/components/staff/guide-pill";
 import { msg } from "@/i18n/msg";
 import { can, requirePagePermission } from "@/server/auth";
 import { formatTZS } from "@/lib/format";
@@ -75,7 +76,7 @@ export default async function ProcurementPage({ searchParams }: PageProps<"/staf
               : t("The purchases Finance approved. Get quotations, order, receive the goods and attach the invoices — Finance authorizes the price when it is above the budget and pays the supplier.")}
           </p>
         </div>
-        <Link href="/staff/stock-requests" className="text-sm font-medium underline-offset-4 hover:underline">{t("Purchase requests")}</Link>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">{guideLabel(t, user.permissions) && <GuidePill label={guideLabel(t, user.permissions)!} />}<Link href="/staff/stock-requests" className="text-sm font-medium underline-offset-4 hover:underline">{t("Purchase requests")}</Link></div>
       </header>
 
       {position && (

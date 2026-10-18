@@ -1,5 +1,4 @@
 import "server-only";
-import { unstable_cache } from "next/cache";
 import { del, list } from "@vercel/blob";
 import { GUIDE_FILE, GUIDE_FOLDER } from "@/lib/guide-books";
 
@@ -53,6 +52,3 @@ export async function guideBlobFor(file: string): Promise<{ url: string; downloa
     return null;
   }
 }
-
-/** Which books are in the storage (just the names), kept for a minute: every dashboard asks, so it must not call the storage each time. null = unknown / no storage. */
-export const uploadedGuideFiles = unstable_cache(async (): Promise<string[] | null> => (await storedGuides())?.map((g) => g.file) ?? null, ["guide-books-files"], { revalidate: 60 });

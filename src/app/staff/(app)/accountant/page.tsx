@@ -10,6 +10,7 @@ import { accountantOverview } from "@/server/services/accountant";
 import { financeQueue } from "@/server/services/procurement-desk";
 import { formatTZS } from "@/lib/format";
 import { getT } from "@/i18n/server";
+import { GuidePill, guideLabel } from "@/components/staff/guide-pill";
 import { cn } from "@/lib/utils";
 import { Panel } from "@/components/dashboard/kit";
 import { PeriodPicker, periodLabel, readPeriod } from "@/components/staff/finance/finance-nav";
@@ -62,7 +63,7 @@ export default async function AccountantPage({ searchParams }: PageProps<"/staff
           <h1 className="text-[clamp(1.4rem,2vw,1.75rem)] font-semibold tracking-tight">{t("Finance desk")}</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">{periodLabel(p, t)}</p>
         </div>
-        <PeriodPicker current={p.key} from={p.from} to={p.to} keep={keep} />
+        <div className="flex flex-wrap items-center gap-2">{guideLabel(t, user.permissions) && <GuidePill label={guideLabel(t, user.permissions)!} />}<PeriodPicker current={p.key} from={p.from} to={p.to} keep={keep} /></div>
       </header>
 
       <form className="flex flex-wrap items-end gap-2 rounded-2xl border border-border/70 bg-card p-3 text-sm">
