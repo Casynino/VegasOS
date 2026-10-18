@@ -1141,7 +1141,7 @@ describe("the Developer home page draws, on every tab, from real data", () => {
     expect(html).toContain("Your control room for");
     expect(html).toContain("out of 100");
     expect(html).toContain("Needs your attention");
-    for (const w of ["Work as someone", "Add an account", "Open Audit", "Open Business", "Activity", "Speed &amp; size", "Crashes &amp; sign-ins", "Settings", "People &amp; my actions"]) expect(html).toContain(w);
+    for (const w of ["Work as", "Add an account", "Who did what, and when", "Read-only hotel tables", "Activity", "Speed &amp; size", "Crashes &amp; sign-ins", "Settings", "People &amp; my actions"]) expect(html).toContain(w);
     // Audit and Business are links; Work as someone and Add an account open a popup (the Access page is in the side menu and in the popup)
     for (const href of [CONSOLE_HREF.home, CONSOLE_HREF.audit, CONSOLE_HREF.business]) expect(html).toContain(`href="${href}`);
     for (const w of ["Sign-ins per day", "Actions per day", "Busiest hours of the day", "Where the work happens", "Recent sign-ins", "Most active people", "Not using the system"]) expect(html).toContain(w);

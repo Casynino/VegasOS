@@ -55,8 +55,11 @@ function Card({ t, item }: { t: T; item: HealthItem }) {
 export function AttentionSection({ t, items }: { t: T; items: HealthItem[] }) {
   const need = items.filter((i) => i.severity !== "info");
   const good = items.filter((i) => i.severity === "info");
+  // Side by side when both lists exist (one column each), so the page has no empty half; one list alone uses the full width in two columns.
+  const two = good.length > 0;
+  const list = two ? "grid gap-3" : "grid items-start gap-3 lg:grid-cols-2";
   return (
-    <div className="space-y-6">
+    <div className={two ? "grid items-start gap-6 lg:grid-cols-2" : "space-y-6"}>
       <section aria-labelledby="attention-title">
         <h2 id="attention-title" className="flex items-center gap-2 text-base font-semibold">
           {t("Needs your attention")}
@@ -69,7 +72,7 @@ export function AttentionSection({ t, items }: { t: T; items: HealthItem[] }) {
             <p className="text-sm font-semibold">{t("Nothing needs your attention.")}</p>
           </div>
         ) : (
-          <div className="grid items-start gap-3 lg:grid-cols-2">{need.map((i) => <Card key={i.id} t={t} item={i} />)}</div>
+          <div className={list}>{need.map((i) => <Card key={i.id} t={t} item={i} />)}</div>
         )}
       </section>
 
@@ -78,7 +81,7 @@ export function AttentionSection({ t, items }: { t: T; items: HealthItem[] }) {
           <h2 id="good-title" className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
             {t.ctx("console", "Good to know")}<span className="rounded-full bg-muted px-2 py-0.5 text-[11px] tracking-normal tabular-nums">{good.length}</span>
           </h2>
-          <div className="grid items-start gap-3 lg:grid-cols-2">{good.map((i) => <Card key={i.id} t={t} item={i} />)}</div>
+          <div className={list}>{good.map((i) => <Card key={i.id} t={t} item={i} />)}</div>
         </section>
       )}
     </div>

@@ -10,26 +10,25 @@ import { Input } from "@/components/ui/input";
 import { useT } from "@/i18n/client";
 import { startWorkAsAction } from "./access/actions";
 import { AddAccountForm, type RoleChoice } from "./access/add-account-dialog";
+import { TILE, TILE_ICON } from "./tile-style";
 
 /** The two shortcut cards on the Developer Home that open a popup: "Work as someone" and "Add an account". */
 export interface PersonChoice { id: string; fullName: string; roleName: string }
 
-const CARD = "group flex w-full gap-3.5 rounded-2xl border border-border/70 bg-card p-4 text-left transition-colors hover:border-[oklch(0.72_0.12_80/0.5)] hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold";
-const ICON = "grid size-10 shrink-0 place-items-center rounded-xl bg-[oklch(0.72_0.12_80/0.16)] text-[oklch(0.5_0.11_75)] dark:text-[oklch(0.84_0.11_82)]";
-
 function CardBody({ icon, title, text }: { icon: ReactNode; title: string; text: string }) {
   return (
     <>
-      <span className={ICON}>{icon}</span>
-      <span className="min-w-0">
-        <span className="flex items-center gap-1.5 text-sm font-semibold text-foreground">{title}<ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden /></span>
-        <span className="mt-1 block text-[13px] leading-relaxed text-muted-foreground">{text}</span>
+      <span className={TILE_ICON}>{icon}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-semibold text-foreground">{title}</span>
+        <span className="mt-0.5 block truncate text-xs text-muted-foreground">{text}</span>
       </span>
+      <ArrowRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden />
     </>
   );
 }
 
-/** "Work as someone": a card that opens a popup with the people (name and role) — one press on a name and you are working as them. */
+/** "Work as": a tile that opens a popup with the people (name and role) — one press on a name and you are working as them. */
 export function WorkAsCard({ people }: { people: PersonChoice[] }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -41,8 +40,8 @@ export function WorkAsCard({ people }: { people: PersonChoice[] }) {
   }, [people, query, t]);
   return (
     <>
-      <button type="button" className={CARD} onClick={() => { setQuery(""); setOpen(true); }}>
-        <CardBody icon={<LogIn className="size-5" aria-hidden />} title={t("Work as someone")} text={t("Open the dashboard of the Boss, a manager or a team member to help them or to see what they see. Every click is recorded under your name.")} />
+      <button type="button" className={TILE} onClick={() => { setQuery(""); setOpen(true); }}>
+        <CardBody icon={<LogIn className="size-5" aria-hidden />} title={t("Work as")} text={t("Open someone's dashboard")} />
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
@@ -94,8 +93,8 @@ export function AddAccountCard({ roles }: { roles: RoleChoice[] }) {
   if (!roles.length) return null;
   return (
     <>
-      <button type="button" className={CARD} onClick={() => { setRound((n) => n + 1); setOpen(true); }}>
-        <CardBody icon={<UserPlus className="size-5" aria-hidden />} title={t("Add an account")} text={t("Create a login for a new person: name, email and role. A temporary password is made for you.")} />
+      <button type="button" className={TILE} onClick={() => { setRound((n) => n + 1); setOpen(true); }}>
+        <CardBody icon={<UserPlus className="size-5" aria-hidden />} title={t("Add an account")} text={t("Create a login")} />
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>

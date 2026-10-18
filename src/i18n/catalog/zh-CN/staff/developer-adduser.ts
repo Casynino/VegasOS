@@ -4,7 +4,10 @@ import type { Catalog } from "../../../translate";
 const catalog: Catalog = {
   "While you are working as someone you cannot add accounts.": "以他人身份工作期间，您不能添加账号。",
   "Add an account": "添加账号",
-  "Work as someone": "以某人身份工作",
+  "Open someone's dashboard": "打开某人的仪表盘",
+  "Create a login": "创建登录账号",
+  "Who did what, and when": "谁在何时做了什么",
+  "Read-only hotel tables": "酒店数据（只读表格）",
   "Pick a person. You will see their dashboard exactly as they see it.": "选择一位人员。您将看到与对方完全相同的仪表盘。",
   "Search by name or role": "按姓名或角色搜索",
   "No one found.": "没有找到相关人员。",

@@ -81,9 +81,9 @@ export default async function DeveloperHomePage({ searchParams }: PageProps<"/st
         date={t.date(greeting.today, true)} tag={t("Developer")} title={hello}
         subtitle={t("Your control room for {hotel} — health, people and everything done, in one place.", { hotel: greeting.hotelName })}
       />
+      <Shortcuts t={t} people={people} roles={roles.map((r) => ({ id: r.id, name: r.name }))} />
       <HealthCard t={t} h={health} />
       <AttentionSection t={t} items={health.items} />
-      <Shortcuts t={t} people={people} roles={roles.map((r) => ({ id: r.id, name: r.name }))} />
       <div className="space-y-4">
         <TabNav t={t} active={tab} badges={badges} />
         {body}

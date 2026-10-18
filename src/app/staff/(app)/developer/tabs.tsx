@@ -5,24 +5,26 @@ import type { T } from "@/i18n/translate";
 import { CONSOLE_HREF, type ConsoleTab } from "@/server/services/developer-console";
 import type { RoleChoice } from "./access/add-account-dialog";
 import { AddAccountCard, WorkAsCard, type PersonChoice } from "./home-dialogs";
+import { TILE, TILE_ICON } from "./tile-style";
 
-/** The shortcuts under the health card: Work as someone and Add an account open a popup; Audit and Business are the console's other pages. */
+/** The four quick actions under the greeting: Work as and Add an account open a popup; Audit and Business are the console's other pages. */
 export function Shortcuts({ t, people = [], roles = [] }: { t: T; people?: PersonChoice[]; roles?: RoleChoice[] }) {
-  const cards = [
-    { href: CONSOLE_HREF.audit, icon: ScrollText, title: t("Open Audit"), text: t("The permanent diary of everything done in the system — by staff and by you. Nothing in it is edited or deleted; the only change is that a cancelled check-in is marked as cancelled.") },
-    { href: CONSOLE_HREF.business, icon: ChartColumn, title: t("Open Business"), text: t("See bookings, payments, stock and customers in read-only tables. Good for checking a number without risking a change.") },
+  const links = [
+    { href: CONSOLE_HREF.audit, icon: ScrollText, title: t("Audit"), text: t("Who did what, and when") },
+    { href: CONSOLE_HREF.business, icon: ChartColumn, title: t("Business"), text: t("Read-only hotel tables") },
   ];
   return (
-    <nav aria-label={t("Console pages")} className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+    <nav aria-label={t("Quick actions")} className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <WorkAsCard people={people} />
       <AddAccountCard roles={roles} />
-      {cards.map((c) => (
-        <Link key={c.href} href={c.href} className="group flex gap-3.5 rounded-2xl border border-border/70 bg-card p-4 transition-colors hover:border-[oklch(0.72_0.12_80/0.5)] hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold">
-          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[oklch(0.72_0.12_80/0.16)] text-[oklch(0.5_0.11_75)] dark:text-[oklch(0.84_0.11_82)]"><c.icon className="size-5" aria-hidden /></span>
-          <span className="min-w-0">
-            <span className="flex items-center gap-1.5 text-sm font-semibold text-foreground">{c.title}<ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden /></span>
-            <span className="mt-1 block text-[13px] leading-relaxed text-muted-foreground">{c.text}</span>
+      {links.map((c) => (
+        <Link key={c.href} href={c.href} className={TILE}>
+          <span className={TILE_ICON}><c.icon aria-hidden /></span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-semibold text-foreground">{c.title}</span>
+            <span className="mt-0.5 block truncate text-xs text-muted-foreground">{c.text}</span>
           </span>
+          <ArrowRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden />
         </Link>
       ))}
     </nav>
