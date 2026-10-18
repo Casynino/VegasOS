@@ -46,15 +46,22 @@ export async function startWorkAsAction(first?: unknown, second?: unknown): Prom
     return (await startWorkAs(developer, input.userId)).home;
   });
   if (!done.ok) return done;
+  // The whole frame (menu, top bar, the "Working as" pill) changes with who you are: forget what the browser kept of it.
+  revalidatePath("/", "layout");
   // redirect() ends the action by throwing — so it stays out of runAction's try/catch.
   redirect(done.data);
 }
 
-/** STOP — back from "Work as" to the console. It also works from the bar shown on every page while working as someone. */
+/** The Developer's own Home — where Stop brings you back, in the Developer's own look (menu, top bar), as usual. */
+const CONSOLE_HOME = "/staff/developer";
+
+/** STOP — back from "Work as" to the Developer console Home. It also works from the pill shown on every page while working as someone. */
 export async function stopWorkAsAction(): Promise<void> {
   const developer = await requireDeveloperSession();
   await endWorkAs(developer);
-  redirect(ACCESS);
+  // Without this the browser keeps the person's menu and pill around the Developer's page (the frame is not drawn again on a redirect).
+  revalidatePath("/", "layout");
+  redirect(CONSOLE_HOME);
 }
 
 /** SUSPEND — blocks the account and signs the person out at once. Needs a reason (5+ characters) and the word CONFIRM. */

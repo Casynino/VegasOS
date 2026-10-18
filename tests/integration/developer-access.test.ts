@@ -154,7 +154,7 @@ describe("the page's data", () => {
     await makeSession(dev.id);
     expect(await redirectOf(() => startWorkAsAction(undefined, form({ userId: rec.id })))).toBe(await homeOf("RECEPTIONIST"));
     expect(await redirectOf(() => loadAccessPage())).toBe(await homeOf("RECEPTIONIST"));
-    expect(await redirectOf(() => stopWorkAsAction())).toBe(ACCESS);
+    expect(await redirectOf(() => stopWorkAsAction())).toBe("/staff/developer");
     expect(await redirectOf(() => loadAccessPage())).toBeNull();
   });
 });
@@ -225,7 +225,7 @@ describe("Work as and Stop", () => {
     expect(afterOf(started[0])).toMatchObject({ targetName: rec.fullName });
     expect(await freshTarget(), "nothing is written under the person's own name").toEqual([]);
 
-    expect(await redirectOf(() => stopWorkAsAction())).toBe(ACCESS);
+    expect(await redirectOf(() => stopWorkAsAction())).toBe("/staff/developer");
     const ended = await db.session.findUniqueOrThrow({ where: { id: row.id } });
     expect([ended.workAsUserId, ended.workAsStartedAt]).toEqual([null, null]);
     expect((await getCurrentUser())?.id).toBe(dev.id);
@@ -441,7 +441,7 @@ describe("while working as someone: no Suspend, no Re-activate, no Sign out — 
     expect(await sessions(victim.id)).toBe(1);
     expect((await fresh()).filter((r) => ["user.suspended", "user.reactivated", "user.signed_out_everywhere"].includes(r.action))).toEqual([]);
 
-    expect(await redirectOf(() => stopWorkAsAction())).toBe(ACCESS);
+    expect(await redirectOf(() => stopWorkAsAction())).toBe("/staff/developer");
     expect(await suspendAction(undefined, form({ userId: victim.id, reason: "a good reason", confirm: "CONFIRM" }))).toMatchObject({ ok: true });
     expect(await reactivateAction(undefined, form({ userId: parked.id, reason: "a good reason" }))).toMatchObject({ ok: true });
     expect((await state(victim.id)).isActive).toBe(false);
