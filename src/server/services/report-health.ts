@@ -1,8 +1,8 @@
 import "server-only";
 import { db } from "../db";
 import { businessDayConfig, getSettings, liveSinceDate } from "../settings";
-import { addDays, businessDateOf, localParts, toDbDate } from "@/lib/time/business-date";
-import { reportTrouble, type ReportTrouble } from "@/lib/report-trouble";
+import { addDays, businessDateOf, toDbDate } from "@/lib/time/business-date";
+import { reportIsLate, reportTrouble, type ReportTrouble } from "@/lib/report-trouble";
 
 export interface ReportTroubles {
   /** The last closed day's daily report: what is wrong with it and where to open it (null id = it was never made). */
@@ -10,7 +10,7 @@ export interface ReportTroubles {
   room: { kind: ReportTrouble } | null;
 }
 
-/** The daily report is due to have reached the Boss by this hour (made 07:00, retried 07:35) and the room report by this one (06:30, 06:50). */
+/** The daily report is due to have reached the Boss by this hour of the NEXT calendar day (made 07:00, retried 07:35) and the room report by this one (06:30, 06:50) — see reportDueAt. */
 export const DAILY_DUE_HOUR = 8;
 export const ROOM_DUE_HOUR = 7;
 
@@ -21,7 +21,6 @@ export async function reportTroubles(now = new Date()): Promise<ReportTroubles> 
   const yesterday = addDays(businessDateOf(now, cfg), -1);
   const live = liveSinceDate(settings);
   if (live && yesterday < live) return { daily: null, room: null };
-  const hour = localParts(now, cfg.timezone).hour;
   const hasRecipients = (((settings.reportRecipients as unknown as unknown[]) ?? []).length) > 0;
   const [daily, room] = await Promise.all([
     db.dailyReport.findUnique({ where: { businessDate: toDbDate(yesterday) }, select: { id: true, generatedAt: true, deliveries: { select: { purpose: true, status: true, sentAt: true } } } }),
@@ -29,7 +28,7 @@ export async function reportTroubles(now = new Date()): Promise<ReportTroubles> 
   ]);
   // The daily report's row also carries the room report's deliveries (told apart by purpose).
   const of = (purpose: string) => (daily?.deliveries ?? []).filter((d) => d.purpose === purpose).map((d) => ({ status: d.status, sentAt: d.sentAt }));
-  const dailyKind = reportTrouble({ enabled: settings.reportEnabled, hasRecipients, hour, dueByHour: DAILY_DUE_HOUR, report: daily ? { generatedAt: daily.generatedAt, deliveries: of("DAILY_REPORT") } : null });
-  const roomKind = reportTrouble({ enabled: settings.reportEnabled && settings.roomReportEnabled, hasRecipients, hour, dueByHour: ROOM_DUE_HOUR, report: room ? { generatedAt: room.generatedAt, deliveries: of("ROOM_REPORT") } : null });
+  const dailyKind = reportTrouble({ enabled: settings.reportEnabled, hasRecipients, late: reportIsLate(yesterday, now, DAILY_DUE_HOUR, cfg.timezone), report: daily ? { generatedAt: daily.generatedAt, deliveries: of("DAILY_REPORT") } : null });
+  const roomKind = reportTrouble({ enabled: settings.reportEnabled && settings.roomReportEnabled, hasRecipients, late: reportIsLate(yesterday, now, ROOM_DUE_HOUR, cfg.timezone), report: room ? { generatedAt: room.generatedAt, deliveries: of("ROOM_REPORT") } : null });
   return { daily: dailyKind ? { kind: dailyKind, id: daily?.id ?? null } : null, room: roomKind ? { kind: roomKind } : null };
 }

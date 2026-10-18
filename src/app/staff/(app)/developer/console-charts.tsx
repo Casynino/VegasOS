@@ -28,24 +28,56 @@ export function niceMax(max: number): number {
   return Math.ceil(max / 4) * 4;
 }
 
+/** The top of the scale for money: four equal steps of 1, 2, 2.5 or 5 (times a power of ten), so the lines say 250,000 and 500,000, not 308,642. */
+export function niceRoundMax(max: number): number {
+  if (max <= 0) return 4;
+  const magnitude = 10 ** Math.floor(Math.log10(max / 4));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * magnitude).find((s) => s * 4 >= max) ?? 10 * magnitude;
+  return step * 4;
+}
+
 const HEIGHT = 168; // px, the plot area
 
-/** Stacked bars: one column per day (or hour), one coloured part per series. */
-export function BarChart({ t, columns, series, caption, empty }: { t: T; columns: BarColumn[]; series: BarSeries[]; caption: string; empty: string }) {
-  const totalOf = (c: BarColumn) => series.reduce((n, s) => n + (c.values[s.key] ?? 0), 0);
-  const max = Math.max(0, ...columns.map(totalOf));
-  const top = niceMax(max);
+/**
+ * Bars: one column per day (or hour). Stacked by default (one coloured part per series, the column is their sum); `grouped` puts the
+ * series side by side instead, for figures that must not be added together (income and money received).
+ * `format` writes an exact number (a TZS amount, a percent) in the hover text, the legend and the table; `axis` writes the scale
+ * (the number alone, in full); `top` fixes the top of the scale (100 for a percent). Without them it is the plain count chart.
+ */
+export function BarChart({ t, columns, series, caption, empty, format, axis, grouped, top: fixedTop, negative }: {
+  t: T; columns: BarColumn[]; series: BarSeries[]; caption: string; empty: string;
+  format?: (n: number) => string; axis?: (n: number) => string; grouped?: boolean; top?: number;
+  /** The word for a part below zero ("refund"), written in the spoken summary and the hover text: "Cash refund −TZS 2,000". */
+  negative?: string;
+}) {
+  const fmt = format ?? ((v: number) => num(t, v));
+  const axisFmt = axis ?? fmt;
+  const valueOf = (c: BarColumn, key: string) => c.values[key] ?? 0;
+  const totalOf = (c: BarColumn) => series.reduce((n, s) => n + valueOf(c, s.key), 0);
+  const max = grouped ? Math.max(0, ...columns.flatMap((c) => series.map((s) => valueOf(c, s.key)))) : Math.max(0, ...columns.map(totalOf));
+  const top = fixedTop ?? (format ? niceRoundMax(max) : niceMax(max));
   const ticks = top <= 4 ? Array.from({ length: top + 1 }, (_, i) => i) : [0, 1, 2, 3, 4].map((i) => (top * i) / 4);
-  const seriesTotals = series.map((s) => columns.reduce((n, c) => n + (c.values[s.key] ?? 0), 0));
+  const seriesTotals = series.map((s) => columns.reduce((n, c) => n + valueOf(c, s.key), 0));
   const everything = seriesTotals.reduce((a, b) => a + b, 0);
+  // A scale written in full needs room: as wide as its longest label (the plain count chart keeps its narrow one).
+  const scaleWidth = format || axis ? `${Math.max(...ticks.map((v) => axisFmt(v).length)) + 0.5}ch` : undefined;
+  // Every part that is not nothing, so a day that is only a refund does not read as 0.
+  const detailOf = (c: BarColumn) => series.filter((s) => valueOf(c, s.key) !== 0).map((s) => `${s.label}${valueOf(c, s.key) < 0 && negative ? ` ${negative}` : ""} ${fmt(valueOf(c, s.key))}`).join(" · ");
+  // The picture's spoken summary: a chart of several series says each part of every column, not only its sum.
+  const spoken = (c: BarColumn) => {
+    const detail = detailOf(c);
+    if (grouped || (format && series.length === 1)) return `${c.name} ${detail || fmt(0)}`;
+    if (series.length > 1) return `${c.name} ${fmt(totalOf(c))}${detail ? ` (${detail})` : ""}`;
+    return `${c.name} ${format ? fmt(totalOf(c)) : totalOf(c)}`;
+  };
 
   return (
     <figure className="min-w-0">
       <figcaption className="sr-only">{caption}</figcaption>
-      <div className="flex gap-2" role="img" aria-label={`${caption}: ${columns.map((c) => `${c.name} ${totalOf(c)}`).join(", ")}`}>
+      <div className="flex gap-2" role="img" aria-label={`${caption}: ${columns.map(spoken).join(", ")}`}>
         {/* the scale */}
-        <div aria-hidden className="relative w-7 shrink-0 text-right text-[10px] tabular-nums text-muted-foreground" style={{ height: HEIGHT }}>
-          {ticks.map((v) => <span key={v} className="absolute right-0 -translate-y-1/2 leading-none" style={{ bottom: `${(v / top) * 100}%` }}>{num(t, v)}</span>)}
+        <div aria-hidden className={cn("relative shrink-0 text-right text-[10px] tabular-nums text-muted-foreground", !scaleWidth && "w-7")} style={{ height: HEIGHT, width: scaleWidth }}>
+          {ticks.map((v) => <span key={v} className="absolute right-0 -translate-y-1/2 leading-none" style={{ bottom: `${(v / top) * 100}%` }}>{axis || format ? axisFmt(v) : num(t, v)}</span>)}
         </div>
         <div className="min-w-0 flex-1">
           <div className="relative" style={{ height: HEIGHT }}>
@@ -53,12 +85,19 @@ export function BarChart({ t, columns, series, caption, empty }: { t: T; columns
             <div className="absolute inset-0 flex items-end gap-[3px] sm:gap-1.5">
               {columns.map((c) => {
                 const total = totalOf(c);
-                const detail = series.filter((s) => (c.values[s.key] ?? 0) > 0).map((s) => `${s.label} ${num(t, c.values[s.key])}`).join(" · ");
+                const detail = detailOf(c);
+                if (grouped) {
+                  return (
+                    <div key={c.key} className="flex h-full min-w-0 flex-1 items-end gap-px" title={`${c.name}: ${detail || fmt(0)}`}>
+                      {series.map((s) => valueOf(c, s.key) > 0 && <span key={s.key} className="min-w-0 flex-1 rounded-t-[2px]" style={{ height: `${Math.min(100, (valueOf(c, s.key) / top) * 100)}%`, minHeight: 3, background: s.color }} />)}
+                    </div>
+                  );
+                }
                 return (
-                  <div key={c.key} className="flex h-full min-w-0 flex-1 flex-col justify-end" title={`${c.name}: ${num(t, total)}${series.length > 1 && detail ? ` — ${detail}` : ""}`}>
+                  <div key={c.key} className="flex h-full min-w-0 flex-1 flex-col justify-end" title={`${c.name}: ${fmt(total)}${series.length > 1 && detail ? ` — ${detail}` : ""}`}>
                     {total > 0 && (
-                      <div className="flex flex-col-reverse overflow-hidden rounded-t-[3px]" style={{ height: `${(total / top) * 100}%`, minHeight: 3 }}>
-                        {series.map((s) => (c.values[s.key] ?? 0) > 0 && <span key={s.key} className="min-h-[2px] border-t border-card first:border-t-0" style={{ flex: `${c.values[s.key]} 1 0%`, background: s.color }} />)}
+                      <div className="flex flex-col-reverse overflow-hidden rounded-t-[3px]" style={{ height: `${Math.min(100, (total / top) * 100)}%`, minHeight: 3 }}>
+                        {series.map((s) => valueOf(c, s.key) > 0 && <span key={s.key} className="min-h-[2px] border-t border-card first:border-t-0" style={{ flex: `${c.values[s.key]} 1 0%`, background: s.color }} />)}
                       </div>
                     )}
                   </div>
@@ -79,7 +118,7 @@ export function BarChart({ t, columns, series, caption, empty }: { t: T; columns
       {series.length > 1 && (
         <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
           {series.map((s, i) => (
-            <li key={s.key} className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm" style={{ background: s.color }} aria-hidden />{s.label}<span className="font-semibold tabular-nums text-foreground">{num(t, seriesTotals[i])}</span></li>
+            <li key={s.key} className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm" style={{ background: s.color }} aria-hidden />{s.label}<span className="font-semibold tabular-nums text-foreground">{fmt(seriesTotals[i])}</span></li>
           ))}
         </ul>
       )}
@@ -96,7 +135,7 @@ export function BarChart({ t, columns, series, caption, empty }: { t: T; columns
               <tr className="border-b border-border/70"><th scope="col" className="px-3 py-1.5 font-medium">{t("When")}</th>{series.map((s) => <th scope="col" key={s.key} className="px-3 py-1.5 text-right font-medium">{s.label}</th>)}</tr>
             </thead>
             <tbody className="divide-y divide-border/60">
-              {columns.map((c) => <tr key={c.key}><th scope="row" className="px-3 py-1.5 font-medium">{c.name}</th>{series.map((s) => <td key={s.key} className="px-3 py-1.5 text-right">{num(t, c.values[s.key] ?? 0)}</td>)}</tr>)}
+              {columns.map((c) => <tr key={c.key}><th scope="row" className="px-3 py-1.5 font-medium">{c.name}</th>{series.map((s) => <td key={s.key} className="whitespace-nowrap px-3 py-1.5 text-right">{fmt(valueOf(c, s.key))}</td>)}</tr>)}
             </tbody>
           </table>
         </div>
@@ -106,7 +145,8 @@ export function BarChart({ t, columns, series, caption, empty }: { t: T; columns
 }
 
 /** Horizontal bars, one row per name, the biggest first. */
-export function RankBars({ t, rows, color, caption, empty }: { t: T; rows: { key: string; label: string; value: number; note?: string }[]; color: string; caption: string; empty: string }) {
+export function RankBars({ t, rows, color, caption, empty, format }: { t: T; rows: { key: string; label: string; value: number; note?: string }[]; color: string; caption: string; empty: string; format?: (n: number) => string }) {
+  const fmt = format ?? ((v: number) => num(t, v));
   const max = Math.max(1, ...rows.map((r) => r.value));
   if (rows.length === 0) return <p className="rounded-2xl bg-muted/40 px-4 py-3 text-sm text-muted-foreground">{empty}</p>;
   return (
@@ -114,10 +154,10 @@ export function RankBars({ t, rows, color, caption, empty }: { t: T; rows: { key
       <figcaption className="sr-only">{caption}</figcaption>
       <ul className="space-y-3">
         {rows.map((r) => (
-          <li key={r.key} title={`${r.label}: ${num(t, r.value)}`}>
+          <li key={r.key} title={`${r.label}: ${fmt(r.value)}`}>
             <div className="mb-1 flex items-baseline justify-between gap-3 text-sm">
               <span className="min-w-0 truncate font-medium text-foreground">{r.label}{r.note && <span className="ml-1.5 text-xs font-normal text-muted-foreground">{r.note}</span>}</span>
-              <span className="shrink-0 font-semibold tabular-nums">{num(t, r.value)}</span>
+              <span className="shrink-0 font-semibold tabular-nums">{fmt(r.value)}</span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-muted" aria-hidden>
               <div className="h-full rounded-full" style={{ width: `${Math.max(3, (r.value / max) * 100)}%`, background: color }} />

@@ -8,11 +8,18 @@ import {
   developerGreeting, inspectPermission, parseTab, peopleTab, settingsTab, type ConsoleTab, type Inspection,
 } from "@/server/services/developer-console";
 import { activityData, crashData, healthReport, speedData } from "@/server/services/developer-health";
+import { noteHomeTabView } from "@/server/services/developer-business";
+import { hotelData } from "@/server/services/developer-hotel";
+import { messagesData } from "@/server/services/developer-messages";
+import { moneyData } from "@/server/services/developer-money";
 import { accessPeople, accountRoleChoices } from "@/server/services/work-as";
 import { getT } from "@/i18n/server";
 import { AttentionSection } from "./attention";
 import { ConsoleBanner } from "./console-ui";
 import { HealthCard } from "./health-card";
+import { HotelTab } from "./tab-hotel";
+import { MessagesTab } from "./tab-messages";
+import { MoneyTab } from "./tab-money";
 import { TabNav, Shortcuts, type TabBadge } from "./tabs";
 import { ActivityTab } from "./tab-activity";
 import { CrashesTab } from "./tab-crashes";
@@ -29,7 +36,7 @@ const str = (v: unknown) => (typeof v === "string" ? v : "");
 
 /**
  * THE DEVELOPER HOME (owner, 2026-10-17): the Developer's control room — how healthy the system is, what needs attention, and
- * (under the tabs) who is using it, how fast it is, who failed to sign in, how it is set up, and what the Developer has done.
+ * (under the tabs) who is using it, what is happening in the hotel, where the money is, whether the Boss gets his reports, how fast it is, who failed to sign in, how it is set up, and what the Developer has done.
  * Read-only. Every figure comes from a service in developer-console.ts / developer-health.ts, which checks again that the caller
  * really is the Developer; a part that cannot be read is left out and the rest still shows. No password, key or secret is ever read out.
  * The console and the "work as" world are kept apart: someone working as another person is sent to that person's home.
@@ -61,6 +68,15 @@ export default async function DeveloperHomePage({ searchParams }: PageProps<"/st
   let body: ReactNode;
   if (tab === "activity") {
     body = <ActivityTab t={t} a={await activityData(user, now)} now={now} timezone={settings.timezone} />;
+  } else if (tab === "hotel") {
+    await noteHomeTabView(user, "hotel", { ipAddress: meta.ipAddress, now });
+    body = <HotelTab t={t} h={await hotelData(user, now)} when={when} />;
+  } else if (tab === "money") {
+    await noteHomeTabView(user, "money", { ipAddress: meta.ipAddress, now });
+    body = <MoneyTab t={t} m={await moneyData(user, now)} when={when} />;
+  } else if (tab === "messages") {
+    await noteHomeTabView(user, "messages", { ipAddress: meta.ipAddress, now });
+    body = <MessagesTab t={t} d={await messagesData(user, now)} when={when} />;
   } else if (tab === "speed") {
     body = <SpeedTab t={t} s={await speedData(user, now)} />;
   } else if (tab === "crashes") {

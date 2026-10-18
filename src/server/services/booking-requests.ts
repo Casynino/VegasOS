@@ -540,3 +540,8 @@ export async function newRequestCount() {
   return db.bookingRequest.count({ where: { status: "NEW" } });
 }
 
+/** Requests reception has not finished with, on any day (the same open states requestStats counts as "open now"). */
+export async function openRequestCount() {
+  return db.bookingRequest.count({ where: { status: { in: ["NEW", "REVIEWING", "CONTACTED", "CONFIRMED"] } } });
+}
+

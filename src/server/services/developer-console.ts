@@ -346,7 +346,7 @@ export async function developerGreeting(user: ConsoleUser, now = new Date()): Pr
 }
 
 // ───────────────────────────────────────────── the tabs ─────────────────────────────────────────────
-export const CONSOLE_TABS = ["activity", "speed", "crashes", "settings", "people"] as const;
+export const CONSOLE_TABS = ["activity", "hotel", "money", "messages", "speed", "crashes", "settings", "people"] as const;
 export type ConsoleTab = (typeof CONSOLE_TABS)[number];
 /** The tab named in the address; anything else (or nothing) is the first one. */
 export function parseTab(raw: unknown): ConsoleTab {

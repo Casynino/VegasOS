@@ -13,6 +13,7 @@ import {
 import { DEVELOPER_TRIES, DEVELOPER_WINDOW_SECONDS } from "./auth-login";
 import { reportTroubles } from "./report-health";
 import { SYSTEM_ROLE } from "./staff-accounts";
+import { consoleFrame } from "./developer-frame";
 
 /**
  * WHAT THE DEVELOPER CONSOLE MEASURES (owner, 2026-10-17): the health of the system, who is using it, how fast the database is and
@@ -658,6 +659,8 @@ const BIG_TABLES = [
 ] as const;
 
 export interface SpeedData {
+  /** New records per hotel day for the last 14 days, so growth can be seen (counted on the day each record was made). null = could not be read. */
+  growth: { dayStart: string; days: { date: BusinessDate; reservations: number; payments: number; orders: number; audit: number }[] } | null;
   latency: { samples: number[]; average: number | null; slowest: number | null };
   tables: { label: string; rows: number | null; bytes: number | null }[];
   databaseBytes: number | null;
@@ -672,7 +675,7 @@ export async function speedData(user: ConsoleUser, now = new Date()): Promise<Sp
     const ok = (await safe(() => db.$queryRaw`SELECT 1`)) !== null;
     if (ok) samples.push(Math.max(1, Math.round(performance.now() - started)));
   }
-  const [counts, sizes, dbSize, diag] = await Promise.all([
+  const [counts, sizes, dbSize, diag, growth] = await Promise.all([
     Promise.all([
       safe(() => db.auditLog.count()), safe(() => db.session.count()), safe(() => db.reservation.count()), safe(() => db.payment.count()), safe(() => db.notificationDelivery.count()),
     ]),
@@ -682,9 +685,23 @@ export async function speedData(user: ConsoleUser, now = new Date()): Promise<Sp
       WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relname IN (${Prisma.join(BIG_TABLES.map((t) => t.table))})`),
     safe(() => db.$queryRaw<{ bytes: bigint }[]>`SELECT pg_database_size(current_database())::bigint AS bytes`),
     systemDiagnostics(user, now),
+    // Each record is counted on the hotel day it was made (the day column every one of these tables keeps), never on a UTC day.
+    safe(async (): Promise<NonNullable<SpeedData["growth"]>> => {
+      const frame = await consoleFrame(now);
+      const range = { gte: toDbDate(frame.days[0]), lte: toDbDate(frame.today) };
+      const [reservations, payments, orders, audit] = await Promise.all([
+        db.reservation.groupBy({ by: ["businessDate"], where: { businessDate: range }, _count: true }),
+        db.payment.groupBy({ by: ["businessDate"], where: { businessDate: range }, _count: true }),
+        db.restaurantOrder.groupBy({ by: ["businessDate"], where: { businessDate: range }, _count: true }),
+        db.auditLog.groupBy({ by: ["businessDate"], where: { businessDate: range }, _count: true }),
+      ]);
+      const n = (rows: { businessDate: Date; _count: number }[], date: BusinessDate) => rows.find((r) => fromDbDate(r.businessDate) === date)?._count ?? 0;
+      return { dayStart: frame.dayStart, days: frame.days.map((date) => ({ date, reservations: n(reservations, date), payments: n(payments, date), orders: n(orders, date), audit: n(audit, date) })) };
+    }),
   ]);
   const sizeOf = new Map((sizes ?? []).map((s) => [s.name, Number(s.bytes)]));
   return {
+    growth,
     latency: { samples, average: samples.length ? Math.round(samples.reduce((a, b) => a + b, 0) / samples.length) : null, slowest: samples.length ? Math.max(...samples) : null },
     tables: BIG_TABLES.map((t, i) => ({ label: t.label, rows: counts[i], bytes: sizeOf.get(t.table) ?? null })),
     databaseBytes: dbSize?.[0] ? Number(dbSize[0].bytes) : null,

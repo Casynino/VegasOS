@@ -275,7 +275,8 @@ describe("a chart's exact numbers", () => {
 
   it("keeps the bar's own hover text and the picture's spoken summary", () => {
     expect(html).toContain('title="15 Oct: 15 — Team 12 · Developer 3"');
-    expect(html).toContain('aria-label="Actions per day: 15 Oct 15, 16 Oct 0, 17 Oct 1234"');
+    // several series: the spoken summary says each part of every column, not only its sum
+    expect(html).toContain('aria-label="Actions per day: 15 Oct 15 (Team 12 · Developer 3), 16 Oct 0, 17 Oct 1,234 (Team 1,234)"');
   });
 
   it("every chart on the console says what is true: hover for a bar, the table below for all of them (never 'press a bar')", () => {

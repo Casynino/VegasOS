@@ -84,6 +84,19 @@ describe("the Boss's morning reports", () => {
     expect(await reportTroubles(eat("2026-10-14T09:00:00"))).toEqual({ daily: { kind: "missing", id: null }, room: { kind: "missing" } });
   });
 
+  it("between 00:00 and 03:59 the hotel day is still yesterday, but a report that was due the morning before is already late — decided from the due instant, not the clock hour", async () => {
+    // 14 Oct 02:00: the hotel day is still the 13th, so the last closed day is the 12th, whose reports were due on the 13th (room 07:00, daily 08:00).
+    expect(await reportTroubles(eat("2026-10-14T02:00:00"))).toEqual({ daily: { kind: "missing", id: null }, room: { kind: "missing" } });
+    expect(await reportTroubles(eat("2026-10-14T00:00:00"))).toEqual({ daily: { kind: "missing", id: null }, room: { kind: "missing" } });
+    expect(await reportTroubles(eat("2026-10-14T03:59:00"))).toEqual({ daily: { kind: "missing", id: null }, room: { kind: "missing" } });
+    // 04:00 the day turns: the 13th is the last closed day and its reports are not due until the morning
+    expect(await reportTroubles(eat("2026-10-14T04:00:00"))).toEqual({ daily: null, room: null });
+    expect(await reportTroubles(eat("2026-10-14T06:00:00"))).toEqual({ daily: null, room: null });
+    // a report that was made for the 12th but never sent is "unsent" at 02:00 too
+    const made = await db.dailyReport.create({ data: { businessDate: new Date("2026-10-12T00:00:00Z"), data: {}, summaryText: "x", generatedAt: eat("2026-10-13T07:00:00"), automatic: true } });
+    expect(await reportTroubles(eat("2026-10-14T02:00:00"))).toEqual({ daily: { kind: "unsent", id: made.id }, room: { kind: "missing" } });
+  });
+
   it("a report that exists but never reached the Boss is flagged with its own page; one that reached him is not; nobody to receive them means no warning", async () => {
     at("2026-10-14T07:00:00");
     // The report is made, but the provider is down: nothing is sent.

@@ -298,17 +298,34 @@ export const BUSINESS_VIEW_ACTION = "developer.business_viewed";
  * named in the trail. Never throws: a failed write must not break the page (it leaves one line in the server log, nothing secret in it).
  */
 export async function noteBusinessView(viewer: BusinessViewer, tab: BusinessTab, opts: { ipAddress?: string | null; now?: Date } = {}): Promise<"logged" | "repeat" | "not-developer" | "failed"> {
+  return noteView(viewer, tab, { tab }, opts);
+}
+
+/** The three tabs of the Developer Home that show hotel data (the others are about the system itself): each look at one is written like a look at a Business tab. */
+export const HOME_LOGGED_TABS = ["hotel", "money", "messages"] as const;
+export type HomeLoggedTab = (typeof HOME_LOGGED_TABS)[number];
+
+/**
+ * The same note for a tab of the Developer Home (Hotel, Money, Messages & reports — money lines show who recorded what, and a delivery shows
+ * a masked phone). It is the same action (`developer.business_viewed`) and the same ten-minute rule, kept apart from Business' own tab of
+ * the same name: the entry is "home:money", after = { tab, area: "home" }. Never throws.
+ */
+export async function noteHomeTabView(viewer: BusinessViewer, tab: HomeLoggedTab, opts: { ipAddress?: string | null; now?: Date } = {}): Promise<"logged" | "repeat" | "not-developer" | "failed"> {
+  return noteView(viewer, `home:${tab}`, { tab, area: "home" }, opts);
+}
+
+async function noteView(viewer: BusinessViewer, entityId: string, after: Record<string, string>, opts: { ipAddress?: string | null; now?: Date }): Promise<"logged" | "repeat" | "not-developer" | "failed"> {
   if (viewer.actorType !== "DEVELOPER") return "not-developer";
   const userId = viewer.actorId ?? viewer.id;
   try {
     const now = opts.now ?? new Date();
     const since = new Date(now.getTime() - BUSINESS_VIEW_DEDUPE_MINUTES * 60_000);
-    const same = await db.auditLog.findFirst({ where: { action: BUSINESS_VIEW_ACTION, userId, entityType: "Business", entityId: tab, createdAt: { gte: since } }, select: { id: true } });
+    const same = await db.auditLog.findFirst({ where: { action: BUSINESS_VIEW_ACTION, userId, entityType: "Business", entityId, createdAt: { gte: since } }, select: { id: true } });
     if (same) return "repeat";
-    await audit(db, { userId, label: viewer.actorName ?? viewer.fullName, ipAddress: opts.ipAddress ?? null }, { action: BUSINESS_VIEW_ACTION, entityType: "Business", entityId: tab, after: { tab } });
+    await audit(db, { userId, label: viewer.actorName ?? viewer.fullName, ipAddress: opts.ipAddress ?? null }, { action: BUSINESS_VIEW_ACTION, entityType: "Business", entityId, after });
     return "logged";
   } catch (e) {
-    console.error("[developer-business] could not write a visit", { developerId: userId, tab, error: e instanceof Error ? e.name : "unknown" });
+    console.error("[developer-business] could not write a visit", { developerId: userId, tab: entityId, error: e instanceof Error ? e.name : "unknown" });
     return "failed";
   }
 }

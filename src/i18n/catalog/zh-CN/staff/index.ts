@@ -12,6 +12,7 @@ import m_developer_console from "./developer-console";
 import m_developer_gates from "./developer-gates";
 import m_developer_hidden from "./developer-hidden";
 import m_developer_home from "./developer-home";
+import m_developer_home2 from "./developer-home2";
 import m_developer_logging from "./developer-logging";
 import m_developer_login from "./developer-login";
 import m_developer_pages from "./developer-pages";
@@ -69,6 +70,7 @@ const catalog: Catalog = {
   ...m_developer_gates,
   ...m_developer_hidden,
   ...m_developer_home,
+  ...m_developer_home2,
   ...m_developer_logging,
   ...m_developer_login,
   ...m_developer_pages,

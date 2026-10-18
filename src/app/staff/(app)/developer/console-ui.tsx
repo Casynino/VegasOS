@@ -99,14 +99,16 @@ export function SectionTitle({ title, hint, count, id }: { title: string; hint?:
 }
 
 /** A figure with its words: a big number, what it counts, and — underneath — a tag and one plain sentence. */
-export function StatBlock({ label, value, caption, tag, tagTone = "slate", note, warn }: {
+export function StatBlock({ label, value, caption, tag, tagTone = "slate", note, warn, small }: {
   label: string; value: ReactNode; caption: string; tag?: string; tagTone?: TagTone; note?: string; warn?: boolean;
+  /** A smaller figure, for a long one (an amount in full: TZS 1,248,500). */
+  small?: boolean;
 }) {
   return (
     <div className="flex min-w-0 flex-col overflow-hidden rounded-3xl border border-border/70 bg-card shadow-[0_2px_4px_rgba(15,23,42,0.03)]">
       <div className="p-4 sm:p-5">
         <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
-        <p className={cn("mt-1.5 text-3xl font-semibold leading-none tracking-tight tabular-nums", warn && "text-amber-700 dark:text-amber-300")}>{value}</p>
+        <p className={cn("mt-1.5 break-words font-semibold leading-none tracking-tight tabular-nums", small ? "text-2xl" : "text-3xl", warn && "text-amber-700 dark:text-amber-300")}>{value}</p>
         <p className="mt-1.5 text-sm text-muted-foreground">{caption}</p>
       </div>
       {(tag || note) && (
@@ -122,4 +124,11 @@ export function StatBlock({ label, value, caption, tag, tagTone = "slate", note,
 /** A quiet "nothing here" line. */
 export function Quiet({ children }: { children: ReactNode }) {
   return <p className="rounded-2xl bg-muted/40 px-4 py-3 text-sm text-muted-foreground">{children}</p>;
+}
+
+/** How long something has waited, in plain words: "35 min", "2 h 5 min". */
+export function waitText(t: T, minutes: number | null | undefined): string {
+  if (minutes === null || minutes === undefined) return "—";
+  if (minutes < 60) return t("{n} min", { n: minutes });
+  return t("{h} h {m} min", { h: Math.floor(minutes / 60), m: minutes % 60 });
 }

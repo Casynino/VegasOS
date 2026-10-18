@@ -1,7 +1,8 @@
 import type { T } from "@/i18n/translate";
 import type { SpeedData } from "@/server/services/developer-health";
 import { Panel } from "@/components/dashboard/kit";
-import { bytesText, num, Quiet, StatBlock } from "./console-ui";
+import { BarChart, type BarColumn } from "./console-charts";
+import { bytesText, dayLabel, num, Quiet, StatBlock } from "./console-ui";
 
 /** SPEED & SIZE: how fast the database answers, how big it is, how many rows the biggest tables hold, which version is running. */
 
@@ -9,11 +10,25 @@ import { bytesText, num, Quiet, StatBlock } from "./console-ui";
 const QUICK_MS = 100;
 const SLOW_MS = 500;
 
+const GROWTH = [
+  { key: "reservations", color: "#3987e5" },
+  { key: "payments", color: "#199e70" },
+  { key: "orders", color: "#d95926" },
+  { key: "audit", color: "#8466e0" },
+] as const;
+
 export function SpeedTab({ t, s }: { t: T; s: SpeedData }) {
   const avg = s.latency.average;
   const tone = avg === null ? "rose" : avg < QUICK_MS ? "emerald" : avg < SLOW_MS ? "amber" : "rose";
   const word = avg === null ? t("No answer") : avg < QUICK_MS ? t("Quick") : avg < SLOW_MS ? t("A little slow") : t("Slow");
   const maxRows = Math.max(1, ...s.tables.map((x) => x.rows ?? 0));
+  const growthLabel = { reservations: t("Bookings"), payments: t("Payments"), orders: t("Restaurant orders"), audit: t("Audit entries") };
+  const growthColumns: BarColumn[] | null = s.growth
+    ? s.growth.days.map((d, i, all) => ({
+        key: d.date, tick: (all.length - 1 - i) % 2 === 0 ? dayLabel(t, d.date) : "", name: dayLabel(t, d.date), emphasise: i === all.length - 1,
+        values: { reservations: d.reservations, payments: d.payments, orders: d.orders, audit: d.audit },
+      }))
+    : null;
 
   return (
     <div className="space-y-4">
@@ -36,6 +51,12 @@ export function SpeedTab({ t, s }: { t: T; s: SpeedData }) {
           note={s.deployment.commit ? t("The short code of the change this server is running — the one to give when you report a problem.") : t("The hosting provider did not give the version, so it is not known here.")}
         />
       </div>
+
+      <Panel title={t("New records per day")} subtitle={t("How many bookings, payments, restaurant orders and audit entries were made on each hotel day (from {start} to {start} the next morning, hotel time), last 14 days. The four kinds are drawn side by side, never added together. There are far more audit entries than the rest, so the others look thin; the table below has every number.", { start: s.growth?.dayStart ?? "04:00" })}>
+        {growthColumns
+          ? <BarChart t={t} columns={growthColumns} series={GROWTH.map((g) => ({ key: g.key, label: growthLabel[g.key], color: g.color }))} grouped caption={t("New records per day")} empty={t("Nothing yet")} />
+          : <Quiet>{t("This could not be read just now.")}</Quiet>}
+      </Panel>
 
       <Panel title={t("The biggest tables")} subtitle={t("Rows held and room taken. These are counts only — no record is read.")}>
         <div className="overflow-x-auto">

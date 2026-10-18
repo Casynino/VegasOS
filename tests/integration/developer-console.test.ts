@@ -30,6 +30,9 @@ import {
   peopleTab, recentDenied, settingsTab, systemDiagnostics,
 } from "@/server/services/developer-console";
 import { activityData, ACTIVITY_DAYS, crashData, healthReport, LOGIN_LIMITS, moduleWords, speedData } from "@/server/services/developer-health";
+import { hotelData } from "@/server/services/developer-hotel";
+import { moneyData } from "@/server/services/developer-money";
+import { messagesData } from "@/server/services/developer-messages";
 import { businessDayConfig, getSettings } from "@/server/settings";
 import { addDays, businessDateOf, toDbDate, zonedInstant } from "@/lib/time/business-date";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -121,6 +124,9 @@ describe("the door: the Developer account only", () => {
       () => healthReport(user),
       () => activityData(user),
       () => speedData(user),
+      () => hotelData(user),
+      () => moneyData(user),
+      () => messagesData(user),
       () => crashData(user),
       () => settingsTab(user, hash),
       () => peopleTab(user),
@@ -792,7 +798,7 @@ async function wipeFuture() {
 
 describe("the home: greeting and tabs", () => {
   it("the tab comes from the address; anything unknown (or nothing, or a list) is the first tab", () => {
-    expect([...CONSOLE_TABS]).toEqual(["activity", "speed", "crashes", "settings", "people"]);
+    expect([...CONSOLE_TABS]).toEqual(["activity", "hotel", "money", "messages", "speed", "crashes", "settings", "people"]);
     for (const tab of CONSOLE_TABS) expect(parseTab(tab)).toBe(tab);
     expect(parseTab(undefined)).toBe("activity");
     expect(parseTab("")).toBe("activity");
@@ -1115,7 +1121,7 @@ describe("the home: a Developer working as someone is shut out of the console", 
     const { user, hash } = await as(dev);
     const working = { ...user, workAs: { developerId: dev.id, developerName: dev.fullName, startedAt: new Date() } } as unknown as CurrentUser;
     for (const call of [
-      () => developerGreeting(working), () => healthReport(working), () => activityData(working), () => speedData(working), () => crashData(working), () => settingsTab(working, hash),
+      () => developerGreeting(working), () => healthReport(working), () => activityData(working), () => speedData(working), () => hotelData(working), () => moneyData(working), () => messagesData(working), () => crashData(working), () => settingsTab(working, hash),
       () => peopleTab(working), () => myActions(working), () => developerIdentity(working, hash), () => systemDiagnostics(working), () => recentDenied(working), () => listInspectableUsers(working),
       () => inspectPermission(working, { userId: rec.id, code: "reservations.view" }),
     ]) {
@@ -1151,13 +1157,13 @@ describe("the Developer home page draws, on every tab, from real data", () => {
 
   it("every tab draws; the right one is marked as the page you are on; a bad ?tab= falls back to the first", async () => {
     await as(dev);
-    const marks: Record<string, string> = { activity: "Sign-ins per day", speed: "The biggest tables", crashes: "Error tracking is not part of this system", settings: "What you cannot do", people: "My last 30 actions" };
+    const marks: Record<string, string> = { activity: "Sign-ins per day", hotel: "What is happening in the hotel", money: "Where the money is", messages: "Is the Boss getting what he should", speed: "The biggest tables", crashes: "Error tracking is not part of this system", settings: "What you cannot do", people: "My last 30 actions" };
     for (const [tab, text] of Object.entries(marks)) {
       const html = await draw({ tab });
       expect(html, tab).toContain(text);
       expect(html, tab).not.toContain("undefined");
       expect(html, tab).not.toContain("NaN");
-      expect(html, tab).toMatch(new RegExp(`aria-current="page"[^>]*>[^<]*${{ activity: "Activity", speed: "Speed &amp; size", crashes: "Crashes &amp; sign-ins", settings: "Settings", people: "People &amp; my actions" }[tab]}`));
+      expect(html, tab).toMatch(new RegExp(`aria-current="page"[^>]*>[^<]*${{ activity: "Activity", hotel: "Hotel", money: "Money", messages: "Messages &amp; reports", speed: "Speed &amp; size", crashes: "Crashes &amp; sign-ins", settings: "Settings", people: "People &amp; my actions" }[tab]}`));
     }
     expect(await draw({ tab: "nonsense" })).toContain("Sign-ins per day");
   });

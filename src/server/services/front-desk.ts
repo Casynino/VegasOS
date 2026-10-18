@@ -21,6 +21,12 @@ import { addDays, formatMinutes, fromDbDate, toDbDate, type BusinessDate } from 
  * the handover screen.
  */
 
+/** Everyone who left owing: how many and how much (the front desk's figure — the Developer console reads the same one). */
+export async function leftOwingNow() {
+  const a = await db.reservation.aggregate({ where: { status: "CHECKED_OUT", balanceAmount: { gt: 0 } }, _count: true, _sum: { balanceAmount: true } });
+  return { count: a._count, amount: a._sum.balanceAmount ?? 0 };
+}
+
 export async function getFrontDeskSnapshot(today: BusinessDate) {
   await refreshBookingStates();
   const d = toDbDate(today);
@@ -49,7 +55,7 @@ export async function getFrontDeskSnapshot(today: BusinessDate) {
     db.room.findMany({ where: { isActive: true, status: { in: ["MAINTENANCE", "OUT_OF_SERVICE"] } }, select: { id: true, number: true, status: true, statusNote: true } }),
     db.room.findMany({ where: { isActive: true, status: { in: ["DIRTY", "CLEANING"] } }, select: { id: true, number: true, status: true } }),
     db.expense.count({ where: { status: "PENDING_APPROVAL" } }),
-    db.reservation.aggregate({ where: { status: "CHECKED_OUT", balanceAmount: { gt: 0 } }, _count: true, _sum: { balanceAmount: true } }),
+    leftOwingNow(),
   ]);
 
   // Guests to check out (a meeting in use is completed from the Meeting room / booking, not checked out).
@@ -64,7 +70,7 @@ export async function getFrontDeskSnapshot(today: BusinessDate) {
     unpaidInHouse: inHouse.filter((r) => r.balanceAmount > 0),
     unpaidCheckedOut,
     /** Everyone who left owing — all of them (the list above shows the latest 20). */
-    unpaidAfterCheckout: { count: unpaidAll._count, amount: unpaidAll._sum.balanceAmount ?? 0 },
+    unpaidAfterCheckout: unpaidAll,
     guestNotes: [...arrivals, ...inHouse].filter((r) => r.specialRequests || r.internalNotes),
     statusCount,
     totalRooms,

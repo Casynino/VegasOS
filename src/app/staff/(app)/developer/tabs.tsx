@@ -33,10 +33,13 @@ export function Shortcuts({ t, people = [], roles = [] }: { t: T; people?: Perso
 
 export interface TabBadge { text: string; tone: "ok" | "warn" }
 
-/** The five parts of the console as links (each one is its own address: ?tab=…#console-tabs, so pressing one brings the tab bar to the top and the part below it into view). */
+/** The eight parts of the console as links (each one is its own address: ?tab=…#console-tabs, so pressing one brings the tab bar to the top and the part below it into view). */
 export function TabNav({ t, active, badges }: { t: T; active: ConsoleTab; badges: Partial<Record<ConsoleTab, TabBadge>> }) {
   const tabs: { key: ConsoleTab; label: string }[] = [
     { key: "activity", label: t("Activity") },
+    { key: "hotel", label: t("Hotel") },
+    { key: "money", label: t("Money") },
+    { key: "messages", label: t("Messages & reports") },
     { key: "speed", label: t("Speed & size") },
     { key: "crashes", label: t("Crashes & sign-ins") },
     { key: "settings", label: t("Settings") },
