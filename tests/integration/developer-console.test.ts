@@ -992,13 +992,14 @@ describe("the Developer home page draws, on every tab, from real data", () => {
     expect((await auditOf(dev.id, "developer.inspected")).length).toBe(before + 1);
   });
 
-  it("a mix of real trouble is drawn as cards and is readable in Chinese too", async () => {
+  it("a mix of real trouble is drawn as compact rows (a coloured bar, one line each, a tap opens the rest) and is readable in Chinese too", async () => {
     await as(dev);
     await db.hotelSettings.update({ where: { id: 1 }, data: { reportEnabled: true, reportRecipients: [{ name: "A", phone: "+255700000001", apiKeyRef: "CALLMEBOT_KEY_TESTA" }] } });
     const html = await draw();
     expect(html).toContain("The scheduled jobs have no secret");           // no cron secret is set in the test environment
     expect(html).toContain("WhatsApp cannot reach everyone");
-    expect(html).toMatch(/Fix now/);
+    expect(html).toContain("bg-rose-500"); // the bar of a problem that needs fixing now
+    for (const w of ["What it means", "What to do", "Who fixes it"]) expect(html, w).toContain(w);
     await db.user.update({ where: { id: dev.id }, data: { preferredLanguage: "zh-CN" } });
     await as(dev);
     const zh = await draw();

@@ -3,14 +3,14 @@ import { cn } from "@/lib/utils";
 import type { T } from "@/i18n/translate";
 import type { CheckResult } from "@/server/services/developer-checks";
 import type { HealthItem } from "@/server/services/developer-health";
-import { Card } from "./attention";
+import { AttentionList, type AttentionRow } from "./attention-list";
 
 /**
  * "NEEDS YOUR ATTENTION" — ONE panel, copied from the owner's ORA console (2026-10-18: "it should be exactly like that"):
  * a title with "Checked just now…" under it and the verdict at the right ("All clear" / "2 to fix now"); inside, either ONE quiet line
- * ("Nothing needs your attention") or a card for each problem (tap to see what it means, what to do and who does it); and under it a closed
+ * ("Nothing needs your attention") or the problems as a compact list (attention-list.tsx: one line each, a tap opens what it means, what to do and who does it); and under it a closed
  * row, "What was checked · 29 of 31 fine, 2 not checked yet", that opens to every check: what could not be checked first, then the fine
- * ones, each with its short result. A problem is written once (on its card), never again in the list. Server component: a plain <details>.
+ * ones, each with its short result. A problem is written once (in the compact list), never again in the checks. Server component: a plain <details>.
  */
 
 function Verdict({ t, fix, look }: { t: T; fix: number; look: number }) {
@@ -35,6 +35,15 @@ function Row({ icon: Icon, iconTone, title, summary, hover, status }: {
 
 export function AttentionPanel({ t, items, checks }: { t: T; items: HealthItem[]; checks: CheckResult[] }) {
   const need = items.filter((i) => i.severity !== "info");
+  // The problems as plain rows for the list (translated here, on the server): the check's group tells which chip a row sits under.
+  const groupOf = new Map(checks.map((c) => [c.id, t.ctx("check-group", c.group)]));
+  const rows: AttentionRow[] = need.map((i) => ({
+    id: i.id, severity: i.severity === "fix" ? "fix" : "look",
+    title: t(i.title.key, i.title.vars), summary: t(i.summary.key, i.summary.vars), what: t(i.what.key, i.what.vars), todo: t(i.todo.key, i.todo.vars),
+    who: i.who ? t(i.who.key, i.who.vars) : null, examples: i.examples ?? [],
+    link: i.link ? { href: i.link.href, label: t(i.link.label.key, i.link.label.vars) } : null,
+    group: groupOf.get(i.id) ?? t("System"),
+  }));
   const fixN = need.filter((i) => i.severity === "fix").length;
   const lookN = need.length - fixN;
   // Good to know: facts that are not checks (the "could not be run" fact is the "not checked yet" rows below).
@@ -60,7 +69,10 @@ export function AttentionPanel({ t, items, checks }: { t: T; items: HealthItem[]
           <p className="leading-snug"><span className="block text-sm font-semibold">{t("Nothing needs your attention")}</span><span className="block text-sm text-muted-foreground">{t("Nothing is broken, and every required setting is in place.")}</span></p>
         </div>
       ) : (
-        <div className="grid items-start gap-3 border-t border-border/60 p-4 sm:p-5 lg:grid-cols-2">{need.map((i) => <Card key={i.id} t={t} item={i} />)}</div>
+        <AttentionList
+          rows={rows}
+          labels={{ all: t("All"), whatItMeans: t("What it means"), whatToDo: t("What to do"), whoFixes: t("Who fixes it"), whereToLook: t("Where to look"), scrollMore: t("scroll for {n} more", { n: "{n}" }) }}
+        />
       )}
 
       {checks.length === 0 ? (

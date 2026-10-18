@@ -157,6 +157,7 @@ const catalog: Catalog = {
   "Sent to {n} people": "发送给 {n} 人",
   "Nobody is set to receive them": "没有设置接收人",
   "All clear": "一切正常",
+  "scroll for {n} more": "向下滚动查看另外 {n} 项",
   "Use the app as any person, as you.": "以你自己的身份，像任何人一样使用系统。",
   "Stays, bills, payments and guests. Read only.": "住宿、账单、付款和住客。只读。",
   "The last times a page or an action was refused to the Developer account.": "开发者账号最近被拒绝的页面或操作。",
