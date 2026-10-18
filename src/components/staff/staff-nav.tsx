@@ -40,10 +40,10 @@ export function StaffNav({ sections, home, onNavigate }: { sections: NavSection[
       {sections.map((section) => {
         const SIcon = ICONS[section.icon] ?? LayoutDashboard;
         // Only one part of the hotel (e.g. the restaurant): no heading — the items right under Home. (The Developer console is also
-        // only one section, but it has its own heading, as it stands alone with no Home pill above it.)
+        // only one section and has no Home pill above it, so its first item is NOT pulled up under the header.)
         const single = sections.length === 1 && !section.titled;
         return (
-          <div key={section.title} className={cn(single && "-mt-4")}>
+          <div key={section.title} className={cn(single && home && "-mt-4")}>
             {!single && (
               <p className="mb-1.5 flex items-center gap-2 px-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
                 <SIcon className="size-3.5" />{t.ctx("nav", section.title)}
