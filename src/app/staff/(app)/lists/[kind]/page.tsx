@@ -5,7 +5,7 @@ import { businessDayConfig, getSettings } from "@/server/settings";
 import { getT } from "@/i18n/server";
 import { businessDateOf, isBusinessDate } from "@/lib/time/business-date";
 import { listKindOf, type ListKind } from "@/lib/daily-lists";
-import { buildDailyList, getDailyListCopy, listDailyListCopies } from "@/server/services/daily-lists";
+import { buildDailyList, getDailyListCopy, listDailyListCopies, withDoneBy } from "@/server/services/daily-lists";
 import { PageHeader } from "@/components/staff/page-header";
 import { ListWorkspace } from "@/components/staff/lists/list-workspace";
 import { watchesRooms } from "../../rooms/room-page-data";
@@ -41,9 +41,11 @@ export default async function DailyListPage({ params, searchParams }: {
 
   const picked = one(sp.date);
   const date = copy ? copy.date : picked && isBusinessDate(picked) && picked <= today ? picked : today;
-  const copies = await listDailyListCopies(date, kind);
+  const copies = await withDoneBy(await listDailyListCopies(date, kind));
   // An earlier day is never rebuilt from today's rooms: it opens on the last copy printed that day.
   if (!copy && date !== today && copies.length) copy = await getDailyListCopy(copies[0].id);
+  // "Done by Developer" beside the open copy's "made by" (the paper itself is not touched).
+  if (copy) copy = (await withDoneBy([copy]))[0];
   const live = !copy && date === today ? await buildDailyList(kind, now) : null;
 
   const tabs = (["HOUSEKEEPING", "GUESTS"] as const).filter((k) => can(user, PERMISSION[k]));

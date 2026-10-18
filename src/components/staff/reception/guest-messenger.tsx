@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { DoneByDeveloper } from "@/components/staff/done-by-developer";
 import { guestMessagesInAction, logGuestMessageAction } from "@/app/staff/(app)/guests/actions";
 import { useT } from "@/i18n/client";
 import { msg } from "@/i18n/msg";
@@ -18,7 +19,8 @@ export type GuestMessageOption = {
   type: "BOOKING_CREATED" | "BOOKING_UPDATED" | "BOOKING_CANCELLED" | "WELCOME" | "THANK_YOU" | "PAYMENT" | "PAYMENT_RECEIVED";
   label: string; text: string; subject: string;
 };
-type Sent = { type: string; channel: string; at: string; by: string | null };
+/** `doneBy`: "Done by Developer · as Neema" (already in the reader's language) when the Developer, working as someone, sent it; shown next to `by`, never inside it. */
+type Sent = { type: string; channel: string; at: string; by: string | null; doneBy?: string | null };
 
 const waDigits = (phone: string) => {
   const d = phone.replace(/\D/g, "");
@@ -147,8 +149,9 @@ export function GuestMessenger({ reservationId, guest, options, link, sent, auto
               </span>
               <span className="min-w-0 flex-1 leading-tight">
                 <span className="block text-sm font-medium">{t(o.label)}</span>
-                <span className="block truncate text-xs text-muted-foreground">
-                  {s ? `${t("Sent")} · ${t(CHANNEL[s.channel] ?? s.channel)} · ${new Date(s.at).toLocaleString(t.intl, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}${s.by ? ` · ${s.by}` : ""}` : t("Not sent yet")}
+                <span className={cn("text-xs text-muted-foreground", s?.doneBy ? "flex min-w-0 items-center" : "block truncate")}>
+                  <span className={s?.doneBy ? "min-w-0 truncate" : undefined}>{s ? `${t("Sent")} · ${t(CHANNEL[s.channel] ?? s.channel)} · ${new Date(s.at).toLocaleString(t.intl, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}${s.by ? ` · ${s.by}` : ""}` : t("Not sent yet")}</span>
+                  {s?.doneBy && <DoneByDeveloper text={s.doneBy} />}
                 </span>
               </span>
               <Send className="size-4 shrink-0 text-muted-foreground" />

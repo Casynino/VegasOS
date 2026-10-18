@@ -11,6 +11,8 @@ import { STOCK_CATALOG } from "@/lib/stock-catalog";
 import { formatTZS } from "@/lib/format";
 import { askScope, canAskFor, type StockEventView, type StockReqView, type Viewer } from "@/lib/stock-requests";
 import { StockRequests } from "./stock-requests";
+import { doneByText } from "@/lib/done-by-text";
+import { developerMarks, markFor, type DeveloperMark } from "@/server/services/developer-marks";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getT();
@@ -34,7 +36,12 @@ const eatDay = (d: Date) => new Date(d.getTime() + 3 * 3600_000).toISOString().s
 const REQUESTER_EVENTS = new Set(["SUBMITTED", "EDITED", "APPROVED", "SENT_BACK", "REJECTED", "CANCELLED", "ORDER_ISSUED", "DELIVERY_RECORDED", "DELIVERY_PROBLEM", "DELIVERY_CLOSED_SHORT", "DELIVERY_REPORTED", "DELIVERY_CONFIRMED", "COMPLETED"]);
 const REQUESTER_REASONS = new Set(["SUBMITTED", "EDITED", "APPROVED", "SENT_BACK", "REJECTED", "CANCELLED", "DELIVERY_PROBLEM", "DELIVERY_CLOSED_SHORT", "DELIVERY_REPORTED", "DELIVERY_CONFIRMED"]);
 
-function eventView(e: StockRequestRow["events"][number], money: boolean, t: T): StockEventView {
+/** The audit action each step the ASKER takes is written with. Approving, buying and paying are not here: the Developer cannot do them. */
+const ASKER_STEP: Record<string, string[]> = { SUBMITTED: ["stock_request.created", "stock_request.resubmitted"], EDITED: ["stock_request.edited"], CANCELLED: ["stock_request.cancelled"] };
+const ASKER_ACTIONS = Object.values(ASKER_STEP).flat();
+type Marks = Map<string, DeveloperMark[]>;
+
+function eventView(e: StockRequestRow["events"][number], money: boolean, t: T, requestId: string, marks: Marks): StockEventView {
   const b = obj(e.before), a = obj(e.after);
   const detail: (string | null)[] = [];
   const purchase = e.action.startsWith("PURCHASE_") || e.action === "FINAL_APPROVED";
@@ -67,17 +74,19 @@ function eventView(e: StockRequestRow["events"][number], money: boolean, t: T): 
     // A correction note on a purchase can name prices — only buyers and approvers see it.
     reason: (purchase && !money) || (!money && !REQUESTER_REASONS.has(e.action)) ? null : e.reason,
     detail: detail.filter((x): x is string => !!x), at: e.at.toISOString(),
+    doneBy: ASKER_STEP[e.action] ? doneByText(t, markFor(marks, requestId, { actions: ASKER_STEP[e.action], near: e.at, windowMs: 10_000 })) : null,
   };
 }
 
 /** One request for the screen. Without `money` there are no prices, totals, supplier, account, receipt or expense. */
-function view(r: StockRequestRow, money: boolean, deptName: (code: string) => string, t: T): StockReqView {
+function view(r: StockRequestRow, money: boolean, deptName: (code: string) => string, t: T, marks: Marks): StockReqView {
   return {
     id: r.id, number: r.number, department: r.department, departmentName: r.inventoryDepartment?.name ?? deptName(r.department), departmentId: r.departmentId,
     status: r.status, urgent: r.urgent, title: r.title, priority: r.priority, estimatedTotal: r.estimatedTotal, approvedBudget: r.approvedBudget,
     order: r.orderNumber ? { number: r.orderNumber, expectedOn: r.expectedDeliveryOn?.toISOString().slice(0, 10) ?? null, total: money ? r.orderTotal : null } : null,
     attachments: r.documents.map((d) => ({ id: d.fileId, kind: d.kind, isPdf: d.file.contentType === "application/pdf" })), neededBy: r.neededBy?.toISOString().slice(0, 10) ?? null, reason: r.reason, note: r.note,
     by: r.requestedBy.fullName, byId: r.requestedById, at: r.createdAt.toISOString(),
+    byDoneBy: doneByText(t, markFor(marks, r.id, { actions: ["stock_request.created"] })),
     decidedBy: r.decidedBy?.fullName ?? null, decidedAt: r.decidedAt?.toISOString() ?? null, decisionNote: r.decisionNote,
     purchaseNumber: r.purchaseNumber, boughtBy: r.purchasedBy?.fullName ?? null, boughtById: r.purchasedById,
     finalBy: r.finalApprovedBy?.fullName ?? null, finalById: r.finalApprovedById, finalAt: r.finalApprovedAt?.toISOString() ?? null,
@@ -95,7 +104,7 @@ function view(r: StockRequestRow, money: boolean, deptName: (code: string) => st
       total: r.purchaseTotal, submittedAt: r.submittedAt?.toISOString() ?? null, correctionNote: r.correctionNote,
       expense: r.expense ? { number: r.expense.number, amount: r.expense.amount } : null,
     } : null,
-    events: r.events.filter((e) => money || REQUESTER_EVENTS.has(e.action)).map((e) => eventView(e, money, t)),
+    events: r.events.filter((e) => money || REQUESTER_EVENTS.has(e.action)).map((e) => eventView(e, money, t, r.id, marks)),
   };
 }
 
@@ -120,6 +129,9 @@ export default async function StockRequestsPage() {
     // Someone who only asks gets the stock items by name and unit — never their prices.
     money ? null : db.inventoryItem.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, unit: true, departmentId: true } }),
   ]);
+  // "Done by Developer": the asker's steps (asked, changed, cancelled) the Developer took while working as someone are tagged next to the name. One lookup;
+  // a failed lookup shows no tag. The approvals and purchases are not here: the Developer cannot make them.
+  const marks = await developerMarks("StockRequest", [...open, ...closed].map((r) => r.id), { actions: ASKER_ACTIONS }).catch(() => new Map<string, DeveloperMark[]>());
   const storeItems = options ? options.items.map((i) => ({ id: i.id, name: i.name, unit: i.unit, departmentId: i.departmentId })) : askerItems ?? [];
   const deptName = (code: string) => departments.find((d) => d.code === code)?.name ?? code.charAt(0) + code.slice(1).toLowerCase();
 
@@ -135,7 +147,7 @@ export default async function StockRequestsPage() {
   return (
     <div className="w-full space-y-4">
       <StockRequests
-        open={open.map((r) => view(r, money, deptName, t))} closed={closed.map((r) => view(r, money, deptName, t))}
+        open={open.map((r) => view(r, money, deptName, t, marks))} closed={closed.map((r) => view(r, money, deptName, t, marks))}
         me={me} hotel={settings.hotelName} today={today} kitchen={STOCK_CATALOG} drinks={drinks}
         departments={departments} storeItems={storeItems} defaultDepartment={defaultDepartment}
         summary={summary} options={options ? { suppliers: options.suppliers, accounts: options.accounts, items: options.items, categories: options.categories, expenseGroup: options.expenseGroup } : null}

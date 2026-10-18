@@ -10,6 +10,7 @@ import { LiveRefresh } from "@/components/live-refresh";
 import { customerTranslators, onlyHotelOrders, orderStays, portalAccess, toPortalOrders } from "../portal/data";
 import { PosScreen, type Addable, type OpenBill, type PosGuest } from "./pos-screen";
 import { getT } from "@/i18n/server";
+import { orderMarks } from "@/server/services/order-done-by";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getT();
@@ -47,7 +48,7 @@ export default async function PosPage({ searchParams }: PageProps<"/staff/restau
     items: o.items.reduce((t, i) => t + i.quantity, 0),
   })) : [];
   const open = orders.filter((o) => !CLOSED_STATUSES.includes(o.status));
-  const line = toPortalOrders(open, { seesMoney, waiter: perms.waiter, settings, origin, stays: seesMoney ? await orderStays(open) : undefined, online: await onlinePayStates(open), guestT: await customerTranslators() });
+  const line = toPortalOrders(open, { seesMoney, waiter: perms.waiter, settings, origin, stays: seesMoney ? await orderStays(open) : undefined, online: await onlinePayStates(open), guestT: await customerTranslators(), doneBy: { t, marks: await orderMarks(open.map((o) => o.id)) } });
 
   // Open bills: a table still eating / not paid today, or a staying guest's restaurant orders — new orders add to them.
   const bills = new Map<string, OpenBill>();

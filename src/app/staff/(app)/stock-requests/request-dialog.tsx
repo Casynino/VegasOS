@@ -22,6 +22,7 @@ import { EditRequest } from "./edit-request";
 import { PurchaseForm } from "./purchase-form";
 import { CompletedSummary, FinalCheck, PurchaseFacts } from "./final-check";
 import { useT } from "@/i18n/client";
+import { DoneByDeveloper } from "@/components/staff/done-by-developer";
 
 type Mode = "view" | "edit" | "resend" | "buy";
 type Asking = null | "send-back" | "reject" | "cancel";
@@ -48,7 +49,7 @@ function Notice({ tone, icon: I, title, children }: { tone: "rose" | "orange" | 
 }
 
 /** Who did what, in what role, from which step to which, why — and when. */
-function Timeline({ events, simple }: { events: StockEventView[]; simple?: boolean }) {
+export function Timeline({ events, simple }: { events: StockEventView[]; simple?: boolean }) {
   const meta = simple ? simpleStatusMeta : statusMeta;
   const t = useT();
   if (!events.length) return null;
@@ -64,6 +65,7 @@ function Timeline({ events, simple }: { events: StockEventView[]; simple?: boole
                 <span className="font-semibold">{e.by ? person(e.by) : t("Someone")}</span>
                 {e.role && <span className="text-muted-foreground"> ({t(e.role)})</span>} {t(eventVerb(e))}
                 {e.from && e.to && e.from !== e.to && <span className="text-[11.5px] text-muted-foreground"> · {t(meta(e.from).label)} → {t(meta(e.to).label)}</span>}
+                {e.doneBy ? <DoneByDeveloper text={e.doneBy} /> : null}
               </p>
               <time className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{when(e.at, t)}</time>
             </div>
@@ -183,7 +185,7 @@ export function RequestDialog({ r, me, groups, pics, hotel, today, options, onCl
             {(r.urgent || r.priority === "HIGH") && <span className="inline-flex items-center gap-0.5 rounded-full bg-rose-500/12 px-2 py-0.5 text-[11px] font-semibold text-rose-600 dark:text-rose-300"><Flame className="size-3" />{r.urgent ? t("Urgent") : t("High")}</span>}
           </DialogTitle>
           <DialogDescription className="flex flex-wrap items-center gap-x-1.5">
-            <DeptIcon code={r.department} className="size-3.5" />{t(r.departmentName)} · {t("asked by {name}", { name: person(r.by) })} · {when(r.at, t)}
+            <DeptIcon code={r.department} className="size-3.5" />{t(r.departmentName)} · {t("asked by {name}", { name: person(r.by) })}{r.byDoneBy ? <DoneByDeveloper text={r.byDoneBy} className="ml-0 text-violet-300" /> : null} · {when(r.at, t)}
             {r.neededBy && <> · {t("needed by {date}", { date: t.date(r.neededBy) })}</>}
           </DialogDescription>
         </DialogHeader>
@@ -234,7 +236,7 @@ export function RequestDialog({ r, me, groups, pics, hotel, today, options, onCl
                 <Notice tone="rose" icon={X} title={r.decidedBy ? t("Rejected by {name}:", { name: person(r.decidedBy) }) : t("Rejected:")}>{r.decisionNote ?? t("No reason given.")}</Notice>
               )}
               {r.status === "CANCELLED" && (
-                <Notice tone="muted" icon={Ban} title={t("Cancelled by {name}.", { name: person(r.by) })}>{cancelReason ?? ""}</Notice>
+                <Notice tone="muted" icon={Ban} title={t("Cancelled by {name}.", { name: person(r.by) })}>{cancelReason ?? ""}{(() => { const text = r.events.find((e) => e.action === "CANCELLED")?.doneBy; return text ? <DoneByDeveloper text={text} /> : null; })()}</Notice>
               )}
               {r.status === "COMPLETED" && <CompletedSummary r={r} money={money} />}
               {waiting && <Notice tone="sky" icon={Hourglass} title={waiting} />}

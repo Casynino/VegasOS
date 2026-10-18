@@ -15,6 +15,8 @@ import { sessionNo } from "@/server/services/dining-core";
 import { formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
+import { DoneByDeveloper } from "@/components/staff/done-by-developer";
+import { eventDoneBy, ORDER_ASSIGNED, ORDER_CANCELLED, orderMarks, stepDoneBy } from "@/server/services/order-done-by";
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getT())("Order history") };
@@ -71,6 +73,9 @@ export default async function OrderHistoryPage({ params }: PageProps<"/staff/res
       select: { id: true, kind: true, via: true, reason: true, byLabel: true, byRole: true, at: true, fromUser: { select: { fullName: true } }, toUser: { select: { fullName: true } } },
     }),
   ]);
+  // "Done by Developer": the steps the Developer made while working as someone say so, next to the name (a failed lookup shows no tag).
+  const marks = await orderMarks([o.id]);
+  const cancelTag = o.status === "CANCELLED" && o.cancelledBy ? stepDoneBy(marks, t, o.id, o.cancelledAt, { actions: ORDER_CANCELLED, by: o.cancelledBy.fullName }) : null;
   const table = o.type === "DINE_IN" && (o.location?.name ?? o.tableLabel) ? [t(o.location?.name ?? o.tableLabel ?? ""), session ? t("Session {no}", { no: sessionNo(session.number) }) : null].filter(Boolean).join(" · ") : null;
   const billing = o.status === "CANCELLED" ? t("Nothing to pay (cancelled)")
     : o.settlement === "ROOM" ? (o.roomNumber ? t("On Room {room}'s bill", { room: o.roomNumber }) : t("On a room bill"))
@@ -198,6 +203,8 @@ export default async function OrderHistoryPage({ params }: PageProps<"/staff/res
               <ol className="mt-3 space-y-2.5">
                 {waiters.map((a) => {
                   const line = assignmentLine(t, a);
+                  // The automatic routing at creation is part of the order being made, not a choice: only the other kinds of change carry the tag.
+                  const tag = a.kind === "ROUTED" ? null : stepDoneBy(marks, t, o.id, a.at, { actions: ORDER_ASSIGNED, by: a.byLabel });
                   return (
                     <li key={a.id} className="flex gap-2.5">
                       <span className={cn("mt-0.5 grid size-6 shrink-0 place-items-center rounded-full text-white", line.tone)}><line.icon className="size-3.5" /></span>
@@ -205,6 +212,7 @@ export default async function OrderHistoryPage({ params }: PageProps<"/staff/res
                         <span className="block text-sm font-medium">{line.text}</span>
                         <span className="block text-xs text-muted-foreground">
                           {time(t, a.at)} · {day(t, a.at)}{!["TAKEN", "ROUTED"].includes(a.kind) && a.byLabel ? ` · ${t("by {name}", { name: first(a.byLabel.split(" · ")[0]) })}${a.byRole ? ` (${t(a.byRole)})` : ""}` : ""}
+                          {tag && <DoneByDeveloper text={tag} />}
                         </span>
                       </span>
                     </li>
@@ -230,19 +238,20 @@ export default async function OrderHistoryPage({ params }: PageProps<"/staff/res
                     : e.note?.startsWith("Pa") ? Wallet : e.note?.startsWith("Charged") || e.note?.startsWith("Removed from") || e.note?.startsWith("Taken off") ? BedDouble : e.note?.startsWith("Added") ? Plus : /printed|downloaded/.test(e.note ?? "") ? Printer : ShoppingBag,
                   tone: /no longer/i.test(e.note ?? "") ? "bg-slate-500" : /^(Transferred|Table transferred|Handed to|The manager gave|The manager moved)/.test(e.note ?? "") ? "bg-sky-500" : e.note?.startsWith("Payment reversed") ? "bg-rose-500" : e.note?.includes("waiting for reception") ? "bg-amber-500" : e.note?.startsWith("Added") ? "bg-sky-500" : "bg-emerald-600",
                 } : { ...(STEP[e.to] ?? STEP.PENDING), text: t((STEP[e.to] ?? STEP.PENDING).text) };
+              const tag = eventDoneBy(marks, t, o.id, e);
               return (
                 <li key={e.id} className="relative">
                   <span className={cn("absolute -left-[35px] grid size-6 place-items-center rounded-full text-white ring-4 ring-card", st.tone)}><st.icon className="size-3.5" /></span>
                   <p className="text-sm font-semibold">{st.text}{!same && e.to === "PENDING" && e.note ? ` · ${e.note}` : ""}{!same && e.to !== "PENDING" && e.note ? ` — ${e.note}` : ""}</p>
                   <p className="text-xs text-muted-foreground">
-                    {time(t, e.at)} · {day(t, e.at)}{e.byLabel ? ` · ${e.byLabel.replace(/\s*\(.*\)/, "")}` : ""}{e.byRole ? ` (${t(e.byRole)})` : ""}
+                    {time(t, e.at)} · {day(t, e.at)}{e.byLabel ? ` · ${e.byLabel.replace(/\s*\(.*\)/, "")}` : ""}{e.byRole ? ` (${t(e.byRole)})` : ""}{tag && <DoneByDeveloper text={tag} />}
                     {!same && e.from && <span> · {t(STATUS_LABEL[e.from])} → {t(STATUS_LABEL[e.to])}</span>}
                   </p>
                 </li>
               );
             })}
           </ol>
-          {o.status === "CANCELLED" && o.cancelReason && <p className="mt-4 rounded-xl bg-rose-500/10 px-3 py-2 text-sm text-rose-800 dark:text-rose-200">{o.cancelledBy ? t("Cancelled by {name}: {reason}", { name: o.cancelledBy.fullName, reason: o.cancelReason }) : t("Cancelled: {reason}", { reason: o.cancelReason })}</p>}
+          {o.status === "CANCELLED" && o.cancelReason && <p className="mt-4 rounded-xl bg-rose-500/10 px-3 py-2 text-sm text-rose-800 dark:text-rose-200">{o.cancelledBy ? t("Cancelled by {name}: {reason}", { name: o.cancelledBy.fullName, reason: o.cancelReason }) : t("Cancelled: {reason}", { reason: o.cancelReason })}{cancelTag && <DoneByDeveloper text={cancelTag} />}</p>}
         </section>
       </div>
     </div>

@@ -4,6 +4,8 @@ import { msg } from "@/i18n/msg";
 import { cn } from "@/lib/utils";
 import { redact, type ActorType } from "@/server/audit";
 import { auditActionWords, type AuditRow } from "@/server/services/audit-trail";
+import { lineWho } from "@/lib/audit-line-who";
+import { DoneByDeveloper } from "@/components/staff/done-by-developer";
 
 /**
  * The audit trail's rows. Read-only on purpose: there is not one edit, delete, restore or "mark as read" control here, and the
@@ -77,6 +79,9 @@ function Json({ label, value, t }: { label: string; value: unknown; t: T }) {
 function Entry({ row, t, timezone }: { row: AuditRow; t: T; timezone: string }) {
   const dev = row.actorType === "DEVELOPER";
   const name = row.actorName ?? (row.actorType === "WEBSITE" ? t("Website") : row.actorType === "SYSTEM" ? t("System") : t("Unknown"));
+  // A Developer who worked as someone: the label above already says it whole; the tag and the "Acted as" fact say it again in plain words.
+  const by = lineWho(t, { actorType: row.actorType, actorLabel: row.actorName, after: row.after });
+  const actedAs = !by.asName ? null : row.actingAs ? `${row.actingAs.name}${row.actingAs.role ? ` (${t(row.actingAs.role)})` : ""}` : by.as;
   const full = new Intl.DateTimeFormat(t.intl, { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23", timeZone: timezone }).format(row.at);
   // A readable id (a page's address, an order number) in full; an opaque one (a long random id) by its last characters.
   const record = row.entityId ? `${row.entityType} · ${/^[\w-]{16,}$/.test(row.entityId) ? `…${row.entityId.slice(-8)}` : row.entityId}` : row.entityType;
@@ -96,7 +101,12 @@ function Entry({ row, t, timezone }: { row: AuditRow; t: T; timezone: string }) 
           </span>
           <span className="block min-w-0">
             <span className="block truncate text-sm font-semibold" title={name}>{name}</span>
-            {row.roleName && <span className="block truncate text-xs text-muted-foreground">{t(row.roleName)}</span>}
+            {(by.doneBy || row.roleName) && (
+              <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
+                {by.doneBy && <DoneByDeveloper text={by.doneBy} className="ml-0" />}
+                {row.roleName && <span className="truncate">{t(row.roleName)}</span>}
+              </span>
+            )}
           </span>
           <span className="block min-w-0">
             <span className="block text-sm">{t(auditActionWords(row.action))}</span>
@@ -117,6 +127,7 @@ function Entry({ row, t, timezone }: { row: AuditRow; t: T; timezone: string }) 
             <Fact label={t("Business day")}>{t.date(row.businessDate)}</Fact>
             <Fact label={t("Account type")}>{t(TYPE_LABEL[row.actorType])}</Fact>
             <Fact label={t("Who")}>{name}{row.roleName ? ` · ${t(row.roleName)}` : ""}</Fact>
+            {actedAs && <Fact label={t("Acted as")}>{actedAs}{by.doneBy && <DoneByDeveloper text={by.doneBy} />}</Fact>}
             <Fact label={t("Action")}><span className="font-mono text-xs">{row.action}</span></Fact>
             <Fact label={t("Module")}>{row.entityType}</Fact>
             {row.entityId && <Fact label={t("Record")}><span className="font-mono text-xs">{row.entityId}</span></Fact>}

@@ -1474,6 +1474,8 @@ export async function setOrderItemPrepared(orderId: string, itemId: string, prep
     if (o.status === "ACCEPTED") {
       await tx.restaurantOrder.update({ where: { id: orderId }, data: { status: "PREPARING", preparingAt: o.preparingAt ?? now, statusChangedAt: now } });
       await tx.restaurantOrderEvent.create({ data: { orderId, from: "ACCEPTED", to: "PREPARING", ...by(actor), at: now } });
+      // The first tick is the step "started preparing": audited like every other step, so a Developer working as the cook is shown as who did it.
+      await audit(tx, actor, { action: "restaurant_order.item_prepared", entityType: "RestaurantOrder", entityId: orderId, before: { status: "ACCEPTED" }, after: { status: "PREPARING", item: itemId } });
     } else {
       // Touch the order so every open screen picks up the tick.
       await tx.restaurantOrder.update({ where: { id: orderId }, data: { updatedAt: now } });

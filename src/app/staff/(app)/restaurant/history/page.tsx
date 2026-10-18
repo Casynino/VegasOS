@@ -14,6 +14,8 @@ import { addDays } from "@/lib/time/business-date";
 import { formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { inHouseGuestIds, isHotelOrder, portalAccess } from "../portal/data";
+import { DoneByDeveloper } from "@/components/staff/done-by-developer";
+import { ORDER_CANCELLED, ORDER_CREATED, ORDER_MOVED, orderMarks, stepDoneBy } from "@/server/services/order-done-by";
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getT())("Order history") };
@@ -48,6 +50,8 @@ export default async function OrderHistoryListPage({ searchParams }: PageProps<"
   // Reception keeps the hotel's own orders only (rooms, reception, room bills) — the rest is the restaurant's.
   const inHouse = role === "desk" ? await inHouseGuestIds() : undefined;
   const orders = (await restaurantOrderHistory({ from, to, status, q })).filter((o) => role !== "desk" || isHotelOrder(o, inHouse));
+  // "Done by Developer": the step the Developer made while working as someone (one lookup for the list; a failed lookup shows no tag).
+  const marks = await orderMarks(orders.map((o) => o.id));
   const done = orders.filter((o) => o.status !== "CANCELLED");
   const cancelled = orders.filter((o) => o.status === "CANCELLED");
   const declined = cancelled.filter((o) => o.cancelReason?.startsWith(DECLINED));
@@ -119,6 +123,12 @@ export default async function OrderHistoryListPage({ searchParams }: PageProps<"
                 : o.status === "DELIVERED" ? { label: t("Served · to pay"), tone: "bg-amber-500/15 text-amber-300", icon: CheckCircle2 }
                 : { label: t("Completed"), tone: "bg-emerald-500/12 text-emerald-300", icon: CheckCircle2 };
               const who = o.status === "CANCELLED" ? o.cancelledBy?.fullName : (o.deliveredBy ?? o.readyBy ?? o.acceptedBy ?? o.createdBy)?.fullName;
+              // The tag follows the person shown: the same step, at its own time.
+              const doneBy = o.status === "CANCELLED" ? stepDoneBy(marks, t, o.id, o.cancelledAt, { actions: ORDER_CANCELLED, by: who })
+                : o.deliveredBy ? stepDoneBy(marks, t, o.id, o.deliveredAt, { actions: ORDER_MOVED, by: who })
+                : o.readyBy ? stepDoneBy(marks, t, o.id, o.readyAt, { actions: ORDER_MOVED, by: who })
+                : o.acceptedBy ? stepDoneBy(marks, t, o.id, o.acceptedAt, { actions: ORDER_MOVED, by: who })
+                : o.createdBy ? stepDoneBy(marks, t, o.id, o.createdAt, { actions: ORDER_CREATED, by: who }) : null;
               const count = o.items.reduce((sum, i) => sum + i.quantity, 0);
               return (
                 <li key={o.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border/50 px-4 py-3 last:border-b-0 hover:bg-muted/30">
@@ -128,10 +138,11 @@ export default async function OrderHistoryListPage({ searchParams }: PageProps<"
                     <p className="truncate text-sm font-semibold">{deliveryPlace(o, t)} <span className="font-mono text-[11px] font-normal text-muted-foreground">{short(o.number)}</span></p>
                     <p className="truncate text-xs text-muted-foreground">{o.customerName ?? o.reservation?.guest.fullName ?? t("Walk-in")} · {t.plural(count, "{n} item", "{n} items")}: {o.items.map((i) => `${i.quantity > 1 ? `${i.quantity}× ` : ""}${orderItemName(i, t)}`).join(", ")}</p>
                     {o.status === "CANCELLED" && o.cancelReason && <p className="mt-0.5 truncate text-xs text-rose-300">{o.cancelReason.replace(`${DECLINED} — `, "")}</p>}
+                    {doneBy && <p className="mt-0.5 flex min-w-0 items-center text-xs text-muted-foreground"><span className="truncate">{who?.replace(/\s*\(.*\)/, "")}</span><DoneByDeveloper text={doneBy} /></p>}
                   </div>
                   <span className={cn("inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold", statusBadge.tone)}><statusBadge.icon className="size-3.5" />{statusBadge.label}</span>
                   {seesMoney && <span className={cn("w-28 shrink-0 text-right text-sm font-semibold tabular-nums", o.status === "CANCELLED" && "text-muted-foreground line-through")}>{formatTZS(o.total)}</span>}
-                  <span className="hidden w-24 shrink-0 truncate text-xs text-muted-foreground xl:inline">{who?.replace(/\s*\(.*\)/, "") ?? "—"}</span>
+                  <span className="hidden w-24 shrink-0 truncate text-xs text-muted-foreground xl:inline">{doneBy ? "" : who?.replace(/\s*\(.*\)/, "") ?? "—"}</span>
                   <span className="flex shrink-0 items-center gap-1">
                     {o.status !== "CANCELLED" && <Link href={`/staff/restaurant-bill?order=${o.id}`} className="inline-flex h-8 items-center gap-1 rounded-lg border border-border/60 px-2.5 text-xs font-semibold text-[oklch(0.8_0.11_82)] hover:bg-muted"><Receipt className="size-3.5" />{t("Receipt")}</Link>}
                     <Link href={`/staff/restaurant/orders/${o.id}`} className="inline-flex h-8 items-center gap-1 rounded-lg border border-border/60 px-2.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"><History className="size-3.5" />{t("Steps")}</Link>

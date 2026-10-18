@@ -26,6 +26,7 @@ import {
 import { TransportChinese } from "./transport-chinese";
 import { useSendLanguage, type MessageTexts } from "@/components/staff/message-language";
 import type { Locale } from "@/i18n/config";
+import { DoneByDeveloper } from "@/components/staff/done-by-developer";
 
 export type PackageOpt = { id: string; name: string; description: string | null; price: number; isActive?: boolean };
 export type ServiceOpt = { id: string; name: string; description?: string | null; type: string; price: number; isActive?: boolean; isPublic?: boolean; options: PackageOpt[] };
@@ -38,6 +39,8 @@ export type TripView = {
   driverName: string | null; driverPhone: string | null; vehicleName: string | null; vehiclePlate: string | null;
   price: number; priceOption: string | null; standardPrice: number | null; priceReason: string | null; priceAdjustedBy: string | null;
   confirmedBy: string | null; cancelReason: string | null;
+  /** "Done by Developer · as Neema" (already translated) when the Developer confirmed the trip while working as someone. */
+  confirmedDoneBy?: string | null;
   money: "ROOM" | "PAID" | "TO_BILL" | null; paidInto: string | null;
 };
 
@@ -248,6 +251,17 @@ const HISTORY: Record<string, string> = {
   "transport.price_adjusted": msg("Price adjusted"), "transport.charged_to_room": msg("Added to the room bill"), "transport.paid": msg("Payment recorded"),
 };
 
+/** Where the trip came from, and who confirmed it (with "Done by Developer" beside the name when the Developer confirmed it while working as someone). */
+export function TripSource({ trip }: { trip: TripView }) {
+  const t = useT();
+  return (
+    <>
+      <span>{trip.source === "WEBSITE" ? t("From the website") : t("Booked by staff")}{trip.confirmedBy ? ` · ${t("confirmed by {name}", { name: trip.confirmedBy })}` : ""}</span>
+      {trip.confirmedBy && trip.confirmedDoneBy ? <DoneByDeveloper text={trip.confirmedDoneBy} className="ml-0 text-violet-300" /> : null}
+    </>
+  );
+}
+
 function TripCard({ trip, onClose, drivers, vehicles, accounts, staying, perms }: { trip: TripView; onClose: () => void } & CardCtx) {
   const t = useT();
   const router = useRouter();
@@ -294,7 +308,7 @@ function TripCard({ trip, onClose, drivers, vehicles, accounts, staying, perms }
               <DialogTitle className="mt-1 truncate text-xl text-white">{trip.passengerName}</DialogTitle>
               <DialogDescription className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-white/55">
                 <span className={cn("rounded-full px-2.5 py-0.5 font-semibold", meta.className)}>{t(meta.label)}</span>
-                <span>{trip.source === "WEBSITE" ? t("From the website") : t("Booked by staff")}{trip.confirmedBy ? ` · ${t("confirmed by {name}", { name: trip.confirmedBy })}` : ""}</span>
+                <TripSource trip={trip} />
               </DialogDescription>
             </div>
           </div>

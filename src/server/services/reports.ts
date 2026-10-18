@@ -15,6 +15,7 @@ import { addDays, businessRangeBounds, diffDays, fromDbDate, toDbDate, type Busi
 import { formatBusinessDate, formatTZS } from "@/lib/format";
 import { REPORTS, type Block, type Cell, type Figure, type Report, type ReportKey } from "@/lib/report-types";
 import { msg } from "@/i18n/msg";
+import { auditWho, plainWho } from "@/lib/audit-who";
 import { day as hotelDay, textBook, word, type TextArg, type TextArgs, type TextBook, type TextWord } from "@/lib/report-i18n";
 
 // ───────────────────────── helpers ─────────────────────────
@@ -818,7 +819,7 @@ async function voids(r: Range, c: Ctx): Promise<Body> {
   const [orders, removed, sales, pays, orderPays, charges, bookings, spent] = await Promise.all([
     db.restaurantOrder.findMany({ where: { status: "CANCELLED", businessDate: dbr(r) }, orderBy: { createdAt: "desc" },
       select: { number: true, total: true, createdAt: true, cancelledAt: true, cancelReason: true, type: true, tableLabel: true, roomNumber: true, customerName: true, location: { select: { name: true } }, cancelledBy: { select: { fullName: true } } } }),
-    db.auditLog.findMany({ where: { action: "restaurant_order.item_removed", businessDate: dbr(r) }, orderBy: { createdAt: "desc" }, select: { entityId: true, before: true, after: true, createdAt: true, user: { select: { fullName: true } }, actorLabel: true } }),
+    db.auditLog.findMany({ where: { action: "restaurant_order.item_removed", businessDate: dbr(r) }, orderBy: { createdAt: "desc" }, select: { entityId: true, before: true, after: true, createdAt: true, user: { select: { fullName: true } }, actorLabel: true, actorType: true } }),
     db.revenueTransaction.findMany({ where: { isVoided: true, businessDate: dbr(r) }, orderBy: { occurredAt: "desc" }, select: { amount: true, occurredAt: true, voidReason: true, description: true, category: { select: { name: true } }, recordedBy: { select: { fullName: true } } } }),
     db.payment.findMany({ where: { status: "REVERSED", OR: [{ reversalBusinessDate: dbr(r) }, { reversalBusinessDate: null, businessDate: dbr(r) }] }, orderBy: { receivedAt: "desc" },
       select: { amount: true, kind: true, receivedAt: true, reversedAt: true, reversalReason: true, method: { select: { name: true } }, reversedBy: { select: { fullName: true } }, reservation: { select: { reference: true, guest: { select: { fullName: true } } } } } }),
@@ -832,7 +833,9 @@ async function voids(r: Range, c: Ctx): Promise<Body> {
   const removedRows = removed.map((x) => {
     const a = (x.after ?? {}) as { amount?: number; removed?: number; reason?: string };
     const b = (x.before ?? {}) as { item?: string };
-    return { at: x.createdAt, order: x.entityId ? shortNo(orderNo.get(x.entityId) ?? "") : "—", item: b.item?.replace(/ @ \d+$/, "") ?? msg("Item"), n: a.removed ?? 1, amount: a.amount ?? 0, reason: a.reason ?? "—", by: x.user?.fullName ?? x.actorLabel ?? "—" };
+    return { at: x.createdAt, order: x.entityId ? shortNo(orderNo.get(x.entityId) ?? "") : "—", item: b.item?.replace(/ @ \d+$/, "") ?? msg("Item"), n: a.removed ?? 1, amount: a.amount ?? 0, reason: a.reason ?? "—",
+      // The role is cut from a staff name, never from a Developer's line: "Nino (Developer) as Neema (Receptionist)" says who really removed it.
+      by: plainWho(auditWho({ actorType: x.actorType, actorLabel: x.actorLabel, userName: x.user?.fullName })) ?? "—" };
   });
   const cancelled = bookings.filter((b) => b.status === "CANCELLED"), noShows = bookings.filter((b) => b.status === "NO_SHOW");
   const reversed = sum(pays, (p) => p.amount) + sum(orderPays, (p) => p.amount);
@@ -853,7 +856,7 @@ async function voids(r: Range, c: Ctx): Promise<Body> {
         foot: orders.length ? [msg("Total"), "", "", "", "", "", sum(orders, (o) => o.total)] : undefined },
       { kind: "table", title: msg("Items removed from orders"), subtitle: msg("After the order was placed"), empty: none,
         columns: [{ label: msg("When") }, { label: msg("Order") }, { label: msg("Item") }, { label: msg("Qty"), align: "right" }, { label: msg("Reason") }, { label: msg("By"), muted: true }, { label: msg("Value"), align: "right", money: true }],
-        rows: removedRows.map((x) => [c.s.when(x.at), x.order, x.item, x.n, asIs(x.reason), asIs(noBrackets(x.by)), x.amount]),
+        rows: removedRows.map((x) => [c.s.when(x.at), x.order, x.item, x.n, asIs(x.reason), asIs(x.by), x.amount]),
         foot: removedRows.length ? [msg("Total"), "", "", sum(removedRows, (x) => x.n), "", "", sum(removedRows, (x) => x.amount)] : undefined },
       { kind: "table", title: msg("Voided sales"), empty: none, half: true,
         columns: [{ label: msg("When") }, { label: msg("Sale") }, { label: msg("Reason") }, { label: msg("Recorded by"), muted: true }, { label: msg("Amount"), align: "right", money: true }],

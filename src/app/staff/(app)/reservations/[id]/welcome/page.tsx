@@ -17,6 +17,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { ensureGuestToken, guestMessage } from "@/server/services/guest-comms";
 import { siteOrigin } from "@/server/site-origin";
 import { GuestMessenger } from "@/components/staff/reception/guest-messenger";
+import { messageDoneBy } from "@/server/services/guest-message-marks";
 import { WelcomeCardActions } from "./card-actions";
 import { getT, getTFor } from "@/i18n/server";
 import { msg } from "@/i18n/msg";
@@ -55,6 +56,8 @@ export default async function WelcomeCardPage({ params }: PageProps<"/staff/rese
     r.status === "CHECKED_IN" ? guestMessage(r.id, "WELCOME", origin) : null,
     db.guestMessage.findMany({ where: { reservationId: r.id }, orderBy: { createdAt: "desc" }, take: 10, include: { sentBy: { select: { fullName: true } } } }),
   ]);
+  // "Done by Developer": a message the Developer sent while working as someone says so, next to the sender (a failed lookup shows no tag).
+  const sentDoneBy = await messageDoneBy(t, sent);
   const qr = await QRCode.toString(`${link}#menu`, { type: "svg", margin: 0, errorCorrectionLevel: "M", color: { dark: "#0b1026", light: "#00000000" } });
 
   const first = r.guest.fullName.trim().split(/\s+/)[0];
@@ -80,7 +83,7 @@ export default async function WelcomeCardPage({ params }: PageProps<"/staff/rese
           <p className="mb-2 text-sm font-semibold">{t("Send the welcome to {name}'s phone", { name: first })}</p>
           <GuestMessenger reservationId={r.id} guest={{ name: r.guest.fullName, phone: r.guest.phone, email: r.guest.email }} link={link} language={r.guest.preferredLanguage}
             options={[{ type: "WELCOME", label: msg("Welcome & menu"), text: welcome.text, subject: welcome.subject }]}
-            sent={sent.map((m) => ({ type: m.type, channel: m.channel, at: m.createdAt.toISOString(), by: m.sentBy?.fullName ?? null }))} />
+            sent={sent.map((m) => ({ type: m.type, channel: m.channel, at: m.createdAt.toISOString(), by: m.sentBy?.fullName ?? null, doneBy: sentDoneBy.get(m.id) ?? null }))} />
         </section>
       )}
 

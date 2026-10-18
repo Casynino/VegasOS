@@ -11,7 +11,9 @@ import {
   archiveBookingQr, createBookingQr, HOTEL_QR_SOURCE, regenerateBookingQr, setBookingQrActive, setHotelQrSettings, updateBookingQr,
 } from "@/server/services/booking-qr";
 import { guestMessage } from "@/server/services/guest-comms";
+import { messageDoneBy } from "@/server/services/guest-message-marks";
 import { msg } from "@/i18n/msg";
+import { getT } from "@/i18n/server";
 
 /**
  * The Hotel QR page's changes — the Admin's only (hotel_qr.manage): a code for another place, rename, a new code
@@ -105,7 +107,8 @@ export async function qrBookingMessageAction(input: { reservationId: string }): 
   text: string; subject: string; link: string; guest: { name: string; phone: string | null; email: string | null };
   /** The guest's own language, so the window says which language the message is written in. */
   language: string | null;
-  sent: { type: string; channel: string; at: string; by: string | null }[];
+  /** `doneBy`: "Done by Developer · as Neema" when the Developer, working as someone, sent it (shown next to `by`). */
+  sent: { type: string; channel: string; at: string; by: string | null; doneBy?: string | null }[];
 }>> {
   return runAction(async () => {
     await authorize("reservations.view");
@@ -119,10 +122,11 @@ export async function qrBookingMessageAction(input: { reservationId: string }): 
       guestMessage(id, "BOOKING_CREATED", origin),
       db.guestMessage.findMany({ where: { reservationId: id }, orderBy: { createdAt: "desc" }, take: 20, include: { sentBy: { select: { fullName: true } } } }),
     ]);
+    const doneBy = await messageDoneBy(await getT(), sent);
     return {
       text: m.text, subject: m.subject, link: m.link, guest: { name: m.guest.name, phone: m.guest.phone, email: m.guest.email }, language: r.guest.preferredLanguage,
       // Sent by the hotel's messaging (booking confirmed) counts as the booking details too.
-      sent: sent.filter((x) => x.status === "SENT").map((x) => ({ type: x.type === "BOOKING_CONFIRMED" ? "BOOKING_CREATED" : x.type, channel: x.channel, at: x.createdAt.toISOString(), by: x.sentBy?.fullName ?? null })),
+      sent: sent.filter((x) => x.status === "SENT").map((x) => ({ type: x.type === "BOOKING_CONFIRMED" ? "BOOKING_CREATED" : x.type, channel: x.channel, at: x.createdAt.toISOString(), by: x.sentBy?.fullName ?? null, doneBy: doneBy.get(x.id) ?? null })),
     };
   });
 }

@@ -18,6 +18,9 @@ import {
   reservedTime, seatOf, sessionEventTx, sessionMoney, sessionNo, startSessionTx,
 } from "./dining-core";
 import type { Actor } from "./reservations";
+import { doneByText } from "@/lib/done-by-text";
+import { developerMarks, markFor, type DeveloperMark } from "./developer-marks";
+import { ORDER_CREATED, orderMarks, sameWho, stepDoneBy, type OrderMarks } from "./order-done-by";
 
 /**
  * TABLES — who is at each table and their whole time there (see dining-core.ts for the rules).
@@ -80,7 +83,8 @@ export type SessionView = {
   stays: TableStay[];
   orders: SessionOrder[];
   money: { orders: number; items: number; total: number; paid: number; onRoom: number; due: number; serving: number };
-  timeline: { at: string; kind: string; text: string; by: string | null }[];
+  /** `doneBy`: "Done by Developer · as Neema" (in the reader's language) when the Developer, working as someone, did that line; shown next to `by`, never inside it. */
+  timeline: { at: string; kind: string; text: string; by: string | null; doneBy?: string | null }[];
 };
 
 export type TableStay = { id: string; reference: string; rooms: string; guestName: string; foodPayer: string | null };
@@ -109,12 +113,32 @@ const orderView = (o: OrderRowLike): SessionOrder => ({
 /** The translator for whoever is looking (English outside a request — jobs, tests). */
 const viewerT = () => getT().catch(() => englishT);
 
-function sessionView(s: SessionRow, stays: TableStay[] = [], t: T = englishT): SessionView {
+/** The Developer's marks on a table's timeline: the sessions' own steps (seated, a person added, moved, closed) and the orders made at them. Money lines are never marked. */
+type SessionMarks = { sessions: Map<string, DeveloperMark[]>; orders: OrderMarks };
+const SESSION_STEP_ACTIONS: Record<string, readonly string[]> = {
+  STARTED: ["dining_session.started"], MEMBER_ADDED: ["dining_session.member_added"], MOVED: ["dining_session.moved"],
+  CLOSED: ["dining_session.closed"], CANCELLED: ["dining_session.cancelled"],
+};
+async function sessionMarks(rows: readonly SessionRow[]): Promise<SessionMarks> {
+  const [sessions, orders] = await Promise.all([
+    developerMarks("DiningSession", rows.map((r) => r.id), { actions: Object.values(SESSION_STEP_ACTIONS).flat() }).catch(() => new Map<string, DeveloperMark[]>()),
+    orderMarks(rows.flatMap((r) => r.orders.map((o) => o.id))),
+  ]);
+  return { sessions, orders };
+}
+
+function sessionView(s: SessionRow, stays: TableStay[] = [], t: T = englishT, marks: SessionMarks | null = null): SessionView {
   const orders = s.orders.map(orderView);
   const live = s.orders.filter((o) => o.status !== "CANCELLED");
   const m = sessionMoney(s.orders);
+  // The tag of a session step: the audit row of that step, at its time, by the same person (a failed or missing lookup shows nothing).
+  const stepTag = (e: { kind: string; at: Date; byLabel: string | null }) => {
+    const actions = SESSION_STEP_ACTIONS[e.kind];
+    const mark = marks && actions ? markFor(marks.sessions, s.id, { actions, near: e.at }) : null;
+    return mark && sameWho(mark, e.byLabel) ? doneByText(t, mark) : null;
+  };
   const timeline: SessionView["timeline"] = [
-    ...s.events.map((e) => ({ at: e.at.toISOString(), kind: e.kind, text: e.note ?? e.kind, by: e.byLabel })),
+    ...s.events.map((e) => ({ at: e.at.toISOString(), kind: e.kind, text: e.note ?? e.kind, by: e.byLabel, doneBy: stepTag(e) })),
     // Composed for the screen in the reader's language (the events above are kept as they were written).
     ...s.orders.map((o) => {
       const vars = { order: shortOrder(o.number), n: o.items.reduce((u, i) => u + i.quantity, 0), amount: o.total.toLocaleString("en-US") };
@@ -122,6 +146,7 @@ function sessionView(s: SessionRow, stays: TableStay[] = [], t: T = englishT): S
         at: o.createdAt.toISOString(), kind: o.status === "CANCELLED" ? "ORDER_CANCELLED" : "ORDER",
         text: o.status === "CANCELLED" ? t("Order {order} · {n} item(s) · TZS {amount} — cancelled", vars) : t("Order {order} · {n} item(s) · TZS {amount}", vars),
         by: o.createdBy?.fullName ?? o.customerName ?? t("Customer"),
+        doneBy: marks && o.createdBy ? stepDoneBy(marks.orders, t, o.id, o.createdAt, { actions: ORDER_CREATED, by: o.createdBy.fullName }) : null,
       };
     }),
     ...s.orders.flatMap((o) => o.payments.map((p) => {
@@ -192,11 +217,12 @@ export async function tableFloor(opts: { today: string; now?: Date }): Promise<F
     viewerT(),
   ]);
   const stays = await activeStaysFor(db, places.flatMap((l) => (l.openSession ? sessionPeople(l.openSession) : [])));
+  const marks = await sessionMarks(places.flatMap((l) => (l.openSession ? [l.openSession] : [])));
   return places.map((l) => {
     const r = bookings.find((b) => b.locationId === l.id);
     return {
       id: l.id, kind: l.kind, area: l.area, number: l.number, name: l.name, qrToken: l.qrToken, qrActive: l.qrActive, scans: l.scanCount, lastScan: l.lastScannedAt?.toISOString() ?? null,
-      session: l.openSession ? sessionView(l.openSession, staysOf(l.openSession, stays), t) : null,
+      session: l.openSession ? sessionView(l.openSession, staysOf(l.openSession, stays), t, marks) : null,
       loose: l.orders.map(orderView),
       next: r ? {
         id: r.id, reference: r.reference, name: r.guest.fullName, phone: r.guest.phone, at: r.reservedFor.toISOString(), guests: r.guestCount, status: r.status,
@@ -233,7 +259,7 @@ export async function sessionById(id: string) {
   const s = await db.diningSession.findUnique({ where: { id }, include: SESSION_INCLUDE });
   if (!s) return null;
   const open = OPEN_SESSION.includes(s.status);
-  return sessionView(s, open ? (await activeStaysFor(db, sessionPeople(s))).map(tableStay) : [], await viewerT());
+  return sessionView(s, open ? (await activeStaysFor(db, sessionPeople(s))).map(tableStay) : [], await viewerT(), await sessionMarks([s]));
 }
 
 /** A table's past customers, newest first. */

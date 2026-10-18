@@ -14,6 +14,8 @@ import { SettingsForm } from "./settings-form";
 import { LookupList } from "./lookup-list";
 import { formatRecipientLine } from "@/lib/report-recipients";
 import { getT } from "@/i18n/server";
+import { DoneByDeveloper } from "@/components/staff/done-by-developer";
+import { messageDoneBy } from "@/server/services/guest-message-marks";
 import { msg } from "@/i18n/msg";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -40,6 +42,8 @@ export default async function SettingsPage() {
     }),
   ]);
   const failed = messages.filter((m) => m.status === "FAILED").length;
+  // "Done by Developer": a message the Developer sent while working as someone says so, next to the sender (a failed lookup shows no tag).
+  const sentDoneBy = await messageDoneBy(t, messages.map((m) => ({ id: m.id, guestId: m.guestId, reservationId: m.reservation?.id ?? null, type: m.type, createdAt: m.createdAt, sentBy: m.sentBy })));
 
   const recipients = (s.reportRecipients as { name?: string; phone: string; apiKeyRef?: string | null; lang?: string | null }[])
     .map(formatRecipientLine)
@@ -152,7 +156,9 @@ export default async function SettingsPage() {
                         <Link href={`/staff/guests/${m.guestId}`} className="underline-offset-2 hover:underline">{m.guest.fullName}</Link>
                         {m.reservation && <><span className="text-muted-foreground"> · </span><Link href={`/staff/reservations/${m.reservation.id}`} className="font-mono text-xs underline-offset-2 hover:underline">{m.reservation.reference}</Link></>}
                       </span>
-                      <span className="block truncate text-xs text-muted-foreground">{t.dateTime(m.createdAt, s.timezone)} · {m.sentBy?.fullName ?? t("Automatic")} · {t(CHANNEL_LABEL[m.channel] ?? m.channel.toLowerCase())}{m.to ? ` · ${m.to}` : ""}</span>
+                      {sentDoneBy.has(m.id) ? (
+                        <span className="flex min-w-0 items-center text-xs text-muted-foreground"><span className="min-w-0 truncate">{t.dateTime(m.createdAt, s.timezone)} · {m.sentBy?.fullName ?? t("Automatic")} · {t(CHANNEL_LABEL[m.channel] ?? m.channel.toLowerCase())}{m.to ? ` · ${m.to}` : ""}</span><DoneByDeveloper text={sentDoneBy.get(m.id)!} /></span>
+                      ) : <span className="block truncate text-xs text-muted-foreground">{t.dateTime(m.createdAt, s.timezone)} · {m.sentBy?.fullName ?? t("Automatic")} · {t(CHANNEL_LABEL[m.channel] ?? m.channel.toLowerCase())}{m.to ? ` · ${m.to}` : ""}</span>}
                       {m.status === "FAILED" && m.error && <span className="block truncate text-xs text-rose-700 dark:text-rose-300">{m.error}</span>}
                     </span>
                     <span className={m.status === "FAILED" ? "self-center rounded-full bg-rose-500/12 px-2 py-0.5 text-[11px] font-semibold text-rose-700 dark:text-rose-300" : "self-center rounded-full bg-emerald-500/12 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300"}>

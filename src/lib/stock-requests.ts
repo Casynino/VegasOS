@@ -114,6 +114,8 @@ export type StockEventView = {
   reason: string | null;
   detail: string[];
   at: string;
+  /** "Done by Developer · as Neema" (already translated) when the Developer did this step while working as someone. */
+  doneBy?: string | null;
 };
 
 /** The purchase — only for buyers and approvers. */
@@ -163,6 +165,8 @@ export type StockReqView = {
   by: string;
   byId: string;
   at: string;
+  /** "Done by Developer · as Neema" next to who asked, when the Developer made the request while working as someone. */
+  byDoneBy?: string | null;
   decidedBy: string | null;
   decidedAt: string | null;
   decisionNote: string | null;

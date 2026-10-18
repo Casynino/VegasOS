@@ -22,6 +22,8 @@ import { addDays, diffDays, isBusinessDate, presetRange, toDbDate, type PeriodPr
 import { formatTZS } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { friendlyAction } from "@/lib/activity-words";
+import { lineWho } from "@/lib/audit-line-who";
+import { DoneByDeveloper } from "@/components/staff/done-by-developer";
 import { billState } from "@/lib/payment-status";
 import {
   AttentionCards, Delta, HeroBanner, Initials, Panel, PanelLink, Pill, RoomsGlance, SectionLabel, StatTile, type AttentionItem,
@@ -436,13 +438,17 @@ export async function OwnerOverview({ searchParams, basePath }: {
         </Panel>
         <Panel title={t("What the team is doing")} action={<PanelLink href="/staff/activity" t={t} />}>
           <ul className="space-y-3.5 text-sm">
-            {activity.map((a) => (
-              <li key={a.id} className="flex gap-3">
-                <Initials name={a.user?.fullName ?? "?"} />
-                <span className="min-w-0"><span className="font-medium text-foreground">{a.user?.fullName}</span> <span className="text-muted-foreground">{t(friendly(a.action))}</span>
-                  <span className="block text-xs text-muted-foreground">{t.dateTime(a.createdAt)}</span></span>
-              </li>
-            ))}
+            {activity.map((a) => {
+              // A Developer's entry (also while working as someone) names the Developer, with the tag next to the name.
+              const by = lineWho(t, a);
+              return (
+                <li key={a.id} className="flex gap-3">
+                  <Initials name={by.name ?? "?"} />
+                  <span className="min-w-0"><span className="font-medium text-foreground">{by.name}</span>{by.doneBy && <DoneByDeveloper text={by.doneBy} />} <span className="text-muted-foreground">{t(friendly(a.action))}</span>
+                    <span className="block text-xs text-muted-foreground">{t.dateTime(a.createdAt)}</span></span>
+                </li>
+              );
+            })}
           </ul>
         </Panel>
       </div>

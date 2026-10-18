@@ -22,6 +22,9 @@ import { buttonVariants } from "@/components/ui/button";
 import { getT, getTFor, inEveryLanguage } from "@/i18n/server";
 import { DEFAULT_LOCALE, LOCALE_META } from "@/i18n/config";
 import { langLink } from "@/lib/wa-messages";
+import { DoneByDeveloper } from "@/components/staff/done-by-developer";
+import { doneByText } from "@/lib/done-by-text";
+import { developerMarks, markFor, type DeveloperMark } from "@/server/services/developer-marks";
 import { AddGroupRoom, CancelGroup, EditGroup, FinalizeGroup, GroupPayment, GroupRooms, PrintButton } from "./group-panels";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -95,6 +98,9 @@ export default async function GroupPage({ params, searchParams }: PageProps<"/st
   const en = t.locale === DEFAULT_LOCALE;
   const day = (d: string) => (en ? formatBusinessDate(d) : t.date(d));
   const when = (d: Date | string) => (en ? formatDateTime(d) : t.dateTime(d));
+  // "Done by Developer" next to "booked … by": the group was made by the Developer working as someone (a failed lookup shows no tag).
+  const bookedMark = markFor(await developerMarks("BookingGroup", [g.id], { actions: ["group.created"] }).catch(() => new Map<string, DeveloperMark[]>()), g.id);
+  const bookedTag = doneByText(t, bookedMark);
   const live = g.invoices.filter((i) => i.status !== "CANCELLED" && i.status !== "VOID");
   const drafts = live.filter((i) => i.status === "DRAFT");
   const upcoming = g.rooms.filter((r) => ["INQUIRY", "RESERVED", "CONFIRMED"].includes(r.status)).length;
@@ -122,7 +128,7 @@ export default async function GroupPage({ params, searchParams }: PageProps<"/st
               <span>{t.rich("Contact <b>{name}</b>", { b: (x) => <strong className="text-foreground">{x}</strong> }, { name: g.contact.fullName })}</span>
               {g.contact.phone && <a href={`tel:${g.contact.phone}`} className="inline-flex items-center gap-1 hover:underline"><Phone className="size-3.5" />{g.contact.phone}</a>}
               {g.contact.email && <span>{g.contact.email}</span>}
-              <span>· {t(g.source)} · {g.createdBy ? t("booked {date} by {name}", { date: when(g.createdAt), name: g.createdBy }) : t("booked {date}", { date: when(g.createdAt) })}</span>
+              <span>· {t(g.source)} · {g.createdBy ? t("booked {date} by {name}", { date: when(g.createdAt), name: g.createdBy }) : t("booked {date}", { date: when(g.createdAt) })}{bookedTag && g.createdBy ? <DoneByDeveloper text={bookedTag} /> : null}</span>
             </p>
           </div>
           <div className="flex flex-wrap gap-2 print:hidden">
@@ -373,7 +379,7 @@ export default async function GroupPage({ params, searchParams }: PageProps<"/st
               {history.map((h) => (
                 <li key={h.id} className="relative">
                   <span className="absolute -left-[1.62rem] top-1.5 size-2.5 rounded-full border-2 border-card bg-foreground/60" />
-                  <p><span className="text-xs text-muted-foreground">{when(h.at)}</span> · <span className="font-medium">{h.who}</span> {t(h.label)}{h.record && <span className="text-muted-foreground"> · {h.record}</span>}</p>
+                  <p><span className="text-xs text-muted-foreground">{when(h.at)}</span> · <span className="font-medium">{h.who}</span>{h.doneBy && <DoneByDeveloper text={h.doneBy} />} {t(h.label)}{h.record && <span className="text-muted-foreground"> · {h.record}</span>}</p>
                   {h.changes.length > 0 && (
                     <p className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
                       {h.changes.map((c) => (

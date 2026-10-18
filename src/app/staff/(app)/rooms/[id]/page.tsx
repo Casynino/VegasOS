@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { getT } from "@/i18n/server";
 import { msg } from "@/i18n/msg";
 import type { T } from "@/i18n/translate";
+import { DoneByDeveloper } from "@/components/staff/done-by-developer";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getT();
@@ -224,7 +225,7 @@ function GuestCard({ c, when, t }: { c: RoomControl; when: When; t: T }) {
         </div>
       </div>
       <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Fact icon={LogIn} label={s.checkedIn ? t("Checked in") : t("Check-in")} value={when(s.checkIn)} sub={s.checkedInBy ? t("by {name}", { name: s.checkedInBy }) : undefined} />
+        <Fact icon={LogIn} label={s.checkedIn ? t("Checked in") : t("Check-in")} value={when(s.checkIn)} sub={s.checkedInBy ? t("by {name}", { name: s.checkedInBy }) : undefined} tag={s.checkedInDoneBy} />
         <Fact icon={LogOut} label={t("Check-out")} value={when(s.checkOut)} tone={c.overdue ? "warn" : undefined} />
         <Fact icon={Moon} label={s.nights ? t("Nights") : t("Stay")} value={s.nights ? t.plural(s.nights, "{n} night", "{n} nights") : t("Short stay")} />
         <Fact icon={Users} label={t("Guests")} value={`${t.plural(s.adults, "{n} adult", "{n} adults")}${s.children ? ` · ${t.plural(s.children, "{n} child", "{n} children")}` : ""}`} />
@@ -346,7 +347,7 @@ function Timeline({ events, when, t }: { events: RoomEvent[]; when: When; t: T }
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-sm font-medium">{eventTitle(e, t)}</p>
-            <p className="text-xs text-muted-foreground">{when(e.at)}{e.by ? ` · ${e.by === "System" || e.by === "Guest (online)" ? t(e.by) : e.by}` : ""}{e.detail ? ` · ${eventDetail(e, t)}` : ""}</p>
+            <p className="text-xs text-muted-foreground">{when(e.at)}{e.by ? ` · ${e.by === "System" || e.by === "Guest (online)" ? t(e.by) : e.by}` : ""}{e.detail ? ` · ${eventDetail(e, t)}` : ""}{e.doneBy ? <DoneByDeveloper text={e.doneBy} /> : null}</p>
           </div>
           {e.amount ? <span className={cn("shrink-0 text-sm font-semibold tabular-nums", e.kind === "payment" && e.amount > 0 && "text-emerald-600 dark:text-emerald-400")}>{e.kind === "payment" && e.amount > 0 ? "+" : ""}{formatTZS(e.amount)}</span> : null}
         </div>
@@ -372,12 +373,12 @@ function Timeline({ events, when, t }: { events: RoomEvent[]; when: When; t: T }
   );
 }
 
-function Fact({ icon: Icon, label, value, sub, tone }: { icon: typeof LogIn; label: string; value: string; sub?: string; tone?: "warn" }) {
+function Fact({ icon: Icon, label, value, sub, tag, tone }: { icon: typeof LogIn; label: string; value: string; sub?: string; tag?: string | null; tone?: "warn" }) {
   return (
     <div className={cn("rounded-2xl px-3 py-2.5", tone === "warn" ? "bg-rose-500/10" : "bg-muted/70")}>
       <dt className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><Icon className="size-3.5" />{label}</dt>
       <dd className={cn("mt-0.5 text-sm font-semibold", tone === "warn" && "text-rose-600 dark:text-rose-400")}>{value}</dd>
-      {sub && <dd className="text-[11px] text-muted-foreground">{sub}</dd>}
+      {sub && <dd className="text-[11px] text-muted-foreground">{sub}{tag ? <DoneByDeveloper text={tag} /> : null}</dd>}
     </div>
   );
 }

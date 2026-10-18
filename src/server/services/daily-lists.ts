@@ -9,6 +9,9 @@ import { businessDateOf, fromDbDate, toDbDate, type BusinessDate } from "@/lib/t
 import { Prisma } from "@/generated/prisma/client";
 import { isPlaceholderName } from "./guests";
 import { stayState } from "./stays";
+import { getT } from "@/i18n/server";
+import { doneByText } from "@/lib/done-by-text";
+import { developerMarks, markFor } from "./developer-marks";
 import {
   breakfastFor, buildHousekeepingRows, occupiedServiceOf, sortGuestRows,
   type DailyListData, type GuestList, type GuestRow, type HkRoomInput, type HousekeepingList, type ListKind,
@@ -142,7 +145,11 @@ export async function buildGuestList(now: Date = new Date()): Promise<GuestList>
 export const buildDailyList = (kind: ListKind, now: Date = new Date()): Promise<DailyListData> =>
   kind === "HOUSEKEEPING" ? buildHousekeepingList(now) : buildGuestList(now);
 
-export type DailyListCopy = { id: string; kind: ListKind; date: BusinessDate; copyNo: number; generatedAt: string; generatedBy: string };
+export type DailyListCopy = {
+  id: string; kind: ListKind; date: BusinessDate; copyNo: number; generatedAt: string; generatedBy: string;
+  /** "Done by Developer · as Neema" (in the reader's language) when the Developer, working as someone, printed this copy; shown NEXT TO the name on the screen. The printed paper is not touched. */
+  doneBy?: string | null;
+};
 export type StoredDailyList = DailyListCopy & { data: DailyListData };
 
 const copyOf = (r: { id: string; kind: string; businessDate: Date; copyNo: number; generatedAt: Date; generatedBy: string }): DailyListCopy => ({
@@ -174,6 +181,20 @@ export async function saveDailyListCopy(kind: ListKind, actor: { id: string; ful
       // Two people printed at the same moment: take the next number.
       if (!isUniqueViolation(e) || attempt >= 4) throw e;
     }
+  }
+}
+
+/**
+ * Adds "Done by Developer" to the copies the Developer printed while working as someone (the audit row of the print is the mark; the stored
+ * "made by" name and the paper are unchanged). One lookup for all of them; a failed lookup leaves them without a tag.
+ */
+export async function withDoneBy<C extends DailyListCopy>(copies: C[]): Promise<C[]> {
+  if (copies.length === 0) return copies;
+  try {
+    const [t, marks] = await Promise.all([getT(), developerMarks("DailyList", copies.map((c) => c.id), { actions: ["daily_list.printed"] })]);
+    return copies.map((c) => ({ ...c, doneBy: doneByText(t, markFor(marks, c.id)) }));
+  } catch {
+    return copies;
   }
 }
 

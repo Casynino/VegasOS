@@ -23,6 +23,8 @@ import { DEFAULT_LOCALE } from "@/i18n/config";
 import type { T } from "@/i18n/translate";
 import { cn } from "@/lib/utils";
 import { GuestMessenger, type GuestMessageOption } from "@/components/staff/reception/guest-messenger";
+import { DoneByDeveloper } from "@/components/staff/done-by-developer";
+import { messageDoneBy } from "@/server/services/guest-message-marks";
 import { said } from "@/app/staff/(app)/collections/collection-lines";
 import { GuestDetails, type DetailRow } from "./guest-details";
 import { EverythingWithUs, shownName } from "./everything-with-us";
@@ -107,6 +109,8 @@ export async function GuestProfile({ id, user }: { id: string; user: CurrentUser
     customerHistory(g.id, { roomMoney }),
   ]);
 
+  // "Done by Developer": messages the Developer sent while working as someone say so, next to the sender (one lookup; a failed lookup shows no tag).
+  const sentDoneBy = await messageDoneBy(t, messages);
   const rs = g.reservations;
   const live = rs.filter((r) => r.status !== "CANCELLED" && r.status !== "NO_SHOW");
   const completed = rs.filter((r) => r.status === "CHECKED_OUT");
@@ -347,7 +351,7 @@ export async function GuestProfile({ id, user }: { id: string; user: CurrentUser
                     <>
                       <span className={cn("absolute -left-[2.05rem] top-0 grid size-6 place-items-center rounded-full ring-4 ring-card", EVENT_TONE[e.kind])}><Icon className="size-3" /></span>
                       <p className="text-sm font-medium">{t(e.title)}</p>
-                      <p className="text-xs text-muted-foreground">{dateTime(e.at)}{e.detail ? ` · ${e.detail}` : ""}</p>
+                      <p className={cn("text-xs text-muted-foreground", e.doneBy && "flex min-w-0 flex-wrap items-center")}><span>{dateTime(e.at)}{e.detail ? ` · ${e.detail}` : ""}</span>{e.doneBy && <DoneByDeveloper text={e.doneBy} />}</p>
                     </>
                   );
                   return <li key={i} className="relative">{e.href ? <Link href={e.href} className="block hover:opacity-80">{body}</Link> : body}</li>;
@@ -393,7 +397,7 @@ export async function GuestProfile({ id, user }: { id: string; user: CurrentUser
             <div className="border-t border-border/70 p-4">
               {options.length > 0 && focus ? (
                 <GuestMessenger reservationId={focus.id} guest={{ name: g.fullName, phone: g.phone, email: g.email }} options={options} link={link} language={g.preferredLanguage}
-                  sent={messages.filter((m) => m.reservationId === focus.id).map((m) => ({ type: m.type, channel: m.channel, at: m.createdAt.toISOString(), by: m.sentBy?.fullName ?? null }))} />
+                  sent={messages.filter((m) => m.reservationId === focus.id).map((m) => ({ type: m.type, channel: m.channel, at: m.createdAt.toISOString(), by: m.sentBy?.fullName ?? null, doneBy: sentDoneBy.get(m.id) ?? null }))} />
               ) : (
                 <div className="flex flex-wrap gap-2">
                   {g.phone && <a href={`tel:${phone ?? g.phone}`} className={buttonVariants({ variant: "outline", size: "sm" })}><Phone />{t("Call")}</a>}
@@ -418,7 +422,9 @@ export async function GuestProfile({ id, user }: { id: string; user: CurrentUser
                         </span>
                         <span className="min-w-0 flex-1 leading-tight">
                           <span className="block text-sm font-medium">{t(GUEST_MESSAGE_TYPES[m.type as GuestMessageType] ?? m.type)}</span>
-                          <span className="block truncate text-xs text-muted-foreground">{t(CHANNEL[m.channel] ?? m.channel)} · {dateTime(m.createdAt)}{m.sentBy ? ` · ${m.sentBy.fullName}` : ""}</span>
+                          {sentDoneBy.has(m.id) ? (
+                            <span className="flex min-w-0 items-center text-xs text-muted-foreground"><span className="min-w-0 truncate">{t(CHANNEL[m.channel] ?? m.channel)} · {dateTime(m.createdAt)}{m.sentBy ? ` · ${m.sentBy.fullName}` : ""}</span><DoneByDeveloper text={sentDoneBy.get(m.id)!} /></span>
+                          ) : <span className="block truncate text-xs text-muted-foreground">{t(CHANNEL[m.channel] ?? m.channel)} · {dateTime(m.createdAt)}{m.sentBy ? ` · ${m.sentBy.fullName}` : ""}</span>}
                         </span>
                       </summary>
                       <p className="mt-2 whitespace-pre-line border-t border-dashed border-border pt-2 text-xs text-muted-foreground">{m.body}</p>

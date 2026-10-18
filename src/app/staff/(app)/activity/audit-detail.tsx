@@ -5,14 +5,23 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useT } from "@/i18n/client";
 import { msg } from "@/i18n/msg";
+import { DoneByDeveloper } from "@/components/staff/done-by-developer";
 
-export function AuditDetail({ action, before, after }: { action: string; before: unknown; after: unknown }) {
+/** Who the Developer acted as, with the tag beside it. `actedAs` ("Neema (Receptionist)") and `doneBy` (the tag's words) arrive ready from the server: set only on a Developer's entry written while working as someone. */
+export function ActedAsLine({ actedAs, doneBy }: { actedAs?: string | null; doneBy?: string | null }) {
+  const t = useT();
+  if (!actedAs) return null;
+  return <p className="text-sm"><span className="text-xs font-semibold uppercase text-muted-foreground">{t("Acted as")}</span> {actedAs}{doneBy && <DoneByDeveloper text={doneBy} />}</p>;
+}
+
+export function AuditDetail({ action, before, after, actedAs, doneBy }: { action: string; before: unknown; after: unknown; actedAs?: string | null; doneBy?: string | null }) {
   const t = useT();
   return (
     <Dialog>
       <DialogTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t("View details")} />}><Eye /></DialogTrigger>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader icon={<History />} eyebrow={t("Activity")} tone="violet"><DialogTitle className="font-mono break-all">{action}</DialogTitle></DialogHeader>
+        <ActedAsLine actedAs={actedAs} doneBy={doneBy} />
         <div className="grid gap-3 sm:grid-cols-2">
           {[[msg("Before"), before], [msg("After"), after]].map(([label, value]) => (
             <div key={label as string}>

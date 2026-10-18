@@ -9,6 +9,8 @@ import { formatTZS } from "@/lib/format";
 import { getT } from "@/i18n/server";
 import { msg } from "@/i18n/msg";
 import { friendlyAction } from "@/lib/activity-words";
+import { lineWho } from "@/lib/audit-line-who";
+import { DoneByDeveloper } from "@/components/staff/done-by-developer";
 import { MEETING_STATUS_LABEL, timeRange } from "@/lib/meeting";
 import { RESERVATION_STATUS_META } from "@/lib/reservation-status";
 import type { Prisma } from "@/generated/prisma/client";
@@ -147,7 +149,7 @@ export default async function ReservationsPage({ searchParams }: PageProps<"/sta
       db.auditLog.count({ where: { businessDate: today, action: "reservation.checked_out" } }),
       db.payment.aggregate({ where: { businessDate: today, status: "POSTED", kind: "PAYMENT", reservationId: { not: null } }, _sum: { amount: true }, _count: true }),
       db.reservation.count({ where: { OR: [{ status: "CANCELLED", cancelledAt: { gte: new Date(`${todayStr}T01:00:00Z`) } }, { status: "NO_SHOW", noShowAt: { gte: new Date(`${todayStr}T01:00:00Z`) } }] } }),
-      db.auditLog.findMany({ where: { businessDate: today, entityType: "Reservation", userId: { not: null } }, orderBy: { createdAt: "desc" }, take: 8, select: { id: true, action: true, entityId: true, createdAt: true, user: { select: { fullName: true } } } }),
+      db.auditLog.findMany({ where: { businessDate: today, entityType: "Reservation", userId: { not: null } }, orderBy: { createdAt: "desc" }, take: 8, select: { id: true, action: true, entityId: true, createdAt: true, actorType: true, actorLabel: true, user: { select: { fullName: true } } } }),
     ]);
     return { made, ins, outs, paid: paid._sum.amount ?? 0, payments: paid._count, cancels, feed };
   })() : null;
@@ -264,14 +266,18 @@ export default async function ReservationsPage({ searchParams }: PageProps<"/sta
             <p className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground"><span className="relative flex size-1.5"><span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-500 opacity-60" /><span className="relative inline-flex size-1.5 rounded-full bg-emerald-500" /></span>{t("Reception, today")}</p>
             {desk.feed.length === 0 ? <p className="py-4 text-center text-xs text-muted-foreground">{t("Nothing done on bookings yet today.")}</p> : (
               <ul className="space-y-1.5">
-                {desk.feed.map((a) => (
-                  <li key={a.id}>
-                    <Link href={a.entityId ? `/staff/reservations/${a.entityId}` : "#"} className="flex items-center gap-2 rounded-xl px-2 py-1.5 text-xs transition-colors hover:bg-muted/50">
-                      <span className="w-10 shrink-0 tabular-nums text-muted-foreground">{hhmm(a.createdAt)}</span>
-                      <span className="min-w-0 flex-1 truncate"><strong className="font-semibold">{a.user?.fullName.replace(/\s*\(.*\)/, "")}</strong> <span className="text-muted-foreground">{t(friendlyAction(a.action))}</span></span>
-                    </Link>
-                  </li>
-                ))}
+                {desk.feed.map((a) => {
+                  // A staff name loses its "(Role)"; a Developer's line never does (the brackets say who really acted), and carries the tag.
+                  const by = lineWho(t, a, { plain: true });
+                  return (
+                    <li key={a.id}>
+                      <Link href={a.entityId ? `/staff/reservations/${a.entityId}` : "#"} className="flex items-center gap-2 rounded-xl px-2 py-1.5 text-xs transition-colors hover:bg-muted/50">
+                        <span className="w-10 shrink-0 tabular-nums text-muted-foreground">{hhmm(a.createdAt)}</span>
+                        <span className={cn("min-w-0 flex-1", !by.developer && "truncate")}><strong className="font-semibold">{by.name}</strong>{by.doneBy && <DoneByDeveloper text={by.doneBy} />} <span className="text-muted-foreground">{t(friendlyAction(a.action))}</span></span>
+                      </Link>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>

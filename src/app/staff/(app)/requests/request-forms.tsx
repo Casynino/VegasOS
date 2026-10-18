@@ -20,6 +20,7 @@ import { REQUEST_TYPE_LABEL } from "@/lib/request-meta";
 import { useT } from "@/i18n/client";
 import { msg } from "@/i18n/msg";
 import type { T } from "@/i18n/translate";
+import { DoneByDeveloper } from "@/components/staff/done-by-developer";
 
 type Staff = { id: string; fullName: string; role?: string };
 const first = (n: string) => n.replace(/\s*\(.*\)/, "").split(/\s+/)[0] ?? n;
@@ -119,6 +120,8 @@ export type RequestView = {
   id: string; type: string; priority: string; status: string; description: string; source: string; resolution: string | null;
   room: string | null; guest: string | null; reservationId: string | null; createdBy: string | null; assignedTo: { id: string; fullName: string } | null;
   createdAt: string; acceptedAt: string | null; completedAt: string | null;
+  /** "Done by Developer · as Neema" (already translated) next to who logged it / who is on it / who finished it, when the Developer did it while working as someone. */
+  loggedDoneBy?: string | null; onItDoneBy?: string | null; finishedDoneBy?: string | null;
 };
 
 /**
@@ -156,8 +159,11 @@ export function RequestCard({ r, meId, now, staff, manage, boss }: { r: RequestV
         <span className={cn("grid size-8 shrink-0 place-items-center rounded-lg opacity-80", K.tone)}><K.icon className="size-4" /></span>
         <div className="min-w-0 flex-1 leading-tight">
           <p className="flex items-center gap-1.5 text-sm"><span className="truncate font-medium">{t(REQUEST_TYPE_LABEL[r.type])}</span>{r.room && <span className="shrink-0 text-xs text-muted-foreground">· {t("Room {room}", { room: r.room })}</span>}</p>
-          <p className="mt-0.5 truncate text-[11.5px] text-muted-foreground">
-            <CheckCheck className="mr-1 inline size-3 text-emerald-500" />{r.assignedTo ? (r.assignedTo.id === meId ? t("You") : first(r.assignedTo.fullName)) : t("Done")} · {clock(r.completedAt!, t)}{r.completedAt && ` · ${t("took {time}", { time: took(r.acceptedAt ?? r.createdAt, r.completedAt, t) })}`}
+          <p className="mt-0.5 flex min-w-0 items-center text-[11.5px] text-muted-foreground">
+            <span className="truncate">
+              <CheckCheck className="mr-1 inline size-3 text-emerald-500" />{r.assignedTo ? (r.assignedTo.id === meId ? t("You") : first(r.assignedTo.fullName)) : t("Done")} · {clock(r.completedAt!, t)}{r.completedAt && ` · ${t("took {time}", { time: took(r.acceptedAt ?? r.createdAt, r.completedAt, t) })}`}
+            </span>
+            {r.finishedDoneBy ? <DoneByDeveloper text={r.finishedDoneBy} /> : null}
           </p>
           {r.resolution && <p className="mt-1 text-[11.5px] text-emerald-700 dark:text-emerald-400">{t("Resolved: {text}", { text: r.resolution })}</p>}
         </div>
@@ -186,7 +192,7 @@ export function RequestCard({ r, meId, now, staff, manage, boss }: { r: RequestV
             {r.guest && <span aria-hidden>·</span>}
             {fromGuest
               ? <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/12 px-1.5 py-px font-semibold text-sky-700 dark:text-sky-300"><Smartphone className="size-3" />{t("From the guest")}{r.source === "ROOM_QR" ? ` · ${t("room QR")}` : ""}</span>
-              : <span>{t("Logged by {name}", { name: r.createdBy ? first(r.createdBy) : t("staff") })}</span>}
+              : <span>{t("Logged by {name}", { name: r.createdBy ? first(r.createdBy) : t("staff") })}{r.loggedDoneBy ? <DoneByDeveloper text={r.loggedDoneBy} /> : null}</span>}
           </p>
           {r.status === "ASSIGNED" && r.assignedTo && !mine && (
             <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-violet-500/12 px-2 py-0.5 text-[11px] font-semibold text-violet-700 dark:text-violet-200"><Hand className="size-3" />{t("Given to {name} — not accepted yet", { name: first(r.assignedTo.fullName) })}</p>
@@ -196,6 +202,7 @@ export function RequestCard({ r, meId, now, staff, manage, boss }: { r: RequestV
               <span className="size-1.5 animate-pulse rounded-full bg-amber-500" />{mine ? t("You are on it") : t("{name} is on it", { name: r.assignedTo ? first(r.assignedTo.fullName) : t("Someone") })}{r.acceptedAt ? ` · ${t("since {time}", { time: clock(r.acceptedAt, t) })}` : ""}
             </p>
           )}
+          {r.status === "IN_PROGRESS" && r.onItDoneBy && <p className="mt-1"><DoneByDeveloper text={r.onItDoneBy} className="ml-0" /></p>}
         </div>
       </div>
 

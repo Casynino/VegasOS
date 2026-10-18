@@ -16,6 +16,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import type { BookingQrEventType, MobilePaymentStatus, ReservationStatus } from "@/generated/prisma/enums";
 import type { Actor } from "./reservations";
 import { isPayLater } from "./booking-holds";
+import { lineWho } from "@/lib/audit-line-who";
 
 /**
  * HOTEL BOOKING QR (owner, 2026-10-05) — "Scan to book your stay": printed codes around the hotel (reception, the
@@ -213,11 +214,15 @@ export async function hotelQrHistory(actor: Actor, take = 30) {
   if (!has(actor, "hotel_qr.manage", "staff.activity.view")) throw new AppError("You do not have permission to see this history.", "FORBIDDEN");
   const rows = await db.auditLog.findMany({
     where: { action: { startsWith: "hotel_qr." } }, orderBy: { createdAt: "desc" }, take: Math.min(Math.max(1, take), 200),
-    select: { id: true, createdAt: true, action: true, actorLabel: true, entityId: true, before: true, after: true },
+    select: { id: true, createdAt: true, action: true, actorLabel: true, actorType: true, entityId: true, before: true, after: true },
   });
-  // Shown as it is on the page: "System" (no person) in the reader's language; names stay as written.
-  const t = rows.some((r) => !r.actorLabel) ? await getT().catch(() => englishT) : englishT;
-  return rows.map((r) => ({ id: r.id, at: r.createdAt, action: r.action, by: r.actorLabel ?? t("System"), qrId: r.entityId, before: r.before, after: r.after }));
+  // Shown as it is on the page: "System" (no person) and the Developer tag in the reader's language; names stay as written.
+  const t = rows.some((r) => !r.actorLabel || r.actorType === "DEVELOPER") ? await getT().catch(() => englishT) : englishT;
+  return rows.map((r) => {
+    // A staff name loses its "(Role)"; a Developer's line never does ("Nino (Developer) as Neema (Receptionist)") and carries the tag.
+    const who = lineWho(t, r, { plain: true });
+    return { id: r.id, at: r.createdAt, action: r.action, by: who.name ?? t("System"), doneBy: who.doneBy, qrId: r.entityId, before: r.before, after: r.after };
+  });
 }
 
 // ───────────────────────── What visitors do (the funnel) ─────────────────────────

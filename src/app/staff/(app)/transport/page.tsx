@@ -16,6 +16,8 @@ import { PeriodPicker, periodLabel, readPeriod } from "@/components/staff/financ
 import { cn } from "@/lib/utils";
 import { getT } from "@/i18n/server";
 import { msg } from "@/i18n/msg";
+import { doneByText } from "@/lib/done-by-text";
+import { developerMarks, markFor, type DeveloperMark } from "@/server/services/developer-marks";
 import { ConfirmTripQuick, NewRequestButton, ServicePrices, TripIcon, TripRowButton, VehicleForm, type BookingOpt, type ServiceOpt, type TripView } from "./transport-forms";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -79,6 +81,8 @@ export default async function TransportPage({ searchParams }: PageProps<"/staff/
     ...staying,
     ...arrivingRes.map((r) => ({ id: r.id, name: r.guest.fullName, phone: r.guest.phone, email: r.guest.email, label: `${t("Arrives {date}", { date: t.date(fromDbDate(r.arrivalDate)) })} · ${r.reference}`, staying: false })),
   ];
+  // "Done by Developer" beside "confirmed by": one lookup for the trips on screen; a failed lookup shows no tag.
+  const confirmMarks = await developerMarks("TransportTrip", trips.filter((x) => x.confirmedBy).map((x) => x.id), { actions: ["transport.confirmed"] }).catch(() => new Map<string, DeveloperMark[]>());
   const view = (trip: (typeof trips)[number]): TripView => ({
     id: trip.id, reference: trip.reference, type: trip.type, status: trip.status, source: trip.source,
     passengerName: trip.passengerName, passengerPhone: trip.passengerPhone, passengerEmail: trip.passengerEmail,
@@ -87,7 +91,7 @@ export default async function TransportPage({ searchParams }: PageProps<"/staff/
     reservation: trip.reservation, reservationRef: trip.reservationRef, roomNumber: trip.roomNumber,
     driverName: trip.driverName, driverPhone: trip.driverPhone, vehicleName: trip.vehicleName, vehiclePlate: trip.vehiclePlate,
     price: trip.charge ?? 0, priceOption: trip.priceOption, standardPrice: trip.standardPrice, priceReason: trip.priceReason, priceAdjustedBy: trip.priceAdjustedBy?.fullName ?? null,
-    confirmedBy: trip.confirmedBy?.fullName ?? null, cancelReason: trip.cancelReason,
+    confirmedBy: trip.confirmedBy?.fullName ?? null, confirmedDoneBy: trip.confirmedBy ? doneByText(t, markFor(confirmMarks, trip.id)) : null, cancelReason: trip.cancelReason,
     money: tripMoney(trip), paidInto: trip.sales[0]?.account.name ?? null,
   });
   const canConfirm = can(user, "transport.request") || can(user, "transport.manage");

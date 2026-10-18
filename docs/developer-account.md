@@ -216,6 +216,16 @@ Who may read the audit trail: **the Boss, the MD and the Developer**. Nobody els
 
 **Review it every week** (see section 11).
 
+## 7b. "Done by Developer" on the record screens (owner, 2026-10-18)
+
+When the Developer works as someone, every screen that says who did a record also says the Developer did it: a small tag, "Done by Developer · as Neema", sits **beside** the stored name (never inside it), the same for every reader. Audit-derived lines (the Boss's Audit and Activity pages, the booking/group/guest/Finance/Hotel QR histories) print the whole label, "Nino (Developer) as Neema (Receptionist)", and are no longer cut at the bracket.
+
+- **No schema change.** The audit row is the mark: it is written with `actorType DEVELOPER` and `after.actingAs`. Stored author ids on the records stay the staff member's (the flows that depend on them are untouched).
+- Code: `src/lib/audit-who.ts` (whole label), `src/lib/audit-line-who.ts` (line helper), `src/lib/done-by-text.ts` (the tag text, already in the reader's language), `src/server/services/developer-marks.ts` (batched lookup by entity; a step is matched by action, time and person), `src/server/services/order-done-by.ts`, `guest-message-marks.ts`, and the component `src/components/staff/done-by-developer.tsx`. A failed lookup shows no tag and no error.
+- **Never marked:** money records (payments, reversals, charge authors, shifts, accounts, withdrawals) — the Developer cannot do them anyway. Own-work readers keyed on the user id (staff performance, shifts, shift and staff reports) are not touched.
+- New audit row `restaurant_order.item_prepared` (first tick that moves an item to preparing only), so a Developer working as a cook is visible.
+- Known limits: the time match is a few seconds wide (5 s on orders, 10 s on stays); "Given to" and "Looked after by" lines name who a request was given to, not who acted, so they carry no tag (the history lines do).
+
 ## 8. What the Developer cannot do: write money, or decide about it
 
 The Developer can look at everything about money (the finance pages, the ledger, the reports) but **cannot write it and cannot decide about it**. The server refuses it, whatever the screen shows. **This is the same while you work as someone else:** the person's rights are given to you with every one of these taken out.

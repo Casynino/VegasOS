@@ -10,6 +10,8 @@ import { LiveRefresh } from "@/components/live-refresh";
 import { cn } from "@/lib/utils";
 import { NewRequestDialog, RequestCard, type RequestView } from "./request-forms";
 import { getT } from "@/i18n/server";
+import { doneByText } from "@/lib/done-by-text";
+import { developerMarks, markFor, type DeveloperMark } from "@/server/services/developer-marks";
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getT())("Guest requests") };
@@ -36,6 +38,10 @@ export default async function RequestsPage() {
     db.reservation.findMany({ where: { status: "CHECKED_IN" }, include: { guest: true, rooms: { where: { status: "CHECKED_IN" }, include: { room: true } } }, orderBy: { guest: { fullName: "asc" } } }),
     requestHandlers(),
   ]);
+  // "Done by Developer": who logged it, who is on it and who finished it are the staff members as stored; when the Developer did it while working
+  // as them, a tag says so (read from the audit rows of these requests, one lookup; a failed lookup shows no tag). "Given to" names who it was given to, not who acted: no tag there.
+  const marks = await developerMarks("ServiceRequest", rows.map((r) => r.id), { actions: ["request.created", "complaint.logged", "request.accepted", "request.updated", "complaint.resolved"] }).catch(() => new Map<string, DeveloperMark[]>());
+  const tag = (r: (typeof rows)[number], actions: string[], near?: Date | null) => (near === null ? null : doneByText(t, markFor(marks, r.id, { actions, near: near ?? undefined, windowMs: 10_000 })));
   const manage = can(user, "requests.manage");
   // Managers, the MD and the owner give requests to people (and close complaints); reception accepts and does them.
   const boss = !isDeskUser(user) && (["dashboard.manager", "dashboard.owner", "dashboard.admin"] as const).some((p) => can(user, p));
@@ -47,6 +53,9 @@ export default async function RequestsPage() {
     room: r.room?.number ?? null, guest: r.guest?.fullName ?? null, reservationId: r.reservationId,
     createdBy: r.createdBy?.fullName ?? null, assignedTo: r.assignedTo,
     createdAt: r.createdAt.toISOString(), acceptedAt: r.acceptedAt?.toISOString() ?? null, completedAt: r.completedAt?.toISOString() ?? null,
+    loggedDoneBy: r.source === "STAFF" && r.createdBy ? tag(r, ["request.created", "complaint.logged"]) : null,
+    onItDoneBy: r.status === "IN_PROGRESS" ? tag(r, ["request.accepted", "request.updated"], r.acceptedAt) : null,
+    finishedDoneBy: r.status === "COMPLETED" ? tag(r, ["request.updated", "complaint.resolved"], r.completedAt) : null,
   });
   const mine = (r: (typeof rows)[number]) => r.assignedToId === user.id;
   // Waiting: yours first, then the most pressing, then the oldest.

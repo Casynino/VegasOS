@@ -40,6 +40,7 @@ import { useT } from "@/i18n/client";
 import { msg } from "@/i18n/msg";
 import { orderItemName } from "@/i18n/content";
 import { englishT, type T } from "@/i18n/translate";
+import { DoneByDeveloper } from "@/components/staff/done-by-developer";
 
 export type TablePlace = Omit<FloorPlace, "qrToken"> & { url: string; qr: string };
 type Line = SessionOrder["items"][number];
@@ -830,7 +831,7 @@ function OrderBlock({ o, can, canTakeOff, onTakeOff, stays = [] }: { o: SessionO
   );
 }
 
-function Timeline({ items }: { items: SessionView["timeline"] }) {
+export function Timeline({ items }: { items: SessionView["timeline"] }) {
   const t = useT();
   const tone = (k: string) => k === "PAYMENT" || k === "PAID" || k === "CLOSED" ? "bg-emerald-400" : k === "MOVED" ? "bg-sky-400" : k === "BILL_REQUESTED" ? "bg-amber-400" : k.includes("CANCEL") || k.includes("REVERSED") ? "bg-rose-400" : "bg-[oklch(0.8_0.11_82)]";
   return (
@@ -844,7 +845,7 @@ function Timeline({ items }: { items: SessionView["timeline"] }) {
               ? <BedDouble className={cn("mt-[3px] size-3.5", x.kind === "OFF_ROOM" ? "text-sky-300" : "text-violet-300")} />
               : <span className={cn("mt-1.5 size-2 rounded-full", tone(x.kind))} />}
           </span>
-          <span className="min-w-0 flex-1 leading-snug">{x.text}{x.by && <span className="text-xs text-muted-foreground"> · {x.by}</span>}</span>
+          <span className="min-w-0 flex-1 leading-snug">{x.text}{x.by && <span className="text-xs text-muted-foreground"> · {x.by}</span>}{x.doneBy && <DoneByDeveloper text={x.doneBy} />}</span>
         </li>
       ))}
     </ol>

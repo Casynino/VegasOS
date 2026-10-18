@@ -15,6 +15,7 @@ import {
 import { saveTranslation, translationForms, type TranslationForm } from "@/server/services/translations";
 import { msg } from "@/i18n/msg";
 import { getT } from "@/i18n/server";
+import { auditWho } from "@/lib/audit-who";
 import { LOCALES, type Locale } from "@/i18n/config";
 
 async function actor(user: CurrentUser) {
@@ -125,8 +126,9 @@ export async function payTripDirectAction(input: { tripId: string; accountId: st
 export async function tripHistoryAction(input: { tripId: string }) {
   return runAction(async () => {
     await authorize("transport.view", "transport.manage");
-    const rows = await db.auditLog.findMany({ where: { entityType: "TransportTrip", entityId: input.tripId }, orderBy: { createdAt: "asc" }, select: { id: true, action: true, actorLabel: true, createdAt: true, after: true } });
-    return rows.map((r) => ({ id: r.id, action: r.action, by: r.actorLabel, at: r.createdAt.toISOString(), reason: (r.after as { reason?: string } | null)?.reason ?? null }));
+    const rows = await db.auditLog.findMany({ where: { entityType: "TransportTrip", entityId: input.tripId }, orderBy: { createdAt: "asc" }, select: { id: true, action: true, actorLabel: true, actorType: true, createdAt: true, after: true } });
+    // A Developer's line says so in full ("Nino (Developer) as Neema (Receptionist)"); anyone else's is the name as written.
+    return rows.map((r) => ({ id: r.id, action: r.action, by: auditWho({ actorType: r.actorType, actorLabel: r.actorLabel }).name, at: r.createdAt.toISOString(), reason: (r.after as { reason?: string } | null)?.reason ?? null }));
   });
 }
 

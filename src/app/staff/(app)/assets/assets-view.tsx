@@ -10,6 +10,7 @@ import { Chip, GoldButton, Label, field, num, tzs, useRun } from "../inventory/u
 import { useT } from "@/i18n/client";
 import { msg } from "@/i18n/msg";
 import type { T } from "@/i18n/translate";
+import { DoneByDeveloper } from "@/components/staff/done-by-developer";
 
 export type AssetRow = {
   id: string; code: string; name: string; category: string; location: string | null; quantity: number; purchaseDate: string | null; purchaseCost: number | null;
@@ -200,7 +201,7 @@ function StateForm({ a, onDone }: { a: AssetRow; onDone: () => void }) {
 
 function AssetHistory({ id }: { id: string }) {
   const t = useT();
-  const [rows, setRows] = useState<{ id: string; kind: string; from: string | null; to: string | null; quantity: number | null; note: string | null; at: string; by: string }[] | null>(null);
+  const [rows, setRows] = useState<{ id: string; kind: string; from: string | null; to: string | null; quantity: number | null; note: string | null; at: string; by: string; doneBy?: string | null }[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => { assetHistoryAction({ id }).then((r) => (r.ok ? setRows(r.data) : setError(r.error))); }, [id]);
   if (error) return <p className="text-sm text-destructive">{error}</p>;
@@ -209,7 +210,7 @@ function AssetHistory({ id }: { id: string }) {
   return <MoveList rows={rows} />;
 }
 
-export function MoveList({ rows, withAsset }: { rows: { id: string; kind: string; from: string | null; to: string | null; quantity: number | null; note: string | null; at: string; by: string; asset?: { code: string; name: string } }[]; withAsset?: boolean }) {
+export function MoveList({ rows, withAsset }: { rows: { id: string; kind: string; from: string | null; to: string | null; quantity: number | null; note: string | null; at: string; by: string; doneBy?: string | null; asset?: { code: string; name: string } }[]; withAsset?: boolean }) {
   const t = useT();
   return (
     <ul className="divide-y divide-border/60">
@@ -221,7 +222,7 @@ export function MoveList({ rows, withAsset }: { rows: { id: string; kind: string
             <span>{label(m.kind, m.from, t)}</span><ArrowRight className="size-3.5 text-muted-foreground" /><span className="font-semibold">{label(m.kind, m.to, t)}</span>
           </p>
           {m.note && <p className="text-xs text-muted-foreground">{m.note}</p>}
-          <p className="text-[11px] text-muted-foreground/80">{t.dateTime(m.at)} · {m.by}</p>
+          <p className="text-[11px] text-muted-foreground/80">{t.dateTime(m.at)} · {m.by}{m.doneBy ? <DoneByDeveloper text={m.doneBy} /> : null}</p>
         </li>
       ))}
     </ul>

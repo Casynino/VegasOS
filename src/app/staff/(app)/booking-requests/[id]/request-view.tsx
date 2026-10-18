@@ -20,10 +20,19 @@ import { BOOKING_REQUEST_STATUS } from "@/lib/booking-request-meta";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
 import { AssignSelect, ConvertForm, ConvertMeetingForm, LogContactForm, RelinkCustomer, StatusControls } from "../forms";
+import { DoneByDeveloper } from "@/components/staff/done-by-developer";
+import { doneByText } from "@/lib/done-by-text";
+import { developerMarks, markFor, type DeveloperMark } from "@/server/services/developer-marks";
 
 const EVENT_LABEL: Record<string, string> = {
   SUBMITTED: msg("Request received"), STATUS_CHANGED: msg("Status changed"), CONTACTED: msg("Customer contacted"), NOTE: msg("Note"),
   ASSIGNED: msg("Assignment"), CUSTOMER_LINKED: msg("Customer profile"), CONVERTED: msg("Reservation created"),
+};
+
+/** The audit action each kind of history line is written with (the "Done by Developer" tag looks for it). */
+const EVENT_ACTION: Record<string, string> = {
+  SUBMITTED: "booking_request.submitted", STATUS_CHANGED: "booking_request.status_changed", CONTACTED: "booking_request.contacted",
+  ASSIGNED: "booking_request.assigned", CUSTOMER_LINKED: "booking_request.customer_linked", CONVERTED: "booking_request.converted",
 };
 
 /**
@@ -56,6 +65,10 @@ export async function BookingRequestView({ id, user, inline = false }: { id: str
     canConvert ? billMenu() : Promise.resolve(null),
     getSettings(),
   ]);
+  // "Done by Developer": a history line, or "Handled by", that the Developer made while working as someone says so next to the name (one lookup; a
+  // failed lookup shows no tag). "Looked after by" says who it was given to, not who acted, so it carries no tag.
+  const marks = await developerMarks("BookingRequest", [r.id], { actions: Object.values(EVENT_ACTION) }).catch(() => new Map<string, DeveloperMark[]>());
+  const doneBy = (action: string[], near: Date) => doneByText(t, markFor(marks, r.id, { actions: action, near, windowMs: 10_000 }));
   const meta = BOOKING_REQUEST_STATUS[r.status];
   const nights = diffDays(r.checkIn, r.checkOut);
   const requested = availability?.find((x) => x.id === r.roomTypeId);
@@ -199,6 +212,7 @@ export async function BookingRequestView({ id, user, inline = false }: { id: str
                   {e.note && <p className="text-muted-foreground">{e.note}</p>}
                   <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
                     <Clock className="size-3" />{when(e.contactedAt ?? e.createdAt)} · {e.actor?.fullName ?? (e.type === "SUBMITTED" ? t("Customer") : t("System"))}
+                    {e.actor && EVENT_ACTION[e.type] && (() => { const text = doneBy([EVENT_ACTION[e.type]], e.createdAt); return text ? <DoneByDeveloper text={text} className="ml-0.5" /> : null; })()}
                   </p>
                 </li>
               ))}
@@ -246,7 +260,7 @@ export async function BookingRequestView({ id, user, inline = false }: { id: str
               <Row label={t("Looked after by")}>
                 {editable ? <AssignSelect id={r.id} assignedToId={r.assignedToId ?? ""} staff={staff} /> : r.assignedTo?.fullName ?? <Dash />}
               </Row>
-              {r.handledBy && <Row label={t("Handled by")}>{r.handledBy.fullName}{r.handledAt && ` · ${when(r.handledAt)}`}</Row>}
+              {r.handledBy && <Row label={t("Handled by")} tag={r.handledAt ? doneBy(["booking_request.status_changed", "booking_request.converted"], r.handledAt) : null}>{r.handledBy.fullName}{r.handledAt && ` · ${when(r.handledAt)}`}</Row>}
             </dl>
           </Box>
         </aside>
@@ -261,11 +275,13 @@ function Box({ children, className }: { children: React.ReactNode; className?: s
   return <section className={cn("overflow-hidden rounded-2xl border border-border/70 bg-card", className)}>{children}</section>;
 }
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
+function Row({ label, children, tag }: { label: string; children: React.ReactNode; tag?: string | null }) {
   return (
     <div className="flex items-center justify-between gap-4 px-4 py-2.5">
       <dt className="shrink-0 text-muted-foreground">{label}</dt>
-      <dd className="min-w-0 truncate text-right font-medium">{children}</dd>
+      {tag
+        ? <dd className="min-w-0 text-right"><span className="block truncate font-medium">{children}</span><DoneByDeveloper text={tag} className="ml-0 mt-0.5" /></dd>
+        : <dd className="min-w-0 truncate text-right font-medium">{children}</dd>}
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { withoutDeveloper } from "@/server/staff-pickers";
 import { businessToday } from "@/server/settings";
 import { financeHistory, HISTORY_GROUPS, type HistoryGroup } from "@/server/services/finance-history";
 import { Initials } from "@/components/dashboard/kit";
+import { DoneByDeveloper } from "@/components/staff/done-by-developer";
 import { FinanceTabs, PeriodPicker, periodLabel, readPeriod } from "@/components/staff/finance/finance-nav";
 import { AutoSelect } from "@/components/staff/finance/auto-select";
 import { cn } from "@/lib/utils";
@@ -70,7 +71,7 @@ export default async function EditHistoryPage({ searchParams }: PageProps<"/staf
               <div className="flex flex-wrap items-start gap-3">
                 <Initials name={i.who} className="size-9 text-xs" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm"><strong>{i.who === "System" ? t("System") : i.who}</strong> {t(i.label)}
+                  <p className="text-sm"><strong>{i.who === "System" ? t("System") : i.who}</strong>{i.doneBy && <DoneByDeveloper text={i.doneBy} />} {t(i.label)}
                     {i.href ? <> · <Link href={i.href} className="font-medium underline-offset-2 hover:underline">{rec(i.record)}</Link></> : <> · <span className="font-medium">{rec(i.record)}</span></>}
                   </p>
                   <p className="text-xs text-muted-foreground">{t.dateTime(i.at)}</p>

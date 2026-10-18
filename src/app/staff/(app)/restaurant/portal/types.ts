@@ -16,6 +16,9 @@ export type PortalItem = {
   paid: boolean;
 };
 
+/** The tags of the Developer's steps on an order (null: none). */
+export type PortalDoneBy = { created: string | null; accepted: string | null; ready: string | null; taken: string | null; delivered: string | null };
+
 /** A payment taken for the order: who collected it and who at reception confirmed it (or that it was reversed). */
 export type PortalPayment = {
   id: string; amount: number; account: string; reference: string | null; status: string;
@@ -57,6 +60,11 @@ export type PortalOrder = {
   noteCodes: string[];
   createdAt: string; acceptedAt: string | null; readyAt: string | null; takenAt: string | null; deliveredAt: string | null; doneAt: string | null;
   acceptedBy: string | null; readyBy: string | null; takenBy: string | null; deliveredBy: string | null;
+  /**
+   * "Done by Developer · as Neema" (already in the reader's language) for each step the Developer made while working as someone; shown NEXT TO the
+   * name, never inside it. null = no step has a mark. The stored people above are not changed.
+   */
+  doneBy?: PortalDoneBy | null;
   items: PortalItem[];
   /** Money — null for the cook. */
   /** A Spin to Win complimentary gift: no money on it (total, payment and due are empty); `giftValue` = what it is worth. */

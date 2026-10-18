@@ -5,6 +5,9 @@ import { fromDbDate, type BusinessDate } from "@/lib/time/business-date";
 import { msg } from "@/i18n/msg";
 import { getT } from "@/i18n/server";
 import { englishT } from "@/i18n/translate";
+import { auditWho } from "@/lib/audit-who";
+import { doneByText } from "@/lib/done-by-text";
+import { developerMarks, markFor, MARK_CHECKED_IN, MARK_CHECKED_OUT, type DeveloperMark } from "./developer-marks";
 
 /**
  * The room control page: one physical room's situation right now — its type and price
@@ -34,6 +37,8 @@ const AUDIT_WORDS: Record<string, string> = {
 export type RoomEvent = {
   at: string; kind: "in" | "out" | "status" | "move" | "charge" | "order" | "payment" | "change";
   title: string; detail?: string | null; by?: string | null; amount?: number | null; href?: string | null;
+  /** "Done by Developer · as Neema" (already in the reader's language) when the Developer, working as someone, did it; shown NEXT TO the name. */
+  doneBy?: string | null;
 };
 
 export async function roomControl(roomId: string, today: BusinessDate, now = new Date()) {
@@ -98,24 +103,33 @@ export async function roomControl(roomId: string, today: BusinessDate, now = new
     }),
     db.roomAssignment.findMany({
       where: { OR: [{ fromRoomId: roomId }, { toRoomId: roomId }] }, orderBy: { changedAt: "desc" }, take: 12,
-      include: { fromRoom: { select: { number: true } }, toRoom: { select: { number: true } }, changedBy: { select: { fullName: true } } },
+      include: { fromRoom: { select: { number: true } }, toRoom: { select: { number: true } }, changedBy: { select: { fullName: true } }, reservationRoom: { select: { reservationId: true } } },
     }),
     r ? db.auditLog.findMany({ where: { entityType: "Reservation", entityId: r.id, action: { in: Object.keys(AUDIT_WORDS) } }, orderBy: { createdAt: "desc" }, take: 20, include: { user: { select: { fullName: true } } } }) : Promise.resolve([]),
   ]);
+  // "Done by Developer": the audit row tells when the Developer, working as someone, did a status change, a check-in/out or a move. One lookup for the
+  // room and one for its bookings; a failed lookup shows no tag. The stored staff member is unchanged.
+  const none = () => new Map<string, DeveloperMark[]>();
+  const [roomMarks, resMarks] = await Promise.all([
+    developerMarks("Room", [roomId], { actions: ["room.status_changed"] }).catch(none),
+    developerMarks("Reservation", [...stays.map((x) => x.reservation.id), ...moves.map((m) => m.reservationRoom.reservationId), r?.id], { actions: [...MARK_CHECKED_IN, ...MARK_CHECKED_OUT, "reservation.room_changed", "reservation.room_assigned"] }).catch(none),
+  ]);
+  const SAME_CALL = 10_000; // the audit row is written in the same step as the record (a few seconds at most), so a close entry is this record's, not a neighbour's
+  const doneBy = (m: DeveloperMark | null) => doneByText(t, m);
   const ev: RoomEvent[] = [];
   const status = (x: string) => ({ AVAILABLE: msg("Available"), READY: msg("Clean & ready"), RESERVED: msg("Reserved"), OCCUPIED: msg("Occupied"), DIRTY: msg("Needs cleaning"), CLEANING: msg("Cleaning"), MAINTENANCE: msg("Maintenance"), OUT_OF_SERVICE: msg("Out of service") } as Record<string, string>)[x] ?? x;
-  for (const h of statuses) ev.push({ at: h.changedAt.toISOString(), kind: "status", title: `${t(status(h.fromStatus))} → ${t(status(h.toStatus))}`, detail: h.note, by: h.changedBy?.fullName ?? t("System") });
+  for (const h of statuses) ev.push({ at: h.changedAt.toISOString(), kind: "status", title: `${t(status(h.fromStatus))} → ${t(status(h.toStatus))}`, detail: h.note, by: h.changedBy?.fullName ?? t("System"), doneBy: h.changedBy ? doneBy(markFor(roomMarks, roomId, { near: h.changedAt, who: h.changedBy?.fullName })) : null });
   for (const st of stays) {
     const who = st.reservation.guest.fullName, href = `/staff/reservations/${st.reservation.id}`;
-    if (st.checkedInAt) ev.push({ at: st.checkedInAt.toISOString(), kind: "in", title: t("{name} checked in", { name: who }), detail: st.reservation.reference, by: st.checkedInBy?.fullName, href });
-    if (st.checkedOutAt) ev.push({ at: st.checkedOutAt.toISOString(), kind: "out", title: t("{name} checked out", { name: who }), detail: st.reservation.reference, by: st.checkedOutBy?.fullName, href });
+    if (st.checkedInAt) ev.push({ at: st.checkedInAt.toISOString(), kind: "in", title: t("{name} checked in", { name: who }), detail: st.reservation.reference, by: st.checkedInBy?.fullName, href, doneBy: doneBy(markFor(resMarks, st.reservation.id, { actions: MARK_CHECKED_IN, near: st.checkedInAt, windowMs: SAME_CALL, who: st.checkedInBy?.fullName })) });
+    if (st.checkedOutAt) ev.push({ at: st.checkedOutAt.toISOString(), kind: "out", title: t("{name} checked out", { name: who }), detail: st.reservation.reference, by: st.checkedOutBy?.fullName, href, doneBy: doneBy(markFor(resMarks, st.reservation.id, { actions: MARK_CHECKED_OUT, near: st.checkedOutAt, windowMs: SAME_CALL, who: st.checkedOutBy?.fullName })) });
   }
-  for (const m of moves) ev.push({ at: m.changedAt.toISOString(), kind: "move", title: t("Guest moved {from} → {to}", { from: m.fromRoom.number, to: m.toRoom.number }), detail: m.reason, by: m.changedBy?.fullName, amount: m.charged || null });
+  for (const m of moves) ev.push({ at: m.changedAt.toISOString(), kind: "move", title: t("Guest moved {from} → {to}", { from: m.fromRoom.number, to: m.toRoom.number }), detail: m.reason, by: m.changedBy?.fullName, amount: m.charged || null, doneBy: doneBy(markFor(resMarks, m.reservationRoom.reservationId, { actions: ["reservation.room_changed", "reservation.room_assigned"], near: m.changedAt, windowMs: SAME_CALL, who: m.changedBy?.fullName })) });
   if (r) {
     for (const c of r.charges) ev.push({ at: c.createdAt.toISOString(), kind: "charge", title: `${t(group(c.kind))} · ${c.description}`, by: c.createdById ? staff.get(c.createdById) : t("Guest (online)"), amount: c.amount });
     for (const p of r.payments) ev.push({ at: p.receivedAt.toISOString(), kind: "payment", title: t(p.kind === "REFUND" ? msg("Refund given") : p.status === "REVERSED" ? msg("Payment (reversed)") : msg("Payment received")), detail: `${p.method.name} · ${p.account.name}`, by: p.recordedBy.fullName, amount: p.kind === "REFUND" ? -p.amount : p.amount });
     for (const o of r.restaurantOrders) ev.push({ at: o.createdAt.toISOString(), kind: "order", title: t("Order {number}", { number: o.number }), detail: o.items.map((i) => `${i.quantity} × ${i.name}`).join(", "), amount: o.total });
-    for (const a of audits) ev.push({ at: a.createdAt.toISOString(), kind: "change", title: AUDIT_WORDS[a.action] ? t(AUDIT_WORDS[a.action]) : a.action, by: a.user?.fullName ?? a.actorLabel });
+    for (const a of audits) ev.push({ at: a.createdAt.toISOString(), kind: "change", title: AUDIT_WORDS[a.action] ? t(AUDIT_WORDS[a.action]) : a.action, by: auditWho({ actorType: a.actorType, actorLabel: a.actorLabel, userName: a.user?.fullName }).name });
   }
 
   // The live status staff read at a glance.
@@ -136,6 +150,7 @@ export async function roomControl(roomId: string, today: BusinessDate, now = new
       guest: r.guest, company: r.companyName, groupName: r.group?.name ?? null, guestToken: r.guestToken,
       adults: focusRR.adults, children: focusRR.children,
       checkIn: (focusRR.checkedInAt ?? focusRR.startAt).toISOString(), checkedInBy: focusRR.checkedInBy?.fullName ?? null, checkedIn: !!focusRR.checkedInAt,
+      checkedInDoneBy: focusRR.checkedInAt && focusRR.checkedInBy ? doneBy(markFor(resMarks, r.id, { actions: MARK_CHECKED_IN, near: focusRR.checkedInAt, windowMs: SAME_CALL, who: focusRR.checkedInBy?.fullName })) : null,
       checkOut: (focusRR.lateCheckoutUntil ?? focusRR.endAt).toISOString(), arrival: fromDbDate(focusRR.arrivalDate), departure: fromDbDate(focusRR.departureDate),
       nights: focusRR.isDayUse ? 0 : focusRR.nights, rate: focusRR.ratePerNight, discountPerNight: focusRR.discountPerNight,
       roomGross: focusRR.grossAmount, roomDiscount: focusRR.discountAmount, roomNet: focusRR.netAmount,

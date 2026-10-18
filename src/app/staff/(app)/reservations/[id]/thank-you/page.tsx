@@ -16,6 +16,8 @@ import { SendDocument } from "@/components/staff/invoices/send-document";
 import { AutoPrint } from "@/components/staff/invoices/auto-print";
 import { MakeNote, PrintNote } from "./controls";
 import { getT } from "@/i18n/server";
+import { doneByText } from "@/lib/done-by-text";
+import { developerMarks, markFor, type DeveloperMark } from "@/server/services/developer-marks";
 import { DEFAULT_LOCALE, LOCALE_META } from "@/i18n/config";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -36,6 +38,9 @@ export default async function ThankYouPage({ params, searchParams }: PageProps<"
   if (!r) notFound();
   const wanted = Number(sp.v) || null;
   const note = notes.find((x) => x.version === wanted) ?? notes[0] ?? null;
+  // "Done by Developer": a version the Developer made while working as someone says so in its tooltip, after the name (a failed lookup shows nothing).
+  const marks = await developerMarks("Reservation", [r.id], { actions: ["thank_you.generated", "thank_you.regenerated"] }).catch(() => new Map<string, DeveloperMark[]>());
+  const doneBy = (at: Date) => doneByText(t, markFor(marks, r.id, { near: at, windowMs: 10_000 }));
   const canRemake = can(user, "reservations.checkout_override") || can(user, "invoices.manage");
   const link = note ? `${await siteOrigin()}/thanks/${note.token}` : null;
   // The same message as at check-out: the final bill and the thank-you link, in the one Vegas format — in the guest's language.
@@ -76,7 +81,7 @@ export default async function ThankYouPage({ params, searchParams }: PageProps<"
               <History className="size-4 text-muted-foreground" /><span className="text-muted-foreground">{t("Versions")}</span>
               {notes.map((x) => (
                 <Link key={x.id} href={`?v=${x.version}`} className={cn("rounded-full border px-2.5 py-0.5", x.id === note.id ? "border-foreground bg-foreground text-background" : "border-border hover:bg-muted")}
-                  title={`${t.locale === DEFAULT_LOCALE ? formatDateTime(x.createdAt) : t.dateTime(x.createdAt)}${x.createdBy ? ` · ${x.createdBy.fullName}` : ""}${x.reason ? ` · ${x.reason}` : ""}`}>
+                  title={`${t.locale === DEFAULT_LOCALE ? formatDateTime(x.createdAt) : t.dateTime(x.createdAt)}${x.createdBy ? ` · ${x.createdBy.fullName}` : ""}${doneBy(x.createdAt) ? ` · ${doneBy(x.createdAt)}` : ""}${x.reason ? ` · ${x.reason}` : ""}`}>
                   v{x.version}{x === notes[0] ? ` · ${t("latest")}` : ""}
                 </Link>
               ))}

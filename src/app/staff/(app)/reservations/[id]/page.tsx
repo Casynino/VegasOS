@@ -52,6 +52,10 @@ import { msg } from "@/i18n/msg";
 import { getT } from "@/i18n/server";
 import { orderItemName } from "@/i18n/content";
 import { DEFAULT_LOCALE } from "@/i18n/config";
+import { DoneByDeveloper } from "@/components/staff/done-by-developer";
+import { doneByText } from "@/lib/done-by-text";
+import { messageDoneBy } from "@/server/services/guest-message-marks";
+import { developerMarks, markFor, MARK_CHECKED_IN, MARK_CHECKED_OUT, MARK_CREATED, type DeveloperMark } from "@/server/services/developer-marks";
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getT())("Reservation") };
@@ -139,6 +143,15 @@ export default async function ReservationPage({ params, searchParams }: PageProp
   const orders = [...roomOrders, ...ownOrders.filter((o) => !seen.has(o.id) && o.status !== "CANCELLED")].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   const orderMenu = bill?.categories ?? [];
   const staffList = can(user, "requests.manage") ? await requestHandlers() : [];
+  // "Done by Developer": when the Developer, working as a staff member, made the booking, checked in/out, moved the room or took the order, the
+  // line says so next to the name (the stored staff member is unchanged). A failed lookup shows no tag, never an error.
+  const none = () => new Map<string, DeveloperMark[]>();
+  const [resMarks, orderMarks] = await Promise.all([
+    developerMarks("Reservation", [r.id]).catch(none),
+    developerMarks("RestaurantOrder", orders.map((o) => o.id), { actions: ["restaurant_order.created"] }).catch(none),
+  ]);
+  const doneBy = (m: DeveloperMark | null) => { const text = doneByText(t, m); return text ? <DoneByDeveloper text={text} /> : null; };
+  const SAME_CALL = 10_000; // the audit row is written in the same step as the record (a few seconds at most), so a close entry is this record's, not a neighbour's
 
   const roomNumbers = new Map((await db.room.findMany({ where: { id: { in: [...new Set(r.rooms.flatMap((x) => x.nightsLedger.map((n) => n.roomId)))] } }, select: { id: true, number: true } })).map((x) => [x.id, x.number]));
   const meta = RESERVATION_STATUS_META[r.status];
@@ -214,6 +227,7 @@ export default async function ReservationPage({ params, searchParams }: PageProp
     r.status === "CHECKED_OUT" && !meeting ? db.thankYouNote.findFirst({ where: { reservationId: r.id }, orderBy: { version: "desc" }, select: { token: true } }) : null,
     db.guestMessage.findMany({ where: { reservationId: r.id }, orderBy: { createdAt: "desc" }, take: 20, include: { sentBy: { select: { fullName: true } } } }),
   ]);
+  const sentDoneBy = await messageDoneBy(t, sentMsgs);
   const [updatedMsg, billMsg, paidMsg, checkoutMsg, cancelledMsg] = await Promise.all([
     notArrived ? reservationMessage(r.id, "UPDATED", origin) : null,
     (r.status === "CHECKED_IN" || r.status === "CHECKED_OUT") && r.balanceAmount > 0 && r.billTo === "GUEST" ? reservationMessage(r.id, "BALANCE", origin) : null,
@@ -288,7 +302,7 @@ export default async function ReservationPage({ params, searchParams }: PageProp
             ))}
             {mr && <p className="mt-1 text-sm font-semibold text-violet-700 dark:text-violet-300">{t("Room {room}", { room: mr.room.number })} — {t(mr.roomType.name)} · {timeRange(mr.startAt, mr.endAt)}{meeting && r.companyName ? ` · ${t("contact {name}", { name: r.guest.fullName })}` : ""}</p>}
             <p className="mt-1 text-sm text-muted-foreground">
-              <span className="font-mono">{r.reference}</span> · {t(r.source.name)}{r.externalReference && ` · ${r.externalReference}`} · {t("booked {date} by {name}", { date: t.dateTime(r.createdAt), name: r.createdBy?.fullName ?? t(r.source.name) })}
+              <span className="font-mono">{r.reference}</span> · {t(r.source.name)}{r.externalReference && ` · ${r.externalReference}`} · {t("booked {date} by {name}", { date: t.dateTime(r.createdAt), name: r.createdBy?.fullName ?? t(r.source.name) })}{doneBy(markFor(resMarks, r.id, { actions: MARK_CREATED, near: r.createdAt, windowMs: SAME_CALL, who: r.createdBy?.fullName }))}
             </p>
           </div>
           {!["CANCELLED", "INQUIRY"].includes(r.status) && (
@@ -457,8 +471,8 @@ export default async function ReservationPage({ params, searchParams }: PageProp
                       </details>
                     )}
                     <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                      {rr.checkedInAt && <span>{meeting ? t("Started {time} by {name}", { time: t.dateTime(rr.checkedInAt), name: rr.checkedInBy?.fullName ?? "—" }) : t("In {time} by {name}", { time: t.dateTime(rr.checkedInAt), name: rr.checkedInBy?.fullName ?? "—" })}</span>}
-                      {rr.checkedOutAt ? <span>{meeting ? t("Completed {time} by {name}", { time: t.dateTime(rr.checkedOutAt), name: rr.checkedOutBy?.fullName ?? "—" }) : t("Out {time} by {name}", { time: t.dateTime(rr.checkedOutAt), name: rr.checkedOutBy?.fullName ?? "—" })}</span> : <span className={cn(rr.status === "CHECKED_IN" && rr.endAt <= now && "font-semibold text-rose-600 dark:text-rose-400")}>{meeting ? t("Ends {time}", { time: t.dateTime(rr.endAt) }) : t("Checkout {time}", { time: t.dateTime(rr.endAt) })}</span>}
+                      {rr.checkedInAt && <span>{meeting ? t("Started {time} by {name}", { time: t.dateTime(rr.checkedInAt), name: rr.checkedInBy?.fullName ?? "—" }) : t("In {time} by {name}", { time: t.dateTime(rr.checkedInAt), name: rr.checkedInBy?.fullName ?? "—" })}{doneBy(markFor(resMarks, r.id, { actions: MARK_CHECKED_IN, near: rr.checkedInAt, windowMs: SAME_CALL, who: rr.checkedInBy?.fullName }))}</span>}
+                      {rr.checkedOutAt ? <span>{meeting ? t("Completed {time} by {name}", { time: t.dateTime(rr.checkedOutAt), name: rr.checkedOutBy?.fullName ?? "—" }) : t("Out {time} by {name}", { time: t.dateTime(rr.checkedOutAt), name: rr.checkedOutBy?.fullName ?? "—" })}{doneBy(markFor(resMarks, r.id, { actions: MARK_CHECKED_OUT, near: rr.checkedOutAt, windowMs: SAME_CALL, who: rr.checkedOutBy?.fullName }))}</span> : <span className={cn(rr.status === "CHECKED_IN" && rr.endAt <= now && "font-semibold text-rose-600 dark:text-rose-400")}>{meeting ? t("Ends {time}", { time: t.dateTime(rr.endAt) }) : t("Checkout {time}", { time: t.dateTime(rr.endAt) })}</span>}
                       {meeting && r.specialRequests && <span className="basis-full">{t("Requirements: {text}", { text: r.specialRequests })}</span>}
                     </p>
 
@@ -563,7 +577,7 @@ export default async function ReservationPage({ params, searchParams }: PageProp
                         <span className={cn("rounded-full px-2 py-px text-[10px] font-semibold", a.source === "HOTEL" ? "bg-amber-500/15 text-amber-800 dark:text-amber-300" : a.source === "ARRIVAL" || a.source === "PAYMENT" ? "bg-muted text-muted-foreground" : "bg-sky-500/12 text-sky-700 dark:text-sky-300")}>
                           {a.source === "HOTEL" ? t("Hotel-initiated") : a.source === "ARRIVAL" ? t("Assigned at arrival") : a.source === "PAYMENT" ? t("Room checked again at payment") : t("Customer requested")}
                         </span>
-                        <span className="text-xs text-muted-foreground">{t.dateTime(a.changedAt)} · {a.changedBy?.fullName ?? "—"}</span>
+                        <span className="text-xs text-muted-foreground">{t.dateTime(a.changedAt)} · {a.changedBy?.fullName ?? "—"}{doneBy(markFor(resMarks, r.id, { actions: ["reservation.room_changed", "reservation.room_assigned"], near: a.changedAt, windowMs: SAME_CALL, who: a.changedBy?.fullName }))}</span>
                       </p>
                       {a.reason && <p className="text-xs text-muted-foreground">{a.reason}</p>}
                       {a.oldPrice != null && (
@@ -594,7 +608,7 @@ export default async function ReservationPage({ params, searchParams }: PageProp
               {history.map((h) => (
                 <li key={h.id} className="relative">
                   <span className="absolute -left-[1.62rem] top-1.5 size-2.5 rounded-full border-2 border-card bg-foreground/60" />
-                  <p><span className="text-xs text-muted-foreground">{t.dateTime(h.at)}</span> · <span className="font-medium">{h.who === "System" ? t("System") : h.who}</span> {h.label}</p>
+                  <p><span className="text-xs text-muted-foreground">{t.dateTime(h.at)}</span> · <span className="font-medium">{h.who === "System" ? t("System") : h.who}</span>{h.doneBy && <> <DoneByDeveloper text={h.doneBy} /></>} {h.label}</p>
                   {h.changes.length > 0 && (
                     <p className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
                       {h.changes.map((c) => (
@@ -670,7 +684,7 @@ export default async function ReservationPage({ params, searchParams }: PageProp
                   {orderRows.map(({ o, place, badge, tone, canPut }) => (
                     <li key={o.id} className={cn("rounded-2xl border border-border/70 p-3 text-sm", o.status === "CANCELLED" && "opacity-60")}>
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="font-mono text-xs font-semibold">{o.number} <span className="font-sans font-normal text-muted-foreground">· {t(TYPE_LABEL[o.type])}{place ? ` · ${place}` : ""} · {t.dateTime(o.createdAt)}{o.source === "GUEST" ? ` · ${t("ordered by the guest (phone)")}` : o.createdBy ? ` · ${o.createdBy.fullName}` : ""}</span></p>
+                        <p className="font-mono text-xs font-semibold">{o.number} <span className="font-sans font-normal text-muted-foreground">· {t(TYPE_LABEL[o.type])}{place ? ` · ${place}` : ""} · {t.dateTime(o.createdAt)}{o.source === "GUEST" ? ` · ${t("ordered by the guest (phone)")}` : o.createdBy ? ` · ${o.createdBy.fullName}` : ""}</span>{o.source !== "GUEST" && o.createdBy ? doneBy(markFor(orderMarks, o.id)) : null}</p>
                         <span className="flex flex-wrap items-center gap-1.5">
                           <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold">{t(STATUS_LABEL[o.status])}</span>
                           <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", tone)}>{badge}</span>
@@ -710,7 +724,7 @@ export default async function ReservationPage({ params, searchParams }: PageProp
               <h2 className={H2}><MessageCircle className="size-4 text-muted-foreground" />{t("Message the guest")}</h2>
               <GuestMessenger reservationId={r.id} guest={{ name: r.guest.fullName, phone: r.guest.phone, email: r.guest.email }}
                 options={messageOptions} link={stayLink} autoOpen={autoMessage} language={r.guest.preferredLanguage}
-                sent={sentMsgs.map((m) => ({ type: m.type, channel: m.channel, at: m.createdAt.toISOString(), by: m.sentBy?.fullName ?? null }))} />
+                sent={sentMsgs.map((m) => ({ type: m.type, channel: m.channel, at: m.createdAt.toISOString(), by: m.sentBy?.fullName ?? null, doneBy: sentDoneBy.get(m.id) ?? null }))} />
             </section>
           )}
 

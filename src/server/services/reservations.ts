@@ -4,6 +4,7 @@ import { discountLimit, discountTooBigMessage, roomDiscountLimit } from "@/lib/d
 import { shortTimeRate } from "@/lib/short-time";
 import { randomBytes } from "node:crypto";
 import { db, workAsOfRequest, type Tx } from "../db";
+import { workAsLabel } from "../work-as-session";
 import { audit, type AuditActor } from "../audit";
 import { AppError, isExclusionViolation, isUniqueViolation } from "../errors";
 import { getSettingsTx, stayConfig } from "../settings";
@@ -784,9 +785,13 @@ export async function cancelCheckIn(reservationId: string, actor: Actor, reason:
       tx.guest.findUnique({ where: { id: r.guestId }, select: { fullName: true } }),
       first?.checkedInById ? tx.user.findUnique({ where: { id: first.checkedInById }, select: { fullName: true } }) : null,
     ]);
+    // The Boss's notice says who REALLY cancelled it: a Developer working as the person is named as the Developer
+    // ("Nino (Developer) as Neema (Receptionist)"), the same words the audit trail uses. Nobody else's label changes.
+    const workAs = actor.userId ? await workAsOfRequest() : null;
+    const cancelledBy = workAs && workAs.targetId === actor.userId ? workAsLabel(workAs.developerName, workAs.targetName, workAs.targetRoleName) : (actor.label ?? null);
     const out: CheckInCancelled = {
       reservationId: r.id, reference: r.reference, guest: guest?.fullName ?? "—", rooms: inHouse.map((x) => x.room.number), reason: why,
-      by: actor.label ?? null, at: now, checkedInBy: checker?.fullName ?? null, checkedInAt: first?.checkedInAt ?? null,
+      by: cancelledBy, at: now, checkedInBy: checker?.fullName ?? null, checkedInAt: first?.checkedInAt ?? null,
     };
     await audit(tx, actor, {
       action: "reservation.checkin_cancelled", entityType: "Reservation", entityId: r.id,

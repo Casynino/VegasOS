@@ -20,6 +20,7 @@ import { worksWaiterShift } from "@/lib/permissions";
 import { deliveryPlace } from "@/server/services/restaurant";
 import { waiterResponsibilities } from "@/server/services/waiter-work";
 import { getT } from "@/i18n/server";
+import { eventDoneBy, orderMarks } from "@/server/services/order-done-by";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getT();
@@ -78,7 +79,17 @@ export default async function RestaurantPortalPage() {
   // Only the room and the name reach the screen — never the guest's phone or balance.
   const rooms = guests.map((g) => ({ id: g.id, label: t("Room {room} — {name}", { room: g.rooms, name: g.name }) }));
   const [sent, stays] = await Promise.all([perms.waiter ? sentUpdates(orders.map((o) => o.id)) : Promise.resolve(undefined), seesMoney ? orderStays(orders) : Promise.resolve(undefined)]);
-  const portal = toPortalOrders(orders, { seesMoney, waiter: perms.waiter, settings, origin, sent, stays, online: await onlinePayStates(orders), guestT: await customerTranslators() });
+  // Managers and the MD: every step the kitchen, bar and waiters took today, newest first.
+  const feedRows = perms.watch ? await db.restaurantOrderEvent.findMany({
+    where: { order: { businessDate: toDbDate(today) } }, orderBy: { at: "desc" }, take: 60,
+    select: {
+      id: true, from: true, to: true, note: true, at: true, byLabel: true, byRole: true, by: { select: { fullName: true } },
+      order: { select: { id: true, number: true, tableLabel: true, roomNumber: true, type: true, location: { select: { name: true } }, items: { select: { type: true, quantity: true } } } },
+    },
+  }) : [];
+  // "Done by Developer": the steps the Developer made while working as someone (one lookup for the cards and the feed; a failed lookup shows no tag).
+  const marks = await orderMarks([...orders.map((o) => o.id), ...feedRows.map((e) => e.order.id)]);
+  const portal = toPortalOrders(orders, { seesMoney, waiter: perms.waiter, settings, origin, sent, stays, online: await onlinePayStates(orders), guestT: await customerTranslators(), doneBy: { t, marks } });
 
   // Today, for the manager: sales, times and who handled what.
   const todays = orders.filter((o) => o.businessDate.toISOString().slice(0, 10) === today && o.status !== "CANCELLED");
@@ -101,14 +112,7 @@ export default async function RestaurantPortalPage() {
     { href: "/order", label: t("Online menu"), icon: "web", tone: "emerald" },
     ...(perms.pay ? [{ href: "/staff/sales", label: t("Quick sale"), icon: "sale", tone: "rose" } as const] : []),
   ] : [];
-  // Managers and the MD: every step the kitchen, bar and waiters took today, newest first.
-  const feed: FeedEvent[] = perms.watch ? (await db.restaurantOrderEvent.findMany({
-    where: { order: { businessDate: toDbDate(today) } }, orderBy: { at: "desc" }, take: 60,
-    select: {
-      id: true, from: true, to: true, note: true, at: true, byLabel: true, byRole: true, by: { select: { fullName: true } },
-      order: { select: { id: true, number: true, tableLabel: true, roomNumber: true, type: true, location: { select: { name: true } }, items: { select: { type: true, quantity: true } } } },
-    },
-  })).map((e) => {
+  const feed: FeedEvent[] = feedRows.map((e) => {
     // A table / place the hotel named shows in the reader's language (it falls back to itself).
     const named = e.order.location?.name ?? e.order.tableLabel;
     return {
@@ -117,8 +121,9 @@ export default async function RestaurantPortalPage() {
       orderId: e.order.id, number: e.order.number,
       place: named != null ? t(named) : e.order.roomNumber ? t("Room {room}", { room: e.order.roomNumber }) : e.order.type === "TAKEAWAY" ? "Delivery" : t("Counter"),
       items: e.order.items.reduce((n, i) => n + i.quantity, 0), drinksOnly: e.order.items.length > 0 && e.order.items.every((i) => i.type === "DRINK"),
+      doneBy: eventDoneBy(marks, t, e.order.id, { from: e.from, to: e.to, note: e.note, at: e.at, byLabel: e.byLabel ?? e.by?.fullName ?? null }),
     };
-  }) : [];
+  });
   // The manager's day, up top beside the live feed (how it's paid is already in the money band).
   const numbers: TodayNumbersData = {
     food: sum(todays, (o) => o.foodSubtotal), foodOrders: todays.filter((o) => o.foodSubtotal > 0).length,

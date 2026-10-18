@@ -12,6 +12,8 @@ import type { Actor } from "./reservations";
 import { msg, msgf } from "@/i18n/msg";
 import { getT } from "@/i18n/server";
 import { englishT, type T } from "@/i18n/translate";
+import { doneByText } from "@/lib/done-by-text";
+import { developerMarks, markFor, type DeveloperMark } from "./developer-marks";
 
 /**
  * Hotel-wide inventory — consumable stock kept by department (Kitchen, Bar, Housekeeping…),
@@ -166,11 +168,26 @@ export async function recentMovements(opts: { take?: number; itemId?: string; de
       recordedBy: { select: { fullName: true, role: { select: { name: true } } } }, approvedBy: { select: { fullName: true } },
     },
   });
+  // "Done by Developer": stock the Developer took out, or waste he reported, while working as someone is tagged next to the name. Two lookups for the whole list
+  // (a use is audited on its item, a waste report on its movement); a failed lookup shows no tag. Transfers, deliveries and counts are managers' work: not here.
+  const none = () => new Map<string, DeveloperMark[]>();
+  const uses = rows.filter((m) => m.kind === "USE" && m.reason !== "TRANSFER" && m.recordedBy);
+  const wastes = rows.filter((m) => m.kind === "WASTE" && m.recordedBy);
+  const [useMarks, wasteMarks] = await Promise.all([
+    developerMarks("InventoryItem", uses.map((m) => m.itemId), { actions: ["inventory.used"] }).catch(none),
+    developerMarks("InventoryMovement", wastes.map((m) => m.id), { actions: ["inventory.waste_reported"] }).catch(none),
+  ]);
+  const tt = useMarks.size || wasteMarks.size ? await getT().catch(() => englishT) : englishT;
+  const doneByOf = (m: (typeof rows)[number]) => (
+    !m.recordedBy ? null
+      : m.kind === "USE" && m.reason !== "TRANSFER" ? doneByText(tt, markFor(useMarks, m.itemId, { near: m.recordedAt, windowMs: 10_000 }))
+        : m.kind === "WASTE" ? doneByText(tt, markFor(wasteMarks, m.id)) : null
+  );
   return rows.map((m) => ({
     id: m.id, kind: m.kind, reason: m.reason, note: m.note, change: m.change, before: m.before, after: m.after, unit: m.unit, status: m.status,
     totalCost: money ? m.totalCost : null, unitCost: money ? m.unitCost : null, reference: m.reference, expiresOn: m.expiresOn?.toISOString().slice(0, 10) ?? null,
     item: m.item, where: m.department?.name ?? m.item.department.name, supplier: money ? m.supplier?.name ?? null : null,
-    by: m.recordedBy?.fullName ?? msg("System"), byRole: m.recordedBy?.role?.name ?? null, approvedBy: m.approvedBy?.fullName ?? null,
+    by: m.recordedBy?.fullName ?? msg("System"), byRole: m.recordedBy?.role?.name ?? null, doneBy: doneByOf(m), approvedBy: m.approvedBy?.fullName ?? null,
     at: m.recordedAt.toISOString(), approvedAt: m.approvedAt?.toISOString() ?? null, decisionNote: m.decisionNote,
   }));
 }
@@ -567,6 +584,23 @@ function checkAssetCodes(condition: string, status: string) {
   if (!ASSET_STATUSES.some((c) => c.code === status)) throw new AppError("Choose the status.", "VALIDATION", { status: msg("Invalid") });
 }
 
+/**
+ * "Done by Developer · as Neema" for asset moves and changes the Developer made while working as someone: the audit row of the asset is the mark
+ * (matched by time, since an asset has many). One lookup for all the assets listed; a failed lookup shows no tag.
+ */
+async function assetDoneBy(rows: { id: string; assetId: string; at: Date; movedById: string | null }[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const marks = await developerMarks("Asset", rows.map((m) => m.assetId), { actions: ["asset.moved", "asset.updated", "asset.state_changed"] }).catch(() => new Map<string, DeveloperMark[]>());
+  if (marks.size === 0) return out;
+  const t = await getT().catch(() => englishT);
+  for (const m of rows) {
+    if (!m.movedById) continue;
+    const text = doneByText(t, markFor(marks, m.assetId, { near: m.at, windowMs: 10_000 }));
+    if (text) out.set(m.id, text);
+  }
+  return out;
+}
+
 export async function assetsData() {
   const [assets, departments, suppliers, moves] = await Promise.all([
     db.asset.findMany({ orderBy: [{ category: "asc" }, { name: "asc" }], include: { department: { select: { id: true, name: true } }, supplier: { select: { id: true, name: true } } } }),
@@ -574,16 +608,18 @@ export async function assetsData() {
     db.supplier.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
     db.assetMovement.findMany({ orderBy: { at: "desc" }, take: 40, include: { asset: { select: { id: true, code: true, name: true } }, movedBy: { select: { fullName: true } } } }),
   ]);
+  const movedMarks = await assetDoneBy(moves);
   return {
     assets: assets.map((a) => ({ ...a, purchaseDate: a.purchaseDate?.toISOString().slice(0, 10) ?? null, createdAt: a.createdAt.toISOString(), updatedAt: a.updatedAt.toISOString() })),
     departments, suppliers,
-    moves: moves.map((m) => ({ id: m.id, kind: m.kind, from: m.fromValue, to: m.toValue, quantity: m.quantity, note: m.note, at: m.at.toISOString(), by: m.movedBy?.fullName ?? "—", asset: m.asset })),
+    moves: moves.map((m) => ({ id: m.id, kind: m.kind, from: m.fromValue, to: m.toValue, quantity: m.quantity, note: m.note, at: m.at.toISOString(), by: m.movedBy?.fullName ?? "—", doneBy: movedMarks.get(m.id) ?? null, asset: m.asset })),
   };
 }
 
 export async function assetHistory(assetId: string) {
   const rows = await db.assetMovement.findMany({ where: { assetId }, orderBy: { at: "desc" }, take: 50, include: { movedBy: { select: { fullName: true } } } });
-  return rows.map((m) => ({ id: m.id, kind: m.kind, from: m.fromValue, to: m.toValue, quantity: m.quantity, note: m.note, at: m.at.toISOString(), by: m.movedBy?.fullName ?? "—" }));
+  const marks = await assetDoneBy(rows);
+  return rows.map((m) => ({ id: m.id, kind: m.kind, from: m.fromValue, to: m.toValue, quantity: m.quantity, note: m.note, at: m.at.toISOString(), by: m.movedBy?.fullName ?? "—", doneBy: marks.get(m.id) ?? null }));
 }
 
 export async function saveAsset(input: AssetInput, actor: Actor, now = new Date()) {

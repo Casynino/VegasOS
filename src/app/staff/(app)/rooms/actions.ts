@@ -11,6 +11,9 @@ import { changeRoomStatus } from "@/server/services/rooms";
 import { meetingInsight, roomInsight, type MeetingInsight, type RoomInsight } from "@/server/services/room-insight";
 import { businessToday } from "@/server/settings";
 import { msg, msgf } from "@/i18n/msg";
+import { getT } from "@/i18n/server";
+import { doneByText } from "@/lib/done-by-text";
+import { developerMarks, markFor, type DeveloperMark } from "@/server/services/developer-marks";
 import { saveTranslation, translationFromForm } from "@/server/services/translations";
 
 const STATUSES = ["AVAILABLE", "READY", "DIRTY", "CLEANING", "MAINTENANCE", "OUT_OF_SERVICE"] as const;
@@ -192,6 +195,11 @@ export async function roomHistoryAction(input: { roomId: string }) {
       }),
       db.roomStatusHistory.findMany({ where: { roomId: input.roomId }, orderBy: { changedAt: "desc" }, take: 8, include: { changedBy: { select: { fullName: true } } } }),
     ]);
+    // "Done by Developer" beside a status change the Developer made while working as someone (a failed lookup shows no tag).
+    const [t, marks] = await Promise.all([
+      getT(),
+      developerMarks("Room", [input.roomId], { actions: ["room.status_changed"] }).catch(() => new Map<string, DeveloperMark[]>()),
+    ]);
     return {
       stays: stays.map((s) => ({
         id: s.id, reservationId: s.reservation.id, reference: s.reservation.reference, status: s.status, meeting: s.reservation.kind === "MEETING",
@@ -199,7 +207,7 @@ export async function roomHistoryAction(input: { roomId: string }) {
         from: s.arrivalDate.toISOString().slice(0, 10), to: s.departureDate.toISOString().slice(0, 10), startAt: s.startAt.toISOString(), endAt: s.endAt.toISOString(),
         nights: s.nights, isDayUse: s.isDayUse, net: s.netAmount,
       })),
-      statuses: statuses.map((h) => ({ id: h.id, from: h.fromStatus, to: h.toStatus, at: h.changedAt.toISOString(), by: h.changedBy?.fullName ?? null, note: h.note })),
+      statuses: statuses.map((h) => ({ id: h.id, from: h.fromStatus, to: h.toStatus, at: h.changedAt.toISOString(), by: h.changedBy?.fullName ?? null, doneBy: h.changedBy ? doneByText(t, markFor(marks, input.roomId, { near: h.changedAt, who: h.changedBy?.fullName })) : null, note: h.note })),
     };
   });
 }

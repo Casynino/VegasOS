@@ -35,6 +35,7 @@ import m_developer_users from "./developer-users";
 import m_developer_wall2 from "./developer-wall2";
 import m_developer_wall3 from "./developer-wall3";
 import m_developer_workas from "./developer-workas";
+import m_done_by_audit from "./done-by-audit";
 import m_finance_home from "./finance-home";
 import m_finance from "./finance";
 import m_fix_people_misc from "./fix-people-misc";
@@ -42,6 +43,7 @@ import m_groups_corporate from "./groups-corporate";
 import m_guest_language from "./guest-language";
 import m_guest_pages from "./guest-pages";
 import m_guests_meeting from "./guests-meeting";
+import m_guide_books from "./guide-books";
 import m_hotel_supplies from "./hotel-supplies";
 import m_hotelqr_transport from "./hotelqr-transport";
 import m_inventory_misc from "./inventory-misc";
@@ -104,6 +106,7 @@ const catalog: Catalog = {
   ...m_developer_wall2,
   ...m_developer_wall3,
   ...m_developer_workas,
+  ...m_done_by_audit,
   ...m_finance_home,
   ...m_finance,
   ...m_fix_people_misc,
@@ -111,6 +114,7 @@ const catalog: Catalog = {
   ...m_guest_language,
   ...m_guest_pages,
   ...m_guests_meeting,
+  ...m_guide_books,
   ...m_hotel_supplies,
   ...m_hotelqr_transport,
   ...m_inventory_misc,

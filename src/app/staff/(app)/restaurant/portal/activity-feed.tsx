@@ -4,12 +4,15 @@ import { cn } from "@/lib/utils";
 import { getT } from "@/i18n/server";
 import { msg } from "@/i18n/msg";
 import type { T } from "@/i18n/translate";
+import { DoneByDeveloper } from "@/components/staff/done-by-developer";
 
 export type FeedEvent = {
   id: string; at: string; time: string; who: string; role: string | null; from: string | null; to: string;
   /** What happened when the status did not move (a waiter started serving it, a transfer, a payment…). */
   note: string | null;
   orderId: string; number: string; place: string; items: number; drinksOnly: boolean;
+  /** "Done by Developer · as Neema" (in the reader's language) when the Developer, working as someone, did this step; shown NEXT TO the name. The name is not changed. */
+  doneBy?: string | null;
 };
 
 /** What happened, as a sentence: <b>who</b><r> (role)</r> did it <b>#12</b> (shown with t.rich). */
@@ -73,6 +76,7 @@ export async function ActivityFeed({ events }: { events: FeedEvent[] }) {
           {events.map((e) => {
             if (isNote(e)) {
               const n = noteStep(e.note ?? "");
+              const byLine = <>{placeName(e.place, t)} · {t("by {name}", { name: actorName(e.who.replace(/\s*\(.*\)/, ""), t) })}{e.role ? ` (${t(e.role)})` : ""}</>;
               return (
                 <li key={e.id}>
                   <Link href={`/staff/restaurant/orders/${e.orderId}`} className="flex items-center gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-muted/40 sm:px-5">
@@ -80,7 +84,9 @@ export async function ActivityFeed({ events }: { events: FeedEvent[] }) {
                     <span className={cn("grid size-8 shrink-0 place-items-center rounded-xl", n.tone)}><n.icon className="size-4" /></span>
                     <span className="min-w-0 flex-1 leading-tight">
                       <span className="block truncate" title={e.note ?? undefined}><strong className="font-semibold">{shortNo(e.number)}</strong> <span className="text-muted-foreground">·</span> {e.note ?? t("Updated")}</span>
-                      <span className="block truncate text-xs text-muted-foreground">{placeName(e.place, t)} · {t("by {name}", { name: actorName(e.who.replace(/\s*\(.*\)/, ""), t) })}{e.role ? ` (${t(e.role)})` : ""}</span>
+                      {e.doneBy ? (
+                        <span className="flex min-w-0 items-center text-xs text-muted-foreground"><span className="min-w-0 truncate">{byLine}</span><DoneByDeveloper text={e.doneBy} /></span>
+                      ) : <span className="block truncate text-xs text-muted-foreground">{byLine}</span>}
                     </span>
                   </Link>
                 </li>
@@ -88,13 +94,16 @@ export async function ActivityFeed({ events }: { events: FeedEvent[] }) {
             }
             const s = STEP[e.to] ?? STEP.PENDING;
             const Icon = e.drinksOnly && ["ACCEPTED", "PREPARING", "READY"].includes(e.to) ? Wine : s.icon;
+            const sentence = t.rich(s.text, { b: (c) => <strong className="font-semibold">{c}</strong>, r: (c) => c ? <span className="text-muted-foreground">{c}</span> : null }, { who: actorName(e.who, t), role: e.role ? ` (${t(e.role)})` : "", no: shortNo(e.number) });
             return (
               <li key={e.id}>
                 <Link href={`/staff/restaurant/orders/${e.orderId}`} className="flex items-center gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-muted/40 sm:px-5">
                   <span className="w-11 shrink-0 text-xs tabular-nums text-muted-foreground">{e.time}</span>
                   <span className={cn("grid size-8 shrink-0 place-items-center rounded-xl", s.tone)}><Icon className="size-4" /></span>
                   <span className="min-w-0 flex-1 leading-tight">
-                    <span className="block truncate">{t.rich(s.text, { b: (c) => <strong className="font-semibold">{c}</strong>, r: (c) => c ? <span className="text-muted-foreground">{c}</span> : null }, { who: actorName(e.who, t), role: e.role ? ` (${t(e.role)})` : "", no: shortNo(e.number) })}</span>
+                    {e.doneBy ? (
+                      <span className="flex min-w-0 items-center"><span className="min-w-0 truncate">{sentence}</span><DoneByDeveloper text={e.doneBy} /></span>
+                    ) : <span className="block truncate">{sentence}</span>}
                     <span className="block truncate text-xs text-muted-foreground">{placeName(e.place, t)} · {e.drinksOnly ? t.plural(e.items, "{n} item · drinks", "{n} items · drinks") : t.plural(e.items, "{n} item", "{n} items")}</span>
                   </span>
                 </Link>

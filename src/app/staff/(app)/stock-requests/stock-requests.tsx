@@ -15,6 +15,7 @@ import { DeptBadge, StatusChip, norm, picsFor } from "./parts";
 import { NewRequest, groupsFor } from "./new-request";
 import { RequestDialog } from "./request-dialog";
 import { useT } from "@/i18n/client";
+import { DoneByDeveloper } from "@/components/staff/done-by-developer";
 
 type Counter = { key: string; label: string; value: number; statuses: string[]; tone: string; dot: string; sub?: string };
 
@@ -174,7 +175,7 @@ function Requests({ open, closed, me, active, clearFilter, summary, options, kit
   );
 }
 
-function RequestRows({ list, me, onOpen }: { list: StockReqView[]; me: Viewer; onOpen: (id: string) => void }) {
+export function RequestRows({ list, me, onOpen }: { list: StockReqView[]; me: Viewer; onOpen: (id: string) => void }) {
   const t = useT();
   const money = me.reviewer || me.buyer;
   return (
@@ -197,7 +198,7 @@ function RequestRows({ list, me, onOpen }: { list: StockReqView[]; me: Viewer; o
                 <span className="mt-0.5 block truncate text-xs text-muted-foreground">{summary}</span>
               </span>
               <span className="hidden shrink-0 text-right text-[11px] leading-tight text-muted-foreground md:block">
-                {person(r.by)}<span className="block">{when(r.at, t)}</span>
+                {person(r.by)}<span className="block">{when(r.at, t)}</span>{r.byDoneBy ? <DoneByDeveloper text={r.byDoneBy} className="ml-0 mt-0.5" /> : null}
               </span>
               {amount != null && amount > 0 && <span className="hidden shrink-0 text-sm font-semibold tabular-nums sm:block">{formatTZS(amount)}</span>}
               <StatusChip status={r.status} simple={!me.reviewer && !me.buyer} />

@@ -32,6 +32,7 @@ import { englishT, type T } from "@/i18n/translate";
 import { deliveryPlace } from "@/lib/delivery-place";
 import type { RestaurantOrderType } from "@/generated/prisma/enums";
 import { useSendLanguage } from "@/components/staff/message-language";
+import { DoneByDeveloper } from "@/components/staff/done-by-developer";
 
 export const TYPE: Record<string, { label: string; icon: typeof BedDouble }> = {
   ROOM_SERVICE: { label: msg("Room service"), icon: BedDouble }, DINE_IN: { label: msg("Restaurant"), icon: UtensilsCrossed },
@@ -450,7 +451,7 @@ export function OrderCard({ o, perms, now, fresh, accounts, rooms, drag, roomy, 
     [o.type === "ROOM_SERVICE" ? msg("Room") : o.type === "DINE_IN" ? msg("Table") : o.address ? msg("Deliver to") : msg("Collect at"), o.type === "ROOM_SERVICE" ? o.room ?? "—" : o.type === "DINE_IN" ? (o.table ?? "—").replace(/^table\s*/i, "") : o.address ?? place],
     ...(o.reservation ? [[msg("Booking"), <Link key="b" href={`/staff/reservations/${o.reservation.id}`} className="font-mono hover:underline">{o.reservation.reference}</Link>]] as [string, React.ReactNode][] : []),
     [msg("Came from"), sourceText(o, t)],
-    [msg("Placed by"), o.createdBy ? o.createdBy.replace(/\s*\(.*\)/, "") : t("The customer")],
+    [msg("Placed by"), o.createdBy ? (o.doneBy?.created ? <span key="pb">{o.createdBy.replace(/\s*\(.*\)/, "")}<DoneByDeveloper text={o.doneBy.created} /></span> : o.createdBy.replace(/\s*\(.*\)/, "")) : t("The customer")],
     ...(o.assignedTo || !done ? [[msg("Waiter"), o.assignedTo ? o.assignedTo.name.replace(/\s*\(.*\)/, "") : <span key="w" className="text-amber-700 dark:text-amber-300">{t("No waiter yet")}</span>]] as [string, React.ReactNode][] : []),
     ...(o.complaints.total ? [[msg("Complaints"), <span key="c" className={o.complaints.open ? "font-semibold text-rose-300" : ""}>{o.complaints.open ? t("{n} open", { n: o.complaints.open }) : t("resolved")}</span>]] as [string, React.ReactNode][] : []),
     ...(o.total != null ? [
@@ -460,12 +461,15 @@ export function OrderCard({ o, perms, now, fresh, accounts, rooms, drag, roomy, 
   ];
   const sum = (xs: PortalOrder["items"]) => xs.reduce((s, i) => s + (i.lineTotal ?? 0), 0);
   const stages = [
-    { label: msg("Received"), at: o.createdAt, who: null },
-    { label: msg("Accepted"), at: o.acceptedAt, who: o.acceptedBy },
-    { label: msg("Ready"), at: o.readyAt, who: o.readyBy },
-    { label: msg("Serving"), at: o.takenAt, who: o.takenBy },
-    { label: msg("Served"), at: o.deliveredAt, who: o.deliveredBy },
+    { label: msg("Received"), at: o.createdAt, who: null, doneBy: null as string | null },
+    { label: msg("Accepted"), at: o.acceptedAt, who: o.acceptedBy, doneBy: o.doneBy?.accepted ?? null },
+    { label: msg("Ready"), at: o.readyAt, who: o.readyBy, doneBy: o.doneBy?.ready ?? null },
+    { label: msg("Serving"), at: o.takenAt, who: o.takenBy, doneBy: o.doneBy?.taken ?? null },
+    { label: msg("Served"), at: o.deliveredAt, who: o.deliveredBy, doneBy: o.doneBy?.delivered ?? null },
   ];
+  // The Developer's steps (worked as someone), said once under the steps — never inside a name. The footer shows the last person's.
+  const developerSteps = stages.filter((s) => s.doneBy);
+  const footerDoneBy = [...stages].reverse().find((s) => s.at && s.who)?.doneBy ?? null;
   const cancelNote = o.settlement === "ROOM" ? t("Its items come off the guest's room bill (kept on record as cancelled).") : o.paid === 0 ? t("Nothing was paid yet — it is kept on record as cancelled.") : t("Its payment is reversed and its sale voided (kept on record as cancelled). Give any refund separately.");
   const reached = ({ PENDING: 0, ACCEPTED: 1, PREPARING: 1, READY: 2, OUT_FOR_DELIVERY: 3, DELIVERED: 4, COMPLETED: 4, COLLECTED: 4 } as Record<string, number>)[o.status] ?? -1;
 
@@ -589,6 +593,7 @@ export function OrderCard({ o, perms, now, fresh, accounts, rooms, drag, roomy, 
             )}
           </div>
         )}
+        {footerDoneBy && <p className="mt-1.5"><DoneByDeveloper className="ml-0" text={footerDoneBy} /></p>}
         <footer className="mt-2 flex items-center gap-1.5">
           <p suppressHydrationWarning className="min-w-0 flex-1 truncate text-[10px] text-muted-foreground" title={people.join(" · ")}>
             {t("In {time}", { time: hhmm(o.createdAt) })}{people.length ? ` · ${people[people.length - 1]}` : ""}
@@ -653,6 +658,11 @@ export function OrderCard({ o, perms, now, fresh, accounts, rooms, drag, roomy, 
                 );
               })}
             </ol>
+            {developerSteps.length > 0 && (
+              <ul className="mt-3 space-y-1">
+                {developerSteps.map((s) => <li key={s.label} className="flex flex-wrap items-center gap-x-1 text-[11px] text-muted-foreground">{t(s.label)}<DoneByDeveloper text={s.doneBy!} /></li>)}
+              </ul>
+            )}
             {o.cancelReason && <p className="mt-3 rounded-xl bg-rose-500/10 px-3 py-2 text-xs text-rose-300 ring-1 ring-inset ring-rose-500/20">{o.cancelReason}</p>}
           </div>
 

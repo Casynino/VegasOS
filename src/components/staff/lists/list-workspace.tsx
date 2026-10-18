@@ -15,6 +15,7 @@ import type { DailyListCopy, StoredDailyList } from "@/server/services/daily-lis
 import { printDailyListAction } from "@/app/staff/(app)/lists/actions";
 import { changeRoomStatusAction } from "@/app/staff/(app)/rooms/actions";
 import { EmptyState } from "@/components/staff/page-header";
+import { DoneByDeveloper } from "@/components/staff/done-by-developer";
 import { GuestListPaper, HousekeepingPaper, LIST_PAPER_ID, type ListHotel } from "./list-paper";
 import { saveListPdf } from "./list-pdf";
 
@@ -143,7 +144,7 @@ export function ListWorkspace({ kind, today, date, live, copy, copies, hotel, ta
         {data && (
           <p className="px-1 text-xs text-muted-foreground">
             {stored
-              ? <>{t("Printed copy {number} — made {when} by {name}. It stays exactly as it was printed.", { number: listNumber(kind, stored.date, stored.copyNo), when: t.dateTime(stored.generatedAt, stored.data.timezone), name: stored.generatedBy })}{" "}
+              ? <>{t("Printed copy {number} — made {when} by {name}. It stays exactly as it was printed.", { number: listNumber(kind, stored.date, stored.copyNo), when: t.dateTime(stored.generatedAt, stored.data.timezone), name: stored.generatedBy })}{stored.doneBy ? <DoneByDeveloper text={stored.doneBy} className="ml-1" /> : null}{" "}
                   {stored.date === today && <Link href={`/staff/lists/${slug}`} className="font-semibold text-foreground underline underline-offset-2">{t("Open the live list")}</Link>}</>
               : t("Live list — read from the hotel at {time}. Print keeps this exact list as a numbered copy.", { time: t.time(data.generatedAt, data.timezone) })}
           </p>
@@ -154,7 +155,7 @@ export function ListWorkspace({ kind, today, date, live, copy, copies, hotel, ta
             <span className="font-semibold uppercase tracking-[0.16em] text-muted-foreground">{date === today ? t("Printed today") : t("Printed on this day")}</span>
             {copies.map((c) => (
               <Link key={c.id} href={`/staff/lists/${slug}?copy=${c.id}`} className={cn("underline-offset-2 hover:underline", c.id === stored?.id ? "font-semibold text-foreground" : "text-muted-foreground")}>
-                {t("Copy {n} · {time} · {name}", { n: c.copyNo, time: t.time(c.generatedAt, data?.timezone), name: c.generatedBy.replace(/\s*\(.*\)$/, "") })}
+                {t("Copy {n} · {time} · {name}", { n: c.copyNo, time: t.time(c.generatedAt, data?.timezone), name: c.generatedBy.replace(/\s*\(.*\)$/, "") })}{c.doneBy ? <DoneByDeveloper text={c.doneBy} /> : null}
               </Link>
             ))}
           </div>

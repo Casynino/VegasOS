@@ -13,8 +13,27 @@ import { roomHistoryAction } from "@/app/staff/(app)/rooms/actions";
 import { transportFormAction } from "@/app/staff/(app)/transport/actions";
 import { RequestForm, type BookingOpt, type ServiceOpt } from "@/app/staff/(app)/transport/transport-forms";
 import { useT } from "@/i18n/client";
+import { DoneByDeveloper } from "@/components/staff/done-by-developer";
 
 type History = Extract<Awaited<ReturnType<typeof roomHistoryAction>>, { ok: true }>["data"];
+
+/** The room's recent status changes: when, from → to, by whom (with "Done by Developer" beside the name when the Developer made it while working as someone). */
+export function StatusChangeList({ rows }: { rows: History["statuses"] }) {
+  const t = useT();
+  if (rows.length === 0) return <p className="text-xs text-muted-foreground">{t("No changes recorded.")}</p>;
+  return (
+    <ul className="space-y-1 text-xs">
+      {rows.map((h) => (
+        <li key={h.id} className="flex flex-wrap items-center gap-x-2">
+          <span className="text-muted-foreground tabular-nums">{t.dateTime(h.at)}</span>
+          <span>{h.from ? t(ROOM_STATUS_META[h.from as RoomStatus].label) : "—"} → <strong>{t(ROOM_STATUS_META[h.to as RoomStatus].label)}</strong></span>
+          {h.by && <span className="text-muted-foreground">· {h.by}{h.doneBy ? <DoneByDeveloper text={h.doneBy} /> : null}</span>}
+          {h.note && <span className="basis-full truncate text-muted-foreground">{t(h.note)}</span>}
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 /** The room's last bookings and status changes, right in its card. */
 export function RoomHistoryInline({ roomId, roomNumber }: { roomId: string; roomNumber: string }) {
@@ -56,18 +75,7 @@ export function RoomHistoryInline({ roomId, roomNumber }: { roomId: string; room
           </div>
           <div>
             <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{t("Status changes")}</p>
-            {data.statuses.length === 0 ? <p className="text-xs text-muted-foreground">{t("No changes recorded.")}</p> : (
-              <ul className="space-y-1 text-xs">
-                {data.statuses.map((h) => (
-                  <li key={h.id} className="flex flex-wrap items-center gap-x-2">
-                    <span className="text-muted-foreground tabular-nums">{t.dateTime(h.at)}</span>
-                    <span>{h.from ? t(ROOM_STATUS_META[h.from as RoomStatus].label) : "—"} → <strong>{t(ROOM_STATUS_META[h.to as RoomStatus].label)}</strong></span>
-                    {h.by && <span className="text-muted-foreground">· {h.by}</span>}
-                    {h.note && <span className="basis-full truncate text-muted-foreground">{t(h.note)}</span>}
-                  </li>
-                ))}
-              </ul>
-            )}
+            <StatusChangeList rows={data.statuses} />
           </div>
           <Link href={`/staff/rooms/${roomId}`} className="block text-center text-[11px] text-muted-foreground underline underline-offset-2">{t("Full history")}</Link>
         </>

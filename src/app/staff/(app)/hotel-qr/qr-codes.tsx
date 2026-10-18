@@ -14,11 +14,14 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { cn } from "@/lib/utils";
 import { useT } from "@/i18n/client";
 import { msg } from "@/i18n/msg";
+import { DoneByDeveloper } from "@/components/staff/done-by-developer";
 import { archiveBookingQrAction, createBookingQrAction, regenerateBookingQrAction, setBookingQrActiveAction, updateBookingQrAction } from "./actions";
 
 export type QrCodeView = {
   id: string; label: string; placement: string | null; url: string; qr: string; active: boolean;
   scans: number; lastScan: string | null; bookings: number; madeBy: string | null; regeneratedAt: string | null; createdAt: string;
+  /** "Done by Developer · as Neema" (already translated) when the Developer made or renewed the code while working as someone. */
+  madeDoneBy?: string | null;
 };
 
 /** Places a card usually goes — one tap fills the name. */
@@ -136,6 +139,7 @@ export function QrCodes({ codes, hotel, phone, canManage, bookingOn }: {
                     {" · "}{c.regeneratedAt
                       ? (c.madeBy ? t("new code {date} by {name}", { date: t.dateTime(c.regeneratedAt), name: c.madeBy }) : t("new code {date}", { date: t.dateTime(c.regeneratedAt) }))
                       : (c.madeBy ? t("made {date} by {name}", { date: t.dateTime(c.createdAt), name: c.madeBy }) : t("made {date}", { date: t.dateTime(c.createdAt) }))}
+                    {c.madeBy && c.madeDoneBy ? <DoneByDeveloper text={c.madeDoneBy} /> : null}
                   </p>
                   {/* Where the code leads (the booking page) — no secrets in it, just this card's key. */}
                   <p className="truncate rounded-lg border border-dashed border-border/80 px-2.5 py-1.5 font-mono text-[11px] text-muted-foreground" title={c.url}>{c.url}</p>

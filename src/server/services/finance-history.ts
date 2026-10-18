@@ -6,6 +6,7 @@ import { getT } from "@/i18n/server";
 import { msg } from "@/i18n/msg";
 import { DEFAULT_LOCALE } from "@/i18n/config";
 import type { T } from "@/i18n/translate";
+import { lineWho } from "@/lib/audit-line-who";
 
 /**
  * Edit history — every change to money, prices and bookings (corrections,
@@ -123,7 +124,10 @@ function show(v: unknown, t: T): string {
 }
 
 export interface HistoryItem {
-  id: string; at: Date; who: string; action: string; label: string; group: HistoryGroup;
+  id: string; at: Date; who: string;
+  /** "Done by Developer · as Neema" when the Developer did it while working as someone (shown next to the name, never inside it); else null. */
+  doneBy: string | null;
+  action: string; label: string; group: HistoryGroup;
   record: string; href: string | null; reason: string | null;
   changes: { field: string; from: string; to: string }[];
 }
@@ -177,7 +181,8 @@ export async function financeHistory(f: { from: BusinessDate; to: BusinessDate; 
       .map((k) => ({ field: (stockLog ? STOCK_LABELS[k] : undefined) ?? LABELS[k] ?? k.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase()), from: k in before ? val(k, before[k]) : "", to: k in after ? val(k, after[k]) : "" }));
     const reason = [after.reason, after.overrideReason, before.reason].find((x) => typeof x === "string" && x.trim()) as string | undefined;
     const a = ACTIONS[l.action];
-    return { id: l.id, at: l.createdAt, who: l.user?.fullName ?? l.actorLabel ?? "System", action: l.action, label: a.label, group: a.group, ...name(l.entityType, l.entityId), reason: reason ?? null, changes };
+    const by = lineWho(t, l);
+    return { id: l.id, at: l.createdAt, who: by.name ?? "System", doneBy: by.doneBy, action: l.action, label: a.label, group: a.group, ...name(l.entityType, l.entityId), reason: reason ?? null, changes };
   });
   const q = f.q?.trim().toLowerCase();
   return q ? items.filter((i) => [i.who, i.record, i.label, i.reason, ...i.changes.map((c) => `${c.field} ${c.from} ${c.to}`)].some((x) => x?.toLowerCase().includes(q))) : items;
@@ -213,8 +218,9 @@ export async function bookingTimeline(reservationId: string) {
     const reason = [after.reason, after.overrideReason].find((x) => typeof x === "string" && x.trim()) as string | undefined;
     const amount = typeof after.amount === "number" && !Object.keys(before).length ? ` TZS ${after.amount.toLocaleString("en-US")}${after.method ? ` · ${after.method}` : ""}` : "";
     const said = ACTIONS[l.action]?.label ?? TIMELINE_EXTRA[l.action];
+    const by = lineWho(t, l);
     return {
-      id: l.id, at: l.createdAt, who: l.user?.fullName ?? l.actorLabel ?? "System",
+      id: l.id, at: l.createdAt, who: by.name ?? "System", doneBy: by.doneBy,
       label: (said ? t(said) : l.action.replace(/^[a-z_]+\./, "").replaceAll("_", " ")) + amount,
       changes: changes.slice(0, 8), reason: reason ?? null,
     };
@@ -271,8 +277,9 @@ export async function groupTimeline(groupId: string) {
     const record = l.entityType === "Reservation" ? roomOf.get(l.entityId ?? "") : l.entityType === "Invoice" ? invoice(invOf.get(l.entityId ?? "") ?? "")
       : typeof after.invoice === "string" ? invoice(after.invoice) : typeof after.number === "string" ? invoice(after.number) : null;
     const said = GROUP_EXTRA[l.action] ?? ACTIONS[l.action]?.label ?? TIMELINE_EXTRA[l.action];
+    const by = lineWho(t, l);
     return {
-      id: l.id, at: l.createdAt, who: l.user?.fullName ?? l.actorLabel ?? t("System"), record: record ?? null,
+      id: l.id, at: l.createdAt, who: by.name ?? t("System"), doneBy: by.doneBy, record: record ?? null,
       label: (said ? t(said) : l.action.replace(/^[a-z_]+\./, "").replaceAll("_", " ")) + amount,
       changes: changes.slice(0, 8), reason: reason ?? null,
     };

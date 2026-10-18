@@ -8,6 +8,7 @@ import { decideWasteAction } from "./actions";
 import { MovementList } from "./item-sheet";
 import { field, tzs, useRun } from "./ui";
 import { useT } from "@/i18n/client";
+import { DoneByDeveloper } from "@/components/staff/done-by-developer";
 
 /** Waste waiting for a manager (approve → the stock drops; reject → nothing changes), then the recent decisions. */
 export function WasteView({ pending, recent, approver }: { pending: MovementRow[]; recent: MovementRow[]; approver: boolean }) {
@@ -41,7 +42,7 @@ function PendingRow({ m, approver }: { m: MovementRow; approver: boolean }) {
         <div className="min-w-0">
           <p className="text-sm font-semibold">{m.item.name} · <span className="text-rose-600 dark:text-rose-400">{formatQty(-m.change, m.unit, t)}</span></p>
           <p className="text-xs text-muted-foreground">{t(reasonLabel(m.reason))}{m.note ? ` — ${m.note}` : ""} · {t(m.where)}{m.totalCost ? ` · ${tzs(m.totalCost)}` : ""}</p>
-          <p className="text-[11px] text-muted-foreground/80">{t("Reported by {name}", { name: m.by === "System" ? t("System") : m.by })}{m.byRole ? ` (${t(m.byRole)})` : ""} · {t.dateTime(m.at)}</p>
+          <p className="text-[11px] text-muted-foreground/80">{t("Reported by {name}", { name: m.by === "System" ? t("System") : m.by })}{m.byRole ? ` (${t(m.byRole)})` : ""}{m.doneBy ? <DoneByDeveloper text={m.doneBy} /> : null} · {t.dateTime(m.at)}</p>
         </div>
         {approver && !rejecting && (
           <div className="flex shrink-0 gap-1.5">

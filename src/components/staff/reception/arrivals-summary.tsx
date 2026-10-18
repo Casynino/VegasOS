@@ -9,6 +9,9 @@ import { ShowRows } from "@/components/dashboard/show-rows";
 import type { getArrivalsSummary } from "@/server/services/front-desk";
 import { MeetingButtons } from "@/app/staff/(app)/reservations/[id]/panels";
 import { getT } from "@/i18n/server";
+import { DoneByDeveloper } from "@/components/staff/done-by-developer";
+import { doneByText } from "@/lib/done-by-text";
+import { developerMarks, markFor, MARK_CREATED, type DeveloperMark } from "@/server/services/developer-marks";
 
 type Summary = Awaited<ReturnType<typeof getArrivalsSummary>>;
 type Person = Summary["expected"][number];
@@ -26,6 +29,14 @@ export async function ArrivalsSummary({ s, today, canCheckIn, show = 3 }: { s: S
   // A group booking's "company" comes as "Group: <name>".
   const company = (c: string) => (c.startsWith("Group: ") ? t("Group: {name}", { name: c.slice(7) }) : c);
   const toCome = [...s.expected, ...s.late].sort((a, b) => a.arrival.localeCompare(b.arrival) || (a.eta ?? "99").localeCompare(b.eta ?? "99"));
+
+  // "Done by Developer" next to "Booked by": one lookup for the whole list; a failed lookup shows no tag.
+  const marks = await developerMarks("Reservation", toCome.filter((p) => p.bookedBy).map((p) => p.id), { actions: MARK_CREATED }).catch(() => new Map<string, DeveloperMark[]>());
+
+  const bookedTag = (p: Person) => {
+    const text = p.bookedBy ? doneByText(t, markFor(marks, p.id)) : null;
+    return text ? <DoneByDeveloper text={text} /> : null;
+  };
 
   /** Where this arrival stands, in reception's words. */
   const state = (p: Person) =>
@@ -58,7 +69,10 @@ export async function ArrivalsSummary({ s, today, canCheckIn, show = 3 }: { s: S
                         <div className="min-w-0">
                           <Link href={`/staff/reservations/${p.id}`} className="block truncate font-semibold after:absolute after:inset-0">{p.name}</Link>
                           <span className="block truncate text-xs text-muted-foreground">{p.phone ?? t("No phone")} · <span className="font-mono">{p.reference}</span> · {t(p.source)}{p.company ? ` · ${company(p.company)}` : ""}</span>
-                          <span className="block truncate text-[11px] text-muted-foreground">{t("Booked by {name}", { name: p.bookedBy ?? t("website") })}</span>
+                          <span className="flex min-w-0 items-center text-[11px] text-muted-foreground">
+                            <span className="truncate">{t("Booked by {name}", { name: p.bookedBy ?? t("website") })}</span>
+                            {bookedTag(p)}
+                          </span>
                         </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-1.5 pl-12 lg:pl-0">

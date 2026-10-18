@@ -7,6 +7,7 @@ import { getSettings } from "../settings";
 import { siteOrigin } from "../site-origin";
 import { fromDbDate } from "@/lib/time/business-date";
 import { formatTZS } from "@/lib/format";
+import { lineWho } from "@/lib/audit-line-who";
 import { guestEventOn, maskEmail, maskPhone, shortName, type GuestMessageType } from "@/lib/guest-messages";
 import { reservationMessage, roomChangeMessage } from "./guest-message-data";
 import { createRestaurantOrderTx } from "./restaurant";
@@ -414,7 +415,9 @@ export async function guestTimeline(guestId: string) {
       return { numbers: new Map(os.map((o) => [o.id, o.number])), logs };
     })(),
   ]);
-  type Event = { at: Date; kind: "booking" | "checkin" | "checkout" | "cancel" | "message" | "change" | "order" | "billing"; title: string; detail?: string; href?: string };
+  type Event = { at: Date; kind: "booking" | "checkin" | "checkout" | "cancel" | "message" | "change" | "order" | "billing"; title: string; detail?: string; href?: string;
+    /** "Done by Developer · as Neema" when the Developer did it while working as someone (shown next to the name in `detail`); else null. */
+    doneBy?: string | null };
   // The words are for the staff member reading the profile (their language); the history itself stays as recorded.
   const t = await getT().catch(() => englishT);
   const events: Event[] = [];
@@ -440,7 +443,10 @@ export async function guestTimeline(guestId: string) {
       href: `/staff/restaurant/orders/${o.id}`,
     });
   }
-  for (const c of changes) events.push({ at: c.createdAt, kind: "change", title: c.action === "guest.created" ? t("Customer saved") : t("Details updated"), detail: c.user?.fullName ?? c.actorLabel ?? undefined });
+  for (const c of changes) {
+    const by = lineWho(t, c);
+    events.push({ at: c.createdAt, kind: "change", title: c.action === "guest.created" ? t("Customer saved") : t("Details updated"), detail: by.name ?? undefined, doneBy: by.doneBy });
+  }
 
   // Where their bills went: "Order #184 put on Room 305 · TZS 45,000" — by whom, and why.
   const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
@@ -453,7 +459,9 @@ export async function guestTimeline(guestId: string) {
   const bill = billed.logs;
   for (const l of bill) {
     const after = l.after, before = l.before;
-    const by = l.user?.fullName.replace(/\s*\(.*\)/, "") ?? l.actorLabel;
+    // A staff name loses its "(Role)"; a Developer's line never does (the brackets say who really acted) and carries the tag.
+    const lw = lineWho(t, l, { plain: true });
+    const by = lw.name;
     const why = str(field(after, "reason"));
     const who = [by ? t("by {name}", { name: by }) : null, why ? `(${why})` : null].filter(Boolean).join(" ") || undefined;
     const number = billed.numbers.get(l.entityId ?? "");
@@ -461,16 +469,16 @@ export async function guestTimeline(guestId: string) {
     const href = l.entityType === "RestaurantOrder" ? `/staff/restaurant/orders/${l.entityId}` : undefined;
     if (l.action === "dining_session.charged_to_room") {
       const n = Array.isArray(field(after, "orders")) ? (field(after, "orders") as unknown[]).length : 0;
-      events.push({ at: l.createdAt, kind: "billing", title: t("Table bill at {table} put on Room {room} · {amount}", { table: spot(str(field(after, "table"))) ?? t("a table"), room: str(field(after, "room")) ?? "—", amount: formatTZS(num(field(after, "amount"))) }), detail: [n ? t.plural(n, "{n} order", "{n} orders") : null, who].filter(Boolean).join(" · ") || undefined });
+      events.push({ at: l.createdAt, kind: "billing", title: t("Table bill at {table} put on Room {room} · {amount}", { table: spot(str(field(after, "table"))) ?? t("a table"), room: str(field(after, "room")) ?? "—", amount: formatTZS(num(field(after, "amount"))) }), detail: [n ? t.plural(n, "{n} order", "{n} orders") : null, who].filter(Boolean).join(" · ") || undefined, doneBy: lw.doneBy });
     } else if (l.action === "restaurant_order.charged_to_room") {
       // Part of a table's bill or a change of who pays: that entry already says it.
       if (bill.some((x) => x !== l && near(x.createdAt, l.createdAt) && ((x.action === "restaurant_order.billing_changed" && x.entityId === l.entityId) || (x.action === "dining_session.charged_to_room" && x.entityId === str(field(after, "session")))))) continue;
       const other = str(field(after, "roomOfAnotherGuest"));
-      events.push({ at: l.createdAt, kind: "billing", title: t("{order} put on {billing} · {amount}", { order, billing: spot(str(field(after, "billing"))) ?? t("a room"), amount: formatTZS(num(field(after, "total"))) }), detail: [spot(str(field(after, "table"))), other ? t("{name}'s room", { name: other }) : null, who].filter(Boolean).join(" · ") || undefined, href });
+      events.push({ at: l.createdAt, kind: "billing", title: t("{order} put on {billing} · {amount}", { order, billing: spot(str(field(after, "billing"))) ?? t("a room"), amount: formatTZS(num(field(after, "total"))) }), detail: [spot(str(field(after, "table"))), other ? t("{name}'s room", { name: other }) : null, who].filter(Boolean).join(" · ") || undefined, href, doneBy: lw.doneBy });
     } else if (l.action === "restaurant_order.room_paid_now") {
-      events.push({ at: l.createdAt, kind: "billing", title: t("{order} removed from {billing} — paid now · {amount}", { order, billing: spot(str(field(before, "billing"))) ?? t("the room"), amount: formatTZS(num(field(after, "total"))) }), detail: who, href });
+      events.push({ at: l.createdAt, kind: "billing", title: t("{order} removed from {billing} — paid now · {amount}", { order, billing: spot(str(field(before, "billing"))) ?? t("the room"), amount: formatTZS(num(field(after, "total"))) }), detail: who, href, doneBy: lw.doneBy });
     } else {
-      events.push({ at: l.createdAt, kind: "billing", title: t("{order} moved from {from} to {to} · {amount}", { order, from: billName(str(field(before, "billing"))), to: billName(str(field(after, "billing"))), amount: formatTZS(num(field(after, "amount"))) }), detail: who, href });
+      events.push({ at: l.createdAt, kind: "billing", title: t("{order} moved from {from} to {to} · {amount}", { order, from: billName(str(field(before, "billing"))), to: billName(str(field(after, "billing"))), amount: formatTZS(num(field(after, "amount"))) }), detail: who, href, doneBy: lw.doneBy });
     }
   }
   return { events: events.sort((a, b) => +b.at - +a.at).slice(0, 80), messages };

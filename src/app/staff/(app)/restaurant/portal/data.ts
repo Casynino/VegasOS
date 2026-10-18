@@ -10,10 +10,11 @@ import { prettyPhone } from "@/lib/guest-messages";
 import { inHouseGuestIds, isHotelOrder } from "@/server/desk";
 import { isRestaurantDevice } from "@/lib/permissions";
 import { ORDER_EVENT_TYPE, orderEventFor, orderMessageText, orderFacts } from "@/lib/order-messages";
-import type { PortalOrder, PortalPerms, PortalRole, PortalStay } from "./types";
+import type { PortalDoneBy, PortalOrder, PortalPerms, PortalRole, PortalStay } from "./types";
 import { getTFor } from "@/i18n/server";
 import { toLocale, type Locale } from "@/i18n/config";
 import { englishT, type T } from "@/i18n/translate";
+import { ORDER_CREATED, ORDER_MOVED, stepDoneBy, type OrderMarks } from "@/server/services/order-done-by";
 
 /** Translators for customers' languages (their WhatsApp update text) — load once per page: `guestT: await customerTranslators()`. */
 export async function customerTranslators(): Promise<Partial<Record<Locale, T>>> {
@@ -65,11 +66,23 @@ export function portalAccess(user: CurrentUser): { perms: PortalPerms; role: Por
   return { perms, role, seesMoney: perms.waiter || perms.manage };
 }
 
+/** The tags of the steps the Developer made on this order (the audit row of each step is the mark); null when there is none. Display only: nobody's stored name changes. */
+export function portalDoneBy(marks: OrderMarks, t: T, o: BoardOrder): PortalDoneBy | null {
+  const step = (at: Date | null, by: { fullName: string } | null) => (by ? stepDoneBy(marks, t, o.id, at, { actions: ORDER_MOVED, by: by.fullName }) : null);
+  const tags: PortalDoneBy = {
+    created: o.createdBy ? stepDoneBy(marks, t, o.id, o.createdAt, { actions: ORDER_CREATED, by: o.createdBy.fullName }) : null,
+    accepted: step(o.acceptedAt, o.acceptedBy), ready: step(o.readyAt, o.readyBy), taken: step(o.takenAt, o.takenBy), delivered: step(o.deliveredAt, o.deliveredBy),
+  };
+  return Object.values(tags).some(Boolean) ? tags : null;
+}
+
 /** Orders as the portal cards show them (money left out for the cook; the customer's update text for waiters). */
 export function toPortalOrders(orders: BoardOrder[], ctx: {
   seesMoney: boolean; waiter: boolean; settings: Awaited<ReturnType<typeof getSettings>>; origin: string; sent?: Set<string>; stays?: Map<string, PortalStay[]>; online?: Map<string, OnlinePayState>;
   /** The customer's update is written in THEIR language (from customerTranslators()); without it, English. */
   guestT?: Partial<Record<Locale, T>>;
+  /** The Developer's marks on these orders (orderMarks(ids)) and the reader's translator: the steps the Developer made while working as someone say so. Without it, no tags. */
+  doneBy?: { t: T; marks: OrderMarks };
 }): PortalOrder[] {
   const { seesMoney, settings, origin } = ctx;
   const hotelPhone = prettyPhone(settings.whatsapp || settings.phone);
@@ -102,6 +115,7 @@ export function toPortalOrders(orders: BoardOrder[], ctx: {
       createdAt: o.createdAt.toISOString(), acceptedAt: o.acceptedAt?.toISOString() ?? null, readyAt: o.readyAt?.toISOString() ?? null,
       takenAt: o.takenAt?.toISOString() ?? null, deliveredAt: o.deliveredAt?.toISOString() ?? null, doneAt: (o.completedAt ?? o.cancelledAt ?? o.deliveredAt)?.toISOString() ?? null,
       acceptedBy: o.acceptedBy?.fullName ?? null, readyBy: o.readyBy?.fullName ?? null, takenBy: o.takenBy?.fullName ?? null, deliveredBy: o.deliveredBy?.fullName ?? null,
+      doneBy: ctx.doneBy ? portalDoneBy(ctx.doneBy.marks, ctx.doneBy.t, o) : null,
       items: o.items.map((i) => ({ id: i.id, menuItemId: i.menuItemId, name: i.name, nameI18n: namesOf(i.nameI18n), quantity: i.quantity, type: i.type, image: i.menuItem?.image?.isActive ? mediaUrl(i.menuItem.image) : null, prepared: !!i.preparedAt,
         unitPrice: seesMoney ? i.unitPrice : null, lineTotal: seesMoney ? i.lineTotal : null,
         round: i.round, addedAt: i.addedAt.toISOString(), addedBy: i.addedBy?.fullName ?? null, paid: !!i.paymentId })),

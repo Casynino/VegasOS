@@ -10,6 +10,7 @@ import { itemDetailAction, receiveStockAction, reportWasteAction, transferStockA
 import { Chip, GoldButton, Label, field, num, tzs, useRun } from "./ui";
 import { ItemForm, type Setup } from "./item-form";
 import { useT } from "@/i18n/client";
+import { DoneByDeveloper } from "@/components/staff/done-by-developer";
 
 export type Perms = { receive: boolean; use: boolean; approve: boolean; manage: boolean };
 export type Tab = "receive" | "use" | "waste" | "transfer" | "edit" | "history";
@@ -262,6 +263,7 @@ export function MovementList({ rows, compact }: { rows: MovementRow[]; compact?:
               {(m.note || m.supplier || ref) && <p className="truncate text-xs text-muted-foreground">{[m.supplier, ref, m.note].filter(Boolean).join(" · ")}</p>}
               <p className="text-[11px] text-muted-foreground/80">
                 {t.dateTime(m.at)} · {m.by === "System" ? t("System") : m.by}{m.byRole ? ` (${t(m.byRole)})` : ""}
+                {m.doneBy ? <DoneByDeveloper text={m.doneBy} /> : null}
                 {m.status === "PENDING" && <span className="ml-1.5 rounded-full bg-amber-500/15 px-1.5 py-px font-semibold text-amber-700 dark:text-amber-300">{t("waiting for approval")}</span>}
                 {m.status === "REJECTED" && <span className="ml-1.5 rounded-full bg-muted px-1.5 py-px font-semibold">{t("rejected by {name}", { name: m.approvedBy ?? "" })}{m.decisionNote ? ` — ${m.decisionNote}` : ""}</span>}
                 {m.status === "POSTED" && (m.kind === "WASTE" || m.kind === "RECEIVE") && m.approvedBy && <span> · {bought ? t("final approval by {name}", { name: m.approvedBy }) : t("approved by {name}", { name: m.approvedBy })}</span>}

@@ -158,6 +158,7 @@ export const NAV: NavSection[] = [
       { href: "/staff/activity", label: msg("Activity"), icon: "Activity", anyOf: ["staff.activity.view"] },
       // The full record of who did what — Developer actions included — read-only: the Boss, the MD and the Developer.
       { href: "/staff/audit", label: msg("Audit trail"), icon: "History", anyOf: ["audit.view"] },
+      { href: "/staff/guides", label: msg("Guide books"), icon: "BookOpenText", anyOf: ["dashboard.admin", "dashboard.owner", "dashboard.manager"] },
       { href: "/staff/users", label: msg("Staff & roles"), icon: "UserCog", anyOf: ["users.manage"] },
     ],
   },
@@ -194,13 +195,14 @@ export const NAV: NavSection[] = [
  * no business role (not even the Boss or the MD) can hold. The Boss and the MD keep "Audit trail" (People) in the normal menu.
  */
 export const DEVELOPER_CONSOLE: NavSection = {
-  // No heading: the menu is only these four (owner, 2026-10-18: like the console on ORA — Home, Audit, Access, Business).
+  // No heading: the menu is these five (owner, 2026-10-18: like the console on ORA — Home, Audit, Access, Business — and the Guide books).
   title: msg("Developer console"), icon: "Layers", ordered: true,
   items: [
     { href: "/staff/developer", label: msg("Home"), icon: "LayoutGrid", anyOf: ["developer.access"] },
     { href: "/staff/developer/audit", label: msg("Audit"), icon: "History", anyOf: ["developer.access"] },
     { href: "/staff/developer/access", label: msg("Access"), icon: "UserCog", anyOf: ["developer.access"] },
     { href: "/staff/developer/business", label: msg("Business"), icon: "BarChart3", anyOf: ["developer.access"] },
+    { href: "/staff/guides", label: msg("Guide books"), icon: "BookOpenText", anyOf: ["developer.access"] },
   ],
 };
 

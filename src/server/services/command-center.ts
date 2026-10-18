@@ -9,6 +9,7 @@ import { spotName } from "@/components/restaurant/shell";
 import { getT } from "@/i18n/server";
 import { msg } from "@/i18n/msg";
 import { englishT, type T } from "@/i18n/translate";
+import { lineWho } from "@/lib/audit-line-who";
 
 /**
  * The manager's and the MD's command centre — one place to see the hotel's condition:
@@ -114,7 +115,7 @@ export async function commandCenter(input: CommandInput) {
   // (the order then takes the room's guest as its customer, so the names alone cannot tell).
   const billedBy = roomBilled.length ? await db.auditLog.findMany({
     where: { entityType: "RestaurantOrder", entityId: { in: roomBilled.map((o) => o.id) }, action: { in: ["restaurant_order.created", "restaurant_order.charged_to_room", "restaurant_order.billing_changed"] } },
-    orderBy: { createdAt: "desc" }, select: { entityId: true, action: true, after: true, actorLabel: true, user: { select: { fullName: true } } },
+    orderBy: { createdAt: "desc" }, select: { entityId: true, action: true, after: true, actorLabel: true, actorType: true, user: { select: { fullName: true } } },
   }) : [];
   const markedOther = (id: string) => {
     const last = billedBy.find((a) => a.entityId === id && a.action !== "restaurant_order.billing_changed");
@@ -211,7 +212,8 @@ export async function commandCenter(input: CommandInput) {
     const log = billedBy.find((l) => l.entityId === o.id);
     const after = log?.after && typeof log.after === "object" && !Array.isArray(log.after) ? (log.after as Record<string, unknown>) : {};
     const reason = typeof after.reason === "string" && after.reason.trim() ? after.reason.trim() : null;
-    const by = log?.user?.fullName.replace(/\s*\(.*\)/, "") ?? log?.actorLabel ?? null;
+    // A staff name loses its "(Role)"; a Developer's entry never does: "Nino (Developer) as Neema (Receptionist)" says who really put it there.
+    const by = log ? lineWho(t, log, { plain: true }).name : null;
     const place = o.location?.name ?? o.tableLabel;
     push({
       id: `room-other-${o.id}`, area: "Payments", tone: "amber", title: t("Order {no} on Room {room} for another customer — check who pays", { no: o.number.replace(/^ORD-\d{4}-0*/, "#"), room: o.roomNumber ?? "—" }),

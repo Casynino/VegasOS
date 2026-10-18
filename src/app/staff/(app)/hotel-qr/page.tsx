@@ -12,6 +12,7 @@ import { businessDateOf, businessRangeBounds } from "@/lib/time/business-date";
 import { formatTZS } from "@/lib/format";
 import { Panel, StatTile } from "@/components/dashboard/kit";
 import { PageHeader } from "@/components/staff/page-header";
+import { DoneByDeveloper } from "@/components/staff/done-by-developer";
 import { PeriodPicker, periodLabel, readPeriod } from "@/components/staff/finance/finance-nav";
 import { cn } from "@/lib/utils";
 import { getT } from "@/i18n/server";
@@ -20,6 +21,8 @@ import { QrCodes, ShowToGuestButton, type QrCodeView } from "./qr-codes";
 import { QrSwitches } from "./qr-switches";
 import { QrBookings, QR_LISTS, type QrList } from "./qr-bookings";
 import { QrNumbers } from "./qr-numbers";
+import { doneByText } from "@/lib/done-by-text";
+import { developerMarks, markFor, type DeveloperMark } from "@/server/services/developer-marks";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getT();
@@ -92,10 +95,13 @@ export default async function HotelQrPage({ searchParams }: PageProps<"/staff/ho
   // Booked to pay later: not paid, no room held — whoever pays first gets it.
   const notHeld = waiting.filter((r) => !r.roomHeld).length;
 
+  // "Done by Developer" beside "made by" when the Developer made or renewed the code while working as someone (a failed lookup shows no tag).
+  const madeMarks = await developerMarks("BookingQrCode", codes.map((c) => c.id), { actions: ["hotel_qr.created", "hotel_qr.regenerated"] }).catch(() => new Map<string, DeveloperMark[]>());
   const views: QrCodeView[] = codes.map((c) => ({
     id: c.id, label: c.label, placement: c.placement, url: c.url, qr: c.qr, active: c.active, scans: c.scans,
     lastScan: c.lastScannedAt?.toISOString() ?? null, bookings: c.bookings, madeBy: c.madeBy,
     regeneratedAt: c.regeneratedAt?.toISOString() ?? null, createdAt: c.createdAt.toISOString(),
+    madeDoneBy: c.madeBy ? doneByText(t, markFor(madeMarks, c.id, { actions: [c.regeneratedAt ? "hotel_qr.regenerated" : "hotel_qr.created"], near: c.regeneratedAt ?? c.createdAt, windowMs: 10_000 })) : null,
   }));
   const primary = views.find((c) => c.active) ?? null;
   const labels = new Map([...codes, ...archived].map((c) => [c.id, c.label]));
@@ -169,7 +175,7 @@ export default async function HotelQrPage({ searchParams }: PageProps<"/staff/ho
                     <li key={h.id} className="flex items-start gap-2.5 rounded-xl px-2 py-1.5 text-xs">
                       <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground"><History className="size-3" /></span>
                       <span className="min-w-0 flex-1">
-                        <span className="block"><strong className="font-semibold">{h.by.replace(/\s*\(.*\)/, "")}</strong> <span className="text-muted-foreground">{t(friendlyAction(h.action))}</span></span>
+                        <span className="block"><strong className="font-semibold">{h.by}</strong>{h.doneBy && <DoneByDeveloper text={h.doneBy} />} <span className="text-muted-foreground">{t(friendlyAction(h.action))}</span></span>
                         {(detail || place) && <span className="block truncate text-[11px] text-muted-foreground">{detail || place}</span>}
                       </span>
                       <span className="shrink-0 tabular-nums text-[11px] text-muted-foreground">{t.dateTime(h.at)}</span>

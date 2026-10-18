@@ -4,7 +4,7 @@ import { z } from "zod";
 import { authorize, can, requestMeta } from "@/server/auth";
 import { AppError, runAction, type ActionResult } from "@/server/errors";
 import { parseInput } from "@/server/validation";
-import { saveDailyListCopy, type StoredDailyList } from "@/server/services/daily-lists";
+import { saveDailyListCopy, withDoneBy, type StoredDailyList } from "@/server/services/daily-lists";
 
 const PrintSchema = z.object({ kind: z.enum(["HOUSEKEEPING", "GUESTS"]) });
 
@@ -18,6 +18,6 @@ export async function printDailyListAction(input: z.input<typeof PrintSchema>): 
     const { kind } = parseInput(PrintSchema, input);
     if (!can(user, kind === "HOUSEKEEPING" ? "rooms.view" : "reservations.view")) throw new AppError("You do not have permission to do this.", "FORBIDDEN");
     const { ipAddress } = await requestMeta();
-    return saveDailyListCopy(kind, user, ipAddress);
+    return (await withDoneBy([await saveDailyListCopy(kind, user, ipAddress)]))[0];
   });
 }

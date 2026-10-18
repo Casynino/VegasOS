@@ -4,6 +4,8 @@ import { redact, type ActorType } from "@/server/audit";
 import { DEVELOPER_ROLE_CODE } from "@/lib/permissions";
 import { toDbDate } from "@/lib/time/business-date";
 import { DEVELOPER_ROWS, seesDeveloperActions, type AuditViewer } from "@/server/services/audit-trail";
+import { auditWho } from "@/lib/audit-who";
+import { actedAsName } from "@/lib/audit-line-who";
 import type { Prisma } from "@/generated/prisma/client";
 
 /**
@@ -28,8 +30,10 @@ export interface ActivityQuery {
 export interface ActivityRow {
   id: string;
   createdAt: Date;
-  /** The account's name, else the name written with the entry ("website", "system"); null when there is neither. */
+  /** The account's name, else the name written with the entry ("website", "system"); null when there is neither. A Developer working as someone: the whole label ("Nino (Developer) as Neema (Receptionist)"). */
   who: string | null;
+  /** Who a Developer acted as ("Neema", "Receptionist") when this is his entry written while working as someone; else null. */
+  actedAs: { name: string; role: string | null } | null;
   actorType: ActorType;
   action: string;
   entityType: string;
@@ -86,10 +90,15 @@ export async function loadActivity(viewer: AuditViewer, q: ActivityQuery): Promi
       const code = r.actorRole ?? r.user?.role.code ?? null;
       const actorType = (r.actorType as ActorType | null)
         ?? (r.userId ? (code === DEVELOPER_ROLE_CODE ? "DEVELOPER" : "STAFF") : r.actorLabel === "website" ? "WEBSITE" : "SYSTEM");
+      // A Developer's entry (the account is his, the label says who he acted as): the whole label, never only "Nino".
+      const by = auditWho({ actorType, actorLabel: r.actorLabel, userName: r.user?.fullName });
+      const asName = by.as ? actedAsName(r.after, r.actorLabel) : null;
+      const actingRole = asName && r.after && typeof r.after === "object" && !Array.isArray(r.after) ? (r.after as { actingAs?: { role?: unknown } }).actingAs?.role : null;
       return {
         id: r.id,
         createdAt: r.createdAt,
-        who: r.user?.fullName ?? r.actorLabel ?? null,
+        who: by.developer && by.as ? by.name : r.user?.fullName ?? r.actorLabel ?? null,
+        actedAs: asName ? { name: asName, role: typeof actingRole === "string" && actingRole.trim() ? actingRole.trim() : null } : null,
         actorType,
         action: r.action,
         entityType: r.entityType,
