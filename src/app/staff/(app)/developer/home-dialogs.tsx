@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ArrowRight, Loader2, LogIn, Search, UserPlus } from "lucide-react";
+import { ArrowRight, Eye, Loader2, LogIn, Search, UserPlus } from "lucide-react";
 import { ActionForm } from "@/components/staff/action-form";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -20,8 +20,8 @@ function CardBody({ icon, title, text }: { icon: ReactNode; title: string; text:
     <>
       <span className={TILE_ICON}>{icon}</span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-base font-semibold text-foreground">{title}</span>
-        <span className="mt-0.5 block truncate text-sm text-muted-foreground">{text}</span>
+        <span className="block text-base font-semibold text-foreground">{title}</span>
+        <span className="mt-1 block text-sm leading-snug text-muted-foreground">{text}</span>
       </span>
     </>
   );
@@ -40,7 +40,7 @@ export function WorkAsCard({ people }: { people: PersonChoice[] }) {
   return (
     <>
       <button type="button" className={TILE} onClick={() => { setQuery(""); setOpen(true); }}>
-        <CardBody icon={<LogIn className="size-5" aria-hidden />} title={t("Work as")} text={t.plural(people.length, "{n} person to pick from", "{n} people to pick from")} />
+        <CardBody icon={<Eye className="size-5" aria-hidden />} title={t("Work as")} text={t("Use the app as any person, as you.")} />
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
@@ -93,7 +93,7 @@ export function AddAccountCard({ roles }: { roles: RoleChoice[] }) {
   return (
     <>
       <button type="button" className={TILE} onClick={() => { setRound((n) => n + 1); setOpen(true); }}>
-        <CardBody icon={<UserPlus className="size-5" aria-hidden />} title={t("Add an account")} text={t("Create a login")} />
+        <CardBody icon={<UserPlus className="size-5" aria-hidden />} title={t("Add an account")} text={t("Staff, manager or owner.")} />
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>

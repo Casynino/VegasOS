@@ -68,20 +68,19 @@ export function Tag({ tone = "slate", children, className }: { tone?: TagTone; c
 
 // ───────────────────────────────────────────── banner ─────────────────────────────────────────────
 /**
- * The greeting at the top (copied from the owner's ORA / Target consoles, 2026-10-18: "copy this look exactly"): a vivid gradient in the
- * hotel's own colours (gold) with a faint grid, a dot and the date, the Developer tag, a big greeting and one line.
+ * The greeting at the top — an exact copy of the owner's Target Express console (2026-10-18: "copy this look exactly"): a solid purple
+ * gradient with a faint grid, the date and the DEVELOPER tag, a big greeting and one line.
  */
 export function ConsoleBanner({ date, tag, title, subtitle }: { date: string; tag: string; title: string; subtitle: string }) {
   return (
-    <section className="relative isolate overflow-hidden rounded-[1.75rem] bg-[linear-gradient(100deg,#7a4f0c_0%,#b8801d_42%,#e3ad47_72%,#c98a1f_100%)] px-6 py-6 text-white shadow-[0_24px_60px_-30px_rgba(40,25,5,0.75)] sm:px-8 sm:py-7">
+    <section className="relative isolate overflow-hidden rounded-[1.75rem] bg-[linear-gradient(100deg,#4c1d95_0%,#5b21b6_38%,#6d28d9_70%,#7c3aed_100%)] px-6 py-7 text-white shadow-[0_24px_60px_-30px_rgba(40,10,90,0.75)] sm:px-9 sm:py-8">
       <div aria-hidden className="absolute inset-0 -z-10 opacity-[0.1] [background-image:linear-gradient(white_1px,transparent_1px),linear-gradient(90deg,white_1px,transparent_1px)] [background-size:28px_28px]" />
       <div className="flex flex-wrap items-center gap-2 text-sm text-white/90">
-        <span className="size-1.5 rounded-full bg-white" aria-hidden />
         <span>{date}</span>
-        <span className="rounded-full bg-white/25 px-2.5 py-0.5 text-xs font-semibold text-white">{tag}</span>
+        <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-white">{tag}</span>
       </div>
-      <h1 className="mt-2 text-3xl font-bold leading-tight tracking-tight sm:text-4xl">{title}</h1>
-      <p className="mt-1 max-w-4xl text-sm leading-relaxed text-white/90 sm:text-base">{subtitle}</p>
+      <h1 className="mt-3 text-3xl font-bold leading-tight tracking-tight sm:text-[2.6rem]">{title}</h1>
+      <p className="mt-2 max-w-4xl text-sm leading-relaxed text-white/90 sm:text-base">{subtitle}</p>
     </section>
   );
 }
@@ -100,8 +99,8 @@ export function SectionTitle({ title, hint, count, id }: { title: string; hint?:
   );
 }
 
-/** The icon box of a figure card (ORA look): the hotel's accent colour (gold), whatever the tag says. */
-const ICON_BOX = "bg-[oklch(0.72_0.12_80/0.16)] text-[oklch(0.5_0.11_75)] dark:text-[oklch(0.84_0.11_82)]";
+/** The icon box of a figure card (the owner's ORA console): the accent colour, violet, whatever the tag says. */
+const ICON_BOX = "bg-violet-500/15 text-violet-600 dark:text-violet-400";
 
 /**
  * A figure with its words, as a compact card: a small label with an icon on the right, a big number, what it counts and one small tag.

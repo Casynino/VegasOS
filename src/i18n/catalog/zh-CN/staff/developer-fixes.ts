@@ -157,6 +157,8 @@ const catalog: Catalog = {
   "Sent to {n} people": "发送给 {n} 人",
   "Nobody is set to receive them": "没有设置接收人",
   "All clear": "一切正常",
+  "Use the app as any person, as you.": "以你自己的身份，像任何人一样使用系统。",
+  "Stays, bills, payments and guests. Read only.": "住宿、账单、付款和住客。只读。",
   "The last times a page or an action was refused to the Developer account.": "开发者账号最近被拒绝的页面或操作。",
   "Last 30 days, one line for each different error. A repeat adds to its count; emails and numbers are taken out.": "最近 30 天，每种不同的错误一行。重复出现会累加次数；邮箱和数字已被去除。",
   "Mistakes people make, like a wrong password or a refused action, are not errors and are not recorded here.": "人为的失误，例如输错密码或被拒绝的操作，不算错误，也不会记录在这里。",

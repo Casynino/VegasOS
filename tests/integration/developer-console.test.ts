@@ -946,8 +946,7 @@ describe("the Developer home page draws, on every tab, from real data", () => {
     expect(html).toMatch(/Good (morning|afternoon|evening), /);
     expect(html).toContain("health, people and everything done, in one place.");
     expect(html).toContain("out of 100");
-    for (const w of ["Work as", "Add an account", "people to pick from", "Create a login", "Stays, money and stock", "Signed in today", "Failed sign-ins", "Server errors (24 h)"]) expect(html).toContain(w);
-    expect(html).toMatch(/\d+ actions? today/); // the Audit tile says how much was done today
+    for (const w of ["Work as", "Add an account", "Use the app as any person, as you.", "Staff, manager or owner.", "Everything done in the system, by staff and by you.", "Stays, bills, payments and guests. Read only.", "Signed in today", "Failed sign-ins", "Server errors (24 h)"]) expect(html).toContain(w);
     // Audit and Business are links; Work as and Add an account open a popup (the Access page is in the side menu and in the popup)
     for (const href of [CONSOLE_HREF.home, CONSOLE_HREF.audit, CONSOLE_HREF.business]) expect(html).toContain(`href="${href}`);
     // no tabs and no jump row: eight parts, each with its anchor and its heading, one under the other (Activity, People, then the system)

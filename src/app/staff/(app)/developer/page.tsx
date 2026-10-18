@@ -97,10 +97,10 @@ export default async function DeveloperHomePage({ searchParams }: PageProps<"/st
     <div className="w-full space-y-8">
       <div className="space-y-6">
         <ConsoleBanner
-          date={t.date(greeting.today, true)} tag={t("Developer")} title={hello}
+          date={t.locale === "en" ? new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" }).format(new Date(`${greeting.today}T00:00:00Z`)) : t.date(greeting.today, true)} tag={t("Developer")} title={hello}
           subtitle={t("Your control room for {hotel} — health, people and everything done, in one place.", { hotel: greeting.hotelName })}
         />
-        <Shortcuts t={t} people={people} roles={roles.map((r) => ({ id: r.id, name: r.name }))} actionsToday={health.actionsToday} />
+        <Shortcuts t={t} people={people} roles={roles.map((r) => ({ id: r.id, name: r.name }))} />
         <HealthCard t={t} h={health} />
         <AttentionPanel t={t} items={health.items} checks={health.checks} />
       </div>

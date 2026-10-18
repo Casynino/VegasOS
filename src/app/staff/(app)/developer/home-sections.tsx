@@ -45,7 +45,7 @@ export function ConsoleSection({ id, title, hint, status, icon: Icon, children }
   return (
     <section id={id} aria-labelledby={`${id}-title`} className="scroll-mt-24 space-y-5">
       <header className="flex items-start gap-4">
-        {Icon && <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-[oklch(0.72_0.12_80/0.16)] text-[oklch(0.5_0.11_75)] dark:text-[oklch(0.84_0.11_82)]" aria-hidden><Icon className="size-6" /></span>}
+        {Icon && <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-violet-500/15 text-violet-600 dark:text-violet-400" aria-hidden><Icon className="size-6" /></span>}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <h2 id={`${id}-title`} className="text-2xl font-bold tracking-tight">{title}</h2>
@@ -62,7 +62,7 @@ export function ConsoleSection({ id, title, hint, status, icon: Icon, children }
 /** The row of pills under the Boss's reports (copied from the owner's ORA console): each one jumps to a part of this page. */
 export function JumpRow({ label, items }: { label: string; items: { id: string; text: string }[] }) {
   return (
-    <nav aria-label={label} className="flex flex-wrap gap-2">
+    <nav aria-label={label} className="flex flex-wrap gap-2 border-b border-border/60 bg-muted/30 px-3 py-3">
       {items.map((i) => (
         <a key={i.id} href={`#${i.id}`} className="rounded-full border border-border bg-card px-4 py-2 text-sm text-foreground/90 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold">{i.text}</a>
       ))}

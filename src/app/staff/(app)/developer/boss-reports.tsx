@@ -72,7 +72,7 @@ function ReportPanel({ t, title, subtitle, rows, pick, yesterday, now, timezone,
   return (
     <section className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <header className="flex items-center gap-3 px-5 py-4 sm:px-6">
-        <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-[oklch(0.72_0.12_80/0.16)] text-[oklch(0.5_0.11_75)] dark:text-[oklch(0.84_0.11_82)]" aria-hidden><FileText className="size-5" /></span>
+        <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-[linear-gradient(135deg,#c084fc,#7c3aed)] text-white shadow-sm" aria-hidden><FileText className="size-5" /></span>
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-base font-semibold sm:text-lg">{title}</h2>
           <p className="truncate text-sm text-muted-foreground">{subtitle}</p>
