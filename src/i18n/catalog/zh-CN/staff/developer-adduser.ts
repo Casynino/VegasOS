@@ -4,6 +4,13 @@ import type { Catalog } from "../../../translate";
 const catalog: Catalog = {
   "While you are working as someone you cannot add accounts.": "以他人身份工作期间，您不能添加账号。",
   "Add an account": "添加账号",
+  "Work as someone": "以某人身份工作",
+  "Pick a person. You will see their dashboard exactly as they see it.": "选择一位人员。您将看到与对方完全相同的仪表盘。",
+  "Search by name or role": "按姓名或角色搜索",
+  "No one found.": "没有找到相关人员。",
+  "To suspend someone or sign them out, open the": "如需停用某人或让其退出登录，请打开",
+  "Access page": "访问管理页面",
+  "Create a login for a new person: name, email and role. A temporary password is made for you.": "为新人员创建登录账号：姓名、邮箱和角色。系统会为您生成临时密码。",
   "e.g. Asha Juma": "例如：Asha Juma",
   "Make another password": "重新生成密码",
   "Made for you. They should change it after their first sign-in.": "已为您生成。对方首次登录后应修改密码。",

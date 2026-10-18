@@ -53,16 +53,16 @@ describe("the Audit trail (Boss, MD) and the Developer's console", () => {
   const flat = (sections: ReturnType<typeof navFor>) => sections.flatMap((s) => s.items.map((i) => i.label));
   const developerAsItself = { actorType: "DEVELOPER" as const, workAs: null, permissions: permsOf("DEVELOPER") };
 
-  it("a Developer signed in as itself sees ONLY the Developer console: Home, Audit, Business, Access — in that order, under that heading", () => {
+  it("a Developer signed in as itself sees ONLY the Developer console: Home, Audit, Access, Business — in that order, with no heading", () => {
     const sections = navFor(developerAsItself, { home: "/staff/developer" });
     expect(sections).toHaveLength(1);
     expect(sections[0].title).toBe("Developer console");
-    expect(sections[0].titled).toBe(true);
+    expect(sections[0].titled).toBeFalsy();
     expect(sections[0].items.map((i) => [i.label, i.href])).toEqual([
       ["Home", "/staff/developer"],
       ["Audit", "/staff/developer/audit"],
-      ["Business", "/staff/developer/business"],
       ["Access", "/staff/developer/access"],
+      ["Business", "/staff/developer/business"],
     ]);
     // nothing of the hotel's own menu: no Finance, Front office, Bookings, People…, no "Audit trail" of the Boss
     expect(flat(sections)).not.toContain("Audit trail");

@@ -8,6 +8,7 @@ import {
   developerGreeting, inspectPermission, parseTab, peopleTab, settingsTab, type ConsoleTab, type Inspection,
 } from "@/server/services/developer-console";
 import { activityData, crashData, healthReport, speedData } from "@/server/services/developer-health";
+import { accessPeople, accountRoleChoices } from "@/server/services/work-as";
 import { getT } from "@/i18n/server";
 import { AttentionSection } from "./attention";
 import { ConsoleBanner } from "./console-ui";
@@ -43,7 +44,9 @@ export default async function DeveloperHomePage({ searchParams }: PageProps<"/st
   const tab = parseTab(sp.tab);
   const [t, settings, sessionHash, meta] = await Promise.all([getT(), getSettings(), currentSessionTokenHash(), requestMeta()]);
   const when = (d: Date) => t.dateTime(d, settings.timezone);
-  const [greeting, health] = await Promise.all([developerGreeting(user, now), healthReport(user, now)]);
+  const [greeting, health, groups, roles] = await Promise.all([developerGreeting(user, now), healthReport(user, now), accessPeople(user), accountRoleChoices(user)]);
+  // The people the "Work as someone" popup lists: everyone the Developer can work as, with their role.
+  const people = groups.flatMap((g) => g.people.filter((p) => p.canWorkAs).map((p) => ({ id: p.id, fullName: p.fullName, roleName: g.roleName })));
 
   const hello = {
     morning: t("Good morning, {name}.", { name: greeting.firstName }),
@@ -80,7 +83,7 @@ export default async function DeveloperHomePage({ searchParams }: PageProps<"/st
       />
       <HealthCard t={t} h={health} />
       <AttentionSection t={t} items={health.items} />
-      <Shortcuts t={t} />
+      <Shortcuts t={t} people={people} roles={roles.map((r) => ({ id: r.id, name: r.name }))} />
       <div className="space-y-4">
         <TabNav t={t} active={tab} badges={badges} />
         {body}

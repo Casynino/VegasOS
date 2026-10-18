@@ -121,7 +121,9 @@ export async function StaffShell({ children }: { children: ReactNode }) {
           {/* Sign out — the same plain button for everyone, the Restaurant Counter too (owner, 2026-10-04). */}
           <div className="mt-3 space-y-2.5 border-t border-dashed border-border pt-3">
             {/* Who is signed in, at laptop width where the top bar shows the name only (from xl the top bar shows name and role). */}
-            <IdentityCard identity={identity} t={t}><Initials name={user.fullName} className={cn("size-9 text-xs", developer && "ring-2 ring-fuchsia-500")} /></IdentityCard>
+            <IdentityCard identity={identity} t={t} className={consoleMode ? "xl:flex" : undefined}><Initials name={user.fullName} className={cn("size-9 text-xs", developer && "ring-2 ring-fuchsia-500")} /></IdentityCard>
+            {/* The Developer's console keeps the language switch here too (name, role, language, sign out — like ORA's console). */}
+            {consoleMode && <LanguageSwitch staff tone="light" languages={settings.enabledLanguages} className="w-full" />}
             <form action={logoutAction}>
               <button type="submit" className="flex w-full items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-xs font-medium text-muted-foreground transition-colors hover:border-rose-400/40 hover:bg-rose-500/10 hover:text-rose-300">
                 <LogOut className="size-3.5" />{t("Sign out")}
@@ -156,7 +158,7 @@ export async function StaffShell({ children }: { children: ReactNode }) {
               </Link>
             )}
             {/* EN | 中文 — this person's own language (saved on their account; nobody else's changes). Not while a Developer works as someone: it would change THEIR account. */}
-            {!workAs && <LanguageSwitch staff tone="light" languages={settings.enabledLanguages} className="shrink-0" />}
+            {!workAs && <LanguageSwitch staff tone="light" languages={settings.enabledLanguages} className={cn("shrink-0", consoleMode && "lg:hidden")} />}
             <a href="/" target="_blank" rel="noopener" title={t("The hotel website (opens in a new tab)")} aria-label={t("The hotel website (opens in a new tab)")}
               className="hidden size-10 shrink-0 place-items-center rounded-full border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:grid">
               <Globe className="size-4" />

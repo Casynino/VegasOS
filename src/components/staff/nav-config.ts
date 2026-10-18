@@ -194,12 +194,13 @@ export const NAV: NavSection[] = [
  * no business role (not even the Boss or the MD) can hold. The Boss and the MD keep "Audit trail" (People) in the normal menu.
  */
 export const DEVELOPER_CONSOLE: NavSection = {
-  title: msg("Developer console"), icon: "Layers", ordered: true, titled: true,
+  // No heading: the menu is only these four (owner, 2026-10-18: like the console on ORA — Home, Audit, Access, Business).
+  title: msg("Developer console"), icon: "Layers", ordered: true,
   items: [
     { href: "/staff/developer", label: msg("Home"), icon: "LayoutGrid", anyOf: ["developer.access"] },
-    { href: "/staff/developer/audit", label: msg("Audit"), icon: "ScrollText", anyOf: ["developer.access"] },
+    { href: "/staff/developer/audit", label: msg("Audit"), icon: "History", anyOf: ["developer.access"] },
+    { href: "/staff/developer/access", label: msg("Access"), icon: "UserCog", anyOf: ["developer.access"] },
     { href: "/staff/developer/business", label: msg("Business"), icon: "BarChart3", anyOf: ["developer.access"] },
-    { href: "/staff/developer/access", label: msg("Access"), icon: "ShieldCheck", anyOf: ["developer.access"] },
   ],
 };
 

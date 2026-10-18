@@ -94,9 +94,12 @@ export function IdentityBanner({ identity, t, stopWorkAs, now }: {
  *  - below `lg` (tablet and phone): hidden — the bottom bar's Menu shows the name and the role.
  * A Developer's role line is tinted with the strip's colour, so the two are never mistaken for an ordinary account's.
  */
+/** The role as it is written under a name: the Developer in its own console is just "Developer"; everyone else (and a Developer working as someone) their role. */
+const roleText = (identity: Identity, t: T) => (identity.actorType === "DEVELOPER" && !identity.workAs ? t("Developer") : t(identity.role));
+
 export function IdentityChip({ identity, t, className }: { identity: Identity; t: T; className?: string }) {
   const developer = identity.actorType === "DEVELOPER";
-  const role = t(identity.role);
+  const role = roleText(identity, t);
   return (
     <span data-identity-chip title={t("{name} · {role} — your account", { name: identity.name, role })} className={cn("hidden min-w-0 max-w-[7rem] text-left leading-tight lg:block xl:max-w-[12rem]", className)}>
       <span className="block truncate text-[13px] font-semibold text-foreground">{identity.name}</span>
@@ -112,14 +115,15 @@ export function IdentityChip({ identity, t, className }: { identity: Identity; t
  */
 export function IdentityCard({ identity, t, className, children }: { identity: Identity; t: T; className?: string; children?: ReactNode }) {
   const developer = identity.actorType === "DEVELOPER";
-  const title = t("{name} · {role} — your account", { name: identity.name, role: t(identity.role) });
+  const role = roleText(identity, t);
+  const title = t("{name} · {role} — your account", { name: identity.name, role });
   const cls = cn("flex items-center gap-3 rounded-2xl bg-muted p-2.5 xl:hidden", !identity.workAs && "transition-colors hover:bg-muted/70", className);
   const body = (
     <>
       {children}
       <span className="min-w-0 flex-1 leading-tight">
         <span className="block truncate text-sm font-semibold text-foreground">{identity.name}</span>
-        <span className={cn("block truncate text-[11px]", developer ? "font-semibold text-fuchsia-700 dark:text-fuchsia-300" : "text-muted-foreground")}>{t(identity.role)}</span>
+        <span className={cn("block truncate text-[11px]", developer ? "font-semibold text-fuchsia-700 dark:text-fuchsia-300" : "text-muted-foreground")}>{role}</span>
       </span>
     </>
   );

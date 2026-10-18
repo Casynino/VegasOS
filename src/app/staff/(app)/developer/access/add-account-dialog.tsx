@@ -54,7 +54,7 @@ export function AddAccountButton({ roles }: { roles: RoleChoice[] }) {
   );
 }
 
-function AddAccountForm({ roles, close }: { roles: RoleChoice[]; close: () => void }) {
+export function AddAccountForm({ roles, close }: { roles: RoleChoice[]; close: () => void }) {
   const t = useT();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");

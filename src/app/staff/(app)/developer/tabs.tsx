@@ -1,18 +1,21 @@
 import Link from "next/link";
-import { ArrowRight, ChartColumn, LogIn, ScrollText } from "lucide-react";
+import { ArrowRight, ChartColumn, ScrollText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { T } from "@/i18n/translate";
 import { CONSOLE_HREF, type ConsoleTab } from "@/server/services/developer-console";
+import type { RoleChoice } from "./access/add-account-dialog";
+import { AddAccountCard, WorkAsCard, type PersonChoice } from "./home-dialogs";
 
-/** The three shortcuts under the health card: the console's other pages. */
-export function Shortcuts({ t }: { t: T }) {
+/** The shortcuts under the health card: Work as someone and Add an account open a popup; Audit and Business are the console's other pages. */
+export function Shortcuts({ t, people = [], roles = [] }: { t: T; people?: PersonChoice[]; roles?: RoleChoice[] }) {
   const cards = [
-    { href: CONSOLE_HREF.access, icon: LogIn, title: t("Open Access (work as someone)"), text: t("Open the dashboard of the Boss, a manager or a team member to help them or to see what they see. Every click is recorded under your name.") },
     { href: CONSOLE_HREF.audit, icon: ScrollText, title: t("Open Audit"), text: t("The permanent diary of everything done in the system — by staff and by you. Nothing in it is edited or deleted; the only change is that a cancelled check-in is marked as cancelled.") },
     { href: CONSOLE_HREF.business, icon: ChartColumn, title: t("Open Business"), text: t("See bookings, payments, stock and customers in read-only tables. Good for checking a number without risking a change.") },
   ];
   return (
-    <nav aria-label={t("Console pages")} className="grid gap-3 md:grid-cols-3">
+    <nav aria-label={t("Console pages")} className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <WorkAsCard people={people} />
+      <AddAccountCard roles={roles} />
       {cards.map((c) => (
         <Link key={c.href} href={c.href} className="group flex gap-3.5 rounded-2xl border border-border/70 bg-card p-4 transition-colors hover:border-[oklch(0.72_0.12_80/0.5)] hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold">
           <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[oklch(0.72_0.12_80/0.16)] text-[oklch(0.5_0.11_75)] dark:text-[oklch(0.84_0.11_82)]"><c.icon className="size-5" aria-hidden /></span>

@@ -160,7 +160,7 @@ describe("the top bar keeps room for the date and the search", () => {
     expect(html).not.toMatch(/developer|super user|fuchsia/i);
     // A Developer's card carries the strip's colour.
     expect(card(developer)).toContain("fuchsia");
-    expect(text(card(developer, zh))).toBe("Amani Developer 开发者（超级用户）");
+    expect(text(card(developer, zh))).toBe("Amani Developer 开发者");
   });
 
   it("draws a name as plain text in the chip and the card", () => {
