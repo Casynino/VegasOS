@@ -42,6 +42,15 @@ function Card({ t, item }: { t: T; item: HealthItem }) {
           <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{t("What to do")}</p>
           <p className="mt-1 leading-relaxed text-foreground/90">{t(item.todo.key, item.todo.vars)}</p>
         </div>
+        {item.who && (
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{t("Who fixes it")}</p>
+            <p className="mt-1 leading-relaxed text-foreground/90">{t(item.who.key, item.who.vars)}</p>
+          </div>
+        )}
+        {item.examples && item.examples.length > 0 && (
+          <p className="text-xs text-muted-foreground">{t("Where to look")}: <span className="break-words font-mono">{item.examples.join(" · ")}</span></p>
+        )}
         {item.link && (
           <Link href={item.link.href} className="inline-flex items-center gap-1.5 text-sm font-medium text-[oklch(0.5_0.11_75)] underline-offset-4 hover:underline dark:text-[oklch(0.84_0.11_82)]">
             {t(item.link.label.key, item.link.label.vars)}<ArrowRight className="size-3.5" aria-hidden />

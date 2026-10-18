@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomInt, randomUUID } from "node:crypto";
+import { isValidElement, Suspense, type ReactElement, type ReactNode } from "react";
 
 // The database client is loaded on first use, never at the top: next/headers is mocked with a factory that imports THIS file, and the
 // client (server/db.ts) now reads the request's cookie through next/headers for the "work as" write fence — a top-level import here
@@ -126,4 +127,18 @@ export async function auditOf(userId: string, action?: string) {
 export async function dropLoginBuckets(...keys: string[]) {
   const db = await getDb();
   if (keys.length) await db.rateLimitBucket.deleteMany({ where: { key: { in: keys } } });
+}
+
+/**
+ * A page whose parts are async server components inside <Suspense> (the Developer Home): resolve them the way the server does, so the
+ * markup of every part can be drawn with renderToStaticMarkup.
+ */
+export async function resolveAsync(node: ReactNode): Promise<ReactNode> {
+  if (Array.isArray(node)) return Promise.all(node.map(resolveAsync));
+  if (!isValidElement(node)) return node;
+  const el = node as ReactElement<{ children?: ReactNode }>;
+  const fn = el.type as unknown as ((p: unknown) => unknown) & { constructor: { name: string } };
+  if (typeof fn === "function" && fn.constructor?.name === "AsyncFunction") return resolveAsync((await fn(el.props)) as ReactNode);
+  if (el.type === Suspense) return resolveAsync(el.props.children);
+  return el.props?.children === undefined ? el : ({ ...el, props: { ...el.props, children: await resolveAsync(el.props.children) } } as ReactElement);
 }

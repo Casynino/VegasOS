@@ -57,6 +57,20 @@ async function wordsFor() {
   }
 }
 
+/**
+ * Write an unexpected error down for the Developer console (system_events). Best-effort: it never throws, waits at most a second,
+ * and changes nothing about what the action answers. Loaded on first use, because the recorder itself uses the database client,
+ * which uses this file.
+ */
+async function noteUnexpected(err: unknown): Promise<void> {
+  try {
+    const { recordError, actionSourceOf } = await import("./services/system-events");
+    await recordError({ source: actionSourceOf(err), error: err });
+  } catch {
+    /* the action's answer must not depend on it */
+  }
+}
+
 /** Wrap a server-action body: returns a typed result, never leaks internals. */
 export async function runAction<T>(fn: () => Promise<T>, successMessage?: string | Localized): Promise<ActionResult<T>> {
   try {
@@ -83,6 +97,7 @@ export async function runAction<T>(fn: () => Promise<T>, successMessage?: string
       throw err;
     }
     console.error("[action] unexpected error", err);
+    await noteUnexpected(err);
     const t = await wordsFor();
     const generic = "Something went wrong. Nothing was saved — please try again.";
     return { ok: false, error: t ? t(generic) : generic };

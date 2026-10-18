@@ -36,6 +36,7 @@ import { messagesData } from "@/server/services/developer-messages";
 import { businessDayConfig, getSettings } from "@/server/settings";
 import { addDays, businessDateOf, toDbDate, zonedInstant } from "@/lib/time/business-date";
 import { renderToStaticMarkup } from "react-dom/server";
+import { Suspense, isValidElement, type ReactElement, type ReactNode } from "react";
 import DeveloperHomePage from "@/app/staff/(app)/developer/page";
 import { logDeveloperView, trackDeveloperView, trackDeveloperViewNow, VIEW_BURST_LIMIT, VIEW_LIMIT_ACTION } from "@/server/services/developer-view-log";
 import { recordDeveloperView } from "@/app/staff/(app)/developer/actions";
@@ -797,13 +798,13 @@ async function wipeFuture() {
 }
 
 describe("the home: greeting and tabs", () => {
-  it("the tab comes from the address; anything unknown (or nothing, or a list) is the first tab", () => {
-    expect([...CONSOLE_TABS]).toEqual(["activity", "hotel", "money", "messages", "speed", "crashes", "settings", "people"]);
+  it("the tab comes from the address; anything unknown (or nothing, or a list) is the first tab — Problems", () => {
+    expect([...CONSOLE_TABS]).toEqual(["problems", "activity", "hotel", "money", "messages", "speed", "crashes", "settings", "people"]);
     for (const tab of CONSOLE_TABS) expect(parseTab(tab)).toBe(tab);
-    expect(parseTab(undefined)).toBe("activity");
-    expect(parseTab("")).toBe("activity");
-    expect(parseTab("audit")).toBe("activity");
-    expect(parseTab("__proto__")).toBe("activity");
+    expect(parseTab(undefined)).toBe("problems");
+    expect(parseTab("")).toBe("problems");
+    expect(parseTab("audit")).toBe("problems");
+    expect(parseTab("__proto__")).toBe("problems");
     expect(parseTab(["speed", "crashes"])).toBe("speed");
   });
 
@@ -1055,7 +1056,8 @@ describe("speed, sign-in trouble, settings and my actions", () => {
     await failed(dayBack(2), "12:00", rec);
     await failed(dayBack(8), "12:00", rec); // outside the 7 days
     const c = await crashData(user, TZ_NOW);
-    expect(c.errorTracking).toBe(false);
+    // the system now records its own errors, jobs and webhooks (an empty log is simply empty)
+    expect(c.system).toMatchObject({ errorGroups: expect.any(Array), jobs: expect.any(Array), webhooks: expect.any(Array) });
     expect(c.failed!.last24h).toBe(4);
     expect(c.failed!.last7d).toBe(5);
     expect(c.failed!.byDay).toHaveLength(7);
@@ -1133,49 +1135,64 @@ describe("the home: a Developer working as someone is shut out of the console", 
 
 // ═════════════════════════════════════════════ the page itself, drawn with real data ═════════════════════════════════════════════
 describe("the Developer home page draws, on every tab, from real data", () => {
+  // The page's parts are async server components inside <Suspense>; resolve them (as the server does) before drawing the markup.
+  const resolve = async (node: ReactNode): Promise<ReactNode> => {
+    if (Array.isArray(node)) return Promise.all(node.map(resolve));
+    if (!isValidElement(node)) return node;
+    const el = node as ReactElement<{ children?: ReactNode }>;
+    const fn = el.type as unknown as ((p: unknown) => unknown) & { constructor: { name: string } };
+    if (typeof fn === "function" && fn.constructor?.name === "AsyncFunction") return resolve((await fn(el.props)) as ReactNode);
+    if (el.type === Suspense) return resolve(el.props.children);
+    return el.props?.children === undefined ? el : ({ ...el, props: { ...el.props, children: await resolve(el.props.children) } } as ReactElement);
+  };
   const draw = async (search: Record<string, string> = {}) => {
     const tree = await DeveloperHomePage({ searchParams: Promise.resolve(search) } as never);
-    return renderToStaticMarkup(tree);
+    return renderToStaticMarkup((await resolve(tree)) as ReactElement);
   };
   beforeAll(async () => { cfg = businessDayConfig(await getSettings()); });
   afterAll(async () => { await wipeFuture(); });
 
-  it("the Developer sees the greeting, the health card, the cards, the shortcuts, the tab bar and the first tab", async () => {
+  it("the Developer sees the greeting, the health card, the cards, the shortcuts, the jump row and EVERY part on one page", async () => {
     await as(dev);
     const html = await draw();
     expect(html).toMatch(/Good (morning|afternoon|evening), /);
     expect(html).toContain("Your control room for");
     expect(html).toContain("out of 100");
     expect(html).toContain("Needs your attention");
-    for (const w of ["Work as", "Add an account", "Who did what, and when", "Read-only hotel tables", "Activity", "Speed &amp; size", "Crashes &amp; sign-ins", "Settings", "People &amp; my actions"]) expect(html).toContain(w);
-    // Audit and Business are links; Work as someone and Add an account open a popup (the Access page is in the side menu and in the popup)
+    for (const w of ["Work as", "Add an account", "Who did what, and when", "Read-only hotel tables", "Jump to"]) expect(html).toContain(w);
+    // Audit and Business are links; Work as and Add an account open a popup (the Access page is in the side menu and in the popup)
     for (const href of [CONSOLE_HREF.home, CONSOLE_HREF.audit, CONSOLE_HREF.business]) expect(html).toContain(`href="${href}`);
-    for (const w of ["Sign-ins per day", "Actions per day", "Busiest hours of the day", "Where the work happens", "Recent sign-ins", "Most active people", "Not using the system"]) expect(html).toContain(w);
+    // no tabs: nine parts, each with its anchor, its heading, and the jump row linking to it
+    for (const id of ["problems", "errors", "messages", "speed", "activity", "hotel", "money", "people", "settings"]) {
+      expect(html, id).toContain(`id="${id}"`);
+      expect(html, id).toContain(`href="#${id}"`);
+    }
+    expect(html).not.toContain("aria-current=\"page\"");
+    // and what each part says (Problems, Errors & jobs, Messages & reports, Speed & size, Activity, Hotel, Money, People, Settings)
+    const marks = ["We checked ", "Messages from other services (webhooks)", "Is the Boss getting what he should", "The biggest tables", "Sign-ins per day", "Actions per day", "Busiest hours of the day", "Recent sign-ins", "What is happening in the hotel", "Where the money is", "My last 30 actions", "What you cannot do"];
+    for (const m of marks) expect(html, m).toContain(m);
     expect(html).not.toContain("undefined");
     expect(html).not.toContain("NaN");
   });
 
-  it("every tab draws; the right one is marked as the page you are on; a bad ?tab= falls back to the first", async () => {
+  it("an old ?tab= link goes to that part's place on the one page; a bad ?tab= just draws the page", async () => {
     await as(dev);
-    const marks: Record<string, string> = { activity: "Sign-ins per day", hotel: "What is happening in the hotel", money: "Where the money is", messages: "Is the Boss getting what he should", speed: "The biggest tables", crashes: "Error tracking is not part of this system", settings: "What you cannot do", people: "My last 30 actions" };
-    for (const [tab, text] of Object.entries(marks)) {
-      const html = await draw({ tab });
-      expect(html, tab).toContain(text);
-      expect(html, tab).not.toContain("undefined");
-      expect(html, tab).not.toContain("NaN");
-      expect(html, tab).toMatch(new RegExp(`aria-current="page"[^>]*>[^<]*${{ activity: "Activity", hotel: "Hotel", money: "Money", messages: "Messages &amp; reports", speed: "Speed &amp; size", crashes: "Crashes &amp; sign-ins", settings: "Settings", people: "People &amp; my actions" }[tab]}`));
-    }
-    expect(await draw({ tab: "nonsense" })).toContain("Sign-ins per day");
+    const go = (tab: string) => redirectOf(() => DeveloperHomePage({ searchParams: Promise.resolve({ tab }) } as never));
+    expect(await go("hotel")).toBe(`${CONSOLE_HREF.home}#hotel`);
+    expect(await go("crashes")).toBe(`${CONSOLE_HREF.home}#errors`);
+    expect(await go("people")).toBe(`${CONSOLE_HREF.home}#people`);
+    expect(await go("nonsense")).toBeNull();
+    expect(await draw({ tab: "nonsense" })).toContain("We checked ");
   });
 
-  it("the inspector on the People tab answers, and the look is written to the audit trail", async () => {
+  it("the inspector in the People part answers, and the look is written to the audit trail", async () => {
     await as(dev);
     const before = (await auditOf(dev.id, "developer.inspected")).length;
-    const html = await draw({ tab: "people", person: rec.id, right: "reservations.view" });
+    const html = await draw({ person: rec.id, right: "reservations.view" });
     expect(html).toMatch(/Yes — .* can do this/);
     expect((await auditOf(dev.id, "developer.inspected")).length).toBe(before + 1);
-    // …and nothing is looked up on the other tabs
-    await draw({ tab: "speed", person: rec.id, right: "reservations.view" });
+    // …and nothing is looked up when nobody asked
+    await draw({});
     expect((await auditOf(dev.id, "developer.inspected")).length).toBe(before + 1);
   });
 

@@ -163,11 +163,12 @@ export async function systemDiagnostics(user: ConsoleCaller, now = new Date()): 
   const migrations = await safe(async () => {
     const [r] = await db.$queryRaw<{ applied: number; failed: number; rolled_back: number; latest: string | null }[]>`
       SELECT
-        count(*) FILTER (WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL)::int AS applied,
-        count(*) FILTER (WHERE finished_at IS NULL AND rolled_back_at IS NULL)::int AS failed,
-        count(*) FILTER (WHERE rolled_back_at IS NOT NULL)::int AS rolled_back,
+        count(*) FILTER (WHERE m.finished_at IS NOT NULL AND m.rolled_back_at IS NULL)::int AS applied,
+        count(*) FILTER (WHERE m.finished_at IS NULL AND m.rolled_back_at IS NULL)::int AS failed,
+        -- an update undone and then applied again (what the build's own healing step leaves behind) is not a problem: only one with no good copy is
+        count(*) FILTER (WHERE m.rolled_back_at IS NOT NULL AND NOT EXISTS (SELECT 1 FROM _prisma_migrations g WHERE g.migration_name = m.migration_name AND g.finished_at IS NOT NULL AND g.rolled_back_at IS NULL))::int AS rolled_back,
         (SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY migration_name DESC LIMIT 1) AS latest
-      FROM _prisma_migrations`;
+      FROM _prisma_migrations m`;
     return { applied: Number(r?.applied ?? 0), failed: Number(r?.failed ?? 0), rolledBack: Number(r?.rolled_back ?? 0), latest: short(r?.latest, 120) };
   });
 
@@ -346,12 +347,14 @@ export async function developerGreeting(user: ConsoleUser, now = new Date()): Pr
 }
 
 // ───────────────────────────────────────────── the tabs ─────────────────────────────────────────────
-export const CONSOLE_TABS = ["activity", "hotel", "money", "messages", "speed", "crashes", "settings", "people"] as const;
+/** "Problems" comes first and is the page's default tab (owner, 2026-10-18): the Developer's job is that the system works, so what is wrong with it is the first thing he sees. */
+export const CONSOLE_TABS = ["problems", "activity", "hotel", "money", "messages", "speed", "crashes", "settings", "people"] as const;
 export type ConsoleTab = (typeof CONSOLE_TABS)[number];
+export const DEFAULT_TAB: ConsoleTab = "problems";
 /** The tab named in the address; anything else (or nothing) is the first one. */
 export function parseTab(raw: unknown): ConsoleTab {
   const v = Array.isArray(raw) ? raw[0] : raw;
-  return (CONSOLE_TABS as readonly string[]).includes(v as string) ? (v as ConsoleTab) : "activity";
+  return (CONSOLE_TABS as readonly string[]).includes(v as string) ? (v as ConsoleTab) : DEFAULT_TAB;
 }
 
 /**

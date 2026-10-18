@@ -60,8 +60,7 @@ export function PeopleTab({ t, data, person, right, inspection, when, timezone }
   return (
     <div className="space-y-4">
       <Panel title={t("Who can do what")} subtitle={t("Pick a person and a right: you see yes or no, which role gives it, and everything that person can do.")}>
-        <form method="get" action="/staff/developer#console-tabs" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
-          <input type="hidden" name="tab" value="people" />
+        <form method="get" action="/staff/developer#people" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
           <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
             {t("Person")}
             <NativeSelect name="person" defaultValue={person} className="h-10 text-sm text-foreground">

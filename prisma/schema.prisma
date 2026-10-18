@@ -4059,3 +4059,32 @@ model TransportServiceOptionTranslation {
   @@unique([parentId, locale])
   @@map("transport_service_option_translations")
 }
+
+// ──────────────────────────── System events (Developer console) ────────────────────────────
+
+/// What the SYSTEM itself did or failed to do (owner, 2026-10-18): unexpected server errors, runs of the automatic jobs (cron) and
+/// receipts of webhooks. Written by src/server/services/system-events.ts, best-effort — it never makes a request slower or fail.
+/// ERROR rows are one per fingerprint (a repeat updates count + lastSeenAt); CRON and WEBHOOK rows are one per run/receipt.
+/// Nothing personal is stored: messages are scrubbed (no emails, phone numbers, keys, request bodies) and cut to 300 characters.
+/// Read only by the Developer console. Never holds hotel business data.
+model SystemEvent {
+  id          String   @id @default(cuid())
+  /// "ERROR" | "CRON" | "WEBHOOK"
+  kind        String
+  /// "/api/cron/daily-report", "action:<file>", "route:/api/…", "page:/staff/…", "webhook:ntzs"
+  source      String
+  fingerprint String
+  /// ERROR: "OPEN". CRON / WEBHOOK: "OK" | "FAILED" | "SKIPPED"
+  status      String
+  /// Scrubbed, at most 300 characters.
+  message     String
+  /// Small: durationMs, summary counts, top stack frames as "file:line", digest, httpStatus, the person's role (never a name or email).
+  detail      Json?
+  count       Int      @default(1)
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  @@index([kind, lastSeenAt])
+  @@index([fingerprint])
+  @@map("system_events")
+}

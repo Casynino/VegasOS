@@ -1,5 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
 import { runRoomReportJob } from "@/server/services/room-report";
+import { recordCronRun, recordError } from "@/server/services/system-events";
+
+const JOB = "/api/cron/room-report";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -24,9 +27,13 @@ export async function GET(req: Request) {
   try {
     const until = t0 + 44_000;
     const result = await runRoomReportJob(new Date(), until);
+    // Every run is written down for the Developer console (system_events).
+    await recordCronRun(JOB, { ok: true, startedAt: new Date(t0), durationMs: Date.now() - t0, summary: { ...result } });
     return Response.json({ ok: true, ...result });
   } catch (e) {
     console.error("[cron] room report failed", e);
+    await recordError({ source: `route:${JOB}`, error: e });
+    await recordCronRun(JOB, { ok: false, startedAt: new Date(t0), durationMs: Date.now() - t0, error: e });
     return Response.json({ ok: false, error: "Room report job failed" }, { status: 500 });
   }
 }

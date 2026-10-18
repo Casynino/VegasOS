@@ -13,6 +13,8 @@ import { db } from "@/server/db";
 import { getCurrentUser, type CurrentUser } from "@/server/auth";
 import { AppError } from "@/server/errors";
 import { NOT_WORK_ACTIONS } from "@/server/services/developer-console";
+import { CHECK_IDS } from "@/server/services/developer-checks";
+import { resetBusinessData } from "../support/helpers";
 import { activityData, crashData, DATABASE_ITEM_ID, healthReport, healthScore, healthVerdict, LOGIN_LIMITS, SCORE, speedData, type HealthReport, type Severity } from "@/server/services/developer-health";
 import { browser, makeSession, makeUser, removeMadeUsers, thrownBy, type MadeUser } from "../support/developer";
 
@@ -145,34 +147,28 @@ describe("the score rule", () => {
 
 // ───────────────────────────────────────────── 2. a clean system, and the database ─────────────────────────────────────────────
 describe("a clean system and a dead database", () => {
-  it("nothing to fix, nothing to look at: score 100, 'well' — every card that shows is one the database facts justify, and the four numbers are real", async () => {
+  it("a clean hotel: nothing to fix, nothing to look at — score 100, 'well', every system check ran and was fine (or honestly 'could not be checked')", async () => {
     healthyEnv();
+    // The test database is shared by many test files: a clean hotel is made here (no business data, rooms free, an empty system log).
+    await resetBusinessData();
+    await db.$executeRaw`DELETE FROM "system_events"`;
     const h = await healthReport(await as(dev));
-    // The test database is shared with other test files, so "clean" is judged against the facts themselves: the cards that may show are exactly those
-    // whose rows exist (the set-up, the reports and the accounts are healthy here: the cron secret and nTZS are set, reports are off).
-    const day = 24 * 3600_000;
-    const facts = {
-      "mobile-payments": await db.mobilePayment.count({ where: { attentionAt: { not: null }, resolvedAt: null } }),
-      withdrawals: await db.withdrawal.count({ where: { OR: [{ status: { in: ["SUBMITTING", "UNKNOWN"] }, createdAt: { lt: new Date(Date.now() - 30 * 60_000) } }, { attentionAt: { not: null }, reconciledAt: null }] } }),
-      "shifts-long": await db.actualShift.count({ where: { endedAt: null, startedAt: { lt: new Date(Date.now() - 14 * 3600_000) } } }),
-      "deliveries-failed": await db.notificationDelivery.count({ where: { status: "FAILED", updatedAt: { gte: new Date(Date.now() - day) } } }),
-      "alerts-waiting": (await db.serviceRequest.count({ where: { status: { in: ["NEW", "ASSIGNED", "IN_PROGRESS"] }, createdAt: { lt: new Date(Date.now() - day) } } }))
-        + (await db.stockRequest.count({ where: { status: { in: ["SUBMITTED", "PENDING_APPROVAL"] }, updatedAt: { lt: new Date(Date.now() - day) } } })),
-    };
-    const expected = Object.entries(facts).filter(([, n]) => n > 0).map(([id]) => id).sort();
-    expect(h.items.filter((i) => i.severity !== "info").map((i) => i.id).sort()).toEqual(expected);
-    if (expected.length === 0) {
-      expect(h.counts.fix).toBe(0);
-      expect(h.counts.look).toBe(0);
-      expect(h.score).toBe(100);
-      expect(h.verdict).toBe("well");
-    }
+    expect(h.items.filter((i) => i.severity !== "info")).toEqual([]);
+    expect(h.counts.fix).toBe(0);
+    expect(h.counts.look).toBe(0);
+    expect(h.score).toBe(100);
+    expect(h.verdict).toBe("well");
+    // every check ran: none is missing, and none is "fix" or "look"
+    expect(h.checks.map((c) => c.id).sort()).toEqual([...CHECK_IDS].sort());
+    expect(h.checks.filter((c) => c.state === "fix" || c.state === "look").map((c) => c.id)).toEqual([]);
     expect(h.database.online).toBe(true);
     expect(h.database.ms).toBeGreaterThan(0);
-    expect(h.alerts!.total).toBe(facts["alerts-waiting"]);
+    // the headline figure is the number of different server errors in 24 hours (none yet), not "alerts waiting"
+    expect(h.serverErrors24h).toBe(0);
+    expect(h).not.toHaveProperty("alerts");
     expect(h.signedInToday).toEqual(expect.any(Number));
     expect(h.actionsToday).toEqual(expect.any(Number));
-    expect(h.failedSignIns24h).toBe(await db.auditLog.count({ where: { action: "auth.login_failed", createdAt: { gte: new Date(Date.now() - day) } } }));
+    expect(h.failedSignIns24h).toBe(await db.auditLog.count({ where: { action: "auth.login_failed", createdAt: { gte: new Date(Date.now() - 24 * 3600_000) } } }));
   });
 
   it("the chips are the cards: counts of each kind, fix now first, then look at, then information; the score follows from them", async () => {
@@ -263,83 +259,68 @@ describe("the Boss's reports (from reportTroubles)", () => {
   });
 });
 
-describe("failed messages, mobile payments, withdrawals, shifts and waiting requests", () => {
-  it("a failed delivery in the last 24 hours is a look-at card with a link to Reports; an old one is not counted", async () => {
+describe("failed messages and withdrawals are system problems; the hotel's own work never is", () => {
+  const mkDelivery = async (extra: object) => made.deliveries.push((await db.notificationDelivery.create({ data: { purpose: "DAILY_REPORT", channel: "WHATSAPP_CALLMEBOT", recipient: `+2557001${Math.floor(Math.random() * 90000 + 10000)}`, ...extra } })).id);
+
+  it("three failed WhatsApp messages in 24 hours with none sent is a fix-now card (the provider is down for us); two are not; an old one is not counted", async () => {
     healthyEnv();
+    await resetBusinessData();
     const user = await as(dev);
-    const before = count(await healthReport(user), "deliveries-failed");
-    const mk = async (extra: object) => made.deliveries.push((await db.notificationDelivery.create({ data: { purpose: "DAILY_REPORT", channel: "WHATSAPP_CALLMEBOT", recipient: `+2557001${Math.floor(Math.random() * 90000 + 10000)}`, ...extra } })).id);
-    await mk({ status: "FAILED" });
-    await mk({ status: "FAILED", updatedAt: new Date(Date.now() - 48 * 3600_000) });
-    await mk({ status: "SENT" });
-    const h = await healthReport(user);
-    expect(count(h, "deliveries-failed")).toBe(before + 1);
+    await mkDelivery({ status: "FAILED" });
+    await mkDelivery({ status: "FAILED" });
+    await mkDelivery({ status: "FAILED", updatedAt: new Date(Date.now() - 48 * 3600_000) });
+    expect(ids(await healthReport(user))).not.toContain("deliveries-failed"); // two in the day: a wrong number, not the provider
+    await mkDelivery({ status: "FAILED" });
+    let h = await healthReport(user);
+    expect(item(h, "deliveries-failed")).toMatchObject({ severity: "fix" });
+    expect(item(h, "deliveries-failed")!.summary.vars.n).toBe(3);
+    expect(item(h, "deliveries-failed")!.who!.text).toContain("system owner");
+    // one message did go out: the provider works, so it is only worth a look
+    await mkDelivery({ status: "SENT", sentAt: new Date() });
+    h = await healthReport(user);
     expect(item(h, "deliveries-failed")).toMatchObject({ severity: "look" });
-    expect(item(h, "deliveries-failed")!.link?.href).toBe("/staff/reports");
   });
 
-  it("mobile payments that need a person are a fix-now card; a resolved one is not counted — and the card sends no one to a money page", async () => {
+  it("a withdrawal is a system problem only when it is stuck at nTZS: 2 hours for a phone, four days for a bank; nTZS's own approval and review and settled ones are not", async () => {
     healthyEnv();
     const user = await as(dev);
-    const before = count(await healthReport(user), "mobile-payments");
-    const base = { amount: 5000, phone: "255700001234", purpose: "RESTAURANT" };
-    made.mobile.push((await db.mobilePayment.create({ data: { ...base, status: "COMPLETED", attentionAt: new Date() } })).id);
-    made.mobile.push((await db.mobilePayment.create({ data: { ...base, status: "COMPLETED", attentionAt: new Date(), resolvedAt: new Date() } })).id);
-    made.mobile.push((await db.mobilePayment.create({ data: { ...base, status: "PENDING" } })).id);
-    const h = await healthReport(user);
-    expect(count(h, "mobile-payments")).toBe(before + 1);
-    expect(item(h, "mobile-payments")).toMatchObject({ severity: "fix", link: null });
-  });
-
-  it("withdrawals: one nobody can account for (stuck 30+ minutes, or flagged) is a fix-now card; a fresh or finished one is not", async () => {
-    healthyEnv();
-    const user = await as(dev);
-    const before = count(await healthReport(user), "withdrawals");
-    const base = { amount: 10_000, destinationKind: "PHONE", requestedById: rec.id, businessDate: new Date("2026-10-14") };
-    const mk = async (extra: object) => made.withdrawals.push((await db.withdrawal.create({ data: { ...base, ...extra } })).id);
-    await mk({ status: "UNKNOWN", createdAt: new Date(Date.now() - 2 * 3600_000) });                       // stuck: counted
-    await mk({ status: "SUBMITTING", createdAt: new Date(Date.now() - 5 * 60_000) });                      // just sent: not yet
-    await mk({ status: "PROCESSING", attentionAt: new Date() });                                           // flagged for a person: counted
-    await mk({ status: "COMPLETED", attentionAt: new Date(), reconciledAt: new Date() });                  // settled: not counted
-    expect(count(await healthReport(user), "withdrawals")).toBe(before + 2);
-  });
-
-  it("a shift open over 14 hours is a look-at card naming the person; a short one and a closed one are not", async () => {
-    healthyEnv();
-    const user = await as(dev);
-    const before = count(await healthReport(user), "shifts-long");
-    // one open shift per person is a rule of the database, so each shift is a different person's
-    const mk = async (userId: string, hoursAgo: number, endedHoursAgo?: number) => made.shifts.push((await db.actualShift.create({ data: {
-      userId, department: "RESTAURANT", businessDate: new Date("2026-10-14"),
-      startedAt: new Date(Date.now() - hoursAgo * 3600_000), endedAt: endedHoursAgo === undefined ? null : new Date(Date.now() - endedHoursAgo * 3600_000),
-    } })).id);
-    await mk(rec.id, 15);
-    await mk(mgr.id, 3);
-    await mk(fin.id, 30, 20);
-    const h = await healthReport(user);
-    expect(count(h, "shifts-long")).toBe(before + 1);
-    expect(item(h, "shifts-long")).toMatchObject({ severity: "look" });
-    expect(String(item(h, "shifts-long")!.summary.vars.names)).toContain("Asha Health");
-  });
-
-  it("alerts waiting: guest requests and stock requests nobody dealt with for over a day (and the card says which)", async () => {
-    healthyEnv();
-    const user = await as(dev);
-    const before = (await healthReport(user)).alerts!;
+    await db.withdrawal.deleteMany({});
+    const base = { amount: 10_000, requestedById: rec.id, businessDate: new Date("2026-10-14") };
     const hours = (n: number) => new Date(Date.now() - n * 3600_000);
-    const request = async (status: "NEW" | "COMPLETED", ago: number) => made.requests.push((await db.serviceRequest.create({ data: { type: "GENERAL", description: "test", businessDate: new Date("2026-10-14"), status, createdAt: hours(ago) } })).id);
-    const stock = async (status: string, ago: number) => made.stock.push((await db.stockRequest.create({ data: { number: `SR-T-${Math.random().toString(36).slice(2, 9)}`, department: "KITCHEN", requestedById: rec.id, status, updatedAt: hours(ago) } })).id);
-    await request("NEW", 30);        // counted
-    await request("NEW", 2);         // too young
-    await request("COMPLETED", 40);  // done
-    await stock("SUBMITTED", 30);    // counted
-    await stock("SUBMITTED", 3);     // too young
-    await stock("APPROVED", 50);     // not waiting for a decision
+    const mk = async (extra: object) => made.withdrawals.push((await db.withdrawal.create({ data: { destinationKind: "PHONE", ...base, ...extra } })).id);
+    await mk({ status: "UNKNOWN", createdAt: hours(3) });                                              // stuck: counted
+    await mk({ status: "SUBMITTING", createdAt: new Date(Date.now() - 5 * 60_000) });                 // just sent: not yet
+    await mk({ status: "PROCESSING", createdAt: hours(1.5) });                                         // within the 2 hours: not yet
+    await mk({ status: "PROCESSING", destinationKind: "BANK", createdAt: hours(30) });                 // a bank takes working days: not yet
+    await mk({ status: "PROCESSING", destinationKind: "BANK", createdAt: hours(100) });                // over four days: counted
+    await mk({ status: "IN_REVIEW", createdAt: hours(100) });                                          // nTZS is checking it itself: its wait
+    await mk({ status: "AWAITING_APPROVAL", createdAt: hours(30) });                                   // nTZS's own approval: not the system
+    await mk({ status: "COMPLETED", createdAt: hours(30) });                                           // finished: not counted
+    await mk({ status: "IN_REVIEW", createdAt: hours(5), reconciledAt: new Date() });                  // settled by a person: not counted
     const h = await healthReport(user);
-    expect(h.alerts).toEqual({ guestRequests: before.guestRequests + 1, stockRequests: before.stockRequests + 1, total: before.total + 2 });
-    expect(item(h, "alerts-waiting")).toMatchObject({ severity: "look" });
-    expect(item(h, "alerts-waiting")!.summary.text).toContain("Guest requests: ");
-    expect(item(h, "alerts-waiting")!.summary.text).toContain("Stock requests: ");
+    expect(item(h, "withdrawals")).toMatchObject({ severity: "fix" });
+    expect(item(h, "withdrawals")!.summary.vars.n).toBe(2);
+  });
+
+  it("the hotel's own work is NOT a Developer problem: a shift open for days, a request nobody answered, a payment that needs Finance, an account that never signed in — none is a card, none costs a point", async () => {
+    healthyEnv();
+    await resetBusinessData();
+    await db.$executeRaw`DELETE FROM "system_events"`;
+    const user = await as(dev);
+    const days = (n: number) => new Date(Date.now() - n * 86_400_000);
+    made.shifts.push((await db.actualShift.create({ data: { userId: rec.id, department: "RECEPTION", businessDate: new Date("2026-10-14"), startedAt: days(3) } })).id);
+    made.shifts.push((await db.actualShift.create({ data: { userId: mgr.id, department: "RESTAURANT", businessDate: new Date("2026-10-14"), startedAt: days(2) } })).id);
+    made.requests.push((await db.serviceRequest.create({ data: { type: "GENERAL", description: "test", businessDate: new Date("2026-10-14"), status: "NEW", createdAt: days(5) } })).id);
+    made.stock.push((await db.stockRequest.create({ data: { number: `SR-T-${Math.random().toString(36).slice(2, 9)}`, department: "KITCHEN", requestedById: rec.id, status: "SUBMITTED", updatedAt: days(5) } })).id);
+    made.mobile.push((await db.mobilePayment.create({ data: { amount: 5000, phone: "255700001234", purpose: "RESTAURANT", status: "COMPLETED", attentionAt: new Date(), completedAt: new Date() } })).id);
+    await makeUser("RECEPTIONIST", { fullName: "Ghost Never" }); // active, never signed in
+    const h = await healthReport(user);
+    for (const gone of ["shifts-long", "never-signed-in", "alerts-waiting", "mobile-payments"]) expect(ids(h), gone).not.toContain(gone);
+    expect(h.items.filter((i) => i.severity !== "info")).toEqual([]);
+    expect(h.score).toBe(100);
+    expect(h.verdict).toBe("well");
+    // nor is there any check about them
+    for (const c of h.checks) expect(c.id).not.toMatch(/^(shift|never|alert|request|expense|dirty|owing|low-stock|stock-low|approval)/);
   });
 });
 
@@ -361,31 +342,32 @@ describe("what was found about sign-ins and accounts (a day far from any other t
     expect([LOGIN_LIMITS.developerEmail, LOGIN_LIMITS.staffEmail]).toEqual([5, 8]);
   });
 
-  it("accounts that never signed in: counted from the database (active, made over 3 days ago, no sign-in) — not the Developer, not a switched-off one, not one that signed in", async () => {
+  it("refusals to the Developer in the last 24 hours are information; ten or more are a look-at check (never both cards)", async () => {
     healthyEnv();
-    const ghost = await makeUser("RECEPTIONIST", { fullName: "Ghost Never" });
-    const gone = await makeUser("RECEPTIONIST", { fullName: "Ghost Off", isActive: false });
-    const came = await makeUser("RECEPTIONIST", { fullName: "Ghost Came" });
-    await db.user.update({ where: { id: came.id }, data: { lastLoginAt: new Date("2041-07-09T10:00:00Z") } });
-    const expected = await db.user.count({ where: { isActive: true, lastLoginAt: null, createdAt: { lt: new Date(now.getTime() - 3 * 86_400_000) }, role: { code: { notIn: ["DEVELOPER", "SYSTEM_ONLINE"] } } } });
-    const h = await healthReport(await as(dev), now);
-    expect(expected).toBeGreaterThanOrEqual(1);
-    expect(count(h, "never-signed-in")).toBe(expected);
-    expect(item(h, "never-signed-in")).toMatchObject({ severity: "info" });
-    // the one who signed in leaves the count; the switched-off one was never in it
-    await db.user.update({ where: { id: ghost.id }, data: { lastLoginAt: new Date("2041-07-09T10:00:00Z") } });
-    expect(count(await healthReport(await as(dev), now), "never-signed-in")).toBe(expected - 1);
-    expect(gone.id).toBeTruthy();
+    for (let i = 0; i < 8; i++) await row("developer.denied", 60 + i, { userId: dev.id });
+    await row("developer.denied", 25 * 60, { userId: dev.id });
+    let h = await healthReport(await as(dev), now);
+    expect(count(h, "denied")).toBe(8);
+    expect(item(h, "denied")).toMatchObject({ severity: "info" });
+    await row("developer.denied", 120, { userId: dev.id });
+    await row("developer.denied", 121, { userId: dev.id });
+    h = await healthReport(await as(dev), now);
+    expect(h.items.filter((i) => i.id === "denied")).toHaveLength(1);
+    expect(item(h, "denied")).toMatchObject({ severity: "look" });
+    expect(item(h, "denied")!.summary.vars.n).toBe(10);
   });
 
-  it("refusals to the Developer in the last 24 hours are counted as information", async () => {
+  it("more than 20 failed sign-ins in 24 hours is a look-at check with who/what/todo; 20 or fewer stay information", async () => {
     healthyEnv();
-    await row("developer.denied", 60, { userId: dev.id });
-    await row("developer.denied", 600, { userId: dev.id });
-    await row("developer.denied", 25 * 60, { userId: dev.id });
-    const h = await healthReport(await as(dev), now);
-    expect(count(h, "denied")).toBe(2);
-    expect(item(h, "denied")).toMatchObject({ severity: "info" });
+    for (let i = 0; i < 20; i++) await row("auth.login_failed", 10 + i, { entityId: rec.id });
+    let h = await healthReport(await as(dev), now);
+    expect(item(h, "failed-sign-ins")).toMatchObject({ severity: "info" });
+    await row("auth.login_failed", 5, { entityId: rec.id });
+    h = await healthReport(await as(dev), now);
+    expect(h.items.filter((i) => i.id === "failed-sign-ins")).toHaveLength(1);
+    expect(item(h, "failed-sign-ins")).toMatchObject({ severity: "look" });
+    expect(item(h, "failed-sign-ins")!.summary.vars.n).toBe(21);
+    expect(item(h, "failed-sign-ins")!.who!.text.length).toBeGreaterThan(0);
   });
 
   it("work as: one that ran over an hour is mentioned, a young one is not; starts in 24 hours are counted", async () => {
@@ -464,11 +446,11 @@ describe("what the server is set up with", () => {
     expect(ids(await healthReport(user))).not.toContain("cron-secret");
   });
 
-  it("nTZS: switched on without a key is a look-at card; a key without the webhook secret is another; off and unset is only information", async () => {
+  it("nTZS: switched on without a key is a fix-now card (customers get an error); a key without the webhook secret is a look-at card; off and unset is only information", async () => {
     process.env.CRON_SECRET = "cron-test-value";
     const user = await as(dev);
     await settings({ onlinePayEnabled: true });
-    expect(item(await healthReport(user), "ntzs-off")).toMatchObject({ severity: "look" });
+    expect(item(await healthReport(user), "ntzs-off")).toMatchObject({ severity: "fix" });
     await settings({ onlinePayEnabled: false });
     let h = await healthReport(user);
     expect(ids(h)).not.toContain("ntzs-off");
@@ -531,13 +513,16 @@ describe("secrets and links", () => {
     expect(h.items.map((i) => i.id)).not.toEqual(expect.arrayContaining(["cron-secret", "ntzs-off"]));
   });
 
-  it("a card links only to a page this Developer may open (a Developer who lost the right gets no link)", async () => {
+  it("a card links only to a page this Developer may open (a Developer who lost the right gets the console's own page instead, never a refused one)", async () => {
     healthyEnv();
+    await settings({ reportEnabled: true, roomReportEnabled: false, reportRecipients: [{ name: "Boss", phone: "+255700000001", apiKeyRef: "CALLMEBOT_KEY_TESTA" }] });
+    const late = new Date("2041-06-15T07:00:00Z");
     const user = await as(dev);
-    made.deliveries.push((await db.notificationDelivery.create({ data: { purpose: "DAILY_REPORT", channel: "WHATSAPP_CALLMEBOT", recipient: "+255700000008", status: "FAILED" } })).id);
-    expect(item(await healthReport(user), "deliveries-failed")!.link).not.toBeNull();
+    expect(item(await healthReport(user, late), "report-daily")!.link!.href).toBe("/staff/reports/daily");
     const without = { ...user, permissions: new Set([...user.permissions].filter((p) => p !== "reports.view")) } as CurrentUser;
-    expect(item(await healthReport(without), "deliveries-failed")!.link).toBeNull();
+    const fallback = item(await healthReport(without, late), "report-daily")!.link;
+    expect(fallback).not.toBeNull();
+    expect(fallback!.href).toContain("/staff/developer#errors");
   });
 });
 

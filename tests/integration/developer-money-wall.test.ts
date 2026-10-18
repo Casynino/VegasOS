@@ -308,7 +308,8 @@ describe("reservation decisions: discounts, late-checkout fee, who pays, free ov
       sourceCode: "PHONE", guest: { fullName: "Paid Guest", phone: PHONE }, stay: { kind: "overnight", arrivalDate: addDays(today(), 5), departureDate: addDays(today(), 6) },
       rooms: [{ roomTypeId: t.id, roomId: t.rooms[3].id, adults: 1, children: 0, discountPerNight: 0 }],
     }, mgrActor);
-    const account = await db.moneyAccount.findFirstOrThrow({ where: { isActive: true } });
+    // An account that takes payments: "any active one" could be the nTZS account (it never takes a hand-recorded payment), depending on row order.
+    const account = await db.moneyAccount.findFirstOrThrow({ where: { isActive: true, acceptsPayments: true }, orderBy: { code: "asc" } });
     await recordReservationPayment({ reservationId: paid.id, amount: 50_000, accountId: account.id }, mgrActor);
     const { cancelReservation, releaseNoShow, reassignRoom } = await import("@/server/services/reservations");
     const before = await money();
@@ -349,7 +350,8 @@ describe("reservation decisions: discounts, late-checkout fee, who pays, free ov
       sourceCode: "PHONE", guest: { fullName: "Paid Guest", phone: PHONE }, stay: { kind: "overnight", arrivalDate: addDays(today(), 5), departureDate: addDays(today(), 6) },
       rooms: [{ roomTypeId: t.id, roomId: t.rooms[3].id, adults: 1, children: 0, discountPerNight: 0 }],
     }, mgrActor);
-    const account = await db.moneyAccount.findFirstOrThrow({ where: { isActive: true } });
+    // An account that takes payments: "any active one" could be the nTZS account (it never takes a hand-recorded payment), depending on row order.
+    const account = await db.moneyAccount.findFirstOrThrow({ where: { isActive: true, acceptsPayments: true }, orderBy: { code: "asc" } });
     await recordReservationPayment({ reservationId: paid.id, amount: 50_000, accountId: account.id }, mgrActor);
     const arriving = await createReservation({
       sourceCode: "PHONE", guest: { fullName: "No Show", phone: "0713 000 111" }, stay: { kind: "overnight", arrivalDate: today(), departureDate: addDays(today(), 1) },

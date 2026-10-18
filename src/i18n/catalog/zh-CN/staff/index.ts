@@ -8,13 +8,16 @@ import m_dashboards from "./dashboards";
 import m_developer_access from "./developer-access";
 import m_developer_adduser from "./developer-adduser";
 import m_developer_attribution from "./developer-attribution";
+import m_developer_checks from "./developer-checks";
 import m_developer_console from "./developer-console";
+import m_developer_fixes from "./developer-fixes";
 import m_developer_gates from "./developer-gates";
 import m_developer_hidden from "./developer-hidden";
 import m_developer_home from "./developer-home";
 import m_developer_home2 from "./developer-home2";
 import m_developer_logging from "./developer-logging";
 import m_developer_login from "./developer-login";
+import m_developer_onepage from "./developer-onepage";
 import m_developer_pages from "./developer-pages";
 import m_developer_rights from "./developer-rights";
 import m_developer_session2 from "./developer-session2";
@@ -55,6 +58,7 @@ import m_spin from "./spin";
 import m_staff_shell from "./staff-shell";
 import m_stock_assets from "./stock-assets";
 import m_svc_reporting from "./svc-reporting";
+import m_system_events from "./system-events";
 import m_withdrawals from "./withdrawals";
 
 const catalog: Catalog = {
@@ -66,13 +70,16 @@ const catalog: Catalog = {
   ...m_developer_access,
   ...m_developer_adduser,
   ...m_developer_attribution,
+  ...m_developer_checks,
   ...m_developer_console,
+  ...m_developer_fixes,
   ...m_developer_gates,
   ...m_developer_hidden,
   ...m_developer_home,
   ...m_developer_home2,
   ...m_developer_logging,
   ...m_developer_login,
+  ...m_developer_onepage,
   ...m_developer_pages,
   ...m_developer_rights,
   ...m_developer_session2,
@@ -113,6 +120,7 @@ const catalog: Catalog = {
   ...m_staff_shell,
   ...m_stock_assets,
   ...m_svc_reporting,
+  ...m_system_events,
   ...m_withdrawals,
 };
 export default catalog;

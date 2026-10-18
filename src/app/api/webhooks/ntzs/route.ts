@@ -3,6 +3,7 @@ import { depositCompleted, depositFailed, readDeposit, verifyNtzsWebhook } from 
 import { db } from "@/server/db";
 import { checkMobilePayment, findMobilePayment, settleMobilePayment } from "@/server/services/mobile-payments";
 import { handleWithdrawalWebhook } from "@/server/services/withdrawals";
+import { recordError, recordWebhook } from "@/server/services/system-events";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -24,13 +25,28 @@ const paidEvent = (e: string) => /(^|\.)(completed|complete|minted|succeeded|suc
  * shape of a message. What we do is logged (event, ids — never personal details).
  */
 export async function POST(req: Request) {
+  // Every call nTZS makes is written down for the Developer console (system_events): accepted, refused or failed — never the body.
+  const noted: { kind?: string; error?: unknown } = {};
+  try {
+    const res = await receive(req, noted);
+    await recordWebhook("webhook:ntzs", { ok: res.status < 400, kind: noted.kind, httpStatus: res.status, error: noted.error });
+    return res;
+  } catch (e) {
+    await recordError({ source: "webhook:ntzs", error: e });
+    await recordWebhook("webhook:ntzs", { ok: false, kind: "crashed", httpStatus: 500, error: e });
+    throw e;
+  }
+}
+
+async function receive(req: Request, noted: { kind?: string; error?: unknown }): Promise<Response> {
   const raw = await req.text();
   if (!verifyNtzsWebhook(raw, req.headers.get("x-webhook-signature"), req.headers.get("x-webhook-timestamp"))) {
     console.warn("[ntzs] webhook refused: bad or missing signature");
+    noted.kind = "signature";
     return new Response("Invalid signature", { status: 401 });
   }
   let body: Obj;
-  try { body = obj(JSON.parse(raw)) ?? {}; } catch { return new Response("Bad JSON", { status: 400 }); }
+  try { body = obj(JSON.parse(raw)) ?? {}; } catch { noted.kind = "bad json"; return new Response("Bad JSON", { status: 400 }); }
 
   const event = eventOf(body);
   const data = obj(body.data) ?? obj(body.payload) ?? obj(body.deposit) ?? body;
@@ -43,14 +59,19 @@ export async function POST(req: Request) {
       const r = await handleWithdrawalWebhook(data);
       if (!r.found) {
         console.warn("[ntzs] webhook for a withdrawal we do not know", wlog);
+        noted.kind = "withdrawal (not ours)";
         return Response.json({ ok: true, ignored: "unknown withdrawal" });
       }
+      noted.kind = "withdrawal";
       console.info("[ntzs] webhook: withdrawal", { ...wlog, matched: r.id, now: r.status, ignored: r.ignored ?? null });
       try { revalidatePath("/staff/finance", "layout"); } catch { /* screens refresh on their own as well */ }
       return Response.json({ ok: true, status: r.status, ...(r.ignored ? { ignored: r.ignored } : {}) });
     } catch (e) {
       // Not recorded: answer with an error so nTZS tries again (the scheduled check also asks).
       console.error("[ntzs] could not record a withdrawal's news", wlog, e);
+      noted.kind = "withdrawal not recorded";
+      noted.error = e;
+      await recordError({ source: "webhook:ntzs", error: e });
       return new Response("Could not record the withdrawal", { status: 500 });
     }
   }
@@ -64,6 +85,7 @@ export async function POST(req: Request) {
   const log = { event: event || "(none)", keys: Object.keys(body).slice(0, 12), dataKeys: Object.keys(data).slice(0, 20), depositId, status: dep.status || null, matched: mp?.id ?? null };
   if (!mp) {
     console.warn("[ntzs] webhook for a payment we do not know", log);
+    noted.kind = "payment (not ours)";
     return Response.json({ ok: true, ignored: "unknown payment" });
   }
 
@@ -75,17 +97,22 @@ export async function POST(req: Request) {
     if ((paidEvent(event) || depositCompleted(dep.status)) && !depositFailed(dep.status)) {
       const { mp: done, recorded } = await settleMobilePayment(mp.id, { received: dep.amountTzs ?? null, pspReference: dep.pspReference ?? null, source: "webhook" });
       console.info("[ntzs] webhook: paid", { ...log, recorded, now: done.status });
+      noted.kind = "payment paid";
       if (recorded) refresh(done.reservationId);
       return Response.json({ ok: true, recorded });
     }
     // Any other news about one of our payments: ask nTZS for its state (paid → recorded, failed → marked).
     const now = await checkMobilePayment(mp.id, "check");
     console.info("[ntzs] webhook: checked with nTZS", { ...log, now: now.status });
+    noted.kind = "payment news";
     if (now.status === "COMPLETED") refresh(now.reservationId);
     return Response.json({ ok: true, status: now.status });
   } catch (e) {
     // Not recorded: answer with an error so nTZS tries again (the payment page and the scheduled run also ask).
     console.error("[ntzs] could not record", mp.id, log, e);
+    noted.kind = "payment not recorded";
+    noted.error = e;
+    await recordError({ source: "webhook:ntzs", error: e });
     return new Response("Could not record the payment", { status: 500 });
   }
 }

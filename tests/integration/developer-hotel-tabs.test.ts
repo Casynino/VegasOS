@@ -49,7 +49,7 @@ import { MoneyTab } from "@/app/staff/(app)/developer/tab-money";
 import { MessagesTab } from "@/app/staff/(app)/developer/tab-messages";
 import { makeT } from "@/i18n/translate";
 import { eat, managerActor, resetBusinessData, roomType } from "../support/helpers";
-import { browser, makeSession, makeUser, redirectOf, removeMadeUsers, thrownBy, type MadeUser } from "../support/developer";
+import { browser, makeSession, makeUser, redirectOf, removeMadeUsers, resolveAsync, thrownBy, type MadeUser } from "../support/developer";
 
 /**
  * THE THREE NEW TABS of the Developer home — Hotel, Money, Messages & reports (owner, 2026-10-18), and the "New records per day" chart,
@@ -104,10 +104,10 @@ afterAll(async () => {
 
 // ───────────────────────────────────────────── 1. only the Developer ─────────────────────────────────────────────
 describe("the door: the Developer account only", () => {
-  it("the tab list has the three new tabs after Activity, in this order, and ?tab= finds each", () => {
-    expect([...CONSOLE_TABS]).toEqual(["activity", "hotel", "money", "messages", "speed", "crashes", "settings", "people"]);
-    for (const tab of ["hotel", "money", "messages"]) expect(parseTab(tab)).toBe(tab);
-    expect(parseTab("Hotel")).toBe("activity");
+  it("the tab list has Problems first and the three tabs after Activity, in this order, and ?tab= finds each", () => {
+    expect([...CONSOLE_TABS]).toEqual(["problems", "activity", "hotel", "money", "messages", "speed", "crashes", "settings", "people"]);
+    for (const tab of ["problems", "hotel", "money", "messages"]) expect(parseTab(tab)).toBe(tab);
+    expect(parseTab("Hotel")).toBe("problems");
   });
 
   it.each([["receptionist", () => rec], ["Boss", () => boss], ["MD", () => md], ["manager", () => mgr], ["Finance", () => fin]])("the %s is refused by every new function", async (_n, who) => {
@@ -872,50 +872,43 @@ describe("New records per day (Speed & size)", () => {
 });
 
 // ───────────────────────────────────────────── 6. the page ─────────────────────────────────────────────
-describe("the Developer home draws the three tabs", () => {
-  const draw = async (search: Record<string, string> = {}) => renderToStaticMarkup(await DeveloperHomePage({ searchParams: Promise.resolve(search) } as never));
+describe("the Developer home draws the three parts", () => {
+  const draw = async (search: Record<string, string> = {}) => renderToStaticMarkup((await resolveAsync(await DeveloperHomePage({ searchParams: Promise.resolve(search) } as never))) as never);
 
-  it("the tab bar lists them after Activity in order; each ?tab= is marked as the page you are on; an empty hotel says 'Nothing yet'", async () => {
+  it("the jump row lists them in order and each part is on the one page; an empty hotel says 'Nothing yet'", async () => {
     await wipe();
     await as(dev);
     const html = await draw();
-    const nav = html.slice(html.indexOf('id="console-tabs"'), html.indexOf("</nav>", html.indexOf('id="console-tabs"')));
-    const at = ["Activity", "Hotel", "Money", "Messages &amp; reports", "Speed &amp; size", "Crashes &amp; sign-ins", "Settings", "People &amp; my actions"].map((w) => nav.indexOf(`>${w}`));
+    const nav = html.slice(html.indexOf('aria-label="Jump to"'), html.indexOf("</nav>", html.indexOf('aria-label="Jump to"')));
+    const at = ["Messages &amp; reports", "Speed &amp; size", "Activity", "Hotel", "Money", "People &amp; my actions", "Settings"].map((w) => nav.indexOf(`>${w}`));
     expect(at.every((i) => i > 0)).toBe(true);
     expect(at).toEqual([...at].sort((a, b) => a - b));
-    for (const k of ["hotel", "money", "messages"]) expect(nav).toContain(`href="/staff/developer?tab=${k}#console-tabs"`);
+    for (const k of ["hotel", "money", "messages"]) { expect(nav).toContain(`href="#${k}"`); expect(html).toContain(`id="${k}"`); }
 
-    const marks = { hotel: ["What is happening in the hotel", "Hotel"], money: ["Where the money is", "Money"], messages: ["Is the Boss getting what he should", "Messages &amp; reports"] } as const;
-    for (const [tab, [text, label]] of Object.entries(marks)) {
-      const page = await draw({ tab });
-      expect(page, tab).toContain(text);
-      expect(page, tab).toMatch(new RegExp(`aria-current="page"[^>]*>[^<]*${label}`));
-      expect(page, tab).toContain("Nothing yet");
-      expect(page, tab).not.toContain("undefined");
-      expect(page, tab).not.toContain("NaN");
-      expect(page, tab).toContain("Show the numbers");
-    }
+    for (const text of ["What is happening in the hotel", "Where the money is", "Is the Boss getting what he should"]) expect(html, text).toContain(text);
+    expect(html).toContain("Nothing yet");
+    expect(html).toContain("Show the numbers");
+    expect(html).not.toContain("undefined");
+    expect(html).not.toContain("NaN");
   }, 120_000);
 
   it("is read in Chinese by a Chinese-speaking Developer", async () => {
     await db.user.update({ where: { id: dev.id }, data: { preferredLanguage: "zh-CN" } });
     try {
       await as(dev);
-      for (const [tab, words] of Object.entries({ hotel: ["有客房间", "每日入住与退房", "暂无"], money: ["资金在哪里", "资金账户", "暂无"], messages: ["老板是否收到了应收到的内容", "每日发送情况", "暂无"] })) {
-        const html = await draw({ tab });
-        for (const w of words) expect(html, `${tab} ${w}`).toContain(w);
-        expect(html, tab).not.toContain("What is happening in the hotel");
-        expect(html, tab).not.toContain("Where the money is");
-        expect(html, tab).not.toContain("Is the Boss getting what he should");
-        expect(html, tab).not.toContain("undefined");
-        expect(html, tab).not.toContain("NaN");
-      }
+      const html = await draw();
+      for (const w of ["有客房间", "每日入住与退房", "暂无", "资金在哪里", "资金账户", "老板是否收到了应收到的内容", "每日发送情况"]) expect(html, w).toContain(w);
+      expect(html).not.toContain("What is happening in the hotel");
+      expect(html).not.toContain("Where the money is");
+      expect(html).not.toContain("Is the Boss getting what he should");
+      expect(html).not.toContain("undefined");
+      expect(html).not.toContain("NaN");
     } finally { await db.user.update({ where: { id: dev.id }, data: { preferredLanguage: "en" } }); }
   }, 120_000);
 
   it("a person who is not the Developer is sent to 'forbidden'", async () => {
     await as(rec);
-    expect(await redirectOf(() => draw({ tab: "money" }))).toBe("/staff/forbidden");
+    expect(await redirectOf(() => draw())).toBe("/staff/forbidden");
   });
 
   it("each look at Hotel, Money or Messages is written like a look at a Business tab: once in 10 minutes per tab, apart from Business' own tab of the same name", async () => {
@@ -926,19 +919,18 @@ describe("the Developer home draws the three tabs", () => {
       await tx.$queryRawUnsafe(`SELECT set_config('vegas.audit_maintenance', 'on', true)`);
       await tx.auditLog.deleteMany({ where: { userId: dev.id, action: BUSINESS_VIEW_ACTION } });
     });
-    for (const tab of ["hotel", "money", "messages"]) { await draw({ tab }); await draw({ tab }); } // twice: the refresh is not written again
+    await draw(); await draw(); // twice: the refresh is not written again
     const rows = await mine();
-    expect(rows.map((r) => r.entityId)).toEqual(["home:hotel", "home:money", "home:messages"]);
+    expect(rows.map((r) => r.entityId).sort()).toEqual(["home:hotel", "home:messages", "home:money"]);
     for (const r of rows) {
       expect(r).toMatchObject({ userId: dev.id, actorType: "DEVELOPER", entityType: "Business", action: "developer.business_viewed", actorLabel: dev.fullName });
       expect(r.after).toEqual({ tab: r.entityId!.replace("home:", ""), area: "home" });
     }
-    // the other tabs of the home are not "business data": nothing more is written for them
-    await draw({ tab: "activity" }); await draw({ tab: "speed" });
+    // the other parts of the home are not "business data": nothing is written for them (the three above are all there is)
     expect(await mine()).toHaveLength(3);
     // Business' own Money tab is its own entry (it is not swallowed by the home's, and the home's is not swallowed by it)
     expect(await noteBusinessView(user, "money")).toBe("logged");
-    expect((await mine()).map((r) => r.entityId)).toEqual(["home:hotel", "home:money", "home:messages", "money"]);
+    expect((await mine()).map((r) => r.entityId).sort()).toEqual(["home:hotel", "home:messages", "home:money", "money"]);
     // the entry never counts as work
     const { NOT_WORK_ACTIONS } = await import("@/server/services/developer-console");
     expect(NOT_WORK_ACTIONS).toContain(BUSINESS_VIEW_ACTION);
@@ -953,7 +945,7 @@ describe("the Developer home draws the three tabs", () => {
     const spy = vi.spyOn(db.auditLog, "findFirst").mockRejectedValue(new Error("diary down"));
     const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
     try {
-      const html = await draw({ tab: "money" });
+      const html = await draw();
       expect(html).toContain("Where the money is");
     } finally { spy.mockRestore(); logged.mockRestore(); }
   });

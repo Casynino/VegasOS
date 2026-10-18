@@ -54,7 +54,7 @@ export function ActivityTab({ t, a, now, timezone }: { t: T; a: ActivityData; no
         <StatBlock
           label={t("Failed sign-ins")} value={num(t, s.failedSignIns24h)} caption={t("wrong tries in 24 hours")} warn={!!s.failedSignIns24h}
           tag={s.failedSignIns24h ? t("Look at it") : t("Quiet")} tagTone={s.failedSignIns24h ? "amber" : "emerald"}
-          note={t("A few typing mistakes are normal. Many in a day can mean someone is guessing passwords. The details are on the Crashes & sign-ins tab.")}
+          note={t("A few typing mistakes are normal. Many in a day can mean someone is guessing passwords. The details are in the Errors & jobs part.")}
         />
       </div>
 

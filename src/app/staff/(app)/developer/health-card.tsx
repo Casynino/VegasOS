@@ -77,9 +77,9 @@ export function HealthCard({ t, h }: { t: T; h: HealthReport }) {
           <Figure label={t("Signed in today")} value={num(t, h.signedInToday)} caption={t("different people")} />
           <Figure label={t("Actions today")} value={num(t, h.actionsToday)} caption={t("saved in 24 hours")} />
           <Figure
-            label={t("Alerts waiting")} value={num(t, h.alerts?.total)} tone={h.alerts && h.alerts.total > 0 ? "warn" : undefined}
-            caption={t("over a day")}
-            hint={h.alerts ? t("Guest requests: {guests}. Stock requests: {stock}.", { guests: h.alerts.guestRequests, stock: h.alerts.stockRequests }) : undefined}
+            label={t("Server errors (24 h)")} value={num(t, h.serverErrors24h)} tone={h.serverErrors24h ? "warn" : h.serverErrors24h === 0 ? "ok" : undefined}
+            caption={t("different errors")}
+            hint={h.serverErrors24h ? t("Open the Errors & jobs part to see them.") : undefined}
           />
         </dl>
       </div>
@@ -96,6 +96,7 @@ export function HealthCard({ t, h }: { t: T; h: HealthReport }) {
             <li>{t("Each thing to fix now loses {n}.", { n: SCORE.fixNow })}</li>
             <li>{t("Each thing to look at loses {n}.", { n: SCORE.lookAt })}</li>
             <li>{t("Things for information cost nothing.")}</li>
+            <li>{t("Only problems of the system count. The hotel's own work never does.")}</li>
             <li>{t("It never goes below 0.")}</li>
           </ol>
           <div className="rounded-2xl bg-muted/40 px-4 py-3">
@@ -103,7 +104,7 @@ export function HealthCard({ t, h }: { t: T; h: HealthReport }) {
             <p className="mt-1 tabular-nums">
               {SCORE.start}{offline ? ` − ${SCORE.databaseOffline}` : ""}{costFix ? ` − ${costFix}` : ""}{costLook ? ` − ${costLook}` : ""} = <strong>{h.score}</strong>
             </p>
-            <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{t("Only facts count: a report that did not go, a payment that needs a person, a missing setting. A guess never does.")}</p>
+            <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{t("Only facts count: a job that did not run, a record that contradicts another, a missing setting, an error the server threw. A guess never does.")}</p>
           </div>
         </div>
       </details>

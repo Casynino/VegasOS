@@ -6,14 +6,15 @@ import { msg, msgf, type Localized } from "@/i18n/msg";
 import { formatMinutesLabel } from "@/lib/format";
 import { addDays, businessDateOf, businessDayBounds, businessRangeBounds, eachDate, fromDbDate, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import { deviceLabel } from "@/lib/device-label";
-import { DEVELOPER_ROLE_CODE, type PermissionCode } from "@/lib/permissions";
+import { DEVELOPER_ROLE_CODE } from "@/lib/permissions";
 import {
-  assertConsoleAccess, NOT_WORK_ACTIONS, recentDenied, safe, short, systemDiagnostics, type ConsoleUser, type DeniedEntry,
+  assertConsoleAccess, CONSOLE_HREF, NOT_WORK_ACTIONS, recentDenied, safe, short, systemDiagnostics, type ConsoleUser, type DeniedEntry,
 } from "./developer-console";
 import { DEVELOPER_TRIES, DEVELOPER_WINDOW_SECONDS } from "./auth-login";
-import { reportTroubles } from "./report-health";
 import { SYSTEM_ROLE } from "./staff-accounts";
 import { consoleFrame } from "./developer-frame";
+import { runChecks, type CheckResult } from "./developer-checks";
+import { loadSystemEvents, type SystemEvents } from "./system-events";
 
 /**
  * WHAT THE DEVELOPER CONSOLE MEASURES (owner, 2026-10-17): the health of the system, who is using it, how fast the database is and
@@ -34,10 +35,13 @@ const DAY = 24 * HOUR;
  * THE SCORE RULE (kept this simple on purpose — the console explains it under "How is this worked out?"):
  *   start at 100
  *   the database does not answer          −60   (its own card is NOT counted again as a "fix now")
- *   each "fix now" item                   −10
- *   each "look at" item                    −5
- *   "for information" items                −0
+ *   each "fix now" item                   −10   (a system check that says "fix", or a set-up fact that is wrong)
+ *   each "look at" item                    −5   (a system check that says "look")
+ *   "for information" items                −0   (and a check that could not be run costs nothing either)
  *   never below 0
+ * Only SYSTEM facts count (the data contradicts itself, a job or an integration fails, a key or a setting is wrong, the server threw an
+ * error). The hotel's own work (a shift open for long, a guest who owes, an order waiting, low stock, a request unanswered) never does:
+ * the Developer does not do operations.
  */
 export const SCORE = { start: 100, databaseOffline: 60, fixNow: 10, lookAt: 5 } as const;
 /** The id of the card that says the database does not answer (its cost is the −60, not an extra −10). */
@@ -70,22 +74,20 @@ export interface HealthItem {
   summary: Localized;
   /** What it means, in plain words. */
   what: Localized;
-  /** What to do about it, and who does it. */
+  /** What to do about it. */
   todo: Localized;
+  /** Who fixes it: the Developer, or the system owner for keys and billing (null on the few items that say it in their text). */
+  who?: Localized | null;
+  /** Codes and numbers that show where to look (room numbers, booking references, job names). Never a name. */
+  examples?: string[];
   /** A page that helps — only when this Developer may open it (never a link that would be refused). */
   link: { href: string; label: Localized } | null;
 }
 
-/** An open reception or waiter shift older than this is probably forgotten (the Boss's home uses the same 14 hours). */
+/** An open reception or waiter shift older than this is shown as "long" on the Hotel tab (a plain number there; it is not a Developer problem). */
 export const SHIFT_OPEN_LIMIT_HOURS = 14;
-/** Something waiting for a person for longer than this is an "alert waiting". */
-export const ALERT_WAITING_HOURS = 24;
-/** An account made more than this many days ago that never signed in is worth a word. */
-export const NEVER_SIGNED_IN_DAYS = 3;
 /** A "work as" session open longer than this is mentioned (the 4-hour cap ends it by itself). */
 export const WORK_AS_LONG_MINUTES = 60;
-/** An unsettled withdrawal older than this is a "fix now" (nTZS normally answers within seconds). */
-export const WITHDRAWAL_STUCK_MINUTES = 30;
 /**
  * Wrong tries in 15 minutes before a sign-in is paused. The Developer account's own lock is read from where it is enforced
  * (services/auth-login.ts); the shared limits per email and per address are the numbers written in src/app/staff/(auth)/login/actions.ts.
@@ -99,9 +101,11 @@ export interface HealthReport {
   signedInToday: number | null;
   /** Real work saved in the last 24 hours (sign-ins and the Developer's own looking are not work). null = could not be read. */
   actionsToday: number | null;
-  /** Things waiting more than a day for a person: guest requests and stock requests. null = could not be read. */
-  alerts: { total: number; guestRequests: number; stockRequests: number } | null;
+  /** How many DIFFERENT unexpected server errors were seen in the last 24 hours (the headline figure). null = could not be read. */
+  serverErrors24h: number | null;
   failedSignIns24h: number | null;
+  /** Every system check, just now (the Problems part shows them; the attention cards are the ones that say "fix" or "look"). Empty while the database is down. */
+  checks: CheckResult[];
   /** Fix now first, then look at, then for information. */
   items: HealthItem[];
   counts: { fix: number; look: number; info: number };
@@ -109,13 +113,13 @@ export interface HealthReport {
   verdict: Verdict;
 }
 
-const link = (user: ConsoleUser, needs: PermissionCode, href: string, label: Localized): HealthItem["link"] => (user.permissions.has(needs) ? { href, label } : null);
-
-/** A name list for a sentence: "Asha, Juma and 2 more". */
-function nameList(names: string[], total: number): string {
-  const shown = names.slice(0, 3);
-  const rest = total - shown.length;
-  return rest > 0 ? `${shown.join(", ")} +${rest}` : shown.join(", ");
+/** A check that needs attention, as an attention card. */
+function itemOfCheck(c: CheckResult): HealthItem {
+  return {
+    id: c.id, severity: c.state === "fix" ? "fix" : "look",
+    title: c.title, summary: c.summary, what: c.what, todo: c.todo, who: c.who, examples: c.examples,
+    link: c.link ?? null,
+  };
 }
 
 export async function healthReport(user: ConsoleUser, now = new Date()): Promise<HealthReport> {
@@ -131,36 +135,9 @@ export async function healthReport(user: ConsoleUser, now = new Date()): Promise
 
   // Everything else needs the database: when it does not answer, only that card is shown.
   const facts = online ? await Promise.all([
-    safe(() => reportTroubles(now)),
-    safe(() => db.mobilePayment.count({ where: { attentionAt: { not: null }, resolvedAt: null } })),
-    safe(() => db.withdrawal.count({
-      where: { OR: [
-        { status: { in: ["SUBMITTING", "UNKNOWN"] }, createdAt: { lt: new Date(now.getTime() - WITHDRAWAL_STUCK_MINUTES * 60_000) } },
-        { attentionAt: { not: null }, reconciledAt: null },
-      ] },
-    })),
-    safe(() => db.actualShift.findMany({
-      where: { endedAt: null, startedAt: { lt: new Date(now.getTime() - SHIFT_OPEN_LIMIT_HOURS * HOUR) } },
-      select: { department: true, user: { select: { fullName: true } } }, orderBy: { startedAt: "asc" }, take: 20,
-    })),
-    safe(async () => {
-      const cutoff = new Date(now.getTime() - ALERT_WAITING_HOURS * HOUR);
-      const [guestRequests, stockRequests] = await Promise.all([
-        db.serviceRequest.count({ where: { status: { in: ["NEW", "ASSIGNED", "IN_PROGRESS"] }, createdAt: { lt: cutoff } } }),
-        db.stockRequest.count({ where: { status: { in: ["SUBMITTED", "PENDING_APPROVAL"] }, updatedAt: { lt: cutoff } } }),
-      ]);
-      return { total: guestRequests + stockRequests, guestRequests, stockRequests };
-    }),
+    safe(() => loadSystemEvents(user as Parameters<typeof loadSystemEvents>[0], now)),
     safe(() => db.auditLog.count({ where: { action: "auth.login_failed", createdAt: { gte: since24 } } })),
     safe(() => db.auditLog.count({ where: { action: "developer.denied", createdAt: { gte: since24 } } })),
-    safe(async () => {
-      const cutoff = new Date(now.getTime() - NEVER_SIGNED_IN_DAYS * DAY);
-      const rows = await db.user.findMany({
-        where: { isActive: true, lastLoginAt: null, createdAt: { lt: cutoff }, role: { code: { notIn: [DEVELOPER_ROLE_CODE, SYSTEM_ROLE] } } },
-        select: { fullName: true }, orderBy: { createdAt: "asc" }, take: 50,
-      });
-      return rows.map((r) => r.fullName);
-    }),
     safe(() => db.session.findMany({ where: { workAsUserId: { not: null } }, select: { workAsStartedAt: true }, take: 50 })),
     safe(() => db.auditLog.count({ where: { action: "developer.work_as_started", createdAt: { gte: since24 } } })),
     safe(async () => {
@@ -177,13 +154,13 @@ export async function healthReport(user: ConsoleUser, now = new Date()): Promise
       },
     })),
   ]) : null;
-  const [troubles, mobileNeedPerson, withdrawalsStuck, longShifts, alerts, failedSignIns, denied24, neverSignedIn, workAsOpen, workAsStarted24, signedInToday, actionsToday] =
-    facts ?? [null, null, null, null, null, null, null, null, null, null, null, null];
+  const [events, failedSignIns, denied24, workAsOpen, workAsStarted24, signedInToday, actionsToday] = facts ?? [null, null, null, null, null, null, null];
+  // The system checks (data that contradicts itself, jobs, integrations, set-up, errors) — read once here for the cards, the score and the Problems part.
+  const checks: CheckResult[] = online ? (await safe(() => runChecks(user, now, { diag, events: events as SystemEvents | null }))) ?? [] : [];
 
   const items: HealthItem[] = [];
   const add = (it: HealthItem) => items.push(it);
 
-  // ── fix now ──
   if (!online) {
     add({
       id: DATABASE_ITEM_ID, severity: "fix",
@@ -191,145 +168,25 @@ export async function healthReport(user: ConsoleUser, now = new Date()): Promise
       summary: msgf("Nothing can be read or saved until it answers.", {}),
       what: msgf("All of the hotel's records live in the database. The console just asked it a trivial question and got no answer.", {}),
       todo: msgf("Look at the database provider's status page and the connection setting on Vercel. Staff cannot work until it is back.", {}),
-      link: null,
-    });
-  }
-  if (troubles?.daily) {
-    const k = troubles.daily.kind;
-    add({
-      id: "report-daily", severity: "fix",
-      title: k === "missing" ? msgf("The daily report was not made", {}) : msgf("The daily report did not reach the Boss", {}),
-      summary: k === "missing" ? msgf("It was not made at 07:00 for the day that closed.", {}) : k === "unsent" ? msgf("The report is saved but has not been sent yet.", {}) : msgf("A send was tried and failed. The report is saved.", {}),
-      what: msgf("The Boss gets the daily report on WhatsApp every morning. This one is late, so the Boss is missing yesterday's figures.", {}),
-      todo: msgf("Ask the Boss, the MD or a manager to make or send it again from Reports (the Developer cannot make or send financial reports). If it keeps failing, check the WhatsApp key and the recipients.", {}),
-      link: link(user, "reports.view", troubles.daily.id ? `/staff/reports/daily/${troubles.daily.id}` : "/staff/reports/daily", msgf("Open the report", {})),
-    });
-  }
-  if (troubles?.room) {
-    const k = troubles.room.kind;
-    add({
-      id: "report-room", severity: "fix",
-      title: k === "missing" ? msgf("The room report was not made", {}) : msgf("The room report did not reach the Boss", {}),
-      summary: k === "missing" ? msgf("It was not made at 06:30 for the day that closed.", {}) : k === "unsent" ? msgf("The report is saved but has not been sent yet.", {}) : msgf("A send was tried and failed. The report is saved.", {}),
-      what: msgf("The Boss gets the room report on WhatsApp early every morning. This one is late.", {}),
-      todo: msgf("Ask the Boss, the MD or a manager to make or send it again from Reports. If it keeps failing, check the WhatsApp key and the recipients.", {}),
-      link: link(user, "reports.view", "/staff/reports/room", msgf("Open the report", {})),
-    });
-  }
-  if (online && !diag.cron.secretConfigured) {
-    add({
-      id: "cron-secret", severity: "fix",
-      title: msgf("The scheduled jobs have no secret", {}),
-      summary: msgf("Reports and clean-up run on a timer and the server will refuse them.", {}),
-      what: msgf("The daily report, the room report, shift reports and the clean-up of old sessions are started by a timer. The timer must show a secret the server knows; without one the server turns every run away, so none of it happens.", {}),
-      todo: msgf("Set the cron secret in the Vercel project settings, then deploy again. This page never shows the secret itself.", {}),
-      link: null,
-    });
-  }
-  if (mobileNeedPerson) {
-    add({
-      id: "mobile-payments", severity: "fix",
-      title: mobileNeedPerson === 1 ? msgf("{n} mobile payment needs a person", { n: mobileNeedPerson }) : msgf("{n} mobile payments need a person", { n: mobileNeedPerson }),
-      summary: msgf("Money came in that the system could not record by itself.", {}),
-      what: msgf("A customer paid by mobile money but the payment could not be matched on its own — more than was owed, the bill changed, or it could not be recorded. It stays on the list until someone settles it.", {}),
-      todo: msgf("Finance, the Boss or the MD settles it under Online payments. The Developer never touches money.", {}),
-      link: null,
-    });
-  }
-  if (withdrawalsStuck) {
-    add({
-      id: "withdrawals", severity: "fix",
-      title: withdrawalsStuck === 1 ? msgf("{n} withdrawal is not settled", { n: withdrawalsStuck }) : msgf("{n} withdrawals are not settled", { n: withdrawalsStuck }),
-      summary: msgf("Nobody knows yet whether nTZS paid it out.", {}),
-      what: msgf("A withdrawal was sent to nTZS and its answer has not come, or it needs a person to settle it. No new withdrawal can be made until this one is settled.", {}),
-      todo: msgf("The Boss or Finance checks it under Withdrawals and settles it from what nTZS shows.", {}),
-      link: null,
-    });
-  }
-  const m = diag.migrations;
-  if (m && (m.failed > 0 || m.rolledBack > 0)) {
-    add({
-      id: "migrations", severity: "fix",
-      title: msgf("A database update did not finish", {}),
-      summary: msgf("{failed} not finished, {back} undone.", { failed: m.failed, back: m.rolledBack }),
-      what: msgf("The database is changed by numbered updates. One was started and did not finish, or was undone, so the database may not match the code that is running.", {}),
-      todo: msgf("Do not deploy anything else until it is looked at. Check the update log, fix the cause, then run the database update step again.", {}),
+      who: msgf("The Developer; the system owner for the database plan.", {}),
       link: null,
     });
   }
 
-  // ── look at ──
-  if (longShifts && longShifts.length > 0) {
-    const names = [...new Set(longShifts.map((s) => s.user.fullName.replace(/\s*\(.*\)/, "")))];
+  // ── every system check that says "fix" or "look" is a card (an "ok" one never is) ──
+  for (const c of checks) if (c.state === "fix" || c.state === "look") add(itemOfCheck(c));
+  const carded = new Set(items.map((i) => i.id));
+  // A check that could not be run is information, once, with a pointer to the Problems part for which one and why.
+  const unknown = checks.filter((c) => c.state === "unknown").length;
+  if (unknown > 0) {
     add({
-      id: "shifts-long", severity: "look",
-      title: longShifts.length === 1 ? msgf("{n} shift has been open over {h} hours", { n: longShifts.length, h: SHIFT_OPEN_LIMIT_HOURS }) : msgf("{n} shifts have been open over {h} hours", { n: longShifts.length, h: SHIFT_OPEN_LIMIT_HOURS }),
-      summary: msgf("Still open: {names}.", { names: nameList(names, names.length) }),
-      what: msgf("A reception or waiter shift is still open long after a normal shift would end. Most likely it was forgotten. A reception shift that stays open holds one of the two places at the desk.", {}),
-      todo: msgf("Ask the person to close it, or let a manager close it with a reason.", {}),
-      link: link(user, "shifts.view", "/staff/shifts/all", msgf("Open Shifts", {})),
-    });
-  }
-  const w = diag.whatsapp;
-  if (online && w && settings.reportEnabled) {
-    if (w.recipients === 0) {
-      add({
-        id: "whatsapp-none", severity: "look",
-        title: msgf("Nobody is set to receive the Boss reports", {}),
-        summary: msgf("Reports are switched on but the list of recipients is empty.", {}),
-        what: msgf("The daily, room and shift reports go to the people listed as report recipients. With nobody listed, nothing is sent.", {}),
-        todo: msgf("The Boss or the MD adds a recipient in Settings (the Developer cannot change where financial reports go).", {}),
-        link: null,
-      });
-    } else if (w.recipientsReady < w.recipients) {
-      add({
-        id: "whatsapp-keys", severity: "look",
-        title: msgf("WhatsApp cannot reach everyone", {}),
-        summary: msgf("{ready} of {total} recipients can be reached.", { ready: w.recipientsReady, total: w.recipients }),
-        what: msgf("The Boss reports go by WhatsApp (CallMeBot). A recipient can only be reached when their own key is set on the server, or when the default key is set.", {}),
-        todo: msgf("Set the missing key in the server settings on Vercel, or ask the Boss to check the recipient's number and key name. This page never shows a key.", {}),
-        link: null,
-      });
-    }
-  }
-  if (online && !diag.ntzs.configured && settings.onlinePayEnabled) {
-    add({
-      id: "ntzs-off", severity: "look",
-      title: msgf("Online payment (nTZS) is switched on but not set up", {}),
-      summary: msgf("The server has no nTZS key, so customers cannot pay online.", {}),
-      what: msgf("Pay online is switched on in the settings, but the server has no nTZS key to talk to nTZS with.", {}),
-      todo: msgf("Set the nTZS key in the server settings on Vercel and deploy again, or ask the MD to switch online payment off.", {}),
-      link: null,
-    });
-  } else if (online && diag.ntzs.configured && !diag.ntzs.webhookSecret) {
-    add({
-      id: "ntzs-webhook", severity: "look",
-      title: msgf("The nTZS webhook secret is missing", {}),
-      summary: msgf("Payments are found by asking nTZS, not by nTZS telling us.", {}),
-      what: msgf("nTZS tells the system about a payment through a signed message. Without the webhook secret those messages are refused, so a payment is only found when the system next asks nTZS — a delay for the customer.", {}),
-      todo: msgf("Set the nTZS webhook secret in the server settings on Vercel and deploy again.", {}),
-      link: null,
-    });
-  }
-  const failedMessages = online ? diag.counts?.failedMessages24h ?? 0 : 0;
-  if (failedMessages > 0) {
-    add({
-      id: "deliveries-failed", severity: "look",
-      title: failedMessages === 1 ? msgf("{n} message failed in the last 24 hours", { n: failedMessages }) : msgf("{n} messages failed in the last 24 hours", { n: failedMessages }),
-      summary: msgf("WhatsApp messages that were tried and did not go.", {}),
-      what: msgf("Each failed message is kept with its error. The usual causes are a missing or wrong provider key, or a phone number the provider could not reach.", {}),
-      todo: msgf("Check the WhatsApp key and the phone numbers. Reports can be sent again by the Boss, the MD or a manager.", {}),
-      link: link(user, "reports.view", "/staff/reports", msgf("Open Reports", {})),
-    });
-  }
-  if (alerts && alerts.total > 0) {
-    add({
-      id: "alerts-waiting", severity: "look",
-      title: alerts.total === 1 ? msgf("{n} request has been waiting over a day", { n: alerts.total }) : msgf("{n} requests have been waiting over a day", { n: alerts.total }),
-      summary: msgf("Guest requests: {guests}. Stock requests: {stock}. Nobody has dealt with them.", { guests: alerts.guestRequests, stock: alerts.stockRequests }),
-      what: msgf("These ask someone to act — a guest request still open, a stock request or a purchase waiting for a decision — and a day has gone by. A request nobody answers is usually a person who does not know it is there.", {}),
-      todo: msgf("Tell the person who handles it, or ask a manager to assign it.", {}),
-      link: alerts.guestRequests >= alerts.stockRequests ? link(user, "requests.view", "/staff/requests", msgf("Open Requests", {})) : link(user, "inventory.request", "/staff/stock-requests", msgf("Open Stock requests", {})),
+      id: "checks-unknown", severity: "info",
+      title: unknown === 1 ? msgf("{n} check could not be run", { n: unknown }) : msgf("{n} checks could not be run", { n: unknown }),
+      summary: msgf("Not counted against the score.", {}),
+      what: msgf("A check could not read what it needs (a part of the database or a service did not answer, the system has not been recording for long enough yet, or the file it compares with is not on this server). It is not a problem found; it is something not known.", {}),
+      todo: msgf("Open the Problems part to see which checks and why. If it stays like that, find out what stops the check.", {}),
+      who: null,
+      link: { href: `${CONSOLE_HREF.home}#problems`, label: msgf("Open Problems", {}) },
     });
   }
 
@@ -344,33 +201,24 @@ export async function healthReport(user: ConsoleUser, now = new Date()): Promise
       link: null,
     });
   }
-  if (failedSignIns) {
+  // (The two facts below are checks too, once they are above their limits; below it they stay plain information, never twice.)
+  if (failedSignIns && !carded.has("failed-sign-ins")) {
     add({
       id: "failed-sign-ins", severity: "info",
       title: failedSignIns === 1 ? msgf("{n} failed sign-in in 24 hours", { n: failedSignIns }) : msgf("{n} failed sign-ins in 24 hours", { n: failedSignIns }),
       summary: msgf("Wrong-password tries. After {dev} wrong tries in 15 minutes a Developer sign-in is paused ({staff} for staff).", { dev: LOGIN_LIMITS.developerEmail, staff: LOGIN_LIMITS.staffEmail }),
-      what: msgf("A few typing mistakes are normal. Many in a day can mean someone is guessing passwords. The table on the Crashes and sign-ins tab shows which accounts were tried and how often.", {}),
-      todo: msgf("If one account is tried again and again, tell the person and ask them to change their password.", {}),
+      what: msgf("A few typing mistakes are normal. Many in a day can mean someone is guessing passwords. The table in the Errors & jobs part shows which accounts were tried and how often.", {}),
+      todo: msgf("If one account is tried again and again, tell the Boss or the MD.", {}),
       link: null,
     });
   }
-  if (neverSignedIn && neverSignedIn.length > 0) {
-    add({
-      id: "never-signed-in", severity: "info",
-      title: neverSignedIn.length === 1 ? msgf("{n} account has never signed in", { n: neverSignedIn.length }) : msgf("{n} accounts have never signed in", { n: neverSignedIn.length }),
-      summary: msgf("Made over {days} days ago: {names}.", { days: NEVER_SIGNED_IN_DAYS, names: nameList(neverSignedIn, neverSignedIn.length) }),
-      what: msgf("These staff accounts are active but nobody has used them. They may have lost their login details, or the person may not need an account.", {}),
-      todo: msgf("Ask the person to sign in, or switch the account off if it is not needed.", {}),
-      link: null,
-    });
-  }
-  if (denied24) {
+  if (denied24 && !carded.has("denied")) {
     add({
       id: "denied", severity: "info",
       title: denied24 === 1 ? msgf("{n} Developer action was refused in 24 hours", { n: denied24 }) : msgf("{n} Developer actions were refused in 24 hours", { n: denied24 }),
       summary: msgf("The Developer role does not hold the right they needed.", {}),
       what: msgf("A page or an action was refused to a Developer account. For money this is by design — the Developer never writes money. If it surprised you, the list shows which right was needed.", {}),
-      todo: msgf("See the list on the Crashes and sign-ins tab. Nothing is broken.", {}),
+      todo: msgf("See the list in the Errors & jobs part. Nothing is broken.", {}),
       link: null,
     });
   }
@@ -404,7 +252,10 @@ export async function healthReport(user: ConsoleUser, now = new Date()): Promise
   return {
     checkedAt: now,
     database: { online, ms: diag.database.ms },
-    signedInToday, actionsToday, alerts, failedSignIns24h: failedSignIns,
+    signedInToday, actionsToday,
+    serverErrors24h: events ? (events as SystemEvents).errors24h : null,
+    failedSignIns24h: failedSignIns,
+    checks,
     items, counts,
     score: healthScore({ databaseOnline: online, items }),
     verdict: healthVerdict(online, counts),
@@ -711,8 +562,8 @@ export async function speedData(user: ConsoleUser, now = new Date()): Promise<Sp
 
 // ───────────────────────────────────────────── 5. crashes and sign-ins ─────────────────────────────────────────────
 export interface CrashData {
-  /** This system has no error tracking: said plainly on the tab. */
-  errorTracking: false;
+  /** What the system recorded about itself: unexpected server errors (grouped), the automatic jobs and the webhooks. null = could not be read. */
+  system: SystemEvents | null;
   failed: {
     last24h: number;
     last7d: number;
@@ -745,7 +596,8 @@ export async function crashData(user: ConsoleUser, now = new Date()): Promise<Cr
   const since24 = new Date(now.getTime() - DAY);
   const { start, end } = businessRangeBounds(days[0], today, cfg);
 
-  const [failedRows, buckets, denied] = await Promise.all([
+  const [system, failedRows, buckets, denied] = await Promise.all([
+    safe(() => loadSystemEvents(user as Parameters<typeof loadSystemEvents>[0], now)),
     safe(() => db.auditLog.findMany({
       where: { action: "auth.login_failed", createdAt: { gte: start, lt: end } },
       select: { businessDate: true, entityId: true, createdAt: true }, orderBy: { createdAt: "desc" }, take: 5000,
@@ -788,5 +640,5 @@ export async function crashData(user: ConsoleUser, now = new Date()): Promise<Cr
     paused = { developer, staff };
   }
 
-  return { errorTracking: false, failed, paused, denied };
+  return { system, failed, paused, denied };
 }

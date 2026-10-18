@@ -299,7 +299,7 @@ describe("a chart's exact numbers", () => {
 // ───────────────────────────────────────────── 4. the health card ─────────────────────────────────────────────
 describe("the health card's four figures are a real definition list", () => {
   const report: HealthReport = {
-    checkedAt: new Date(), database: { online: true, ms: 7 }, signedInToday: 3, actionsToday: 41, alerts: { total: 2, guestRequests: 1, stockRequests: 1 }, failedSignIns24h: 0,
+    checkedAt: new Date(), database: { online: true, ms: 7 }, signedInToday: 3, actionsToday: 41, serverErrors24h: 2, failedSignIns24h: 0, checks: [],
     items: [], counts: { fix: 0, look: 0, info: 0 }, score: 100, verdict: "well",
   };
   const html = renderToStaticMarkup(createElement(HealthCard, { t, h: report }));
@@ -317,7 +317,7 @@ describe("the health card's four figures are a real definition list", () => {
   });
 
   it("says the same words as before", () => {
-    for (const w of ["Database", "Online", "7 ms to answer", "Signed in today", "Actions today", "Alerts waiting", "Guest requests: 1. Stock requests: 1."]) expect(dl).toContain(w);
+    for (const w of ["Database", "Online", "7 ms to answer", "Signed in today", "Actions today", "Server errors (24 h)", "Open the Errors &amp; jobs part to see them."]) expect(dl).toContain(w);
   });
 });
 
@@ -437,7 +437,8 @@ describe("a list of people that staff see leaves out the Developer and the syste
     "src/app/staff/(app)/shifts/page.tsx": { count: 1, why: "who works reception shifts = shifts.work WITHOUT shifts.manage; the Developer holds shifts.manage, so it can never be listed" },
     "src/server/services/audit-trail.ts": { count: 1, why: "the Audit pages list everyone on purpose; the Developer only for those who may see Developer actions" },
     "src/server/services/developer-console.ts": { count: 1, why: "the Developer's own console (inspect a person's rights): full on purpose" },
-    "src/server/services/developer-health.ts": { count: 2, why: "the Developer's own console; both already leave out the Developer and the system account" },
+    "src/server/services/developer-health.ts": { count: 1, why: "the Developer's own console (the list of people not using the system); it already leaves out the Developer and the system account" },
+    "src/server/services/developer-checks.ts": { count: 1, why: "the Developer's own system check: is there an active Boss account (it counts Boss accounts only, nothing else about anyone)" },
     "src/server/services/work-as.ts": { count: 1, why: "the Developer's Access page; leaves out the Developer and the system account" },
     "src/server/services/staff-accounts.ts": { count: 3, why: "the Users page for the Boss and the MD (it never lists the Developer), and two counts of active Bosses" },
     "src/server/services/shifts.ts": { count: 1, why: "a receptionist picked by id for the rota: DESK_WORKER = shifts.work without shifts.manage, which the Developer never matches (the other query is a lookup by ids)" },
