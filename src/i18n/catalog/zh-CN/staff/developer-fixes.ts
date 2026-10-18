@@ -141,6 +141,16 @@ const catalog: Catalog = {
   "Load latest 50 activity lines": "读取最新 50 条活动记录",
   "Count sign-in sessions": "统计登录会话",
   "Database link": "数据库连接",
+  "Who did what, just now": "谁刚刚做了什么",
+  "The team's latest actions: who did it, in what role, and when. Never an amount or a guest's name.": "团队最新的操作：谁做的、什么角色、什么时候。绝不显示金额或住客姓名。",
+  "Nothing was saved by the team yet.": "团队还没有保存任何操作。",
+  "Actions by area, last 7 days. Counts only.": "按领域统计的操作，最近 7 天。只有次数。",
+  "What is in the system and where it is. The hotel's work, not yours.": "系统里有什么、在哪里。这是酒店的工作，不是你的。",
+  "Who has an account, and what you have done.": "谁有账号，以及你做过什么。",
+  "Actions today": "今日操作",
+  "Report messages": "报告消息",
+  "Other kinds": "其他类型",
+  "by the team and you in 24 hours": "团队和你在 24 小时内保存的操作",
 };
 
 export default catalog;

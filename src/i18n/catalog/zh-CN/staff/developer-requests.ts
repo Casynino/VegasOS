@@ -1,0 +1,35 @@
+// Developer Home, the "Messages & requests" part: what guests are told and what they ask for (counts and plain words only).
+import type { Catalog } from "../../../translate";
+
+const catalog: Catalog = {
+  "Messages & requests": "消息与客人需求",
+  "What guests ask for and are told. Reception's work, not yours.": "客人提出的需求和我们发给客人的消息。这是前台的工作，不是你的。",
+  "Messages sent (14 days)": "已发消息（14 天）",
+  "to guests": "发给客人",
+  "Outbound": "发出",
+  "Booking confirmed, welcome, reminders, thank-you and the rest, sent to guests by the system or by reception.": "预订确认、欢迎、提醒、感谢信等，由系统或前台发给客人。",
+  "Waiting for staff": "等待员工处理",
+  "nobody has taken them yet": "还没有人接手",
+  "Inbox": "待办",
+  "Guest requests and booking requests that nobody has accepted yet. The staff bell rings for them. The bell keeps no read mark, so unread alerts cannot be counted.": "还没有人接单的客人需求和预订申请，员工的提示铃会为它们响起。提示铃不记录“已读”，所以无法统计未读提醒。",
+  "{n} asked from the guest's phone": "{n} 条由客人用手机提出",
+  "Every request from a guest, asked from their phone or logged by reception. {n} are not finished yet.": "客人的每一条需求，无论是用手机提出还是由前台登记。还有 {n} 条未完成。",
+  "{n} still open": "还有 {n} 条未处理完",
+  "People who asked to book from the website. Open means reception has not finished with the request.": "通过网站申请预订的人。“未处理完”表示前台还没有处理完这条申请。",
+  "Messages to guests per day": "每天发给客人的消息",
+  "No messages sent in 14 days.": "14 天内没有发出消息。",
+  "What the messages were": "消息的类型",
+  "By kind, last 30 days.": "按类型统计，最近 30 天。",
+  "No messages in 30 days.": "30 天内没有消息。",
+  "Guest requests by status": "客人需求（按状态）",
+  "Every request ever raised, by where it stands.": "历史上提出的每一条需求，按目前进展统计。",
+  "Booking requests by status": "预订申请（按状态）",
+  "People asking to book from the website, by where the request stands.": "通过网站申请预订的人，按申请目前进展统计。",
+  "Last 14 days, Tanzania time.": "最近 14 天，坦桑尼亚时间。",
+  "Being reviewed": "审核中",
+  "Order cancelled": "订单已取消",
+  "Given to someone": "已指派",
+  "Guest contacted": "已联系客人",
+  "Made into a booking": "已转为预订",
+};
+export default catalog;

@@ -75,10 +75,7 @@ export function HealthCard({ t, h }: { t: T; h: HealthReport }) {
             caption={offline ? t("did not answer") : h.database.ms !== null ? t("{ms} ms to answer", { ms: h.database.ms }) : t("answers")}
           />
           <Figure label={t("Signed in today")} value={num(t, h.signedInToday)} caption={t("different people")} />
-          <Figure
-            label={t("Failed sign-ins")} value={num(t, h.failedSignIns24h)} tone={h.failedSignIns24h ? "warn" : h.failedSignIns24h === 0 ? "ok" : undefined}
-            caption={t("in 24 hours")}
-          />
+          <Figure label={t("Actions today")} value={num(t, h.actionsToday)} caption={t("by the team and you in 24 hours")} />
           <Figure
             label={t("Server errors (24 h)")} value={num(t, h.serverErrors24h)} tone={h.serverErrors24h ? "warn" : h.serverErrors24h === 0 ? "ok" : undefined}
             caption={t("different errors")}

@@ -45,11 +45,35 @@ describe("Activity: who is using the system", () => {
     expect(a.busiestHours).toHaveLength(24);
     expect(a.online!.map((u) => u.name)).toContain("Parts Dev");
     expect(ONLINE_MINUTES).toBe(10);
-    // no kinds of record and no ranking of people by what they did
-    expect(a).not.toHaveProperty("where");
-    expect(a).not.toHaveProperty("mostActive");
-    expect(JSON.stringify(a)).not.toMatch(/Reservation|Payment|Invoice|RestaurantOrder/);
+    // who is doing what: the kinds of work (counts of actions), the most active people, the team's latest actions — and never an amount
+    expect(a.where).toEqual(expect.any(Array));
+    expect(a.mostActive).toEqual(expect.any(Array));
+    expect(a.latest).toEqual(expect.any(Array));
+    expect(JSON.stringify(a)).not.toMatch(/TZS|amount|balance/i);
     expect(user.id).toBeTruthy();
+  });
+
+  it("'who did what, just now' lists the TEAM's latest actions newest first, by name and role — the Developer's own looking is not the team's work", async () => {
+    const bd = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
+    const put = (action: string, ago: number, who: MadeUser, type = "STAFF") => db.auditLog.create({ data: { actorLabel: who.fullName, actorType: type, userId: who.id, actorRole: who.role, action, entityType: "Guest", businessDate: bd, createdAt: new Date(Date.now() - ago) } as never });
+    // (a minute or two ahead, so they are among the newest whatever else other test files left behind. Earlier runs of this file leave rows of
+    // the same kind behind and the audit trail cannot be cleaned, so THIS run's rows are found by their ids, never by "the first two".)
+    const messageId = (await put("guest.message_sent", -120_000, rec)).id;
+    const reservationId = (await put("reservation.created", -90_000, rec)).id;
+    await put("developer.viewed", -150_000, dev, "DEVELOPER");
+    const a = await activityData(await as(dev));
+    const order = a.latest!.map((l) => l.id);
+    expect(order).toContain(messageId);
+    expect(order).toContain(reservationId);
+    expect(order.indexOf(messageId)).toBeLessThan(order.indexOf(reservationId)); // the later one first
+    const mine = a.latest!.filter((l) => l.id === messageId || l.id === reservationId);
+    expect(mine.map((l) => l.action)).toEqual(["guest.message_sent", "reservation.created"]);
+    expect(mine.every((l) => l.name === "Asha Parts" && !!l.roleName)).toBe(true); // by name and role
+    expect(a.latest!.map((l) => l.action)).not.toContain("developer.viewed");
+    const times = a.latest!.map((l) => l.at.getTime());
+    expect([...times].sort((x, y) => y - x)).toEqual(times); // newest first
+    expect(a.latest!.length).toBeLessThanOrEqual(12);
+    expect(a.where!.length).toBeGreaterThan(0);
   });
 
   it("only the Developer may read it", async () => {
@@ -64,7 +88,7 @@ describe("Activity: who is using the system", () => {
 describe("Speed & size: named questions, timed", () => {
   it("every probe has its own time; a deployment card says which kind of link, never the address", async () => {
     const s = await speedData(await as(dev));
-    expect(s.probes).toHaveLength(5);
+    expect(s.probes).toHaveLength(6);
     expect(s.probes.every((p) => p.ms !== null && p.ms > 0)).toBe(true);
     expect(s.deployment.node).toBe(process.version);
     expect(["Pooled", "Direct"]).toContain(s.deployment.databaseLink);
@@ -78,13 +102,16 @@ describe("Sign-ins & security: the latest tries, the Developer's own, the refuse
     const day = new Date();
     const bd = new Date(`${day.toISOString().slice(0, 10)}T00:00:00Z`);
     const make = (userId: string, ago: number, ip: string) => db.auditLog.create({ data: { actorLabel: "login", actorType: "SYSTEM", action: "auth.login_failed", entityType: "User", entityId: userId, ipAddress: ip, businessDate: bd, createdAt: new Date(Date.now() - ago) } as never });
-    await make(rec.id, 10_000, "10.0.0.1"); await make(rec.id, 20_000, "10.0.0.1"); await make(rec.id, 30_000, "10.0.0.1"); // one place, one minute: one line ×3
-    await make(dev.id, 5 * 60_000, "10.0.0.2");
+    // (a little ahead of now, so they are among the newest whatever other test files left behind; the audit trail cannot be cleaned, so rows of
+    // earlier runs of this file stay: one second apart, THIS run's three can never be split by a row of an earlier run, and they are found by their account)
+    await make(rec.id, -10_000, "10.0.0.1"); await make(rec.id, -11_000, "10.0.0.1"); await make(rec.id, -12_000, "10.0.0.1"); // one place, one minute: one line ×3
+    await make(dev.id, 5 * 60_000, "10.0.0.2"); // (in the past: it only has to be counted as the Developer's own)
     await db.auditLog.create({ data: { actorLabel: "t", actorType: "DEVELOPER", userId: dev.id, action: "developer.denied", entityType: "User", businessDate: bd } as never });
     const c = await crashData(await as(dev));
     expect(c.failed!.own24h).toBeGreaterThanOrEqual(1);
-    const mine = c.failed!.latest.filter((l) => l.name === "Asha Parts");
+    const mine = c.failed!.latest.filter((l) => l.id.startsWith(`${rec.id}:`));
     expect(mine).toHaveLength(1);
+    expect(mine[0].name).toBe("Asha Parts");
     expect(mine[0].times).toBe(3);
     expect(mine[0].ip).toBe("10.0.0.1");
     expect(c.failed!.latest[0].at.getTime()).toBeGreaterThanOrEqual(c.failed!.latest[c.failed!.latest.length - 1].at.getTime());

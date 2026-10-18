@@ -1,6 +1,6 @@
-import { Bug, CalendarDays, ChevronDown, KeyRound, Lock, ShieldAlert, Timer, Webhook } from "lucide-react";
+import { Bug, ChevronDown, KeyRound, Lock, ShieldAlert, Timer, UserCheck, Webhook } from "lucide-react";
 import type { T } from "@/i18n/translate";
-import { LOGIN_LIMITS, type CrashData } from "@/server/services/developer-health";
+import { LOGIN_LIMITS, type AddressTries, type CrashData } from "@/server/services/developer-health";
 import { FAILED_SIGN_IN_ROWS_PER_HOUR } from "@/server/services/auth-login";
 import type { DeniedEntry } from "@/server/services/developer-console";
 import type { ErrorGroup, JobStatus, SystemEvents, WebhookStatus } from "@/server/services/system-events";
@@ -218,7 +218,41 @@ export function ErrorsTab({ t, c, when, now = new Date() }: { t: T; c: CrashData
   );
 }
 
-/** Failed and paused sign-ins, the latest tries, and what was refused to the Developer. */
+/**
+ * "Failed tries by address": the addresses the wrong tries came from, the most first. One address trying many accounts is a warning sign.
+ * A small table of its own (no minimum width) so it fits beside the chart; on a phone each row becomes a small card.
+ */
+function AddressPanel({ t, rows, when }: { t: T; rows: AddressTries[] | null; when: (x: Date) => string }) {
+  return (
+    <Panel title={t("Failed tries by address")} subtitle={t("Last 7 days. One address trying many accounts is a warning sign.")}>
+      {!rows ? <Quiet>{t("This could not be read just now.")}</Quiet> : rows.length === 0 ? <Quiet>{t("No wrong tries with an address in the last 7 days.")}</Quiet> : (
+        <table data-stack className="w-full text-sm">
+          <thead className="text-left text-xs text-muted-foreground">
+            <tr className="border-b border-border/70">
+              <th scope="col" className="py-2 pr-3 font-medium">{t("Address")}</th>
+              <th scope="col" className="py-2 pr-3 text-right font-medium">{t("Tries")}</th>
+              <th scope="col" className="py-2 pr-3 text-right font-medium">{t("Accounts")}</th>
+              <th scope="col" className="py-2 font-medium">{t("Last")}</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border/60">
+            {rows.map((r) => (
+              <tr key={r.ip} className="align-top">
+                <td data-label={t("Address")} className="min-w-0 break-all py-2.5 pr-3 font-mono text-xs">{r.ip}</td>
+                <td data-label={t("Tries")} className="whitespace-nowrap py-2.5 pr-3 text-right font-semibold tabular-nums">{r.tries.toLocaleString(t.intl)}</td>
+                <td data-label={t("Accounts")} className={`whitespace-nowrap py-2.5 pr-3 text-right tabular-nums ${r.accounts > 1 ? "font-semibold text-amber-700 dark:text-amber-300" : ""}`}>{r.accounts.toLocaleString(t.intl)}</td>
+                <td data-label={t("Last")} className="py-2.5 text-xs text-muted-foreground">{when(r.last)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{t("Only real accounts are written down — an email nobody holds is not. At most {n} tries for one account are written down each hour; if there are more, one line says so and the numbers here are lower than the real tries.", { n: FAILED_SIGN_IN_ROWS_PER_HOUR })}</p>
+    </Panel>
+  );
+}
+
+/** Failed and successful sign-ins, locked-out places, where the wrong tries came from, the latest tries, and what was refused to the Developer. */
 export function SecurityTab({ t, c, when, now = new Date() }: { t: T; c: CrashData; when: (x: Date) => string; now?: Date }) {
   const f = c.failed;
   const paused = c.paused ? c.paused.developer + c.paused.staff : null;
@@ -232,26 +266,34 @@ export function SecurityTab({ t, c, when, now = new Date() }: { t: T; c: CrashDa
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-3">
         <StatBlock
-          icon={KeyRound} label={t("Failed sign-ins")} value={num(t, f?.last24h)} caption={t("wrong tries in 24 hours")} warn={!!f?.last24h}
-          tag={f?.last24h ? t("Look at it") : t("Quiet")} tagTone={f?.last24h ? "amber" : "emerald"}
-          note={t("A wrong password, or an account that is switched off. Nobody was signed in. Only real accounts are written down — an email nobody holds is not. At most {n} tries for one account are written down each hour; if there are more, one line says so and this number is lower than the real tries.", { n: FAILED_SIGN_IN_ROWS_PER_HOUR })}
+          icon={KeyRound} label={t("Failed sign-ins")} value={num(t, c.failed14d)} caption={t("in 14 days")} warn={!!f?.last24h}
+          tag={c.failed14d === null ? undefined : c.failed14d > 0 ? t("Look at it") : t("Quiet")} tagTone={c.failed14d ? "amber" : "emerald"}
+          note={t("Wrong password or a blocked account. A few are typing mistakes; a spike on one day, or many tries from one address, means someone is guessing.")}
         />
-        <StatBlock icon={CalendarDays} label={t("Failed sign-ins")} value={num(t, f?.last7d)} caption={t("wrong tries in 7 days")} tag={t("Week")} tagTone="slate" note={t("A few typing mistakes are normal. A steady stream on one account is not.")} />
         <StatBlock
-          icon={Lock} label={t("Paused right now")} value={num(t, paused)} caption={t("sign-in places or emails")} warn={!!paused}
-          tag={paused ? t("Look at it") : t("None")} tagTone={paused ? "amber" : "emerald"}
-          note={t("After {dev} wrong tries in {minutes} minutes a Developer sign-in is paused for the rest of that time ({staff} for staff). Counts only — an email or an address is never shown. While a Developer sign-in is paused, the sign-in page gives the same answer as for any wrong password, so it does not tell anyone which email is a Developer's.", { dev: LOGIN_LIMITS.developerEmail, minutes: LOGIN_LIMITS.windowMinutes, staff: LOGIN_LIMITS.staffEmail })}
+          icon={UserCheck} label={t("Successful sign-ins")} value={num(t, c.successful14d)} caption={t("in 14 days")}
+          tag={c.successful14d === null ? undefined : t("Sign-ins")} tagTone="slate"
+          note={t("Each time someone signed in with the right password, staff together.")}
+        />
+        <StatBlock
+          icon={Lock} label={t("Locked out now")} value={num(t, paused)} caption={t("after {n} wrong tries in {m} minutes", { n: LOGIN_LIMITS.staffPlace, m: LOGIN_LIMITS.windowMinutes })} warn={!!paused}
+          tag={paused === null ? undefined : paused ? t("Look at it") : t("None")} tagTone={paused ? "amber" : "emerald"}
+          note={t("An address is refused for {m} minutes after {n} wrong passwords, even if the right one is tried next. It opens again by itself.", { n: LOGIN_LIMITS.staffPlace, m: LOGIN_LIMITS.windowMinutes })}
         />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      <div className="grid gap-4 lg:grid-cols-2">
         <Panel title={t("Failed sign-ins and refused Developer actions per day")} subtitle={f?.last24h ? t("{n} wrong tries in the last 24 hours.", { n: f.last24h }) : t("No failed sign-ins in the last 24 hours.")}>
           {columns
             ? <BarChart t={t} columns={columns} grouped caption={t("Failed sign-ins and refused Developer actions per day")} empty={t("No failed sign-ins in the last 7 days.")}
                 series={[{ key: "failed", label: t("Failed sign-ins"), color: FAILED }, { key: "denied", label: t("Developer actions refused"), color: "#c0392b" }]} />
             : <Quiet>{t("This could not be read just now.")}</Quiet>}
         </Panel>
-        <Panel title={t("Failed sign-ins")} subtitle={t("Latest refused attempts. Passwords are never stored. Repeats within a minute are merged (×N).")}>
+        <AddressPanel t={t} rows={c.byAddress} when={when} />
+      </div>
+
+      <div className="grid items-start gap-4 lg:grid-cols-2">
+        <Panel title={t("Latest failed tries")} subtitle={t("Latest refused attempts. Passwords are never stored. Repeats within a minute are merged (×N).")}>
           {!f ? <Quiet>{t("This could not be read just now.")}</Quiet> : f.latest.length === 0 ? <Quiet>{t("No account was tried wrongly in the last 7 days.")}</Quiet> : (
             <ul className="divide-y divide-border/60 text-sm">
               {f.latest.map((r) => (
@@ -262,26 +304,26 @@ export function SecurityTab({ t, c, when, now = new Date() }: { t: T; c: CrashDa
               ))}
             </ul>
           )}
+          <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{t("Only real accounts are written down — an email nobody holds is not. At most {n} tries for one account are written down each hour; if there are more, one line says so and the numbers here are lower than the real tries.", { n: FAILED_SIGN_IN_ROWS_PER_HOUR })}</p>
         </Panel>
-      </div>
-
-      <div className="grid gap-3 lg:grid-cols-2">
-        <div className="flex items-start gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/[0.06] p-4">
-          <KeyRound className="mt-0.5 size-5 shrink-0 text-emerald-700 dark:text-emerald-300" aria-hidden />
-          <div className="min-w-0 text-sm">
-            <p className="font-semibold">{t("Your Developer sign-in")}</p>
-            <p className="mt-1 leading-relaxed text-muted-foreground">
-              {f && f.own24h > 0
-                ? t("{n} wrong-password tries on your account in the last 24 hours. After {max} wrong tries from one place it locks for {min} minutes.", { n: f.own24h, max: LOGIN_LIMITS.developerEmail, min: LOGIN_LIMITS.windowMinutes })
-                : t("No wrong-password tries on your account in the last 24 hours. After {max} wrong tries from one place it locks for {min} minutes.", { max: LOGIN_LIMITS.developerEmail, min: LOGIN_LIMITS.windowMinutes })}
-            </p>
+        <div className="space-y-3">
+          <div className="flex items-start gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/[0.06] p-4">
+            <KeyRound className="mt-0.5 size-5 shrink-0 text-emerald-700 dark:text-emerald-300" aria-hidden />
+            <div className="min-w-0 text-sm">
+              <p className="font-semibold">{t("Your Developer sign-in")}</p>
+              <p className="mt-1 leading-relaxed text-muted-foreground">
+                {f && f.own24h > 0
+                  ? t("{n} wrong-password tries on your account in the last 24 hours. After {max} wrong tries from one place it locks for {min} minutes.", { n: f.own24h, max: LOGIN_LIMITS.developerEmail, min: LOGIN_LIMITS.windowMinutes })
+                  : t("No wrong-password tries on your account in the last 24 hours. After {max} wrong tries from one place it locks for {min} minutes.", { max: LOGIN_LIMITS.developerEmail, min: LOGIN_LIMITS.windowMinutes })}
+              </p>
+            </div>
           </div>
-        </div>
-        <div className="flex items-start gap-3 rounded-2xl border border-sky-500/30 bg-sky-500/[0.06] p-4">
-          <Bug className="mt-0.5 size-5 shrink-0 text-sky-700 dark:text-sky-300" aria-hidden />
-          <div className="min-w-0 text-sm">
-            <p className="font-semibold">{t("Page crashes")}</p>
-            <p className="mt-1 leading-relaxed text-muted-foreground">{t("An unexpected error on a page, an action or a job is written down by the system itself: see Errors & jobs, with how often, when and where in the code.")}</p>
+          <div className="flex items-start gap-3 rounded-2xl border border-sky-500/30 bg-sky-500/[0.06] p-4">
+            <Bug className="mt-0.5 size-5 shrink-0 text-sky-700 dark:text-sky-300" aria-hidden />
+            <div className="min-w-0 text-sm">
+              <p className="font-semibold">{t("Page crashes")}</p>
+              <p className="mt-1 leading-relaxed text-muted-foreground">{t("An unexpected error on a page, an action or a job is written down by the system itself: see Errors & jobs, with how often, when and where in the code.")}</p>
+            </div>
           </div>
         </div>
       </div>

@@ -6,6 +6,7 @@ import { DEVELOPER_IDLE_MINUTES, DEVELOPER_SESSION_HOURS } from "../auth";
 import { SYSTEM_ROLE } from "./staff-accounts";
 import { businessDayConfig, getSettings } from "../settings";
 import { localCalendarDate, localParts } from "@/lib/time/business-date";
+import { formatMinutesLabel } from "@/lib/format";
 import { ntzsEnabled, ntzsLive } from "./ntzs";
 import { auditActionWords, isFailureEntry, workAsTargetOf, type WorkAsTarget } from "./audit-trail";
 import { DEVELOPER_ACCOUNT_RIGHTS, DEVELOPER_DENIED, isDeveloperOnly, PERMISSIONS, type PermissionCode } from "@/lib/permissions";
@@ -326,7 +327,7 @@ export async function developerGreeting(user: ConsoleUser, now = new Date()): Pr
 
 // ───────────────────────────────────────────── the tabs ─────────────────────────────────────────────
 /** "Problems" comes first and is the page's default tab (owner, 2026-10-18): the Developer's job is that the system works, so what is wrong with it is the first thing he sees. */
-export const CONSOLE_TABS = ["problems", "activity", "hotel", "money", "messages", "speed", "crashes", "settings", "people"] as const;
+export const CONSOLE_TABS = ["problems", "activity", "messages", "speed", "crashes", "settings", "people"] as const;
 export type ConsoleTab = (typeof CONSOLE_TABS)[number];
 export const DEFAULT_TAB: ConsoleTab = "problems";
 /** The tab named in the address; anything else (or nothing) is the first one. */
@@ -373,6 +374,32 @@ export function envSettings(): EnvSetting[] {
   return list.map(([key, label, description, required]) => ({ key, label, description, set: has(key), required }));
 }
 
+/**
+ * How the hotel is set up: the numbers its prices and bills are worked out from. Values from the hotel's settings and plain counts ONLY —
+ * never an account number, a key, a phone number or a name. Each figure is read on its own: one that cannot be read is null and the rest still show.
+ */
+export interface HotelSetup {
+  /** When a hotel day starts, as "04:00". */
+  dayStart: string | null;
+  timezone: string | null;
+  /** Guest rooms that can be sold, of all guest rooms (the meeting room is not a guest room). */
+  guestRooms: { active: number; total: number } | null;
+  /** Room types in use. */
+  roomTypes: number | null;
+  /** Payment accounts that are open and take payments (a count — never a number or a holder). */
+  paymentAccounts: number | null;
+  /** How many people the Boss reports are sent to (a count — never who). */
+  reportRecipients: number | null;
+  dailyReport: boolean | null;
+  roomReport: boolean | null;
+  /** Hours a booking keeps its room without payment (0 = until the arrival day). */
+  unpaidHoldHours: number | null;
+  onlinePayment: boolean | null;
+}
+
+/** One role with the number of ACTIVE accounts holding it (a count — never who). */
+export interface TeamRole { code: string; name: string; active: number }
+
 export interface SettingsTab {
   env: EnvSetting[];
   identity: DeveloperIdentity;
@@ -380,11 +407,15 @@ export interface SettingsTab {
   config: Diagnostics;
   /** How much of the Developer's own doing is on record. null = could not be read. */
   recorded: { last24h: number; last7d: number; total: number } | null;
+  /** The hotel's set-up (see HotelSetup). */
+  hotel: HotelSetup;
+  /** Active accounts by role, the most first; the system role is not a person and is left out. null = could not be read. */
+  team: TeamRole[] | null;
 }
 
 export async function settingsTab(user: ConsoleUser, sessionTokenHash: string | null, now = new Date()): Promise<SettingsTab> {
   assertConsoleAccess(user);
-  const [identity, config, recorded] = await Promise.all([
+  const [identity, config, recorded, settings, guestRooms, roomTypes, paymentAccounts, roles] = await Promise.all([
     developerIdentity(user, sessionTokenHash, now),
     systemDiagnostics(user, now),
     safe(async () => {
@@ -397,8 +428,35 @@ export async function settingsTab(user: ConsoleUser, sessionTokenHash: string | 
       ]);
       return { last24h, last7d, total };
     }),
+    // ── how the hotel is set up: each figure read on its own ──
+    safe(() => getSettings()),
+    safe(async () => {
+      const [active, total] = await Promise.all([
+        db.room.count({ where: { isActive: true, roomType: { category: "GUEST_ROOM" } } }),
+        db.room.count({ where: { roomType: { category: "GUEST_ROOM" } } }),
+      ]);
+      return { active, total };
+    }),
+    safe(() => db.roomType.count({ where: { isActive: true } })),
+    safe(() => db.moneyAccount.count({ where: { isActive: true, acceptsPayments: true } })),
+    safe(() => db.role.findMany({
+      where: { code: { not: SYSTEM_ROLE } }, select: { code: true, name: true, _count: { select: { users: { where: { isActive: true } } } } },
+    })),
   ]);
-  return { env: envSettings(), identity, config, recorded };
+  const hotel: HotelSetup = {
+    dayStart: settings ? formatMinutesLabel(settings.businessDayStartMinutes) : null,
+    timezone: settings ? short(settings.timezone, 80) : null,
+    guestRooms, roomTypes, paymentAccounts,
+    reportRecipients: settings ? (Array.isArray(settings.reportRecipients) ? settings.reportRecipients.length : 0) : null,
+    dailyReport: settings ? settings.reportEnabled : null,
+    roomReport: settings ? settings.roomReportEnabled : null,
+    unpaidHoldHours: settings ? settings.unpaidHoldHours : null,
+    onlinePayment: settings ? settings.onlinePayEnabled : null,
+  };
+  const team = roles
+    ? roles.map((r): TeamRole => ({ code: r.code, name: r.name, active: r._count.users })).filter((r) => r.active > 0).sort((a, b) => b.active - a.active || a.name.localeCompare(b.name))
+    : null;
+  return { env: envSettings(), identity, config, recorded, hotel, team };
 }
 
 // ───────────────────────────────────────────── People & my actions tab ─────────────────────────────────────────────

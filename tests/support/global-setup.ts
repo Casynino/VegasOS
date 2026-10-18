@@ -4,7 +4,8 @@ import { execSync } from "node:child_process";
 export default function setup() {
   const url = process.env.TEST_DATABASE_URL ?? "postgresql://nino@localhost:5432/vegas_hotel_test";
   if (!url.includes("test")) throw new Error("Refusing to reset a non-test database");
-  const env = { ...process.env, DATABASE_URL: url, SEED_DEV_STAFF: "1", SEED_OWNER_EMAIL: "owner@test.local", SEED_OWNER_PASSWORD: "Owner12345" };
+  // DIRECT_URL is blanked on purpose: prisma.config.ts prefers it, and a .env that carries one must never make a test run migrate or seed another database.
+  const env = { ...process.env, DATABASE_URL: url, DIRECT_URL: "", SEED_DEV_STAFF: "1", SEED_OWNER_EMAIL: "owner@test.local", SEED_OWNER_PASSWORD: "Owner12345" };
   execSync("npx prisma migrate deploy", { env, stdio: "pipe" }); // non-destructive; tests truncate their own data
   execSync("npx tsx prisma/seed.ts", { env, stdio: "pipe" });
 }

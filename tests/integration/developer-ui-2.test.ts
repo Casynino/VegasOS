@@ -295,7 +295,7 @@ describe("a chart's exact numbers", () => {
 // ───────────────────────────────────────────── 4. the health card ─────────────────────────────────────────────
 describe("the health card's four figures are a real definition list", () => {
   const report: HealthReport = {
-    checkedAt: new Date(), database: { online: true, ms: 7 }, signedInToday: 3, serverErrors24h: 2, failedSignIns24h: 0, checks: [],
+    checkedAt: new Date(), database: { online: true, ms: 7 }, signedInToday: 3, actionsToday: 12, serverErrors24h: 2, failedSignIns24h: 0, checks: [],
     items: [], counts: { fix: 0, look: 0, info: 0 }, score: 100, verdict: "well",
   };
   const html = renderToStaticMarkup(createElement(HealthCard, { t, h: report }));
@@ -313,7 +313,7 @@ describe("the health card's four figures are a real definition list", () => {
   });
 
   it("says the same words as before", () => {
-    for (const w of ["Database", "Online", "7 ms to answer", "Signed in today", "Failed sign-ins", "Server errors (24 h)", "Open the Errors &amp; jobs part to see them."]) expect(dl).toContain(w);
+    for (const w of ["Database", "Online", "7 ms to answer", "Signed in today", "Actions today", "Server errors (24 h)", "Open the Errors &amp; jobs part to see them."]) expect(dl).toContain(w);
   });
 });
 
@@ -435,6 +435,7 @@ describe("a list of people that staff see leaves out the Developer and the syste
     "src/server/services/developer-health.ts": { count: 1, why: "a timing probe on the Speed part: it finds one account id only to time the lookup — nothing about the person is read or shown" },
     "src/server/services/developer-activity.ts": { count: 1, why: "the Developer's own console (the accounts that do not use the system); it already leaves out the Developer and the system account" },
     "src/server/services/developer-console.ts": { count: 1, why: "the Developer's own console (inspect a person's rights): full on purpose" },
+    "src/server/services/developer-team.ts": { count: 1, why: "the Developer's own console: the team table; it leaves out the Developer and the system account" },
     "src/server/services/developer-checks.ts": { count: 1, why: "the Developer's own system check: is there an active Boss account (it counts Boss accounts only, nothing else about anyone)" },
     "src/server/services/work-as.ts": { count: 1, why: "the Developer's Access page; leaves out the Developer and the system account" },
     "src/server/services/staff-accounts.ts": { count: 3, why: "the Users page for the Boss and the MD (it never lists the Developer), and two counts of active Bosses" },

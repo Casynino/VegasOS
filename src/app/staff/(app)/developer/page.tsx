@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { currentSessionTokenHash, getCurrentUser, requestMeta, requirePagePermission } from "@/server/auth";
 import { getSettings } from "@/server/settings";
 import { staffHome } from "@/lib/staff-home";
-import { CONSOLE_HREF, developerGreeting, parseTab } from "@/server/services/developer-console";
+import { CONSOLE_HREF, developerGreeting } from "@/server/services/developer-console";
 import { healthReport } from "@/server/services/developer-health";
 import { accessPeople, accountRoleChoices } from "@/server/services/work-as";
 import { getT } from "@/i18n/server";
@@ -12,7 +12,7 @@ import { AttentionSection } from "./attention";
 import { ConsoleBanner } from "./console-ui";
 import { HealthCard } from "./health-card";
 import {
-  ActivitySection, ConsoleSection, ErrorsSection, GroupLabel, HotelSection, MessagesSection, MoneySection, PeopleSection, SectionSkeleton, SecuritySection, SettingsSection, SpeedSection,
+  ActivitySection, ConsoleSection, ErrorsSection, GroupLabel, HotelSection, MessagesSection, MoneySection, PeopleSection, RequestsSection, SectionSkeleton, SecuritySection, SettingsSection, SpeedSection,
   type AreaStatus,
   type SectionCtx,
 } from "./home-sections";
@@ -27,7 +27,7 @@ export const dynamic = "force-dynamic";
 const str = (v: unknown) => (typeof v === "string" ? v : "");
 
 /** Old links that named a tab (?tab=hotel…) go to that part's place on the one page. */
-const OLD_TAB_TO_PART: Record<string, string> = { problems: "problems", crashes: "errors", messages: "messages", speed: "speed", activity: "activity", hotel: "hotel", money: "money", people: "people", settings: "settings" };
+const OLD_TAB_TO_PART: Record<string, string> = { problems: "problems", crashes: "errors", messages: "messages", speed: "speed", activity: "activity", people: "people", settings: "settings", hotel: "hotel", money: "money" };
 
 /** Which part of the page each system check belongs to, so a part can say how it is doing in one chip. */
 const PART_OF_CHECK: Record<string, string> = {
@@ -39,11 +39,14 @@ const PART_OF_CHECK: Record<string, string> = {
 };
 
 /**
- * THE DEVELOPER HOME (owner, 2026-10-17; ONE PAGE since 2026-10-18): the Developer's control room. At the top how healthy the system is and
- * what needs attention; then, one under the other and reached from a "Jump to" row that stays in view, every part: the system's problems,
- * errors and automatic jobs, whether the Boss gets his reports, how fast it is, what anyone may do, and how it is set up. NOTHING about the
- * hotel's own work (guests, rooms, orders, money, who did what shift): the Developer's job is the system, not operations (owner, 2026-10-18). Read-only. Every figure comes from a service in developer-*.ts that checks again that
- * the caller really is the Developer; a part that cannot be read says so and the rest still shows. No password, key or secret is ever read out.
+ * THE DEVELOPER HOME (owner, 2026-10-17; ONE PAGE since 2026-10-18; arranged like his other consoles, Target Express and Swift Cargo): the
+ * Developer's control room. At the top how healthy the system is and what needs attention; then, one under the other: Activity (who is
+ * using the system), a group "The business, for awareness" (Hotel, Money, Messages & requests: READ-ONLY, COUNTS AND PLAIN WORDS ONLY, said
+ * plainly to be other people's work — no guest name, no money amount, no message text; the owner asked for these after his Target and Swift
+ * consoles, 2026-10-18, and rejected detailed lists of guests and payments), People & my actions, and the group "The system": the system's
+ * checks, errors and automatic jobs, whether the Boss gets his reports, how fast it is, who signed in and who was refused, how it is set up.
+ * Read-only. Every figure comes from a service in developer-*.ts that checks again that the caller really is the Developer; a part that cannot
+ * be read says so and the rest still shows; a look at a business part is written to the audit trail. No password, key or secret is ever read out.
  * The console and the "work as" world are kept apart: someone working as another person is sent to that person's home.
  */
 export default async function DeveloperHomePage({ searchParams }: PageProps<"/staff/developer">) {
@@ -55,7 +58,7 @@ export default async function DeveloperHomePage({ searchParams }: PageProps<"/st
   const sp = await searchParams;
   const oldTab = str(Array.isArray(sp.tab) ? sp.tab[0] : sp.tab);
   // An old bookmark that named a tab goes to its place on the page (not when it carries a person or a right: that is the "Who can do what" form).
-  if (oldTab && !str(sp.person).trim() && !str(sp.right).trim() && OLD_TAB_TO_PART[oldTab] && parseTab(oldTab) === oldTab) redirect(`${CONSOLE_HREF.home}#${OLD_TAB_TO_PART[oldTab]}`);
+  if (oldTab && !str(sp.person).trim() && !str(sp.right).trim() && Object.hasOwn(OLD_TAB_TO_PART, oldTab)) redirect(`${CONSOLE_HREF.home}#${OLD_TAB_TO_PART[oldTab]}`);
 
   const [t, settings, sessionHash, meta] = await Promise.all([getT(), getSettings(), currentSessionTokenHash(), requestMeta()]);
   const when = (d: Date) => t.dateTime(d, settings.timezone);
@@ -104,10 +107,11 @@ export default async function DeveloperHomePage({ searchParams }: PageProps<"/st
       {section("activity", t("Activity"), t("Who is signing in and what the team is doing."), undefined, <ActivitySection ctx={ctx} />)}
 
       <GroupLabel>{t("The business, for awareness")}</GroupLabel>
-      {section("hotel", t("Hotel"), t("What is happening in the hotel — the hotel's work, not yours (read-only)."), undefined, <HotelSection ctx={ctx} />)}
-      {section("money", t("Money"), t("Where the money is — Finance's work, not yours (read-only)."), undefined, <MoneySection ctx={ctx} />)}
+      {section("hotel", t("Hotel"), t("What is in the system and where it is. The hotel's work, not yours."), undefined, <HotelSection ctx={ctx} />)}
+      {section("money", t("Money"), t("Bills, payments and the money book. Finance's work, not yours."), undefined, <MoneySection ctx={ctx} />)}
+      {section("requests", t("Messages & requests"), t("What guests ask for and are told. Reception's work, not yours."), undefined, <RequestsSection ctx={ctx} />)}
 
-      {section("people", t("People & my actions"), t("What anyone may do, and what you did."), chipFor("people"), <PeopleSection ctx={ctx} person={person} right={right} />)}
+      {section("people", t("People & my actions"), t("Who has an account, and what you have done."), chipFor("people"), <PeopleSection ctx={ctx} person={person} right={right} />)}
 
       <GroupLabel>{t("The system")}</GroupLabel>
       <ConsoleSection id="problems" title={t("System checks")} hint={t("What the system looked at just now.")} status={chipFor(null)}>

@@ -3,9 +3,9 @@ import { db } from "../db";
 import { businessDayConfig, getSettings } from "../settings";
 import { Prisma } from "@/generated/prisma/client";
 import { msg, msgf, type Localized } from "@/i18n/msg";
-import { addDays, businessDateOf, businessDayBounds, businessRangeBounds, eachDate, fromDbDate, type BusinessDate } from "@/lib/time/business-date";
+import { addDays, businessDateOf, businessDayBounds, businessRangeBounds, eachDate, fromDbDate, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import {
-  assertConsoleAccess, CONSOLE_HREF, recentDenied, safe, short, systemDiagnostics, type ConsoleUser, type DeniedEntry,
+  assertConsoleAccess, CONSOLE_HREF, NOT_WORK_ACTIONS, recentDenied, safe, short, systemDiagnostics, type ConsoleUser, type DeniedEntry,
 } from "./developer-console";
 import { DEVELOPER_IDLE_MINUTES, DEVELOPER_SESSION_HOURS } from "../auth";
 import { WORK_AS_HOURS } from "../work-as-session";
@@ -96,6 +96,8 @@ export interface HealthReport {
   database: { online: boolean; ms: number | null };
   /** Distinct people who signed in during the hotel's day today (a count of PEOPLE, never of work). null = could not be read. */
   signedInToday: number | null;
+  /** Real work saved in the last 24 hours by staff and the Developer (sign-ins, looking, refusals and other notes are not work: NOT_WORK_ACTIONS). A count, never what the work was. null = could not be read. */
+  actionsToday: number | null;
   /** How many DIFFERENT unexpected server errors were seen in the last 24 hours (the headline figure). null = could not be read. */
   serverErrors24h: number | null;
   failedSignIns24h: number | null;
@@ -121,7 +123,8 @@ export async function healthReport(user: ConsoleUser, now = new Date()): Promise
   assertConsoleAccess(user);
   const settings = await getSettings();
   const cfg = businessDayConfig(settings);
-  const dayBounds = businessDayBounds(businessDateOf(now, cfg), cfg);
+  const today = businessDateOf(now, cfg);
+  const dayBounds = businessDayBounds(today, cfg);
   const since24 = new Date(now.getTime() - DAY);
 
   const diag = await systemDiagnostics(user, now);
@@ -141,8 +144,15 @@ export async function healthReport(user: ConsoleUser, now = new Date()): Promise
       ]);
       return new Set([...logins.map((l) => l.userId), ...sessions.map((s) => s.userId)].filter((id): id is string => !!id)).size;
     }),
+    // Work saved in the last 24 hours (the hotel-day window keeps the query on the date index).
+    safe(() => db.auditLog.count({
+      where: {
+        createdAt: { gte: since24 }, businessDate: { gte: toDbDate(addDays(today, -2)), lte: toDbDate(addDays(today, 1)) },
+        actorType: { in: ["STAFF", "DEVELOPER"] }, action: { notIn: [...NOT_WORK_ACTIONS] },
+      },
+    })),
   ]) : null;
-  const [events, failedSignIns, denied24, workAsOpen, workAsStarted24, signedInToday] = facts ?? [null, null, null, null, null, null];
+  const [events, failedSignIns, denied24, workAsOpen, workAsStarted24, signedInToday, actionsToday] = facts ?? [null, null, null, null, null, null, null];
   // The system checks (data that contradicts itself, jobs, integrations, set-up, errors) — read once here for the cards, the score and the Problems part.
   const checks: CheckResult[] = online ? (await safe(() => runChecks(user, now, { diag, events: events as SystemEvents | null }))) ?? [] : [];
 
@@ -240,7 +250,7 @@ export async function healthReport(user: ConsoleUser, now = new Date()): Promise
   return {
     checkedAt: now,
     database: { online, ms: diag.database.ms },
-    signedInToday,
+    signedInToday, actionsToday,
     serverErrors24h: events ? (events as SystemEvents).errors24h : null,
     failedSignIns24h: failedSignIns,
     checks,
@@ -266,7 +276,12 @@ const PROBES: { label: string; ask: (now: Date) => Promise<unknown> }[] = [
   { label: msg("Count today's activity"), ask: (now) => db.auditLog.count({ where: { createdAt: { gte: new Date(now.getTime() - DAY) } } }) },
   { label: msg("Load latest 50 activity lines"), ask: () => db.auditLog.findMany({ select: { id: true }, orderBy: { createdAt: "desc" }, take: 50 }) },
   { label: msg("Count sign-in sessions"), ask: () => db.session.count() },
+  // A real screen's question (the bookings list), so a table that grows shows up here before staff feel it.
+  { label: msg("Load newest 50 bookings"), ask: () => db.reservation.findMany({ select: { id: true }, orderBy: { createdAt: "desc" }, take: 50 }) },
 ];
+
+/** What the database holds: records counted in a table, never read. */
+export interface HoldRow { key: string; label: string; rows: number | null }
 
 export interface SpeedData {
   /** Each probe with its time in milliseconds (null = it did not answer); `samples` are the answered ones. */
@@ -274,6 +289,10 @@ export interface SpeedData {
   latency: { samples: number[]; average: number | null; slowest: number | null };
   tables: { label: string; rows: number | null; bytes: number | null }[];
   databaseBytes: number | null;
+  /** How many records the system holds, by kind (counts only — nothing about any record): guests, bookings, booked rooms, payments, restaurant orders, invoices, audit lines, messages to guests, messages of the reports to the Boss. */
+  holds: HoldRow[];
+  /** The hotel day of the oldest audit line (the permanent diary reaches back to it). null = nothing written yet, or could not be read. */
+  auditSince: BusinessDate | null;
   deployment: {
     commit: string | null; environment: string | null; node: string;
     /** "Pooled" or "Direct" — only which kind of address is used, never the address. null = not known. */
@@ -291,10 +310,16 @@ export async function speedData(user: ConsoleUser, now = new Date()): Promise<Sp
     probes.push({ label: p.label, ms: ok ? Math.max(1, Math.round(performance.now() - started)) : null });
   }
   const samples = probes.flatMap((p) => (p.ms === null ? [] : [p.ms]));
-  const [counts, sizes, dbSize, diag] = await Promise.all([
+  const [counts, hold, oldest, sizes, dbSize, diag] = await Promise.all([
     Promise.all([
       safe(() => db.auditLog.count()), safe(() => db.session.count()), safe(() => db.notificationDelivery.count()), safe(() => db.systemEvent.count()),
     ]),
+    // One cheap count each; one failing leaves that figure out and the rest still draw.
+    Promise.all([
+      safe(() => db.guest.count()), safe(() => db.reservation.count()), safe(() => db.reservationRoom.count()),
+      safe(() => db.payment.count()), safe(() => db.restaurantOrder.count()), safe(() => db.invoice.count()), safe(() => db.guestMessage.count()),
+    ]),
+    safe(() => db.auditLog.findFirst({ orderBy: { businessDate: "asc" }, select: { businessDate: true } })),
     safe(() => db.$queryRaw<{ name: string; bytes: bigint }[]>`
       SELECT c.relname AS name, pg_total_relation_size(c.oid)::bigint AS bytes
       FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -304,11 +329,25 @@ export async function speedData(user: ConsoleUser, now = new Date()): Promise<Sp
   ]);
   const sizeOf = new Map((sizes ?? []).map((s) => [s.name, Number(s.bytes)]));
   const url = process.env.DATABASE_URL ?? "";
+  const [guests, bookings, bookedRooms, payments, orders, invoices, guestMessages] = hold;
+  const holds: HoldRow[] = [
+    { key: "guests", label: msg("Guests"), rows: guests },
+    { key: "bookings", label: msg("Bookings"), rows: bookings },
+    { key: "bookedRooms", label: msg("Booked rooms"), rows: bookedRooms },
+    { key: "payments", label: msg("Payments"), rows: payments },
+    { key: "orders", label: msg("Restaurant orders"), rows: orders },
+    { key: "invoices", label: msg("Invoices"), rows: invoices },
+    { key: "audit", label: msg("Audit lines"), rows: counts[0] },
+    { key: "guestMessages", label: msg("Guest messages"), rows: guestMessages },
+    { key: "messages", label: msg("Report messages"), rows: counts[2] },
+  ];
   return {
     probes,
     latency: { samples, average: samples.length ? Math.round(samples.reduce((a, b) => a + b, 0) / samples.length) : null, slowest: samples.length ? Math.max(...samples) : null },
     tables: BIG_TABLES.map((t, i) => ({ label: t.label, rows: counts[i], bytes: sizeOf.get(t.table) ?? null })),
     databaseBytes: dbSize?.[0] ? Number(dbSize[0].bytes) : null,
+    holds,
+    auditSince: oldest ? fromDbDate(oldest.businessDate) : null,
     deployment: {
       ...diag.deployment, node: process.version,
       databaseLink: url ? (/-pooler[.-]|pgbouncer=true/i.test(url) ? "Pooled" : "Direct") : null,
@@ -318,6 +357,11 @@ export async function speedData(user: ConsoleUser, now = new Date()): Promise<Sp
 }
 
 // ───────────────────────────────────────────── 5. crashes and sign-ins ─────────────────────────────────────────────
+/** One address in "Failed tries by address". */
+export interface AddressTries { ip: string; tries: number; accounts: number; last: Date }
+/** How many addresses "Failed tries by address" lists. */
+export const ADDRESS_ROWS = 8;
+
 export interface CrashData {
   /** What the system recorded about itself: unexpected server errors (grouped), the automatic jobs and the webhooks. null = could not be read. */
   system: SystemEvents | null;
@@ -333,6 +377,15 @@ export interface CrashData {
     /** Wrong tries on the Developer's OWN account in the last 24 hours. */
     own24h: number;
   } | null;
+  /** Wrong tries (a wrong password or a switched-off account) in the last 14 hotel days. null = could not be read. */
+  failed14d: number | null;
+  /** Successful sign-ins in the last 14 hotel days, staff and Developer together. A count — never who. null = could not be read. */
+  successful14d: number | null;
+  /**
+   * Where the wrong tries came from (last 7 days): the 8 addresses with the most tries, each with how many DIFFERENT accounts it tried and when it last tried.
+   * One address trying many accounts is a warning sign. null = could not be read.
+   */
+  byAddress: AddressTries[] | null;
   /** The Developer's refused actions per hotel day (the last 7 days, oldest first), to read beside the failed sign-ins. null = could not be read. */
   deniedByDay: { date: BusinessDate; count: number }[] | null;
   /** Sign-in places or emails paused right now (their wrong tries went over the limit in the last 15 minutes): the Developer account's own lock, and the shared ones. Counts only — never the email or the address. */
@@ -358,8 +411,9 @@ export async function crashData(user: ConsoleUser, now = new Date()): Promise<Cr
   const days = eachDate(addDays(today, -6), addDays(today, 1));
   const since24 = new Date(now.getTime() - DAY);
   const { start, end } = businessRangeBounds(days[0], today, cfg);
+  const start14 = businessRangeBounds(addDays(today, -13), today, cfg).start;
 
-  const [system, failedRows, buckets, denied, deniedRaw] = await Promise.all([
+  const [system, failedRows, buckets, denied, deniedRaw, failed14d, successful14d] = await Promise.all([
     safe(() => loadSystemEvents(user as Parameters<typeof loadSystemEvents>[0], now)),
     safe(() => db.auditLog.findMany({
       where: { action: "auth.login_failed", createdAt: { gte: start, lt: end } },
@@ -371,6 +425,8 @@ export async function crashData(user: ConsoleUser, now = new Date()): Promise<Cr
     })),
     recentDenied(user, 20),
     safe(() => db.auditLog.groupBy({ by: ["businessDate"], where: { action: "developer.denied", createdAt: { gte: start, lt: end } }, _count: { _all: true } })),
+    safe(() => db.auditLog.count({ where: { action: "auth.login_failed", createdAt: { gte: start14, lt: end } } })),
+    safe(() => db.auditLog.count({ where: { action: "auth.login", createdAt: { gte: start14, lt: end } } })),
   ]);
 
   let failed: CrashData["failed"] = null;
@@ -405,6 +461,25 @@ export async function crashData(user: ConsoleUser, now = new Date()): Promise<Cr
     };
   }
 
+  // By address: the same rows, grouped. A try with no address on record is left out (there is nothing to group it by).
+  let byAddress: CrashData["byAddress"] = null;
+  if (failedRows) {
+    const places = new Map<string, { tries: number; accounts: Set<string>; last: Date }>();
+    for (const r of failedRows) {
+      const ip = short(r.ipAddress, 64);
+      if (!ip) continue;
+      const p = places.get(ip) ?? { tries: 0, accounts: new Set<string>(), last: r.createdAt };
+      p.tries += 1;
+      if (r.entityId) p.accounts.add(r.entityId);
+      if (r.createdAt > p.last) p.last = r.createdAt;
+      places.set(ip, p);
+    }
+    byAddress = [...places]
+      .map(([ip, p]): AddressTries => ({ ip, tries: p.tries, accounts: p.accounts.size, last: p.last }))
+      .sort((a, b) => b.tries - a.tries || b.last.getTime() - a.last.getTime() || a.ip.localeCompare(b.ip))
+      .slice(0, ADDRESS_ROWS);
+  }
+
   let paused: CrashData["paused"] = null;
   if (buckets) {
     let developer = 0, staff = 0;
@@ -418,5 +493,5 @@ export async function crashData(user: ConsoleUser, now = new Date()): Promise<Cr
 
   const deniedPerDay = deniedRaw ? new Map(deniedRaw.map((r) => [fromDbDate(r.businessDate), r._count._all])) : null;
   const deniedByDay = deniedPerDay ? days.map((date) => ({ date, count: deniedPerDay.get(date) ?? 0 })) : null;
-  return { system, failed, paused, denied, deniedByDay };
+  return { system, failed, failed14d, successful14d, byAddress, paused, denied, deniedByDay };
 }

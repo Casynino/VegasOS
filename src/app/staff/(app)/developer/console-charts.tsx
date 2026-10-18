@@ -145,7 +145,7 @@ export function BarChart({ t, columns, series, caption, empty, format, axis, gro
 }
 
 /** Horizontal bars, one row per name, the biggest first. */
-export function RankBars({ t, rows, color, caption, empty, format }: { t: T; rows: { key: string; label: string; value: number; note?: string }[]; color: string; caption: string; empty: string; format?: (n: number) => string }) {
+export function RankBars({ t, rows, color, caption, empty, format }: { t: T; rows: { key: string; label: string; value: number; note?: string; color?: string }[]; color: string; caption: string; empty: string; format?: (n: number) => string }) {
   const fmt = format ?? ((v: number) => num(t, v));
   const max = Math.max(1, ...rows.map((r) => r.value));
   if (rows.length === 0) return <p className="rounded-2xl bg-muted/40 px-4 py-3 text-sm text-muted-foreground">{empty}</p>;
@@ -160,7 +160,7 @@ export function RankBars({ t, rows, color, caption, empty, format }: { t: T; row
               <span className="shrink-0 font-semibold tabular-nums">{fmt(r.value)}</span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-muted" aria-hidden>
-              <div className="h-full rounded-full" style={{ width: `${Math.max(3, (r.value / max) * 100)}%`, background: color }} />
+              <div className="h-full rounded-full" style={{ width: `${Math.max(3, (r.value / max) * 100)}%`, background: r.color ?? color }} />
             </div>
           </li>
         ))}

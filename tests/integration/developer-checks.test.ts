@@ -1116,6 +1116,6 @@ describe("the Problems tab and the Crashes tab", () => {
     const en = makeT("en", null);
     const html = renderToStaticMarkup(createElement(CrashesTab, { t: en, c: await crashData(user), when: (d: Date) => en.dateTime(d, "Africa/Dar_es_Salaam") }));
     const text = textOf(html);
-    for (const w of ["Failed sign-ins", "Paused right now", "Failed sign-ins and refused Developer actions per day", "Your Developer sign-in", "Refused to you"]) expect(text).toContain(w);
+    for (const w of ["Failed sign-ins", "Locked out now", "Failed sign-ins and refused Developer actions per day", "Your Developer sign-in", "Refused to you"]) expect(text).toContain(w);
   });
 });

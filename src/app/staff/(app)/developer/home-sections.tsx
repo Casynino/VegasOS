@@ -6,16 +6,19 @@ import type { CheckResult } from "@/server/services/developer-checks";
 import { activityData } from "@/server/services/developer-activity";
 import { crashData, speedData } from "@/server/services/developer-health";
 import { noteHomeTabView } from "@/server/services/developer-business";
-import { hotelData } from "@/server/services/developer-hotel";
 import { messagesData } from "@/server/services/developer-messages";
-import { moneyData } from "@/server/services/developer-money";
+import { hotelGlance } from "@/server/services/developer-hotel-glance";
+import { moneyGlance } from "@/server/services/developer-money-glance";
+import { requestsGlance } from "@/server/services/developer-requests";
+import { teamData } from "@/server/services/developer-team";
 import { recordError } from "@/server/services/system-events";
 import { ErrorsTab, SecurityTab } from "./tab-crashes";
 import { Tag, type TagTone } from "./console-ui";
 import { ActivityTab } from "./tab-activity";
-import { HotelTab } from "./tab-hotel";
-import { MoneyTab } from "./tab-money";
+import { HotelGlanceTab } from "./tab-hotel-glance";
 import { MessagesTab } from "./tab-messages";
+import { MoneyGlanceTab } from "./tab-money-glance";
+import { RequestsGlanceTab } from "./tab-requests";
 import { PeopleTab } from "./tab-people";
 import { SettingsTab } from "./tab-settings";
 import { SpeedTab } from "./tab-speed";
@@ -105,25 +108,36 @@ export async function SpeedSection({ ctx, checks }: { ctx: SectionCtx; checks: C
 export async function ActivitySection({ ctx }: { ctx: SectionCtx }) {
   return guard(ctx.t, "activity", async () => <ActivityTab t={ctx.t} a={await activityData(ctx.user, ctx.now)} now={ctx.now} timezone={ctx.timezone} />);
 }
+export async function PeopleSection({ ctx, person, right }: { ctx: SectionCtx; person: string; right: string }) {
+  return guard(ctx.t, "people", async () => {
+    // A look at someone's rights is itself written to the audit trail (by the service).
+    const inspection: Inspection | null = person || right ? await inspectPermission(ctx.user, { userId: person, code: right }, { ipAddress: ctx.ipAddress }) : null;
+    const [data, team] = await Promise.all([peopleTab(ctx.user), teamData(ctx.user, ctx.now)]);
+    return <PeopleTab t={ctx.t} data={data} team={team} now={ctx.now} person={person} right={right} inspection={inspection} when={ctx.when} timezone={ctx.timezone} />;
+  });
+}
+export async function SettingsSection({ ctx }: { ctx: SectionCtx }) {
+  return guard(ctx.t, "settings", async () => <SettingsTab t={ctx.t} s={await settingsTab(ctx.user, ctx.sessionHash, ctx.now)} when={ctx.when} />);
+}
+
+// ───────────────────────────────────────────── the business, for awareness ─────────────────────────────────────────────
+// Read-only, counts and plain words only (never a name, an amount or the words of a message). Each look is written to the audit trail
+// (once per part in ten minutes), like a look at a tab of Business.
 export async function HotelSection({ ctx }: { ctx: SectionCtx }) {
   return guard(ctx.t, "hotel", async () => {
     await noteHomeTabView(ctx.user, "hotel", { ipAddress: ctx.ipAddress, now: ctx.now });
-    return <HotelTab t={ctx.t} h={await hotelData(ctx.user, ctx.now)} when={ctx.when} />;
+    return <HotelGlanceTab t={ctx.t} g={await hotelGlance(ctx.user, ctx.now)} when={ctx.when} />;
   });
 }
 export async function MoneySection({ ctx }: { ctx: SectionCtx }) {
   return guard(ctx.t, "money", async () => {
     await noteHomeTabView(ctx.user, "money", { ipAddress: ctx.ipAddress, now: ctx.now });
-    return <MoneyTab t={ctx.t} m={await moneyData(ctx.user, ctx.now)} when={ctx.when} />;
+    return <MoneyGlanceTab t={ctx.t} g={await moneyGlance(ctx.user, ctx.now)} when={ctx.when} now={ctx.now} />;
   });
 }
-export async function PeopleSection({ ctx, person, right }: { ctx: SectionCtx; person: string; right: string }) {
-  return guard(ctx.t, "people", async () => {
-    // A look at someone's rights is itself written to the audit trail (by the service).
-    const inspection: Inspection | null = person || right ? await inspectPermission(ctx.user, { userId: person, code: right }, { ipAddress: ctx.ipAddress }) : null;
-    return <PeopleTab t={ctx.t} data={await peopleTab(ctx.user)} person={person} right={right} inspection={inspection} when={ctx.when} timezone={ctx.timezone} />;
+export async function RequestsSection({ ctx }: { ctx: SectionCtx }) {
+  return guard(ctx.t, "requests", async () => {
+    await noteHomeTabView(ctx.user, "requests", { ipAddress: ctx.ipAddress, now: ctx.now });
+    return <RequestsGlanceTab t={ctx.t} g={await requestsGlance(ctx.user, ctx.now)} when={ctx.when} />;
   });
-}
-export async function SettingsSection({ ctx }: { ctx: SectionCtx }) {
-  return guard(ctx.t, "settings", async () => <SettingsTab t={ctx.t} s={await settingsTab(ctx.user, ctx.sessionHash, ctx.now)} when={ctx.when} />);
 }

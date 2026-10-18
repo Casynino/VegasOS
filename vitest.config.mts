@@ -23,7 +23,7 @@ export default defineConfig({
           include: ["tests/integration/**/*.test.ts"],
           environment: "node",
           globalSetup: ["tests/support/global-setup.ts"],
-          env: { DATABASE_URL: TEST_DB },
+          env: { DATABASE_URL: TEST_DB, DIRECT_URL: "" },
           fileParallelism: false,
           testTimeout: 30_000,
           hookTimeout: 120_000,

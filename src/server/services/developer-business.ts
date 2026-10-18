@@ -301,8 +301,8 @@ export async function noteBusinessView(viewer: BusinessViewer, tab: BusinessTab,
   return noteView(viewer, tab, { tab }, opts);
 }
 
-/** The three tabs of the Developer Home that show hotel data (the others are about the system itself): each look at one is written like a look at a Business tab. */
-export const HOME_LOGGED_TABS = ["hotel", "money", "messages"] as const;
+/** The parts of the Developer Home that show hotel data (Hotel, Money, Messages & reports, Guest messages & requests) (the others are about the system itself): each look at one is written like a look at a Business tab. */
+export const HOME_LOGGED_TABS = ["hotel", "money", "messages", "requests"] as const;
 export type HomeLoggedTab = (typeof HOME_LOGGED_TABS)[number];
 
 /**

@@ -166,9 +166,10 @@ describe("a clean system and a dead database", () => {
     // the headline figure is the number of different server errors in 24 hours (none yet), not "alerts waiting"
     expect(h.serverErrors24h).toBe(0);
     expect(h).not.toHaveProperty("alerts");
-    // the card's figures are about the SYSTEM (checks, jobs), never about the hotel's staff or its work
+    // the card's figures are about the SYSTEM (checks, jobs) and who uses it: a count of people and of actions saved — never what the work was
+    // (the owner asked for "actions today" back on the card, 2026-10-18: a count only, see developer-extras.test.ts for what it counts)
     expect(h.signedInToday).toEqual(expect.any(Number));
-    expect(h).not.toHaveProperty("actionsToday"); // how much staff did is not a system figure
+    expect(h.actionsToday).toEqual(expect.any(Number));
     expect(h.failedSignIns24h).toBe(await db.auditLog.count({ where: { action: "auth.login_failed", createdAt: { gte: new Date(Date.now() - 24 * 3600_000) } } }));
   });
 
@@ -194,6 +195,7 @@ describe("a clean system and a dead database", () => {
     const spies = [
       vi.spyOn(db.user, "findFirst").mockRejectedValue(new Error("connection refused")), vi.spyOn(db.auditLog, "count").mockRejectedValue(new Error("connection refused")),
       vi.spyOn(db.auditLog, "findMany").mockRejectedValue(new Error("connection refused")), vi.spyOn(db.session, "count").mockRejectedValue(new Error("connection refused")),
+      vi.spyOn(db.reservation, "findMany").mockRejectedValue(new Error("connection refused")), // the sixth question: the bookings list
     ];
     try {
       const h = await healthReport(user);

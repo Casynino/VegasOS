@@ -755,7 +755,7 @@ async function wipeFuture() {
 
 describe("the home: greeting and tabs", () => {
   it("the tab comes from the address; anything unknown (or nothing, or a list) is the first tab — Problems", () => {
-    expect([...CONSOLE_TABS]).toEqual(["problems", "activity", "hotel", "money", "messages", "speed", "crashes", "settings", "people"]);
+    expect([...CONSOLE_TABS]).toEqual(["problems", "activity", "messages", "speed", "crashes", "settings", "people"]);
     for (const tab of CONSOLE_TABS) expect(parseTab(tab)).toBe(tab);
     expect(parseTab(undefined)).toBe("problems");
     expect(parseTab("")).toBe("problems");
@@ -809,14 +809,14 @@ describe("speed, sign-in trouble, settings and my actions", () => {
     ["login:ip:7.7.7.7", 21, 1], ["login:trail:unknown-developer", 99, 1], ["login:email:probe-old@x.test", 50, 60],
   ];
 
-  it("speed: five named quick questions each timed, their average, the counts and size of the system's biggest tables, and the running version (short)", async () => {
+  it("speed: six named quick questions each timed, their average, the counts and size of the system's biggest tables, and the running version (short)", async () => {
     process.env.VERCEL_GIT_COMMIT_SHA = "0123456789abcdef0123456789abcdef01234567";
     process.env.VERCEL_ENV = "preview";
     const s = await speedData(user);
-    expect(s.probes.map((p) => p.label)).toEqual(["Simple ping", "Find one account", "Count today's activity", "Load latest 50 activity lines", "Count sign-in sessions"]);
-    expect(s.latency.samples).toHaveLength(5);
+    expect(s.probes.map((p) => p.label)).toEqual(["Simple ping", "Find one account", "Count today's activity", "Load latest 50 activity lines", "Count sign-in sessions", "Load newest 50 bookings"]);
+    expect(s.latency.samples).toHaveLength(6);
     for (const n of s.latency.samples) expect(Number.isInteger(n) && n > 0).toBe(true);
-    expect(s.latency.average).toBe(Math.round(s.latency.samples.reduce((a, b) => a + b, 0) / 5));
+    expect(s.latency.average).toBe(Math.round(s.latency.samples.reduce((a, b) => a + b, 0) / 6));
     expect(s.latency.slowest).toBe(Math.max(...s.latency.samples));
     expect(s.tables.map((t) => t.label)).toEqual(["Audit trail entries", "Sign-in sessions", "Messages sent", "System events"]);
     expect(s.tables[0].rows).toBe(await db.auditLog.count());
@@ -942,17 +942,18 @@ describe("the Developer home page draws, on every tab, from real data", () => {
     for (const w of ["Work as", "Add an account", "Who did what, and when", "Read-only hotel tables", "Signed in today", "Failed sign-ins", "Server errors (24 h)"]) expect(html).toContain(w);
     // Audit and Business are links; Work as and Add an account open a popup (the Access page is in the side menu and in the popup)
     for (const href of [CONSOLE_HREF.home, CONSOLE_HREF.audit, CONSOLE_HREF.business]) expect(html).toContain(`href="${href}`);
-    // no tabs and no jump row: ten parts, each with its anchor and its heading, one under the other (Activity, the business for awareness, People, then the system)
-    const ids = ["activity", "hotel", "money", "people", "problems", "errors", "messages", "speed", "security", "settings"];
+    // no tabs and no jump row: eleven parts, each with its anchor and its heading, one under the other (Activity, the business for awareness, People, then the system)
+    const ids = ["activity", "hotel", "money", "requests", "people", "problems", "errors", "messages", "speed", "security", "settings"];
     for (const id of ids) expect(html, id).toContain(`id="${id}"`);
     expect(html).not.toContain('aria-label="Jump to"');
     expect(html).not.toContain("aria-current=\"page\"");
-    expect(html).toContain("The business, for awareness");
     // what each part says
-    const marks = ["Sign-ins per day", "Busiest hours of the day", "Recent sign-ins", "Online right now", "What is happening in the hotel", "Where the money is", "accounts", "Your recent actions", "Everything you do is on record", "Who can do what", "System checks", "Messages from other services", "Is the Boss getting his reports and messages?", "Database speed", "Database size", "Data checks", "This deployment", "Failed sign-ins and refused Developer actions per day", "Your Developer sign-in", "Required settings", "Your session"].filter((m) => m !== "Required settings");
+    const marks = ["Sign-ins per day", "Busiest hours of the day", "Recent sign-ins", "Online right now", "Who did what, just now", "Where the work happens", "Most active people", "accounts", "Your recent actions", "Everything you do is on record", "Who can do what", "System checks", "Messages from other services", "Is the Boss getting his reports and messages?", "Database speed", "Database size", "Data checks", "This deployment", "Failed sign-ins and refused Developer actions per day", "Your Developer sign-in", "Required settings", "Your session"].filter((m) => m !== "Required settings");
     for (const m of marks) expect(html, m).toContain(m);
     // the staff's work is not listed (no kinds of record, no ranking of people by what they did)
-    for (const gone of ["Where the work happens", "Most active people", "Open shifts", "Withdrawals not settled", "Active staff accounts", "New records per day", "Actions today"]) expect(html, gone).not.toContain(gone);
+    for (const gone of ["What is happening in the hotel", "Where the money is", "Received today", "Open shifts", "Withdrawals not settled", "Active staff accounts", "New records per day", "Money accounts", "The last payments", "Today&#x27;s arrivals"]) expect(html, gone).not.toContain(gone);
+    // the business, for awareness: counts only (the owner's Target / Swift arrangement)
+    for (const w of ["The business, for awareness", "Bookings in the system", "Bills issued", "Messages sent (14 days)", "Actions today"]) expect(html, w).toContain(w);
     expect(html).not.toContain("undefined");
     expect(html).not.toContain("NaN");
   });
@@ -960,7 +961,9 @@ describe("the Developer home page draws, on every tab, from real data", () => {
   it("an old ?tab= link goes to that part's place on the one page; a bad ?tab= just draws the page", async () => {
     await as(dev);
     const go = (tab: string) => redirectOf(() => DeveloperHomePage({ searchParams: Promise.resolve({ tab }) } as never));
-    expect(await go("hotel")).toBe(`${CONSOLE_HREF.home}#hotel`);
+    expect(await go("hotel")).toBe(`${CONSOLE_HREF.home}#hotel`); // the Hotel and Money parts are back (counts only): the old links find them
+    expect(await go("money")).toBe(`${CONSOLE_HREF.home}#money`);
+    expect(await go("constructor")).toBeNull(); // a word that is merely a property name is not a tab
     expect(await go("activity")).toBe(`${CONSOLE_HREF.home}#activity`);
     expect(await go("crashes")).toBe(`${CONSOLE_HREF.home}#errors`);
     expect(await go("people")).toBe(`${CONSOLE_HREF.home}#people`);

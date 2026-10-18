@@ -13,7 +13,7 @@ export function DataTable({ cols, rows, empty, more }: { cols: Col[]; rows: { ke
   return (
     <div>
       <div className="overflow-x-auto">
-        <table data-stack className="w-full min-w-[560px] text-sm">
+        <table data-stack className="w-full min-w-[440px] text-sm">
           <thead className="text-left text-xs text-muted-foreground">
             <tr className="border-b border-border/70">
               {cols.map((c) => <th key={c.label} scope="col" className={cn("py-2 pr-4 font-medium last:pr-0", c.num && "text-right")}>{c.label}</th>)}

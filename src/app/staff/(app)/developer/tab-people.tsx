@@ -7,11 +7,13 @@ import { auditWordsFor } from "@/server/services/audit-trail";
 import { Panel } from "@/components/dashboard/kit";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
-import { Quiet, Tag } from "./console-ui";
+import type { TeamData } from "@/server/services/developer-team";
+import { agoText, num, Quiet, Tag } from "./console-ui";
 
 /**
- * PEOPLE & MY ACTIONS: the accounts by role (counts of accounts, never what anyone did), the Developer's own latest actions, and "can this
- * person do this?" (read-only; every look is written to the audit trail by the service).
+ * PEOPLE & MY ACTIONS: the accounts by role (counts of accounts, never what anyone did), the team table (who did how many things this week
+ * and when they last signed in: counts and a time only), the Developer's own latest actions, and "can this person do this?" (read-only;
+ * every look is written to the audit trail by the service).
  */
 
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -61,8 +63,40 @@ function InspectionResult({ r, t }: { r: Inspection; t: T }) {
   );
 }
 
-export function PeopleTab({ t, data, person, right, inspection, when, timezone }: {
+/** THE TEAM: every staff account with the number of things done in the last 7 hotel days and the last time they were in. Counts and a time only. */
+function TeamTable({ t, team, now, timezone }: { t: T; team: TeamData | null; now: Date; timezone: string }) {
+  return (
+    <Panel title={t("The team")} subtitle={t("Everyone with a staff account, what they did this week, and when they last signed in.")}>
+      {!team ? <Quiet>{t("This could not be read just now.")}</Quiet> : team.members.length === 0 ? <Quiet>{t("No staff accounts yet.")}</Quiet> : (
+        <div className="overflow-x-auto">
+          <table data-stack className="w-full min-w-[520px] text-sm">
+            <thead className="text-left text-xs text-muted-foreground">
+              <tr className="border-b border-border/70">
+                <th className="py-2 pr-4 font-medium">{t("Person")}</th><th className="py-2 pr-4 font-medium">{t("Role")}</th>
+                <th className="py-2 pr-4 text-right font-medium">{t("Actions (7 days)")}</th><th className="py-2 text-right font-medium">{t("Last in")}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/60">
+              {team.members.map((m) => (
+                <tr key={m.id} className="align-middle">
+                  <td className="py-2.5 pr-4 font-medium">{m.name}</td>
+                  <td className="py-2.5 pr-4 text-muted-foreground">{t(m.roleName)}</td>
+                  <td className={cn("py-2.5 pr-4 text-right tabular-nums", m.actions7d === 0 && "text-muted-foreground")}>{num(t, m.actions7d)}</td>
+                  <td className="whitespace-nowrap py-2.5 text-right text-muted-foreground" title={m.lastSignInAt ? t.dateTime(m.lastSignInAt, timezone) : undefined}>{m.lastSignInAt ? agoText(t, m.lastSignInAt, now) : t("Never signed in")}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+export function PeopleTab({ t, data, person, right, inspection, when, timezone, team, now = new Date() }: {
   t: T; data: PeopleData; person: string; right: string; inspection: Inspection | null; when: (x: Date) => string; timezone: string;
+  /** The team table: undefined = not shown, null = could not be read. */
+  team?: TeamData | null; now?: Date;
 }) {
   const accounts = data.roles.reduce((n, r) => n + r.total, 0);
   const active = data.roles.reduce((n, r) => n + r.active, 0);
@@ -95,6 +129,8 @@ export function PeopleTab({ t, data, person, right, inspection, when, timezone }
           </li>
         </ul>
       </Panel>
+
+      {team !== undefined && <TeamTable t={t} team={team} now={now} timezone={timezone} />}
 
       <div className="grid items-start gap-4 lg:grid-cols-2">
         <Panel

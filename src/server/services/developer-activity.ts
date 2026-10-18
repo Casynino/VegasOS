@@ -2,6 +2,7 @@ import "server-only";
 import { db } from "../db";
 import { businessDayConfig, getSettings } from "../settings";
 import { Prisma } from "@/generated/prisma/client";
+import { msg } from "@/i18n/msg";
 import { formatMinutesLabel } from "@/lib/format";
 import { addDays, businessDateOf, businessRangeBounds, eachDate, fromDbDate, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import { deviceLabel } from "@/lib/device-label";
@@ -11,8 +12,10 @@ import { SYSTEM_ROLE } from "./staff-accounts";
 
 /**
  * WHO IS USING THE SYSTEM (owner, 2026-10-18): sign-ins per day, how much the team saves per day and at which hours, the latest sign-ins with
- * their device and place, who is online right now, and the accounts that do not use the system. It counts and names PEOPLE and times — never what
- * the work was about (no kinds of record, no amounts, no guests): the Developer is not part of the hotel's operations, he looks after the system.
+ * their device and place, who is online right now, the accounts that do not use the system — and WHO IS DOING WHAT (owner, 2026-10-18: "I want to
+ * know what the system is doing, who is doing what"): the kinds of record the team's actions were about (counts of actions only), the most active
+ * people, and the team's latest actions in plain words. Never an amount, a guest's name or a payment: the Developer sees WHO does WHAT in the system,
+ * not the hotel's figures (those stay out: the owner said so three times).
  */
 const HOUR = 3600_000;
 const DAY = 24 * HOUR;
@@ -21,6 +24,29 @@ export const NOT_USING_DAYS = 30;
 export const RECENT_SIGN_INS = 12;
 /** "Online right now" = used the system in the last this-many minutes. */
 export const ONLINE_MINUTES = 10;
+
+/** Plain names for the kinds of record the audit trail writes about (what the entry is about). Anything else is the record's own name, spaced out. */
+const MODULE_WORDS: Record<string, string> = {
+  Reservation: msg("Bookings and stays"), ReservationRoom: msg("Bookings and stays"), BookingGroup: msg("Group bookings"), BookingRequest: msg("Booking requests"),
+  TableReservation: msg("Table bookings"), BookingQrCode: msg("Hotel QR"),
+  RestaurantOrder: msg("Restaurant orders"), DiningSession: msg("Restaurant tables"), RestaurantLocation: msg("Restaurant tables"), MenuItem: msg("Menu"), MenuCategory: msg("Menu"), SpinSession: msg("Spin to Win"),
+  Payment: msg("Payments"), MobilePayment: msg("Online payments"), Withdrawal: msg("Withdrawals"), CashHandover: msg("Cash handovers"), CashCount: msg("Cash handovers"),
+  Expense: msg("Expenses"), ExpenseItem: msg("Expenses"), Invoice: msg("Invoices"), SupplierInvoice: msg("Supplier invoices"), RevenueTransaction: msg("Income"), LedgerEntry: msg("Ledger"), MoneyAccount: msg("Money accounts"),
+  StockRequest: msg("Stock requests"), InventoryItem: msg("Stock items"), InventoryMovement: msg("Stock movements"), InventoryDepartment: msg("Stock items"), InventoryCategory: msg("Stock items"), Supplier: msg("Suppliers"), Asset: msg("Assets"),
+  Room: msg("Rooms"), RoomType: msg("Rooms"), Guest: msg("Customers"), CorporateCustomer: msg("Companies"), ServiceRequest: msg("Guest requests"), ContactMessage: msg("Messages"),
+  ActualShift: msg("Shifts"), ShiftSchedule: msg("Shifts"), ShiftHandoverNote: msg("Shifts"), DailyList: msg("Daily lists"),
+  DailyReport: msg("Reports"), RoomReport: msg("Reports"), ShiftReport: msg("Reports"), StaffReport: msg("Reports"),
+  TransportTrip: msg("Transport"), TransportService: msg("Transport"), Vehicle: msg("Transport"),
+  User: msg("Staff accounts"), Role: msg("Roles and rights"), Permission: msg("Roles and rights"), HotelSettings: msg("Settings"), HotelService: msg("Hotel services"),
+  Promotion: msg("Prices"), PriceRule: msg("Prices"), SiteContent: msg("Website"), MediaAsset: msg("Website"), Page: msg("Pages looked at"),
+};
+/** The kind of record in plain English ("Restaurant orders"); an unknown one is spaced out ("Some thing" → its own words). */
+export const moduleWords = (entityType: string): string =>
+  MODULE_WORDS[entityType] ?? (entityType.replace(/([a-z0-9])([A-Z])/g, "$1 $2").trim() || msg("Other"));
+
+export const WORK_DAYS = 7;
+/** How many of the team's latest actions "who did what, just now" lists. */
+export const LATEST_ACTIONS = 12;
 
 export interface ActivityData {
   today: BusinessDate;
@@ -44,6 +70,11 @@ export interface ActivityData {
   actionsPerDay: { date: BusinessDate; team: number; developer: number; total: number }[] | null;
   /** 24 hotel hours, 0–23. */
   busiestHours: { hour: number; count: number }[] | null;
+  /** The kinds of record the work was about in the last 7 days, most first (several kinds with the same plain name are added together). Counts of actions only. */
+  where: { label: string; count: number }[] | null;
+  mostActive: { userId: string; name: string; roleName: string | null; developer: boolean; count: number }[] | null;
+  /** The team's latest actions, newest first: who, in what role, what they did (as the audit trail words it) and when. Never an amount or a guest's name. */
+  latest: { id: string; name: string; roleName: string | null; action: string; at: Date }[] | null;
   /** Who has used the system in the last 10 minutes (a name, a role, when). */
   online: { id: string; name: string; roleName: string; lastSeenAt: Date }[] | null;
   recentSignIns: { id: string; name: string; roleCode: string | null; roleName: string | null; device: { label: string; phone: boolean } | null; ip: string | null; at: Date }[] | null;
@@ -58,6 +89,20 @@ const deviceOf = (ua: string | null): { label: string; phone: boolean } | null =
   return { label: d.label.split(" · ").reverse().join(" · "), phone: d.phone };
 };
 
+/**
+ * WHO SIGNS IN: successful sign-ins in the 14 days per kind of account (role), most first. It adds up the per-day figures the sign-ins chart is
+ * drawn from, so the two always agree. The Developer's own sign-ins are a row of their own. null when the sign-ins could not be read.
+ */
+export function signInsByRole(a: Pick<ActivityData, "roles" | "signInsPerDay">): { code: string; name: string; count: number }[] | null {
+  if (!a.signInsPerDay) return null;
+  const totals: Record<string, number> = {};
+  for (const d of a.signInsPerDay) for (const [code, n] of Object.entries(d.byRole)) totals[code] = (totals[code] ?? 0) + n;
+  return a.roles
+    .map((r) => ({ code: r.code, name: r.name, count: totals[r.code] ?? 0 }))
+    .filter((r) => r.count > 0)
+    .sort((x, y) => y.count - x.count || x.name.localeCompare(y.name));
+}
+
 export async function activityData(user: ConsoleUser, now = new Date()): Promise<ActivityData> {
   assertConsoleAccess(user);
   const settings = await getSettings();
@@ -67,9 +112,10 @@ export async function activityData(user: ConsoleUser, now = new Date()): Promise
   const { start: start14, end: end14 } = businessRangeBounds(days[0], today, cfg);
   const since24 = new Date(now.getTime() - DAY);
   const since7d = new Date(now.getTime() - 7 * DAY);
+  const start7 = businessRangeBounds(addDays(today, -(WORK_DAYS - 1)), today, cfg).start;
   const people = { actorType: { in: ["STAFF", "DEVELOPER"] }, action: { notIn: [...NOT_WORK_ACTIONS] } };
 
-  const [roles, logins, sessions24, byDayRaw, hoursRaw, onlineRaw, recentRaw, usersRaw, failed24, team24, dev24] = await Promise.all([
+  const [roles, logins, sessions24, byDayRaw, hoursRaw, whereRaw, activeRaw, latestRaw, onlineRaw, recentRaw, usersRaw, failed24, team24, dev24] = await Promise.all([
     safe(() => db.role.findMany({ select: { code: true, name: true } })),
     safe(() => db.auditLog.findMany({
       where: { action: "auth.login", createdAt: { gte: start14, lt: end14 } },
@@ -89,6 +135,20 @@ export async function activityData(user: ConsoleUser, now = new Date()): Promise
         AND "actorType" IN ('STAFF', 'DEVELOPER')
         AND "action" NOT IN (${Prisma.join([...NOT_WORK_ACTIONS])})
       GROUP BY 1`),
+    safe(() => db.auditLog.groupBy({
+      by: ["entityType"],
+      where: { ...people, createdAt: { gte: start7 }, businessDate: { gte: toDbDate(addDays(today, -(WORK_DAYS - 1))), lte: toDbDate(today) } },
+      _count: { id: true }, orderBy: { _count: { id: "desc" } }, take: 40,
+    })),
+    safe(() => db.auditLog.groupBy({
+      by: ["userId"],
+      where: { ...people, userId: { not: null }, createdAt: { gte: start7 }, businessDate: { gte: toDbDate(addDays(today, -(WORK_DAYS - 1))), lte: toDbDate(today) } },
+      _count: { id: true }, orderBy: { _count: { id: "desc" } }, take: 8,
+    })),
+    safe(() => db.auditLog.findMany({
+      where: { ...people, actorType: "STAFF" }, orderBy: { createdAt: "desc" }, take: LATEST_ACTIONS,
+      select: { id: true, userId: true, actorLabel: true, actorRole: true, action: true, createdAt: true },
+    })),
     safe(() => db.session.findMany({
       where: { lastSeenAt: { gte: new Date(now.getTime() - ONLINE_MINUTES * 60_000) }, expiresAt: { gt: now }, workAsUserId: null },
       select: { lastSeenAt: true, user: { select: { id: true, fullName: true, role: { select: { code: true, name: true } } } } }, orderBy: { lastSeenAt: "desc" }, take: 40,
@@ -157,6 +217,38 @@ export async function activityData(user: ConsoleUser, now = new Date()): Promise
     busiestHour = peak > 0 ? counts.indexOf(peak) : null;
   }
 
+  // ── where the work happens ──
+  let where: ActivityData["where"] = null;
+  if (whereRaw) {
+    const byLabel = new Map<string, number>();
+    for (const r of whereRaw) { const label = moduleWords(r.entityType); byLabel.set(label, (byLabel.get(label) ?? 0) + r._count.id); }
+    where = [...byLabel].map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)).slice(0, 8);
+  }
+
+  // ── most active people ──
+  let mostActive: ActivityData["mostActive"] = null;
+  if (activeRaw) {
+    const ids = activeRaw.map((r) => r.userId).filter((id): id is string => !!id);
+    const names = ids.length ? (await safe(() => db.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true, role: { select: { code: true, name: true } } } }))) ?? [] : [];
+    const byId = new Map(names.map((u) => [u.id, u]));
+    mostActive = activeRaw.flatMap((r) => {
+      const u = r.userId ? byId.get(r.userId) : undefined;
+      return u ? [{ userId: u.id, name: u.fullName, roleName: u.role.name, developer: u.role.code === DEVELOPER_ROLE_CODE, count: r._count.id }] : [];
+    });
+  }
+
+  // ── who did what, just now (the team's latest actions) ──
+  let latest: ActivityData["latest"] = null;
+  if (latestRaw) {
+    const ids = [...new Set(latestRaw.map((r) => r.userId).filter((id): id is string => !!id))];
+    const people2 = ids.length ? (await safe(() => db.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true, role: { select: { name: true } } } }))) ?? [] : [];
+    const who = new Map(people2.map((u) => [u.id, u]));
+    latest = latestRaw.map((r) => {
+      const u = r.userId ? who.get(r.userId) : undefined;
+      return { id: r.id, name: u?.fullName ?? short(r.actorLabel, 120) ?? "—", roleName: u?.role.name ?? (r.actorRole ? roleName.get(r.actorRole) ?? r.actorRole : null), action: r.action, at: r.createdAt };
+    });
+  }
+
   // ── online right now (each person once, newest first; the system's own account is not a person) ──
   let online: ActivityData["online"] = null;
   if (onlineRaw) {
@@ -212,7 +304,7 @@ export async function activityData(user: ConsoleUser, now = new Date()): Promise
   return {
     today, dayStart: formatMinutesLabel(cfg.businessDayStartMinutes), days,
     stats: { peopleSignedIn24h, peopleSignedIn7d, teamActions24h: team24, developerActions24h: dev24, signIns24h, failedSignIns24h: failed24, busiestHour },
-    roles: roleList, signInsPerDay, actionsPerDay, busiestHours, online, recentSignIns, notUsing, notUsingTotal,
+    roles: roleList, signInsPerDay, actionsPerDay, busiestHours, where, mostActive, latest, online, recentSignIns, notUsing, notUsingTotal,
   };
 }
 
