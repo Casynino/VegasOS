@@ -149,6 +149,13 @@ const catalog: Catalog = {
   "Who has an account, and what you have done.": "谁有账号，以及你做过什么。",
   "Actions today": "今日操作",
   "Report messages": "报告消息",
+  "All clear": "一切正常",
+  "{ok} of {n} fine": "{n} 项中 {ok} 项正常",
+  "{n} not checked yet": "{n} 项尚未检查",
+  "Nothing needs your attention": "没有需要你关注的事项",
+  "Nothing is broken, and every required setting is in place.": "没有任何故障，所有必需的设置都已就绪。",
+  "What was checked": "已检查的内容",
+  "Not checked yet": "尚未检查",
   "Other kinds": "其他类型",
   "by the team and you in 24 hours": "团队和你在 24 小时内保存的操作",
 };

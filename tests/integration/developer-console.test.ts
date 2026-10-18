@@ -26,7 +26,7 @@ import { audit } from "@/server/audit";
 import { authorize, DEVELOPER_IDLE_MINUTES, DEVELOPER_SESSION_HOURS, getCurrentUser, requirePagePermission, type CurrentUser } from "@/server/auth";
 import { AppError } from "@/server/errors";
 import {
-  assertConsoleAccess, AUDIT_DEVELOPER_HREF, CONSOLE_HREF, CONSOLE_TABS, developerGreeting, developerIdentity, firstNameOf, inspectPermission, listInspectableUsers, myActions, parseTab,
+  assertConsoleAccess, AUDIT_DEVELOPER_HREF, CONSOLE_HREF, CONSOLE_TABS, developerGreeting, developerIdentity, firstNameOf, inspectPermission, listInspectableUsers, LOOKING_ACTIONS, MY_RECENT_ACTIONS, myActions, parseTab,
   peopleTab, recentDenied, settingsTab, systemDiagnostics,
 } from "@/server/services/developer-console";
 import { crashData, healthReport, LOGIN_LIMITS, speedData } from "@/server/services/developer-health";
@@ -894,8 +894,13 @@ describe("speed, sign-in trouble, settings and my actions", () => {
     expect(mine.every((m) => m.actingAs === null || m.action === "reservation.checked_in")).toBe(true);
     expect(await myActions(user, 5)).toHaveLength(5);
     expect((await myActions(user, 5000)).length).toBeLessThanOrEqual(100);
-    // and the people tab carries the same list
-    expect((await peopleTab(user)).myActions).toHaveLength(30);
+    // …without the looking: the people tab lists the last real actions only (33 pages looked at and one failed look are left out)
+    const real = (await peopleTab(user)).myActions;
+    expect(real.length).toBeLessThanOrEqual(MY_RECENT_ACTIONS);
+    expect(real[0]).toMatchObject({ action: "reservation.checked_in", words: "checked a guest in" });
+    expect(real.some((m) => LOOKING_ACTIONS.includes(m.action))).toBe(false);
+    expect((await myActions(user, 100, { looking: false })).some((m) => LOOKING_ACTIONS.includes(m.action))).toBe(false);
+    expect((await myActions(user, 100)).some((m) => m.action === "developer.viewed")).toBe(true); // …while the full list still has them
   });
 });
 
@@ -942,18 +947,21 @@ describe("the Developer home page draws, on every tab, from real data", () => {
     for (const w of ["Work as", "Add an account", "Who did what, and when", "Read-only hotel tables", "Signed in today", "Failed sign-ins", "Server errors (24 h)"]) expect(html).toContain(w);
     // Audit and Business are links; Work as and Add an account open a popup (the Access page is in the side menu and in the popup)
     for (const href of [CONSOLE_HREF.home, CONSOLE_HREF.audit, CONSOLE_HREF.business]) expect(html).toContain(`href="${href}`);
-    // no tabs and no jump row: eleven parts, each with its anchor and its heading, one under the other (Activity, the business for awareness, People, then the system)
-    const ids = ["activity", "hotel", "money", "requests", "people", "problems", "errors", "messages", "speed", "security", "settings"];
+    // no tabs and no jump row: eight parts, each with its anchor and its heading, one under the other (Activity, People, then the system)
+    const ids = ["problems", "activity", "people", "errors", "messages", "speed", "security", "settings"];
     for (const id of ids) expect(html, id).toContain(`id="${id}"`);
+    for (const id of ["hotel", "money", "requests"]) expect(html, id).not.toContain(`id="${id}"`);
     expect(html).not.toContain('aria-label="Jump to"');
     expect(html).not.toContain("aria-current=\"page\"");
     // what each part says
-    const marks = ["Sign-ins per day", "Busiest hours of the day", "Recent sign-ins", "Online right now", "Who did what, just now", "Where the work happens", "Most active people", "accounts", "Your recent actions", "Everything you do is on record", "Who can do what", "System checks", "Messages from other services", "Is the Boss getting his reports and messages?", "Database speed", "Database size", "Data checks", "This deployment", "Failed sign-ins and refused Developer actions per day", "Your Developer sign-in", "Required settings", "Your session"].filter((m) => m !== "Required settings");
+    const marks = ["Sign-ins per day", "Busiest hours of the day", "Recent sign-ins", "Online right now", "Who did what, just now", "Where the work happens", "accounts", "Your recent actions", "Everything you do is on record", "Who can do what", "Needs your attention", "What was checked", "Is the Boss getting his reports and messages?", "Database speed", "Database size", "Data checks", "This deployment", "Your Developer sign-in", "Required settings", "Your session"].filter((m) => m !== "Required settings");
     for (const m of marks) expect(html, m).toContain(m);
+    // drawn only when they have something to show: the webhooks table (else one quiet line), the chart of wrong tries (else the chips say there were none)
+    expect(html).toMatch(/Messages from other services \(webhooks\)|No message from other services has arrived yet\./);
+    expect(html).toMatch(/Failed sign-ins and refused Developer actions per day|No wrong tries in the last 7 days/);
     // the staff's work is not listed (no kinds of record, no ranking of people by what they did)
-    for (const gone of ["What is happening in the hotel", "Where the money is", "Received today", "Open shifts", "Withdrawals not settled", "Active staff accounts", "New records per day", "Money accounts", "The last payments", "Today&#x27;s arrivals"]) expect(html, gone).not.toContain(gone);
-    // the business, for awareness: counts only (the owner's Target / Swift arrangement)
-    for (const w of ["The business, for awareness", "Bookings in the system", "Bills issued", "Messages sent (14 days)", "Actions today"]) expect(html, w).toContain(w);
+    for (const gone of ["The business, for awareness", "What is happening in the hotel", "Where the money is", "Rooms with a guest", "Bookings in the system", "Bills issued", "Messages sent (14 days)", "Received today", "Open shifts", "Withdrawals not settled", "Active staff accounts", "New records per day", "Money accounts", "The last payments"]) expect(html, gone).not.toContain(gone);
+    expect(html).toContain("Actions today"); // the health card: how much work the team saved (a number, never what it was)
     expect(html).not.toContain("undefined");
     expect(html).not.toContain("NaN");
   });
@@ -961,14 +969,14 @@ describe("the Developer home page draws, on every tab, from real data", () => {
   it("an old ?tab= link goes to that part's place on the one page; a bad ?tab= just draws the page", async () => {
     await as(dev);
     const go = (tab: string) => redirectOf(() => DeveloperHomePage({ searchParams: Promise.resolve({ tab }) } as never));
-    expect(await go("hotel")).toBe(`${CONSOLE_HREF.home}#hotel`); // the Hotel and Money parts are back (counts only): the old links find them
-    expect(await go("money")).toBe(`${CONSOLE_HREF.home}#money`);
+    expect(await go("hotel")).toBeNull(); // the Hotel and Money parts are gone: such a link just opens the page
+    expect(await go("money")).toBeNull();
     expect(await go("constructor")).toBeNull(); // a word that is merely a property name is not a tab
     expect(await go("activity")).toBe(`${CONSOLE_HREF.home}#activity`);
     expect(await go("crashes")).toBe(`${CONSOLE_HREF.home}#errors`);
     expect(await go("people")).toBe(`${CONSOLE_HREF.home}#people`);
     expect(await go("nonsense")).toBeNull();
-    expect(await draw({ tab: "nonsense" })).toContain("System checks");
+    expect(await draw({ tab: "nonsense" })).toContain("Needs your attention");
   });
 
   it("the inspector in the People part answers, and the look is written to the audit trail", async () => {

@@ -9,6 +9,9 @@ import m_developer_access from "./developer-access";
 import m_developer_adduser from "./developer-adduser";
 import m_developer_attribution from "./developer-attribution";
 import m_developer_checks from "./developer-checks";
+import m_developer_compact_ca from "./developer-compact-ca";
+import m_developer_compact_cb from "./developer-compact-cb";
+import m_developer_compact_cc from "./developer-compact-cc";
 import m_developer_console from "./developer-console";
 import m_developer_extras from "./developer-extras";
 import m_developer_fixes from "./developer-fixes";
@@ -16,13 +19,10 @@ import m_developer_gates from "./developer-gates";
 import m_developer_hidden from "./developer-hidden";
 import m_developer_home from "./developer-home";
 import m_developer_home2 from "./developer-home2";
-import m_developer_hotel_glance from "./developer-hotel-glance";
 import m_developer_logging from "./developer-logging";
 import m_developer_login from "./developer-login";
-import m_developer_money_glance from "./developer-money-glance";
 import m_developer_onepage from "./developer-onepage";
 import m_developer_pages from "./developer-pages";
-import m_developer_requests from "./developer-requests";
 import m_developer_rights from "./developer-rights";
 import m_developer_session2 from "./developer-session2";
 import m_developer_session3 from "./developer-session3";
@@ -76,6 +76,9 @@ const catalog: Catalog = {
   ...m_developer_adduser,
   ...m_developer_attribution,
   ...m_developer_checks,
+  ...m_developer_compact_ca,
+  ...m_developer_compact_cb,
+  ...m_developer_compact_cc,
   ...m_developer_console,
   ...m_developer_extras,
   ...m_developer_fixes,
@@ -83,13 +86,10 @@ const catalog: Catalog = {
   ...m_developer_hidden,
   ...m_developer_home,
   ...m_developer_home2,
-  ...m_developer_hotel_glance,
   ...m_developer_logging,
   ...m_developer_login,
-  ...m_developer_money_glance,
   ...m_developer_onepage,
   ...m_developer_pages,
-  ...m_developer_requests,
   ...m_developer_rights,
   ...m_developer_session2,
   ...m_developer_session3,

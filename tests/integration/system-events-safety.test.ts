@@ -231,7 +231,9 @@ describe("the Developer Home when the system log cannot be read", () => {
     await as();
     await db.systemEvent.deleteMany({});
     const html = await draw();
-    expect(html).toContain("Nothing yet");
+    // an empty log draws no empty box: no list of errors; the jobs say they have not run (or, on an old database, that they are late)
+    expect(html).not.toContain("one line for each different error");
+    expect(html).toMatch(/No automatic job has run since the system started recording\.|Not recorded yet/);
     expect(html).not.toMatch(/undefined|NaN/);
   }, 60_000);
 });

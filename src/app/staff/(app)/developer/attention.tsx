@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { ArrowRight, ChevronDown, CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
+import { ArrowRight, ChevronDown, CircleAlert, Info, TriangleAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { T } from "@/i18n/translate";
 import type { HealthItem, Severity } from "@/server/services/developer-health";
 import { Tag, type TagTone } from "./console-ui";
 
 /**
- * "Needs your attention" and "Good to know": one card per fact, closed by default, opened with a tap (a plain <details> — no
+ * One card per problem for the "Needs your attention" panel (attention-panel.tsx), closed by default, opened with a tap (a plain <details> — no
  * script). Each card says what it is, what it means, what to do and who does it, and links to a page that helps only when this
  * Developer may open it. Nothing here is a guess: every card comes from a fact the server just found.
  */
@@ -17,7 +17,7 @@ const LOOK: Record<Severity, { card: string; chip: string; tag: TagTone; icon: t
   info: { card: "border-border/70 bg-card", chip: "bg-sky-500/12 text-sky-700 dark:text-sky-300", tag: "sky", icon: Info },
 };
 
-function Card({ t, item }: { t: T; item: HealthItem }) {
+export function Card({ t, item }: { t: T; item: HealthItem }) {
   const l = LOOK[item.severity];
   const Icon = l.icon;
   const word = item.severity === "fix" ? t("Fix now") : item.severity === "look" ? t("Look at it") : t.ctx("console", "Good to know");
@@ -58,39 +58,5 @@ function Card({ t, item }: { t: T; item: HealthItem }) {
         )}
       </div>
     </details>
-  );
-}
-
-export function AttentionSection({ t, items }: { t: T; items: HealthItem[] }) {
-  const need = items.filter((i) => i.severity !== "info");
-  const good = items.filter((i) => i.severity === "info");
-  // Nothing wrong: ONE quiet line (no heading, no big box). Something wrong: its heading and the cards.
-  return (
-    <div className="space-y-6">
-      {need.length === 0 ? (
-        <div className="flex items-center gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/[0.06] px-4 py-3">
-          <CircleCheck className="size-[18px] shrink-0 text-emerald-700 dark:text-emerald-300" aria-hidden />
-          <p className="text-sm"><span className="font-semibold">{t("Nothing needs your attention.")}</span> <span className="text-muted-foreground">{t("Nothing is broken or waiting too long.")}</span></p>
-        </div>
-      ) : (
-        <section aria-labelledby="attention-title">
-          <h2 id="attention-title" className="flex items-center gap-2 text-base font-semibold">
-            {t("Needs your attention")}
-            <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium tabular-nums text-amber-800 dark:text-amber-300">{need.length}</span>
-          </h2>
-          <p className="mb-3 mt-0.5 text-sm text-muted-foreground">{t("Checked just now. Tap a card to see what it means and what to do.")}</p>
-          <div className="grid items-start gap-3 lg:grid-cols-2">{need.map((i) => <Card key={i.id} t={t} item={i} />)}</div>
-        </section>
-      )}
-
-      {good.length > 0 && (
-        <section aria-labelledby="good-title">
-          <h2 id="good-title" className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-            {t.ctx("console", "Good to know")}<span className="rounded-full bg-muted px-2 py-0.5 text-[11px] tracking-normal tabular-nums">{good.length}</span>
-          </h2>
-          <div className="grid items-start gap-3 lg:grid-cols-2">{good.map((i) => <Card key={i.id} t={t} item={i} />)}</div>
-        </section>
-      )}
-    </div>
   );
 }

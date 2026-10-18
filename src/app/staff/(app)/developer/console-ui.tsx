@@ -101,7 +101,7 @@ export function SectionTitle({ title, hint, count, id }: { title: string; hint?:
 
 /**
  * A figure with its words, as a compact card: a small label with an icon on the right, a big number, what it counts and one small tag.
- * The one-sentence explanation of the figure (`note`) is printed small under the tag (and is also the hover text), so a figure is never a riddle.
+ * The longer explanation of the figure (`note`) is not printed: it is the hover text of the card, so the page stays short (owner, 2026-10-18: "do not be repetitive").
  */
 export function StatBlock({ label, value, caption, tag, tagTone = "slate", note, warn, small, icon: Icon }: {
   label: string; value: ReactNode; caption: string; tag?: string; tagTone?: TagTone; note?: string; warn?: boolean;
@@ -118,7 +118,6 @@ export function StatBlock({ label, value, caption, tag, tagTone = "slate", note,
       <p className={cn("mt-2 break-words font-semibold leading-none tracking-tight tabular-nums", small ? "text-2xl" : "text-3xl", warn && "text-amber-700 dark:text-amber-300")}>{value}</p>
       <p className="mt-1.5 text-sm text-muted-foreground">{caption}</p>
       {tag && <div className="mt-3"><Tag tone={tagTone}>{tag}</Tag></div>}
-      {note && <p className="mt-2.5 text-xs leading-relaxed text-muted-foreground">{note}</p>}
     </div>
   );
 }

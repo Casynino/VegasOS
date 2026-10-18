@@ -44,9 +44,11 @@ const HEIGHT = 168; // px, the plot area
  * `format` writes an exact number (a TZS amount, a percent) in the hover text, the legend and the table; `axis` writes the scale
  * (the number alone, in full); `top` fixes the top of the scale (100 for a percent). Without them it is the plain count chart.
  */
-export function BarChart({ t, columns, series, caption, empty, format, axis, grouped, top: fixedTop, negative }: {
+export function BarChart({ t, columns, series, caption, empty, format, axis, grouped, top: fixedTop, negative, height: plotHeight = HEIGHT }: {
   t: T; columns: BarColumn[]; series: BarSeries[]; caption: string; empty: string;
   format?: (n: number) => string; axis?: (n: number) => string; grouped?: boolean; top?: number;
+  /** The height of the plot area in pixels (a shorter chart for a panel that shares a row). */
+  height?: number;
   /** The word for a part below zero ("refund"), written in the spoken summary and the hover text: "Cash refund −TZS 2,000". */
   negative?: string;
 }) {
@@ -76,11 +78,11 @@ export function BarChart({ t, columns, series, caption, empty, format, axis, gro
       <figcaption className="sr-only">{caption}</figcaption>
       <div className="flex gap-2" role="img" aria-label={`${caption}: ${columns.map(spoken).join(", ")}`}>
         {/* the scale */}
-        <div aria-hidden className={cn("relative shrink-0 text-right text-[10px] tabular-nums text-muted-foreground", !scaleWidth && "w-7")} style={{ height: HEIGHT, width: scaleWidth }}>
+        <div aria-hidden className={cn("relative shrink-0 text-right text-[10px] tabular-nums text-muted-foreground", !scaleWidth && "w-7")} style={{ height: plotHeight, width: scaleWidth }}>
           {ticks.map((v) => <span key={v} className="absolute right-0 -translate-y-1/2 leading-none" style={{ bottom: `${(v / top) * 100}%` }}>{axis || format ? axisFmt(v) : num(t, v)}</span>)}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="relative" style={{ height: HEIGHT }}>
+          <div className="relative" style={{ height: plotHeight }}>
             {ticks.map((v) => <span key={v} aria-hidden className="absolute inset-x-0 border-t border-dashed border-border/70" style={{ bottom: `${(v / top) * 100}%` }} />)}
             <div className="absolute inset-0 flex items-end gap-[3px] sm:gap-1.5">
               {columns.map((c) => {

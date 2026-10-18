@@ -8,16 +8,15 @@ import { CONSOLE_HREF, developerGreeting } from "@/server/services/developer-con
 import { healthReport } from "@/server/services/developer-health";
 import { accessPeople, accountRoleChoices } from "@/server/services/work-as";
 import { getT } from "@/i18n/server";
-import { AttentionSection } from "./attention";
+import { AttentionPanel } from "./attention-panel";
 import { ConsoleBanner } from "./console-ui";
 import { HealthCard } from "./health-card";
 import {
-  ActivitySection, ConsoleSection, ErrorsSection, GroupLabel, HotelSection, MessagesSection, MoneySection, PeopleSection, RequestsSection, SectionSkeleton, SecuritySection, SettingsSection, SpeedSection,
+  ActivitySection, ConsoleSection, ErrorsSection, GroupLabel, MessagesSection, PeopleSection, SectionSkeleton, SecuritySection, SettingsSection, SpeedSection,
   type AreaStatus,
   type SectionCtx,
 } from "./home-sections";
 import { Shortcuts } from "./tabs";
-import { ProblemsTab } from "./tab-problems";
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getT())("Developer console") };
@@ -27,7 +26,7 @@ export const dynamic = "force-dynamic";
 const str = (v: unknown) => (typeof v === "string" ? v : "");
 
 /** Old links that named a tab (?tab=hotel…) go to that part's place on the one page. */
-const OLD_TAB_TO_PART: Record<string, string> = { problems: "problems", crashes: "errors", messages: "messages", speed: "speed", activity: "activity", people: "people", settings: "settings", hotel: "hotel", money: "money" };
+const OLD_TAB_TO_PART: Record<string, string> = { problems: "problems", crashes: "errors", messages: "messages", speed: "speed", activity: "activity", people: "people", settings: "settings" };
 
 /** Which part of the page each system check belongs to, so a part can say how it is doing in one chip. */
 const PART_OF_CHECK: Record<string, string> = {
@@ -41,12 +40,13 @@ const PART_OF_CHECK: Record<string, string> = {
 /**
  * THE DEVELOPER HOME (owner, 2026-10-17; ONE PAGE since 2026-10-18; arranged like his other consoles, Target Express and Swift Cargo): the
  * Developer's control room. At the top how healthy the system is and what needs attention; then, one under the other: Activity (who is
- * using the system), a group "The business, for awareness" (Hotel, Money, Messages & requests: READ-ONLY, COUNTS AND PLAIN WORDS ONLY, said
- * plainly to be other people's work — no guest name, no money amount, no message text; the owner asked for these after his Target and Swift
- * consoles, 2026-10-18, and rejected detailed lists of guests and payments), People & my actions, and the group "The system": the system's
- * checks, errors and automatic jobs, whether the Boss gets his reports, how fast it is, who signed in and who was refused, how it is set up.
- * Read-only. Every figure comes from a service in developer-*.ts that checks again that the caller really is the Developer; a part that cannot
- * be read says so and the rest still shows; a look at a business part is written to the audit trail. No password, key or secret is ever read out.
+ * using the system), People & my actions, and the group "The system": the system's checks, errors and automatic jobs, whether the Boss gets
+ * his reports, how fast it is, who signed in and who was refused, how it is set up.
+ * NOTHING about the hotel's own work (guests, rooms, bookings, orders, money, messages to guests): the Developer's job is the system, not
+ * operations. A "business for awareness" group (Hotel, Money, Messages & requests, counts only) was built on 2026-10-18 after his Target
+ * console and removed the same day because he said "these are operations data" — they must NOT come back unless the owner asks for them in
+ * plain words (the code is in git: commit 2fe4bea). Read-only. Every figure comes from a service in developer-*.ts that checks again that the
+ * caller really is the Developer; a part that cannot be read says so and the rest still shows. No password, key or secret is ever read out.
  * The console and the "work as" world are kept apart: someone working as another person is sent to that person's home.
  */
 export default async function DeveloperHomePage({ searchParams }: PageProps<"/staff/developer">) {
@@ -101,22 +101,14 @@ export default async function DeveloperHomePage({ searchParams }: PageProps<"/st
         />
         <Shortcuts t={t} people={people} roles={roles.map((r) => ({ id: r.id, name: r.name }))} />
         <HealthCard t={t} h={health} />
-        <AttentionSection t={t} items={health.items} />
+        <AttentionPanel t={t} items={health.items} checks={health.checks} />
       </div>
 
       {section("activity", t("Activity"), t("Who is signing in and what the team is doing."), undefined, <ActivitySection ctx={ctx} />)}
 
-      <GroupLabel>{t("The business, for awareness")}</GroupLabel>
-      {section("hotel", t("Hotel"), t("What is in the system and where it is. The hotel's work, not yours."), undefined, <HotelSection ctx={ctx} />)}
-      {section("money", t("Money"), t("Bills, payments and the money book. Finance's work, not yours."), undefined, <MoneySection ctx={ctx} />)}
-      {section("requests", t("Messages & requests"), t("What guests ask for and are told. Reception's work, not yours."), undefined, <RequestsSection ctx={ctx} />)}
-
       {section("people", t("People & my actions"), t("Who has an account, and what you have done."), chipFor("people"), <PeopleSection ctx={ctx} person={person} right={right} />)}
 
       <GroupLabel>{t("The system")}</GroupLabel>
-      <ConsoleSection id="problems" title={t("System checks")} hint={t("What the system looked at just now.")} status={chipFor(null)}>
-        <ProblemsTab t={t} checks={health.checks} />
-      </ConsoleSection>
       {section("errors", t("Errors & jobs"), t("Server errors, the automatic jobs and the payment confirmations."), chipFor("errors"), <ErrorsSection ctx={ctx} />)}
       {section("messages", t("Messages & reports"), t("Is the Boss getting his reports and messages?"), chipFor("messages"), <MessagesSection ctx={ctx} />)}
       {section("speed", t("Speed & size"), t("How fast the database answers and how the system grows."), health.database.ms !== null ? { tone: health.database.ms >= 500 ? "warn" : "ok", text: t("{ms} ms", { ms: health.database.ms }) } : undefined, <SpeedSection ctx={ctx} checks={health.checks} />)}

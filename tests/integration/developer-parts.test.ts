@@ -12,7 +12,7 @@ vi.mock("next/navigation", async () => {
 import { db } from "@/server/db";
 import { getCurrentUser, type CurrentUser } from "@/server/auth";
 import { AppError } from "@/server/errors";
-import { activityData, ONLINE_MINUTES } from "@/server/services/developer-activity";
+import { activityData, LATEST_ACTIONS, ONLINE_MINUTES } from "@/server/services/developer-activity";
 import { crashData, speedData } from "@/server/services/developer-health";
 import { envSettings, peopleTab, settingsTab } from "@/server/services/developer-console";
 import { runChecks } from "@/server/services/developer-checks";
@@ -35,20 +35,22 @@ beforeAll(async () => {
 afterAll(async () => { browser.reset(); await removeMadeUsers(); });
 
 describe("Activity: who is using the system", () => {
-  it("counts people and shows the latest sign-ins and who is online — and carries nothing about what the work was about", async () => {
+  it("shows the sign-ins and the work per day, the latest sign-ins and who is online — and carries nothing about what the work was about", async () => {
     const user = await as(rec); // a real session for the receptionist: online right now
     const devUser = await as(dev);
     const a = await activityData(devUser);
-    expect(a.stats.peopleSignedIn24h).toEqual(expect.any(Number));
+    expect(a.busiestHour === null || (a.busiestHour >= 0 && a.busiestHour < 24)).toBe(true);
     expect(a.signInsPerDay).toHaveLength(14);
     expect(a.actionsPerDay).toHaveLength(14);
     expect(a.busiestHours).toHaveLength(24);
     expect(a.online!.map((u) => u.name)).toContain("Parts Dev");
     expect(ONLINE_MINUTES).toBe(10);
-    // who is doing what: the kinds of work (counts of actions), the most active people, the team's latest actions — and never an amount
+    // who is doing what: the kinds of work (counts of actions) and the team's latest actions — and never an amount
     expect(a.where).toEqual(expect.any(Array));
-    expect(a.mostActive).toEqual(expect.any(Array));
     expect(a.latest).toEqual(expect.any(Array));
+    expect(a.recentSignIns!.length).toBeLessThanOrEqual(5);
+    // each figure is kept once on the page: the 24-hour counts are the health card's, the ranking of people and the idle accounts are the team table's
+    for (const gone of ["stats", "mostActive", "notUsing", "notUsingTotal"]) expect(a, gone).not.toHaveProperty(gone);
     expect(JSON.stringify(a)).not.toMatch(/TZS|amount|balance/i);
     expect(user.id).toBeTruthy();
   });
@@ -72,7 +74,7 @@ describe("Activity: who is using the system", () => {
     expect(a.latest!.map((l) => l.action)).not.toContain("developer.viewed");
     const times = a.latest!.map((l) => l.at.getTime());
     expect([...times].sort((x, y) => y - x)).toEqual(times); // newest first
-    expect(a.latest!.length).toBeLessThanOrEqual(12);
+    expect(a.latest!.length).toBeLessThanOrEqual(LATEST_ACTIONS);
     expect(a.where!.length).toBeGreaterThan(0);
   });
 

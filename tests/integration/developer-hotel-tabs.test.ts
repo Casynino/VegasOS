@@ -402,30 +402,60 @@ describe("the Messages & reports tab", () => {
     expect(html).not.toContain("NaN");
     expect(html).not.toContain("255700000412");
   });
+
+  it("compact: the chart and the closed days sit side by side, a day is ONE line, the failed list scrolls inside its panel — and none of it repeats itself", () => {
+    const html = renderToStaticMarkup(createElement(MessagesTab, { t, d: msgs, when }));
+    // the chart and the table of closed days share one row of two columns
+    expect(html).toMatch(/lg:grid-cols-2[^>]*>[\s\S]*?Deliveries per day[\s\S]*?The last closed days: reports/);
+    // one line a day: the state, then when it was sent, muted; who made it and which version is only the hover text (no second line)
+    const table = html.slice(html.indexOf("The last closed days: reports"), html.indexOf("Failed or waiting deliveries"));
+    expect(table.match(/<tr class="align-middle">/g)).toHaveLength(msgs.reportDays!.length);
+    expect(table).toMatch(/sent \d/);
+    expect(table).toMatch(/title="Made [^"]*version \d+[^"]*(automatic|made by a person)/);
+    expect(table).not.toContain("mt-1 block text-[11px]");
+    // the long list scrolls inside its panel (about six rows show), reachable with the keyboard
+    expect(html).toMatch(/max-h-\[21\.5rem\][^>]*tabindex="0"|tabindex="0"[^>]*max-h-\[21\.5rem\]/);
+    expect(html).toContain('aria-label="Failed or waiting deliveries"');
+    // no explanatory paragraph under the chart or the table
+    for (const gone of ["Was each report made, and did it reach the Boss?", "WhatsApp deliveries each hotel day, by how they went. Last 14 days."]) expect(html, gone).not.toContain(gone);
+  });
+
+  it("the list of failed or waiting deliveries is drawn ONLY when there are any (the 'Failed deliveries' card already says none); an empty chart is one quiet line", () => {
+    const none = renderToStaticMarkup(createElement(MessagesTab, { t, d: { ...msgs, problems: [] }, when }));
+    expect(none).not.toContain("Failed or waiting deliveries");
+    expect(none).toContain("Failed deliveries, 7 days"); // the card
+    const quiet = renderToStaticMarkup(createElement(MessagesTab, { t, d: { ...msgs, problems: [], perDay: msgs.perDay!.map((r) => ({ ...r, sent: 0, failed: 0, pending: 0 })) }, when }));
+    expect(quiet).toContain("Deliveries per day: nothing in the last 14 days.");
+    expect(quiet).not.toContain("Show the numbers"); // no chart, no numbers table of zeros
+    expect(quiet).toContain("The last closed days: reports");
+    // a list that could not be read says so, once, without drawing a table
+    const unread = renderToStaticMarkup(createElement(MessagesTab, { t, d: { ...msgs, problems: null }, when }));
+    expect(unread).toContain("Failed or waiting deliveries: This could not be read just now.");
+    expect(unread).not.toContain("undefined");
+  });
 });
 
 // ───────────────────────────────────────────── 6. the page ─────────────────────────────────────────────
 describe("the Developer home draws every part on one page, in the owner's arrangement", () => {
   const draw = async (search: Record<string, string> = {}) => renderToStaticMarkup((await resolveAsync(await DeveloperHomePage({ searchParams: Promise.resolve(search) } as never))) as never);
 
-  it("Activity, the business for awareness (Hotel, Money, Messages & requests), People & my actions, then The system — each part its own anchor, one under the other, no tabs and no jump row — counts only, nothing of the hotel's detail", async () => {
+  it("Activity, People & my actions, then The system — each part its own anchor, one under the other, no tabs and no jump row — and NOTHING of the hotel's day-to-day (no Hotel part, no Money part, no Messages & requests)", async () => {
     await wipe();
     await as(dev);
     const html = await draw();
-    const ids = ["activity", "hotel", "money", "requests", "people", "problems", "errors", "messages", "speed", "security", "settings"];
+    const ids = ["problems", "activity", "people", "errors", "messages", "speed", "security", "settings"];
     for (const id of ids) expect(html, id).toContain(`id="${id}"`);
     const at = ids.map((id) => html.indexOf(`id="${id}"`));
     expect(at).toEqual([...at].sort((x, y) => x - y)); // in this order on the page
+    for (const id of ["hotel", "money", "requests"]) expect(html, id).not.toContain(`id="${id}"`);
     expect(html).not.toContain('aria-label="Jump to"');
-    expect(html).toContain("The business, for awareness");
     expect(html).toContain("The system");
-    expect(html.indexOf("The business, for awareness")).toBeLessThan(html.indexOf('id="people"'));
-    expect(html.indexOf('id="people"')).toBeLessThan(html.indexOf("The system"));
-    for (const text of ["Bookings in the system", "Bills issued", "Messages sent (14 days)", "Rooms with a guest"]) expect(html, text).toContain(text);
-    // the detail the owner rejected stays out: no lists of payments, no accounts' balances, no today's arrivals with names
-    for (const text of ["What is happening in the hotel", "Where the money is", "Received today", "Money accounts", "The last payments", "Today&#x27;s arrivals"]) expect(html, text).not.toContain(text);
-    for (const text of ["Is the Boss getting his reports and messages?", "Deliveries per day"]) expect(html, text).toContain(text);
-    expect(html).toContain("Nothing yet");
+    // the owner (2026-10-18): "these are operations data" — none of the business parts, in any wording
+    for (const text of ["The business, for awareness", "What is happening in the hotel", "Where the money is", "Rooms with a guest", "Bookings in the system", "Bills issued", "Messages sent (14 days)", "Received today", "Money accounts", "The last payments", "Today&#x27;s arrivals"]) expect(html, text).not.toContain(text);
+    for (const text of ["Is the Boss getting his reports and messages?", "The last closed days: reports"]) expect(html, text).toContain(text);
+    // nothing was delivered: the chart is not drawn as an empty box, ONE quiet line says so — and the list of failed deliveries is not drawn at all
+    expect(html).toContain("Deliveries per day: nothing in the last 14 days.");
+    expect(html).not.toContain("Failed or waiting deliveries");
     expect(html).not.toContain("undefined");
     expect(html).not.toContain("NaN");
   }, 120_000);
@@ -435,7 +465,7 @@ describe("the Developer home draws every part on one page, in the owner's arrang
     try {
       await as(dev);
       const html = await draw();
-      for (const w of ["暂无", "老板是否收到了报告和消息？", "登录与安全", "错误与自动任务"]) expect(html, w).toContain(w);
+      for (const w of ["老板是否收到了报告和消息？", "登录与安全", "错误与自动任务"]) expect(html, w).toContain(w);
       expect(html).not.toContain("Is the Boss getting his reports and messages?");
       expect(html).not.toContain("Sign-ins & security");
       expect(html).not.toContain("undefined");
@@ -448,7 +478,7 @@ describe("the Developer home draws every part on one page, in the owner's arrang
     expect(await redirectOf(() => draw())).toBe("/staff/forbidden");
   });
 
-  it("a look at Hotel, Money or Messages is written like a look at a Business tab: once in 10 minutes, apart from Business' own tabs", async () => {
+  it("a look at Messages is written like a look at a Business tab: once in 10 minutes, apart from Business' own tabs", async () => {
     const user = await as(dev);
     const mine = () => db.auditLog.findMany({ where: { userId: dev.id, action: BUSINESS_VIEW_ACTION }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
     // a clean diary (the one maintenance path, inside a transaction)
@@ -458,16 +488,16 @@ describe("the Developer home draws every part on one page, in the owner's arrang
     });
     await draw(); await draw(); // twice: the refresh is not written again
     const rows = await mine();
-    // the parts that show hotel data are written (Hotel, Money, Messages & reports, Messages & requests); the system parts are not
-    expect(rows.map((r) => r.entityId).sort()).toEqual(["home:hotel", "home:messages", "home:money", "home:requests"]);
+    expect(rows.map((r) => r.entityId)).toEqual(["home:messages"]);
     for (const r of rows) {
       expect(r).toMatchObject({ userId: dev.id, actorType: "DEVELOPER", entityType: "Business", action: "developer.business_viewed", actorLabel: dev.fullName });
-      expect(r.after).toEqual({ tab: (r.entityId ?? "").replace("home:", ""), area: "home" });
+      expect(r.after).toEqual({ tab: "messages", area: "home" });
     }
-    expect(await mine()).toHaveLength(4);
+    // the other parts of the home are not "business data": nothing is written for them (Messages is all there is)
+    expect(await mine()).toHaveLength(1);
     // Business' own Money tab is its own entry (it is not swallowed by the home's, and the home's is not swallowed by it)
     expect(await noteBusinessView(user, "money")).toBe("logged");
-    expect((await mine()).map((r) => r.entityId).sort()).toEqual(["home:hotel", "home:messages", "home:money", "home:requests", "money"]);
+    expect((await mine()).map((r) => r.entityId).sort()).toEqual(["home:messages", "money"]);
     // the entry never counts as work
     const { NOT_WORK_ACTIONS } = await import("@/server/services/developer-console");
     expect(NOT_WORK_ACTIONS).toContain(BUSINESS_VIEW_ACTION);

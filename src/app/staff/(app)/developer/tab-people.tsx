@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Calculator, CircleCheck, ConciergeBell, KeyRound, Search, ShieldAlert, ShieldCheck, Terminal, UserCog, Users, UtensilsCrossed, Wallet, Car, type LucideIcon } from "lucide-react";
+import { CircleCheck, KeyRound, Search, ShieldAlert, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { T } from "@/i18n/translate";
 import { AUDIT_DEVELOPER_HREF, CONSOLE_HREF, type Inspection, type PeopleTab as PeopleData } from "@/server/services/developer-console";
@@ -8,21 +8,17 @@ import { Panel } from "@/components/dashboard/kit";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
 import type { TeamData } from "@/server/services/developer-team";
-import { agoText, num, Quiet, Tag } from "./console-ui";
+import { agoText, num, Quiet, roleColours, Tag } from "./console-ui";
+import { FillScroll } from "./fill-scroll";
 
 /**
- * PEOPLE & MY ACTIONS: the accounts by role (counts of accounts, never what anyone did), the team table (who did how many things this week
- * and when they last signed in: counts and a time only), the Developer's own latest actions, and "can this person do this?" (read-only;
- * every look is written to the audit trail by the service).
+ * PEOPLE & MY ACTIONS: the accounts by role in ONE strip (counts of accounts, never what anyone did), the team table (who did how many things
+ * this week and when they last signed in: counts and a time only; it scrolls inside its panel), the Developer's own last six REAL actions (looking
+ * is not listed) with one slim note beside it, and "can this person do this?" (read-only; every look is written to the audit trail by the service).
+ * Owner, 2026-10-18: "do not be repetitive, no spaces, well arranged": the people appear once (the strip counts, the table names), notes once.
  */
 
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-
-/** One icon for each kind of role (any role not listed here gets the people icon). */
-const ROLE_ICON: Record<string, LucideIcon> = {
-  OWNER: ShieldCheck, ADMIN: ShieldCheck, MANAGER: UserCog, FINANCE: Wallet, ACCOUNTANT: Calculator, RECEPTIONIST: ConciergeBell,
-  RESTAURANT: UtensilsCrossed, RESTAURANT_SCREEN: UtensilsCrossed, KITCHEN: UtensilsCrossed, DRIVER: Car, DEVELOPER: Terminal,
-};
 
 function InspectionResult({ r, t }: { r: Inspection; t: T }) {
   if (!r.ok) {
@@ -63,21 +59,28 @@ function InspectionResult({ r, t }: { r: Inspection; t: T }) {
   );
 }
 
-/** THE TEAM: every staff account with the number of things done in the last 7 hotel days and the last time they were in. Counts and a time only. */
+/**
+ * THE TEAM: every staff account with the number of things done in the last 7 hotel days and the last time they were in. Counts and a time only.
+ * The table scrolls inside its panel (about 7 rows show, the header stays) so 14 or 40 people never make the page long.
+ */
 function TeamTable({ t, team, now, timezone }: { t: T; team: TeamData | null; now: Date; timezone: string }) {
+  const rows = team?.members ?? [];
   return (
-    <Panel title={t("The team")} subtitle={t("Everyone with a staff account, what they did this week, and when they last signed in.")}>
-      {!team ? <Quiet>{t("This could not be read just now.")}</Quiet> : team.members.length === 0 ? <Quiet>{t("No staff accounts yet.")}</Quiet> : (
-        <div className="overflow-x-auto">
+    <Panel
+      title={t("The team")} subtitle={t("What each person did this week, and when they last signed in.")}
+      className="flex flex-col" bodyClassName="flex flex-1 flex-col"
+    >
+      {!team ? <Quiet>{t("This could not be read just now.")}</Quiet> : rows.length === 0 ? <Quiet>{t("No staff accounts yet.")}</Quiet> : (
+        <FillScroll label={t("The team")} maxH="max-h-80" minH="lg:min-h-[20rem]" className="rounded-xl">
           <table data-stack className="w-full min-w-[520px] text-sm">
-            <thead className="text-left text-xs text-muted-foreground">
-              <tr className="border-b border-border/70">
-                <th className="py-2 pr-4 font-medium">{t("Person")}</th><th className="py-2 pr-4 font-medium">{t("Role")}</th>
-                <th className="py-2 pr-4 text-right font-medium">{t("Actions (7 days)")}</th><th className="py-2 text-right font-medium">{t("Last in")}</th>
+            <thead className="sticky top-0 z-10 bg-card text-left text-xs text-muted-foreground">
+              <tr>
+                <th className="py-2 pr-4 font-medium shadow-[inset_0_-1px_0_var(--border)]">{t("Person")}</th><th className="py-2 pr-4 font-medium shadow-[inset_0_-1px_0_var(--border)]">{t("Role")}</th>
+                <th className="py-2 pr-4 text-right font-medium shadow-[inset_0_-1px_0_var(--border)]">{t("Actions (7 days)")}</th><th className="py-2 text-right font-medium shadow-[inset_0_-1px_0_var(--border)]">{t("Last in")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/60">
-              {team.members.map((m) => (
+              {rows.map((m) => (
                 <tr key={m.id} className="align-middle">
                   <td className="py-2.5 pr-4 font-medium">{m.name}</td>
                   <td className="py-2.5 pr-4 text-muted-foreground">{t(m.roleName)}</td>
@@ -87,7 +90,7 @@ function TeamTable({ t, team, now, timezone }: { t: T; team: TeamData | null; no
               ))}
             </tbody>
           </table>
-        </div>
+        </FillScroll>
       )}
     </Panel>
   );
@@ -101,76 +104,57 @@ export function PeopleTab({ t, data, person, right, inspection, when, timezone, 
   const accounts = data.roles.reduce((n, r) => n + r.total, 0);
   const active = data.roles.reduce((n, r) => n + r.active, 0);
   const recent = data.myActions.slice(0, 6);
+  const colours = roleColours(data.roles.map((r) => r.code));
+  const link = "shrink-0 text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline";
   return (
     <div className="space-y-4">
-      <Panel
-        title={t("{n} accounts", { n: accounts })} subtitle={t("Grouped by what they do. Open Access to work as any of them.")}
-        action={<Link href={CONSOLE_HREF.access} className="shrink-0 text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">{t("Open Access")}</Link>}
-        bodyClassName="-mx-4 -mb-4 sm:-mx-6 sm:-mb-6"
-      >
-        <ul className="grid border-t border-border/60 sm:grid-cols-2">
-          {data.roles.map((r) => {
-            const Icon = ROLE_ICON[r.code] ?? Users;
-            return (
-              <li key={r.code} className="flex items-center gap-3 border-b border-border/60 px-4 py-3 sm:px-6 sm:odd:border-r">
-                <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-muted text-muted-foreground" aria-hidden><Icon className="size-[18px]" /></span>
-                <span className="min-w-0 flex-1 leading-snug">
-                  <span className="block text-sm font-semibold">{t(r.name)}</span>
-                  {r.description && <span className="block truncate text-xs text-muted-foreground" title={r.description}>{r.description}</span>}
-                </span>
-                <Tag tone={r.active > 0 ? "emerald" : "slate"}>{t("{n} active", { n: r.active })}</Tag>
-                <span className="w-6 text-right text-lg font-semibold tabular-nums">{r.total}</span>
-              </li>
-            );
-          })}
-          <li className="flex items-center gap-3 px-4 py-3 text-sm text-muted-foreground sm:px-6">
-            <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-muted" aria-hidden><Users className="size-[18px]" /></span>
-            {t("{n} accounts in all, {m} active.", { n: accounts, m: active })}
-          </li>
+      {/* the accounts, in one strip: how many, and how many of each role */}
+      <section className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-3xl border border-border/70 bg-card px-4 py-3 shadow-[0_2px_4px_rgba(15,23,42,0.03)] sm:px-6">
+        <h2 className="text-base font-semibold" title={t("{n} active", { n: active })}>{t("{n} accounts", { n: accounts })}</h2>
+        <ul className="flex min-w-0 flex-1 flex-wrap gap-1.5">
+          {data.roles.map((r) => (
+            <li key={r.code} title={t("{n} active", { n: r.active })} className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs">
+              <span className="size-2 shrink-0 rounded-full" style={{ background: colours[r.code] }} aria-hidden />
+              <span>{t(r.name)}</span><span className="font-semibold tabular-nums">{r.total}</span>
+            </li>
+          ))}
         </ul>
-      </Panel>
+        <Link href={CONSOLE_HREF.access} className={link}>{t("Open Access")}</Link>
+      </section>
 
-      {team !== undefined && <TeamTable t={t} team={team} now={now} timezone={timezone} />}
-
-      <div className="grid items-start gap-4 lg:grid-cols-2">
-        <Panel
-          title={t("Your recent actions")} subtitle={t("The last things recorded under your name.")}
-          action={<Link href={AUDIT_DEVELOPER_HREF} className="shrink-0 text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">{t("See all")}</Link>}
-          bodyClassName="-mx-4 -mb-4 sm:-mx-6 sm:-mb-6"
-        >
-          {recent.length === 0 ? <div className="px-4 pb-4 sm:px-6 sm:pb-6"><Quiet>{t("You have no actions on record yet.")}</Quiet></div> : (
-            <ul className="border-t border-border/60">
-              {recent.map((a) => (
-                <li key={a.id} className="flex items-start gap-3 border-b border-border/60 px-4 py-3 last:border-b-0 sm:px-6">
-                  <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", a.failed ? "bg-rose-500" : "bg-sky-500")} aria-hidden />
-                  <span className="min-w-0 flex-1 text-sm leading-snug">
-                    <span className="block font-medium">{capital(auditWordsFor(a.action, a.target, t))}{a.failed && <> <Tag tone="rose">{t("Failed")}</Tag></>}</span>
-                    <span className="block text-xs text-muted-foreground" title={t.dateTime(a.at, timezone)}>{when(a.at)}{a.actingAs ? ` · ${t("as {name}", { name: a.actingAs.name })}` : ""}</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Panel>
-        <div className="space-y-3">
-          <div className="flex items-start gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/[0.06] p-4">
-            <ShieldCheck className="mt-0.5 size-5 shrink-0 text-emerald-700 dark:text-emerald-300" aria-hidden />
-            <div className="min-w-0 text-sm">
-              <p className="font-semibold">{t("Everything you do is on record")}</p>
-              <p className="mt-1 leading-relaxed text-muted-foreground">{t("Your name is attached to every action, including when you work as someone else. The records cannot be edited or deleted — not even by you.")}</p>
-            </div>
-          </div>
-          <div className="flex items-start gap-3 rounded-2xl border border-amber-500/35 bg-amber-500/[0.07] p-4">
-            <KeyRound className="mt-0.5 size-5 shrink-0 text-amber-700 dark:text-amber-300" aria-hidden />
-            <div className="min-w-0 text-sm">
-              <p className="font-semibold">{t("What you cannot do while working as someone")}</p>
-              <p className="mt-1 leading-relaxed text-muted-foreground">{t("Touch money (record, approve, pay or withdraw), open accounts, change roles, reset or change passwords, suspend people, or start or close a shift. Everything else you may do as them, and it is all recorded as you. This stops Work as from being used to take over an account.")}</p>
-            </div>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        {team !== undefined && <TeamTable t={t} team={team} now={now} timezone={timezone} />}
+        <div className={cn("space-y-4", team === undefined && "lg:col-span-2")}>
+          <Panel title={t("Your recent actions")} action={<Link href={AUDIT_DEVELOPER_HREF} className={link}>{t("See all")}</Link>}>
+            {recent.length === 0 ? <Quiet>{t("No actions yet (looking is not listed).")}</Quiet> : (
+              <ul className="divide-y divide-border/60">
+                {recent.map((a) => (
+                  <li key={a.id} className="flex items-start gap-3 py-2 first:pt-0 last:pb-0" title={when(a.at)}>
+                    <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", a.failed ? "bg-rose-500" : "bg-sky-500")} aria-hidden />
+                    <span className="min-w-0 flex-1 text-sm leading-snug">
+                      <span className="block font-medium">{capital(auditWordsFor(a.action, a.target, t))}{a.failed && <> <Tag tone="rose">{t("Failed")}</Tag></>}</span>
+                      <span className="block text-xs text-muted-foreground">{agoText(t, a.at, now)}{a.actingAs ? ` · ${t("as {name}", { name: a.actingAs.name })}` : ""}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
+          {/* the two rules of the Developer's own doing, in one slim card (the full wording is on hover) */}
+          <div
+            className="flex items-start gap-3 rounded-2xl border border-border/70 bg-card px-4 py-3 text-sm"
+            title={t("Touch money (record, approve, pay or withdraw), open accounts, change roles, reset or change passwords, suspend people, or start or close a shift. Everything else you may do as them, and it is all recorded as you. This stops Work as from being used to take over an account.")}
+          >
+            <ShieldCheck className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-300" aria-hidden />
+            <p className="min-w-0 leading-relaxed text-muted-foreground">
+              <span className="font-medium text-foreground">{t("Everything you do is on record, also as someone else, and cannot be edited or deleted.")}</span>{" "}
+              {t("As someone else you cannot touch money, accounts, roles, passwords or shifts.")}
+            </p>
           </div>
         </div>
       </div>
 
-      <Panel title={t("Who can do what")} subtitle={t("Pick a person and a right: you see yes or no, which role gives it, and everything that person can do.")}>
+      <Panel title={t("Who can do what")} subtitle={t("Pick a person and a right to see if that person has it.")}>
         <form method="get" action="/staff/developer#people" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
           <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
             {t("Person")}

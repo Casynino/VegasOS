@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { createElement } from "react";
@@ -22,17 +21,19 @@ import { addDays, businessDateOf, businessRangeBounds, toDbDate } from "@/lib/ti
 import { makeT } from "@/i18n/translate";
 import { loadCatalog } from "@/i18n/catalog";
 import teamCatalog from "@/i18n/catalog/zh-CN/staff/developer-team";
+import compactCatalog from "@/i18n/catalog/zh-CN/staff/developer-compact-ca";
 import { NOT_WORK_ACTIONS, peopleTab } from "@/server/services/developer-console";
-import { activityData, signInsByRole } from "@/server/services/developer-activity";
+import { activityData, type ActivityData } from "@/server/services/developer-activity";
 import { teamData, TEAM_DAYS, TEAM_LIMIT, type TeamMember } from "@/server/services/developer-team";
 import { ActivityTab } from "@/app/staff/(app)/developer/tab-activity";
 import { PeopleTab } from "@/app/staff/(app)/developer/tab-people";
 import { browser, makeSession, makeUser, removeMadeUsers, thrownBy, type MadeUser } from "../support/developer";
 
 /**
- * THE TEAM table (People & my actions) and WHO SIGNS IN (Activity), against a real database. The table lists every staff account except the
+ * THE TEAM table (People & my actions) and how the Activity part is drawn, against a real database. The table lists every staff account except the
  * Developer's and the system's, with a COUNT of the work done in the last 7 hotel days and the last time the person was in; nothing else about
- * anyone. "Who signs in" adds up the sign-ins of the last 14 days per kind of account. Only the Developer may read either; nothing is written.
+ * anyone. Only the Developer may read it; nothing is written. (The per-role "Who signs in" panel was removed on 2026-10-18: the sign-ins chart's
+ * legend already says it.)
  *
  * The audit trail cannot be cleaned, so rows of earlier runs stay behind: every figure here is asserted on rows THIS run made (its own users,
  * its own unique role codes), never on a global "newest N".
@@ -203,65 +204,20 @@ describe("The team: who may read it", () => {
   });
 });
 
-describe("Who signs in: sign-ins in 14 days per kind of account", () => {
-  const code = `TEAMTEST_${randomUUID().slice(0, 8).toUpperCase()}`;
-  const few = `TEAMFEW_${randomUUID().slice(0, 8).toUpperCase()}`;
-  const login = (role: string, who: MadeUser, createdAt: Date, date: string, action = "auth.login") =>
-    db.auditLog.create({ data: { actorLabel: who.fullName, actorType: role === "DEVELOPER" ? "DEVELOPER" : "STAFF", userId: who.id, actorRole: role, action, entityType: "User", entityId: who.id, businessDate: toDbDate(date), createdAt } as never });
-
-  it("adds up the successful sign-ins of each kind of account, most first, with the Developer's own as a row of its own", async () => {
-    const now = new Date();
-    const cfg = businessDayConfig(await getSettings());
-    const today = businessDateOf(now, cfg);
-    const beforeDev = signInsByRole(await activityData(devUser))!.find((r) => r.code === "DEVELOPER")?.count ?? 0;
-    // three sign-ins of one kind of account (today and yesterday), one of another
-    await login(code, ann, new Date(now.getTime() - MIN), today);
-    await login(code, abe, new Date(now.getTime() - 2 * MIN), today);
-    await login(code, ann, new Date(now.getTime() - 20 * HOUR), addDays(today, -1));
-    await login(few, bob, new Date(now.getTime() - 3 * MIN), today);
-    // not counted: a sign-out, a wrong try, and a sign-in older than 14 days
-    await login(code, ann, new Date(now.getTime() - 4 * MIN), today, "auth.logout");
-    await login(code, ann, new Date(now.getTime() - 5 * MIN), today, "auth.login_failed");
-    await login(code, ann, new Date(now.getTime() - 20 * DAY), addDays(today, -20));
-    // the Developer signs in twice
-    await login("DEVELOPER", dev, new Date(now.getTime() - 6 * MIN), today);
-    await login("DEVELOPER", dev, new Date(now.getTime() - 7 * MIN), today);
-
-    const a = await activityData(await as(dev));
-    const rows = signInsByRole(a)!;
-    expect(rows.find((r) => r.code === code)).toMatchObject({ code, name: code, count: 3 });
-    expect(rows.find((r) => r.code === few)).toMatchObject({ count: 1 });
-    expect(rows.findIndex((r) => r.code === code)).toBeLessThan(rows.findIndex((r) => r.code === few)); // most sign-ins first
-    const developer = rows.find((r) => r.code === "DEVELOPER")!;
-    expect(developer.name).toBe((await db.role.findUniqueOrThrow({ where: { code: "DEVELOPER" } })).name);
-    expect(developer.count).toBeGreaterThanOrEqual(beforeDev + 2);
-    // most first, every row has something, and the figures are the ones the sign-ins chart is drawn from
-    expect(rows.map((r) => r.count)).toEqual([...rows.map((r) => r.count)].sort((x, y) => y - x));
-    expect(rows.every((r) => r.count > 0)).toBe(true);
-    for (const r of rows) expect(a.signInsPerDay!.reduce((n, d) => n + (d.byRole[r.code] ?? 0), 0), r.code).toBe(r.count);
-    expect(rows.reduce((n, r) => n + r.count, 0)).toBe(a.signInsPerDay!.reduce((n, d) => n + d.total, 0));
-  });
-
-  it("is null when the sign-ins could not be read, and empty when nobody signed in", () => {
-    expect(signInsByRole({ roles: [], signInsPerDay: null })).toBeNull();
-    expect(signInsByRole({ roles: [{ code: "X", name: "X" }], signInsPerDay: [{ date: "2026-10-18", total: 0, byRole: {} }] })).toEqual([]);
-  });
-});
-
 describe("Rendering: English and 中文, nothing undefined", () => {
   it("the team table: a row per person, last in as words, 'Never signed in', muted zeros — and the same words in 中文", async () => {
     const people = await peopleTab(devUser);
     const team = (await teamData(devUser))!;
     const now = new Date();
     const en = makeT("en", null);
-    const zh = makeT("zh-CN", { ...(await loadCatalog("zh-CN", ["common", "public", "staff", "server"])), ...teamCatalog });
+    const zh = makeT("zh-CN", { ...(await loadCatalog("zh-CN", ["common", "public", "staff", "server"])), ...teamCatalog, ...compactCatalog });
     const render = (t: typeof en, over: Record<string, unknown> = {}) =>
       renderToStaticMarkup(createElement(PeopleTab, { t, data: people, person: "", right: "", inspection: null, when: (d: Date) => d.toISOString(), timezone: TZ, team, now, ...over }));
 
     const htmlEn = render(en);
     const txt = textOf(htmlEn);
     expect(htmlEn).not.toMatch(/undefined|NaN/);
-    for (const w of ["The team", "Everyone with a staff account, what they did this week, and when they last signed in.", "Person", "Role", "Actions (7 days)", "Last in", "Team Ann", "Team Abe", "Team Bob", "Team Cy", "Never signed in"]) expect(txt, w).toContain(w);
+    for (const w of ["The team", "What each person did this week, and when they last signed in.", "Person", "Role", "Actions (7 days)", "Last in", "Team Ann", "Team Abe", "Team Bob", "Team Cy", "Never signed in"]) expect(txt, w).toContain(w);
     // (the Developer's own account and the system account are not part of the team; the "Who can do what" list further down names everyone, so look at the team's panel only)
     const panel = txt.slice(txt.indexOf("The team"), txt.indexOf("Your recent actions"));
     expect(panel).not.toContain("Team Dev");
@@ -271,16 +227,20 @@ describe("Rendering: English and 中文, nothing undefined", () => {
     expect(txt.indexOf("The team")).toBeLessThan(txt.indexOf("Your recent actions"));
     expect(htmlEn).toMatch(/<table data-stack/);
     expect(htmlEn).toMatch(/text-muted-foreground">0</); // a zero is muted
+    // the table scrolls inside its panel (a labelled region the keyboard reaches), its header stays, and it is the only table of the part
+    expect(htmlEn).toMatch(/<div tabindex="0" role="region" aria-label="The team"[^>]*overflow-auto/);
+    expect(htmlEn).toMatch(/<thead class="sticky top-0/);
+    expect(htmlEn.match(/<table/g)).toHaveLength(1);
 
     const htmlZh = render(zh);
     const zhText = textOf(htmlZh);
     expect(htmlZh).not.toMatch(/undefined|NaN/);
-    for (const w of ["操作数（7 天）", "最近登录", "从未登录", "所有拥有员工账号的人"]) expect(zhText, w).toContain(w);
+    for (const w of ["操作数（7 天）", "最近登录", "从未登录", "每个人本周做了什么，以及最近一次登录的时间。"]) expect(zhText, w).toContain(w);
     expect(zhText).not.toContain("Actions (7 days)");
-    expect(zhText).not.toContain("Everyone with a staff account");
+    expect(zhText).not.toContain("What each person did this week");
 
     // not asked for: nothing; could not be read: said in plain words, no table
-    expect(textOf(render(en, { team: undefined }))).not.toContain("Everyone with a staff account");
+    expect(textOf(render(en, { team: undefined }))).not.toContain("What each person did this week");
     const failed = render(en, { team: null });
     expect(textOf(failed)).toContain("This could not be read just now.");
     expect(failed).not.toMatch(/Actions \(7 days\)/);
@@ -289,36 +249,131 @@ describe("Rendering: English and 中文, nothing undefined", () => {
     expect(empty).not.toMatch(/undefined|NaN/);
   });
 
-  it("the Activity part shows 'Who signs in' with a bar per kind of account, and still shows everything it showed before", async () => {
-    const a = await activityData(await as(dev));
-    const now = new Date();
+  it("the strip of accounts: one line with the count and a chip per role (name and number, no descriptions), the Open Access link, and ONE slim note", async () => {
+    const people = await peopleTab(devUser);
     const en = makeT("en", null);
-    const zh = makeT("zh-CN", { ...(await loadCatalog("zh-CN", ["common", "public", "staff", "server"])), ...teamCatalog });
-    const htmlEn = renderToStaticMarkup(createElement(ActivityTab, { t: en, a, now, timezone: TZ }));
-    const txt = textOf(htmlEn);
-    expect(htmlEn).not.toMatch(/undefined|NaN/);
-    for (const w of ["Who signs in", "Sign-ins in the last 14 days, by kind of account.", "Developer",
-      // nothing that was there is gone
-      "Who did what, just now", "Sign-ins per day", "Actions per day", "Busiest hours of the day", "Where the work happens", "Recent sign-ins", "Online right now", "Most active people", "Not using the system"]) expect(txt, w).toContain(w);
-    const rows = signInsByRole(a)!;
-    expect(rows.length).toBeGreaterThan(0);
-    expect(txt).toContain(rows[0].code === "UNKNOWN" ? "Other" : en(rows[0].name));
-    // beside the recent sign-ins, not after the whole page
-    expect(txt.indexOf("Who signs in")).toBeGreaterThan(txt.indexOf("Recent sign-ins"));
-    expect(txt.indexOf("Who signs in")).toBeLessThan(txt.indexOf("Online right now"));
+    const html = renderToStaticMarkup(createElement(PeopleTab, { t: en, data: people, person: "", right: "", inspection: null, when: (d: Date) => d.toISOString(), timezone: TZ, team: undefined, now: new Date() }));
+    const txt = textOf(html);
+    const accounts = people.roles.reduce((n, r) => n + r.total, 0);
+    expect(txt).toContain(`${accounts} accounts`);
+    for (const r of people.roles) expect(html, r.code).toMatch(new RegExp(`<span>${en(r.name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}</span><span class="font-semibold tabular-nums">${r.total}</span>`));
+    expect(txt.match(/Open Access/g)).toHaveLength(1);
+    // the old tiles are gone: no "n active" tags in the page itself (they are only a hover text), no "accounts in all" line
+    expect(txt).not.toMatch(/\d+ active/);
+    expect(txt).not.toContain("accounts in all");
+    expect(txt).not.toContain("Grouped by what they do");
+    // one slim note with two short sentences instead of two cards
+    expect(txt).toContain("Everything you do is on record, also as someone else, and cannot be edited or deleted. As someone else you cannot touch money, accounts, roles, passwords or shifts.");
+    expect(txt).not.toContain("What you cannot do while working as someone");
+    expect(txt.match(/Everything you do is on record/g)).toHaveLength(1);
+    expect(txt).toContain("Pick a person and a right to see if that person has it.");
+    // the team is not asked for: nothing is drawn for it, and the rest of the row is the actions
+    expect(txt).not.toContain("The team");
+    expect(txt).toContain("Your recent actions");
+  });
 
-    const htmlZh = renderToStaticMarkup(createElement(ActivityTab, { t: zh, a, now, timezone: TZ }));
-    expect(htmlZh).not.toMatch(/undefined|NaN/);
-    expect(textOf(htmlZh)).toContain("谁在登录");
-    expect(textOf(htmlZh)).toContain("最近 14 天的登录次数，按账号类型统计。");
-    expect(textOf(htmlZh)).not.toContain("Who signs in");
+  it("'Your recent actions' lists the Developer's last real actions, never the looking", async () => {
+    const people = await peopleTab(devUser);
+    const en = makeT("en", null);
+    const mk = (id: string, action: string, ago: number) => ({ id, at: new Date(Date.now() - ago * MIN), action, words: action, target: null, entityType: "X", path: null, actingAs: null, failed: false });
+    const data = { ...people, myActions: [mk("a", "reservation.checked_in", 1), mk("b", "developer.work_as_started", 2), mk("c", "auth.login", 3)] };
+    const html = renderToStaticMarkup(createElement(PeopleTab, { t: en, data, person: "", right: "", inspection: null, when: (d: Date) => d.toISOString(), timezone: TZ, team: undefined, now: new Date() }));
+    const txt = textOf(html);
+    expect(txt).toContain("Your recent actions");
+    expect(txt).toContain("Checked a guest in");
+    expect(txt).not.toContain("looked at a page");
+    expect(textOf(renderToStaticMarkup(createElement(PeopleTab, { t: en, data: { ...people, myActions: [] }, person: "", right: "", inspection: null, when: (d: Date) => d.toISOString(), timezone: TZ, team: undefined, now: new Date() })))).toContain("No actions yet (looking is not listed).");
+  });
 
-    // could not be read / nobody signed in
-    const unread = renderToStaticMarkup(createElement(ActivityTab, { t: en, a: { ...a, signInsPerDay: null }, now, timezone: TZ }));
+  /** An Activity part with something in every panel (made up here, so the layout is asserted without depending on what the database holds). */
+  const days = Array.from({ length: 14 }, (_, i) => `2026-10-${String(5 + i).padStart(2, "0")}`);
+  const at = (m: number) => new Date(Date.now() - m * MIN);
+  const full = (): ActivityData => ({
+    today: "2026-10-18", dayStart: "04:00", days, busiestHour: 11,
+    roles: [{ code: "RECEPTIONIST", name: "Receptionist" }, { code: "MANAGER", name: "Manager" }],
+    signInsPerDay: days.map((date, i) => ({ date, total: 1 + (i % 3), byRole: { RECEPTIONIST: 1, MANAGER: i % 3 } })),
+    actionsPerDay: days.map((date) => ({ date, team: 5, developer: 1, total: 6 })),
+    busiestHours: Array.from({ length: 24 }, (_, hour) => ({ hour, count: hour === 11 ? 9 : hour % 4 })),
+    where: [{ label: "Payments", count: 12 }, { label: "Restaurant orders", count: 7 }],
+    latest: Array.from({ length: 9 }, (_, i) => ({ id: `l${i}`, name: `Doer ${i}`, roleName: "Receptionist", action: "reservation.checked_in", at: at(i + 1) })),
+    online: Array.from({ length: 7 }, (_, i) => ({ id: `o${i}`, name: `Online ${i}`, roleName: "Manager", lastSeenAt: at(i) })),
+    recentSignIns: Array.from({ length: 5 }, (_, i) => ({ id: `r${i}`, name: `Signer ${i}`, roleCode: "MANAGER", roleName: "Manager", device: i === 4 ? null : { label: "Chrome · Mac", phone: false }, ip: `10.0.0.${i}`, at: at(i + 1) })),
+  });
+  const draw = (t: ReturnType<typeof makeT>, a: ActivityData) => renderToStaticMarkup(createElement(ActivityTab, { t, a, now: new Date(), timezone: TZ }));
+
+  it("the Activity part: no stat cards, no repeated panels; who did what next to who is online and the recent sign-ins; the charts in pairs", async () => {
+    const en = makeT("en", null);
+    const html = draw(en, full());
+    const txt = textOf(html);
+    expect(html).not.toMatch(/undefined|NaN/);
+    // every panel, in the owner's order
+    const order = ["Who did what, just now", "Online right now", "Recent sign-ins", "Sign-ins per day", "Actions per day", "Busiest hours of the day", "Where the work happens"].map((w) => txt.indexOf(w));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((x, y) => x - y)).toEqual(order);
+    // figures that are shown elsewhere on the page are not shown again
+    for (const gone of ["People signed in", "Actions by the team", "Failed sign-ins", "Who signs in", "Most active people", "Not using the system", "different people in 24 hours", "Nothing to show yet", "Could not be read just now"]) expect(txt, gone).not.toContain(gone);
+    expect(html.match(/<table/g)).toHaveLength(3); // only the three "Show the numbers" tables of the bar charts
+    // row 1: two thirds and one third
+    expect(html).toContain("lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]");
+    expect(html).toMatch(/<div tabindex="0" role="region" aria-label="Who did what, just now"[^>]*overflow-auto/);
+    expect(html.match(/Doer \d/g)).toHaveLength(9); // all nine rows are there (the list scrolls)
+    // online: five names, then "and 2 more"
+    for (let i = 0; i < 5; i++) expect(txt).toContain(`Online ${i}`);
+    expect(txt).not.toContain("Online 5");
+    expect(txt).toContain("and 2 more");
+    // recent sign-ins: a compact line each (device and address together; no device words when the session is gone)
+    expect(txt).toContain("Chrome · Mac · 10.0.0.0");
+    expect(txt).toContain("10.0.0.4");
+    expect(txt).not.toContain("Session ended");
+    expect(html.match(/Signer \d/g)).toHaveLength(5);
+    // one subtitle line per chart, and the chart stays short with its numbers collapsed
+    expect(txt).toContain("Last 14 days, by role. Hover a bar for the numbers.");
+    expect(txt).toContain("Hotel time, last 14 days. The peak is around 11:00.");
+    expect(html).not.toMatch(/<details[^>]* open/);
+    expect(html).toContain("Show the numbers");
+  });
+
+  it("a panel with nothing to show is not drawn: ONE quiet line names what has nothing yet, another what could not be read", async () => {
+    const en = makeT("en", null);
+    const zeros = (a: ActivityData): ActivityData => ({
+      ...a,
+      signInsPerDay: a.signInsPerDay!.map((d) => ({ ...d, total: 0, byRole: {} })), roles: [],
+      actionsPerDay: a.actionsPerDay!.map((d) => ({ ...d, team: 0, developer: 0, total: 0 })),
+      busiestHours: a.busiestHours!.map((h) => ({ ...h, count: 0 })), busiestHour: null, where: [], latest: [], online: [], recentSignIns: [],
+    });
+    // one chart has nothing, one cannot be read: the others fill the rows, the odd one is full width
+    const some = draw(en, { ...full(), signInsPerDay: zeros(full()).signInsPerDay, roles: [], actionsPerDay: null });
+    const someText = textOf(some);
+    expect(someText).toContain("Could not be read just now: Actions per day.");
+    expect(someText).toContain("Nothing to show yet for: Sign-ins per day.");
+    expect(some.match(/<figure/g)).toHaveLength(2); // hours and where
+    expect(some).not.toMatch(/Sign-ins per day<\/h2>/);
+    // nothing at all: no box, no chart, one line
+    const nothing = draw(en, zeros(full()));
+    const nothingText = textOf(nothing);
+    expect(nothing).not.toMatch(/<section|<figure|<table/);
+    expect(nothingText.match(/Nothing to show yet for:/g)).toHaveLength(1);
+    expect(nothingText).toContain("Nothing to show yet for: Who did what, just now, Online right now, Recent sign-ins, Sign-ins per day, Actions per day, Busiest hours of the day, Where the work happens.");
+    // nothing could be read: one line too
+    const unread = draw(en, { ...full(), signInsPerDay: null, actionsPerDay: null, busiestHours: null, where: null, latest: null, online: null, recentSignIns: null });
+    expect(unread).not.toMatch(/<section|<figure|<table/);
+    expect(textOf(unread).match(/Could not be read just now:/g)).toHaveLength(1);
     expect(unread).not.toMatch(/undefined|NaN/);
-    expect(textOf(unread)).toContain("Who signs in");
-    const nobody = renderToStaticMarkup(createElement(ActivityTab, { t: en, a: { ...a, roles: [], signInsPerDay: a.signInsPerDay!.map((d) => ({ ...d, total: 0, byRole: {} })) }, now, timezone: TZ }));
-    expect(nobody).not.toMatch(/undefined|NaN/);
-    expect(textOf(nobody)).toContain("Nobody signed in during these 14 days.");
+    // no "who did what" but the side panels: they sit side by side
+    const side = draw(en, { ...full(), latest: [] });
+    expect(side).toContain("lg:grid-cols-2");
+    expect(side).not.toContain("lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]");
+  });
+
+  it("the Activity part is the same in 中文, and the real data draws without a gap", async () => {
+    const zh = makeT("zh-CN", { ...(await loadCatalog("zh-CN", ["common", "public", "staff", "server"])), ...teamCatalog, ...compactCatalog });
+    const html = draw(zh, full());
+    const text = textOf(html);
+    expect(html).not.toMatch(/undefined|NaN/);
+    for (const w of ["最近 14 天，按角色统计。将鼠标移到柱上查看数字。", "最近 14 天：团队和你保存的操作。", "按领域统计的操作，最近 7 天。", "酒店时间，最近 14 天。高峰在 11:00 前后。"]) expect(text, w).toContain(w);
+    expect(text).not.toContain("Last 14 days");
+    expect(text).not.toContain("Online right now");
+    const real = draw(makeT("en", null), await activityData(await as(dev)));
+    expect(real).not.toMatch(/undefined|NaN/);
   });
 });

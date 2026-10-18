@@ -280,19 +280,12 @@ const PROBES: { label: string; ask: (now: Date) => Promise<unknown> }[] = [
   { label: msg("Load newest 50 bookings"), ask: () => db.reservation.findMany({ select: { id: true }, orderBy: { createdAt: "desc" }, take: 50 }) },
 ];
 
-/** What the database holds: records counted in a table, never read. */
-export interface HoldRow { key: string; label: string; rows: number | null }
-
 export interface SpeedData {
   /** Each probe with its time in milliseconds (null = it did not answer); `samples` are the answered ones. */
   probes: { label: string; ms: number | null }[];
   latency: { samples: number[]; average: number | null; slowest: number | null };
   tables: { label: string; rows: number | null; bytes: number | null }[];
   databaseBytes: number | null;
-  /** How many records the system holds, by kind (counts only — nothing about any record): guests, bookings, booked rooms, payments, restaurant orders, invoices, audit lines, messages to guests, messages of the reports to the Boss. */
-  holds: HoldRow[];
-  /** The hotel day of the oldest audit line (the permanent diary reaches back to it). null = nothing written yet, or could not be read. */
-  auditSince: BusinessDate | null;
   deployment: {
     commit: string | null; environment: string | null; node: string;
     /** "Pooled" or "Direct" — only which kind of address is used, never the address. null = not known. */
@@ -310,16 +303,10 @@ export async function speedData(user: ConsoleUser, now = new Date()): Promise<Sp
     probes.push({ label: p.label, ms: ok ? Math.max(1, Math.round(performance.now() - started)) : null });
   }
   const samples = probes.flatMap((p) => (p.ms === null ? [] : [p.ms]));
-  const [counts, hold, oldest, sizes, dbSize, diag] = await Promise.all([
+  const [counts, sizes, dbSize, diag] = await Promise.all([
     Promise.all([
       safe(() => db.auditLog.count()), safe(() => db.session.count()), safe(() => db.notificationDelivery.count()), safe(() => db.systemEvent.count()),
     ]),
-    // One cheap count each; one failing leaves that figure out and the rest still draw.
-    Promise.all([
-      safe(() => db.guest.count()), safe(() => db.reservation.count()), safe(() => db.reservationRoom.count()),
-      safe(() => db.payment.count()), safe(() => db.restaurantOrder.count()), safe(() => db.invoice.count()), safe(() => db.guestMessage.count()),
-    ]),
-    safe(() => db.auditLog.findFirst({ orderBy: { businessDate: "asc" }, select: { businessDate: true } })),
     safe(() => db.$queryRaw<{ name: string; bytes: bigint }[]>`
       SELECT c.relname AS name, pg_total_relation_size(c.oid)::bigint AS bytes
       FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -329,25 +316,11 @@ export async function speedData(user: ConsoleUser, now = new Date()): Promise<Sp
   ]);
   const sizeOf = new Map((sizes ?? []).map((s) => [s.name, Number(s.bytes)]));
   const url = process.env.DATABASE_URL ?? "";
-  const [guests, bookings, bookedRooms, payments, orders, invoices, guestMessages] = hold;
-  const holds: HoldRow[] = [
-    { key: "guests", label: msg("Guests"), rows: guests },
-    { key: "bookings", label: msg("Bookings"), rows: bookings },
-    { key: "bookedRooms", label: msg("Booked rooms"), rows: bookedRooms },
-    { key: "payments", label: msg("Payments"), rows: payments },
-    { key: "orders", label: msg("Restaurant orders"), rows: orders },
-    { key: "invoices", label: msg("Invoices"), rows: invoices },
-    { key: "audit", label: msg("Audit lines"), rows: counts[0] },
-    { key: "guestMessages", label: msg("Guest messages"), rows: guestMessages },
-    { key: "messages", label: msg("Report messages"), rows: counts[2] },
-  ];
   return {
     probes,
     latency: { samples, average: samples.length ? Math.round(samples.reduce((a, b) => a + b, 0) / samples.length) : null, slowest: samples.length ? Math.max(...samples) : null },
     tables: BIG_TABLES.map((t, i) => ({ label: t.label, rows: counts[i], bytes: sizeOf.get(t.table) ?? null })),
     databaseBytes: dbSize?.[0] ? Number(dbSize[0].bytes) : null,
-    holds,
-    auditSince: oldest ? fromDbDate(oldest.businessDate) : null,
     deployment: {
       ...diag.deployment, node: process.version,
       databaseLink: url ? (/-pooler[.-]|pgbouncer=true/i.test(url) ? "Pooled" : "Direct") : null,

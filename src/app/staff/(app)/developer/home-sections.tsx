@@ -7,18 +7,12 @@ import { activityData } from "@/server/services/developer-activity";
 import { crashData, speedData } from "@/server/services/developer-health";
 import { noteHomeTabView } from "@/server/services/developer-business";
 import { messagesData } from "@/server/services/developer-messages";
-import { hotelGlance } from "@/server/services/developer-hotel-glance";
-import { moneyGlance } from "@/server/services/developer-money-glance";
-import { requestsGlance } from "@/server/services/developer-requests";
 import { teamData } from "@/server/services/developer-team";
 import { recordError } from "@/server/services/system-events";
 import { ErrorsTab, SecurityTab } from "./tab-crashes";
 import { Tag, type TagTone } from "./console-ui";
 import { ActivityTab } from "./tab-activity";
-import { HotelGlanceTab } from "./tab-hotel-glance";
 import { MessagesTab } from "./tab-messages";
-import { MoneyGlanceTab } from "./tab-money-glance";
-import { RequestsGlanceTab } from "./tab-requests";
 import { PeopleTab } from "./tab-people";
 import { SettingsTab } from "./tab-settings";
 import { SpeedTab } from "./tab-speed";
@@ -118,26 +112,4 @@ export async function PeopleSection({ ctx, person, right }: { ctx: SectionCtx; p
 }
 export async function SettingsSection({ ctx }: { ctx: SectionCtx }) {
   return guard(ctx.t, "settings", async () => <SettingsTab t={ctx.t} s={await settingsTab(ctx.user, ctx.sessionHash, ctx.now)} when={ctx.when} />);
-}
-
-// ───────────────────────────────────────────── the business, for awareness ─────────────────────────────────────────────
-// Read-only, counts and plain words only (never a name, an amount or the words of a message). Each look is written to the audit trail
-// (once per part in ten minutes), like a look at a tab of Business.
-export async function HotelSection({ ctx }: { ctx: SectionCtx }) {
-  return guard(ctx.t, "hotel", async () => {
-    await noteHomeTabView(ctx.user, "hotel", { ipAddress: ctx.ipAddress, now: ctx.now });
-    return <HotelGlanceTab t={ctx.t} g={await hotelGlance(ctx.user, ctx.now)} when={ctx.when} />;
-  });
-}
-export async function MoneySection({ ctx }: { ctx: SectionCtx }) {
-  return guard(ctx.t, "money", async () => {
-    await noteHomeTabView(ctx.user, "money", { ipAddress: ctx.ipAddress, now: ctx.now });
-    return <MoneyGlanceTab t={ctx.t} g={await moneyGlance(ctx.user, ctx.now)} when={ctx.when} now={ctx.now} />;
-  });
-}
-export async function RequestsSection({ ctx }: { ctx: SectionCtx }) {
-  return guard(ctx.t, "requests", async () => {
-    await noteHomeTabView(ctx.user, "requests", { ipAddress: ctx.ipAddress, now: ctx.now });
-    return <RequestsGlanceTab t={ctx.t} g={await requestsGlance(ctx.user, ctx.now)} when={ctx.when} />;
-  });
 }

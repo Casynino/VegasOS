@@ -20,12 +20,13 @@ import { businessDayConfig, getSettings } from "@/server/settings";
 import { businessDateOf } from "@/lib/time/business-date";
 import { makeT } from "@/i18n/translate";
 import { loadCatalog } from "@/i18n/catalog";
+import zhCompactCb from "@/i18n/catalog/zh-CN/staff/developer-compact-cb";
 import { CHECK_IDS, CHECK_LIMITS, runChecks, type CheckResult } from "@/server/services/developer-checks";
 import { systemDiagnostics } from "@/server/services/developer-console";
 import { crashData, healthReport } from "@/server/services/developer-health";
 import DeveloperHomePage from "@/app/staff/(app)/developer/page";
 import { CrashesTab } from "@/app/staff/(app)/developer/tab-crashes";
-import { ProblemsTab } from "@/app/staff/(app)/developer/tab-problems";
+import { AttentionPanel } from "@/app/staff/(app)/developer/attention-panel";
 import { resetBusinessData } from "../support/helpers";
 import { browser, makeSession, makeUser, removeMadeUsers, thrownBy, type MadeUser } from "../support/developer";
 
@@ -908,7 +909,7 @@ describe("nothing personal is in any result", () => {
     const crashes = await crashData(user);
     expect(rs.filter((r) => r.state === "fix").length).toBeGreaterThanOrEqual(5);
     const t = makeT("en", null);
-    const html = renderToStaticMarkup(createElement(ProblemsTab, { t, checks: rs }));
+    const html = renderToStaticMarkup(createElement(AttentionPanel, { t, items: health.items, checks: rs }));
     const everything = JSON.stringify({ rs, health, crashes }) + html;
     const forbidden = [
       "Zuberi", "Kimaro", "Amina", "Mwakyusa", "Hassan", "Ngowi", "Neema", "Tarimo", "example.com", "example.org", "example.net", "@",
@@ -993,9 +994,10 @@ describe("one cause is shown once, and what did not apply is not counted as fine
     const rs = await run();
     for (const id of ["whatsapp-none", "whatsapp-keys", "report-daily", "report-room"]) expect(get(rs, id)).toMatchObject({ state: "ok", skipped: true });
     const fine = rs.filter((c) => c.state === "ok" && !c.skipped).length;
-    const html = renderToStaticMarkup(createElement(ProblemsTab, { t: makeT("en", null), checks: rs }));
+    const html = renderToStaticMarkup(createElement(AttentionPanel, { t: makeT("en", null), items: [], checks: rs }));
     const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
-    expect(text).toContain(`Checks fine ${fine} of ${rs.length}`);
+    expect(text).toContain(`${fine} of ${rs.length} fine`);
+    expect(text).toContain("Not checked yet");
     expect(text).toContain("Not checked here: reports are switched off.");
   });
 
@@ -1017,21 +1019,26 @@ describe("the Problems tab and the Crashes tab", () => {
   const draw = async (search: Record<string, string> = {}) => renderToStaticMarkup(await DeveloperHomePage({ searchParams: Promise.resolve(search) } as never));
   const textOf = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/&#x27;/g, "'").replace(/&amp;/g, "&").replace(/\s+/g, " ");
 
-  it("System checks is the first part of the page: four figures ('Checks fine n of 30', Needs fixing, Look at, Could not be checked) and what is not checked", async () => {
+  it("the attention panel is at the top: a card for each problem, then ONE closed row 'What was checked · n of 31 fine, n not checked yet' that opens to every check", async () => {
     await as(dev);
     await db.room.update({ where: { id: fixtures.room[0].id }, data: { status: "OCCUPIED" } });
     const html = await draw();
-    // one page: the checks come first and every part is its own anchor, one under the other
+    // one page: the panel comes first and every part is its own anchor, one under the other
     expect(html).toContain('id="problems"');
     expect(html.indexOf('id="problems"')).toBeLessThan(html.indexOf('id="errors"'));
+    expect(html.indexOf('id="attention-title"')).toBeLessThan(html.indexOf('id="activity"'));
     const text = textOf(html);
     const all = await run();
     const fine = all.filter((c) => c.state === "ok" && !c.skipped).length;
     const notChecked = all.filter((c) => c.state === "unknown" || (c.state === "ok" && c.skipped)).length;
     expect(fine + notChecked).toBe(CHECK_IDS.length - 1);
-    expect(text).toContain(`Checks fine ${fine} of ${CHECK_IDS.length}`);
-    expect(text).toContain(`Could not be checked ${notChecked}`);
-    expect(text).toContain("Needs fixing");
+    expect(text).toContain("Needs your attention");
+    expect(text).toContain(`What was checked · ${fine} of ${CHECK_IDS.length} fine`);
+    expect(text).toContain(`${notChecked} not checked yet`);
+    // the old four stat cards and the second copy of the problems are gone
+    expect(text).not.toContain("Checks fine");
+    expect(text).not.toContain("nothing is known about them");
+    expect(text).not.toContain("Good to know");
     expect(text).toContain("Rooms marked occupied");
     expect(text).toContain("Who fixes it");
     expect(text).toContain("The Developer.");
@@ -1041,51 +1048,63 @@ describe("the Problems tab and the Crashes tab", () => {
     expect(text).not.toContain("Alerts waiting");
   });
 
-  it("the sections: needs fixing, look at, all good (collapsed, with every title), could not be checked — nothing is 'undefined' or 'NaN', in English and in 中文", async () => {
+  it("the panel: a card for each problem, then ONE closed row that opens to every check — not checked yet first, then the fine ones — nothing is 'undefined' or 'NaN', in English and in 中文", async () => {
     await db.room.update({ where: { id: fixtures.room[0].id }, data: { status: "OCCUPIED" } });
     await setSettings({ reportEnabled: true, reportRecipients: [] });
     await db.$executeRaw`DELETE FROM "system_events"`;
     const rs = await run();
+    const items = (await healthReport(await as(dev))).items;
     const en = makeT("en", null);
-    const zh = makeT("zh-CN", await loadCatalog("zh-CN", ["common", "public", "staff", "server"]));
-    const htmlEn = renderToStaticMarkup(createElement(ProblemsTab, { t: en, checks: rs }));
-    const htmlZh = renderToStaticMarkup(createElement(ProblemsTab, { t: zh, checks: rs }));
+    const zh = makeT("zh-CN", { ...(await loadCatalog("zh-CN", ["common", "public", "staff", "server"])), ...zhCompactCb });
+    const htmlEn = renderToStaticMarkup(createElement(AttentionPanel, { t: en, items, checks: rs }));
+    const htmlZh = renderToStaticMarkup(createElement(AttentionPanel, { t: zh, items, checks: rs }));
     for (const html of [htmlEn, htmlZh]) expect(html).not.toMatch(/undefined|NaN/);
-    for (const w of ["Checks fine", "Needs fixing", "Look at", "All good", "Could not be checked"]) expect(textOf(htmlEn)).toContain(w);
-    expect(htmlEn).toMatch(/<details[^>]*>[\s\S]*All good/);
+    for (const w of ["Needs your attention", "to fix now", "What was checked", "fine"]) expect(textOf(htmlEn)).toContain(w);
+    // the list is ONE closed <details> (the problems are on the cards above it, never again in the list)
+    expect(htmlEn).toMatch(/<details[^>]*>[\s\S]*What was checked/);
     expect(htmlEn).not.toMatch(/<details[^>]* open/);
     // every check that was fine is named (inside the closed list), so the Developer sees what WAS looked at
     for (const c of rs.filter((x) => x.state === "ok" && !x.skipped)) expect(textOf(htmlEn)).toContain(c.title.text);
     // in 中文 nothing of the new words is left in English
     const zhText = textOf(htmlZh);
-    for (const w of ["检查正常", "需要修复", "需要留意", "一切正常", "无法检查"]) expect(zhText).toContain(w);
-    expect(zhText).not.toContain("Checks fine");
-    expect(zhText).not.toContain("Needs fixing");
+    for (const w of ["已检查的内容", "项中", "正常"]) expect(zhText).toContain(w);
+    expect(zhText).not.toContain("What was checked");
     expect(zhText).toContain("标记为“已入住”的客房");
-    expect(zhText).toContain("客房"); // the group word
   });
 
   it("an empty list says so plainly and a hotel with nothing wrong says 'Nothing needs fixing.'", () => {
     const en = makeT("en", null);
-    const none = textOf(renderToStaticMarkup(createElement(ProblemsTab, { t: en, checks: [] })));
+    const none = textOf(renderToStaticMarkup(createElement(AttentionPanel, { t: en, items: [], checks: [] })));
     expect(none).toContain("The checks could not be run just now.");
     expect(none).not.toMatch(/undefined|NaN/);
   });
 
-  it("Crashes & sign-ins: an empty log says 'Nothing yet' (and the old 'not part of this system' text is gone); with records it shows the errors, the jobs and the webhooks", async () => {
+  it("Crashes & sign-ins: an empty log draws no empty box (one quiet line for the jobs and one for the webhooks, no 'Server errors' panel); with records it shows the errors, the jobs and the webhooks", async () => {
     await db.$executeRaw`DELETE FROM "system_events"`;
     const user = await as(dev);
     const en = makeT("en", null);
-    const zh = makeT("zh-CN", await loadCatalog("zh-CN", ["common", "public", "staff", "server"]));
+    const zh = makeT("zh-CN", { ...(await loadCatalog("zh-CN", ["common", "public", "staff", "server"])), ...zhCompactCb });
     const when = (d: Date) => en.dateTime(d, "Africa/Dar_es_Salaam");
-    const empty = renderToStaticMarkup(createElement(CrashesTab, { t: en, c: await crashData(user), when }));
-    expect(textOf(empty)).toContain("Nothing yet");
-    expect(textOf(empty)).toContain("No unexpected server error has been recorded.");
+    // a job that never ran is "late" once the database is old enough: take that out so the same page is drawn on any database
+    const none = await crashData(user);
+    const quiet = { ...none, system: { ...none.system!, jobs: none.system!.jobs.map((j) => ({ ...j, overdue: false })) } };
+    const empty = renderToStaticMarkup(createElement(CrashesTab, { t: en, c: quiet, when }));
+    expect(textOf(empty)).toContain("No automatic job has run since the system started recording.");
+    expect(textOf(empty)).toContain("No message from other services has arrived yet.");
+    expect(textOf(empty)).not.toContain("Nothing yet");
+    expect(textOf(empty)).not.toContain("No unexpected server error has been recorded.");
+    expect(textOf(empty)).not.toContain("one line for each different error"); // the 'Server errors' panel is not drawn when there is no error: the card above already says 0
     expect(textOf(empty)).not.toContain("Error tracking is not part of this system");
     expect(empty).not.toMatch(/undefined|NaN/);
-    const emptyZh = renderToStaticMarkup(createElement(CrashesTab, { t: zh, c: await crashData(user), when }));
-    expect(textOf(emptyZh)).toContain("暂无");
+    const emptyZh = renderToStaticMarkup(createElement(CrashesTab, { t: zh, c: quiet, when }));
+    expect(textOf(emptyZh)).toContain("没有任何自动任务运行过");
     expect(emptyZh).not.toMatch(/undefined|NaN/);
+    // a job that never ran and is late is NOT hidden behind the quiet line: it keeps its row
+    const lateOne = { ...none, system: { ...none.system!, jobs: none.system!.jobs.map((j, i) => ({ ...j, overdue: i === 0 })) } };
+    const lateText = textOf(renderToStaticMarkup(createElement(CrashesTab, { t: en, c: lateOne, when })));
+    expect(lateText).toContain("Late");
+    expect(lateText).toContain(none.system!.jobs[0].job);
+    expect(lateText).not.toContain("No automatic job has run since the system started recording.");
 
     // records
     await seedJobs();
@@ -1111,11 +1130,39 @@ describe("the Problems tab and the Crashes tab", () => {
     for (const w of ["服务器错误", "自动任务", "来自其他服务的消息（Webhook）", "登录失败"]) expect(zhText).toContain(w);
   });
 
-  it("the Crashes tab keeps the failed sign-ins and the refusals that were there", async () => {
+  it("the Security part draws only what it has: one line of chips when all is quiet; the chart, ONE 'Failed tries' list and 'Refused to you' when there are wrong tries and refusals", async () => {
     const user = await as(dev);
     const en = makeT("en", null);
-    const html = renderToStaticMarkup(createElement(CrashesTab, { t: en, c: await crashData(user), when: (d: Date) => en.dateTime(d, "Africa/Dar_es_Salaam") }));
+    const when = (d: Date) => en.dateTime(d, "Africa/Dar_es_Salaam");
+    const base = await crashData(user);
+    const at = new Date();
+    const calm: typeof base = {
+      ...base, byAddress: [], denied: [], deniedByDay: base.deniedByDay!.map((d) => ({ ...d, count: 0 })),
+      failed: { last24h: 0, last7d: 0, byDay: base.failed!.byDay.map((d) => ({ ...d, count: 0 })), byAccount: [], latest: [], own24h: 0 },
+    };
+    const quiet = textOf(renderToStaticMarkup(createElement(CrashesTab, { t: en, c: calm, when })));
+    for (const w of ["Failed sign-ins in 14 days:", "Successful:", "Locked out now:", "No wrong tries in the last 7 days", "Your Developer sign-in"]) expect(quiet, w).toContain(w);
+    for (const w of ["Failed sign-ins and refused Developer actions per day", "Failed tries", "Refused to you", "Page crashes", "Latest failed tries", "Failed tries by address", "Only real accounts are written down"]) expect(quiet, w).not.toContain(w);
+
+    const busy: typeof base = {
+      ...base,
+      failed: { last24h: 2, last7d: 3, byDay: base.failed!.byDay.map((d, i, all) => ({ ...d, count: i === all.length - 1 ? 3 : 0 })), byAccount: [], latest: [{ id: "l1", name: "Zed Tried", at, ip: "198.51.100.7", times: 1 }, { id: "l2", name: "Nameless Place", at, ip: null, times: 1 }], own24h: 1 },
+      byAddress: [{ ip: "198.51.100.7", tries: 3, accounts: 2, last: at }],
+      denied: [{ id: "d1", at, who: "Dev One", kind: "page", path: "/staff/cashbook", needs: [{ code: "finance.view", description: null }] }],
+    };
+    const html = renderToStaticMarkup(createElement(CrashesTab, { t: en, c: busy, when }));
     const text = textOf(html);
-    for (const w of ["Failed sign-ins", "Locked out now", "Failed sign-ins and refused Developer actions per day", "Your Developer sign-in", "Refused to you"]) expect(text).toContain(w);
+    for (const w of ["Failed sign-ins and refused Developer actions per day", "Failed tries", "Accounts tried", "Last try", "198.51.100.7", "Zed Tried", "No address on record", "Nameless Place", "Refused to you", "Refused to you: 1", "/staff/cashbook", "finance.view", "1 wrong-password tries on your account"]) expect(text, w).toContain(w);
+    expect(text).not.toContain("No wrong tries in the last 7 days");
+    for (const w of ["Page crashes", "Latest failed tries", "Failed tries by address"]) expect(text, w).not.toContain(w);
+    // the footnote about real accounts is a hover text on the list's title, said once
+    expect(html.split("Only real accounts are written down").length - 1).toBe(1);
+    expect(text).not.toContain("Only real accounts are written down");
+    expect(html).not.toMatch(/undefined|NaN/);
+  });
+
+  it("every Chinese line of the compact arrangement keeps the placeholders of its English", () => {
+    const holes = (x: string) => [...x.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(",");
+    for (const [key, value] of Object.entries(zhCompactCb)) expect(holes(value), key).toBe(holes(key));
   });
 });

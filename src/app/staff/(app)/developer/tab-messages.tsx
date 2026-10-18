@@ -4,7 +4,7 @@ import { msg } from "@/i18n/msg";
 import { Panel } from "@/components/dashboard/kit";
 import { MESSAGE_ROWS, type MessagesData, type ReportKindRow, type ReportState } from "@/server/services/developer-messages";
 import { BarChart, type BarColumn } from "./console-charts";
-import { DataTable, Dash } from "./console-table";
+import { DataTable } from "./console-table";
 import { dayLabel, num, Quiet, StatBlock, Tag, type TagTone } from "./console-ui";
 
 /**
@@ -33,6 +33,8 @@ export function MessagesTab({ t, d, when }: { t: T; d: MessagesData; when: (x: D
   const perDay: BarColumn[] | null = d.perDay
     ? d.perDay.map((r, i, all) => ({ key: r.date, tick: dayTick(i, all.length) ? dayLabel(t, r.date) : "", name: dayLabel(t, r.date), values: { sent: r.sent, failed: r.failed, pending: r.pending }, emphasise: r.date === d.today }))
     : null;
+  // A chart with no delivery in it is not drawn (an empty box tells nothing): one quiet line says so instead.
+  const hasDeliveries = !!d.perDay?.some((r) => r.sent + r.failed + r.pending > 0);
   const lc = d.lastClosed;
   const madeText = (k: ReportKindRow) => {
     if (k.madeAt === null) return t("Not made.");
@@ -40,6 +42,32 @@ export function MessagesTab({ t, d, when }: { t: T; d: MessagesData; when: (x: D
     parts.push(k.sentAt ? t("sent {time}", { time: when(k.sentAt) }) : t("not sent"));
     return parts.join(" · ");
   };
+
+  const chart = (
+    <Panel title={t("Deliveries per day")} subtitle={t("Last 14 days, by how they went.")}>
+      {perDay
+        ? <BarChart t={t} columns={perDay} height={150} series={[{ key: "sent", label: t("Sent"), color: SENT }, { key: "failed", label: t("Failed"), color: FAILED }, { key: "pending", label: t("Waiting"), color: PENDING }]} caption={t("Deliveries per day")} empty={nothing} />
+        : unread}
+    </Panel>
+  );
+  const reports = (
+    <Panel title={t("The last closed days: reports")} subtitle={t("Did it reach the Boss? Last 7 closed days.")}>
+      {d.reportDays
+        ? <DataTable
+            compact empty={nothing}
+            cols={[{ label: t("Day") }, { label: t("Daily report") }, { label: t("Room report") }]}
+            rows={d.reportDays.map((r) => ({
+              key: r.date,
+              cells: [
+                <span key="d" className="whitespace-nowrap font-medium">{t.dayMonth(r.date)}</span>,
+                <ReportCell key="a" t={t} k={r.daily} when={when} madeText={madeText} />,
+                <ReportCell key="b" t={t} k={r.room} when={when} madeText={madeText} />,
+              ],
+            }))}
+          />
+        : unread}
+    </Panel>
+  );
 
   return (
     <div className="space-y-4">
@@ -64,63 +92,48 @@ export function MessagesTab({ t, d, when }: { t: T; d: MessagesData; when: (x: D
         />
       </div>
 
-      <div className="grid gap-4">
-        <Panel title={t("Deliveries per day")} subtitle={t("WhatsApp deliveries each hotel day, by how they went. Last 14 days.")}>
-          {perDay
-            ? <BarChart t={t} columns={perDay} series={[{ key: "sent", label: t("Sent"), color: SENT }, { key: "failed", label: t("Failed"), color: FAILED }, { key: "pending", label: t("Waiting"), color: PENDING }]} caption={t("Deliveries per day")} empty={nothing} />
-            : unread}
+      {perDay && !hasDeliveries ? (
+        <>
+          <Quiet>{t("Deliveries per day: nothing in the last 14 days.")}</Quiet>
+          {reports}
+        </>
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-2">
+          {chart}
+          {reports}
+        </div>
+      )}
+
+      {/* Drawn only when there is something to look at: the "Failed deliveries" card above already says when there is none. */}
+      {d.problems === null && <Quiet>{t("Failed or waiting deliveries")}: {t("This could not be read just now.")}</Quiet>}
+      {d.problems && d.problems.length > 0 && (
+        <Panel title={t("Failed or waiting deliveries")} subtitle={t("The newest {n} deliveries that failed or are waiting. Only the kind of trouble is shown.", { n: MESSAGE_ROWS.problems })}>
+          <DataTable
+            compact empty={nothing} scroll={t("Failed or waiting deliveries")}
+            cols={[{ label: t("Last tried") }, { label: t("For") }, { label: t("To") }, { label: t("Tries"), num: true }, { label: t("What happened") }]}
+            rows={d.problems.map((p) => ({
+              key: p.id,
+              cells: [
+                <span key="w" className="whitespace-nowrap">{when(p.at)}</span>,
+                t(p.purpose),
+                <span key="r" className="font-mono text-xs">{p.recipient}</span>,
+                <span key="a">{num(t, p.attempts)}{p.status === "FAILED" && !p.reminder && <span className="ml-1.5 inline-block">{p.atMax ? <Tag tone="rose">{t("no more automatic tries")}</Tag> : <Tag tone="sky">{t("fewer than {max} tries", { max: d.maxAttempts })}</Tag>}</span>}</span>,
+                t(p.kind),
+              ],
+            }))}
+          />
         </Panel>
-      </div>
-
-      <Panel title={t("The last closed days: reports")} subtitle={t("Was each report made, and did it reach the Boss? Last 7 closed days.")}>
-        {d.reportDays
-          ? <DataTable
-              empty={nothing}
-              cols={[{ label: t("Day") }, { label: t("Daily report") }, { label: t("Room report") }]}
-              rows={d.reportDays.map((r) => ({
-                key: r.date,
-                cells: [
-                  <span key="d" className="whitespace-nowrap font-medium">{t.date(r.date)}</span>,
-                  <ReportCell key="a" t={t} k={r.daily} when={when} />,
-                  <ReportCell key="b" t={t} k={r.room} when={when} />,
-                ],
-              }))}
-            />
-          : unread}
-      </Panel>
-
-      <Panel title={t("Failed or waiting deliveries")} subtitle={t("The newest {n} deliveries that failed or are waiting. Only the kind of trouble is shown.", { n: MESSAGE_ROWS.problems })}>
-        {d.problems
-          ? <DataTable
-              empty={nothing}
-              cols={[{ label: t("Last tried") }, { label: t("For") }, { label: t("To") }, { label: t("Tries"), num: true }, { label: t("What happened") }]}
-              rows={d.problems.map((p) => ({
-                key: p.id,
-                cells: [
-                  <span key="w" className="whitespace-nowrap">{when(p.at)}</span>,
-                  t(p.purpose),
-                  <span key="r" className="font-mono text-xs">{p.recipient}</span>,
-                  <span key="a">{num(t, p.attempts)}{p.status === "FAILED" && !p.reminder && <span className="ml-1.5 inline-block">{p.atMax ? <Tag tone="rose">{t("no more automatic tries")}</Tag> : <Tag tone="sky">{t("fewer than {max} tries", { max: d.maxAttempts })}</Tag>}</span>}</span>,
-                  t(p.kind),
-                ],
-              }))}
-            />
-          : unread}
-      </Panel>
+      )}
     </div>
   );
 }
 
-function ReportCell({ t, k, when }: { t: T; k: ReportKindRow; when: (x: Date) => string }) {
+/** One report of one day on ONE line: the state, then when it was sent (muted). Who made it, which version and whether it was automatic are the hover text. */
+function ReportCell({ t, k, when, madeText }: { t: T; k: ReportKindRow; when: (x: Date) => string; madeText: (k: ReportKindRow) => string }) {
   return (
-    <span className="block">
+    <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5" title={k.madeAt ? madeText(k) : undefined}>
       <Tag tone={STATE_TONE[k.state]}>{t(REPORT_CELL_WORDS[k.state])}</Tag>
-      {k.madeAt ? (
-        <span className="mt-1 block text-[11px] leading-snug text-muted-foreground">
-          {t("Made {time}", { time: when(k.madeAt) })} · {t("version {n}", { n: k.version ?? 1 })} · {k.automatic ? t("automatic") : t("made by a person")}
-          {k.sentAt ? <> · {t("sent {time}", { time: when(k.sentAt) })}</> : null}
-        </span>
-      ) : <span className="mt-1 block text-[11px] text-muted-foreground"><Dash /></span>}
+      {k.sentAt && <span className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">{t("sent {time}", { time: when(k.sentAt) })}</span>}
     </span>
   );
 }

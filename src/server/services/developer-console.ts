@@ -397,9 +397,6 @@ export interface HotelSetup {
   onlinePayment: boolean | null;
 }
 
-/** One role with the number of ACTIVE accounts holding it (a count — never who). */
-export interface TeamRole { code: string; name: string; active: number }
-
 export interface SettingsTab {
   env: EnvSetting[];
   identity: DeveloperIdentity;
@@ -409,13 +406,11 @@ export interface SettingsTab {
   recorded: { last24h: number; last7d: number; total: number } | null;
   /** The hotel's set-up (see HotelSetup). */
   hotel: HotelSetup;
-  /** Active accounts by role, the most first; the system role is not a person and is left out. null = could not be read. */
-  team: TeamRole[] | null;
 }
 
 export async function settingsTab(user: ConsoleUser, sessionTokenHash: string | null, now = new Date()): Promise<SettingsTab> {
   assertConsoleAccess(user);
-  const [identity, config, recorded, settings, guestRooms, roomTypes, paymentAccounts, roles] = await Promise.all([
+  const [identity, config, recorded, settings, guestRooms, roomTypes, paymentAccounts] = await Promise.all([
     developerIdentity(user, sessionTokenHash, now),
     systemDiagnostics(user, now),
     safe(async () => {
@@ -439,9 +434,6 @@ export async function settingsTab(user: ConsoleUser, sessionTokenHash: string | 
     }),
     safe(() => db.roomType.count({ where: { isActive: true } })),
     safe(() => db.moneyAccount.count({ where: { isActive: true, acceptsPayments: true } })),
-    safe(() => db.role.findMany({
-      where: { code: { not: SYSTEM_ROLE } }, select: { code: true, name: true, _count: { select: { users: { where: { isActive: true } } } } },
-    })),
   ]);
   const hotel: HotelSetup = {
     dayStart: settings ? formatMinutesLabel(settings.businessDayStartMinutes) : null,
@@ -453,10 +445,7 @@ export async function settingsTab(user: ConsoleUser, sessionTokenHash: string | 
     unpaidHoldHours: settings ? settings.unpaidHoldHours : null,
     onlinePayment: settings ? settings.onlinePayEnabled : null,
   };
-  const team = roles
-    ? roles.map((r): TeamRole => ({ code: r.code, name: r.name, active: r._count.users })).filter((r) => r.active > 0).sort((a, b) => b.active - a.active || a.name.localeCompare(b.name))
-    : null;
-  return { env: envSettings(), identity, config, recorded, hotel, team };
+  return { env: envSettings(), identity, config, recorded, hotel };
 }
 
 // ───────────────────────────────────────────── People & my actions tab ─────────────────────────────────────────────
@@ -478,13 +467,21 @@ export interface MyAction {
 
 export const MY_ACTIONS_LIMIT = 30;
 
+/**
+ * Entries that only say the Developer LOOKED: at a page, at the business tables, at someone's rights. They stay in the audit trail, but "Your recent
+ * actions" on the Home lists what was DONE (owner, 2026-10-18: looking is not an action, it only fills the list), so it leaves them out.
+ */
+export const LOOKING_ACTIONS: readonly string[] = ["developer.viewed", "developer.viewed_limit", "developer.business_viewed", "developer.inspected"];
+/** How many of the Developer's own real actions the Home lists. */
+export const MY_RECENT_ACTIONS = 6;
+
 const asRecord = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 
-/** The Developer's own last actions, from the audit trail (their own entries only). */
-export async function myActions(user: ConsoleUser, limit = MY_ACTIONS_LIMIT): Promise<MyAction[]> {
+/** The Developer's own last actions, from the audit trail (their own entries only). `looking: false` leaves out the entries that only say he looked (see LOOKING_ACTIONS). */
+export async function myActions(user: ConsoleUser, limit = MY_ACTIONS_LIMIT, opts: { looking?: boolean } = {}): Promise<MyAction[]> {
   assertConsoleAccess(user);
   const rows = await db.auditLog.findMany({
-    where: { userId: user.actorId ?? user.id, actorType: "DEVELOPER" },
+    where: { userId: user.actorId ?? user.id, actorType: "DEVELOPER", ...(opts.looking === false ? { action: { notIn: [...LOOKING_ACTIONS] } } : {}) },
     orderBy: { createdAt: "desc" }, take: Math.min(Math.max(1, limit), 100),
     select: { id: true, createdAt: true, action: true, entityType: true, entityId: true, after: true },
   });
@@ -514,7 +511,7 @@ export interface PeopleTab {
 export async function peopleTab(user: ConsoleUser): Promise<PeopleTab> {
   assertConsoleAccess(user);
   const [people, mine, roles] = await Promise.all([
-    listInspectableUsers(user), myActions(user),
+    listInspectableUsers(user), myActions(user, MY_RECENT_ACTIONS, { looking: false }),
     safe(() => db.role.findMany({
       where: { code: { not: SYSTEM_ROLE } }, orderBy: { name: "asc" },
       select: { code: true, name: true, description: true, users: { select: { isActive: true } } },

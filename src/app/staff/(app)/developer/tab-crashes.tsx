@@ -1,77 +1,78 @@
-import { Bug, ChevronDown, KeyRound, Lock, ShieldAlert, Timer, UserCheck, Webhook } from "lucide-react";
+import type { ReactNode } from "react";
+import { Bug, ChevronDown, KeyRound, ShieldAlert, Timer, Webhook } from "lucide-react";
 import type { T } from "@/i18n/translate";
-import { LOGIN_LIMITS, type AddressTries, type CrashData } from "@/server/services/developer-health";
+import { cn } from "@/lib/utils";
+import { LOGIN_LIMITS, type CrashData } from "@/server/services/developer-health";
 import { FAILED_SIGN_IN_ROWS_PER_HOUR } from "@/server/services/auth-login";
 import type { DeniedEntry } from "@/server/services/developer-console";
 import type { ErrorGroup, JobStatus, SystemEvents, WebhookStatus } from "@/server/services/system-events";
 import { Panel } from "@/components/dashboard/kit";
 import { BarChart, type BarColumn } from "./console-charts";
-import { DataTable, Dash } from "./console-table";
+import { MiniTable, type MiniRow } from "./mini-table";
+import { SummaryChips, type Chip } from "./summary-chips";
 import { agoText, dayLabel, num, Quiet, StatBlock, Tag } from "./console-ui";
 
 /**
- * CRASHES & SIGN-INS: what the system recorded about ITSELF (unexpected server errors, grouped; the automatic jobs; the webhooks), then
- * failed sign-ins, paused sign-ins and what was refused to the Developer. An error is shown as the system stored it: scrubbed (emails,
- * numbers, keys, links' addresses and request bodies taken out), with the top of the code path as "file:line".
+ * ERRORS & JOBS and SIGN-INS & SECURITY: what the system recorded about ITSELF (unexpected server errors, grouped; the automatic jobs; the
+ * webhooks), then failed sign-ins, paused sign-ins and what was refused to the Developer. An error is shown as the system stored it:
+ * scrubbed (emails, numbers, keys, links' addresses and request bodies taken out), with the top of the code path as "file:line".
+ * Owner (2026-10-18): nothing repeated and no empty boxes. A list or chart with nothing to show is NOT drawn (the figures above it already
+ * say "0"); a long list scrolls inside its panel with about six rows visible; an explanation is a hover text, not a paragraph.
  */
 
 const FAILED = "#d95926";
 
+/** A scrolling list: about six collapsed rows visible, the rest by scrolling (keyboard reachable). */
+const SCROLL_LIST = "max-h-[21.5rem] overflow-y-auto overscroll-contain focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold";
+
+/** A panel title with its longer explanation as the hover text. */
+const Titled = ({ text, hint }: { text: string; hint?: string }) => <span title={hint}>{text}</span>;
+
+// ───────────────────────────────────────────── what was refused to the Developer ─────────────────────────────────────────────
+/** "Refused to you": drawn ONLY when something was refused (nothing refused = nothing to draw). */
 export function DeniedPanel({ t, rows, when }: { t: T; rows: DeniedEntry[]; when: (x: Date) => string }) {
+  if (rows.length === 0) return null;
   return (
-    <Panel title={t("Refused to you")} subtitle={t("The last {n} times a page or an action was refused to a Developer account.", { n: 20 })}>
-      {rows.length === 0 ? (
-        <p className="rounded-2xl bg-emerald-500/[0.07] px-3 py-2 text-sm text-emerald-800 dark:text-emerald-200">{t("Nothing was refused to a Developer account.")}</p>
-      ) : (
-        <details className="group rounded-2xl border border-border/60 bg-muted/30">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-2.5 text-sm font-medium marker:content-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold [&::-webkit-details-marker]:hidden">
-            <span>{t("Show the {n} refusals", { n: rows.length })}</span>
-            <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden />
-          </summary>
-        <div className="overflow-x-auto border-t border-border/60 px-3">
-          <table data-stack className="w-full min-w-[640px] text-sm">
-            <thead className="text-left text-xs text-muted-foreground">
-              <tr className="border-b border-border/70">
-                <th className="py-2 pr-4 font-medium">{t("When")}</th><th className="py-2 pr-4 font-medium">{t("Who")}</th>
-                <th className="py-2 pr-4 font-medium">{t("What was refused")}</th><th className="py-2 font-medium">{t("The right it needs")}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/60">
-              {rows.map((r) => (
-                <tr key={r.id} className="align-top">
-                  <td className="py-2.5 pr-4 whitespace-nowrap">{when(r.at)}</td>
-                  <td className="py-2.5 pr-4">{r.who}</td>
-                  <td className="py-2.5 pr-4">
-                    {r.kind ? (r.kind === "page" ? t("A page") : t("An action")) : "—"}
-                    {r.path && <span className="block break-all font-mono text-[11px] text-muted-foreground">{r.path}</span>}
-                  </td>
-                  <td className="py-2.5">
-                    {r.needs.length === 0 ? "—" : r.needs.map((n) => (
-                      <span key={n.code} className="block min-w-0 leading-snug">
-                        <span className="font-mono text-xs">{n.code}</span>
-                        {n.description && <span className="block text-xs text-muted-foreground">{t(n.description)}</span>}
-                      </span>
-                    ))}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        </details>
-      )}
+    <Panel title={t("Refused to you")} subtitle={t("The last {n} times a page or an action was refused to a Developer account.", { n: rows.length })}>
+      <MiniTable
+        label={t("Refused to you")}
+        cols={[{ label: t("When") }, { label: t("Who") }, { label: t("What was refused") }, { label: t("The right it needs") }]}
+        rows={rows.map((r) => ({
+          key: r.id,
+          cells: [
+            <span key="w" className="whitespace-nowrap">{when(r.at)}</span>,
+            r.who,
+            r.kind || r.path ? (
+              <span key="k" className="block min-w-0">
+                {r.kind ? (r.kind === "page" ? t("A page") : t("An action")) : null}
+                {r.path && <span className="block break-all font-mono text-[11px] text-muted-foreground">{r.path}</span>}
+              </span>
+            ) : null,
+            r.needs.length === 0 ? null : (
+              <span key="n" className="block min-w-0">
+                {r.needs.map((n) => (
+                  <span key={n.code} className="block min-w-0 leading-snug">
+                    <span className="font-mono text-xs">{n.code}</span>
+                    {n.description && <span className="block text-xs text-muted-foreground">{t(n.description)}</span>}
+                  </span>
+                ))}
+              </span>
+            ),
+          ],
+        }))}
+      />
     </Panel>
   );
 }
 
-
+// ───────────────────────────────────────────── server errors ─────────────────────────────────────────────
 /** How long a job took: "850 ms" or "12.4 s". */
-const took = (t: T, ms: number | null) => (ms === null ? "—" : ms < 1000 ? t("{n} ms", { n: ms }) : t("{n} s", { n: (ms / 1000).toLocaleString(t.intl, { maximumFractionDigits: 1 }) }));
+const took = (t: T, ms: number) => (ms < 1000 ? t("{n} ms", { n: ms }) : t("{n} s", { n: (ms / 1000).toLocaleString(t.intl, { maximumFractionDigits: 1 }) }));
 
 function ErrorRow({ t, g, when, now }: { t: T; g: ErrorGroup; when: (x: Date) => string; now: Date }) {
   return (
     <details className="group min-w-0 rounded-2xl border border-border/70 bg-card">
-      <summary className="flex cursor-pointer list-none items-start gap-3 rounded-2xl p-3.5 marker:content-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold sm:p-4 [&::-webkit-details-marker]:hidden">
+      <summary className="flex cursor-pointer list-none items-start gap-3 rounded-2xl p-3 marker:content-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold sm:px-4 [&::-webkit-details-marker]:hidden">
         <span className="mt-0.5 grid h-7 min-w-9 shrink-0 place-items-center rounded-lg bg-rose-500/12 px-2 text-xs font-semibold tabular-nums text-rose-700 dark:text-rose-300" title={t("Times seen")}>{num(t, g.count)}×</span>
         <span className="min-w-0 flex-1 leading-snug">
           <span className="block break-words text-sm font-semibold text-foreground">{g.message || t("(no message)")}</span>
@@ -95,9 +96,11 @@ function ErrorRow({ t, g, when, now }: { t: T; g: ErrorGroup; when: (x: Date) =>
         </div>
         {g.frames.length > 0 && (
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{t("Where in the code")}</p>
+            <p
+              className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground"
+              title={g.frames.some((f) => /^(src|app|pages)\//.test(f)) ? undefined : t("These lines are in the built code: the hosting does not keep the original file names. The message and the place named above tell where to look.")}
+            >{t("Where in the code")}</p>
             <ul className="mt-1 space-y-0.5 break-all font-mono text-xs text-foreground/90">{g.frames.map((f) => <li key={f}>{f}</li>)}</ul>
-            {!g.frames.some((f) => /^(src|app|pages)\//.test(f)) && <p className="mt-1 text-xs text-muted-foreground">{t("These lines are in the built code: the hosting does not keep the original file names. The message and the place named above tell where to look.")}</p>}
           </div>
         )}
       </div>
@@ -105,49 +108,53 @@ function ErrorRow({ t, g, when, now }: { t: T; g: ErrorGroup; when: (x: Date) =>
   );
 }
 
+/** "Server errors": drawn ONLY when the system recorded an error (none = the figure above already says 0; no empty box). */
 export function ErrorsPanel({ t, system, when, now }: { t: T; system: SystemEvents | null; when: (x: Date) => string; now: Date }) {
+  if (!system || system.errorGroups.length === 0) return null;
   return (
-    <Panel title={t("Server errors")} subtitle={t("Last 30 days, one line for each different error. A repeat adds to its count; personal details are taken out.")}>
-      {!system ? (
-        <Quiet>{t("This could not be read just now.")}</Quiet>
-      ) : system.errorGroups.length === 0 ? (
-        <div className="space-y-1">
-          <p className="rounded-2xl bg-emerald-500/[0.07] px-3 py-2 text-sm font-medium text-emerald-800 dark:text-emerald-200">{t("Nothing yet")}</p>
-          <p className="px-1 text-xs text-muted-foreground">{t("No unexpected server error has been recorded. (Mistakes people make, like a wrong password or a refused action, are not errors and are not recorded here.)")}</p>
-        </div>
-      ) : (
-        <div className="space-y-2">{system.errorGroups.map((g) => <ErrorRow key={g.id} t={t} g={g} when={when} now={now} />)}</div>
-      )}
+    <Panel
+      title={<Titled text={t("Server errors")} hint={t("Last 30 days, one line for each different error. A repeat adds to its count; personal details are taken out.")} />}
+      subtitle={t("Last 30 days, one line for each different error.")}
+    >
+      <div tabIndex={0} role="region" aria-label={t("Server errors")} className={cn("space-y-2", SCROLL_LIST)}>
+        {system.errorGroups.map((g) => <ErrorRow key={g.id} t={t} g={g} when={when} now={now} />)}
+      </div>
     </Panel>
   );
 }
 
+// ───────────────────────────────────────────── jobs and webhooks ─────────────────────────────────────────────
 export function JobsPanel({ t, jobs, when, now }: { t: T; jobs: JobStatus[] | null; when: (x: Date) => string; now: Date }) {
+  if (!jobs) return <Quiet>{t("This could not be read just now.")}</Quiet>;
+  // No run recorded at all and nothing late: ONE quiet line, not a table full of dashes. A job that never ran and is late still gets its row.
+  if (jobs.every((j) => j.lastRunAt === null && !j.overdue)) return <Quiet>{t("No automatic job has run since the system started recording.")}</Quiet>;
   return (
-    <Panel title={t("Automatic jobs")} subtitle={t("What the system runs by itself on a timer. Late means not run for 1.5 times its longest gap. Hotel time.")}>
-      {!jobs ? <Quiet>{t("This could not be read just now.")}</Quiet> : (
-        <DataTable
-          empty={t("Nothing yet")}
-          cols={[{ label: t("Job") }, { label: t("Runs at") }, { label: t("Last run") }, { label: t("Last time it went well") }, { label: t("Last result") }, { label: t("Took"), num: true }, { label: t("On time?") }]}
-          rows={jobs.map((j) => ({
-            key: j.job,
-            cells: [
-              <span key="j" className="block min-w-0"><span className="block font-medium">{t(j.label)}</span><span className="block break-all font-mono text-[11px] text-muted-foreground">{j.job}</span></span>,
-              j.schedule ? <span key="s" className="tabular-nums">{j.schedule}</span> : <Dash key="s" />,
-              j.lastRunAt ? <span key="r" className="whitespace-nowrap">{when(j.lastRunAt)}<span className="block text-[11px] text-muted-foreground">{agoText(t, j.lastRunAt, now)}</span></span> : <span key="r" className="text-muted-foreground">{t("Not recorded yet")}</span>,
-              j.lastOkAt ? <span key="o" className="whitespace-nowrap">{when(j.lastOkAt)}</span> : <Dash key="o" />,
-              j.lastStatus === null ? <Dash key="st" /> : (
-                <span key="st" className="block min-w-0">
-                  <Tag tone={j.lastStatus === "OK" ? "emerald" : "rose"}>{j.lastStatus === "OK" ? t("Went well") : t("Failed")}</Tag>
-                  {j.lastError && <span className="mt-1 block break-words text-xs text-muted-foreground">{j.lastError}</span>}
-                </span>
-              ),
-              took(t, j.lastDurationMs),
-              <Tag key="od" tone={j.overdue ? "rose" : j.lastRunAt ? "emerald" : "slate"}>{j.overdue ? t("Late") : j.lastRunAt ? t("On time") : t("Not recorded yet")}</Tag>,
-            ],
-          }))}
-        />
-      )}
+    <Panel
+      title={<Titled text={t("Automatic jobs")} hint={t("What the system runs by itself on a timer. Late means not run for 1.5 times its longest gap. Hotel time.")} />}
+      subtitle={t("Runs by itself on a timer. Hotel time.")}
+    >
+      <MiniTable
+        label={t("Automatic jobs")}
+        cols={[{ label: t("Job") }, { label: t("Runs at") }, { label: t("Last run") }, { label: t("Last time it went well") }, { label: t("Last result") }, { label: t("Took"), num: true }, { label: t("On time?") }]}
+        rows={jobs.map((j) => ({
+          key: j.job,
+          cells: [
+            <span key="j" className="block min-w-0"><span className="font-medium">{t(j.label)}</span> <span className="break-all font-mono text-[11px] text-muted-foreground">{j.job}</span></span>,
+            j.schedule ? <span key="s" className="tabular-nums">{j.schedule}</span> : null,
+            j.lastRunAt ? <span key="r" className="block">{when(j.lastRunAt)} <span className="text-[11px] text-muted-foreground">{agoText(t, j.lastRunAt, now)}</span></span> : <span key="r" className="text-muted-foreground">{t("Not recorded yet")}</span>,
+            // the same moment as the last run is not said twice: this column is for a job whose last run failed
+            j.lastOkAt && j.lastOkAt.getTime() !== j.lastRunAt?.getTime() ? <span key="o" className="whitespace-nowrap">{when(j.lastOkAt)}</span> : null,
+            j.lastStatus === null ? null : (
+              <span key="st" className="block min-w-0">
+                <Tag tone={j.lastStatus === "OK" ? "emerald" : "rose"}>{j.lastStatus === "OK" ? t("Went well") : t("Failed")}</Tag>
+                {j.lastError && <span className="mt-1 block break-words text-xs text-muted-foreground">{j.lastError}</span>}
+              </span>
+            ),
+            j.lastDurationMs === null ? null : took(t, j.lastDurationMs),
+            <Tag key="od" tone={j.overdue ? "rose" : j.lastRunAt ? "emerald" : "slate"}>{j.overdue ? t("Late") : j.lastRunAt ? t("On time") : t("Not recorded yet")}</Tag>,
+          ],
+        }))}
+      />
     </Panel>
   );
 }
@@ -156,49 +163,52 @@ export function JobsPanel({ t, jobs, when, now }: { t: T; jobs: JobStatus[] | nu
 const hookName = (t: T, source: string) => (/ntzs/i.test(source) ? t("nTZS payment messages") : source);
 
 export function WebhooksPanel({ t, hooks, when }: { t: T; hooks: WebhookStatus[] | null; when: (x: Date) => string }) {
+  if (!hooks) return <Quiet>{t("This could not be read just now.")}</Quiet>;
+  // Nothing has ever arrived from any service: one quiet line, not a row of "None yet" and zeros.
+  if (hooks.every((h) => h.lastOkAt === null && h.lastFailedAt === null && h.ok7d + h.failed7d + h.refused7d === 0)) return <Quiet>{t("No message from other services has arrived yet.")}</Quiet>;
   return (
-    <Panel title={t("Messages from other services (webhooks)")} subtitle={t("What other services, such as nTZS, tell the system. The last 7 days.")}>
-      {!hooks ? <Quiet>{t("This could not be read just now.")}</Quiet> : (
-        <DataTable
-          empty={t("Nothing yet")}
-          cols={[{ label: t("From") }, { label: t("Last accepted") }, { label: t("Last failed") }, { label: t("Accepted, 7 days"), num: true }, { label: t("Failed, 7 days"), num: true }, { label: t("Refused (bad signature), 7 days"), num: true }]}
-          rows={hooks.map((h) => ({
-            key: h.source,
-            cells: [
-              <span key="n" className="block min-w-0"><span className="block font-medium">{hookName(t, h.source)}</span><span className="block break-all font-mono text-[11px] text-muted-foreground">{h.source}</span></span>,
-              h.lastOkAt ? <span key="o" className="whitespace-nowrap">{when(h.lastOkAt)}</span> : <span key="o" className="text-muted-foreground">{t("None yet")}</span>,
-              h.lastFailedAt ? <span key="f" className="whitespace-nowrap">{when(h.lastFailedAt)}</span> : <Dash key="f" />,
-              num(t, h.ok7d),
-              <span key="n7" className={h.failed7d > 0 ? "font-semibold text-rose-700 dark:text-rose-300" : undefined}>{num(t, h.failed7d)}</span>,
-              num(t, h.refused7d),
-            ],
-          }))}
-        />
-      )}
+    <Panel title={t("Messages from other services (webhooks)")} subtitle={t("Last 7 days")}>
+      <MiniTable
+        label={t("Messages from other services (webhooks)")}
+        cols={[{ label: t("From") }, { label: t("Last accepted") }, { label: t("Last failed") }, { label: t("Accepted, 7 days"), num: true }, { label: t("Failed, 7 days"), num: true }, { label: t("Refused (bad signature), 7 days"), num: true }]}
+        rows={hooks.map((h) => ({
+          key: h.source,
+          cells: [
+            <span key="n" className="block min-w-0"><span className="font-medium">{hookName(t, h.source)}</span> <span className="break-all font-mono text-[11px] text-muted-foreground">{h.source}</span></span>,
+            h.lastOkAt ? <span key="o" className="whitespace-nowrap">{when(h.lastOkAt)}</span> : <span key="o" className="text-muted-foreground">{t("None yet")}</span>,
+            h.lastFailedAt ? <span key="f" className="whitespace-nowrap">{when(h.lastFailedAt)}</span> : null,
+            num(t, h.ok7d),
+            // a column of zeros is not drawn: the cards above already say "none failed"
+            h.failed7d > 0 ? <span key="n7" className="font-semibold text-rose-700 dark:text-rose-300">{num(t, h.failed7d)}</span> : null,
+            h.refused7d > 0 ? num(t, h.refused7d) : null,
+          ],
+        }))}
+      />
     </Panel>
   );
 }
 
-/** Server errors, the automatic jobs and the messages other services send: four figures, then the three lists. */
+/** Server errors, the automatic jobs and the messages other services send: four figures, then only the lists that have something to say. */
 export function ErrorsTab({ t, c, when, now = new Date() }: { t: T; c: CrashData; when: (x: Date) => string; now?: Date }) {
   const sys = c.system;
-  const late = sys ? sys.jobs.filter((j) => j.overdue).length : null;
-  const failedJobs = sys ? sys.jobs.filter((j) => j.lastStatus === "FAILED").length : null;
-  const goodJobs = sys ? sys.jobs.filter((j) => j.lastRunAt !== null && !j.overdue && j.lastStatus !== "FAILED").length : 0;
-  const hook = sys?.webhooks.find((w) => /ntzs/i.test(w.source)) ?? null;
+  if (!sys) return <Quiet>{t("This could not be read just now.")}</Quiet>;
+  const late = sys.jobs.filter((j) => j.overdue).length;
+  const failedJobs = sys.jobs.filter((j) => j.lastStatus === "FAILED").length;
+  const goodJobs = sys.jobs.filter((j) => j.lastRunAt !== null && !j.overdue && j.lastStatus !== "FAILED").length;
+  const hook = sys.webhooks.find((w) => /ntzs/i.test(w.source)) ?? null;
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatBlock
-          icon={Bug} label={t("Server errors")} value={num(t, sys?.errors24h)} caption={t("different errors in 24 hours")} warn={!!sys?.errors24h}
-          tag={sys ? (sys.errors24h > 0 ? t("Look at it") : t("Quiet")) : undefined} tagTone={sys?.errors24h ? "amber" : "emerald"}
+          icon={Bug} label={t("Server errors")} value={num(t, sys.errors24h)} caption={t("different errors in 24 hours")} warn={sys.errors24h > 0}
+          tag={sys.errors24h > 0 ? t("Look at it") : t("Quiet")} tagTone={sys.errors24h ? "amber" : "emerald"}
           note={t("Errors the server did not expect. The same error again counts once here; its line below says how many times.")}
         />
         <StatBlock
-          icon={Timer} label={t("Automatic jobs")} value={sys ? t("{ok} of {n}", { ok: goodJobs, n: sys.jobs.length }) : "—"} caption={t("on time and well")}
+          icon={Timer} label={t("Automatic jobs")} value={t("{ok} of {n}", { ok: goodJobs, n: sys.jobs.length })} caption={t("on time and well")}
           warn={!!(late || failedJobs)}
-          tag={sys ? (late || failedJobs ? t("Look at it") : goodJobs === sys.jobs.length ? t("On time") : t("Not recorded yet")) : undefined} tagTone={late || failedJobs ? "rose" : goodJobs === sys?.jobs.length ? "emerald" : "slate"}
-          note={t("Late: {late}. Failed on the last run: {failed}.", { late: late ?? 0, failed: failedJobs ?? 0 })}
+          tag={late || failedJobs ? t("Look at it") : goodJobs === sys.jobs.length ? t("On time") : t("Not recorded yet")} tagTone={late || failedJobs ? "rose" : goodJobs === sys.jobs.length ? "emerald" : "slate"}
+          note={t("Late: {late}. Failed on the last run: {failed}.", { late, failed: failedJobs })}
         />
         <StatBlock
           icon={Webhook} label={t("nTZS messages")} value={num(t, hook?.ok7d)} caption={t("accepted in 7 days")} warn={!!hook?.failed7d}
@@ -212,123 +222,132 @@ export function ErrorsTab({ t, c, when, now = new Date() }: { t: T; c: CrashData
         />
       </div>
       <ErrorsPanel t={t} system={sys} when={when} now={now} />
-      <JobsPanel t={t} jobs={sys?.jobs ?? null} when={when} now={now} />
-      <WebhooksPanel t={t} hooks={sys?.webhooks ?? null} when={when} />
+      <JobsPanel t={t} jobs={sys.jobs} when={when} now={now} />
+      <WebhooksPanel t={t} hooks={sys.webhooks} when={when} />
     </div>
   );
 }
 
+// ───────────────────────────────────────────── failed sign-ins ─────────────────────────────────────────────
 /**
- * "Failed tries by address": the addresses the wrong tries came from, the most first. One address trying many accounts is a warning sign.
- * A small table of its own (no minimum width) so it fits beside the chart; on a phone each row becomes a small card.
+ * "Failed tries": ONE list of the addresses the wrong tries came from (most first), each with the accounts that were tried there lately.
+ * One address trying many accounts is a warning sign. A try with no address on record cannot be grouped: it is one last row, with only
+ * the account names (the numbers would be a guess). Drawn ONLY when there is something.
  */
-function AddressPanel({ t, rows, when }: { t: T; rows: AddressTries[] | null; when: (x: Date) => string }) {
+function failedTriesPanel(t: T, c: CrashData, when: (x: Date) => string): ReactNode {
+  const latest = c.failed?.latest ?? [];
+  const namesAt = new Map<string, string[]>();
+  const loose: typeof latest = [];
+  for (const r of latest) {
+    if (!r.ip) { loose.push(r); continue; }
+    const list = namesAt.get(r.ip) ?? [];
+    if (!list.includes(r.name)) list.push(r.name);
+    namesAt.set(r.ip, list);
+  }
+  const names = (list: string[]) => (list.length > 0 ? <span className="block break-words text-[11px] text-muted-foreground">{list.join(", ")}</span> : null);
+  const rows: MiniRow[] = (c.byAddress ?? []).map((r) => ({
+    key: r.ip,
+    cells: [
+      <span key="a" className="block min-w-0"><span className="block break-all font-mono text-xs">{r.ip}</span>{names(namesAt.get(r.ip) ?? [])}</span>,
+      <span key="c" className={r.accounts > 1 ? "font-semibold text-amber-700 dark:text-amber-300" : undefined}>{num(t, r.accounts)}</span>,
+      <span key="t" className="font-semibold">{num(t, r.tries)}</span>,
+      <span key="l" className="whitespace-nowrap text-xs text-muted-foreground">{when(r.last)}</span>,
+    ],
+  }));
+  if (loose.length > 0) {
+    const list = [...new Set(loose.map((r) => r.name))];
+    rows.push({
+      key: "no-address",
+      cells: [
+        <span key="a" className="block min-w-0"><span className="block text-xs text-muted-foreground">{t("No address on record")}</span>{names(list)}</span>,
+        // not counted: only the latest tries are known here, so a number would be lower than the real one
+        null, null,
+        <span key="l" className="whitespace-nowrap text-xs text-muted-foreground">{when(loose.reduce((a, r) => (r.at > a ? r.at : a), loose[0].at))}</span>,
+      ],
+    });
+  }
+  if (rows.length === 0) return null;
   return (
-    <Panel title={t("Failed tries by address")} subtitle={t("Last 7 days. One address trying many accounts is a warning sign.")}>
-      {!rows ? <Quiet>{t("This could not be read just now.")}</Quiet> : rows.length === 0 ? <Quiet>{t("No wrong tries with an address in the last 7 days.")}</Quiet> : (
-        <table data-stack className="w-full text-sm">
-          <thead className="text-left text-xs text-muted-foreground">
-            <tr className="border-b border-border/70">
-              <th scope="col" className="py-2 pr-3 font-medium">{t("Address")}</th>
-              <th scope="col" className="py-2 pr-3 text-right font-medium">{t("Tries")}</th>
-              <th scope="col" className="py-2 pr-3 text-right font-medium">{t("Accounts")}</th>
-              <th scope="col" className="py-2 font-medium">{t("Last")}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border/60">
-            {rows.map((r) => (
-              <tr key={r.ip} className="align-top">
-                <td data-label={t("Address")} className="min-w-0 break-all py-2.5 pr-3 font-mono text-xs">{r.ip}</td>
-                <td data-label={t("Tries")} className="whitespace-nowrap py-2.5 pr-3 text-right font-semibold tabular-nums">{r.tries.toLocaleString(t.intl)}</td>
-                <td data-label={t("Accounts")} className={`whitespace-nowrap py-2.5 pr-3 text-right tabular-nums ${r.accounts > 1 ? "font-semibold text-amber-700 dark:text-amber-300" : ""}`}>{r.accounts.toLocaleString(t.intl)}</td>
-                <td data-label={t("Last")} className="py-2.5 text-xs text-muted-foreground">{when(r.last)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{t("Only real accounts are written down — an email nobody holds is not. At most {n} tries for one account are written down each hour; if there are more, one line says so and the numbers here are lower than the real tries.", { n: FAILED_SIGN_IN_ROWS_PER_HOUR })}</p>
+    <Panel
+      key="tries"
+      title={<Titled
+        text={t("Failed tries")}
+        hint={`${t("One address trying many accounts is a warning sign.")} ${t("Only real accounts are written down — an email nobody holds is not. At most {n} tries for one account are written down each hour; if there are more, one line says so and the numbers here are lower than the real tries.", { n: FAILED_SIGN_IN_ROWS_PER_HOUR })}`}
+      />}
+      subtitle={t("Last 7 days")}
+    >
+      <MiniTable
+        label={t("Failed tries")}
+        cols={[{ label: t("Address") }, { label: t("Accounts tried"), num: true }, { label: t("Tries"), num: true }, { label: t("Last try") }]}
+        rows={rows}
+      />
     </Panel>
   );
 }
 
-/** Failed and successful sign-ins, locked-out places, where the wrong tries came from, the latest tries, and what was refused to the Developer. */
-export function SecurityTab({ t, c, when, now = new Date() }: { t: T; c: CrashData; when: (x: Date) => string; now?: Date }) {
+/**
+ * Failed and successful sign-ins, paused sign-ins, and what was refused to the Developer: ONE line of chips, the Developer's own sign-in as
+ * one slim line, then only the panels that have something to show (a chart and a list of wrong tries, a list of refusals). Nothing wrong
+ * = just the line.
+ */
+export function SecurityTab({ t, c, when }: { t: T; c: CrashData; when: (x: Date) => string; now?: Date }) {
   const f = c.failed;
   const paused = c.paused ? c.paused.developer + c.paused.staff : null;
+  const refusedWeek = c.deniedByDay ? c.deniedByDay.reduce((n, d) => n + d.count, 0) : 0;
   const columns: BarColumn[] | null = f
     ? f.byDay.map((d, i, all) => ({
         key: d.date, tick: dayLabel(t, d.date), name: dayLabel(t, d.date),
         values: { failed: d.count, denied: c.deniedByDay?.[i]?.count ?? 0 }, emphasise: i === all.length - 1,
       }))
     : null;
+
+  const chips: Chip[] = [
+    {
+      key: "failed", text: t("Failed sign-ins in 14 days: {n}", { n: num(t, c.failed14d) }), tone: c.failed14d ? "amber" : "slate",
+      title: t("Wrong password or a blocked account. A few are typing mistakes; a spike on one day, or many tries from one address, means someone is guessing."),
+    },
+    { key: "ok", text: t("Successful: {n}", { n: num(t, c.successful14d) }), title: t("Each time someone signed in with the right password, staff together.") },
+    {
+      key: "locked", text: t("Locked out now: {n}", { n: num(t, paused) }), tone: paused ? "amber" : "slate",
+      title: t("An address is refused for {m} minutes after {n} wrong passwords, even if the right one is tried next. It opens again by itself.", { n: LOGIN_LIMITS.staffPlace, m: LOGIN_LIMITS.windowMinutes }),
+    },
+  ];
+  if (c.denied.length > 0) chips.push({ key: "refused", text: t("Refused to you: {n}", { n: c.denied.length }), tone: "amber" });
+  if (f && f.last7d === 0) chips.push({ key: "quiet", text: t("No wrong tries in the last 7 days"), tone: "emerald" });
+
+  const panels: ReactNode[] = [];
+  if (f && columns && (f.last7d > 0 || refusedWeek > 0)) {
+    panels.push(
+      <Panel key="chart" title={t("Failed sign-ins and refused Developer actions per day")} subtitle={f.last24h ? t("{n} wrong tries in the last 24 hours.", { n: f.last24h }) : t("No failed sign-ins in the last 24 hours.")}>
+        <BarChart
+          t={t} columns={columns} grouped caption={t("Failed sign-ins and refused Developer actions per day")} empty={t("No failed sign-ins in the last 7 days.")}
+          series={[{ key: "failed", label: t("Failed sign-ins"), color: FAILED }, { key: "denied", label: t("Developer actions refused"), color: "#c0392b" }]}
+        />
+      </Panel>,
+    );
+  }
+  const tries = f ? failedTriesPanel(t, c, when) : null;
+  if (tries) panels.push(tries);
+  if (c.denied.length > 0) panels.push(<DeniedPanel key="denied" t={t} rows={c.denied} when={when} />);
+
   return (
-    <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-3">
-        <StatBlock
-          icon={KeyRound} label={t("Failed sign-ins")} value={num(t, c.failed14d)} caption={t("in 14 days")} warn={!!f?.last24h}
-          tag={c.failed14d === null ? undefined : c.failed14d > 0 ? t("Look at it") : t("Quiet")} tagTone={c.failed14d ? "amber" : "emerald"}
-          note={t("Wrong password or a blocked account. A few are typing mistakes; a spike on one day, or many tries from one address, means someone is guessing.")}
-        />
-        <StatBlock
-          icon={UserCheck} label={t("Successful sign-ins")} value={num(t, c.successful14d)} caption={t("in 14 days")}
-          tag={c.successful14d === null ? undefined : t("Sign-ins")} tagTone="slate"
-          note={t("Each time someone signed in with the right password, staff together.")}
-        />
-        <StatBlock
-          icon={Lock} label={t("Locked out now")} value={num(t, paused)} caption={t("after {n} wrong tries in {m} minutes", { n: LOGIN_LIMITS.staffPlace, m: LOGIN_LIMITS.windowMinutes })} warn={!!paused}
-          tag={paused === null ? undefined : paused ? t("Look at it") : t("None")} tagTone={paused ? "amber" : "emerald"}
-          note={t("An address is refused for {m} minutes after {n} wrong passwords, even if the right one is tried next. It opens again by itself.", { n: LOGIN_LIMITS.staffPlace, m: LOGIN_LIMITS.windowMinutes })}
-        />
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title={t("Failed sign-ins and refused Developer actions per day")} subtitle={f?.last24h ? t("{n} wrong tries in the last 24 hours.", { n: f.last24h }) : t("No failed sign-ins in the last 24 hours.")}>
-          {columns
-            ? <BarChart t={t} columns={columns} grouped caption={t("Failed sign-ins and refused Developer actions per day")} empty={t("No failed sign-ins in the last 7 days.")}
-                series={[{ key: "failed", label: t("Failed sign-ins"), color: FAILED }, { key: "denied", label: t("Developer actions refused"), color: "#c0392b" }]} />
-            : <Quiet>{t("This could not be read just now.")}</Quiet>}
-        </Panel>
-        <AddressPanel t={t} rows={c.byAddress} when={when} />
-      </div>
-
-      <div className="grid items-start gap-4 lg:grid-cols-2">
-        <Panel title={t("Latest failed tries")} subtitle={t("Latest refused attempts. Passwords are never stored. Repeats within a minute are merged (×N).")}>
-          {!f ? <Quiet>{t("This could not be read just now.")}</Quiet> : f.latest.length === 0 ? <Quiet>{t("No account was tried wrongly in the last 7 days.")}</Quiet> : (
-            <ul className="divide-y divide-border/60 text-sm">
-              {f.latest.map((r) => (
-                <li key={r.id} className="py-2.5">
-                  <span className="block font-medium leading-tight">{r.name}{r.times > 1 && <span className="ml-1.5 text-xs font-normal text-muted-foreground">×{r.times}</span>}</span>
-                  <span className="block text-xs text-muted-foreground" title={when(r.at)}>{agoText(t, r.at, now)}{r.ip ? <> · <span className="font-mono">{r.ip}</span></> : null}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-          <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{t("Only real accounts are written down — an email nobody holds is not. At most {n} tries for one account are written down each hour; if there are more, one line says so and the numbers here are lower than the real tries.", { n: FAILED_SIGN_IN_ROWS_PER_HOUR })}</p>
-        </Panel>
-        <div className="space-y-3">
-          <div className="flex items-start gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/[0.06] p-4">
-            <KeyRound className="mt-0.5 size-5 shrink-0 text-emerald-700 dark:text-emerald-300" aria-hidden />
-            <div className="min-w-0 text-sm">
-              <p className="font-semibold">{t("Your Developer sign-in")}</p>
-              <p className="mt-1 leading-relaxed text-muted-foreground">
-                {f && f.own24h > 0
-                  ? t("{n} wrong-password tries on your account in the last 24 hours. After {max} wrong tries from one place it locks for {min} minutes.", { n: f.own24h, max: LOGIN_LIMITS.developerEmail, min: LOGIN_LIMITS.windowMinutes })
-                  : t("No wrong-password tries on your account in the last 24 hours. After {max} wrong tries from one place it locks for {min} minutes.", { max: LOGIN_LIMITS.developerEmail, min: LOGIN_LIMITS.windowMinutes })}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-start gap-3 rounded-2xl border border-sky-500/30 bg-sky-500/[0.06] p-4">
-            <Bug className="mt-0.5 size-5 shrink-0 text-sky-700 dark:text-sky-300" aria-hidden />
-            <div className="min-w-0 text-sm">
-              <p className="font-semibold">{t("Page crashes")}</p>
-              <p className="mt-1 leading-relaxed text-muted-foreground">{t("An unexpected error on a page, an action or a job is written down by the system itself: see Errors & jobs, with how often, when and where in the code.")}</p>
-            </div>
-          </div>
+    <div className="space-y-3">
+      <SummaryChips label={t("Sign-ins & security")} items={chips} />
+      <p className="flex items-start gap-2 text-sm text-muted-foreground">
+        <KeyRound className="mt-0.5 size-4 shrink-0" aria-hidden />
+        <span>
+          <span className="font-medium text-foreground">{t("Your Developer sign-in")}</span>{" · "}
+          {f && f.own24h > 0
+            ? t("{n} wrong-password tries on your account in the last 24 hours. After {max} wrong tries from one place it locks for {min} minutes.", { n: f.own24h, max: LOGIN_LIMITS.developerEmail, min: LOGIN_LIMITS.windowMinutes })
+            : t("No wrong-password tries on your account in the last 24 hours. After {max} wrong tries from one place it locks for {min} minutes.", { max: LOGIN_LIMITS.developerEmail, min: LOGIN_LIMITS.windowMinutes })}
+        </span>
+      </p>
+      {!f && <Quiet>{t("This could not be read just now.")}</Quiet>}
+      {panels.length > 0 && (
+        <div className="grid items-start gap-3 lg:grid-cols-2">
+          {panels.map((p, i) => <div key={i} className={cn("min-w-0", panels.length % 2 === 1 && i === panels.length - 1 && "lg:col-span-2")}>{p}</div>)}
         </div>
-      </div>
-
-      <DeniedPanel t={t} rows={c.denied} when={when} />
+      )}
     </div>
   );
 }
@@ -336,7 +355,7 @@ export function SecurityTab({ t, c, when, now = new Date() }: { t: T; c: CrashDa
 /** Both together (the old "Crashes & sign-ins" page): the errors, then the sign-ins. */
 export function CrashesTab({ t, c, when, now = new Date() }: { t: T; c: CrashData; when: (x: Date) => string; now?: Date }) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <ErrorsTab t={t} c={c} when={when} now={now} />
       <SecurityTab t={t} c={c} when={when} now={now} />
     </div>

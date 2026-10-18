@@ -20,6 +20,8 @@ import { businessDateOf, toDbDate } from "@/lib/time/business-date";
 import { formatMinutesLabel } from "@/lib/format";
 import { makeT } from "@/i18n/translate";
 import zhExtras from "@/i18n/catalog/zh-CN/staff/developer-extras";
+import zhCompactCb from "@/i18n/catalog/zh-CN/staff/developer-compact-cb";
+import zhCompactCc from "@/i18n/catalog/zh-CN/staff/developer-compact-cc";
 import { NOT_WORK_ACTIONS, settingsTab, type SettingsTab as SettingsData } from "@/server/services/developer-console";
 import { crashData, healthReport, speedData, type CrashData, type SpeedData } from "@/server/services/developer-health";
 import { SecurityTab } from "@/app/staff/(app)/developer/tab-crashes";
@@ -127,7 +129,7 @@ describe("Sign-ins & security: failed tries by address, and the 14-day figures",
   });
 });
 
-describe("Speed & size: the bookings question and what the system holds", () => {
+describe("Speed & size: the bookings question and the size of the database", () => {
   it("has a sixth timed question (the newest 50 bookings) and the average covers all six", async () => {
     const s = await speedData(devUser);
     expect(s.probes).toHaveLength(6);
@@ -139,38 +141,34 @@ describe("Speed & size: the bookings question and what the system holds", () => 
     expect(s.tables.map((t) => t.label)).toEqual(["Audit trail entries", "Sign-in sessions", "Messages sent", "System events"]);
   });
 
-  it("'What the system holds' are counts that equal the direct counts — and the audit log reaches back to its oldest day", async () => {
+  it("the table sizes are plain counts, and the hotel's own records (guests, bookings, payments, orders) are NOT counted any more — they are the hotel's work, not the system's", async () => {
     const s = await speedData(devUser);
-    expect(s.holds.map((h) => h.label)).toEqual(["Guests", "Bookings", "Booked rooms", "Payments", "Restaurant orders", "Invoices", "Audit lines", "Guest messages", "Report messages"]);
-    const direct: Record<string, number> = {
-      guests: await db.guest.count(), bookings: await db.reservation.count(), bookedRooms: await db.reservationRoom.count(), payments: await db.payment.count(),
-      orders: await db.restaurantOrder.count(), invoices: await db.invoice.count(), audit: await db.auditLog.count(), guestMessages: await db.guestMessage.count(), messages: await db.notificationDelivery.count(),
-    };
-    for (const h of s.holds) expect(h.rows, h.key).toBe(direct[h.key]);
-    expect(s.holds.find((h) => h.key === "audit")!.rows).toBe(s.tables[0].rows);
-    const oldest = await db.auditLog.findFirst({ orderBy: { businessDate: "asc" }, select: { businessDate: true } });
-    expect(s.auditSince).toBe(oldest!.businessDate.toISOString().slice(0, 10));
+    expect(Object.keys(s).sort()).toEqual(["databaseBytes", "deployment", "latency", "probes", "tables"]);
+    expect(s.tables[0].rows).toBe(await db.auditLog.count());
+    expect(s.tables[1].rows).toBe(await db.session.count());
+    expect(s.tables[2].rows).toBe(await db.notificationDelivery.count());
+    expect(s.tables[3].rows).toBe(await db.systemEvent.count());
     // nothing but numbers: no record, no name
-    expect(Object.keys(s.holds[0]).sort()).toEqual(["key", "label", "rows"]);
+    expect(Object.keys(s.tables[0]).sort()).toEqual(["bytes", "label", "rows"]);
   });
 
   it("a question or a count that fails leaves only its own figure empty; the rest still draw", async () => {
     const spies = [
       vi.spyOn(db.reservation, "findMany").mockRejectedValue(new Error("boom")),
-      vi.spyOn(db.guest, "count").mockRejectedValue(new Error("boom")),
+      vi.spyOn(db.notificationDelivery, "count").mockRejectedValue(new Error("boom")),
     ];
     try {
       const s = await speedData(devUser);
       expect(s.probes[5].ms).toBeNull();
       expect(s.probes.slice(0, 5).every((p) => p.ms !== null)).toBe(true);
       expect(s.latency.samples).toHaveLength(5);
-      expect(s.holds.find((h) => h.key === "guests")!.rows).toBeNull();
-      expect(s.holds.find((h) => h.key === "payments")!.rows).toEqual(expect.any(Number));
+      expect(s.tables[2].rows).toBeNull();
+      expect(s.tables[0].rows).toEqual(expect.any(Number));
     } finally { for (const x of spies) x.mockRestore(); }
   });
 });
 
-describe("Settings: how the hotel is set up, and who is on the team", () => {
+describe("Settings: how the hotel is set up", () => {
   it("the rows come from the hotel's settings and from counts — and never an account number, a phone or a key", async () => {
     await db.hotelSettings.update({
       where: { id: 1 },
@@ -210,23 +208,8 @@ describe("Settings: how the hotel is set up, and who is on the team", () => {
     // nothing secret in anything the console returns
     const json = JSON.stringify(s);
     for (const needle of ["+255700123456", "+255700654321", "CALLMEBOT_KEY_EXTRAS", `ACCNO-${TAG}`, `Holder ${TAG}`, "Boss Extras", "MD Extras"]) expect(json).not.toContain(needle);
-    // the older fields are all still there
-    expect(Object.keys(s).sort()).toEqual(["config", "env", "hotel", "identity", "recorded", "team"]);
-  });
-
-  it("the team is the active accounts by role: inactive accounts are not counted and the system role is left out", async () => {
-    const roleCount = (team: NonNullable<SettingsData["team"]>, code: string) => team.find((r) => r.code === code)?.active ?? 0;
-    const t0 = (await settingsTab(devUser, null)).team!;
-    await makeUser("RECEPTIONIST", { fullName: "Second Extras" });
-    await makeUser("RECEPTIONIST", { fullName: "Closed Extras", isActive: false });
-    await makeUser("SYSTEM_ONLINE", { fullName: "System Extras" });
-    const t1 = (await settingsTab(devUser, null)).team!;
-    expect(roleCount(t1, "RECEPTIONIST")).toBe(roleCount(t0, "RECEPTIONIST") + 1);
-    expect(t1.map((r) => r.code)).not.toContain("SYSTEM_ONLINE");
-    expect(t1.every((r) => r.active > 0)).toBe(true);
-    for (let i = 1; i < t1.length; i++) expect(t1[i - 1].active).toBeGreaterThanOrEqual(t1[i].active);
-    expect(t1.reduce((n, r) => n + r.active, 0)).toBe(await db.user.count({ where: { isActive: true, role: { code: { not: "SYSTEM_ONLINE" } } } }));
-    expect(Object.keys(t1[0]).sort()).toEqual(["active", "code", "name"]);
+    // the older fields are all still there — except the accounts by role: they are in People, shown once
+    expect(Object.keys(s).sort()).toEqual(["config", "env", "hotel", "identity", "recorded"]);
   });
 });
 
@@ -289,36 +272,84 @@ describe("what is drawn, in English and in 中文", () => {
   it("English: the three parts say what the owner asked, with the figures filled in", () => {
     const h = draw(en);
     for (const html of Object.values(h)) clean(html);
-    for (const w of ["Failed sign-ins", "Successful sign-ins", "Locked out now", "Failed tries by address", "One address trying many accounts is a warning sign.", "Your Developer sign-in", "Page crashes", "Refused to you"]) expect(h.security, w).toContain(w);
-    expect(h.security).toContain("in 14 days");
-    expect(h.security).toContain("after 20 wrong tries in 15 minutes");
+    // ONE line of chips (no stat cards), ONE merged "Failed tries" list (the chart is drawn because there are wrong tries in the window)
+    for (const w of ["Failed sign-ins in 14 days:", "Successful:", "Locked out now:", "Failed tries", "Accounts tried", "Last try", "One address trying many accounts is a warning sign.", "Your Developer sign-in", "Failed sign-ins and refused Developer actions per day"]) expect(h.security, w).toContain(w);
+    for (const w of ["Successful sign-ins", "Failed tries by address", "Latest failed tries", "Page crashes"]) expect(h.security, w).not.toContain(w);
+    expect(h.security).toContain("refused for 15 minutes after 20 wrong passwords"); // the explanation of the lock is the chip's hover text
     expect(h.security).toContain(ip("a"));
     expect(h.security).toContain(ip("b"));
-    for (const w of ["Database answer", "Bookings list", "Audit lines", "in the permanent diary", "Load newest 50 bookings", "Database speed", "Database size", "Data checks", "This deployment", "What the system holds", "The audit log reaches back to"]) expect(h.speed, w).toContain(w);
-    expect(h.speed).toContain("Under 150 ms is fast; over 400 ms, pages will feel slow.");
-    for (const w of ["Guests", "Bookings", "Booked rooms", "Payments", "Restaurant orders", "Invoices", "Guest messages", "Report messages"]) expect(h.speed, w).toContain(w);
-    for (const w of ["How the hotel is set up", "Business day starts", "Time zone", "Guest rooms in use", "Room types", "Payment accounts open", "Report recipients", "Daily report", "Room report", "Unpaid booking hold", "Online payment", "What the system needs to run", "Who is on the team", "Active accounts by role.", "Your session", "What you cannot do"]) expect(h.settings, w).toContain(w);
+    // the account names tried at an address are a muted line under it; a try with no address on record is one last row with only the names
+    for (const w of ["Asha Extras", "Boss Extras", "No address on record"]) expect(h.security, w).toContain(w);
+    // the footnote about real accounts: once, as a hover text, never a paragraph
+    expect(h.security.split("Only real accounts are written down").length - 1).toBe(1);
+    // Speed & size: four panels, each figure once — the three cards that repeated them, and the hotel's own record counts, are gone
+    for (const w of ["Load newest 50 bookings", "Database speed", "Database size", "Data checks", "This deployment", "under 150 ms is fast", "Audit trail entries"]) expect(h.speed, w).toContain(w);
+    for (const w of ["Database answer", "Bookings list", "Audit lines", "in the permanent diary", "What the system holds", "The audit log reaches back to", "Guests", "Booked rooms", "Restaurant orders", "Invoices", "Guest messages", "Report messages"]) expect(h.speed, w).not.toContain(w);
+    // Settings: one line each; who is on the team and what you cannot do are not here (People says them once); your session is one strip
+    for (const w of ["How the hotel is set up", "Business day starts", "Time zone", "Guest rooms in use", "Room types", "Payment accounts open", "Report recipients", "Daily report", "Room report", "Unpaid booking hold", "Online payment", "What the system needs to run", `You: ${settings.identity.name}`, "Rights you do not hold ("]) expect(h.settings, w).toContain(w);
+    for (const w of ["Who is on the team", "Active accounts by role.", "What you cannot do", "Time left", "Rights you hold", "Account type"]) expect(h.settings, w).not.toContain(w);
     expect(h.settings).toContain("04:00");
   });
 
   it("中文: the same parts, in Chinese, with no hole left in a sentence", () => {
     const h = draw(zh);
     for (const html of Object.values(h)) clean(html);
-    for (const w of ["按地址统计的失败尝试", "登录成功", "当前被锁定", "14 天内", "20 次后"]) expect(h.security, w).toContain(w);
-    for (const w of ["数据库响应", "预订列表", "审计记录条数", "系统中的数据量", "住客", "低于 150 毫秒算快"]) expect(h.speed, w).toContain(w);
-    for (const w of ["酒店的设置", "时区", "系统运行所需的设置", "团队成员", "按角色统计的在用账户。"]) expect(h.settings, w).toContain(w);
+    // the chips and the merged list have their Chinese in the compact catalog
+    const zhSecurity = renderToStaticMarkup(createElement(SecurityTab, { t: makeT("zh-CN", { ...zhExtras, ...zhCompactCb }), c: after, when, now: NOW }));
+    for (const w of ["14 天内登录失败：", "登录成功：", "当前被锁定：", "失败的尝试", "被尝试的账户", "最近一次尝试", "没有记录地址", "同一个地址尝试多个账户是危险信号。"]) expect(zhSecurity, w).toContain(w);
+    expect(zhSecurity).not.toMatch(/\{(n|m|a|b|ms|fast|slow|date)\}/);
+    expect(zhSecurity).not.toContain("Failed sign-ins in 14 days");
+    const zhSpeed = renderToStaticMarkup(createElement(SpeedTab, { t: makeT("zh-CN", { ...zhExtras, ...zhCompactCc }), s: speed }));
+    for (const w of ["每条横条代表一项典型操作，越短越快。", "最大的数据表及其大致行数。", "必须始终成立的规则。"]) expect(zhSpeed, w).toContain(w);
+    for (const w of ["酒店的设置", "时区", "系统运行所需的设置"]) expect(h.settings, w).toContain(w);
     // no placeholder is left unfilled in the Chinese either
     for (const html of Object.values(h)) expect(html).not.toMatch(/\{(n|m|a|b|ms|fast|slow|date)\}/);
+  });
+
+  it("compact: Speed & size is four panels in two columns, Settings is two columns of one-line rows and ONE slim strip — each fact once, no paragraph", () => {
+    const sp = renderToStaticMarkup(createElement(SpeedTab, { t: en, s: speed }));
+    expect(sp).toMatch(/lg:grid-cols-2/);
+    // the three cards and the hotel's record counts are gone; the table sizes carry the rows and the bytes on ONE line
+    expect(sp).not.toContain("tracking-[0.14em]"); // the stat-card label
+    expect(sp).toMatch(/about [\d,]+ rows · [\d.,]+ (B|KB|MB|GB)/);
+    expect(sp).toContain("Rules that must always be true.");
+    expect(sp).toContain("One bar per typical task. Shorter is faster.");
+    for (const gone of ["Each bar is one typical thing the app does.", "The biggest tables, and roughly how many rows each holds."]) expect(sp, gone).not.toContain(gone);
+
+    const session = { startedAt: new Date(Date.UTC(2041, 2, 11, 6, 0)), lastSeenAt: NOW, hardLimitAt: NOW, idleLimitAt: NOW, endsAt: new Date(Date.UTC(2041, 2, 11, 9, 0)), endsBecause: "idle" as const, minutesLeft: 135, limitHours: 4, idleMinutes: 30 };
+    const withSession: SettingsData = { ...settings, identity: { ...settings.identity, session } };
+    const st = renderToStaticMarkup(createElement(SettingsTab, { t: en, s: withSession, when }));
+    // the environment on the left, the hotel on the right, one line each (what a setting is for is the hover text)
+    expect(st.indexOf("What the system needs to run")).toBeLessThan(st.indexOf("How the hotel is set up"));
+    expect(st).toMatch(/title="Lets the reports, payment checks and clean-up prove they come from the scheduler\."/);
+    expect(st).not.toContain("mt-1 block text-xs text-muted-foreground"); // the description line under a setting's name
+    // ONE strip: who you are, the role, when you signed in, the time left and the number of rights; the rights you do not hold are folded inside
+    expect(st).toContain(`You: ${settings.identity.name}`);
+    expect(st).toContain("signed in 2041-03-11 06:00");
+    expect(st).toContain("2 h 15 min left");
+    expect(st).toContain(`${settings.identity.rightsCount} rights`);
+    expect(st).toMatch(/<details[^>]*>\s*<summary[^>]*>[\s\S]*Rights you do not hold \(\d+\)/);
+    expect(st).not.toContain("<details open");
+    for (const gone of ["Work as ends by itself after 4 hours", "The same wall holds while you work as someone", "The account you are signed in as, taken from the server"]) expect(st, gone).not.toContain(gone);
+    // the list inside is still the full list of rights the Developer role does not hold
+    for (const r of settings.identity.notHeld) expect(st, r.code).toContain(r.code);
+    // the same strip, in Chinese
+    const zhSt = renderToStaticMarkup(createElement(SettingsTab, { t: makeT("zh-CN", { ...zhExtras, ...zhCompactCc }), s: withSession, when }));
+    for (const w of ["您：", "登录于 2041-03-11 06:00", "项权限", "您不具备的权限（"]) expect(zhSt, w).toContain(w);
+    expect(zhSt).not.toMatch(/\{(n|m|a|b|ms|time|name)\}/);
+    // every line of the compact catalog keeps the placeholders of its English
+    const holes = (x: string) => [...x.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(",");
+    for (const [key, value] of Object.entries(zhCompactCc)) expect(holes(value), key).toBe(holes(key));
   });
 
   it("a part that could not be read says so in plain words, and never draws a zero or NaN", () => {
     const c: CrashData = { ...after, failed: null, failed14d: null, successful14d: null, byAddress: null, paused: null, deniedByDay: null };
     const s: SpeedData = {
       ...speed, probes: speed.probes.map((p) => ({ ...p, ms: null })), latency: { samples: [], average: null, slowest: null },
-      tables: speed.tables.map((x) => ({ ...x, rows: null, bytes: null })), databaseBytes: null, holds: speed.holds.map((x) => ({ ...x, rows: null })), auditSince: null,
+      tables: speed.tables.map((x) => ({ ...x, rows: null, bytes: null })), databaseBytes: null,
     };
     const st: SettingsData = {
-      ...settings, team: null,
+      ...settings,
       hotel: { dayStart: null, timezone: null, guestRooms: null, roomTypes: null, paymentAccounts: null, reportRecipients: null, dailyReport: null, roomReport: null, unpaidHoldHours: null, onlinePayment: null },
     };
     for (const t of [en, zh]) {
