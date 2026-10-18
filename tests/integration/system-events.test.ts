@@ -148,6 +148,17 @@ describe("recordError", () => {
     expect(await rows()).toHaveLength(1);
   });
 
+  it("a 'Failed to find Server Action' row that an earlier version already wrote is left out of the console: not listed, not counted, nothing deleted", async () => {
+    const user = await as(dev);
+    const before = await loadSystemEvents(user, new Date());
+    await db.systemEvent.create({ data: { kind: "ERROR", source: "page:/(public)/[lang]/contact/page", fingerprint: `skew:${Date.now()}`, status: "OPEN", message: "Error: Failed to find Server Action. This request might be from an older or newer deployment.", count: 1, firstSeenAt: new Date(), lastSeenAt: new Date() } });
+    const after = await loadSystemEvents(user, new Date());
+    expect(after.errors24h).toBe(before.errors24h);
+    expect(after.errorGroups.map((g) => g.message).join(" ")).not.toContain("Failed to find Server Action");
+    expect(await db.systemEvent.count({ where: { message: { contains: "Failed to find Server Action" } } })).toBeGreaterThan(0); // still in the table
+    await db.systemEvent.deleteMany({ where: { message: { contains: "Failed to find Server Action" } } });
+  });
+
   // Built from pieces so the file itself never holds something that looks like a real payment key (the repository refuses those).
   const FAKE_KEY = ["sk", "live", "51HabcDEFghijKLMNOP123456"].join("_");
 

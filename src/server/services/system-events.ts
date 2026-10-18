@@ -108,6 +108,12 @@ const asJson = (v: Record<string, unknown>): Prisma.InputJsonObject => v as Pris
 /** Next's own control flow (a redirect, a not-found page, a prerender bail-out) travels as a thrown value: it is not an error. */
 const CONTROL_FLOW = /^(NEXT_REDIRECT|NEXT_NOT_FOUND|NEXT_HTTP_ERROR_FALLBACK|NEXT_UNAUTHORIZED|NEXT_FORBIDDEN|NEXT_PRERENDER|DYNAMIC_SERVER_USAGE|BAILOUT_TO_CLIENT_SIDE_RENDERING)/;
 
+/**
+ * A form left open across a new version ("Failed to find Server Action"): the deployment's doing, not a fault. It is no longer WRITTEN (isExpected), and
+ * the rows an earlier version of the system already wrote are LEFT OUT when the Developer's console reads the errors — nothing in the database is deleted.
+ */
+export const DEPLOY_SKEW_ERROR = { NOT: { message: { contains: "Failed to find Server Action" } } } as const;
+
 /** An error that is part of normal use, not a fault of the system: a message for the person (AppError), Next's control flow, a request the visitor cancelled, a form left open across a new version. */
 function isExpected(error: unknown, digest?: string): boolean {
   if (error instanceof AppError) return true;
@@ -479,8 +485,8 @@ export async function loadSystemEvents(developer: CurrentUser, now: Date = new D
   const jobs = scheduledJobs();
 
   const [rows, recent, runs, hookAll, hookWeek, timeZone, recordingSince] = await Promise.all([
-    db.systemEvent.findMany({ where: { kind: "ERROR" }, orderBy: { lastSeenAt: "desc" }, take: 150 }),
-    db.systemEvent.findMany({ where: { kind: "ERROR", lastSeenAt: { gte: since24 } }, select: { fingerprint: true }, take: 500 }),
+    db.systemEvent.findMany({ where: { kind: "ERROR", ...DEPLOY_SKEW_ERROR }, orderBy: { lastSeenAt: "desc" }, take: 150 }),
+    db.systemEvent.findMany({ where: { kind: "ERROR", ...DEPLOY_SKEW_ERROR, lastSeenAt: { gte: since24 } }, select: { fingerprint: true }, take: 500 }),
     db.systemEvent.findMany({ where: { kind: "CRON", source: { in: jobs.map((j) => j.job) }, firstSeenAt: { gte: since14 } }, orderBy: { firstSeenAt: "desc" }, take: 300 }),
     db.systemEvent.groupBy({ by: ["source", "status"], where: { kind: "WEBHOOK", lastSeenAt: { gte: since14 } }, _max: { lastSeenAt: true } }),
     db.systemEvent.groupBy({ by: ["source", "status"], where: { kind: "WEBHOOK", lastSeenAt: { gte: since7 } }, _sum: { count: true } }),

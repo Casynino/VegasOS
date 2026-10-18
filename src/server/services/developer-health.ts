@@ -12,7 +12,7 @@ import { WORK_AS_HOURS } from "../work-as-session";
 import { DEVELOPER_TRIES, DEVELOPER_WINDOW_SECONDS } from "./auth-login";
 import { runChecks, type CheckResult } from "./developer-checks";
 import { countPerDay } from "./developer-frame";
-import { loadSystemEvents, type SystemEvents } from "./system-events";
+import { DEPLOY_SKEW_ERROR, loadSystemEvents, type SystemEvents } from "./system-events";
 
 /**
  * WHAT THE DEVELOPER CONSOLE MEASURES (owner, 2026-10-17): the health of the system, who is using it, how fast the database is and
@@ -268,7 +268,7 @@ export async function healthReport(user: ConsoleUser, now = new Date()): Promise
   const [signInRows, actionRows, errorRows, dbSamples] = online ? await Promise.all([
     safe(() => db.auditLog.groupBy({ by: ["businessDate"], where: { action: "auth.login", businessDate: window }, _count: true })),
     safe(() => db.auditLog.groupBy({ by: ["businessDate"], where: { businessDate: window, actorType: { in: ["STAFF", "DEVELOPER"] }, action: { notIn: [...NOT_WORK_ACTIONS] } }, _count: true })),
-    safe(() => db.systemEvent.findMany({ where: { kind: "ERROR", lastSeenAt: { gte: businessDayBounds(trendDays[0], cfg).start } }, select: { lastSeenAt: true }, orderBy: { lastSeenAt: "desc" }, take: 1000 })),
+    safe(() => db.systemEvent.findMany({ where: { kind: "ERROR", ...DEPLOY_SKEW_ERROR, lastSeenAt: { gte: businessDayBounds(trendDays[0], cfg).start } }, select: { lastSeenAt: true }, orderBy: { lastSeenAt: "desc" }, take: 1000 })),
     safe(async () => {
       const out: number[] = [];
       for (let i = 0; i < 6; i++) { const t0 = performance.now(); await db.$queryRaw`SELECT 1`; out.push(Math.max(1, Math.round(performance.now() - t0))); }
