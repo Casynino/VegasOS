@@ -48,13 +48,15 @@ It runs in the terminal and asks you, in this order:
 2. **"To confirm this is the right database, type its name (…)"**. Type the database name exactly. If you type anything else, nothing is changed.
 3. **"Developer's email"**. Use a NEW address that you can receive mail on. It must not be the email of any staff account (the command refuses an email that is already used).
 4. **"Developer's full name"**. This name appears in the audit trail, in the console and in the message the Boss receives when you work as someone.
-5. **"New password (not shown)"** and **"Type it again (not shown)"**. Nothing appears while you type, not even stars. The password must be:
+5. **The password.** The easiest way: **just press Enter** at "New password" and a strong password is made for you. It is shown **once** on your screen (and put on your clipboard on a Mac) — paste it into your password manager straight away; it is not stored anywhere readable and cannot be shown again (if it is lost, set a new one with `--rotate`). Or type your own: **"New password (not shown)"** and **"Type it again (not shown)"**. Nothing appears while you type, not even stars. The password must be:
    - at least 14 characters (a few words with numbers and a symbol is easy to remember and hard to guess);
    - with a capital letter, a small letter, a number and a symbol;
    - not starting or ending with a space;
    - not your email, not the first part of your email, and not an easy word like "password", "admin", "qwerty" or "123456".
 
    If it is not strong enough, it tells you why (it never repeats the password) and asks again, up to 5 times.
+
+A hosted database (such as Neon) closes a connection that sits idle for a few minutes. The command opens its connection again by itself, so taking your time over the questions is fine.
 
 By default there can be only **one active Developer account**. A second one needs the extra option `--allow-second`; do not use it unless you really need it.
 

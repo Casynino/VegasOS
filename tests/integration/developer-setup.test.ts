@@ -26,7 +26,7 @@ interface Run { code: number | null; out: string }
 /** Runs the real script. `answers` are the key=value lines for --stdin; the address goes in the environment, as the owner would give it. */
 function run(args: string[], answers: Record<string, string>, env: Record<string, string | undefined> = {}): Promise<Run> {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [SCRIPT, ...args], { cwd: ROOT, env: { ...process.env, DATABASE_URL: ADDRESS, ...env } });
+    const child = spawn(process.execPath, [SCRIPT, ...args], { cwd: ROOT, env: { ...process.env, DATABASE_URL: ADDRESS, DEVELOPER_ADDRESS_FILE: path.join(ROOT, ".no-such-address-file"), ...env } });
     let out = "";
     child.stdout.on("data", (d) => (out += d));
     child.stderr.on("data", (d) => (out += d));
@@ -305,5 +305,25 @@ describe("the Developer setup script (the only way the account is made)", () => 
     const both = await run(["--stdin", "--rotate", "--deactivate"], { database: DB_NAME });
     expect(both.code).toBe(1);
     expect(await developers()).toHaveLength(1);
+  });
+
+  it("a password made for the person (password=@generate): shown ONCE on the screen, verifies with the app's own check, and is never in the audit entry or the hash text", async () => {
+    await cleanup(); // the tests above leave a Developer behind; this one starts from none
+    const r = await create({ password: "@generate" });
+    expect(r.code, r.out).toBe(0);
+    expect(r.out).toContain("DONE");
+    expect(r.out).toContain("YOUR PASSWORD");
+    // The one line that carries it: 21 characters from the secure source, ending with the symbol.
+    const shown = r.out.split("\n").map((l) => l.trim()).filter((l) => /^[A-Za-z0-9_-]{20}!$/.test(l));
+    expect(shown).toHaveLength(1);
+    const made = shown[0];
+    expect(r.out.split(made).length - 1).toBe(1); // exactly once
+    const dev = (await developers())[0];
+    expect(await verifyPassword(dev.passwordHash, made)).toBe(true);
+    expect(dev.passwordHash).not.toContain(made);
+    const entries = await developerAudit("developer.provisioned");
+    expect(JSON.stringify(entries)).not.toContain(made);
+    // The word @generate is only a request: it is never stored as the password.
+    expect(await verifyPassword(dev.passwordHash, "@generate")).toBe(false);
   });
 });

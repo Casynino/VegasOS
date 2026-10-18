@@ -23,6 +23,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import readline from "node:readline/promises";
+import { spawnSync } from "node:child_process";
 import pg from "pg";
 import { hash, verify } from "@node-rs/argon2";
 
@@ -154,6 +155,7 @@ const PASSWORD_HELP = [
   "  - be at least 14 characters long (a few words with numbers and a symbol is easy to remember and hard to guess),",
   "  - have a capital letter, a small letter, a number and a symbol (for example ! # % ? or a space),",
   "  - not be, or contain the first part of, your email address, and not be an easy word like 'password'.",
+  "EASIEST: at the password question just press Enter — a strong password is made for you and shown once (and put on the clipboard).",
   "Use a password manager, and use this password nowhere else.",
 ].join("\n");
 
@@ -175,9 +177,27 @@ function passwordProblems(password, email) {
   return bad;
 }
 
+/** A strong password made here (21 characters from a secure random source) — for a person who would rather not invent one. */
+function generatePassword(email) {
+  for (let i = 0; i < 100; i++) {
+    const made = `${crypto.randomBytes(15).toString("base64url")}!`;
+    if (!passwordProblems(made, email).length) return made;
+  }
+  return fail("A password could not be made. Nothing was changed.");
+}
+
+/** Shown ONCE, on this screen only, and put on the clipboard (macOS) so it can be pasted straight into a password manager. */
+function showGeneratedPassword(password) {
+  let copied = false;
+  if (process.platform === "darwin") copied = !spawnSync("pbcopy", { input: password }).error;
+  console.log(`\n  YOUR PASSWORD — made for you, shown only now. Save it before you close this window:\n\n      ${password}\n`);
+  console.log(copied ? "  It is also on your clipboard: paste it into your password manager now (Cmd+V).\n" : "  Copy it into your password manager now.\n");
+}
+
 async function askNewPassword(email) {
   for (let attempt = 1; attempt <= 5; attempt++) {
-    const first = await answer("password", "New password (not shown): ", { hidden: true });
+    const first = await answer("password", "New password (not shown) — or just press Enter and a strong one is made for you: ", { hidden: true });
+    if ((!piped && first === "") || (piped && first === "@generate")) return { password: generatePassword(email), generated: true };
     const problems = passwordProblems(first, email);
     if (problems.length) {
       const text = `That password is not strong enough: ${problems.join("; ")}.`;
@@ -189,15 +209,31 @@ async function askNewPassword(email) {
       const again = await askHidden("Type it again (not shown): ");
       if (again !== first) { console.error("\nThe two passwords are not the same. Try again.\n"); continue; }
     }
-    return first;
+    return { password: first, generated: false };
   }
   return fail("Too many tries. Nothing was changed.");
 }
 
 // ───────────────────────────── the database ─────────────────────────────
 
-const client = new pg.Client({ connectionString: ADDRESS, connectionTimeoutMillis: 20_000, statement_timeout: 60_000 });
-const q = async (sql, params) => (await client.query(sql, params)).rows;
+// The connection is opened when it is needed and OPENED AGAIN if the server dropped it while the person was typing (a hosted database
+// such as Neon closes an idle connection after a few minutes — "terminating connection due to administrator command").
+let client = null;
+let dead = true;
+function newClient() {
+  const c = new pg.Client({ connectionString: ADDRESS, connectionTimeoutMillis: 20_000, statement_timeout: 60_000, keepAlive: true });
+  c.on("error", () => { if (c === client) dead = true; });
+  c.on("end", () => { if (c === client) dead = true; });
+  return c;
+}
+async function ensure() {
+  if (client && !dead) return;
+  if (client) client.end().catch(() => {});
+  client = newClient();
+  await client.connect();
+  dead = false;
+}
+const q = async (sql, params) => { await ensure(); return (await client.query(sql, params)).rows; };
 const newId = (prefix) => `${prefix}_${crypto.randomBytes(12).toString("hex")}`;
 
 /** Business date of "now" in the hotel's timezone and business-day start, exactly as the app works it out. */
@@ -222,6 +258,7 @@ async function audit(action, entityId, before, after) {
 
 /** Runs the steps in ONE transaction: all of it or none of it. */
 async function inTransaction(steps) {
+  await ensure();
   await client.query("BEGIN");
   try {
     await client.query("SET LOCAL TIME ZONE 'UTC'"); // the app keeps its times in UTC; now() must mean the same here
@@ -300,7 +337,7 @@ async function deactivate({ email }) {
 // ───────────────────────────── the run ─────────────────────────────
 
 async function main() {
-  try { await client.connect(); } catch (e) { fail(`Could not connect to the database${e.code ? ` (${String(e.code).replace(/[^A-Za-z0-9_]/g, "")})` : ""}. Check the address and that you are online. Nothing was changed.`); }
+  try { await ensure(); } catch (e) { fail(`Could not connect to the database${e.code ? ` (${String(e.code).replace(/[^A-Za-z0-9_]/g, "")})` : ""}. Check the address and that you are online. Nothing was changed.`); }
 
   // Is this the hotel's database, and has the update that makes the Developer role run?
   const settings = (await q(`SELECT "hotelName" FROM hotel_settings WHERE id = 1`).catch(() => []))[0];
@@ -323,9 +360,10 @@ async function main() {
     const name = (await answer("name", "Developer's full name: ")).trim().replace(/\s+/g, " ");
     if (name.length < 2 || name.length > 100) fail("The name must be 2 to 100 characters. Nothing was changed.");
     if (!piped) console.log(`\n${PASSWORD_HELP}\n`);
-    const password = await askNewPassword(email);
+    const { password, generated } = await askNewPassword(email);
     await create({ email, name, password });
     console.log(`\nDONE — the Developer account was created.\n  Name:      ${name}\n  Email:     ${email}\n  Role:      Developer (super user)\n  Password:  set — it is not shown and not stored anywhere readable (only its hash is)\n\nSign in at /staff/login with this email and password (the same page as everyone) — it opens the Developer console. The setup is written in the audit trail (Developer console → Audit).\n`);
+    if (generated) showGeneratedPassword(password);
     return;
   }
 
@@ -339,9 +377,10 @@ async function main() {
   if (MODE === "rotate") {
     const known = chosen.email;
     if (!piped) console.log(`\n${PASSWORD_HELP}\n`);
-    const password = await askNewPassword(known);
+    const { password, generated } = await askNewPassword(known);
     const { dev, ended } = await rotate({ email, password });
     console.log(`\nDONE — a new password was set for ${dev.email}${REACTIVATE ? " and the account is switched on" : ""}.\n  Password:  set — not shown, only its hash is stored\n  Signed out: ${ended} open session${ended === 1 ? "" : "s"} of this account ended\n\nThe change is written in the audit trail.\n`);
+    if (generated) showGeneratedPassword(password);
     return;
   }
 
@@ -356,5 +395,5 @@ try {
   else console.error(`\nSTOPPED — something went wrong${e.code ? ` (${String(e.code).replace(/[^A-Za-z0-9_]/g, "")})` : ""}: ${scrub(e.message ?? e)}\nNothing was changed.\n`);
   process.exitCode = 1;
 } finally {
-  await client.end().catch(() => {});
+  if (client) await client.end().catch(() => {});
 }
