@@ -1,7 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
 import { headers } from "next/headers";
-import { redirect } from "next/navigation";
 import { Clock, Globe, LogOut } from "lucide-react";
 import { can, getMyOpenShift, requireUser } from "@/server/auth";
 import { isRestaurantDevice, needsOwnShift, worksWaiterShift } from "@/lib/permissions";
@@ -9,6 +8,10 @@ import { businessToday, getSettings } from "@/server/settings";
 import { newRequestCount } from "@/server/services/booking-requests";
 import { newStockRequestCount } from "@/server/services/stock-requests";
 import { staffHome } from "@/lib/staff-home";
+import { guideBooksFor } from "@/lib/guide-books";
+import { guideStorageReady, uploadedGuideFiles } from "@/server/services/guide-books";
+import { GuideBookStrip } from "@/components/staff/guide-book-strip";
+import { OnlyOnPath } from "@/components/staff/guide-book-strip-gate";
 import { navFor } from "@/components/staff/nav-config";
 import { StaffNav } from "@/components/staff/staff-nav";
 import { StaffBottomBar } from "@/components/staff/bottom-bar";
@@ -64,6 +67,10 @@ export async function StaffShell({ children }: { children: ReactNode }) {
   // Not while a Developer works as them: the shift gate is skipped then, and the Developer starts no shift for anybody.
   const noShift = !workAs && myShift === null && !pathname.startsWith("/staff/start-shift");
   const home = staffHome(user.permissions);
+  // The person's own department guide book(s), as a slim strip on their own home page only (owner, 2026-10-19). Not in the Developer's console.
+  // The layout is not drawn again when somebody moves between pages, so the page check is made in the browser (OnlyOnPath), not here.
+  const guides = !consoleMode ? guideBooksFor(user.permissions) : null;
+  const guideStrip = guides && guides.files.length > 0 && guideStorageReady() ? await uploadedGuideFiles().catch(() => null) : undefined;
   // The shared restaurant screen (one login for the restaurant) — it signs out like any account.
   const device = isRestaurantDevice(user.permissions);
   const grouped = navFor(user, { badges: { "/staff/booking-requests": newRequests, "/staff/stock-requests": newStock }, home });
@@ -188,7 +195,7 @@ export async function StaffShell({ children }: { children: ReactNode }) {
           </div>
         </header>
         {/* On the shared restaurant screen, money and taking charge ask the waiter's PIN. */}
-        <main className="flex-1 px-3 pb-28 pt-5 sm:px-4 lg:pb-8 lg:pl-2 lg:pr-5 print:p-0"><WaiterPinProvider device={device}><CustomerFinderAccess allowed={!consoleMode && can(user, "guests.view")}>{children}</CustomerFinderAccess></WaiterPinProvider></main>
+        <main className="flex-1 px-3 pb-28 pt-5 sm:px-4 lg:pb-8 lg:pl-2 lg:pr-5 print:p-0">{guides && guideStrip !== undefined && <OnlyOnPath path={home}><GuideBookStrip t={t} access={guides} uploaded={guideStrip} /></OnlyOnPath>}<WaiterPinProvider device={device}><CustomerFinderAccess allowed={!consoleMode && can(user, "guests.view")}>{children}</CustomerFinderAccess></WaiterPinProvider></main>
       </div>
 
       <StaffBottomBar home={home} sections={sections} requests={newRequests} canBook={!consoleMode && can(user, "reservations.view")} console={consoleMode}

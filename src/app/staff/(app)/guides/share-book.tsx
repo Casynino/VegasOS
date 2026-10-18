@@ -1,19 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Download, Link2, Share2 } from "lucide-react";
+import { Check, Download, Link2, Printer, Share2 } from "lucide-react";
 import { useT } from "@/i18n/client";
 
 /**
- * Download and Share for ONE book. Share sends the PDF itself through the phone's own share sheet (WhatsApp, email…) when the phone can;
- * otherwise it shares the link, and the WhatsApp and Copy-link buttons are always there. The link is the book's address in the hotel's file
- * storage: whoever has it can open the book, so it is for the staff the Boss means it for.
+ * The buttons of ONE book. Everybody who has the book: Download (saved as a file) and Open and print (shown in the browser to read or print) —
+ * both through /api/guides/<file>, which checks again that the book is theirs. The Boss, the MD, the Manager and the Developer (`canShare`) can also
+ * Share: the PDF itself through the phone's own share sheet (WhatsApp, email…) when the phone can, otherwise the link; and WhatsApp and Copy link
+ * are always there. The link is the book's address in the hotel's file storage: whoever has it can open the book, so it is for the staff the
+ * person means it for.
  */
-export function ShareBook({ file, title, url, downloadUrl }: { file: string; title: string; url: string; downloadUrl: string }) {
+export function ShareBook({ file, title, canShare, url, downloadUrl }: { file: string; title: string; canShare: boolean; url?: string; downloadUrl?: string }) {
   const t = useT();
   const [state, setState] = useState<"idle" | "busy" | "copied" | "failed">("idle");
   const message = t("{title}: the Vegas Luxury Hotel guide book", { title });
   const share = async () => {
+    if (!url || !downloadUrl) return;
     setState("busy");
     try {
       const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
@@ -36,17 +39,24 @@ export function ShareBook({ file, title, url, downloadUrl }: { file: string; tit
     }
   };
   const copy = async () => {
+    if (!url) return;
     try { await navigator.clipboard.writeText(url); setState("copied"); setTimeout(() => setState("idle"), 2500); } catch { setState("failed"); }
   };
   const base = "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold";
   const button = `${base} border-border bg-background text-foreground hover:bg-muted`;
   const solid = `${base} border-transparent bg-foreground text-background hover:bg-foreground/90`; // the main button: its own colours, nothing inherited to fight with
+  const sharing = canShare && !!url && !!downloadUrl;
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <a href={downloadUrl} download={file} className={solid}><Download className="size-4" aria-hidden />{t("Download")}</a>
-      <button type="button" onClick={share} disabled={state === "busy"} className={button}><Share2 className="size-4" aria-hidden />{state === "busy" ? t("Preparing…") : t("Share")}</button>
-      <a href={`https://wa.me/?text=${encodeURIComponent(`${message}\n${url}`)}`} target="_blank" rel="noopener noreferrer" className={button}>{t("WhatsApp")}</a>
-      <button type="button" onClick={copy} className={button}>{state === "copied" ? <Check className="size-4 text-emerald-600" aria-hidden /> : <Link2 className="size-4" aria-hidden />}{state === "copied" ? t("Link copied") : t("Copy link")}</button>
+      <a href={`/api/guides/${file}`} className={solid}><Download className="size-4" aria-hidden />{t("Download")}</a>
+      <a href={`/api/guides/${file}?open=1`} target="_blank" rel="noopener noreferrer" className={button}><Printer className="size-4" aria-hidden />{t("Open and print")}</a>
+      {sharing && (
+        <>
+          <button type="button" onClick={share} disabled={state === "busy"} className={button}><Share2 className="size-4" aria-hidden />{state === "busy" ? t("Preparing…") : t("Share")}</button>
+          <a href={`https://wa.me/?text=${encodeURIComponent(`${message}\n${url}`)}`} target="_blank" rel="noopener noreferrer" className={button}>{t("WhatsApp")}</a>
+          <button type="button" onClick={copy} className={button}>{state === "copied" ? <Check className="size-4 text-emerald-600" aria-hidden /> : <Link2 className="size-4" aria-hidden />}{state === "copied" ? t("Link copied") : t("Copy link")}</button>
+        </>
+      )}
       {state === "failed" && <span role="status" className="text-xs text-rose-600 dark:text-rose-400">{t("It could not be shared. Use Download.")}</span>}
     </div>
   );

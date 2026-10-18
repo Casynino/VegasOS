@@ -1,4 +1,5 @@
 import type { PermissionCode } from "@/lib/permissions";
+import { GUIDE_ANY_RIGHTS } from "@/lib/guide-books";
 import { msg } from "@/i18n/msg";
 import { CASH_HANDOVER_ON } from "@/lib/cash-handover";
 
@@ -158,7 +159,6 @@ export const NAV: NavSection[] = [
       { href: "/staff/activity", label: msg("Activity"), icon: "Activity", anyOf: ["staff.activity.view"] },
       // The full record of who did what — Developer actions included — read-only: the Boss, the MD and the Developer.
       { href: "/staff/audit", label: msg("Audit trail"), icon: "History", anyOf: ["audit.view"] },
-      { href: "/staff/guides", label: msg("Guide books"), icon: "BookOpenText", anyOf: ["dashboard.admin", "dashboard.owner", "dashboard.manager"] },
       { href: "/staff/users", label: msg("Staff & roles"), icon: "UserCog", anyOf: ["users.manage"] },
     ],
   },
@@ -185,6 +185,13 @@ export const NAV: NavSection[] = [
       // Which languages guests are offered, and how much of the hotel's text is in Chinese.
       { href: "/staff/settings/languages", label: msg("Languages"), icon: "Languages", anyOf: ["settings.manage"] },
       { href: "/staff/guests", label: msg("Customers"), icon: "Contact", anyOf: ["reservations.view"] },
+    ],
+  },
+  {
+    // Each person's own department guide book (the Boss, the MD and the Manager: all of them) — to download, read and print (owner, 2026-10-19).
+    title: msg("Help"), icon: "BookOpenText",
+    items: [
+      { href: "/staff/guides", label: msg("Guide books"), icon: "BookOpenText", anyOf: GUIDE_ANY_RIGHTS.filter((p) => p !== "developer.access") }, // the Developer has it in his own console menu
     ],
   },
 ];

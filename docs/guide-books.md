@@ -2,9 +2,12 @@
 
 The twelve department guide books (edition 2) are on **Staff → Guide books** (`/staff/guides`) so the Boss, the MD, the Manager and the Developer can **download** them and **share** them (the phone's share sheet with the PDF itself, WhatsApp link, copy link).
 
-## Who can do what
-- **See, download, share:** anyone holding `dashboard.admin`, `dashboard.owner`, `dashboard.manager` or `developer.access` (`GUIDE_VIEW_RIGHTS` in `src/lib/guide-books.ts`). The menu entry shows for the same people.
-- **Upload and remove:** the Developer only, signed in as himself (not while working as someone). Enforced in the upload route (`src/app/api/guides/upload/route.ts`) and in both actions (`guides/actions.ts`); every upload and removal is written to the audit trail under him (`guide_book.uploaded`, `guide_book.removed`).
+## Who gets which book (owner, 2026-10-19: "each person gets its own department's book on their dashboard, to download, use or print")
+- **All twelve** (and may share them with the staff they are for): anyone holding `dashboard.admin`, `dashboard.owner`, `dashboard.manager` or `developer.access` — the Boss, the MD, the Manager, the Developer.
+- **Their own department's book only**, decided by rights (not role names, so a custom role works) in `guideBooksFor()` (`src/lib/guide-books.ts`): front desk (`dashboard.front_desk`) → 01 Reception, 05 Housekeeping (the checklist it prints for the housekeeping team, who have no accounts), 10 Guests and Website; Restaurant Counter (`restaurant.device`) → 02 Waiters, 03 Restaurant Counter; waiter (`restaurant.shift`) → 02; cook (`kitchen.orders`) → 04 Kitchen and Bar; driver (`transport.driver`) → 06; Finance (`dashboard.finance`) → 11; Accountant (`dashboard.procurement`) → 12. A person with none of these has no Guide books entry. A Developer working as someone gets that person's books.
+- **Where they see it:** a slim strip at the top of their own home page (`GuideBookStrip`, placed by the staff shell on the home route only, not in the Developer's console): their book(s) with **Download** and **Open and print**; the Boss, MD and Manager get one line that opens the page. Also the **Guide books** menu entry (section "Help") and the page `/staff/guides` (their books only; Share, WhatsApp and Copy link only for the four "all" roles).
+- **Download route:** `/api/guides/<file>` checks the person is signed in and the book is one of theirs (403 otherwise), then redirects to the file in the storage (saved as a file; `?open=1` shows it in the browser). The strip asks the storage which books exist at most once a minute.
+- **Upload and remove:** the Developer only, signed in as himself (not while working as someone). Enforced in the upload route (`src/app/api/guides/upload/route.ts`) and in both actions (`guides/actions.ts`); every upload (written right after each book goes in) and removal is in the audit trail under him (`guide_book.uploaded`, `guide_book.removed`).
 
 ## Where the PDFs are
 - **Not in the repository** (the GitHub repo is public, and `guides/pdf/` is git-ignored) and **not in the database** (106 MB; Vercel functions cannot return more than about 4.5 MB). They live in the hotel's Vercel Blob file storage under `guide-books/`, the same storage the hotel photos use (`BLOB_READ_WRITE_TOKEN`).
@@ -14,6 +17,6 @@ The twelve department guide books (edition 2) are on **Staff → Guide books** (
 ## Putting the books in (once, and after each new edition)
 1. Build the books on your computer (`node guides/tools/build.mjs <id>`; they land in `guides/pdf/`).
 2. Sign in as the Developer, open **Guide books**, press **Upload books**, select all twelve PDFs. They go up one after the other.
-3. The Boss, MD and Manager now see them.
+3. Everyone now gets their own department's book on their dashboard; the Boss, MD and Manager see all twelve.
 
 The books show screens from the practice copy, never the live hotel; the links to the files are plain (unlisted) storage links, so share them only with staff.

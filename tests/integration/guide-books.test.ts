@@ -8,7 +8,7 @@ vi.mock("next/navigation", async () => {
   const m = await import("../support/developer");
   return { redirect: m.redirectMock };
 });
-vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn(), unstable_cache: <T extends (...a: never[]) => unknown>(fn: T) => fn }));
 vi.mock("next/server", async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()), after: () => undefined }));
 // The file storage: captured, never called.
 const storage = vi.hoisted(() => ({ blobs: [] as { pathname: string; size: number; uploadedAt: Date; url: string; downloadUrl: string }[] }));
@@ -26,11 +26,16 @@ vi.mock("@vercel/blob/client", () => ({
   upload: vi.fn(),
 }));
 
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { del } from "@vercel/blob";
 import { db } from "@/server/db";
 import { POST } from "@/app/api/guides/upload/route";
 import { recordGuideUploadsAction, removeGuideBookAction } from "@/app/staff/(app)/guides/actions";
-import { GUIDE_CATALOG, GUIDE_FILE, GUIDE_VIEW_RIGHTS, guideInfo } from "@/lib/guide-books";
+import { GET } from "@/app/api/guides/[file]/route";
+import { GuideBookStrip } from "@/components/staff/guide-book-strip";
+import { englishT } from "@/i18n/translate";
+import { GUIDE_ANY_RIGHTS, GUIDE_CATALOG, GUIDE_FILE, GUIDE_VIEW_RIGHTS, guideBooksFor, guideInfo } from "@/lib/guide-books";
 import { guideStorageReady, storedGuides } from "@/server/services/guide-books";
 import { browser, makeSession, makeUser, removeMadeUsers, type MadeUser } from "../support/developer";
 
@@ -52,7 +57,7 @@ const others: Record<string, MadeUser> = {};
 
 beforeAll(async () => {
   [dev, boss, md, mgr] = await Promise.all([makeUser("DEVELOPER"), makeUser("OWNER"), makeUser("ADMIN"), makeUser("MANAGER")]);
-  for (const role of ["RECEPTIONIST", "RESTAURANT", "DRIVER", "FINANCE", "ACCOUNTANT"]) others[role] = await makeUser(role);
+  for (const role of ["RECEPTIONIST", "RESTAURANT", "RESTAURANT_SCREEN", "KITCHEN", "DRIVER", "FINANCE", "ACCOUNTANT"]) others[role] = await makeUser(role);
 });
 afterAll(async () => { browser.reset(); await removeMadeUsers(); });
 beforeEach(async () => {
@@ -71,6 +76,125 @@ describe("who may see the Guide books page", () => {
   it("the Boss, the MD, the Manager and the Developer hold one of the rights; the other staff do not", async () => {
     for (const u of [boss, md, mgr, dev]) expect([...(await rightsOf(u))].some((p) => (GUIDE_VIEW_RIGHTS as string[]).includes(p)), u.role).toBe(true);
     for (const [role, u] of Object.entries(others)) expect([...(await rightsOf(u))].some((p) => (GUIDE_VIEW_RIGHTS as string[]).includes(p)), role).toBe(false);
+  });
+});
+
+/** The numbers of the books a role is given, from its real rights in the database. */
+const numbersOf = async (u: MadeUser) => guideBooksFor(await rightsOf(u)).files.map((f) => f.slice(12, 14));
+
+describe("which books each person gets", () => {
+  it("the Boss, the MD, the Manager and the Developer: all twelve, and they may share them", async () => {
+    for (const u of [boss, md, mgr, dev]) {
+      const a = guideBooksFor(await rightsOf(u));
+      expect(a.all, u.role).toBe(true);
+      expect(a.files, u.role).toHaveLength(12);
+    }
+  });
+  it("everybody else: their own department's book(s) only, and may not share", async () => {
+    const want: Record<string, string[]> = {
+      RECEPTIONIST: ["01", "05", "10"], // the desk's book, the housekeeping checklist it prints for the team, and what guests see
+      RESTAURANT: ["02"], RESTAURANT_SCREEN: ["02", "03"], KITCHEN: ["04"], DRIVER: ["06"], FINANCE: ["11"], ACCOUNTANT: ["12"],
+    };
+    for (const [role, nums] of Object.entries(want)) {
+      expect(await numbersOf(others[role]), role).toEqual(nums);
+      expect(guideBooksFor(await rightsOf(others[role])).all, role).toBe(false);
+    }
+  });
+  it("a custom role with none of the department rights gets no book; a custom role is judged by its rights, not its name", () => {
+    expect(guideBooksFor(new Set(["reservations.view", "guests.view"]))).toEqual({ all: false, files: [] });
+    expect(guideBooksFor(new Set(["transport.driver"])).files).toEqual(["Vegas-Guide-06-Driver.pdf"]);
+    // the Developer working as the Counter does NOT hold restaurant.device (withheld from him) but still serves without a shift: the Counter's books
+    expect(guideBooksFor(new Set(["restaurant.orders", "restaurant.serve", "kitchen.orders", "bar.orders", "inventory.request", "guests.view"])).files).toEqual(["Vegas-Guide-02-Waiters.pdf", "Vegas-Guide-03-Restaurant-Counter.pdf"]);
+    // the cook orders nothing and serves nothing: the kitchen and bar book only
+    expect(guideBooksFor(new Set(["kitchen.orders", "bar.orders", "inventory.use"])).files).toEqual(["Vegas-Guide-04-Kitchen-and-Bar.pdf"]);
+    // the Developer working as a waiter holds the waiter's rights: the waiter's book
+    expect(guideBooksFor(new Set(["restaurant.shift", "restaurant.orders"])).files).toEqual(["Vegas-Guide-02-Waiters.pdf"]);
+  });
+  it("the menu entry shows for exactly the people who have a book", async () => {
+    for (const u of [boss, md, mgr, dev, ...Object.values(others)]) {
+      const p = await rightsOf(u);
+      expect(GUIDE_ANY_RIGHTS.some((r) => p.has(r)), u.role).toBe(true);
+    }
+  });
+});
+
+const blob = (name: string) => ({ pathname: `guide-books/${name}`, size: 5, uploadedAt: new Date("2026-10-18T10:00:00Z"), url: `https://store.test/guide-books/${name}`, downloadUrl: `https://store.test/guide-books/${name}?download=1` });
+const getBook = (file: string, query = "") => GET(new Request(`http://localhost/api/guides/${file}${query}`), { params: Promise.resolve({ file }) } as never);
+
+describe("the download route (/api/guides/<book>)", () => {
+  beforeEach(() => { process.env.BLOB_READ_WRITE_TOKEN = "test"; storage.blobs = [blob("Vegas-Guide-02-Waiters.pdf"), blob("Vegas-Guide-11-Finance.pdf")]; });
+  it("a signed-out caller gets 401", async () => {
+    expect((await getBook("Vegas-Guide-02-Waiters.pdf")).status).toBe(401);
+  });
+  it("a waiter gets the waiters' book (saved as a file, or shown with ?open=1) but not the Finance book", async () => {
+    await makeSession(others.RESTAURANT.id);
+    const saved = await getBook("Vegas-Guide-02-Waiters.pdf");
+    expect(saved.status).toBe(302);
+    expect(saved.headers.get("location")).toBe("https://store.test/guide-books/Vegas-Guide-02-Waiters.pdf?download=1");
+    const shown = await getBook("Vegas-Guide-02-Waiters.pdf", "?open=1");
+    expect(shown.headers.get("location")).toBe("https://store.test/guide-books/Vegas-Guide-02-Waiters.pdf");
+    expect((await getBook("Vegas-Guide-11-Finance.pdf")).status).toBe(403);
+  });
+  it("each department only gets its own: Finance gets 11, not 02; the Manager gets any", async () => {
+    await makeSession(others.FINANCE.id);
+    expect((await getBook("Vegas-Guide-11-Finance.pdf")).status).toBe(302);
+    expect((await getBook("Vegas-Guide-02-Waiters.pdf")).status).toBe(403);
+    browser.reset();
+    await makeSession(mgr.id);
+    expect((await getBook("Vegas-Guide-02-Waiters.pdf")).status).toBe(302);
+    expect((await getBook("Vegas-Guide-11-Finance.pdf")).status).toBe(302);
+  });
+  it("a book that is not uploaded yet is a plain 404; a name that is not a book is 404 too; nothing is cached", async () => {
+    await makeSession(mgr.id);
+    const missing = await getBook("Vegas-Guide-05-Housekeeping.pdf");
+    expect(missing.status).toBe(404);
+    expect(missing.headers.get("cache-control")).toBe("no-store");
+    expect((await getBook("..%2Fsecret.pdf")).status).toBe(404);
+    expect((await getBook("notes.txt")).status).toBe(404);
+    expect((await getBook("Vegas-Guide-02-Waiters.pdf")).headers.get("cache-control")).toBe("no-store");
+  });
+  it("the people who have every book can also open a book added later under the book name rule; a waiter cannot", async () => {
+    storage.blobs = [...storage.blobs, blob("Vegas-Guide-13-Night-Audit.pdf")];
+    await makeSession(mgr.id);
+    expect((await getBook("Vegas-Guide-13-Night-Audit.pdf")).status).toBe(302);
+    browser.reset();
+    await makeSession(others.RESTAURANT.id);
+    expect((await getBook("Vegas-Guide-13-Night-Audit.pdf")).status).toBe(403);
+  });
+  it("with no file storage set up nothing is served", async () => {
+    delete process.env.BLOB_READ_WRITE_TOKEN;
+    await makeSession(mgr.id);
+    expect((await getBook("Vegas-Guide-02-Waiters.pdf")).status).toBe(404);
+  });
+});
+
+describe("the strip on a person's own dashboard", () => {
+  const t = englishT;
+  const render = (files: string[], all: boolean, uploaded: string[] | null) => renderToStaticMarkup(createElement(GuideBookStrip, { t, access: { all, files }, uploaded }));
+  it("a waiter: their book with Download and Open and print, through the checked route", () => {
+    const html = render(["Vegas-Guide-02-Waiters.pdf"], false, ["Vegas-Guide-02-Waiters.pdf"]);
+    expect(html).toContain("Your guide book");
+    expect(html).toContain("Waiters");
+    expect(html).toContain('href="/api/guides/Vegas-Guide-02-Waiters.pdf"');
+    expect(html).toContain('href="/api/guides/Vegas-Guide-02-Waiters.pdf?open=1"');
+    expect(html).toContain("Open and print");
+    expect(html).not.toMatch(/undefined|NaN|\[object/);
+  });
+  it("several books are listed under one heading; one that is not uploaded yet says so and has no links", () => {
+    const html = render(["Vegas-Guide-01-Reception.pdf", "Vegas-Guide-05-Housekeeping.pdf"], false, ["Vegas-Guide-01-Reception.pdf"]);
+    expect(html).toContain("Your guide books");
+    expect(html).toContain('href="/api/guides/Vegas-Guide-01-Reception.pdf"');
+    expect(html).not.toContain("Vegas-Guide-05-Housekeeping.pdf");
+    expect(html).toContain("Coming soon.");
+  });
+  it("storage unknown (null): the links are shown", () => {
+    expect(render(["Vegas-Guide-06-Driver.pdf"], false, null)).toContain('href="/api/guides/Vegas-Guide-06-Driver.pdf"');
+  });
+  it("the Boss, the MD and the Manager: one line that opens the Guide books page; a person with no book: nothing", () => {
+    const all = render(GUIDE_CATALOG.map((b) => b.file), true, []);
+    expect(all).toContain('href="/staff/guides"');
+    expect(all).toContain("Guide books");
+    expect(render([], false, [])).toBe("");
   });
 });
 

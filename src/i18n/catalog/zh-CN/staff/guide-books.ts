@@ -3,6 +3,15 @@ import type { Catalog } from "../../../translate";
 
 const catalog: Catalog = {
   "Guide books": "使用手册",
+  "Your guide book": "您的使用手册",
+  "Your guide books": "您的使用手册",
+  "Download it to keep, or open it to read and print.": "下载保存，或打开阅读和打印。",
+  "There is no guide book for your role yet.": "您的岗位暂时没有使用手册。",
+  "Back to home": "返回首页",
+  "Open and print": "打开并打印",
+  "Coming soon.": "即将提供。",
+  "One book for each department — download, print or share them.": "每个部门一本手册——可下载、打印或分享。",
+  "Help": "帮助",
   "One book for each department. Download a book or share it with the staff it is for.": "每个部门一本手册。下载手册，或分享给使用它的员工。",
   "The file storage is not set up on this computer, so the books cannot be listed here. They are on the live site.": "这台电脑没有设置文件存储，所以这里无法列出手册。手册在正式网站上。",
   "No guide book is here yet. Use Upload books to put them in.": "这里还没有手册。请用“上传手册”放进来。",

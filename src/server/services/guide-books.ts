@@ -1,4 +1,5 @@
 import "server-only";
+import { unstable_cache } from "next/cache";
 import { del, list } from "@vercel/blob";
 import { GUIDE_FILE, GUIDE_FOLDER } from "@/lib/guide-books";
 
@@ -39,3 +40,19 @@ export async function removeStoredGuide(file: string): Promise<boolean> {
   await del(found.url);
   return true;
 }
+
+/** One book's address in the file storage (null = not there). Read when somebody presses Download or Open, so it is never stale. */
+export async function guideBlobFor(file: string): Promise<{ url: string; downloadUrl: string } | null> {
+  if (!guideStorageReady() || !GUIDE_FILE.test(file)) return null;
+  try {
+    const res = await list({ prefix: `${GUIDE_FOLDER}${file}`, limit: 5 });
+    const b = res.blobs.find((x) => x.pathname === `${GUIDE_FOLDER}${file}`);
+    return b ? { url: b.url, downloadUrl: b.downloadUrl } : null;
+  } catch (error) {
+    console.error("[guide-books] a book could not be found in the file storage", error instanceof Error ? error.message : "unknown");
+    return null;
+  }
+}
+
+/** Which books are in the storage (just the names), kept for a minute: every dashboard asks, so it must not call the storage each time. null = unknown / no storage. */
+export const uploadedGuideFiles = unstable_cache(async (): Promise<string[] | null> => (await storedGuides())?.map((g) => g.file) ?? null, ["guide-books-files"], { revalidate: 60 });

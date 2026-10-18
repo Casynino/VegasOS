@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { BookOpen, FileText } from "lucide-react";
-import { requirePagePermission } from "@/server/auth";
+import { requireUser } from "@/server/auth";
 import { getT } from "@/i18n/server";
-import { GUIDE_CATALOG, GUIDE_VIEW_RIGHTS, guideInfo } from "@/lib/guide-books";
+import { staffHome } from "@/lib/staff-home";
+import { GUIDE_CATALOG, guideBooksFor, guideInfo } from "@/lib/guide-books";
 import { guideStorageReady, storedGuides } from "@/server/services/guide-books";
 import { ShareBook } from "./share-book";
 import { UploadBooks } from "./upload-books";
@@ -16,19 +18,21 @@ export const dynamic = "force-dynamic";
 const size = (bytes: number) => `${(bytes / 1024 / 1024).toLocaleString("en", { maximumFractionDigits: 1 })} MB`;
 
 /**
- * GUIDE BOOKS (owner, 2026-10-18): the twelve department guide books for the Boss, the MD, the Manager and the Developer to download and
- * share with their staff. The Developer also puts the PDFs in (and takes one out). The page is read-only for everyone else.
+ * GUIDE BOOKS (owner, 2026-10-18; per department since 2026-10-19). The Developer puts the PDFs in (and takes one out). Everybody else gets their OWN
+ * department's book (the waiter the waiters' book, Finance the finance book…) to download, read and print; the Boss, the MD and the Manager have all
+ * twelve and can share them with the staff they are for. The same books also sit on each person's own dashboard (a slim strip).
  */
 export default async function GuideBooksPage() {
-  const user = await requirePagePermission(...GUIDE_VIEW_RIGHTS);
+  const user = await requireUser();
   const t = await getT();
+  const access = guideBooksFor(user.permissions);
   const isDeveloper = user.actorType === "DEVELOPER" && !user.workAs && user.permissions.has("developer.access");
   const ready = guideStorageReady();
   const stored = await storedGuides();
   const byFile = new Map((stored ?? []).map((g) => [g.file, g]));
-  const others = (stored ?? []).filter((g) => !GUIDE_CATALOG.some((b) => b.file === g.file));
+  const others = access.all ? (stored ?? []).filter((g) => !GUIDE_CATALOG.some((b) => b.file === g.file)) : [];
   const rows = [
-    ...GUIDE_CATALOG.map((b) => ({ info: b, file: byFile.get(b.file) ?? null })),
+    ...GUIDE_CATALOG.filter((b) => access.files.includes(b.file)).map((b) => ({ info: b, file: byFile.get(b.file) ?? null })),
     ...others.map((g) => ({ info: guideInfo(g.file)!, file: g })),
   ];
   const have = rows.filter((r) => r.file).length;
@@ -38,8 +42,10 @@ export default async function GuideBooksPage() {
       <header className="flex items-start gap-4">
         <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-violet-500/15 text-violet-600 dark:text-violet-400" aria-hidden><BookOpen className="size-6" /></span>
         <div className="min-w-0">
-          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{t("Guide books")}</h1>
-          <p className="mt-1 text-sm text-muted-foreground sm:text-base">{t("One book for each department. Download a book or share it with the staff it is for.")}</p>
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{access.all ? t("Guide books") : rows.length === 1 ? t("Your guide book") : t("Your guide books")}</h1>
+          <p className="mt-1 text-sm text-muted-foreground sm:text-base">
+            {access.all ? t("One book for each department. Download a book or share it with the staff it is for.") : t("Download it to keep, or open it to read and print.")}
+          </p>
         </div>
       </header>
 
@@ -47,7 +53,13 @@ export default async function GuideBooksPage() {
       {!ready && <p role="status" className="rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">{t("The file storage is not set up on this computer, so the books cannot be listed here. They are on the live site.")}</p>}
       {ready && stored === null && <p role="status" className="rounded-2xl border border-border bg-card px-4 py-3 text-sm text-muted-foreground">{t("This could not be read just now.")}</p>}
 
-      {stored !== null && have === 0 && (
+      {rows.length === 0 && (
+        <div className="rounded-2xl bg-muted/40 px-4 py-4 text-sm text-muted-foreground">
+          <p role="status">{t("There is no guide book for your role yet.")}</p>
+          <Link href={staffHome(user.permissions)} className="mt-2 inline-block font-medium text-foreground hover:underline">{t("Back to home")}</Link>
+        </div>
+      )}
+      {rows.length > 0 && stored !== null && have === 0 && (
         <p role="status" className="rounded-2xl bg-muted/40 px-4 py-4 text-sm text-muted-foreground">{isDeveloper ? t("No guide book is here yet. Use Upload books to put them in.") : t("The guide books are being put here. Please come back soon.")}</p>
       )}
 
@@ -63,7 +75,7 @@ export default async function GuideBooksPage() {
               </div>
             </div>
             {file
-              ? <ShareBook file={file.file} title={t(info.title)} url={file.url} downloadUrl={file.downloadUrl} />
+              ? <ShareBook file={file.file} title={t(info.title)} canShare={access.all} url={file.url} downloadUrl={file.downloadUrl} />
               : stored !== null && <p className="text-sm text-muted-foreground">{t("Not uploaded yet.")}</p>}
             {isDeveloper && file && <div className="border-t border-border/60 pt-2"><RemoveBook file={file.file} title={t(info.title)} /></div>}
           </li>
