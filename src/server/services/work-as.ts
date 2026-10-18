@@ -424,8 +424,9 @@ export interface NewAccountInput { fullName: string; email: string; phone: strin
 
 /**
  * ADD AN ACCOUNT from the Access page. The password is a temporary one that is handed over: it is checked against the staff rule, stored
- * only as a hash, never written to the audit trail or the notice, and the account is marked "pending first login". The creation is
- * recorded under the Developer and the Boss is told on WhatsApp. Not while working as someone.
+ * only as a hash, never written to the audit trail or the notice. The person signs in at once; nothing forces a change of password (owner,
+ * 2026-10-18) — they change it from their account page when they wish. The creation is recorded under the Developer and the Boss is told
+ * on WhatsApp. Not while working as someone.
  */
 export async function createAccount(developer: CurrentUser, input: NewAccountInput): Promise<{ userId: string; fullName: string; email: string; roleName: string }> {
   await verifiedDeveloper(developer);
@@ -440,7 +441,7 @@ export async function createAccount(developer: CurrentUser, input: NewAccountInp
     try {
       userId = await db.$transaction(async (tx) => {
         const user = await tx.user.create({
-          data: { fullName: input.fullName, email: input.email, phone: input.phone, roleId: role.id, passwordHash: await hashPassword(input.password), mustChangePassword: true },
+          data: { fullName: input.fullName, email: input.email, phone: input.phone, roleId: role.id, passwordHash: await hashPassword(input.password), mustChangePassword: false },
         });
         await numberWaitersTx(tx); // a new waiter gets the next WTR number
         await audit(tx, { userId: developer.actorId, label: developer.actorName, ipAddress }, {

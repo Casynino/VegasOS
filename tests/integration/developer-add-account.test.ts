@@ -24,7 +24,7 @@ import { browser, makeSession, makeUser, redirectOf, removeMadeUsers, type MadeU
 /**
  * "Add an account" on the Developer console's Access page (owner, 2026-10-18): the Developer is the owner of the code and creates the
  * hotel's accounts — any role but the Developer's and the system's (the MD's and the Boss's too). The password is temporary, stored only
- * as a hash, never in the audit trail or the WhatsApp notice; the account is "pending first login"; the creation is written under the
+ * as a hash, never in the audit trail or the WhatsApp notice; nothing forces a change of password; the creation is written under the
  * Developer and the Boss is told. Nobody but a Developer can use it, and not while working as someone.
  */
 let dev: MadeUser;
@@ -60,14 +60,14 @@ afterAll(async () => {
 beforeEach(() => { browser.reset(); sent.length = 0; });
 
 describe("Add an account (the Developer)", () => {
-  it("creates an account of any role — the MD's and the Boss's too — pending first login, with the password only as a hash", async () => {
+  it("creates an account of any role — the MD's and the Boss's too — signing in at once (no forced password change), with the password only as a hash", async () => {
     await makeSession(dev.id);
     for (const code of ["RECEPTIONIST", "MANAGER", "FINANCE", "ADMIN", "OWNER", "DRIVER", "KITCHEN", "ACCOUNTANT", "RESTAURANT"]) {
       const r = await addAccountAction(undefined, form(await fields(code)));
       expect(r.ok, `${code}: ${JSON.stringify(r)}`).toBe(true);
       const user = await created(`addacct.${code.toLowerCase()}@example.test`);
       expect(user?.role.code).toBe(code);
-      expect(user?.mustChangePassword).toBe(true);
+      expect(user?.mustChangePassword).toBe(false); // nothing forces a change: they sign in and change it when they wish
       expect(user?.isActive).toBe(true);
       expect(user?.passwordHash).not.toContain(GOOD);
       expect(await verifyPassword(user!.passwordHash, GOOD)).toBe(true);

@@ -71,7 +71,7 @@ export function AddAccountForm({ roles, close }: { roles: RoleChoice[]; close: (
       <>
         <DialogHeader icon={<Check />} eyebrow={t("Access")} tone="violet">
           <DialogTitle>{t("Account created")}</DialogTitle>
-          <DialogDescription>{t("Give {name} this email and password. They should change the password after their first sign-in.", { name: made.fullName })}</DialogDescription>
+          <DialogDescription>{t("Give {name} this email and password. They can sign in right away and change the password whenever they wish.", { name: made.fullName })}</DialogDescription>
         </DialogHeader>
         <dl className="space-y-2 rounded-xl border border-border bg-muted/40 p-3 text-sm">
           <div className="flex items-baseline justify-between gap-3"><dt className="text-muted-foreground">{t("Email")}</dt><dd className="min-w-0 truncate font-medium">{made.email}</dd></div>
@@ -129,7 +129,7 @@ export function AddAccountForm({ roles, close }: { roles: RoleChoice[]; close: (
                 <Button type="button" variant="outline" size="icon" onClick={() => setShow((v) => !v)} aria-label={show ? t("Hide password") : t("Show password")}>{show ? <EyeOff /> : <Eye />}</Button>
                 <Button type="button" variant="outline" size="icon" onClick={() => setPassword(makeTemporaryPassword())} aria-label={t("Make another password")}><RefreshCw /></Button>
               </div>
-              <p className="text-xs text-muted-foreground">{t("Made for you. They should change it after their first sign-in.")}</p>
+              <p className="text-xs text-muted-foreground">{t("Made for you. They can change it any time from their account page.")}</p>
               {e?.password && <p className="text-xs text-destructive">{e.password}</p>}
             </div>
             <FormProblem message={error && !e ? error : undefined} />
