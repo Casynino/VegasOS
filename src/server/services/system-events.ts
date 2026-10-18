@@ -108,7 +108,7 @@ const asJson = (v: Record<string, unknown>): Prisma.InputJsonObject => v as Pris
 /** Next's own control flow (a redirect, a not-found page, a prerender bail-out) travels as a thrown value: it is not an error. */
 const CONTROL_FLOW = /^(NEXT_REDIRECT|NEXT_NOT_FOUND|NEXT_HTTP_ERROR_FALLBACK|NEXT_UNAUTHORIZED|NEXT_FORBIDDEN|NEXT_PRERENDER|DYNAMIC_SERVER_USAGE|BAILOUT_TO_CLIENT_SIDE_RENDERING)/;
 
-/** An error that is part of normal use, not a fault of the system: a message for the person (AppError), Next's control flow, a request the visitor cancelled. */
+/** An error that is part of normal use, not a fault of the system: a message for the person (AppError), Next's control flow, a request the visitor cancelled, a form left open across a new version. */
 function isExpected(error: unknown, digest?: string): boolean {
   if (error instanceof AppError) return true;
   const e = (typeof error === "object" && error !== null ? error : {}) as { name?: unknown; code?: unknown; message?: unknown; digest?: unknown };
@@ -120,6 +120,9 @@ function isExpected(error: unknown, digest?: string): boolean {
   if (name === "AppError" || CONTROL_FLOW.test(text)) return true;
   if (name === "AbortError" || name === "ResponseAborted" || code === "ABORT_ERR" || code === "ERR_STREAM_PREMATURE_CLOSE") return true;
   if (code === "ECONNRESET" && /abort/i.test(text)) return true;
+  // A form (a server action) that a visitor opened BEFORE a new version went live and sent AFTER: the new server does not know the old form. It happens
+  // once after every deploy, to whoever had a page open, and a refresh fixes it. It is the deployment's doing, not a fault of the system (owner, 2026-10-18).
+  if (/Failed to find Server Action/i.test(text)) return true;
   return /^(the )?(request|operation|connection) (was )?aborted\.?$/i.test(text.trim()) || text.trim() === "aborted";
 }
 

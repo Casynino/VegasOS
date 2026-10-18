@@ -128,7 +128,7 @@ describe("recordError", () => {
     expect(all.find((r) => r.source === "test:a" && r.message.startsWith("Error: Order"))?.count).toBe(2);
   });
 
-  it("skips what is normal: a message for the person, Next's redirect / not-found / fallback, a cancelled request", async () => {
+  it("skips what is normal: a message for the person, Next's redirect / not-found / fallback, a cancelled request, a form left open across a new version", async () => {
     const withDigest = (digest: string) => Object.assign(new Error("control flow"), { digest });
     await recordError({ source: "test:n", error: new AppError("Room is not ready.", "VALIDATION") });
     await recordError({ source: "test:n", error: new AppError("Nope", "FORBIDDEN") });
@@ -139,6 +139,9 @@ describe("recordError", () => {
     await recordError({ source: "test:n", error: Object.assign(new Error("The operation was aborted"), { name: "AbortError" }) });
     await recordError({ source: "test:n", error: Object.assign(new Error("aborted"), { code: "ECONNRESET" }) });
     await recordError({ source: "test:n", error: new Error("Request aborted") });
+    // a visitor's old form after a deploy: the new server does not know its action (the owner saw this on the contact page): not a fault of the system
+    await recordError({ source: "page:/(public)/[lang]/contact/page", error: new Error("Failed to find Server Action. This request might be from an older or newer deployment.") });
+    await recordError({ source: "test:n", error: new Error('Failed to find Server Action "40abc". This request might be from an older or newer deployment.') });
     expect(await rows()).toHaveLength(0);
     // …but a real error right after is written
     await recordError({ source: "test:n", error: new Error("Something real") });
