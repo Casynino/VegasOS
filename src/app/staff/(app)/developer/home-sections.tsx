@@ -1,5 +1,4 @@
 import { cache, type ReactNode } from "react";
-import type { LucideIcon } from "lucide-react";
 import type { T } from "@/i18n/translate";
 import type { CurrentUser } from "@/server/auth";
 import { inspectPermission, peopleTab, settingsTab, type Inspection } from "@/server/services/developer-console";
@@ -41,18 +40,13 @@ const STATUS_TONE: Record<AreaStatus["tone"], TagTone> = { ok: "emerald", warn: 
  * One part of the page, always open (owner, 2026-10-18: "one page, nice arrangement, I do not want to be clicking"): a heading with one short
  * line saying what it is for and one chip saying how it is doing, then its content. The anchor is on the section so a link such as "#errors" goes to it.
  */
-export function ConsoleSection({ id, title, hint, status, icon: Icon, children }: { id: string; title: string; hint: string; status?: AreaStatus; icon?: LucideIcon; children: ReactNode }) {
+export function ConsoleSection({ id, title, hint, status, children }: { id: string; title: string; hint: string; status?: AreaStatus; children: ReactNode }) {
   return (
-    <section id={id} aria-labelledby={`${id}-title`} className="scroll-mt-24 space-y-5">
-      <header className="flex items-start gap-4">
-        {Icon && <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-violet-500/15 text-violet-600 dark:text-violet-400" aria-hidden><Icon className="size-6" /></span>}
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <h2 id={`${id}-title`} className="text-2xl font-bold tracking-tight">{title}</h2>
-            {status && <Tag tone={STATUS_TONE[status.tone]}>{status.text}</Tag>}
-          </div>
-          <p className="mt-0.5 text-sm text-muted-foreground sm:text-base">{hint}</p>
-        </div>
+    <section id={id} aria-labelledby={`${id}-title`} className="scroll-mt-24 space-y-4">
+      <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-border/60 pb-3">
+        <h2 id={`${id}-title`} className="text-[1.7rem] font-semibold leading-tight tracking-tight">{title}</h2>
+        {status && <Tag tone={STATUS_TONE[status.tone]}>{status.text}</Tag>}
+        <p className="basis-full text-sm text-muted-foreground sm:basis-auto sm:text-[15px]">{hint}</p>
       </header>
       {children}
     </section>

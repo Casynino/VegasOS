@@ -1,5 +1,4 @@
 import { Suspense } from "react";
-import { Activity, Bug, Gauge, Send, Settings, ShieldCheck, Users, type LucideIcon } from "lucide-react";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { currentSessionTokenHash, getCurrentUser, requestMeta, requirePagePermission } from "@/server/auth";
@@ -87,8 +86,8 @@ export default async function DeveloperHomePage({ searchParams }: PageProps<"/st
     if (look > 0) return { tone: "warn", text: t("{n} to look at", { n: look }) };
     return { tone: "ok", text: t("All fine") };
   };
-  const section = (id: string, title: string, hint: string, status: AreaStatus | undefined, icon: LucideIcon, body: React.ReactNode) => (
-    <ConsoleSection id={id} title={title} hint={hint} status={status} icon={icon}>
+  const section = (id: string, title: string, hint: string, status: AreaStatus | undefined, body: React.ReactNode) => (
+    <ConsoleSection id={id} title={title} hint={hint} status={status}>
       <Suspense fallback={<SectionSkeleton label={loading} />}>{body}</Suspense>
     </ConsoleSection>
   );
@@ -115,16 +114,16 @@ export default async function DeveloperHomePage({ searchParams }: PageProps<"/st
         ]}
       />
 
-      {section("activity", t("Activity"), t("Who is using the system, and what they are doing."), undefined, Activity, <ActivitySection ctx={ctx} />)}
+      {section("activity", t("Activity"), t("Who is signing in and what the team is doing."), undefined, <ActivitySection ctx={ctx} />)}
 
-      {section("people", t("People & my actions"), t("Who has an account, and what you have done."), chipFor("people"), Users, <PeopleSection ctx={ctx} person={person} right={right} />)}
+      {section("people", t("People & my actions"), t("Who has an account, and what you have done."), chipFor("people"), <PeopleSection ctx={ctx} person={person} right={right} />)}
 
       <GroupLabel>{t("The system")}</GroupLabel>
-      {section("messages", t("Messages & reports"), t("How the sending of the reports and messages went."), chipFor("messages"), Send, <MessagesSection ctx={ctx} />)}
-      {section("errors", t("Errors & jobs"), t("Server errors, the automatic jobs and the payment confirmations."), chipFor("errors"), Bug, <ErrorsSection ctx={ctx} />)}
-      {section("speed", t("Speed & size"), t("How fast the database answers and how the system grows."), health.database.ms !== null ? { tone: health.database.ms >= 500 ? "warn" : "ok", text: t("{ms} ms", { ms: health.database.ms }) } : undefined, Gauge, <SpeedSection ctx={ctx} checks={health.checks} />)}
-      {section("security", t("Sign-ins & security"), t("Wrong passwords, paused sign-ins and what was refused to you."), chipFor("security"), ShieldCheck, <SecuritySection ctx={ctx} />)}
-      {section("settings", t("Settings"), t("How the system is set up."), chipFor("settings"), Settings, <SettingsSection ctx={ctx} />)}
+      {section("messages", t("Messages & reports"), t("How the sending of the reports and messages went."), chipFor("messages"), <MessagesSection ctx={ctx} />)}
+      {section("errors", t("Errors & jobs"), t("Server errors, the automatic jobs and the payment confirmations."), chipFor("errors"), <ErrorsSection ctx={ctx} />)}
+      {section("speed", t("Speed & size"), t("How fast the database answers and how the system grows."), health.database.ms !== null ? { tone: health.database.ms >= 500 ? "warn" : "ok", text: t("{ms} ms", { ms: health.database.ms }) } : undefined, <SpeedSection ctx={ctx} checks={health.checks} />)}
+      {section("security", t("Sign-ins & security"), t("Wrong passwords, paused sign-ins and what was refused to you."), chipFor("security"), <SecuritySection ctx={ctx} />)}
+      {section("settings", t("Settings"), t("How the system is set up."), chipFor("settings"), <SettingsSection ctx={ctx} />)}
     </div>
   );
 }

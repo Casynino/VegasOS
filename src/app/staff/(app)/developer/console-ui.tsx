@@ -99,8 +99,15 @@ export function SectionTitle({ title, hint, count, id }: { title: string; hint?:
   );
 }
 
-/** The icon box of a figure card (the owner's ORA console): the accent colour, violet, whatever the tag says. */
-const ICON_BOX = "bg-violet-500/15 text-violet-600 dark:text-violet-400";
+/** The icon box of a figure card (the owner's Target console): blue for a plain figure, green when all is well, amber and red for trouble. */
+const ICON_BOX: Record<TagTone, string> = {
+  sky: "bg-sky-500/15 text-sky-600 dark:text-sky-400",
+  slate: "bg-sky-500/15 text-sky-600 dark:text-sky-400",
+  emerald: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+  amber: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+  rose: "bg-rose-500/15 text-rose-600 dark:text-rose-400",
+  gold: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+};
 
 /**
  * A figure with its words, as a compact card: a small label with an icon on the right, a big number, what it counts and one small tag.
@@ -115,8 +122,8 @@ export function StatBlock({ label, value, caption, tag, tagTone = "slate", note,
   return (
     <div title={note} className="flex min-w-0 flex-col rounded-2xl border border-border/70 bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-5">
       <div className="flex items-start justify-between gap-3">
-        <p className="text-[15px] text-muted-foreground">{label}</p>
-        {Icon && <span className={cn("grid size-10 shrink-0 place-items-center rounded-xl", ICON_BOX)} aria-hidden><Icon className="size-[18px]" /></span>}
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
+        {Icon && <span className={cn("grid size-10 shrink-0 place-items-center rounded-xl", ICON_BOX[tagTone])} aria-hidden><Icon className="size-[18px]" /></span>}
       </div>
       <p className={cn("mt-2 break-words font-semibold leading-none tracking-tight tabular-nums", small ? "text-2xl" : "text-3xl", warn && "text-amber-700 dark:text-amber-300")}>{value}</p>
       <p className="mt-1.5 text-sm text-muted-foreground">{caption}</p>
