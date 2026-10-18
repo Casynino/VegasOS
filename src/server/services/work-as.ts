@@ -334,7 +334,7 @@ const shortReason = (reason: string, max = 200) => (reason.length > max ? `${rea
  */
 function tellBossAboutAccess(
   developer: CurrentUser, ipAddress: string | null, now: Date,
-  what: { kind: "suspended"; reason: string } | { kind: "deleted"; reason: string } | { kind: "signed_out_everywhere" } | { kind: "created" },
+  what: { kind: "suspended"; reason: string } | { kind: "deleted" } | { kind: "signed_out_everywhere" } | { kind: "created" },
   target: { id: string; fullName: string; role: { name: string } },
 ) {
   const developerName = developer.actorName;
@@ -343,7 +343,7 @@ function tellBossAboutAccess(
   tellBossSoon((t, settings) => {
     const vars = { developer: developerName, person, role: t(roleName), time: t.time(now, settings.timezone) };
     if (what.kind === "created") return t("{developer} (Developer) created an account for {person} ({role}) at {time}.", vars);
-    if (what.kind === "deleted") return t("{developer} (Developer) deleted the account of {person} ({role}) at {time}. Reason: {reason}. Everything they did stays recorded under their name.", { ...vars, reason: shortReason(what.reason) });
+    if (what.kind === "deleted") return t("{developer} (Developer) deleted the account of {person} ({role}) at {time}. Everything they did stays recorded under their name.", vars);
     return what.kind === "suspended"
       ? t("{developer} (Developer) suspended {person} ({role}) at {time}. Reason: {reason}. You can switch the account back on in Staff & roles.", { ...vars, reason: shortReason(what.reason) })
       : t("{developer} (Developer) signed {person} ({role}) out of every phone and computer at {time}. They can sign straight back in.", vars);
@@ -385,18 +385,16 @@ export async function suspendAccount(developer: CurrentUser, targetUserId: strin
 
 /**
  * DELETE an account (owner, 2026-10-19: "as Developer I should be able to delete an account, not only suspend it" — and "delete an account does not
- * delete the data: the records stay, with that name and who did what"). Needs a reason and the word DELETE. The person is signed out, can never sign in
+ * delete the data: the records stay, with that name and who did what"; then "no typing, just a pop-up that says confirm"). The person is signed out, can never sign in
  * again and the account leaves every list; the account row stays, so everything they did (bookings, payments, shifts, orders, audit entries) keeps
  * their name — which is why even a person with records can be deleted. Any account can be deleted — the Boss's and the MD's too — except another
  * Developer's, the system's, your own, a permanent owner's and the last active Boss's.
  * Written to the audit trail under the Developer, and the Boss is told.
  */
-export async function deleteAccount(developer: CurrentUser, targetUserId: string, input: { reason: string; confirm: string }): Promise<void> {
+export async function deleteAccount(developer: CurrentUser, targetUserId: string): Promise<void> {
   await verifiedDeveloper(developer);
   return attempt(developer, "user.delete_failed", targetUserId, {}, async () => {
     assertNotWorkAs(developer, "delete accounts");
-    const reason = checkReason(input.reason);
-    if (input.confirm !== "DELETE") throw new AppError(msg("Type DELETE to delete this account."), "VALIDATION", { confirm: msg("Type DELETE exactly.") });
     const target = await loadAccount(targetUserId);
     if (target.id === developer.actorId) throw new AppError(msg("You cannot delete your own account."), "FORBIDDEN");
     if (isPermanentOwner({ email: target.email, roleCode: target.role.code })) throw new AppError(PERMANENT_OWNER_REFUSAL, "FORBIDDEN");
@@ -409,11 +407,11 @@ export async function deleteAccount(developer: CurrentUser, targetUserId: string
       await audit(tx, { userId: developer.actorId, label: developer.actorName, ipAddress }, {
         action: "user.deleted", entityType: "User", entityId: target.id,
         before: { fullName: target.fullName, email: target.email, role: target.role.code, isActive: target.isActive },
-        after: { reason, removed: true, recordsKept: true },
+        after: { removed: true, recordsKept: true },
       });
     });
     // Told only once the account is gone (a refused or failed one tells nobody).
-    tellBossAboutAccess(developer, ipAddress, new Date(), { kind: "deleted", reason }, target);
+    tellBossAboutAccess(developer, ipAddress, new Date(), { kind: "deleted" }, target);
   });
 }
 

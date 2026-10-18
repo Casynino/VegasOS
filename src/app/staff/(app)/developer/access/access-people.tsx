@@ -208,9 +208,6 @@ function SuspendDialog({ person, close }: { person: AccessPersonView; close: () 
 
 function DeleteDialog({ person, close }: { person: AccessPersonView; close: () => void }) {
   const t = useT();
-  const [reason, setReason] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const ready = reason.trim().length >= 5 && confirm === "DELETE";
   return (
     <>
       <DialogHeader icon={<Trash2 />} eyebrow={t("Access")} tone="amber">
@@ -218,26 +215,16 @@ function DeleteDialog({ person, close }: { person: AccessPersonView; close: () =
         <DialogDescription>{person.email}</DialogDescription>
       </DialogHeader>
       <AccessForm action={deleteAccountAction} onSuccess={close} className="space-y-3">
-        {({ pending, error, fieldErrors: e }) => (
+        {({ pending, error }) => (
           <>
             <input type="hidden" name="userId" value={person.id} />
-            <p className="rounded-xl border border-rose-500/40 bg-rose-500/[0.08] px-3 py-2 text-sm text-rose-900 dark:text-rose-200">
-              {t("{name} loses all access and the account is removed from the system. Everything {name} did stays recorded under their name. This cannot be undone. The Boss is told.", { name: person.fullName })}
+            <p className="text-sm text-muted-foreground">
+              {t("{name} loses all access and is removed from the system. Everything {name} did stays recorded under their name.", { name: person.fullName })}
             </p>
-            <div className="space-y-1.5">
-              <Label htmlFor="delete-reason">{t("Reason (written in the audit trail)")}</Label>
-              <Input id="delete-reason" name="reason" value={reason} onChange={(ev) => setReason(ev.target.value)} maxLength={500} autoComplete="off" placeholder={t("At least 5 characters")} aria-invalid={!!e?.reason} />
-              {e?.reason && <p className="text-xs text-destructive">{e.reason}</p>}
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="delete-confirm">{t("Type DELETE to go on")}</Label>
-              <Input id="delete-confirm" name="confirm" value={confirm} onChange={(ev) => setConfirm(ev.target.value)} autoComplete="off" autoCapitalize="characters" spellCheck={false} placeholder="DELETE" aria-invalid={!!e?.confirm} />
-              {e?.confirm && <p className="text-xs text-destructive">{e.confirm}</p>}
-            </div>
-            <FormProblem message={error && !e ? error : undefined} />
+            <FormProblem message={error} />
             <DialogFooter>
               <Cancel close={close} pending={pending} />
-              <Button type="submit" variant="destructive" disabled={pending || !ready}>{pending ? <Loader2 className="animate-spin" /> : <Trash2 />}{t("Delete")}</Button>
+              <Button type="submit" variant="destructive" disabled={pending}>{pending ? <Loader2 className="animate-spin" /> : <Trash2 />}{t("Delete")}</Button>
             </DialogFooter>
           </>
         )}

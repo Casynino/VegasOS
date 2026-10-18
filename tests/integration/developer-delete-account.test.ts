@@ -34,7 +34,6 @@ let rec: MadeUser;
 let md: MadeUser;
 let boss: MadeUser;
 let boss2: MadeUser;
-const ok = { reason: "left the hotel", confirm: "DELETE" };
 const code = (e: unknown) => (e instanceof AppError ? e.code : `not an AppError: ${String(e)}`);
 const actorOf = (u: MadeUser): AccountActor => ({ id: u.id, fullName: u.fullName, roleCode: u.role, actorType: "STAFF" });
 
@@ -56,7 +55,7 @@ describe("Delete removes access and the account from the lists — never the rec
   it("the person can no longer sign in, has no session, is off every list, and the Boss is told", async () => {
     await makeSession(rec.id, { setCookie: false });
     const d = await developerUser();
-    await deleteAccount(d, rec.id, ok);
+    await deleteAccount(d, rec.id);
     const after = await row(rec.id);
     expect(after).toMatchObject({ fullName: rec.fullName, isActive: false, email: `removed-${rec.id}@removed.invalid`, phone: null });
     expect(after.removedAt).toBeInstanceOf(Date);
@@ -76,7 +75,7 @@ describe("Delete removes access and the account from the lists — never the rec
   it("a person WITH records can be deleted: the records stay and still carry the name", async () => {
     const room = await db.room.findFirstOrThrow();
     const made = await db.roomStatusHistory.create({ data: { roomId: room.id, fromStatus: "READY", toStatus: "CLEANING", note: "kept", changedById: rec.id } });
-    await deleteAccount(await developerUser(), rec.id, ok);
+    await deleteAccount(await developerUser(), rec.id);
     const kept = await db.roomStatusHistory.findUniqueOrThrow({ where: { id: made.id }, include: { changedBy: { select: { fullName: true } } } });
     expect(kept.changedBy?.fullName).toBe(rec.fullName);
     await db.roomStatusHistory.delete({ where: { id: made.id } });
@@ -84,7 +83,7 @@ describe("Delete removes access and the account from the lists — never the rec
 
   it("the e-mail address is free again: the same person can be added afresh", async () => {
     const d = await developerUser();
-    await deleteAccount(d, rec.id, ok);
+    await deleteAccount(d, rec.id);
     const roleId = (await db.role.findUniqueOrThrow({ where: { code: "RECEPTIONIST" } })).id;
     const again = await createAccount(d, { fullName: "Same Person", email: rec.email, phone: null, roleId, password: "Fresh-pass-2026-xK" });
     expect(again.userId).not.toBe(rec.id);
@@ -93,17 +92,17 @@ describe("Delete removes access and the account from the lists — never the rec
 
   it("a removed account can not be switched back on, changed or deleted again (it is not there any more)", async () => {
     const d = await developerUser();
-    await deleteAccount(d, rec.id, ok);
-    expect(code(await thrownBy(() => deleteAccount(d, rec.id, ok)))).toBe("NOT_FOUND");
+    await deleteAccount(d, rec.id);
+    expect(code(await thrownBy(() => deleteAccount(d, rec.id)))).toBe("NOT_FOUND");
     const roleId = (await row(boss.id)).roleId;
     expect(code(await thrownBy(() => updateStaffAccount(actorOf(boss), { userId: rec.id, fullName: "X Y", email: "x@y.test", phone: null, roleId, isActive: true })))).toBe("NOT_FOUND");
   });
 
   it("the Boss's and the MD's accounts can be deleted by the Developer too (when another Boss stays)", async () => {
     const d = await developerUser();
-    await deleteAccount(d, md.id, ok);
+    await deleteAccount(d, md.id);
     expect((await row(md.id)).removedAt).toBeInstanceOf(Date);
-    await deleteAccount(d, boss2.id, ok); // `boss` is still an active Boss
+    await deleteAccount(d, boss2.id); // `boss` is still an active Boss
     expect((await row(boss2.id)).removedAt).toBeInstanceOf(Date);
   });
 });
@@ -112,7 +111,7 @@ describe("who can never be deleted", () => {
   it("a permanent owner (an e-mail in PERMANENT_OWNER_EMAILS): not by the Developer, not by the Boss's own Delete, not switched off by the Boss's edit", async () => {
     process.env.PERMANENT_OWNER_EMAILS = ` ${boss.email.toUpperCase()} ; other@example.test `;
     const d = await developerUser();
-    const e = await thrownBy(() => deleteAccount(d, boss.id, ok));
+    const e = await thrownBy(() => deleteAccount(d, boss.id));
     expect(code(e)).toBe("FORBIDDEN");
     expect((e as AppError).message).toContain("permanent owner");
     expect(code(await thrownBy(() => deleteStaffAccount(actorOf(md), { userId: boss.id })))).toBe("FORBIDDEN");
@@ -124,9 +123,9 @@ describe("who can never be deleted", () => {
 
   it("a Developer account, itself, the system account: refused", async () => {
     const d = await developerUser();
-    expect(code(await thrownBy(() => deleteAccount(d, dev2.id, ok)))).toBe("FORBIDDEN");
-    expect(code(await thrownBy(() => deleteAccount(d, dev.id, ok)))).toBe("FORBIDDEN");
-    expect(code(await thrownBy(() => deleteAccount(d, "no-such-person", ok)))).toBe("NOT_FOUND");
+    expect(code(await thrownBy(() => deleteAccount(d, dev2.id)))).toBe("FORBIDDEN");
+    expect(code(await thrownBy(() => deleteAccount(d, dev.id)))).toBe("FORBIDDEN");
+    expect(code(await thrownBy(() => deleteAccount(d, "no-such-person")))).toBe("NOT_FOUND");
   });
 
   it("the last active Boss can be deleted when a permanent owner with the MD's role stays active (the owner's own case: bashleyair@gmail.com)", async () => {
@@ -139,7 +138,7 @@ describe("who can never be deleted", () => {
       const d = await developerUser();
       const flags = (await accessPeople(d)).flatMap((g) => g.people).find((p) => p.id === lonely.id)!;
       expect(flags).toMatchObject({ canDelete: true, canSuspend: true }); // the old Boss's buttons are back
-      await deleteAccount(d, lonely.id, ok);
+      await deleteAccount(d, lonely.id);
       expect((await row(lonely.id)).removedAt).toBeInstanceOf(Date);
       expect((await row(standIn.id)).removedAt).toBeNull(); // the permanent owner is untouched
     } finally {
@@ -151,7 +150,7 @@ describe("who can never be deleted", () => {
     const others = await db.user.findMany({ where: { isActive: true, role: { code: "OWNER" }, id: { not: boss.id } }, select: { id: true } });
     await db.user.updateMany({ where: { id: { in: others.map((o) => o.id) } }, data: { isActive: false } });
     try {
-      const e = await thrownBy(async () => deleteAccount(await developerUser(), boss.id, ok));
+      const e = await thrownBy(async () => deleteAccount(await developerUser(), boss.id));
       expect(code(e)).toBe("FORBIDDEN");
       expect((e as AppError).message).toContain("only Boss");
       expect((await row(boss.id)).removedAt).toBeNull();
@@ -162,18 +161,16 @@ describe("who can never be deleted", () => {
 });
 
 describe("the rules around the button", () => {
-  it("needs a real reason (5+ characters) and the word DELETE exactly", async () => {
-    const d = await developerUser();
-    for (const [label, input] of [["short reason", { reason: "no", confirm: "DELETE" }], ["lowercase", { reason: "left the hotel", confirm: "delete" }], ["wrong word", { reason: "left the hotel", confirm: "CONFIRM" }], ["trailing space", { reason: "left the hotel", confirm: "DELETE " }]] as const) {
-      expect(code(await thrownBy(() => deleteAccount(d, rec.id, input))), label).toBe("VALIDATION");
-    }
-    expect((await row(rec.id)).removedAt).toBeNull();
+  it("asks for nothing to type: no reason and no word — the pop-up's Delete button is the confirmation", async () => {
+    await deleteAccount(await developerUser(), rec.id);
+    expect((await row(rec.id)).removedAt).toBeInstanceOf(Date);
+    expect((await db.auditLog.findFirstOrThrow({ where: { action: "user.deleted", entityId: rec.id } })).after).toMatchObject({ removed: true, recordsKept: true });
   });
 
   it("only a Developer, and not while working as someone", async () => {
     await makeSession(md.id);
     const staff = (await getCurrentUser())!;
-    expect(code(await thrownBy(() => deleteAccount(staff, rec.id, ok)))).toBe("FORBIDDEN");
+    expect(code(await thrownBy(() => deleteAccount(staff, rec.id)))).toBe("FORBIDDEN");
     browser.reset();
     const hash = await makeSession(dev.id);
     void hash;
@@ -182,7 +179,7 @@ describe("the rules around the button", () => {
     await rawDb.session.update({ where: { id: session.id }, data: { workAsUserId: someoneElse.id, workAsStartedAt: new Date() } });
     const working = (await getCurrentUser())!;
     expect(working.workAs).toBeTruthy();
-    expect(code(await thrownBy(() => deleteAccount(working, rec.id, ok)))).toBe("FORBIDDEN");
+    expect(code(await thrownBy(() => deleteAccount(working, rec.id)))).toBe("FORBIDDEN");
     expect((await row(rec.id)).removedAt).toBeNull();
   });
 });

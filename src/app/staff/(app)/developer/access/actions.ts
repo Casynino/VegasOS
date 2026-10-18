@@ -33,11 +33,6 @@ const SuspendSchema = z.object({
   // Exactly the word, in capitals: the service checks it again.
   confirm: z.string().refine((v) => v === "CONFIRM", msg("Type CONFIRM, in capital letters, to go on.")),
 });
-const DeleteSchema = z.object({
-  userId,
-  reason,
-  confirm: z.string().refine((v) => v === "DELETE", msg("Type DELETE, in capital letters, to go on.")),
-});
 const ReactivateSchema = z.object({ userId, reason });
 
 /**
@@ -80,12 +75,12 @@ export async function suspendAction(first?: unknown, second?: unknown): Promise<
   }, msg("Account suspended. The person is signed out and cannot sign in."));
 }
 
-/** DELETE — removes the account for good (never the Boss's or the MD's, never one with records). Needs a reason (5+ characters) and the word DELETE. */
+/** DELETE — removes the person's access and the account from the lists (the records stay under their name). The pop-up's Delete button is the confirmation: nothing to type. */
 export async function deleteAccountAction(first?: unknown, second?: unknown): Promise<ActionResult<null>> {
   return runAction(async () => {
     const developer = await requireDeveloperSession();
-    const input = parseInput(DeleteSchema, formOf(first, second));
-    await deleteAccount(developer, input.userId, { reason: input.reason, confirm: input.confirm });
+    const input = parseInput(PersonSchema, formOf(first, second));
+    await deleteAccount(developer, input.userId);
     revalidatePath(ACCESS);
     return null;
   }, msg("Account deleted."));
