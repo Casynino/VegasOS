@@ -7,8 +7,6 @@ import { businessDayConfig, getSettings } from "../settings";
 import { localCalendarDate, localParts } from "@/lib/time/business-date";
 import { ntzsEnabled, ntzsLive } from "./ntzs";
 import { auditActionWords, isFailureEntry, workAsTargetOf, type WorkAsTarget } from "./audit-trail";
-import { SYSTEM_ROLE } from "./staff-accounts";
-import { WITHDRAWAL_UNSETTLED } from "@/lib/withdrawals";
 import { DEVELOPER_ACCOUNT_RIGHTS, DEVELOPER_DENIED, isDeveloperOnly, PERMISSIONS, type PermissionCode } from "@/lib/permissions";
 import { msg } from "@/i18n/msg";
 
@@ -143,13 +141,6 @@ export interface Diagnostics {
   whatsapp: { defaultKey: boolean; recipients: number; recipientsReady: number } | null;
   cron: { secretConfigured: boolean };
   deployment: { commit: string | null; environment: string | null };
-  counts: {
-    staffTotal: number;
-    staffByRole: { code: string; name: string; count: number }[];
-    openShifts: number;
-    unsettledWithdrawals: number;
-    failedMessages24h: number;
-  } | null;
 }
 
 const ENVIRONMENTS = ["production", "preview", "development", "test"];
@@ -184,19 +175,6 @@ export async function systemDiagnostics(user: ConsoleCaller, now = new Date()): 
     return { defaultKey, recipients: list.length, recipientsReady: ready };
   });
 
-  const counts = await safe(async () => {
-    const since = new Date(now.getTime() - 24 * 3600_000);
-    const [roles, openShifts, unsettledWithdrawals, failedMessages24h] = await Promise.all([
-      // The online-payments system account is not a person, so it is not counted as staff.
-      db.role.findMany({ where: { code: { not: SYSTEM_ROLE } }, select: { code: true, name: true, _count: { select: { users: { where: { isActive: true } } } } }, orderBy: { name: "asc" } }),
-      db.actualShift.count({ where: { endedAt: null } }),
-      db.withdrawal.count({ where: { status: { in: WITHDRAWAL_UNSETTLED } } }),
-      db.notificationDelivery.count({ where: { status: "FAILED", updatedAt: { gte: since } } }),
-    ]);
-    const staffByRole = roles.map((r) => ({ code: r.code, name: r.name, count: r._count.users })).filter((r) => r.count > 0);
-    return { staffTotal: staffByRole.reduce((n, r) => n + r.count, 0), staffByRole, openShifts, unsettledWithdrawals, failedMessages24h };
-  });
-
   const sha = process.env.VERCEL_GIT_COMMIT_SHA?.trim();
   const env = (process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "").toLowerCase();
   return {
@@ -208,7 +186,6 @@ export async function systemDiagnostics(user: ConsoleCaller, now = new Date()): 
     whatsapp,
     cron: { secretConfigured: !!process.env.CRON_SECRET },
     deployment: { commit: sha ? sha.slice(0, 7) : null, environment: ENVIRONMENTS.includes(env) ? env : null },
-    counts,
   };
 }
 
@@ -348,7 +325,7 @@ export async function developerGreeting(user: ConsoleUser, now = new Date()): Pr
 
 // ───────────────────────────────────────────── the tabs ─────────────────────────────────────────────
 /** "Problems" comes first and is the page's default tab (owner, 2026-10-18): the Developer's job is that the system works, so what is wrong with it is the first thing he sees. */
-export const CONSOLE_TABS = ["problems", "activity", "hotel", "money", "messages", "speed", "crashes", "settings", "people"] as const;
+export const CONSOLE_TABS = ["problems", "messages", "speed", "crashes", "settings", "people"] as const;
 export type ConsoleTab = (typeof CONSOLE_TABS)[number];
 export const DEFAULT_TAB: ConsoleTab = "problems";
 /** The tab named in the address; anything else (or nothing) is the first one. */

@@ -184,7 +184,7 @@ describe("the checks as a whole", () => {
     for (const r of rs) {
       expect(r.count, r.id).toBe(0);
       for (const f of [r.title, r.summary, r.what, r.todo, r.who]) expect(f.text.length, r.id).toBeGreaterThan(3);
-      expect(["Operations", "Money", "Rooms", "Stock", "People", "Setup", "Jobs & errors"]).toContain(r.group);
+      expect(["Data", "People", "Setup", "Jobs & errors"]).toContain(r.group);
     }
     // the hotel's own work is not among them
     for (const id of CHECK_IDS) expect(id).not.toMatch(/^(shift|never|alert|request|expense|dirty|owing|low-stock|stock-low|approval)/);
@@ -265,7 +265,7 @@ describe("rooms", () => {
     expect((await stateOf("room-occupied-no-stay")).state).toBe("ok");
     await db.room.update({ where: { id: a.id }, data: { status: "OCCUPIED" } });
     const r = await stateOf("room-occupied-no-stay");
-    expect(r).toMatchObject({ state: "fix", count: 1, examples: [a.number], group: "Rooms" });
+    expect(r).toMatchObject({ state: "fix", count: 1, examples: [a.number], group: "Data" });
     expect(r.summary.vars.n).toBe(1);
     expect(r.who.text).toBe("The Developer.");
     expect(r.link?.href).toBe("/staff/rooms");
@@ -341,7 +341,7 @@ describe("reservation-totals", () => {
     const wrongNet = await mkStay({ room: c, status: "CONFIRMED", arrival, departure, gross: 100_000, net: 80_000, balance: 80_000 });
     const wrongCharges = await mkStay({ room: d, status: "CONFIRMED", arrival, departure, charges: 7_000, net: 107_000, balance: 107_000 }); // says 7,000 of charges, none exist
     const r = await stateOf("reservation-totals");
-    expect(r).toMatchObject({ state: "fix", count: 4, group: "Money" });
+    expect(r).toMatchObject({ state: "fix", count: 4, group: "Data" });
     expect(r.examples!.sort()).toEqual([wrongBalance, wrongPaid, wrongNet, wrongCharges].map((x) => x.reference).sort());
     expect(r.examples!.every((e) => /^VLH-CHK\d+$/.test(e))).toBe(true);
     expect(r.link?.href).toBe("/staff/developer/business");
@@ -386,7 +386,7 @@ describe("order-payments", () => {
     const notShown = await order({ paidAmount: 0, paymentStatus: "UNPAID" });
     await orderPay(notShown.id);
     const r = await stateOf("order-payments");
-    expect(r).toMatchObject({ state: "fix", count: 3, group: "Money" });
+    expect(r).toMatchObject({ state: "fix", count: 3, group: "Data" });
     expect(r.examples!.sort()).toEqual([noPayment, reversed, notShown].map((o) => o.number).sort());
     expect(r.link?.href).toBe("/staff/developer/business");
   });
@@ -414,7 +414,7 @@ describe("online-pending (nTZS payments that never got confirmed)", () => {
     expect((await stateOf("online-pending")).state).toBe("ok");
     const stuck = await mp(14.5);
     const r = await stateOf("online-pending");
-    expect(r).toMatchObject({ state: "fix", count: 1, group: "Money" });
+    expect(r).toMatchObject({ state: "fix", count: 1, group: "Data" });
     expect(r.examples).toEqual([`…${stuck.id.slice(-6)}`.replace(/[^A-Za-z0-9._:/#-]/g, "")]);
     expect(r.who.text).toContain("system owner");
     // never a phone number in it
@@ -443,7 +443,7 @@ describe("withdrawals (stuck at nTZS)", () => {
     const lipa = await mk({ status: "SUBMITTING", destinationKind: "LIPA", createdAt: ago(3 * HOUR) });
     const bank = await mk({ status: "PROCESSING", destinationKind: "BANK", createdAt: ago(96.5 * HOUR) });
     const r = await stateOf("withdrawals");
-    expect(r).toMatchObject({ state: "fix", count: 3, group: "Money" });
+    expect(r).toMatchObject({ state: "fix", count: 3, group: "Data" });
     expect(r.examples).toContain("WD-000777");
     expect(r.examples!.length).toBe(3);
     expect([phone.id, lipa.id, bank.id].length).toBe(3);
@@ -485,7 +485,7 @@ describe("stock-movements", () => {
     const c = await item("Sugar", 4, "SKU-CHK-2");
     await move(c.id, 4.0004);               // within rounding: quiet
     const r = await stateOf("stock-movements");
-    expect(r).toMatchObject({ state: "fix", count: 1, examples: ["SKU-CHK-1"], group: "Stock" });
+    expect(r).toMatchObject({ state: "fix", count: 1, examples: ["SKU-CHK-1"], group: "Data" });
     expect(r.who.text).toBe("The Developer.");
   });
 });
@@ -995,7 +995,7 @@ describe("one cause is shown once, and what did not apply is not counted as fine
     const fine = rs.filter((c) => c.state === "ok" && !c.skipped).length;
     const html = renderToStaticMarkup(createElement(ProblemsTab, { t: makeT("en", null), checks: rs }));
     const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
-    expect(text).toContain(`${fine} are fine.`);
+    expect(text).toContain(`Checks fine ${fine} of ${rs.length}`);
     expect(text).toContain("Not checked here: reports are switched off.");
   });
 
@@ -1017,15 +1017,11 @@ describe("the Problems tab and the Crashes tab", () => {
   const draw = async (search: Record<string, string> = {}) => renderToStaticMarkup(await DeveloperHomePage({ searchParams: Promise.resolve(search) } as never));
   const textOf = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/&#x27;/g, "'").replace(/&amp;/g, "&").replace(/\s+/g, " ");
 
-  it("Problems is the first part of the page: it opens on it, with the sentence 'We checked n things just now…' and what is not checked", async () => {
+  it("System checks is the first part of the page: four figures ('Checks fine n of 30', Needs fixing, Look at, Could not be checked) and what is not checked", async () => {
     await as(dev);
     await db.room.update({ where: { id: fixtures.room[0].id }, data: { status: "OCCUPIED" } });
     const html = await draw();
-    // one page: the jump row names Problems first and every part is its own anchor, one under the other
-    const nav = html.slice(html.indexOf('aria-label="Jump to"'), html.indexOf("</nav>", html.indexOf('aria-label="Jump to"')));
-    expect(nav.indexOf(">Problems")).toBeGreaterThan(0);
-    expect(nav.indexOf(">Problems")).toBeLessThan(nav.indexOf(">Activity"));
-    expect(nav).toContain('href="#problems"');
+    // one page: the checks come first and every part is its own anchor, one under the other
     expect(html).toContain('id="problems"');
     expect(html.indexOf('id="problems"')).toBeLessThan(html.indexOf('id="errors"'));
     const text = textOf(html);
@@ -1033,9 +1029,8 @@ describe("the Problems tab and the Crashes tab", () => {
     const fine = all.filter((c) => c.state === "ok" && !c.skipped).length;
     const notChecked = all.filter((c) => c.state === "unknown" || (c.state === "ok" && c.skipped)).length;
     expect(fine + notChecked).toBe(CHECK_IDS.length - 1);
-    expect(text).toContain(`We checked ${CHECK_IDS.length} things just now: 1 need fixing, 0 to look at, ${fine} are fine.`);
-    if (notChecked > 0) expect(text).toContain(`${notChecked} could not be checked.`);
-    expect(text).toContain("none of that is checked here");
+    expect(text).toContain(`Checks fine ${fine} of ${CHECK_IDS.length}`);
+    expect(text).toContain(`Could not be checked ${notChecked}`);
     expect(text).toContain("Needs fixing");
     expect(text).toContain("Rooms marked occupied");
     expect(text).toContain("Who fixes it");
@@ -1056,15 +1051,15 @@ describe("the Problems tab and the Crashes tab", () => {
     const htmlEn = renderToStaticMarkup(createElement(ProblemsTab, { t: en, checks: rs }));
     const htmlZh = renderToStaticMarkup(createElement(ProblemsTab, { t: zh, checks: rs }));
     for (const html of [htmlEn, htmlZh]) expect(html).not.toMatch(/undefined|NaN/);
-    for (const w of ["Needs fixing", "Look at", "All good", "Could not be checked", "What it means", "What to fix", "Who fixes it"]) expect(textOf(htmlEn)).toContain(w);
+    for (const w of ["Checks fine", "Needs fixing", "Look at", "All good", "Could not be checked"]) expect(textOf(htmlEn)).toContain(w);
     expect(htmlEn).toMatch(/<details[^>]*>[\s\S]*All good/);
     expect(htmlEn).not.toMatch(/<details[^>]* open/);
-    // every check that was fine is named, so the Developer sees what WAS looked at
-    for (const c of rs.filter((x) => x.state === "ok")) expect(textOf(htmlEn)).toContain(c.title.text);
+    // every check that was fine is named (inside the closed list), so the Developer sees what WAS looked at
+    for (const c of rs.filter((x) => x.state === "ok" && !x.skipped)) expect(textOf(htmlEn)).toContain(c.title.text);
     // in 中文 nothing of the new words is left in English
     const zhText = textOf(htmlZh);
-    for (const w of ["刚才我们检查了", "需要修复", "需要留意", "一切正常", "无法检查", "由谁处理", "这意味着什么", "该修复什么"]) expect(zhText).toContain(w);
-    expect(zhText).not.toContain("We checked");
+    for (const w of ["检查正常", "需要修复", "需要留意", "一切正常", "无法检查"]) expect(zhText).toContain(w);
+    expect(zhText).not.toContain("Checks fine");
     expect(zhText).not.toContain("Needs fixing");
     expect(zhText).toContain("标记为“已入住”的客房");
     expect(zhText).toContain("客房"); // the group word

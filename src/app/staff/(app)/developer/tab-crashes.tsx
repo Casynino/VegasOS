@@ -1,4 +1,4 @@
-import { ChevronDown } from "lucide-react";
+import { Bug, CalendarDays, ChevronDown, KeyRound, Lock, ShieldAlert, Timer, Webhook } from "lucide-react";
 import type { T } from "@/i18n/translate";
 import { LOGIN_LIMITS, type CrashData } from "@/server/services/developer-health";
 import { FAILED_SIGN_IN_ROWS_PER_HOUR } from "@/server/services/auth-login";
@@ -23,7 +23,12 @@ export function DeniedPanel({ t, rows, when }: { t: T; rows: DeniedEntry[]; when
       {rows.length === 0 ? (
         <p className="rounded-2xl bg-emerald-500/[0.07] px-3 py-2 text-sm text-emerald-800 dark:text-emerald-200">{t("Nothing was refused to a Developer account.")}</p>
       ) : (
-        <div className="overflow-x-auto">
+        <details className="group rounded-2xl border border-border/60 bg-muted/30">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-2.5 text-sm font-medium marker:content-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold [&::-webkit-details-marker]:hidden">
+            <span>{t("Show the {n} refusals", { n: rows.length })}</span>
+            <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden />
+          </summary>
+        <div className="overflow-x-auto border-t border-border/60 px-3">
           <table data-stack className="w-full min-w-[640px] text-sm">
             <thead className="text-left text-xs text-muted-foreground">
               <tr className="border-b border-border/70">
@@ -53,6 +58,7 @@ export function DeniedPanel({ t, rows, when }: { t: T; rows: DeniedEntry[]; when
             </tbody>
           </table>
         </div>
+        </details>
       )}
     </Panel>
   );
@@ -101,7 +107,7 @@ function ErrorRow({ t, g, when, now }: { t: T; g: ErrorGroup; when: (x: Date) =>
 
 export function ErrorsPanel({ t, system, when, now }: { t: T; system: SystemEvents | null; when: (x: Date) => string; now: Date }) {
   return (
-    <Panel title={t("Server errors")} subtitle={t("Unexpected errors the server caught in the last 30 days, one line for each different error. A repeat adds to its count. Emails, numbers, keys, links' addresses and request contents are taken out before an error is kept.")}>
+    <Panel title={t("Server errors")} subtitle={t("Last 30 days, one line for each different error. A repeat adds to its count; personal details are taken out.")}>
       {!system ? (
         <Quiet>{t("This could not be read just now.")}</Quiet>
       ) : system.errorGroups.length === 0 ? (
@@ -118,7 +124,7 @@ export function ErrorsPanel({ t, system, when, now }: { t: T; system: SystemEven
 
 export function JobsPanel({ t, jobs, when, now }: { t: T; jobs: JobStatus[] | null; when: (x: Date) => string; now: Date }) {
   return (
-    <Panel title={t("Automatic jobs")} subtitle={t("The jobs the system runs by itself on a timer. A job is late when it has not run for 1.5 times the longest gap between its scheduled runs. Times are hotel time.")}>
+    <Panel title={t("Automatic jobs")} subtitle={t("What the system runs by itself on a timer. Late means not run for 1.5 times its longest gap. Hotel time.")}>
       {!jobs ? <Quiet>{t("This could not be read just now.")}</Quiet> : (
         <DataTable
           empty={t("Nothing yet")}
@@ -151,7 +157,7 @@ const hookName = (t: T, source: string) => (/ntzs/i.test(source) ? t("nTZS payme
 
 export function WebhooksPanel({ t, hooks, when }: { t: T; hooks: WebhookStatus[] | null; when: (x: Date) => string }) {
   return (
-    <Panel title={t("Messages from other services (webhooks)")} subtitle={t("When a service such as nTZS tells the system something, each message is recorded as accepted or failed. The last 7 days.")}>
+    <Panel title={t("Messages from other services (webhooks)")} subtitle={t("What other services, such as nTZS, tell the system. The last 7 days.")}>
       {!hooks ? <Quiet>{t("This could not be read just now.")}</Quiet> : (
         <DataTable
           empty={t("Nothing yet")}
@@ -173,9 +179,8 @@ export function WebhooksPanel({ t, hooks, when }: { t: T; hooks: WebhookStatus[]
   );
 }
 
-export function CrashesTab({ t, c, when, now = new Date() }: { t: T; c: CrashData; when: (x: Date) => string; now?: Date }) {
-  const f = c.failed;
-  const paused = c.paused ? c.paused.developer + c.paused.staff : null;
+/** Server errors, the automatic jobs and the messages other services send: four figures, then the three lists. */
+export function ErrorsTab({ t, c, when, now = new Date() }: { t: T; c: CrashData; when: (x: Date) => string; now?: Date }) {
   const sys = c.system;
   const late = sys ? sys.jobs.filter((j) => j.overdue).length : null;
   const failedJobs = sys ? sys.jobs.filter((j) => j.lastStatus === "FAILED").length : null;
@@ -183,38 +188,51 @@ export function CrashesTab({ t, c, when, now = new Date() }: { t: T; c: CrashDat
   const hook = sys?.webhooks.find((w) => /ntzs/i.test(w.source)) ?? null;
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatBlock
-          label={t("Server errors")} value={num(t, sys?.errors24h)} caption={t("different errors in 24 hours")} warn={!!sys?.errors24h}
+          icon={Bug} label={t("Server errors")} value={num(t, sys?.errors24h)} caption={t("different errors in 24 hours")} warn={!!sys?.errors24h}
           tag={sys ? (sys.errors24h > 0 ? t("Look at it") : t("Quiet")) : undefined} tagTone={sys?.errors24h ? "amber" : "emerald"}
           note={t("Errors the server did not expect. The same error again counts once here; its line below says how many times.")}
         />
         <StatBlock
-          label={t("Automatic jobs")} value={sys ? t("{ok} of {n}", { ok: goodJobs, n: sys.jobs.length }) : "—"} caption={t("on time and well")}
+          icon={Timer} label={t("Automatic jobs")} value={sys ? t("{ok} of {n}", { ok: goodJobs, n: sys.jobs.length }) : "—"} caption={t("on time and well")}
           warn={!!(late || failedJobs)}
-          tag={sys ? (late || failedJobs ? t("Look at it") : t("On time")) : undefined} tagTone={late || failedJobs ? "rose" : "emerald"}
+          tag={sys ? (late || failedJobs ? t("Look at it") : goodJobs === sys.jobs.length ? t("On time") : t("Not recorded yet")) : undefined} tagTone={late || failedJobs ? "rose" : goodJobs === sys?.jobs.length ? "emerald" : "slate"}
           note={t("Late: {late}. Failed on the last run: {failed}.", { late: late ?? 0, failed: failedJobs ?? 0 })}
         />
         <StatBlock
-          label={t("nTZS messages")} value={num(t, hook?.ok7d)} caption={t("accepted in 7 days")} warn={!!hook?.failed7d}
+          icon={Webhook} label={t("nTZS messages")} value={num(t, hook?.ok7d)} caption={t("accepted in 7 days")} warn={!!hook?.failed7d}
           tag={hook ? (hook.failed7d > 0 ? t("{n} failed", { n: hook.failed7d }) : t("None failed")) : undefined} tagTone={hook?.failed7d ? "rose" : "emerald"}
           note={t("What nTZS tells the system about payments. When none arrive, payments are found only by asking nTZS.")}
         />
+        <StatBlock
+          icon={ShieldAlert} label={t("Refused calls")} value={num(t, hook?.refused7d)} caption={t("bad signature, 7 days")}
+          tag={hook ? t("Not a failure") : undefined} tagTone="slate"
+          note={t("Anyone on the internet can call the payment address. A call with a wrong signature is refused and shown here, apart; it never counts as nTZS failing.")}
+        />
       </div>
-
       <ErrorsPanel t={t} system={sys} when={when} now={now} />
       <JobsPanel t={t} jobs={sys?.jobs ?? null} when={when} now={now} />
       <WebhooksPanel t={t} hooks={sys?.webhooks ?? null} when={when} />
+    </div>
+  );
+}
 
+/** Failed and paused sign-ins and what was refused to the Developer. */
+export function SecurityTab({ t, c, when }: { t: T; c: CrashData; when: (x: Date) => string }) {
+  const f = c.failed;
+  const paused = c.paused ? c.paused.developer + c.paused.staff : null;
+  return (
+    <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-3">
         <StatBlock
-          label={t("Failed sign-ins")} value={num(t, f?.last24h)} caption={t("wrong tries in 24 hours")} warn={!!f?.last24h}
+          icon={KeyRound} label={t("Failed sign-ins")} value={num(t, f?.last24h)} caption={t("wrong tries in 24 hours")} warn={!!f?.last24h}
           tag={f?.last24h ? t("Look at it") : t("Quiet")} tagTone={f?.last24h ? "amber" : "emerald"}
           note={t("A wrong password, or an account that is switched off. Nobody was signed in. Only real accounts are written down — an email nobody holds is not. At most {n} tries for one account are written down each hour; if there are more, one line says so and this number is lower than the real tries.", { n: FAILED_SIGN_IN_ROWS_PER_HOUR })}
         />
-        <StatBlock label={t("Failed sign-ins")} value={num(t, f?.last7d)} caption={t("wrong tries in 7 days")} tag={t("Week")} tagTone="slate" note={t("A few typing mistakes are normal. A steady stream on one account is not.")} />
+        <StatBlock icon={CalendarDays} label={t("Failed sign-ins")} value={num(t, f?.last7d)} caption={t("wrong tries in 7 days")} tag={t("Week")} tagTone="slate" note={t("A few typing mistakes are normal. A steady stream on one account is not.")} />
         <StatBlock
-          label={t("Paused right now")} value={num(t, paused)} caption={t("sign-in places or emails")} warn={!!paused}
+          icon={Lock} label={t("Paused right now")} value={num(t, paused)} caption={t("sign-in places or emails")} warn={!!paused}
           tag={paused ? t("Look at it") : t("None")} tagTone={paused ? "amber" : "emerald"}
           note={t("After {dev} wrong tries in {minutes} minutes a Developer sign-in is paused for the rest of that time ({staff} for staff). Counts only — an email or an address is never shown. While a Developer sign-in is paused, the sign-in page gives the same answer as for any wrong password, so it does not tell anyone which email is a Developer's.", { dev: LOGIN_LIMITS.developerEmail, minutes: LOGIN_LIMITS.windowMinutes, staff: LOGIN_LIMITS.staffEmail })}
         />
@@ -235,6 +253,16 @@ export function CrashesTab({ t, c, when, now = new Date() }: { t: T; c: CrashDat
       </div>
 
       <DeniedPanel t={t} rows={c.denied} when={when} />
+    </div>
+  );
+}
+
+/** Both together (the old "Crashes & sign-ins" page): the errors, then the sign-ins. */
+export function CrashesTab({ t, c, when, now = new Date() }: { t: T; c: CrashData; when: (x: Date) => string; now?: Date }) {
+  return (
+    <div className="space-y-6">
+      <ErrorsTab t={t} c={c} when={when} now={now} />
+      <SecurityTab t={t} c={c} when={when} />
     </div>
   );
 }

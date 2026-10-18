@@ -222,7 +222,7 @@ describe("the Developer Home when the system log cannot be read", () => {
     await withoutTable(async () => {
       const html = await draw();
       expect(html).toContain("Developer");
-      for (const id of ["problems", "errors", "messages", "activity"]) expect(html, id).toContain(`id="${id}"`);
+      for (const id of ["problems", "errors", "messages", "security"]) expect(html, id).toContain(`id="${id}"`);
       expect(html).not.toMatch(/undefined|NaN/);
     });
   }, 90_000);

@@ -1,4 +1,4 @@
-import { CircleAlert, CircleCheck, ShieldCheck } from "lucide-react";
+import { ChevronDown, CircleAlert, CircleCheck, ShieldCheck } from "lucide-react";
 import type { T } from "@/i18n/translate";
 import type { Diagnostics, SettingsTab as SettingsData } from "@/server/services/developer-console";
 import { Panel } from "@/components/dashboard/kit";
@@ -41,7 +41,6 @@ function Fact({ ok, label, value, note }: { ok: boolean; label: string; value: s
 function ConfigPanel({ t, d, when }: { t: T; d: Diagnostics; when: (x: Date) => string }) {
   const m = d.migrations;
   const w = d.whatsapp;
-  const c = d.counts;
   return (
     <Panel title={t("System set-up")} subtitle={t("Checked {when}. Only yes / no and numbers — a key or a password is never read out.", { when: when(d.checkedAt) })}>
       <dl className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -68,14 +67,6 @@ function ConfigPanel({ t, d, when }: { t: T; d: Diagnostics; when: (x: Date) => 
           note={d.deployment.environment ? t("Environment: {name}", { name: d.deployment.environment }) : undefined}
         />
       </dl>
-      {c && (
-        <dl className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
-          <Info label={t("Active staff accounts")} value={num(t, c.staffTotal)} />
-          <Info label={t("Open shifts")} value={num(t, c.openShifts)} />
-          <Info label={t("Withdrawals not settled")} value={num(t, c.unsettledWithdrawals)} />
-          <Info label={t("Failed messages")} value={num(t, c.failedMessages24h)} hint={t("in the last 24 hours")} />
-        </dl>
-      )}
     </Panel>
   );
 }
@@ -110,14 +101,20 @@ export function SettingsTab({ t, s, when }: { t: T; s: SettingsData; when: (x: D
         <h3 className="flex items-center gap-2 text-sm font-semibold"><ShieldCheck className="size-4 text-emerald-600" aria-hidden />{t("Rights you do not hold (money and accounts)")}</h3>
         <p className="mt-1 text-xs text-muted-foreground">{t(id.reason)}</p>
         <p className="mt-1 text-xs text-muted-foreground">{t(id.accountsReason)}</p>
-        <ul className="mt-2 grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
-          {id.notHeld.map((r) => (
-            <li key={r.code} className="min-w-0 leading-snug">
-              <span className="break-words">{t(r.description)}</span>
-              <span className="block font-mono text-[11px] text-muted-foreground">{r.code}</span>
-            </li>
-          ))}
-        </ul>
+        <details className="group mt-3 rounded-2xl border border-border/60 bg-muted/30">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-2.5 text-sm font-medium marker:content-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold [&::-webkit-details-marker]:hidden">
+            <span>{t("Show the {n} rights", { n: id.notHeld.length })}</span>
+            <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden />
+          </summary>
+          <ul className="grid gap-x-6 gap-y-1.5 border-t border-border/60 px-4 py-3 text-sm sm:grid-cols-2">
+            {id.notHeld.map((r) => (
+              <li key={r.code} className="min-w-0 leading-snug">
+                <span className="break-words">{t(r.description)}</span>
+                <span className="block font-mono text-[11px] text-muted-foreground">{r.code}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
         <p className="mt-3 text-xs text-muted-foreground">{t("The same wall holds while you work as someone: you hold their rights minus these, and the decisions about money stay refused.")}</p>
       </Panel>
 

@@ -68,7 +68,8 @@ const HOUR = 3600_000;
 const DAY = 24 * HOUR;
 
 // ───────────────────────────────────────────── the result ─────────────────────────────────────────────
-export type CheckGroup = "Operations" | "Money" | "Rooms" | "Stock" | "People" | "Setup" | "Jobs & errors";
+/** "Data" = the system's own records contradicting each other (a bug of the system, never someone's work to do). */
+export type CheckGroup = "Data" | "People" | "Setup" | "Jobs & errors";
 export type CheckState = "ok" | "look" | "fix" | "unknown";
 
 export interface CheckResult {
@@ -147,7 +148,7 @@ const totalOf = (rows: Listed[]) => (rows.length ? Number(rows[0].total) : 0);
 
 // ───────────────────────────────────────────── 1. rooms ─────────────────────────────────────────────
 const roomOccupiedNoStay: Def = {
-  id: "room-occupied-no-stay", group: "Rooms",
+  id: "room-occupied-no-stay", group: "Data",
   title: msgf("Rooms marked occupied", {}),
   allClear: msgf("Every room marked occupied has a guest checked in.", {}),
   what: msgf("A room's status says a guest is in it, but no stay is checked in to that room. The room cannot be sold, and the room lists and the reports disagree with the front desk.", {}),
@@ -169,7 +170,7 @@ const roomOccupiedNoStay: Def = {
 };
 
 const stayRoomNotOccupied: Def = {
-  id: "stay-room-not-occupied", group: "Rooms",
+  id: "stay-room-not-occupied", group: "Data",
   title: msgf("Rooms of checked-in guests", {}),
   allClear: msgf("The room of every checked-in guest is marked occupied.", {}),
   what: msgf("A guest is checked in, but the room's status is not \"occupied\" (it may show as clean, dirty or free). Housekeeping, the room lists and the front desk could treat the room as empty.", {}),
@@ -191,7 +192,7 @@ const stayRoomNotOccupied: Def = {
 };
 
 const roomTwoStays: Def = {
-  id: "room-two-stays", group: "Rooms",
+  id: "room-two-stays", group: "Data",
   title: msgf("One guest per room", {}),
   allClear: msgf("No room has two stays checked in at once.", {}),
   what: msgf("Two stays are checked in to the same room at the same time. The database is built to make this impossible, so the rule that guards it has been broken.", {}),
@@ -215,7 +216,7 @@ const roomTwoStays: Def = {
 
 // ───────────────────────────────────────────── 2. money records that must agree ─────────────────────────────────────────────
 const reservationTotals: Def = {
-  id: "reservation-totals", group: "Money",
+  id: "reservation-totals", group: "Data",
   title: msgf("Booking totals", {}),
   allClear: msgf("Every booking's totals match its charges and payments.", {}),
   what: msgf("A booking keeps its totals (the bill, what was paid, what is left). They are always worked out again from the room nights, the charges and the posted payments. For these bookings the stored totals disagree with those records, so a screen or a report may show a wrong balance.", {}),
@@ -243,7 +244,7 @@ const reservationTotals: Def = {
 };
 
 const orderPayments: Def = {
-  id: "order-payments", group: "Money",
+  id: "order-payments", group: "Data",
   title: msgf("Restaurant order payments", {}),
   allClear: msgf("Every restaurant order's paid amount matches its posted payments.", {}),
   what: msgf("An order's paid amount and payment status are always worked out from its posted payments. For these orders they disagree: an order shows as paid with no payment behind it, or it has a payment but does not show as paid.", {}),
@@ -269,7 +270,7 @@ const orderPayments: Def = {
 };
 
 const onlinePending: Def = {
-  id: "online-pending", group: "Money",
+  id: "online-pending", group: "Data",
   title: msgf("Online payments confirmed by nTZS", {}),
   allClear: msgf("No online payment is stuck waiting for nTZS.", {}),
   what: msgf("A customer's mobile-money prompt is still \"waiting\" long after it should have been settled. The system gives a prompt up after 2 hours and asks nTZS again on every scheduled run, so one still waiting means the confirmation never arrived and the check that should have found it is not working.", {}),
@@ -291,7 +292,7 @@ const onlinePending: Def = {
 };
 
 const withdrawalsStuck: Def = {
-  id: "withdrawals", group: "Money",
+  id: "withdrawals", group: "Data",
   title: msgf("Withdrawals finish at nTZS", {}),
   allClear: msgf("No withdrawal is stuck at nTZS.", {}),
   what: msgf("A withdrawal was sent to nTZS and is still not finished long after it should be (2 hours for a phone or a Lipa number, four days for a bank). Either nTZS is not answering, or the system is not asking it.", {}),
@@ -325,7 +326,7 @@ const withdrawalsStuck: Def = {
 
 // ───────────────────────────────────────────── 3. stock ─────────────────────────────────────────────
 const stockMovements: Def = {
-  id: "stock-movements", group: "Stock",
+  id: "stock-movements", group: "Data",
   title: msgf("Stock against its movements", {}),
   allClear: msgf("Every stock item's quantity equals the total of its movements.", {}),
   what: msgf("The stock on hand of an item is the total of its posted stock movements, and only a movement may change it. For these items the quantity differs from that total, so something changed a quantity without a movement.", {}),

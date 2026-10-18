@@ -15,7 +15,7 @@ import { AppError } from "@/server/errors";
 import { NOT_WORK_ACTIONS } from "@/server/services/developer-console";
 import { CHECK_IDS } from "@/server/services/developer-checks";
 import { resetBusinessData } from "../support/helpers";
-import { activityData, crashData, DATABASE_ITEM_ID, healthReport, healthScore, healthVerdict, LOGIN_LIMITS, SCORE, speedData, type HealthReport, type Severity } from "@/server/services/developer-health";
+import { crashData, DATABASE_ITEM_ID, healthReport, healthScore, healthVerdict, LOGIN_LIMITS, SCORE, speedData, type HealthReport, type Severity } from "@/server/services/developer-health";
 import { browser, makeSession, makeUser, removeMadeUsers, thrownBy, type MadeUser } from "../support/developer";
 
 /**
@@ -166,8 +166,10 @@ describe("a clean system and a dead database", () => {
     // the headline figure is the number of different server errors in 24 hours (none yet), not "alerts waiting"
     expect(h.serverErrors24h).toBe(0);
     expect(h).not.toHaveProperty("alerts");
-    expect(h.signedInToday).toEqual(expect.any(Number));
-    expect(h.actionsToday).toEqual(expect.any(Number));
+    // the card's figures are about the SYSTEM (checks, jobs), never about the hotel's staff or its work
+    expect(h).not.toHaveProperty("signedInToday");
+    expect(h).not.toHaveProperty("actionsToday");
+    expect(h.checksFine).toEqual({ fine: expect.any(Number), of: h.checks.length });
     expect(h.failedSignIns24h).toBe(await db.auditLog.count({ where: { action: "auth.login_failed", createdAt: { gte: new Date(Date.now() - 24 * 3600_000) } } }));
   });
 
@@ -387,46 +389,6 @@ describe("what was found about sign-ins and accounts (a day far from any other t
     expect(item(h, "work-as-used")).toMatchObject({ severity: "info" });
   });
 
-  it("people signed in today is the distinct count of this hotel day; actions today leave out sign-ins and the Developer's own looking", async () => {
-    healthyEnv();
-    const day = new Date("2041-07-10");
-    const staff = (action: string, minutesBefore: number, userId: string, actorType = "STAFF") => row(action, minutesBefore, { userId, actorType, entityType: "Reservation", businessDate: day });
-    await staff("auth.login", 60, rec.id);
-    await staff("auth.login", 50, rec.id);       // the same person twice: one person
-    await staff("auth.login", 40, mgr.id);
-    await staff("auth.login", 26 * 60, fin.id);  // yesterday's day: not today
-    await staff("reservation.created", 30, rec.id);
-    await staff("reservation.created", 20, rec.id);
-    await staff("developer.viewed", 10, dev.id, "DEVELOPER");
-    await staff("developer.inspected", 10, dev.id, "DEVELOPER");
-    await staff("auth.logout", 5, rec.id);
-    await staff("reservation.created", 30 * 60, rec.id); // 30 hours ago
-    await row("report.daily_generated", 15, { actorType: "SYSTEM" }); // the system's own work is not the team's
-    const h = await healthReport(await as(dev), now);
-    expect(h.signedInToday).toBe(2);
-    expect(h.actionsToday).toBe(2);
-  });
-
-  it("EVERY look, refusal, failed try and note is left out of the action counts (Business views, exports, Work as notes included); starting Work as still counts", async () => {
-    healthyEnv();
-    const day = new Date("2041-07-10");
-    const put = (action: string, minutesBefore: number, userId: string, actorType: string) => row(action, minutesBefore, { userId, actorType, entityType: "Reservation", businessDate: day });
-    // the captions say: "Sign-ins and just looking are not counted" — so each name on the list must really be left out
-    for (const action of NOT_WORK_ACTIONS) {
-      const byDeveloper = action.startsWith("developer.") || action.startsWith("user.") || action.startsWith("settings.");
-      await put(action, 10, byDeveloper ? dev.id : rec.id, byDeveloper ? "DEVELOPER" : "STAFF");
-    }
-    await put("developer.business_viewed", 9, dev.id, "DEVELOPER"); // looking at Business twice: still no action
-    await put("developer.work_as_started", 12, dev.id, "DEVELOPER"); // done on purpose: one action
-    await put("reservation.created", 20, rec.id, "STAFF");           // staff work: one action
-    const user = await as(dev);
-    const h = await healthReport(user, now);
-    expect(h.actionsToday).toBe(2);
-    const a = await activityData(user, now);
-    expect(a.stats.teamActions24h).toBe(1);
-    expect(a.stats.developerActions24h).toBe(1);
-  });
-
   it("the list of 'not work' names holds every look-and-check action the Developer's code writes (so no new one counts as work by mistake)", () => {
     for (const looking of ["developer.viewed", "developer.viewed_limit", "developer.business_viewed", "developer.inspected", "developer.exported", "developer.downloaded"]) expect(NOT_WORK_ACTIONS, looking).toContain(looking);
     for (const refused of ["developer.denied", "developer.work_as_refused", "developer.endpoint_refused", "settings.update.refused", "user.suspend_failed", "user.reactivate_failed", "user.sign_out_failed"]) expect(NOT_WORK_ACTIONS, refused).toContain(refused);
@@ -499,7 +461,7 @@ describe("secrets and links", () => {
     // give the report something to say about every part
     made.deliveries.push((await db.notificationDelivery.create({ data: { purpose: "DAILY_REPORT", channel: "WHATSAPP_CALLMEBOT", recipient: "+255700000009", status: "FAILED", lastError: "key SECRETRECIPIENTKEY-666 rejected" } })).id);
     const everything = JSON.stringify({
-      health: await healthReport(user), late: await healthReport(user, new Date("2041-06-15T07:00:00Z")), activity: await activityData(user), crashes: await crashData(user), speed: await speedData(user),
+      health: await healthReport(user), late: await healthReport(user, new Date("2041-06-15T07:00:00Z")), crashes: await crashData(user), speed: await speedData(user),
     });
     for (const [name, value] of Object.entries(secrets)) {
       if (name === "VERCEL_GIT_COMMIT_SHA") { expect(everything).not.toContain(value); continue; }
@@ -529,7 +491,7 @@ describe("secrets and links", () => {
 describe("the door", () => {
   it.each([["receptionist", () => rec], ["Boss", () => boss], ["MD", () => md], ["manager", () => mgr], ["Finance", () => fin]])("the %s gets nothing from any health call", async (_n, who) => {
     const user = await as(who());
-    for (const call of [() => healthReport(user), () => activityData(user), () => crashData(user), () => speedData(user)]) {
+    for (const call of [() => healthReport(user), () => crashData(user), () => speedData(user)]) {
       const e = await thrownBy(call);
       expect(e).toBeInstanceOf(AppError);
       expect((e as AppError).code).toBe("FORBIDDEN");
@@ -539,7 +501,7 @@ describe("the door", () => {
   it("a Developer who is working as someone is refused too — the console and the work-as world stay apart", async () => {
     const user = await as(dev);
     const working = { ...user, workAs: { developerId: dev.id, developerName: dev.fullName, startedAt: new Date() } } as unknown as CurrentUser;
-    for (const call of [() => healthReport(working), () => activityData(working), () => crashData(working), () => speedData(working)]) {
+    for (const call of [() => healthReport(working), () => crashData(working), () => speedData(working)]) {
       expect(((await thrownBy(call)) as AppError).code).toBe("FORBIDDEN");
     }
   });

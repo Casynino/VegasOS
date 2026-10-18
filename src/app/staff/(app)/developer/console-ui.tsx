@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { T } from "@/i18n/translate";
 
@@ -98,25 +99,25 @@ export function SectionTitle({ title, hint, count, id }: { title: string; hint?:
   );
 }
 
-/** A figure with its words: a big number, what it counts, and — underneath — a tag and one plain sentence. */
-export function StatBlock({ label, value, caption, tag, tagTone = "slate", note, warn, small }: {
+/**
+ * A figure with its words, as a compact card: a small label with an icon on the right, a big number, what it counts and one small tag.
+ * The longer explanation is not printed on the page: it is the hover text of the card (`note`), so the page stays short to read.
+ */
+export function StatBlock({ label, value, caption, tag, tagTone = "slate", note, warn, small, icon: Icon }: {
   label: string; value: ReactNode; caption: string; tag?: string; tagTone?: TagTone; note?: string; warn?: boolean;
-  /** A smaller figure, for a long one (an amount in full: TZS 1,248,500). */
+  /** A smaller figure, for a long one. */
   small?: boolean;
+  icon?: LucideIcon;
 }) {
   return (
-    <div className="flex min-w-0 flex-col overflow-hidden rounded-3xl border border-border/70 bg-card shadow-[0_2px_4px_rgba(15,23,42,0.03)]">
-      <div className="p-4 sm:p-5">
+    <div title={note} className="flex min-w-0 flex-col rounded-2xl border border-border/70 bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-5">
+      <div className="flex items-start justify-between gap-3">
         <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
-        <p className={cn("mt-1.5 break-words font-semibold leading-none tracking-tight tabular-nums", small ? "text-2xl" : "text-3xl", warn && "text-amber-700 dark:text-amber-300")}>{value}</p>
-        <p className="mt-1.5 text-sm text-muted-foreground">{caption}</p>
+        {Icon && <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground" aria-hidden><Icon className="size-4" /></span>}
       </div>
-      {(tag || note) && (
-        <div className="mt-auto border-t border-border/60 bg-muted/30 px-4 py-3 sm:px-5">
-          {tag && <Tag tone={tagTone}>{tag}</Tag>}
-          {note && <p className={cn("text-xs leading-relaxed text-muted-foreground", tag && "mt-1.5")}>{note}</p>}
-        </div>
-      )}
+      <p className={cn("mt-2 break-words font-semibold leading-none tracking-tight tabular-nums", small ? "text-2xl" : "text-3xl", warn && "text-amber-700 dark:text-amber-300")}>{value}</p>
+      <p className="mt-1.5 text-sm text-muted-foreground">{caption}</p>
+      {tag && <div className="mt-3"><Tag tone={tagTone}>{tag}</Tag></div>}
     </div>
   );
 }

@@ -29,9 +29,7 @@ import {
   assertConsoleAccess, AUDIT_DEVELOPER_HREF, CONSOLE_HREF, CONSOLE_TABS, developerGreeting, developerIdentity, firstNameOf, inspectPermission, listInspectableUsers, myActions, parseTab,
   peopleTab, recentDenied, settingsTab, systemDiagnostics,
 } from "@/server/services/developer-console";
-import { activityData, ACTIVITY_DAYS, crashData, healthReport, LOGIN_LIMITS, moduleWords, speedData } from "@/server/services/developer-health";
-import { hotelData } from "@/server/services/developer-hotel";
-import { moneyData } from "@/server/services/developer-money";
+import { crashData, healthReport, LOGIN_LIMITS, speedData } from "@/server/services/developer-health";
 import { messagesData } from "@/server/services/developer-messages";
 import { businessDayConfig, getSettings } from "@/server/settings";
 import { addDays, businessDateOf, toDbDate, zonedInstant } from "@/lib/time/business-date";
@@ -123,10 +121,7 @@ describe("the door: the Developer account only", () => {
     for (const call of [
       () => developerGreeting(user),
       () => healthReport(user),
-      () => activityData(user),
       () => speedData(user),
-      () => hotelData(user),
-      () => moneyData(user),
       () => messagesData(user),
       () => crashData(user),
       () => settingsTab(user, hash),
@@ -253,45 +248,6 @@ describe("system checks: counters and yes / no", () => {
     expect(d.database.ms).toBeGreaterThan(0);
   });
 
-  it("staff accounts are counted by role (active only, the online-payments system account never)", async () => {
-    const { user } = await as(dev);
-    const before = await systemDiagnostics(user);
-    const a = await makeUser("RECEPTIONIST", { fullName: "Count A" });
-    await makeUser("RECEPTIONIST", { fullName: "Count B" });
-    await makeUser("RECEPTIONIST", { fullName: "Count C inactive", isActive: false });
-    const after = await systemDiagnostics(user);
-    const n = (d: typeof before) => d.counts!.staffByRole.find((r) => r.code === "RECEPTIONIST")?.count ?? 0;
-    expect(n(after)).toBe(n(before) + 2);
-    expect(after.counts!.staffTotal).toBe(before.counts!.staffTotal + 2);
-    expect(after.counts!.staffByRole.map((r) => r.code)).not.toContain("SYSTEM_ONLINE");
-    expect(a.id).toBeTruthy();
-  });
-
-  it("open shifts, withdrawals not settled and failed messages (last 24 hours) are counted", async () => {
-    const { user } = await as(dev);
-    const before = (await systemDiagnostics(user)).counts!;
-
-    const waiter = await makeUser("RECEPTIONIST", { fullName: "Shift Count" });
-    const shift = await db.actualShift.create({ data: { userId: waiter.id, department: "RESTAURANT", businessDate: new Date("2026-10-14") } });
-    created.shifts.push(shift.id);
-    const base = { amount: 10_000, destinationKind: "PHONE", requestedById: waiter.id, businessDate: new Date("2026-10-14") };
-    for (const status of ["UNKNOWN", "SUBMITTING", "PROCESSING", "COMPLETED"] as const) created.withdrawals.push((await db.withdrawal.create({ data: { ...base, status } })).id);
-    const delivery = { purpose: "DAILY_REPORT", channel: "WHATSAPP_CALLMEBOT" };
-    for (const [i, extra] of [
-      { status: "FAILED" as const },
-      { status: "FAILED" as const, updatedAt: new Date(Date.now() - 48 * 3600_000) }, // old: not counted
-      { status: "SENT" as const },
-    ].entries()) created.deliveries.push((await db.notificationDelivery.create({ data: { ...delivery, recipient: `+25570000000${i}`, ...extra } })).id);
-
-    const after = (await systemDiagnostics(user)).counts!;
-    expect(after.openShifts).toBe(before.openShifts + 1);
-    expect(after.unsettledWithdrawals).toBe(before.unsettledWithdrawals + 2); // UNKNOWN + SUBMITTING
-    expect(after.failedMessages24h).toBe(before.failedMessages24h + 1);
-
-    await db.actualShift.update({ where: { id: shift.id }, data: { endedAt: new Date() } });
-    expect((await systemDiagnostics(user)).counts!.openShifts).toBe(before.openShifts);
-  });
-
   it("nTZS, cron and CallMeBot show only whether something is set; the deployment shows the short commit", async () => {
     const { user } = await as(dev);
     expect(await systemDiagnostics(user)).toMatchObject({
@@ -337,7 +293,7 @@ describe("system checks: counters and yes / no", () => {
     await db.session.update({ where: { tokenHash: hash }, data: { lastSeenAt: new Date() } });
     const everything = JSON.stringify({
       console: {
-        greeting: await developerGreeting(user), health: await healthReport(user), activity: await activityData(user), speed: await speedData(user), crashes: await crashData(user),
+        greeting: await developerGreeting(user), health: await healthReport(user), speed: await speedData(user), crashes: await crashData(user),
         settings: await settingsTab(user, hash), people: await peopleTab(user), diagnostics: await systemDiagnostics(user), identity: await developerIdentity(user, hash),
       },
       inspection: await inspectPermission(user, { userId: rec.id, code: "reservations.view" }),
@@ -799,7 +755,8 @@ async function wipeFuture() {
 
 describe("the home: greeting and tabs", () => {
   it("the tab comes from the address; anything unknown (or nothing, or a list) is the first tab — Problems", () => {
-    expect([...CONSOLE_TABS]).toEqual(["problems", "activity", "hotel", "money", "messages", "speed", "crashes", "settings", "people"]);
+    expect([...CONSOLE_TABS]).toEqual(["problems", "messages", "speed", "crashes", "settings", "people"]);
+    for (const gone of ["activity", "hotel", "money"]) expect(parseTab(gone)).toBe("problems");
     for (const tab of CONSOLE_TABS) expect(parseTab(tab)).toBe(tab);
     expect(parseTab(undefined)).toBe("problems");
     expect(parseTab("")).toBe("problems");
@@ -836,184 +793,6 @@ describe("the home: greeting and tabs", () => {
   });
 });
 
-describe("activity: the charts' data", () => {
-  let user: CurrentUser;
-  beforeAll(async () => {
-    cfg = businessDayConfig(await getSettings());
-  });
-  beforeEach(async () => {
-    await wipeFuture();
-    user = (await as(dev)).user;
-  });
-  afterAll(async () => { await wipeFuture(); });
-
-  it("sign-ins per day: 14 hotel days, oldest first, ending today, stacked by the role at the time; the 15th day back is left out", async () => {
-    const login = (day: string, hhmm: string, who: MadeUser, role: string) => put(local(day, hhmm), { action: "auth.login", userId: who.id, role, entityType: "User", entityId: who.id });
-    await login(TODAY, "09:00", rec, "RECEPTIONIST");
-    await login(TODAY, "09:05", rec, "RECEPTIONIST");
-    await login(TODAY, "09:10", mgr, "MANAGER");
-    await login(dayBack(1), "09:00", fin, "FINANCE");
-    await login(dayBack(13), "10:00", mgr, "MANAGER");
-    await login(dayBack(13), "11:00", dev, "DEVELOPER");
-    await login(dayBack(14), "10:00", mgr, "MANAGER"); // outside the window
-
-    const a = await activityData(user, TZ_NOW);
-    expect(a.today).toBe(TODAY);
-    expect(a.days).toHaveLength(ACTIVITY_DAYS);
-    expect([a.days[0], a.days.at(-1)]).toEqual([dayBack(13), TODAY]);
-    const perDay = a.signInsPerDay!;
-    expect(perDay.map((d) => d.date)).toEqual(a.days);
-    expect(perDay.at(-1)).toMatchObject({ date: TODAY, total: 3, byRole: { RECEPTIONIST: 2, MANAGER: 1 } });
-    expect(perDay.at(-2)).toMatchObject({ date: dayBack(1), total: 1, byRole: { FINANCE: 1 } });
-    expect(perDay[0]).toMatchObject({ date: dayBack(13), total: 2, byRole: { MANAGER: 1, DEVELOPER: 1 } });
-    expect(perDay.reduce((n, d) => n + d.total, 0)).toBe(6);
-    // the legend: roles that signed in, the most first (ties by code), with their names
-    expect(a.roles.map((r) => r.code)).toEqual(["MANAGER", "RECEPTIONIST", "DEVELOPER", "FINANCE"]);
-    expect(a.roles.find((r) => r.code === "MANAGER")!.name).toBe("Manager");
-    // the four cards: 3 sign-ins and 2 people in the last 24 hours; 3 people in 7 days
-    expect(a.stats).toMatchObject({ signIns24h: 3, peopleSignedIn24h: 2, peopleSignedIn7d: 3 });
-  });
-
-  it("actions per day: the team and the Developer apart; sign-ins, looking, refusals and the system's own work are not actions", async () => {
-    const at = (hhmm: string, day = TODAY) => local(day, hhmm);
-    await put(at("08:00"), { action: "reservation.created", userId: rec.id });
-    await put(at("08:10"), { action: "reservation.created", userId: rec.id });
-    await put(at("08:20"), { action: "payment.recorded", userId: fin.id, entityType: "Payment" });
-    await put(at("08:30"), { action: "user.updated", userId: dev.id, type: "DEVELOPER", entityType: "User" });
-    for (const action of ["developer.viewed", "developer.inspected", "developer.denied", "developer.viewed_limit"]) await put(at("08:40"), { action, userId: dev.id, type: "DEVELOPER" });
-    for (const action of ["auth.login", "auth.logout"]) await put(at("08:50"), { action, userId: rec.id });
-    await put(at("08:55"), { action: "auth.login_failed", type: "SYSTEM" });
-    await put(at("09:00"), { action: "report.daily_generated", type: "SYSTEM" });
-    await put(at("09:01"), { action: "booking_request.submitted", type: "WEBSITE" });
-    await put(at("12:00", dayBack(2)), { action: "reservation.created", userId: rec.id });
-    await put(at("12:00", dayBack(14)), { action: "reservation.created", userId: rec.id }); // outside
-
-    const a = await activityData(user, TZ_NOW);
-    expect(a.actionsPerDay).toHaveLength(ACTIVITY_DAYS);
-    expect(a.actionsPerDay!.at(-1)).toEqual({ date: TODAY, team: 3, developer: 1, total: 4 });
-    expect(a.actionsPerDay!.find((d) => d.date === dayBack(2))).toEqual({ date: dayBack(2), team: 1, developer: 0, total: 1 });
-    expect(a.actionsPerDay!.reduce((n, d) => n + d.team + d.developer, 0)).toBe(5);
-    expect(a.stats).toMatchObject({ teamActions24h: 3, developerActions24h: 1 });
-  });
-
-  it("the hotel day turns over at 04:00, not at midnight: 23:59, 00:00 and 03:59 belong to one day, 04:00 to the next", async () => {
-    const x = dayBack(5);
-    const next = addDays(x, 1);
-    const moments = [local(x, "23:59"), local(next, "00:00"), local(next, "03:59"), local(next, "04:00"), local(next, "04:30")];
-    expect(moments.map((m) => businessDateOf(m, cfg))).toEqual([x, x, x, next, next]);
-
-    const check = async () => {
-      const a = await activityData(user, TZ_NOW);
-      const day = (d: string) => a.actionsPerDay!.find((r) => r.date === d)!;
-      expect(day(x).team).toBe(3);
-      expect(day(next).team).toBe(2);
-      // the busiest HOURS are the hotel's wall clock: 23h, 0h, 3h once each, 4h twice
-      const hours = Object.fromEntries(a.busiestHours!.map((h) => [h.hour, h.count]));
-      expect([hours[23], hours[0], hours[3], hours[4]]).toEqual([1, 1, 1, 2]);
-      expect(a.busiestHours!.reduce((n, h) => n + h.count, 0)).toBe(5);
-      expect(a.stats.busiestHour).toBe(4);
-    };
-    // rows written straight at those instants …
-    for (const m of moments) await put(m, { action: "reservation.created", userId: rec.id });
-    await check();
-    await wipeFuture();
-    // … and rows written by audit() itself, with the clock set to those instants (the rule that decides the day is the app's own)
-    vi.useFakeTimers({ toFake: ["Date"] });
-    try {
-      for (const [i, m] of moments.entries()) {
-        vi.setSystemTime(m);
-        await audit(db, { userId: rec.id, label: rec.fullName }, { action: "reservation.created", entityType: "Reservation", entityId: `edge-${i}` });
-      }
-    } finally {
-      vi.useRealTimers();
-    }
-    await check();
-  });
-
-  it("the 24-hour cards: a minute inside the day counts, a minute outside does not", async () => {
-    await put(new Date(TZ_NOW.getTime() - (24 * 60 - 1) * 60_000), { action: "reservation.created", userId: rec.id });
-    await put(new Date(TZ_NOW.getTime() - (24 * 60 + 1) * 60_000), { action: "reservation.created", userId: rec.id });
-    await put(new Date(TZ_NOW.getTime() - (24 * 60 - 1) * 60_000), { action: "auth.login_failed", type: "SYSTEM", entityId: rec.id, entityType: "User" });
-    await put(new Date(TZ_NOW.getTime() - (24 * 60 + 1) * 60_000), { action: "auth.login_failed", type: "SYSTEM", entityId: rec.id, entityType: "User" });
-    const a = await activityData(user, TZ_NOW);
-    expect(a.stats.teamActions24h).toBe(1);
-    expect(a.stats.failedSignIns24h).toBe(1);
-  });
-
-  it("where the work happens: kinds of record in plain words, several kinds with one name added together, 7 days only", async () => {
-    const at = (day = dayBack(1)) => local(day, "10:00");
-    for (let i = 0; i < 3; i++) await put(at(), { action: "reservation.created", userId: rec.id, entityType: "Reservation" });
-    for (let i = 0; i < 2; i++) await put(at(), { action: "reservation.room_assigned", userId: rec.id, entityType: "ReservationRoom" });
-    for (let i = 0; i < 4; i++) await put(at(), { action: "restaurant_order.created", userId: rec.id, entityType: "RestaurantOrder" });
-    await put(at(), { action: "payment.recorded", userId: fin.id, entityType: "Payment" });
-    await put(at(), { action: "thing.done", userId: rec.id, entityType: "SomeNewThing" });
-    await put(at(), { action: "developer.viewed", userId: dev.id, type: "DEVELOPER", entityType: "Page", entityId: "/staff/reports" }); // looking is not work
-    await put(at(dayBack(8)), { action: "reservation.created", userId: rec.id, entityType: "Reservation" }); // older than 7 days
-    const a = await activityData(user, TZ_NOW);
-    expect(a.where).toEqual([
-      { label: "Bookings and stays", count: 5 }, { label: "Restaurant orders", count: 4 }, { label: "Payments", count: 1 }, { label: "Some New Thing", count: 1 },
-    ]);
-    expect(moduleWords("Reservation")).toBe("Bookings and stays");
-    expect(moduleWords("ReservationRoom")).toBe(moduleWords("Reservation"));
-    expect(moduleWords("RestaurantLocation")).toBe("Restaurant tables");
-    expect(moduleWords("")).toBe("Other");
-  });
-
-  it("most active people: busiest first, with name, role and the Developer flag; the system and the last-7-days rule", async () => {
-    const at = (day = dayBack(1)) => local(day, "10:00");
-    for (let i = 0; i < 5; i++) await put(at(), { action: "reservation.created", userId: rec.id });
-    for (let i = 0; i < 3; i++) await put(at(), { action: "payment.recorded", userId: fin.id, entityType: "Payment" });
-    for (let i = 0; i < 2; i++) await put(at(), { action: "user.updated", userId: dev.id, type: "DEVELOPER", entityType: "User" });
-    await put(at(), { action: "reservation.created", userId: mgr.id });
-    await put(at(), { action: "report.daily_generated", type: "SYSTEM" });
-    await put(at(dayBack(9)), { action: "reservation.created", userId: mgr.id });
-    const a = await activityData(user, TZ_NOW);
-    expect(a.mostActive!.map((p) => [p.name, p.count, p.developer])).toEqual([[rec.fullName, 5, false], [fin.fullName, 3, false], [dev.fullName, 2, true], [mgr.fullName, 1, false]]);
-    expect(a.mostActive![0].roleName).toBe("Receptionist");
-  });
-
-  it("recent sign-ins: the last 12, newest first; the device comes from the session of that sign-in, the address from the entry", async () => {
-    const mac = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
-    const iphone = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";
-    const times = Array.from({ length: 14 }, (_, i) => new Date(TZ_NOW.getTime() - (i + 1) * 3600_000)); // newest first
-    for (const [i, t] of times.entries()) await put(t, { action: "auth.login", userId: rec.id, role: "RECEPTIONIST", entityType: "User", entityId: rec.id, ip: `41.0.0.${i + 1}` });
-    const session = (createdAt: Date, userAgent: string) => db.session.create({ data: { tokenHash: sha256(`s-${createdAt.getTime()}`), userId: rec.id, createdAt, expiresAt: new Date(createdAt.getTime() + 3600_000), userAgent, ipAddress: "9.9.9.9" } });
-    await session(new Date(times[0].getTime() + 800), mac);     // the newest sign-in's session (made a moment after it)
-    await session(new Date(times[1].getTime() - 900), iphone);
-    const a = await activityData(user, TZ_NOW);
-    const r = a.recentSignIns!;
-    expect(r).toHaveLength(12);
-    expect(r.map((x) => x.at.getTime())).toEqual(times.slice(0, 12).map((t) => t.getTime()));
-    expect(r[0]).toMatchObject({ name: rec.fullName, roleName: "Receptionist", ip: "41.0.0.1", device: { label: "Chrome · Mac", phone: false } });
-    expect(r[1].device).toEqual({ label: "Safari · iPhone", phone: true });
-    expect(r[2]).toMatchObject({ device: null, ip: "41.0.0.3" }); // its session is gone: the device is not known, the address still is
-  });
-
-  it("accounts nobody uses: never signed in, or not for 30 days — a shared screen counts as in use while its session is; the Developer, system and switched-off accounts never", async () => {
-    const days = (n: number) => new Date(Date.now() - n * 86_400_000);
-    const before = (await activityData(user)).notUsingTotal;
-    const never = await makeUser("RECEPTIONIST", { fullName: "Nobody Never" });
-    const stale = await makeUser("RECEPTIONIST", { fullName: "Nobody Stale" });
-    const fresh = await makeUser("RECEPTIONIST", { fullName: "Nobody Fresh" });
-    const screen = await makeUser("RESTAURANT_SCREEN", { fullName: "Nobody Screen" });
-    const off = await makeUser("RECEPTIONIST", { fullName: "Nobody Off", isActive: false });
-    const system = await makeUser("SYSTEM_ONLINE", { fullName: "Nobody System" });
-    await db.user.update({ where: { id: stale.id }, data: { lastLoginAt: days(40) } });
-    await db.user.update({ where: { id: fresh.id }, data: { lastLoginAt: days(10) } });
-    await db.user.update({ where: { id: screen.id }, data: { lastLoginAt: days(60) } });
-    await makeSession(screen.id, { setCookie: false, seenMinAgo: 5 });
-    const a = await activityData(user);
-    expect(a.notUsingTotal).toBe(before + 2); // never + stale
-    const listed = new Set(a.notUsing!.map((u) => u.id));
-    for (const gone of [fresh, screen, off, system, dev]) expect(listed.has(gone.id), gone.fullName).toBe(false);
-    expect(a.notUsing!.length).toBeLessThanOrEqual(12);
-    // the oldest first: those never seen, then the longest away
-    const times = a.notUsing!.map((u) => u.lastUsedAt?.getTime() ?? 0);
-    expect(times).toEqual([...times].sort((x, y) => x - y));
-    expect(never.id && stale.id).toBeTruthy();
-  });
-});
-
 describe("speed, sign-in trouble, settings and my actions", () => {
   let user: CurrentUser;
   let hash: string;
@@ -1039,9 +818,10 @@ describe("speed, sign-in trouble, settings and my actions", () => {
     for (const n of s.latency.samples) expect(Number.isInteger(n) && n > 0).toBe(true);
     expect(s.latency.average).toBe(Math.round(s.latency.samples.reduce((a, b) => a + b, 0) / 3));
     expect(s.latency.slowest).toBe(Math.max(...s.latency.samples));
-    expect(s.tables.map((t) => t.label)).toEqual(["Audit trail entries", "Sign-in sessions", "Bookings", "Payments", "Messages sent"]);
+    expect(s.tables.map((t) => t.label)).toEqual(["Audit trail entries", "Sign-in sessions", "Messages sent", "System events"]);
     expect(s.tables[0].rows).toBe(await db.auditLog.count());
-    expect(s.tables[2].rows).toBe(await db.reservation.count());
+    expect(s.tables[2].rows).toBe(await db.notificationDelivery.count());
+    expect(s.tables.map((t) => t.label)).not.toContain("Bookings"); // the hotel's own records are not the Developer's to count
     for (const t of s.tables) expect(t.bytes).toBeGreaterThan(0);
     expect(s.databaseBytes).toBeGreaterThan(0);
     expect(s.deployment).toEqual({ commit: "0123456", environment: "preview" });
@@ -1123,7 +903,7 @@ describe("the home: a Developer working as someone is shut out of the console", 
     const { user, hash } = await as(dev);
     const working = { ...user, workAs: { developerId: dev.id, developerName: dev.fullName, startedAt: new Date() } } as unknown as CurrentUser;
     for (const call of [
-      () => developerGreeting(working), () => healthReport(working), () => activityData(working), () => speedData(working), () => hotelData(working), () => moneyData(working), () => messagesData(working), () => crashData(working), () => settingsTab(working, hash),
+      () => developerGreeting(working), () => healthReport(working), () => speedData(working), () => messagesData(working), () => crashData(working), () => settingsTab(working, hash),
       () => peopleTab(working), () => myActions(working), () => developerIdentity(working, hash), () => systemDiagnostics(working), () => recentDenied(working), () => listInspectableUsers(working),
       () => inspectPermission(working, { userId: rec.id, code: "reservations.view" }),
     ]) {
@@ -1152,37 +932,38 @@ describe("the Developer home page draws, on every tab, from real data", () => {
   beforeAll(async () => { cfg = businessDayConfig(await getSettings()); });
   afterAll(async () => { await wipeFuture(); });
 
-  it("the Developer sees the greeting, the health card, the cards, the shortcuts, the jump row and EVERY part on one page", async () => {
+  it("the Developer sees the greeting, the health card, the cards, the shortcuts and EVERY system part on one page — and nothing of the hotel's own work", async () => {
     await as(dev);
     const html = await draw();
     expect(html).toMatch(/Good (morning|afternoon|evening), /);
-    expect(html).toContain("Your control room for");
+    expect(html).toContain("working, and what is there to fix?");
     expect(html).toContain("out of 100");
-    expect(html).toContain("Needs your attention");
-    for (const w of ["Work as", "Add an account", "Who did what, and when", "Read-only hotel tables", "Jump to"]) expect(html).toContain(w);
+    for (const w of ["Work as", "Add an account", "Who did what, and when", "Read-only hotel tables", "Checks fine", "Automatic jobs"]) expect(html).toContain(w);
     // Audit and Business are links; Work as and Add an account open a popup (the Access page is in the side menu and in the popup)
     for (const href of [CONSOLE_HREF.home, CONSOLE_HREF.audit, CONSOLE_HREF.business]) expect(html).toContain(`href="${href}`);
-    // no tabs: nine parts, each with its anchor, its heading, and the jump row linking to it
-    for (const id of ["problems", "errors", "messages", "speed", "activity", "hotel", "money", "people", "settings"]) {
-      expect(html, id).toContain(`id="${id}"`);
-      expect(html, id).toContain(`href="#${id}"`);
-    }
+    // no tabs and no jump row: seven system parts, each with its anchor and its heading, one under the other
+    for (const id of ["problems", "errors", "messages", "speed", "security", "people", "settings"]) expect(html, id).toContain(`id="${id}"`);
+    for (const id of ["activity", "hotel", "money"]) expect(html, id).not.toContain(`id="${id}"`);
+    expect(html).not.toContain('aria-label="Jump to"');
     expect(html).not.toContain("aria-current=\"page\"");
-    // and what each part says (Problems, Errors & jobs, Messages & reports, Speed & size, Activity, Hotel, Money, People, Settings)
-    const marks = ["We checked ", "Messages from other services (webhooks)", "Is the Boss getting what he should", "The biggest tables", "Sign-ins per day", "Actions per day", "Busiest hours of the day", "Recent sign-ins", "What is happening in the hotel", "Where the money is", "My last 30 actions", "What you cannot do"];
+    // what each part says (System checks, Errors & jobs, Messages & reports, Speed & size, Sign-ins & security, People & my actions, Settings)
+    const marks = ["System checks", "Messages from other services", "Is the Boss getting his reports and messages?", "The biggest tables", "Failed sign-ins per day", "Who can do what", "Your session", "My last 30 actions"];
     for (const m of marks) expect(html, m).toContain(m);
+    // the hotel's own work and the staff's activity are not the Developer's: none of it is on the page
+    for (const gone of ["What is happening in the hotel", "Where the money is", "Sign-ins per day", "Actions per day", "Busiest hours of the day", "Recent sign-ins", "Open shifts", "Withdrawals not settled", "Active staff accounts", "New records per day", "Signed in today", "Actions today"]) expect(html, gone).not.toContain(gone);
     expect(html).not.toContain("undefined");
     expect(html).not.toContain("NaN");
   });
 
-  it("an old ?tab= link goes to that part's place on the one page; a bad ?tab= just draws the page", async () => {
+  it("an old ?tab= link goes to that part's place on the one page; a link to a part that is gone, or a bad one, just draws the page", async () => {
     await as(dev);
     const go = (tab: string) => redirectOf(() => DeveloperHomePage({ searchParams: Promise.resolve({ tab }) } as never));
-    expect(await go("hotel")).toBe(`${CONSOLE_HREF.home}#hotel`);
     expect(await go("crashes")).toBe(`${CONSOLE_HREF.home}#errors`);
     expect(await go("people")).toBe(`${CONSOLE_HREF.home}#people`);
+    expect(await go("hotel")).toBeNull();
+    expect(await go("money")).toBeNull();
     expect(await go("nonsense")).toBeNull();
-    expect(await draw({ tab: "nonsense" })).toContain("We checked ");
+    expect(await draw({ tab: "nonsense" })).toContain("System checks");
   });
 
   it("the inspector in the People part answers, and the look is written to the audit trail", async () => {

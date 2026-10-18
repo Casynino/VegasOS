@@ -1,7 +1,6 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { Activity, BedDouble, Bug, Gauge, Send, Settings2, ShieldAlert, Users, Wallet } from "lucide-react";
 import { currentSessionTokenHash, getCurrentUser, requestMeta, requirePagePermission } from "@/server/auth";
 import { getSettings } from "@/server/settings";
 import { staffHome } from "@/lib/staff-home";
@@ -9,12 +8,12 @@ import { CONSOLE_HREF, developerGreeting, parseTab } from "@/server/services/dev
 import { healthReport } from "@/server/services/developer-health";
 import { accessPeople, accountRoleChoices } from "@/server/services/work-as";
 import { getT } from "@/i18n/server";
-import { JumpNav } from "@/components/dashboard/finance-panels";
 import { AttentionSection } from "./attention";
 import { ConsoleBanner } from "./console-ui";
 import { HealthCard } from "./health-card";
 import {
-  ActivitySection, ConsoleSection, ErrorsSection, HotelSection, MessagesSection, MoneySection, PeopleSection, SectionSkeleton, SettingsSection, SpeedSection,
+  ConsoleSection, ErrorsSection, MessagesSection, PeopleSection, SectionSkeleton, SecuritySection, SettingsSection, SpeedSection,
+  type AreaStatus,
   type SectionCtx,
 } from "./home-sections";
 import { Shortcuts } from "./tabs";
@@ -28,13 +27,22 @@ export const dynamic = "force-dynamic";
 const str = (v: unknown) => (typeof v === "string" ? v : "");
 
 /** Old links that named a tab (?tab=hotel…) go to that part's place on the one page. */
-const OLD_TAB_TO_PART: Record<string, string> = { problems: "problems", crashes: "errors", messages: "messages", speed: "speed", activity: "activity", hotel: "hotel", money: "money", people: "people", settings: "settings" };
+const OLD_TAB_TO_PART: Record<string, string> = { problems: "problems", crashes: "errors", messages: "messages", speed: "speed", people: "people", settings: "settings" };
+
+/** Which part of the page each system check belongs to, so a part can say how it is doing in one chip. */
+const PART_OF_CHECK: Record<string, string> = {
+  "errors-server": "errors", "jobs-overdue": "errors", "jobs-failed": "errors", "webhooks-failing": "errors", "webhooks-silent": "errors", "online-pending": "errors", withdrawals: "errors", "holds-not-released": "errors",
+  "deliveries-failed": "messages", "report-daily": "messages", "report-room": "messages", "whatsapp-none": "messages", "whatsapp-keys": "messages",
+  "failed-sign-ins": "security", denied: "security",
+  "cron-secret": "settings", "site-address": "settings", "ntzs-off": "settings", "ntzs-webhook": "settings", "payment-account": "settings", migrations: "settings", "migrations-pending": "settings",
+  "boss-account": "people", "roles-no-rights": "people",
+};
 
 /**
  * THE DEVELOPER HOME (owner, 2026-10-17; ONE PAGE since 2026-10-18): the Developer's control room. At the top how healthy the system is and
  * what needs attention; then, one under the other and reached from a "Jump to" row that stays in view, every part: the system's problems,
- * errors and automatic jobs, whether the Boss gets his reports, how fast it is, who is using it, what is happening in the hotel, where the
- * money is, what anyone may do, and how it is set up. Read-only. Every figure comes from a service in developer-*.ts that checks again that
+ * errors and automatic jobs, whether the Boss gets his reports, how fast it is, what anyone may do, and how it is set up. NOTHING about the
+ * hotel's own work (guests, rooms, orders, money, who did what shift): the Developer's job is the system, not operations (owner, 2026-10-18). Read-only. Every figure comes from a service in developer-*.ts that checks again that
  * the caller really is the Developer; a part that cannot be read says so and the rest still shows. No password, key or secret is ever read out.
  * The console and the "work as" world are kept apart: someone working as another person is sent to that person's home.
  */
@@ -61,66 +69,47 @@ export default async function DeveloperHomePage({ searchParams }: PageProps<"/st
     evening: t("Good evening, {name}.", { name: greeting.firstName }),
   }[greeting.partOfDay];
 
-  const problems = health.checks.filter((c) => c.state === "fix" || c.state === "look").length;
   const ctx: SectionCtx = { t, user, now, timezone: settings.timezone, when, ipAddress: meta.ipAddress, sessionHash };
   const loading = t("Loading…");
   const person = str(sp.person).trim();
   const right = str(sp.right).trim();
-  const icon = "size-3.5";
-  const parts = [
-    { id: "problems", label: t("Problems"), icon: <ShieldAlert className={icon} aria-hidden /> },
-    { id: "errors", label: t("Errors & jobs"), icon: <Bug className={icon} aria-hidden /> },
-    { id: "messages", label: t("Messages & reports"), icon: <Send className={icon} aria-hidden /> },
-    { id: "speed", label: t("Speed & size"), icon: <Gauge className={icon} aria-hidden /> },
-    { id: "activity", label: t("Activity"), icon: <Activity className={icon} aria-hidden /> },
-    { id: "hotel", label: t("Hotel"), icon: <BedDouble className={icon} aria-hidden /> },
-    { id: "money", label: t("Money"), icon: <Wallet className={icon} aria-hidden /> },
-    { id: "people", label: t("People & my actions"), icon: <Users className={icon} aria-hidden /> },
-    { id: "settings", label: t("Settings"), icon: <Settings2 className={icon} aria-hidden /> },
-  ];
+  // One chip on a part's heading: how it is doing, from the system checks that belong to it (none = no chip).
+  const chipFor = (part: string | null): AreaStatus | undefined => {
+    const mine = part === null ? health.checks : health.checks.filter((c) => PART_OF_CHECK[c.id] === part);
+    if (mine.length === 0) return undefined;
+    const fix = mine.filter((c) => c.state === "fix").length;
+    const look = mine.filter((c) => c.state === "look").length;
+    if (fix > 0) return { tone: "bad", text: t("{n} to fix now", { n: fix }) };
+    if (look > 0) return { tone: "warn", text: t("{n} to look at", { n: look }) };
+    return { tone: "ok", text: t("All fine") };
+  };
+  const section = (id: string, title: string, hint: string, status: AreaStatus | undefined, body: React.ReactNode) => (
+    <ConsoleSection id={id} title={title} hint={hint} status={status}>
+      <Suspense fallback={<SectionSkeleton label={loading} />}>{body}</Suspense>
+    </ConsoleSection>
+  );
 
   return (
-    <div className="w-full space-y-6">
-      <ConsoleBanner
-        date={t.date(greeting.today, true)} tag={t("Developer")} title={hello}
-        subtitle={t("Your control room for {hotel} — health, people and everything done, in one place.", { hotel: greeting.hotelName })}
-      />
-      <Shortcuts t={t} people={people} roles={roles.map((r) => ({ id: r.id, name: r.name }))} />
-      <HealthCard t={t} h={health} />
-      <AttentionSection t={t} items={health.items} />
-
-      {/* "Jump to": every part is on this page, one under the other — this row stays in view and goes to any of them. */}
-      <div className="sticky top-[4.75rem] z-20 -mx-1 bg-background/90 px-1 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/75">
-        <JumpNav label={t("Jump to")} items={parts} />
+    <div className="w-full space-y-8">
+      <div className="space-y-6">
+        <ConsoleBanner
+          date={t.date(greeting.today, true)} tag={t("Developer")} title={hello}
+          subtitle={t("Is the system of {hotel} working, and what is there to fix?", { hotel: greeting.hotelName })}
+        />
+        <Shortcuts t={t} people={people} roles={roles.map((r) => ({ id: r.id, name: r.name }))} />
+        <HealthCard t={t} h={health} />
+        <AttentionSection t={t} items={health.items} />
       </div>
 
-      <ConsoleSection id="problems" title={t("Problems")} hint={t("What is wrong in the system and what to fix.")} badge={problems > 0 ? { text: String(problems), tone: "warn" } : undefined}>
+      <ConsoleSection id="problems" title={t("System checks")} hint={t("What the system looked at just now.")} status={chipFor(null)}>
         <ProblemsTab t={t} checks={health.checks} />
       </ConsoleSection>
-      <ConsoleSection id="errors" title={t("Errors & jobs")} hint={t("Server errors, the automatic jobs and the payment confirmations.")} badge={health.serverErrors24h ? { text: String(health.serverErrors24h), tone: "warn" } : health.failedSignIns24h ? { text: String(health.failedSignIns24h), tone: "warn" } : undefined}>
-        <Suspense fallback={<SectionSkeleton label={loading} />}><ErrorsSection ctx={ctx} /></Suspense>
-      </ConsoleSection>
-      <ConsoleSection id="messages" title={t("Messages & reports")} hint={t("Is the Boss getting his reports and messages?")}>
-        <Suspense fallback={<SectionSkeleton label={loading} />}><MessagesSection ctx={ctx} /></Suspense>
-      </ConsoleSection>
-      <ConsoleSection id="speed" title={t("Speed & size")} hint={t("How fast the database answers and how the system grows.")} badge={health.database.ms !== null ? { text: t("{ms} ms", { ms: health.database.ms }), tone: health.database.ms >= 500 ? "warn" : "ok" } : undefined}>
-        <Suspense fallback={<SectionSkeleton label={loading} />}><SpeedSection ctx={ctx} /></Suspense>
-      </ConsoleSection>
-      <ConsoleSection id="activity" title={t("Activity")} hint={t("Who is using the system.")}>
-        <Suspense fallback={<SectionSkeleton label={loading} />}><ActivitySection ctx={ctx} /></Suspense>
-      </ConsoleSection>
-      <ConsoleSection id="hotel" title={t("Hotel")} hint={t("What is happening in the hotel — to understand, not to do (read-only).")}>
-        <Suspense fallback={<SectionSkeleton label={loading} />}><HotelSection ctx={ctx} /></Suspense>
-      </ConsoleSection>
-      <ConsoleSection id="money" title={t("Money")} hint={t("Where the money is — to understand, not to do (read-only).")}>
-        <Suspense fallback={<SectionSkeleton label={loading} />}><MoneySection ctx={ctx} /></Suspense>
-      </ConsoleSection>
-      <ConsoleSection id="people" title={t("People & my actions")} hint={t("What anyone may do, and what you did.")}>
-        <Suspense fallback={<SectionSkeleton label={loading} />}><PeopleSection ctx={ctx} person={person} right={right} /></Suspense>
-      </ConsoleSection>
-      <ConsoleSection id="settings" title={t("Settings")} hint={t("How the system is set up.")}>
-        <Suspense fallback={<SectionSkeleton label={loading} />}><SettingsSection ctx={ctx} /></Suspense>
-      </ConsoleSection>
+      {section("errors", t("Errors & jobs"), t("Server errors, the automatic jobs and the payment confirmations."), chipFor("errors"), <ErrorsSection ctx={ctx} />)}
+      {section("messages", t("Messages & reports"), t("Is the Boss getting his reports and messages?"), chipFor("messages"), <MessagesSection ctx={ctx} />)}
+      {section("speed", t("Speed & size"), t("How fast the database answers and how the system grows."), health.database.ms !== null ? { tone: health.database.ms >= 500 ? "warn" : "ok", text: t("{ms} ms", { ms: health.database.ms }) } : undefined, <SpeedSection ctx={ctx} />)}
+      {section("security", t("Sign-ins & security"), t("Wrong passwords, paused sign-ins and what was refused to you."), chipFor("security"), <SecuritySection ctx={ctx} />)}
+      {section("people", t("People & my actions"), t("What anyone may do, and what you did."), chipFor("people"), <PeopleSection ctx={ctx} person={person} right={right} />)}
+      {section("settings", t("Settings"), t("How the system is set up."), chipFor("settings"), <SettingsSection ctx={ctx} />)}
     </div>
   );
 }
