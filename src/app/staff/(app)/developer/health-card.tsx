@@ -1,12 +1,14 @@
-import { Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { T } from "@/i18n/translate";
 import { SCORE, type HealthReport } from "@/server/services/developer-health";
 import { num } from "./console-ui";
+import { MiniBars, Sparkline } from "./sparkline";
 
 /**
- * THE HEALTH CARD: a ring with the score out of 100, one plain sentence, three chips, and four numbers. The rule behind the score
- * is explained in the card itself ("How is this worked out?") and is the same rule written in src/server/services/developer-health.ts.
+ * THE HEALTH CARD (copied from the owner's Target console, 2026-10-18: "the same look exactly"): a ring with the score out of 100 and
+ * "Health score" under it, a verdict in colour with one plain sentence and three chips, and four small cards — Database (six bars),
+ * Signed in today, Actions today and Server errors (a small line each). The rule behind the score is the hover text of the ring and is the
+ * same rule written in src/server/services/developer-health.ts.
  */
 
 const RING = 52;
@@ -30,84 +32,80 @@ function Ring({ score, label, outOf }: { score: number; label: string; outOf: st
   );
 }
 
-/** One headline figure: a term (dt) and its value, caption and hint (dd) — inside the card's <dl>. */
-function Figure({ label, value, caption, tone, hint }: { label: string; value: string; caption: string; tone?: "ok" | "warn" | "bad"; hint?: string }) {
+/** One headline figure as its own small card: a term (dt) and its value, caption and small picture (dd) — inside the card's <dl>. */
+function Figure({ label, value, caption, tone, children }: { label: string; value: string; caption: string; tone?: "ok" | "warn" | "bad"; children?: React.ReactNode }) {
   return (
-    <div className="min-w-0">
+    <div className="flex min-w-0 flex-col rounded-2xl border border-border/70 bg-background/40 p-4">
       <dt className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</dt>
-      <dd className={cn("mt-1 text-2xl font-semibold leading-none tracking-tight tabular-nums", tone === "ok" && "text-emerald-600 dark:text-emerald-400", tone === "warn" && "text-amber-600 dark:text-amber-400", tone === "bad" && "text-rose-600 dark:text-rose-400")}>{value}</dd>
+      <dd className={cn("mt-1.5 text-3xl font-semibold leading-none tracking-tight tabular-nums", tone === "ok" && "text-emerald-600 dark:text-emerald-400", tone === "warn" && "text-amber-600 dark:text-amber-400", tone === "bad" && "text-rose-600 dark:text-rose-400")}>{value}</dd>
       <dd className="mt-1.5 text-sm text-muted-foreground">{caption}</dd>
-      {hint && <dd className="mt-0.5 text-xs text-muted-foreground">{hint}</dd>}
+      <dd className="mt-auto pt-3">{children ?? <span className="block h-10" aria-hidden />}</dd>
     </div>
   );
 }
 
 export function HealthCard({ t, h }: { t: T; h: HealthReport }) {
   const verdict = {
-    offline: { title: t("The database is not answering"), line: t("Staff cannot work until it is back.") },
-    fix: { title: t("Needs attention now"), line: t.plural(h.counts.fix, "{n} thing to fix now.", "{n} things to fix now.") },
-    look: { title: t("Working, with a few things to look at"), line: t.plural(h.counts.look, "{n} thing worth a look. Nothing is broken.", "{n} things worth a look. Nothing is broken.") },
-    well: { title: t("Working well"), line: t("Nothing needs your attention.") },
+    offline: { title: t("The database is not answering"), line: t("Staff cannot work until it is back."), tone: "text-rose-600 dark:text-rose-400" },
+    fix: { title: t("Needs attention now"), line: t.plural(h.counts.fix, "{n} thing to fix now.", "{n} things to fix now."), tone: "text-rose-600 dark:text-rose-400" },
+    look: { title: t("Working, with a few things to look at"), line: t.plural(h.counts.look, "{n} thing worth a look. Nothing is broken.", "{n} things worth a look. Nothing is broken."), tone: "text-amber-600 dark:text-amber-400" },
+    well: { title: t("Everything is healthy"), line: t("The database is fast, every required setting is in place and nothing has crashed."), tone: "text-emerald-600 dark:text-emerald-400" },
   }[h.verdict];
   const costFix = h.items.filter((i) => i.severity === "fix" && i.id !== "database").length * SCORE.fixNow;
   const costLook = h.items.filter((i) => i.severity === "look").length * SCORE.lookAt;
   const offline = !h.database.online;
+  // How the score is worked out: the hover text of the ring (the rule, and the sum for right now).
+  const rule = [
+    t("The score starts at {n}.", { n: SCORE.start }),
+    t("If the database does not answer, it loses {n}.", { n: SCORE.databaseOffline }),
+    t("Each thing to fix now loses {n}.", { n: SCORE.fixNow }),
+    t("Each thing to look at loses {n}.", { n: SCORE.lookAt }),
+    t("Things for information cost nothing."),
+    t("Only problems of the system count. The hotel's own work never does."),
+    `${SCORE.start}${offline ? ` − ${SCORE.databaseOffline}` : ""}${costFix ? ` − ${costFix}` : ""}${costLook ? ` − ${costLook}` : ""} = ${h.score}`,
+  ].join("\n");
+  const tr = h.trend;
 
   return (
-    <section aria-labelledby="health-title" className="rounded-3xl border border-border/70 bg-card p-5 shadow-[0_2px_4px_rgba(15,23,42,0.03),0_12px_32px_-18px_rgba(15,23,42,0.18)] sm:p-6">
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:gap-8">
-        <div className="flex items-center gap-4 sm:gap-5">
+    <section aria-labelledby="health-title" className="rounded-3xl border border-border/70 bg-card p-5 shadow-[0_2px_4px_rgba(15,23,42,0.03),0_12px_32px_-18px_rgba(15,23,42,0.18)] sm:p-7">
+      <div className="flex items-center gap-5 sm:gap-7">
+        <div className="shrink-0 text-center" title={rule}>
           <Ring score={h.score} label={t("out of 100")} outOf={t("out of 100")} />
-          <div className="min-w-0">
-            <h2 id="health-title" className="text-xl font-semibold tracking-tight sm:text-[1.4rem]">{verdict.title}</h2>
-            <p className="mt-1 text-sm text-muted-foreground">{verdict.line}</p>
-            <ul className="mt-3 flex flex-wrap gap-2 text-xs font-medium" aria-label={t("Summary")}>
-              <li className={cn("rounded-full px-3 py-1 ring-1 ring-inset", h.counts.fix > 0 ? "bg-rose-500/12 text-rose-700 ring-rose-500/30 dark:text-rose-300" : "bg-muted text-foreground/80 ring-border")}>{t("{n} to fix now", { n: h.counts.fix })}</li>
-              <li className={cn("rounded-full px-3 py-1 ring-1 ring-inset", h.counts.look > 0 ? "bg-amber-500/14 text-amber-800 ring-amber-500/35 dark:text-amber-300" : "bg-muted text-foreground/80 ring-border")}>{t("{n} to look at", { n: h.counts.look })}</li>
-              <li className="rounded-full bg-muted px-3 py-1 text-foreground/80 ring-1 ring-inset ring-border">{t("{n} for information", { n: h.counts.info })}</li>
-            </ul>
-          </div>
+          <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t("Health score")}</p>
         </div>
-
-        <dl className="grid grid-cols-2 gap-x-5 gap-y-5 border-t border-border/60 pt-5 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
-          <Figure
-            label={t("Database")} value={offline ? t("Offline") : t("Online")} tone={offline ? "bad" : "ok"}
-            caption={offline ? t("did not answer") : h.database.ms !== null ? t("{ms} ms to answer", { ms: h.database.ms }) : t("answers")}
-          />
-          <Figure label={t("Signed in today")} value={num(t, h.signedInToday)} caption={t("different people")} />
-          <Figure label={t("Actions today")} value={num(t, h.actionsToday)} caption={t("by the team and you in 24 hours")} />
-          <Figure
-            label={t("Server errors (24 h)")} value={num(t, h.serverErrors24h)} tone={h.serverErrors24h ? "warn" : h.serverErrors24h === 0 ? "ok" : undefined}
-            caption={t("different errors")}
-            hint={h.serverErrors24h ? t("Open the Errors & jobs part to see them.") : undefined}
-          />
-        </dl>
+        <div className="min-w-0">
+          <h2 id="health-title" className={cn("text-xl font-semibold tracking-tight sm:text-2xl", verdict.tone)}>{verdict.title}</h2>
+          <p className="mt-1.5 text-sm text-muted-foreground sm:text-base">{verdict.line}</p>
+          <ul className="mt-4 flex flex-wrap gap-2 text-xs font-medium" aria-label={t("Summary")}>
+            {([[h.counts.fix, t("{n} to fix now", { n: h.counts.fix }), "bg-rose-500"], [h.counts.look, t("{n} to look at", { n: h.counts.look }), "bg-amber-500"], [h.counts.info, t("{n} for information", { n: h.counts.info }), "bg-muted-foreground/50"]] as const).map(([n, text, dot]) => (
+              <li key={text} className="inline-flex items-center gap-1.5 rounded-full bg-muted/60 px-3 py-1 text-foreground/80 ring-1 ring-inset ring-border">
+                <span className={cn("size-1.5 rounded-full", n > 0 ? dot : "bg-muted-foreground/40")} aria-hidden />{text}
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
 
-      <details className="group mt-5 border-t border-border/60 pt-4 text-sm">
-        <summary className="flex cursor-pointer list-none items-center gap-2 font-medium text-foreground/90 marker:content-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold [&::-webkit-details-marker]:hidden">
-          <Info className="size-4 text-muted-foreground" aria-hidden />{t("How is this worked out?")}
-          <span className="text-xs font-normal text-muted-foreground group-open:hidden">{t("Show")}</span>
-        </summary>
-        <div className="mt-3 grid gap-4 sm:grid-cols-2">
-          <ol className="space-y-1.5 text-muted-foreground">
-            <li>{t("The score starts at {n}.", { n: SCORE.start })}</li>
-            <li>{t("If the database does not answer, it loses {n}.", { n: SCORE.databaseOffline })}</li>
-            <li>{t("Each thing to fix now loses {n}.", { n: SCORE.fixNow })}</li>
-            <li>{t("Each thing to look at loses {n}.", { n: SCORE.lookAt })}</li>
-            <li>{t("Things for information cost nothing.")}</li>
-            <li>{t("Only problems of the system count. The hotel's own work never does.")}</li>
-            <li>{t("It never goes below 0.")}</li>
-          </ol>
-          <div className="rounded-2xl bg-muted/40 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">{t("Right now")}</p>
-            <p className="mt-1 tabular-nums">
-              {SCORE.start}{offline ? ` − ${SCORE.databaseOffline}` : ""}{costFix ? ` − ${costFix}` : ""}{costLook ? ` − ${costLook}` : ""} = <strong>{h.score}</strong>
-            </p>
-            <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{t("Only facts count: a job that did not run, a record that contradicts another, a missing setting, an error the server threw. A guess never does.")}</p>
-          </div>
-        </div>
-      </details>
+      <dl className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Figure
+          label={t("Database")} value={offline ? t("Offline") : t("Online")} tone={offline ? "bad" : "ok"}
+          caption={offline ? t("did not answer") : h.database.ms !== null ? `${t("{ms} ms to answer", { ms: h.database.ms })}${h.databaseLink ? ` · ${h.databaseLink === "Pooled" ? t("pooled") : t("direct")}` : ""}` : t("answers")}
+        >
+          {!offline && tr.dbSamples && <MiniBars values={tr.dbSamples} label={t("Six quick answers of the database, in milliseconds: {list}", { list: tr.dbSamples.join(", ") })} />}
+        </Figure>
+        <Figure label={t("Signed in today")} value={num(t, h.signedInToday)} caption={t("different people")}>
+          {tr.signIns && <Sparkline values={tr.signIns} label={t("Sign-ins per day, last {n} days", { n: tr.signIns.length })} />}
+        </Figure>
+        <Figure label={t("Actions today")} value={num(t, h.actionsToday)} caption={t("saved in 24 hours")}>
+          {tr.actions && <Sparkline values={tr.actions} label={t("Actions per day, last {n} days", { n: tr.actions.length })} />}
+        </Figure>
+        <Figure
+          label={t("Server errors (24 h)")} value={num(t, h.serverErrors24h)} tone={h.serverErrors24h ? "warn" : h.serverErrors24h === 0 ? "ok" : undefined}
+          caption={h.serverErrors24h === 0 ? t("nothing broke") : t("different errors")}
+        >
+          {tr.errors && <Sparkline values={tr.errors} label={t("Server errors per day, last {n} days", { n: tr.errors.length })} />}
+        </Figure>
+      </dl>
     </section>
   );
 }

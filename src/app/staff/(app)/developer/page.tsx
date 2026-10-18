@@ -97,7 +97,7 @@ export default async function DeveloperHomePage({ searchParams }: PageProps<"/st
       <div className="space-y-6">
         <ConsoleBanner
           date={t.date(greeting.today, true)} tag={t("Developer")} title={hello}
-          subtitle={t("Is the system of {hotel} working, and what is there to fix?", { hotel: greeting.hotelName })}
+          subtitle={t("Your control room for {hotel} — health, people and everything done, in one place.", { hotel: greeting.hotelName })}
         />
         <Shortcuts t={t} people={people} roles={roles.map((r) => ({ id: r.id, name: r.name }))} />
         <HealthCard t={t} h={health} />

@@ -11,6 +11,7 @@ import { DEVELOPER_IDLE_MINUTES, DEVELOPER_SESSION_HOURS } from "../auth";
 import { WORK_AS_HOURS } from "../work-as-session";
 import { DEVELOPER_TRIES, DEVELOPER_WINDOW_SECONDS } from "./auth-login";
 import { runChecks, type CheckResult } from "./developer-checks";
+import { countPerDay } from "./developer-frame";
 import { loadSystemEvents, type SystemEvents } from "./system-events";
 
 /**
@@ -91,9 +92,22 @@ export const WORK_AS_LONG_MINUTES = 60;
  */
 export const LOGIN_LIMITS = { developerEmail: DEVELOPER_TRIES, staffEmail: 8, staffPlace: 20, windowMinutes: DEVELOPER_WINDOW_SECONDS / 60 } as const;
 
+/** The small lines on the health card: the last 14 hotel days (oldest first) of sign-ins, saved work and server errors, and six quick answers from the database. Counts only. null = could not be read. */
+export interface HealthTrend {
+  signIns: number[] | null;
+  actions: number[] | null;
+  errors: number[] | null;
+  /** Milliseconds of six quick questions asked one after the other (the bars on the Database card). */
+  dbSamples: number[] | null;
+}
+export const TREND_DAYS = 14;
+
 export interface HealthReport {
   checkedAt: Date;
   database: { online: boolean; ms: number | null };
+  /** Which kind of database address is used ("Pooled" or "Direct"), never the address itself. */
+  databaseLink: "Pooled" | "Direct" | null;
+  trend: HealthTrend;
   /** Distinct people who signed in during the hotel's day today (a count of PEOPLE, never of work). null = could not be read. */
   signedInToday: number | null;
   /** Real work saved in the last 24 hours by staff and the Developer (sign-ins, looking, refusals and other notes are not work: NOT_WORK_ACTIONS). A count, never what the work was. null = could not be read. */
@@ -243,6 +257,32 @@ export async function healthReport(user: ConsoleUser, now = new Date()): Promise
     });
   }
 
+  // ── the small lines on the health card (counts only, one cheap grouped read each; one failing leaves its own line out) ──
+  const trendDays = eachDate(addDays(today, -(TREND_DAYS - 1)), today);
+  const perDay = (rows: { businessDate: Date; _count: number }[] | null): number[] | null => {
+    if (!rows) return null;
+    const byDay = new Map(rows.map((r) => [fromDbDate(r.businessDate), r._count]));
+    return trendDays.map((d) => byDay.get(d) ?? 0);
+  };
+  const window = { gte: toDbDate(trendDays[0]), lte: toDbDate(today) };
+  const [signInRows, actionRows, errorRows, dbSamples] = online ? await Promise.all([
+    safe(() => db.auditLog.groupBy({ by: ["businessDate"], where: { action: "auth.login", businessDate: window }, _count: true })),
+    safe(() => db.auditLog.groupBy({ by: ["businessDate"], where: { businessDate: window, actorType: { in: ["STAFF", "DEVELOPER"] }, action: { notIn: [...NOT_WORK_ACTIONS] } }, _count: true })),
+    safe(() => db.systemEvent.findMany({ where: { kind: "ERROR", lastSeenAt: { gte: businessDayBounds(trendDays[0], cfg).start } }, select: { lastSeenAt: true }, orderBy: { lastSeenAt: "desc" }, take: 1000 })),
+    safe(async () => {
+      const out: number[] = [];
+      for (let i = 0; i < 6; i++) { const t0 = performance.now(); await db.$queryRaw`SELECT 1`; out.push(Math.max(1, Math.round(performance.now() - t0))); }
+      return out;
+    }),
+  ]) : [null, null, null, null];
+  const errorsPerDay = errorRows ? countPerDay(errorRows.map((r) => r.lastSeenAt), trendDays, cfg) : null;
+  const trend: HealthTrend = {
+    signIns: perDay(signInRows), actions: perDay(actionRows),
+    errors: errorsPerDay ? trendDays.map((d) => errorsPerDay[d]) : null,
+    dbSamples,
+  };
+  const dbUrl = process.env.DATABASE_URL ?? "";
+
   const order: Record<Severity, number> = { fix: 0, look: 1, info: 2 };
   items.sort((a, b) => order[a.severity] - order[b.severity]);
   const counts = { fix: items.filter((i) => i.severity === "fix").length, look: items.filter((i) => i.severity === "look").length, info: items.filter((i) => i.severity === "info").length };
@@ -250,6 +290,8 @@ export async function healthReport(user: ConsoleUser, now = new Date()): Promise
   return {
     checkedAt: now,
     database: { online, ms: diag.database.ms },
+    databaseLink: dbUrl ? (/-pooler[.-]|pgbouncer=true/i.test(dbUrl) ? "Pooled" : "Direct") : null,
+    trend,
     signedInToday, actionsToday,
     serverErrors24h: events ? (events as SystemEvents).errors24h : null,
     failedSignIns24h: failedSignIns,

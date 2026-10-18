@@ -295,7 +295,8 @@ describe("a chart's exact numbers", () => {
 // ───────────────────────────────────────────── 4. the health card ─────────────────────────────────────────────
 describe("the health card's four figures are a real definition list", () => {
   const report: HealthReport = {
-    checkedAt: new Date(), database: { online: true, ms: 7 }, signedInToday: 3, actionsToday: 12, serverErrors24h: 2, failedSignIns24h: 0, checks: [],
+    checkedAt: new Date(), database: { online: true, ms: 7 }, databaseLink: "Pooled", trend: { signIns: [0, 2, 3], actions: [5, 9, 12], errors: [0, 0, 2], dbSamples: [7, 9, 6, 8, 7, 12] },
+    signedInToday: 3, actionsToday: 12, serverErrors24h: 2, failedSignIns24h: 0, checks: [],
     items: [], counts: { fix: 0, look: 0, info: 0 }, score: 100, verdict: "well",
   };
   const html = renderToStaticMarkup(createElement(HealthCard, { t, h: report }));
@@ -307,13 +308,13 @@ describe("the health card's four figures are a real definition list", () => {
     expect(dl.match(/<dt[ >]/g)).toHaveLength(4);
     expect(dl.match(/<dd[ >]/g)!.length).toBeGreaterThanOrEqual(8);
     // every child of the list is a <div> that starts with its <dt>
-    const groups = dl.slice(dl.indexOf(">") + 1, dl.lastIndexOf("</dl>")).split('<div class="min-w-0">').slice(1);
+    const groups = dl.slice(dl.indexOf(">") + 1, dl.lastIndexOf("</dl>")).split('<div class="flex min-w-0 flex-col rounded-2xl').slice(1);
     expect(groups).toHaveLength(4);
-    for (const g of groups) expect(g.startsWith("<dt")).toBe(true);
+    for (const g of groups) expect(g.slice(g.indexOf(">") + 1).startsWith("<dt")).toBe(true);
   });
 
   it("says the same words as before", () => {
-    for (const w of ["Database", "Online", "7 ms to answer", "Signed in today", "Actions today", "Server errors (24 h)", "Open the Errors &amp; jobs part to see them."]) expect(dl).toContain(w);
+    for (const w of ["Database", "Online", "7 ms to answer", "pooled", "Signed in today", "Actions today", "Server errors (24 h)", "different errors"]) expect(dl).toContain(w);
   });
 });
 

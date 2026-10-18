@@ -67,20 +67,20 @@ export function Tag({ tone = "slate", children, className }: { tone?: TagTone; c
 }
 
 // ───────────────────────────────────────────── banner ─────────────────────────────────────────────
-/** The greeting at the top: the hotel's night colours with a faint grid, the date, the Developer tag, the greeting and one line. */
+/**
+ * The greeting at the top (copied from the owner's Target console, 2026-10-18: "the same look exactly"): a solid gradient in the hotel's own
+ * colours (gold into dark brown) with a faint grid, the date and the Developer tag, a big greeting and one line.
+ */
 export function ConsoleBanner({ date, tag, title, subtitle }: { date: string; tag: string; title: string; subtitle: string }) {
   return (
-    <section className="relative isolate overflow-hidden rounded-[1.75rem] bg-[#191410] px-5 py-6 text-white shadow-[0_24px_60px_-30px_rgba(40,25,5,0.75)] sm:px-7 sm:py-7">
-      <div aria-hidden className="absolute -left-20 -top-28 -z-10 size-80 rounded-full bg-[radial-gradient(circle,oklch(0.78_0.13_80/0.35),transparent_65%)]" />
-      <div aria-hidden className="absolute -bottom-40 right-0 -z-10 size-96 rounded-full bg-[radial-gradient(circle,oklch(0.62_0.16_300/0.26),transparent_65%)]" />
-      <div aria-hidden className="absolute inset-0 -z-10 opacity-[0.07] [background-image:linear-gradient(white_1px,transparent_1px),linear-gradient(90deg,white_1px,transparent_1px)] [background-size:28px_28px]" />
-      <div className="flex flex-wrap items-center gap-2 text-xs text-white/70">
-        <span className="size-1.5 rounded-full bg-[oklch(0.84_0.11_82)]" aria-hidden />
+    <section className="relative isolate overflow-hidden rounded-[1.5rem] bg-[linear-gradient(105deg,#2a1c07_0%,#5f4110_45%,#b9841f_100%)] px-6 py-7 text-white shadow-[0_24px_60px_-30px_rgba(40,25,5,0.75)] sm:px-8 sm:py-8">
+      <div aria-hidden className="absolute inset-0 -z-10 opacity-[0.1] [background-image:linear-gradient(white_1px,transparent_1px),linear-gradient(90deg,white_1px,transparent_1px)] [background-size:28px_28px]" />
+      <div className="flex flex-wrap items-center gap-2 text-sm text-white/85">
         <span>{date}</span>
-        <span className="rounded-full bg-[oklch(0.72_0.12_80/0.22)] px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-[oklch(0.88_0.1_84)]">{tag}</span>
+        <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-white">{tag}</span>
       </div>
-      <h1 className="mt-2 text-[1.75rem] font-semibold leading-tight tracking-tight sm:text-3xl">{title}</h1>
-      <p className="mt-1 max-w-3xl text-sm leading-relaxed text-white/75 sm:text-[15px]">{subtitle}</p>
+      <h1 className="mt-2.5 text-3xl font-bold leading-tight tracking-tight sm:text-4xl">{title}</h1>
+      <p className="mt-1.5 max-w-4xl text-sm leading-relaxed text-white/85 sm:text-base">{subtitle}</p>
     </section>
   );
 }
