@@ -7,12 +7,12 @@ import commonZh from "@/i18n/catalog/zh-CN/common";
 import staffZh from "@/i18n/catalog/zh-CN/staff";
 import shellZh from "@/i18n/catalog/zh-CN/staff/developer-shell";
 import { englishT as t, makeT } from "@/i18n/translate";
-import { DEV_STRIP_VARS, IdentityBanner, IdentityCard, IdentityChip, WORK_AS_HOURS, WORK_AS_STRIP_VARS, spanWords, stripVars, workAsClock, type Identity } from "./identity-banner";
+import { IdentityBanner, IdentityCard, IdentityChip, WORK_AS_HOURS, WORK_AS_STRIP_VARS, spanWords, stripVars, workAsClock, type Identity } from "./identity-banner";
 
 /**
  * Who is signed in, always in view. THREE states:
  *  - staff: their own name and role in the menus, no strip;
- *  - a Developer signed in as itself: "DEVELOPER MODE — SUPER USER", its name, Console and Sign out;
+ *  - a Developer signed in as itself: nothing (no strip);
  *  - a Developer WORKING AS someone: "DEVELOPER MODE — you are working as {name} ({role})", how long it has lasted, when it ends, a
  *    prominent Stop button and Sign out — on every page, phone, tablet and computer.
  * All drawn on the server from the session; here they are drawn without the database.
@@ -51,56 +51,10 @@ describe("state 1 — staff: no strip, their own name and role", () => {
   });
 });
 
-describe("state 2 — a Developer signed in as itself", () => {
-  it("says DEVELOPER MODE — SUPER USER, the name, and offers Console and Sign out", () => {
-    const html = banner(developer);
-    expect(html).toContain('data-identity="developer"');
-    expect(html).toContain('role="region"');
-    const words = text(html);
-    expect(words).toContain("DEVELOPER MODE — SUPER USER");
-    expect(words).toContain("Amani Developer");
-    expect(words).toContain("Console");
-    expect(words).toContain("Sign out");
-    // The old "Switch to a staff account" is gone with the second door.
-    expect(words).not.toContain("Switch to a staff account");
-    // Console is a link to the console; Sign out is a real form with a submit button (the server action).
-    expect(html).toMatch(/<a [^>]*href="\/staff\/developer"[^>]*>Console<\/a>/);
-    expect(html.match(/<form\b/g)).toHaveLength(1);
-    expect(html.match(/<button type="submit"/g)).toHaveLength(1);
-    // Out of print (a printed report must not carry the strip) and sticky under the shell's offset variable.
-    expect(html).toContain("print:hidden");
-    expect(html).toContain("var(--dev-strip)");
-    expect(DEV_STRIP_VARS).toContain("--dev-strip");
-    expect(stripVars(developer)).toBe(DEV_STRIP_VARS);
-  });
-
-  it("is labelled for a screen reader with the same words, and is not the working-as strip", () => {
-    const html = banner(developer);
-    expect(html).toContain('aria-label="DEVELOPER MODE — SUPER USER"');
-    expect(html).not.toContain("work-as");
-    expect(html).not.toMatch(/Stop/);
-  });
-
-  it("draws a name as plain text — a name can never inject markup into the strip", () => {
-    const html = banner({ ...developer, name: `Eve <img src=x onerror=alert(1)> "Dev"` });
-    expect(html).not.toContain("<img");
-    expect(html).toContain("&lt;img");
-  });
-
-  it("is in Chinese for a Chinese-speaking Developer — the same words, still unmistakable", () => {
-    const words = text(banner(developer, zh));
-    expect(words).toContain("开发者模式 — 超级用户");
-    expect(words).toContain("控制台");
-    expect(words).toContain("退出登录");
-    expect(words).toContain("Amani Developer");
-    expect(words).not.toContain("DEVELOPER MODE");
-  });
-
-  it("shows a Developer's name and role in the strip's colour, so it is never mistaken for an ordinary account's", () => {
-    const html = chip(developer);
-    expect(text(html)).toBe("Amani Developer Developer (super user)");
-    expect(html).toContain("fuchsia");
-    expect(text(chip(developer, zh))).toBe("Amani Developer 开发者（超级用户）");
+describe("state 2 — a Developer signed in as itself (in its own console)", () => {
+  it("draws no strip at all (the console's side menu says where you are), and adds no height to the page", () => {
+    expect(banner(developer)).toBe("");
+    expect(stripVars(developer)).toBe("");
   });
 });
 
@@ -127,7 +81,6 @@ describe("state 3 — a Developer WORKING AS someone", () => {
     expect(html).toContain("var(--dev-strip)");
     expect(html).toContain("sticky top-0");
     expect(stripVars(workingAs)).toBe(WORK_AS_STRIP_VARS);
-    expect(WORK_AS_STRIP_VARS).not.toBe(DEV_STRIP_VARS);
     // taller on a phone (two lines of text and the buttons), one row from lg
     expect(WORK_AS_STRIP_VARS).toMatch(/^\[--dev-strip:[\d.]+rem\] sm:\[--dev-strip:[\d.]+rem\] lg:\[--dev-strip:[\d.]+rem\]$/);
     const rem = (re: RegExp) => Number(WORK_AS_STRIP_VARS.match(re)![1]);

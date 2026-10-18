@@ -8,7 +8,6 @@ const catalog: Catalog = {
   "Developer account": "开发者账号",
 
   // The strip on every page while a Developer is signed in
-  "DEVELOPER MODE — SUPER USER": "开发者模式 — 超级用户",
   // The role's name, shown beside the picture in the top bar and in the phone menu
   "Developer (super user)": "开发者（超级用户）",
 

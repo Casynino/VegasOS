@@ -65,7 +65,7 @@ export function StaffBottomBar({ home, sections, requests, canBook, user, signOu
           <SheetContent side="left" className="flex w-72 flex-col bg-card p-4 text-foreground">
             <SheetHeader className="px-0">
               <SheetTitle className="font-display text-xl text-[oklch(0.55_0.1_75)] dark:text-gold">Vegas Luxury Hotel</SheetTitle>
-              {user.developer && <p className="rounded-md bg-fuchsia-700 px-2.5 py-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-white">{user.workAs ? t("DEVELOPER MODE — you are working as {name} ({role})", { name: user.name, role: t(user.role) }) : t("DEVELOPER MODE — SUPER USER")}</p>}
+              {user.developer && user.workAs && <p className="rounded-md bg-fuchsia-700 px-2.5 py-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-white">{t("DEVELOPER MODE — you are working as {name} ({role})", { name: user.name, role: t(user.role) })}</p>}
             </SheetHeader>
             <div className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1"><StaffNav sections={sections} home={consoleMode ? undefined : home} onNavigate={() => setOpen(false)} /></div>
             <div className="space-y-2.5 border-t border-dashed border-border pt-3">

@@ -8,7 +8,7 @@ import { WORK_AS_HOURS } from "@/server/work-as-session";
 /**
  * Who is signed in, always in view.
  *
- * - A Developer signed in as itself sees one unmistakable strip across the top of EVERY staff page: "DEVELOPER MODE — SUPER USER",
+ * - A Developer signed in as itself (in its own console) sees NO strip — the console's side menu says where it is (owner, 2026-10-18); formerly one strip: "DEVELOPER MODE — SUPER USER",
  *   its name, and two plain links — Console, and Sign out.
  * - A Developer WORKING AS someone sees a different strip on every page, on a phone, a tablet and a computer: "DEVELOPER MODE — you
  *   are working as Neema (Receptionist)", how long it has lasted, when it ends by itself, and a prominent Stop button (and Sign out).
@@ -35,12 +35,11 @@ export interface Identity {
 export { WORK_AS_HOURS };
 
 /** The plain strip's height, set once on the shell: taller on a phone (two lines), one line from `sm` up. The sticky parts below it use it as their offset. */
-export const DEV_STRIP_VARS = "[--dev-strip:3.75rem] sm:[--dev-strip:2.5rem]";
 /** The working-as strip is taller: two rows below `lg` (the title, then the time and the buttons), one row from `lg` up. */
 export const WORK_AS_STRIP_VARS = "[--dev-strip:5rem] sm:[--dev-strip:4rem] lg:[--dev-strip:2.75rem]";
 
 /** The shell's offset variable for this identity (nothing for staff — there is no strip). */
-export const stripVars = (identity: Identity) => (identity.actorType !== "DEVELOPER" ? "" : identity.workAs ? WORK_AS_STRIP_VARS : DEV_STRIP_VARS);
+export const stripVars = (identity: Identity) => (identity.actorType === "DEVELOPER" && identity.workAs ? WORK_AS_STRIP_VARS : "");
 
 type SignOutAction = () => void | Promise<void>;
 
@@ -108,27 +107,8 @@ export function IdentityBanner({ identity, t, signOut, stopWorkAs, now }: {
     );
   }
 
-  return (
-    <div
-      role="region"
-      aria-label={t("DEVELOPER MODE — SUPER USER")}
-      data-identity="developer"
-      className="sticky top-0 z-40 flex h-[var(--dev-strip)] shrink-0 flex-col justify-center gap-0.5 bg-fuchsia-700 px-3 text-white shadow-[0_2px_10px_rgba(0,0,0,0.35)] sm:flex-row sm:items-center sm:gap-5 sm:px-5 print:hidden"
-      style={stripBackground}
-    >
-      <p className="flex shrink-0 items-center gap-2 text-[11px] font-extrabold uppercase tracking-[0.14em] sm:text-xs">
-        <ShieldAlert className="size-4 shrink-0" aria-hidden="true" />
-        <span>{t("DEVELOPER MODE — SUPER USER")}</span>
-      </p>
-      <div className="flex min-w-0 flex-1 items-center gap-4">
-        <p className="min-w-0 flex-1 truncate text-xs text-white/90" title={identity.name}>{identity.name}</p>
-        <Link href="/staff/developer" className={cn(stripLink, "shrink-0")}>{t("Console")}</Link>
-        <form action={signOut} className="shrink-0">
-          <button type="submit" className={stripLink}>{t("Sign out")}</button>
-        </form>
-      </div>
-    </div>
-  );
+  // The Developer in its own console (not working as someone) has no strip: the console's side menu, the name and the sign-out say where you are (owner, 2026-10-18).
+  return null;
 }
 
 /**
