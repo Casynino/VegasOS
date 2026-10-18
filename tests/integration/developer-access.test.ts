@@ -568,13 +568,12 @@ describe("the page's markup", () => {
     expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
   });
 
-  it("is in 中文 for a Chinese reader — the buttons, the cards and the safety rules", () => {
+  it("is in 中文 for a Chinese reader — the title, the buttons and the notes", () => {
     const html = draw(groups, "zh-CN");
     const words = text(html);
     expect(words).toContain("访问管理");
-    expect(words).toContain("按钮的作用");
-    expect(words).toContain("安全规则");
-    expect(words).toContain("在这里您可以添加账号");
+    expect(words).not.toContain("按钮的作用"); // the cards are gone
+    expect(words).not.toContain("安全规则");
     expect(words).toContain("此处不能停用");
     expect(words).toContain("从未登录");
     expect(words).toContain("已启用");
