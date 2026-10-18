@@ -22,7 +22,8 @@ import { staffHome } from "@/lib/staff-home";
 import { I18nProvider } from "@/i18n/client";
 import type { Locale } from "@/i18n/config";
 import { makeT, type Catalog } from "@/i18n/translate";
-import accessZh from "@/i18n/catalog/zh-CN/staff/developer-access";
+import accessZhBase from "@/i18n/catalog/zh-CN/staff/developer-access";
+import addUserZh from "@/i18n/catalog/zh-CN/staff/developer-adduser";
 import * as actionsModule from "@/app/staff/(app)/developer/access/actions";
 import { reactivateAction, signOutEverywhereAction, startWorkAsAction, stopWorkAsAction, suspendAction } from "@/app/staff/(app)/developer/access/actions";
 import { loadAccessPage } from "@/app/staff/(app)/developer/access/data";
@@ -90,8 +91,8 @@ beforeEach(() => {
 
 // ═════════════════════════════════════ the five actions, and nothing else ═════════════════════════════════════
 describe("the actions file", () => {
-  it("exports exactly the five actions", () => {
-    expect(Object.keys(actionsModule).sort()).toEqual(["reactivateAction", "signOutEverywhereAction", "startWorkAsAction", "stopWorkAsAction", "suspendAction"]);
+  it("exports exactly the six actions", () => {
+    expect(Object.keys(actionsModule).sort()).toEqual(["addAccountAction", "reactivateAction", "signOutEverywhereAction", "startWorkAsAction", "stopWorkAsAction", "suspendAction"]);
   });
 });
 
@@ -496,6 +497,7 @@ describe("the page's markup", () => {
     group("KITCHEN", "Kitchen", [kitchen, mine, theirs], "Cooks the orders."),
   ];
   const draw = (g: AccessGroupView[] = groups, locale: "en" | "zh-CN" = "en") => {
+    const accessZh: Catalog = { ...accessZhBase, ...addUserZh };
     const t = locale === "en" ? makeT("en", null) : makeT("zh-CN", accessZh);
     const view = createElement(AccessView, { t, groups: g, count: g.reduce((n, x) => n + x.people.length, 0), nowIso: NOW.toISOString(), timezone: "Africa/Dar_es_Salaam" });
     return renderToStaticMarkup(locale === "en" ? view : createElement(Provider, { locale, catalog: accessZh }, view));
@@ -514,7 +516,7 @@ describe("the page's markup", () => {
     expect(words).toContain("Safety rules");
     expect(words).not.toContain("Safety rules while working as someone");
     for (const rule of [
-      "The Developer account cannot create or change accounts, passwords, login emails, roles or rights", "only the Boss and the MD can",
+      "Here you can add an account (the Boss is told each time)", "is done by the Boss and the MD",
       "work as a person, suspend an account, sign a person out everywhere", "switch back on an account you suspended yourself",
       "While you work as someone you can't suspend people or sign them out of all devices either", "take over an account", "The Boss is told every time you start, suspend or sign someone out",
     ]) expect(words, rule).toContain(rule);
@@ -581,7 +583,7 @@ describe("the page's markup", () => {
     expect(words).toContain("访问管理");
     expect(words).toContain("按钮的作用");
     expect(words).toContain("安全规则");
-    expect(words).toContain("开发者账号不能创建或更改账号、密码、登录邮箱、角色或权限");
+    expect(words).toContain("在这里您可以添加账号");
     expect(words).toContain("此处不能停用");
     expect(words).toContain("从未登录");
     expect(words).toContain("已启用");

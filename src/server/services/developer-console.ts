@@ -367,7 +367,7 @@ export const NOT_WORK_ACTIONS: readonly string[] = [
   "developer.viewed", "developer.viewed_limit", "developer.business_viewed", "developer.inspected", "developer.exported", "developer.downloaded",
   // refused or failed: nothing was saved
   "developer.denied", "developer.work_as_refused", "developer.endpoint_refused", "settings.update.refused",
-  "user.suspend_failed", "user.reactivate_failed", "user.sign_out_failed",
+  "user.suspend_failed", "user.reactivate_failed", "user.sign_out_failed", "user.create_failed",
   // automatic notes about Work as
   "developer.work_as_expired", "developer.work_as_notice", "developer.access_notice",
 ];

@@ -4,17 +4,19 @@ import type { T } from "@/i18n/translate";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/staff/page-header";
 import { AccessPeople, type AccessGroupView } from "./access-people";
+import { AddAccountButton, type RoleChoice } from "./add-account-dialog";
 
 /**
  * The Access page, drawn: the title and the count, "What the buttons do", the safety rules, and everyone grouped by role. It takes its
  * words (`t`) and its data as they are, so the page and the tests draw exactly the same thing.
  */
-export function AccessView({ t, groups, count, nowIso, timezone }: { t: T; groups: AccessGroupView[]; count: number; nowIso: string; timezone: string }) {
+export function AccessView({ t, groups, roles = [], count, nowIso, timezone }: { t: T; groups: AccessGroupView[]; roles?: RoleChoice[]; count: number; nowIso: string; timezone: string }) {
   return (
     <div className="w-full space-y-6">
       <PageHeader
         eyebrow={t("Developer console")}
         title={t("Access")}
+        actions={<AddAccountButton roles={roles} />}
         description={`${t.plural(count, "{n} account.", "{n} accounts.")} ${t("Pick a person and press Work as to open their dashboard exactly as they see it — without their password. Everything you do is recorded under your name.")}`}
       />
 
@@ -43,7 +45,7 @@ export function AccessView({ t, groups, count, nowIso, timezone }: { t: T; group
         <div className="min-w-0">
           <h2 id="safety-rules" className="text-base font-semibold">{t("Safety rules")}</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            {t("The Developer account cannot create or change accounts, passwords, login emails, roles or rights — only the Boss and the MD can, in Staff & roles. Here you can work as a person, suspend an account, sign a person out everywhere and switch back on an account you suspended yourself.")}
+            {t("Here you can add an account (the Boss is told each time), work as a person, suspend an account, sign a person out everywhere and switch back on an account you suspended yourself. Changing existing accounts, passwords, login emails, roles or rights is done by the Boss and the MD, in Staff & roles.")}
           </p>
           <p className="mt-1.5 text-sm text-muted-foreground">
             {t("While you work as someone you can't suspend people or sign them out of all devices either — so Work as can never be used to take over an account. Money stays untouchable too. The Boss is told every time you start, suspend or sign someone out.")}

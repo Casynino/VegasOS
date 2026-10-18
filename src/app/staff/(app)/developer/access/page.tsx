@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
  * server/services/work-as.ts and are checked again on the server for every button.
  */
 export default async function AccessPage() {
-  const { groups, count } = await loadAccessPage();
+  const { groups, count, roles } = await loadAccessPage();
   const [t, settings] = await Promise.all([getT(), getSettings()]);
-  return <AccessView t={t} groups={groups} count={count} nowIso={new Date().toISOString()} timezone={settings.timezone} />;
+  return <AccessView t={t} groups={groups} roles={roles} count={count} nowIso={new Date().toISOString()} timezone={settings.timezone} />;
 }

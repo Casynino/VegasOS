@@ -6,6 +6,7 @@ import m_content_admin from "./content-admin";
 import m_daily_lists from "./daily-lists";
 import m_dashboards from "./dashboards";
 import m_developer_access from "./developer-access";
+import m_developer_adduser from "./developer-adduser";
 import m_developer_attribution from "./developer-attribution";
 import m_developer_console from "./developer-console";
 import m_developer_gates from "./developer-gates";
@@ -62,6 +63,7 @@ const catalog: Catalog = {
   ...m_daily_lists,
   ...m_dashboards,
   ...m_developer_access,
+  ...m_developer_adduser,
   ...m_developer_attribution,
   ...m_developer_console,
   ...m_developer_gates,

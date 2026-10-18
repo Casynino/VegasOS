@@ -557,11 +557,11 @@ describe("the allow-list machinery is gone, and nothing the Developer uses needs
 describe("docs/developer-account.md says it plainly", () => {
   const doc = readFileSync(path.resolve(import.meta.dirname, "../../docs/developer-account.md"), "utf8");
 
-  it("the Developer cannot create or change accounts, passwords, login emails, roles or rights; only the Boss and the MD can; what the Developer keeps", () => {
+  it("the Developer can ADD an account but cannot change existing accounts, passwords, login emails, roles or rights; only the Boss and the MD can; what the Developer keeps", () => {
     for (const phrase of [
-      "**The Developer cannot create or change accounts, passwords, login emails, roles or rights (owner, 2026-10-18).**", "Only the **Boss and the MD** can",
+      "**Add an account (owner, 2026-10-18).**", "**The Developer cannot change existing accounts, passwords, login emails, roles or rights.**", "Only the **Boss and the MD** can",
       "**Work as**", "**Suspend**", "**Sign out everywhere**", "**re-activating an account it suspended itself**",
-      `"${DEVELOPER_NO_ACCOUNTS}"`, "`users.manage`", "So there is no smaller version.",
+      `"${DEVELOPER_NO_ACCOUNTS}"`, "`users.manage`", "**the Boss is told on WhatsApp every time**",
     ]) expect(doc, phrase).toContain(phrase);
   });
 

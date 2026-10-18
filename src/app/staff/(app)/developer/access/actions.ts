@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { runAction, type ActionResult } from "@/server/errors";
 import { parseInput } from "@/server/validation";
-import { endWorkAs, reactivateAccount, requireDeveloperSession, signOutEverywhere, startWorkAs, suspendAccount } from "@/server/services/work-as";
+import { createAccount, endWorkAs, reactivateAccount, requireDeveloperSession, signOutEverywhere, startWorkAs, suspendAccount } from "@/server/services/work-as";
 import { msg } from "@/i18n/msg";
 
 /*
@@ -77,6 +77,25 @@ export async function reactivateAction(first?: unknown, second?: unknown): Promi
     revalidatePath(ACCESS);
     return null;
   }, msg("Account re-activated. The person can sign in again."));
+}
+
+const AddAccountSchema = z.object({
+  fullName: z.string().trim().min(2, msg("Full name is required.")).max(100, msg("The name is too long.")),
+  email: z.string().trim().toLowerCase().email(msg("Enter a valid email.")).max(254),
+  phone: z.string().trim().max(30).optional().transform((v) => v || null),
+  roleId: z.string().trim().min(1, msg("Choose a role.")).max(64),
+  password: z.string().min(1, msg("Make a temporary password.")).max(200),
+});
+
+/** ADD AN ACCOUNT — the Developer comes from the session; the form carries only the new person and the temporary password. */
+export async function addAccountAction(first?: unknown, second?: unknown): Promise<ActionResult<{ fullName: string; email: string; roleName: string }>> {
+  return runAction(async () => {
+    const developer = await requireDeveloperSession();
+    const input = parseInput(AddAccountSchema, formOf(first, second));
+    const made = await createAccount(developer, input);
+    revalidatePath(ACCESS);
+    return { fullName: made.fullName, email: made.email, roleName: made.roleName };
+  }, msg("Account created."));
 }
 
 /** SIGN OUT EVERYWHERE — ends every open session of the person. They can sign straight back in. */

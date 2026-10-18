@@ -1,7 +1,7 @@
 import "server-only";
 import { redirect } from "next/navigation";
 import { requirePagePermission, requireUser, type CurrentUser } from "@/server/auth";
-import { accessPeople } from "@/server/services/work-as";
+import { accessPeople, accountRoleChoices } from "@/server/services/work-as";
 import { staffHome } from "@/lib/staff-home";
 import type { AccessGroupView } from "./access-people";
 
@@ -10,6 +10,8 @@ export interface AccessPageData {
   /** How many accounts are listed. */
   count: number;
   groups: AccessGroupView[];
+  /** The roles an account can be given from "Add an account" (every role but the Developer's and the system's). */
+  roles: { id: string; name: string }[];
 }
 
 /**
@@ -44,5 +46,6 @@ export async function loadAccessPage(): Promise<AccessPageData> {
       note: p.note,
     })),
   }));
-  return { user, groups, count: groups.reduce((n, g) => n + g.people.length, 0) };
+  const roles = (await accountRoleChoices(user)).map((r) => ({ id: r.id, name: r.name }));
+  return { user, groups, roles, count: groups.reduce((n, g) => n + g.people.length, 0) };
 }

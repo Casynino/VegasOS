@@ -1,10 +1,11 @@
 import "server-only";
 import { db, rawDb } from "../db";
 import { audit } from "../audit";
-import { AppError } from "../errors";
-import { assertNotWorkAs, currentSessionTokenHash, getCurrentUser, permissionsWhileWorkingAs, requestMeta, type CurrentUser } from "../auth";
+import { AppError, isUniqueViolation } from "../errors";
+import { assertNotWorkAs, currentSessionTokenHash, getCurrentUser, hashPassword, permissionsWhileWorkingAs, requestMeta, validatePasswordStrength, type CurrentUser } from "../auth";
 import { canBeWorkedAs, SYSTEM_ROLE_CODE, trueActor, withActingAs, withinWorkAsLimit, WORK_AS_HOURS } from "../work-as-session";
 import { tellBossSoon } from "./report-delivery";
+import { numberWaitersTx } from "./waiter-number";
 import { recordWorkAsEnded } from "./work-as-expired";
 import { keepEndpointRefusal } from "./endpoint-refusal";
 import { DEVELOPER_DENIED, DEVELOPER_ROLE_CODE } from "@/lib/permissions";
@@ -23,8 +24,8 @@ import { msg } from "@/i18n/msg";
  *
  *  WORK AS CAN NEVER TAKE OVER AN ACCOUNT: while working as someone no account, password, login email, role, right, session or preference
  *  can be changed — refused by assertNotWorkAs in the code AND by the write fence under it (server/db.ts). Outside work as, the Developer
- *  cannot create or change accounts, passwords, login emails, roles or rights either (services/staff-accounts.ts): only the Boss and the MD.
- *  Its whole share of accounts is this file: Work as, Suspend, Sign out everywhere, and switching back on what it suspended itself.
+ *  cannot change existing accounts, passwords, login emails, roles or rights (services/staff-accounts.ts): only the Boss and the MD.
+ *  Its share of accounts is this file: Add an account, Work as, Suspend, Sign out everywhere, and switching back on what it suspended itself.
  *
  *  SUSPEND and SIGN OUT EVERYWHERE are kept (a compromised staff account must be stoppable at once), but they are power: so the Boss is told
  *  on WhatsApp EVERY time, as for Work as (who, whom, when, why), and how the telling went is written down ("developer.access_notice").
@@ -312,7 +313,7 @@ const shortReason = (reason: string, max = 200) => (reason.length > max ? `${rea
  */
 function tellBossAboutAccess(
   developer: CurrentUser, ipAddress: string | null, now: Date,
-  what: { kind: "suspended"; reason: string } | { kind: "signed_out_everywhere" },
+  what: { kind: "suspended"; reason: string } | { kind: "signed_out_everywhere" } | { kind: "created" },
   target: { id: string; fullName: string; role: { name: string } },
 ) {
   const developerName = developer.actorName;
@@ -320,6 +321,7 @@ function tellBossAboutAccess(
   const roleName = target.role.name;
   tellBossSoon((t, settings) => {
     const vars = { developer: developerName, person, role: t(roleName), time: t.time(now, settings.timezone) };
+    if (what.kind === "created") return t("{developer} (Developer) created an account for {person} ({role}) at {time}.", vars);
     return what.kind === "suspended"
       ? t("{developer} (Developer) suspended {person} ({role}) at {time}. Reason: {reason}. You can switch the account back on in Staff & roles.", { ...vars, reason: shortReason(what.reason) })
       : t("{developer} (Developer) signed {person} ({role}) out of every phone and computer at {time}. They can sign straight back in.", vars);
@@ -407,5 +409,51 @@ export async function signOutEverywhere(developer: CurrentUser, targetUserId: st
     });
     tellBossAboutAccess(developer, ipAddress, new Date(), { kind: "signed_out_everywhere" }, target);
     return done;
+  });
+}
+
+// ───────────────────────────── adding an account ─────────────────────────────
+
+/** The roles an account can be given from the Access page: every role but the Developer's and the system's. */
+export async function accountRoleChoices(developer: CurrentUser): Promise<{ id: string; name: string; code: string }[]> {
+  await verifiedDeveloper(developer);
+  return db.role.findMany({ where: { code: { notIn: [DEVELOPER_ROLE_CODE, SYSTEM_ROLE_CODE] } }, select: { id: true, name: true, code: true }, orderBy: { createdAt: "asc" } });
+}
+
+export interface NewAccountInput { fullName: string; email: string; phone: string | null; roleId: string; password: string }
+
+/**
+ * ADD AN ACCOUNT from the Access page. The password is a temporary one that is handed over: it is checked against the staff rule, stored
+ * only as a hash, never written to the audit trail or the notice, and the account is marked "pending first login". The creation is
+ * recorded under the Developer and the Boss is told on WhatsApp. Not while working as someone.
+ */
+export async function createAccount(developer: CurrentUser, input: NewAccountInput): Promise<{ userId: string; fullName: string; email: string; roleName: string }> {
+  await verifiedDeveloper(developer);
+  return attempt(developer, "user.create_failed", "", { email: input.email, roleId: input.roleId }, async () => {
+    assertNotWorkAs(developer, "add accounts");
+    const weak = validatePasswordStrength(input.password);
+    if (weak) throw new AppError(weak, "VALIDATION", { password: weak });
+    const role = await db.role.findUnique({ where: { id: input.roleId } });
+    if (!role || role.code === SYSTEM_ROLE_CODE || role.code === DEVELOPER_ROLE_CODE) throw new AppError(msg("Choose a role."), "VALIDATION", { roleId: msg("Choose a role.") });
+    const ipAddress = await callerIp();
+    let userId: string;
+    try {
+      userId = await db.$transaction(async (tx) => {
+        const user = await tx.user.create({
+          data: { fullName: input.fullName, email: input.email, phone: input.phone, roleId: role.id, passwordHash: await hashPassword(input.password), mustChangePassword: true },
+        });
+        await numberWaitersTx(tx); // a new waiter gets the next WTR number
+        await audit(tx, { userId: developer.actorId, label: developer.actorName, ipAddress }, {
+          action: "user.created", entityType: "User", entityId: user.id,
+          after: { fullName: user.fullName, email: user.email, role: role.code, createdBy: "Developer console" },
+        });
+        return user.id;
+      });
+    } catch (e) {
+      if (isUniqueViolation(e)) throw new AppError("A staff account with this email already exists.", "CONFLICT", { email: msg("Already in use") });
+      throw e;
+    }
+    tellBossAboutAccess(developer, ipAddress, new Date(), { kind: "created" }, { id: userId, fullName: input.fullName, role: { name: role.name } });
+    return { userId, fullName: input.fullName, email: input.email, roleName: role.name };
   });
 }
