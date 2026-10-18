@@ -506,25 +506,13 @@ describe("the page's markup", () => {
     return renderToStaticMarkup(locale === "en" ? view : createElement(Provider, { locale, catalog: accessZh }, view));
   };
 
-  it("says what the page is, the count, what the three buttons do, and the safety rules", () => {
+  it("says what the page is and the count — and nothing more on top: no 'What the buttons do' cards, no 'Safety rules' panel", () => {
     const html = draw();
     const words = text(html);
     expect(words).toContain("Access");
     expect(words).toContain("4 accounts. Pick a person and press Work as to open their dashboard exactly as they see it — without their password. Everything you do is recorded under your name.");
-    expect(words).toContain("What the buttons do");
-    for (const title of ["Work as", "Suspend", "Sign out everywhere"]) expect(html).toContain(`>${title}</h3>`);
-    expect(words).toContain("It ends by itself after 4 hours");
-    expect(words).toContain("Money is never touched");
-    expect(words).toContain("You must write a reason and type CONFIRM");
-    expect(words).toContain("Safety rules");
-    expect(words).not.toContain("Safety rules while working as someone");
-    for (const rule of [
-      "Here you can add an account (the Boss is told each time)", "is done by the Boss and the MD",
-      "work as a person, suspend an account, sign a person out everywhere", "switch back on an account you suspended yourself",
-      "While you work as someone you can't suspend people or sign them out of all devices either", "take over an account", "The Boss is told every time you start, suspend or sign someone out",
-    ]) expect(words, rule).toContain(rule);
-    // the old allow-list is gone from the page
-    for (const gone of ["short list", "harmless", "allow-list", "accounts you may manage"]) expect(words, gone).not.toContain(gone);
+    for (const gone of ["What the buttons do", "Safety rules", "It ends by itself after 4 hours", "Here you can add an account", "short list", "allow-list", "accounts you may manage"]) expect(words, gone).not.toContain(gone);
+    expect(html).not.toContain("</h3>"); // no cards
     expect(draw([group("OWNER", "Owner", [boss1])])).toContain("1 account. Pick a person");
   });
 
@@ -592,6 +580,6 @@ describe("the page's markup", () => {
     expect(words).toContain("已启用");
     expect(words).toContain("已停用");
     expect(html).toContain('aria-label="停用 Juma Cook"');
-    for (const english of ["Work as", "Suspend", "Sign out everywhere", "Safety rules", "What the buttons do", "Never signed in", "Last signed in"]) expect(html, english).not.toContain(english);
+    for (const english of ["Work as", "Suspend", "Sign out everywhere", "Never signed in", "Last signed in"]) expect(html, english).not.toContain(english);
   });
 });
