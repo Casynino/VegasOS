@@ -59,12 +59,12 @@ export function ActivityTab({ t, a, now, timezone }: { t: T; a: ActivityData; no
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title={t("Sign-ins per day")} subtitle={t("The last 14 days, coloured by who signed in. A day runs from {start} to {start} the next morning (hotel time). Hover or press a bar for exact numbers.", { start: a.dayStart })}>
+        <Panel title={t("Sign-ins per day")} subtitle={t("The last 14 days, coloured by who signed in. A day runs from {start} to {start} the next morning (hotel time). Hover a bar for exact numbers; the table below has them all.", { start: a.dayStart })}>
           {signInColumns
             ? <BarChart t={t} columns={signInColumns} series={a.roles.map((r) => ({ key: r.code, label: t(r.name), color: colours[r.code] }))} caption={t("Sign-ins per day")} empty={t("Nobody signed in during these 14 days.")} />
             : <Quiet>{t("This could not be read just now.")}</Quiet>}
         </Panel>
-        <Panel title={t("Actions per day")} subtitle={t("Everything the team and you saved in the audit trail, 14 days. Sign-ins and just looking are not counted.")}>
+        <Panel title={t("Actions per day")} subtitle={t("Everything the team and you saved in the audit trail, 14 days. Sign-ins, just looking and refused attempts are not counted.")}>
           {actionColumns
             ? <BarChart t={t} columns={actionColumns} series={[{ key: "team", label: t("Team"), color: TEAM }, { key: "developer", label: t("Developer"), color: DEVELOPER }]} caption={t("Actions per day")} empty={t("Nothing was saved during these 14 days.")} />
             : <Quiet>{t("This could not be read just now.")}</Quiet>}

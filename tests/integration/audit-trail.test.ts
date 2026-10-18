@@ -780,7 +780,10 @@ describe("the Developer's Audit page: who may open it", () => {
     const html = await draw({ view: "failures", q: "login" });
     expect(html).toContain("Audit");
     expect(html).toContain("The permanent diary of the system");
-    expect(html).toContain("not even from the database");
+    // The honest wording: the database refuses it, and the one change the system makes to an older line is said out loud.
+    expect(html).toContain("the database refuses it");
+    expect(html).toContain("marking a cancelled check-in as cancelled");
+    expect(html).not.toContain("not even from the database");
     expect(html).toContain("How to read this page");
     expect(html).toMatch(/<strong[^>]*>Developer<\/strong> tag mean it was done by you/);
     for (const chip of ["Everything", "Developer actions", "Failures"]) expect(html).toContain(chip);

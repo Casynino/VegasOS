@@ -40,7 +40,8 @@ function safeNext(value: string | string[] | undefined): string | null {
  */
 export default async function StartShiftPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const user = await requireUser();
-  if (!needsOwnShift(user.permissions)) redirect(staffHome(user.permissions));
+  // A Developer working as a receptionist starts no shift in their name (the gate that sends them here is skipped for it): back to their home.
+  if (user.workAs || !needsOwnShift(user.permissions)) redirect(staffHome(user.permissions));
   const next = safeNext((await searchParams).next);
   if (await getMyOpenShift(user.id)) redirect(next ?? staffHome(user.permissions));
 

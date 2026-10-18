@@ -109,7 +109,8 @@ const QuickCompany = z.object({
  */
 export async function quickAddCompanyAction(input: z.input<typeof QuickCompany>) {
   const res = await runAction(async () => {
-    const user = await authorize("corporate.manage", "reservations.create");
+    // A new company carries payment terms (0-180 days to pay): what it owes is a money decision, so the Developer cannot make one.
+    const user = await authorizeDecision("corporate.manage", "reservations.create");
     const d = parseInput(QuickCompany, input);
     const { ipAddress } = await requestMeta();
     const actor = { userId: user.id, label: user.fullName, ipAddress };

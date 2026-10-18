@@ -8,7 +8,11 @@ import { Label } from "@/components/ui/label";
 import { changePasswordAction } from "./actions";
 import { useT } from "@/i18n/client";
 
-export function ChangePasswordForm() {
+/**
+ * `developer`: this is the Developer's own account, whose password follows the stricter Developer rule on the server (src/lib/developer-password.ts) —
+ * so the hint says that rule, in its words. Everyone else sees the staff rule, exactly as before.
+ */
+export function ChangePasswordForm({ developer = false }: { developer?: boolean }) {
   const t = useT();
   return (
     <ActionForm action={changePasswordAction} resetOnSuccess className="space-y-3">
@@ -22,7 +26,11 @@ export function ChangePasswordForm() {
           <div className="space-y-1.5">
             <Label htmlFor="newPassword">{t("New password")}</Label>
             <Input id="newPassword" name="newPassword" type="password" autoComplete="new-password" required />
-            <p className="text-xs text-muted-foreground">{t("At least 10 characters with letters and numbers.")}</p>
+            <p className="text-xs text-muted-foreground">
+              {developer
+                ? t("The Developer password needs at least 14 characters, with a capital letter, a small letter, a number and a symbol. It must not be your email, contain the first part of it, or contain an easy word like 'password'.")
+                : t("At least 10 characters with letters and numbers.")}
+            </p>
             <FieldError message={e?.newPassword} />
           </div>
           <div className="space-y-1.5">

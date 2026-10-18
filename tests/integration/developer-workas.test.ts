@@ -21,7 +21,7 @@ import { actsAsDeveloper, refuseDeveloper } from "@/server/developer-wall";
 import { isMarkedWorkingAs, WORK_AS_HOURS } from "@/server/work-as-session";
 import { tellBossSoon } from "@/server/services/report-delivery";
 import { accessPeople, endWorkAs, reactivateAccount, requireDeveloperSession, signOutEverywhere, startWorkAs, suspendAccount } from "@/server/services/work-as";
-import { createStaffAccount, deleteStaffAccount, resetStaffPassword, setRolePermission, staffDirectory, updateStaffAccount } from "@/server/services/staff-accounts";
+import { createStaffAccount, deleteStaffAccount, DEVELOPER_NO_ACCOUNTS, resetStaffPassword, setRolePermission, staffDirectory, updateStaffAccount } from "@/server/services/staff-accounts";
 import { logDeveloperView } from "@/server/services/developer-view-log";
 import { changeRoomStatusAction } from "@/app/staff/(app)/rooms/actions";
 import { recordSaleAction } from "@/app/staff/(app)/sales/actions";
@@ -54,16 +54,17 @@ let boss: MadeUser;
 let md: MadeUser;
 let mgr: MadeUser;
 let waiter: MadeUser;
+let driver: MadeUser;
 let offRec: MadeUser;
 let system: MadeUser;
 let everyone: MadeUser[];
 
 beforeAll(async () => {
-  [dev, dev2, rec, fin, boss, md, mgr, waiter, offRec, system] = await Promise.all([
+  [dev, dev2, rec, fin, boss, md, mgr, waiter, driver, offRec, system] = await Promise.all([
     mk("DEVELOPER", "Nino Dev"), mk("DEVELOPER", "Other Dev"), mk("RECEPTIONIST", "Neema Reception"), mk("FINANCE", "Fatma Finance"), mk("OWNER", "Boss Owner"),
-    mk("ADMIN", "Mdi Director"), mk("MANAGER", "Mosi Manager"), mk("RESTAURANT", "Wanja Waiter"), mk("RECEPTIONIST", "Off Reception", { isActive: false }), mk("SYSTEM_ONLINE", "Online System"),
+    mk("ADMIN", "Mdi Director"), mk("MANAGER", "Mosi Manager"), mk("RESTAURANT", "Wanja Waiter"), mk("DRIVER", "Dan Driver"), mk("RECEPTIONIST", "Off Reception", { isActive: false }), mk("SYSTEM_ONLINE", "Online System"),
   ]);
-  everyone = [dev, dev2, rec, fin, boss, md, mgr, waiter, offRec, system];
+  everyone = [dev, dev2, rec, fin, boss, md, mgr, waiter, driver, offRec, system];
 });
 afterAll(async () => {
   browser.reset(); // no work-as left in the browser: removing accounts is exactly what the fence forbids while working as someone
@@ -344,7 +345,7 @@ describe("while working as someone: money and decisions are refused", () => {
 });
 
 describe("while working as someone: nothing about accounts can be changed", () => {
-  it("every changing function of staff-accounts refuses (and a Developer's refusal is kept under the Developer); the list can still be read", async () => {
+  it("every changing function of staff-accounts refuses with the one plain message (and a Developer's refusal is kept under the Developer); the list can still be read", async () => {
     for (const target of [md, boss]) {
       await workingAs(target);
       const actor = await me();
@@ -352,20 +353,20 @@ describe("while working as someone: nothing about accounts can be changed", () =
       const roleRights = await db.rolePermission.count();
       const role = await db.role.findUniqueOrThrow({ where: { code: "RECEPTIONIST" } });
       const calls: [string, () => Promise<unknown>][] = [
-        ["create", () => createStaffAccount(actor, { fullName: "Sneaky Admin", email: "sneaky@devtest.local", phone: null, roleId: role.id, password: "Sneaky-12345-x", reason: "a good reason" })],
-        ["update", () => updateStaffAccount(actor, { userId: rec.id, fullName: rec.fullName, email: "taken-over@devtest.local", phone: null, roleId: role.id, isActive: true, reason: "a good reason" })],
-        ["reset", () => resetStaffPassword(actor, { userId: rec.id, password: "Takeover-12345-x", reason: "a good reason" })],
-        ["right", () => setRolePermission(actor, { roleId: role.id, permission: "inventory.view", granted: true, reason: "a good reason" })],
-        ["delete", () => deleteStaffAccount(actor, { userId: fin.id, reason: "a good reason" })],
+        ["create", () => createStaffAccount(actor, { fullName: "Sneaky Admin", email: "sneaky@devtest.local", phone: null, roleId: role.id, password: "Sneaky-12345-x" })],
+        ["update", () => updateStaffAccount(actor, { userId: rec.id, fullName: rec.fullName, email: "taken-over@devtest.local", phone: null, roleId: role.id, isActive: true })],
+        ["reset", () => resetStaffPassword(actor, { userId: rec.id, password: "Takeover-12345-x" })],
+        ["right", () => setRolePermission(actor, { roleId: role.id, permission: "inventory.view", granted: true })],
+        ["delete", () => deleteStaffAccount(actor, { userId: fin.id })],
       ];
       for (const [label, run] of calls) {
         const e = await thrownBy(run);
         expect(code(e), `${target.role} ${label}`).toBe("FORBIDDEN");
-        expect((e as Error).message, label).toMatch(WHILE);
+        expect((e as Error).message, label).toBe(DEVELOPER_NO_ACCOUNTS);
       }
       expect(await db.user.findMany({ orderBy: { id: "asc" }, select: { id: true, fullName: true, email: true, isActive: true, passwordHash: true, roleId: true } })).toEqual(before);
       expect(await db.rolePermission.count()).toBe(roleRights);
-      expect((await staffDirectory(actor)).users.length, "reading the list stays open").toBeGreaterThan(3);
+      expect((await staffDirectory()).users.length, "reading the list stays open").toBeGreaterThan(3);
     }
     // The refusals are the Developer's own entries (never the MD's or the Boss's).
     const failed = await entries("user.create_failed");
@@ -601,16 +602,16 @@ describe("suspendAccount / reactivateAccount / signOutEverywhere", () => {
 
     // Reception holds payments.record too — a money right — so it is also out of reach:
     expect(code(await thrownBy(() => reactivateAccount(d, rec.id, { reason: "all clear again" })))).toBe("FORBIDDEN");
-    // A waiter holds no money right: this one may be switched back on by the Developer who suspended it.
-    await suspendAccount(d, waiter.id, ok);
-    expect(code(await thrownBy(() => reactivateAccount(d, waiter.id, { reason: "x" })))).toBe("VALIDATION"); // a reason is needed
-    await reactivateAccount(d, waiter.id, { reason: "Phone found, checked with the manager" });
-    expect((await db.user.findUniqueOrThrow({ where: { id: waiter.id } })).isActive).toBe(true);
-    const [back] = await entries("user.reactivated", { entityId: waiter.id });
+    // A driver holds no right the Developer is denied (money, accounts): this one may be switched back on by the Developer who suspended it.
+    await suspendAccount(d, driver.id, ok);
+    expect(code(await thrownBy(() => reactivateAccount(d, driver.id, { reason: "x" })))).toBe("VALIDATION"); // a reason is needed
+    await reactivateAccount(d, driver.id, { reason: "Phone found, checked with the manager" });
+    expect((await db.user.findUniqueOrThrow({ where: { id: driver.id } })).isActive).toBe(true);
+    const [back] = await entries("user.reactivated", { entityId: driver.id });
     expect(back).toMatchObject({ userId: dev.id, actorType: "DEVELOPER" });
     expect(back.after).toMatchObject({ isActive: true, reason: "Phone found, checked with the manager" });
     // Not suspended: nothing to switch on.
-    expect(code(await thrownBy(() => reactivateAccount(d, waiter.id, { reason: "again and again" })))).toBe("CONFLICT");
+    expect(code(await thrownBy(() => reactivateAccount(d, driver.id, { reason: "again and again" })))).toBe("CONFLICT");
   });
 
   it("does not switch back on an account that someone else switched off — or that was switched since", async () => {
@@ -619,35 +620,35 @@ describe("suspendAccount / reactivateAccount / signOutEverywhere", () => {
     const log = async (userId: string, action: string, entityId: string, after: unknown = {}) => { await pause(); await audit(db, { userId, label: "x" }, { action, entityType: "User", entityId, after }); };
 
     // Switched off by the Boss (Users page), not by this Developer.
-    await rawDb.user.update({ where: { id: waiter.id }, data: { isActive: false } });
-    await log(boss.id, "user.deactivated", waiter.id);
-    expect(code(await thrownBy(() => reactivateAccount(d, waiter.id, { reason: "let me in" })))).toBe("FORBIDDEN");
+    await rawDb.user.update({ where: { id: driver.id }, data: { isActive: false } });
+    await log(boss.id, "user.deactivated", driver.id);
+    expect(code(await thrownBy(() => reactivateAccount(d, driver.id, { reason: "let me in" })))).toBe("FORBIDDEN");
 
     // Suspended by ANOTHER Developer.
-    await rawDb.user.update({ where: { id: waiter.id }, data: { isActive: true } });
+    await rawDb.user.update({ where: { id: driver.id }, data: { isActive: true } });
     await signedInAs(dev2);
-    await suspendAccount(await me(), waiter.id, ok);
+    await suspendAccount(await me(), driver.id, ok);
     await signedInAs(dev);
-    expect(code(await thrownBy(async () => reactivateAccount(await me(), waiter.id, { reason: "let me in" })))).toBe("FORBIDDEN");
+    expect(code(await thrownBy(async () => reactivateAccount(await me(), driver.id, { reason: "let me in" })))).toBe("FORBIDDEN");
 
     // Suspended by this Developer, then switched on and off again by the Boss: no longer theirs.
-    await rawDb.user.update({ where: { id: waiter.id }, data: { isActive: true } });
+    await rawDb.user.update({ where: { id: driver.id }, data: { isActive: true } });
     await signedInAs(dev);
-    await suspendAccount(await me(), waiter.id, ok);
-    await rawDb.user.update({ where: { id: waiter.id }, data: { isActive: true } });
-    await log(boss.id, "user.reactivated", waiter.id);
-    await rawDb.user.update({ where: { id: waiter.id }, data: { isActive: false } });
-    await log(boss.id, "user.deactivated", waiter.id);
-    expect(code(await thrownBy(async () => reactivateAccount(await me(), waiter.id, { reason: "let me in" })))).toBe("FORBIDDEN");
+    await suspendAccount(await me(), driver.id, ok);
+    await rawDb.user.update({ where: { id: driver.id }, data: { isActive: true } });
+    await log(boss.id, "user.reactivated", driver.id);
+    await rawDb.user.update({ where: { id: driver.id }, data: { isActive: false } });
+    await log(boss.id, "user.deactivated", driver.id);
+    expect(code(await thrownBy(async () => reactivateAccount(await me(), driver.id, { reason: "let me in" })))).toBe("FORBIDDEN");
     // An account that was never suspended through the trail at all.
     expect(code(await thrownBy(async () => reactivateAccount(await me(), offRec.id, { reason: "let me in" })))).toBe("FORBIDDEN");
     // An edit that does not change on/off (a name or a phone) does not take the suspension away from its owner.
-    await rawDb.user.update({ where: { id: waiter.id }, data: { isActive: true } });
+    await rawDb.user.update({ where: { id: driver.id }, data: { isActive: true } });
     await signedInAs(dev);
-    await suspendAccount(await me(), waiter.id, ok);
-    await log(boss.id, "user.updated", waiter.id, { isActive: false });
-    await reactivateAccount(await me(), waiter.id, { reason: "name only was edited" });
-    expect((await db.user.findUniqueOrThrow({ where: { id: waiter.id } })).isActive).toBe(true);
+    await suspendAccount(await me(), driver.id, ok);
+    await log(boss.id, "user.updated", driver.id, { isActive: false });
+    await reactivateAccount(await me(), driver.id, { reason: "name only was edited" });
+    expect((await db.user.findUniqueOrThrow({ where: { id: driver.id } })).isActive).toBe(true);
   });
 
   it("signs a person out everywhere (they can sign straight back in); never a Developer, a system account or itself; not while working as someone", async () => {
@@ -678,8 +679,9 @@ describe("suspendAccount / reactivateAccount / signOutEverywhere", () => {
 describe("accessPeople", () => {
   it("lists every account but the Developer's and the system's, grouped by role with the Boss first, with what may be pressed", async () => {
     const d = await developerUser();
-    await suspendAccount(d, waiter.id, { reason: "Phone reported lost", confirm: "CONFIRM" });
+    await suspendAccount(d, driver.id, { reason: "Phone reported lost", confirm: "CONFIRM" });
     await suspendAccount(d, fin.id, { reason: "Phone reported lost", confirm: "CONFIRM" });
+    await suspendAccount(d, waiter.id, { reason: "Phone reported lost", confirm: "CONFIRM" });
     const groups = await accessPeople(await me());
     const everyoneListed = groups.flatMap((g) => g.people);
     expect(groups[0].roleCode).toBe("OWNER");
@@ -691,11 +693,13 @@ describe("accessPeople", () => {
     expect(groups.every((g) => typeof g.roleDescription === "string" && g.people.every((p) => p.roleCode === g.roleCode))).toBe(true);
 
     const p = (u: MadeUser) => everyoneListed.find((x) => x.id === u.id)!;
-    expect(p(boss)).toMatchObject({ roleCode: "OWNER", isActive: true, canWorkAs: true, canSuspend: false, canSignOut: false, canReactivate: false, note: "Can't be suspended here" });
+    expect(p(boss)).toMatchObject({ roleCode: "OWNER", isActive: true, canWorkAs: true, canSuspend: false, canSignOut: false, canReactivate: false, note: "Can't be suspended or signed out here" });
     expect(p(md)).toMatchObject({ canWorkAs: true, canSuspend: true, canSignOut: true, canReactivate: false, note: null });
     expect(p(rec)).toMatchObject({ fullName: rec.fullName, email: rec.email, roleName: "Receptionist", canWorkAs: true, canSuspend: true, canSignOut: true });
-    expect(p(waiter)).toMatchObject({ isActive: false, canWorkAs: false, canSuspend: false, canSignOut: false, canReactivate: true, note: null });
+    expect(p(driver)).toMatchObject({ isActive: false, canWorkAs: false, canSuspend: false, canSignOut: false, canReactivate: true, note: null });
     expect(p(fin)).toMatchObject({ isActive: false, canReactivate: false, note: "Only the Boss or the MD can switch this account back on" });
+    // a Waiter holds no right the Developer is denied (money, accounts), so the Developer who suspended it may switch it back on
+    expect(p(waiter)).toMatchObject({ isActive: false, canReactivate: true, note: null });
     expect(p(offRec)).toMatchObject({ isActive: false, canReactivate: false, canWorkAs: false });
   });
 

@@ -1,7 +1,46 @@
 import { msg } from "@/i18n/msg";
 
+/**
+ * The Developer's own entries, the steps on staff accounts they take (suspend, switch back on, sign out everywhere), the failed or refused
+ * attempts and the notes — all new with the Developer account. One table, read by the history lists here and by the audit trail pages
+ * (audit-trail.ts), so the same entry has the same words everywhere (the Boss's "What the team is doing" list can show a Developer's
+ * entry too). Words that already existed for staff are not in it, so no existing line changes.
+ */
+export const ACCOUNT_AND_DEVELOPER_WORDS: Record<string, string> = {
+  "auth.login_failed_suppressed": msg("More failed sign-ins followed in a short time (not every one is listed)"),
+  "developer.denied": msg("was refused — no permission"),
+  "developer.viewed": msg("looked at a page"),
+  "developer.viewed_limit": msg("opened very many pages in a short time (not every page is listed)"),
+  "developer.exported": msg("exported records to a file"),
+  "developer.downloaded": msg("downloaded a file"),
+  "developer.inspected": msg("checked what a person can do"),
+  "developer.business_viewed": msg("looked at the business data"),
+  "developer.work_as_started": msg("started working as another person"),
+  "developer.work_as_ended": msg("stopped working as another person"),
+  "developer.work_as_expired": msg("Working as another person ended by itself (the time was over or the session ended)"),
+  "developer.work_as_refused": msg("was refused when trying to work as another person"),
+  "developer.work_as_notice": msg("Notice to the Boss about working as another person"),
+  "developer.access_notice": msg("Notice to the Boss about a change to a staff account"),
+  "developer.endpoint_refused": msg("tried to use the Developer's pages and was refused"),
+  "developer.provisioned": msg("set up the Developer account"),
+  "developer.password_rotated": msg("changed the Developer password"),
+  "developer.deactivated": msg("switched the Developer account off"),
+  "user.suspended": msg("suspended a staff account"),
+  "user.signed_out_everywhere": msg("signed a person out of every device"),
+  "user.create_failed": msg("could not add a staff account"),
+  "user.update_failed": msg("could not change a staff account"),
+  "user.password_reset_failed": msg("could not reset a password"),
+  "user.permission_change_failed": msg("could not change a role's rights"),
+  "user.delete_failed": msg("could not remove a staff account"),
+  "user.suspend_failed": msg("could not suspend a staff account"),
+  "user.reactivate_failed": msg("could not switch a staff account back on"),
+  "user.sign_out_failed": msg("could not sign a person out of every device"),
+  "settings.update.refused": msg("was refused a change to the settings about money"),
+};
+
 /** Plain-English words for what staff did (from the history log), and which part of the hotel it was. */
 const WORDS: Record<string, string> = {
+  ...ACCOUNT_AND_DEVELOPER_WORDS,
   "auth.login": msg("signed in"), "auth.logout": msg("signed out"), "auth.login_failed": msg("Failed sign-in (not signed in)"),
   "reservation.created": msg("made a booking"), "reservation.checked_in": msg("checked a guest in"), "reservation.checked_in_voided": msg("checked a guest in — cancelled later"), "reservation.checkin_cancelled": msg("cancelled a check-in"), "reservation.checked_out": msg("checked a guest out"),
   "reservation.extended": msg("extended a stay"), "reservation.overstay_charged": msg("put extra nights on the bill"), "reservation.room_assigned": msg("moved a guest to another room"), "reservation.room_changed": msg("changed a guest's room"),

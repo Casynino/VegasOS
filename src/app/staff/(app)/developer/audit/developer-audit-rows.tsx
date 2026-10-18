@@ -1,7 +1,7 @@
 import { ChevronDown, CircleCheck, CircleX } from "lucide-react";
 import type { T } from "@/i18n/translate";
 import { cn } from "@/lib/utils";
-import { auditActionWords, type AuditRow } from "@/server/services/audit-trail";
+import { auditWordsFor, NOTE_ACTIONS, workAsTargetOf, type AuditRow } from "@/server/services/audit-trail";
 import { showJson } from "@/app/staff/(app)/audit/audit-rows";
 
 /**
@@ -20,8 +20,8 @@ function developerNameOf(label: string): string {
 
 /** Who did it, as a person reads it: "Nino (Developer)", "Nino (Developer) as Neema (Reception)", "Neema (Reception)", "System". */
 export function auditWho(row: AuditRow, t: T): string {
-  // A failed sign-in is nobody's action: it is the system's entry about an account that someone tried.
-  if (row.action === "auth.login_failed") return t("System");
+  // A failed sign-in is nobody's action: it is the system's entry about an account that someone tried (and so is the note that more followed).
+  if (row.action === "auth.login_failed" || row.action === "auth.login_failed_suppressed") return t("System");
   if (row.actorType === "DEVELOPER") {
     const label = row.actorName ?? t("Developer");
     if (row.actingAs) {
@@ -41,10 +41,13 @@ export function auditWho(row: AuditRow, t: T): string {
   return !row.actorName || row.actorName.toLowerCase() === "system" ? t("System") : row.actorName;
 }
 
-/** The plain sentence of one entry: "Neema checked a guest in." — a failed sign-in has no subject. */
+/**
+ * The plain sentence of one entry: "Neema checked a guest in." A Work as line names the person ("Developer started working as Asha
+ * (Receptionist)."). A note — a failed sign-in, Work as that ended by itself — has no subject.
+ */
 export function auditSentence(row: AuditRow, t: T): string {
-  const words = t(auditActionWords(row.action));
-  if (row.action === "auth.login_failed") return `${words}.`;
+  const words = auditWordsFor(row.action, workAsTargetOf(row.action, row.after), t);
+  if (NOTE_ACTIONS.has(row.action)) return `${words}.`;
   const subject =
     row.actorType === "DEVELOPER" ? (row.actingAs ? t("Developer (as {person})", { person: row.actingAs.name }) : t("Developer"))
     : row.actorType === "STAFF" ? (row.actorName ?? t("Unknown"))

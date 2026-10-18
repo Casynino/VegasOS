@@ -1,7 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { cookies, headers } from "next/headers";
-import { getCurrentUser } from "@/server/auth";
+import { getCurrentUserQuiet } from "@/server/auth";
 import { DEFAULT_LOCALE, LOCALE_COOKIE, LOCALES, localeFromSegment, toLocale, type Locale } from "./config";
 import { loadCatalog, type Bundle } from "./catalog";
 import { makeT, type Catalog, type T } from "./translate";
@@ -27,7 +27,9 @@ export function setRequestLocale(locale: Locale, area?: "public") {
 export async function getLocale(): Promise<Locale> {
   const set = requestStore().locale;
   if (set) return set;
-  const user = await getCurrentUser().catch(() => null);
+  // Reading the person's language is not the person using the system: the quiet reader shares the request's one read of the session, but never
+  // renews a Developer's (otherwise a background poll that only needs words — the bell's — would keep the Developer's 30-minute idle rule awake).
+  const user = await getCurrentUserQuiet().catch(() => null);
   if (user) return toLocale(user.locale) ?? DEFAULT_LOCALE;
   return (await visitorLocale()) ?? DEFAULT_LOCALE;
 }

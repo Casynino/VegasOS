@@ -5,7 +5,8 @@ import { num } from "./console-ui";
 /**
  * The console's charts, drawn on the server as plain HTML and CSS (no chart library, nothing to download).
  * Every chart has: a title and a one-line explanation (given by its card), readable labels, a legend when there is more than one
- * series, the exact numbers in each bar's `title` (hover or long-press) and in a visually hidden table for a screen reader.
+ * series, the exact numbers in each bar's `title` (hover), and ALL of them in a table under the chart that anyone can open ("Show the
+ * numbers" — it works on a phone, with a keyboard and with a screen reader; a hover cannot).
  * Colours come from the caller: mid tones that read on the light and the dark card. On a phone the charts simply get narrower.
  */
 
@@ -82,14 +83,24 @@ export function BarChart({ t, columns, series, caption, empty }: { t: T; columns
           ))}
         </ul>
       )}
-      {/* the same numbers as a table, for a screen reader */}
-      <div className="sr-only">
-        <table>
-          <caption>{caption}</caption>
-          <thead><tr><th>{t("When")}</th>{series.map((s) => <th key={s.key}>{s.label}</th>)}</tr></thead>
-          <tbody>{columns.map((c) => <tr key={c.key}><th scope="row">{c.name}</th>{series.map((s) => <td key={s.key}>{c.values[s.key] ?? 0}</td>)}</tr>)}</tbody>
-        </table>
-      </div>
+      {/* the same numbers as a table, for everyone: a phone has no hover, and a screen reader cannot read a tooltip */}
+      <details className="group mt-3 text-xs">
+        <summary className="inline-flex cursor-pointer list-none items-center text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold [&::-webkit-details-marker]:hidden">
+          <span className="group-open:hidden">{t("Show the numbers")}</span>
+          <span className="hidden group-open:inline">{t("Hide the numbers")}</span>
+        </summary>
+        <div className="mt-2 max-h-64 overflow-auto rounded-xl border border-border/60">
+          <table className="w-full min-w-max text-left tabular-nums">
+            <caption className="sr-only">{caption}</caption>
+            <thead className="sticky top-0 bg-card text-muted-foreground">
+              <tr className="border-b border-border/70"><th scope="col" className="px-3 py-1.5 font-medium">{t("When")}</th>{series.map((s) => <th scope="col" key={s.key} className="px-3 py-1.5 text-right font-medium">{s.label}</th>)}</tr>
+            </thead>
+            <tbody className="divide-y divide-border/60">
+              {columns.map((c) => <tr key={c.key}><th scope="row" className="px-3 py-1.5 font-medium">{c.name}</th>{series.map((s) => <td key={s.key} className="px-3 py-1.5 text-right">{num(t, c.values[s.key] ?? 0)}</td>)}</tr>)}
+            </tbody>
+          </table>
+        </div>
+      </details>
     </figure>
   );
 }

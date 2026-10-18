@@ -30,13 +30,14 @@ function Ring({ score, label, outOf }: { score: number; label: string; outOf: st
   );
 }
 
+/** One headline figure: a term (dt) and its value, caption and hint (dd) — inside the card's <dl>. */
 function Figure({ label, value, caption, tone, hint }: { label: string; value: string; caption: string; tone?: "ok" | "warn" | "bad"; hint?: string }) {
   return (
     <div className="min-w-0">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
-      <p className={cn("mt-1 text-2xl font-semibold leading-none tracking-tight tabular-nums", tone === "ok" && "text-emerald-600 dark:text-emerald-400", tone === "warn" && "text-amber-600 dark:text-amber-400", tone === "bad" && "text-rose-600 dark:text-rose-400")}>{value}</p>
-      <p className="mt-1.5 text-sm text-muted-foreground">{caption}</p>
-      {hint && <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>}
+      <dt className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</dt>
+      <dd className={cn("mt-1 text-2xl font-semibold leading-none tracking-tight tabular-nums", tone === "ok" && "text-emerald-600 dark:text-emerald-400", tone === "warn" && "text-amber-600 dark:text-amber-400", tone === "bad" && "text-rose-600 dark:text-rose-400")}>{value}</dd>
+      <dd className="mt-1.5 text-sm text-muted-foreground">{caption}</dd>
+      {hint && <dd className="mt-0.5 text-xs text-muted-foreground">{hint}</dd>}
     </div>
   );
 }

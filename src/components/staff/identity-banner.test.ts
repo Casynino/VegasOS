@@ -255,10 +255,10 @@ describe("the shell and the phone's Menu use them", () => {
     expect(shell).toContain("top-[var(--dev-strip,0px)]");
   });
 
-  it("while working as someone the language switch (their account) is hidden and the bell's on / off is locked; the Developer console shows its own tabs", () => {
+  it("while working as someone the language switch (their account) is hidden and the bell is not drawn at all (a Developer's session is quiet); the Developer console shows its own tabs", () => {
     const shell = source("staff-shell.tsx");
     expect(shell).toContain("{!workAs && <LanguageSwitch");
-    expect(shell).toContain("locked={!!workAs}");
+    expect(shell).toContain("quiet={quiet}");
     expect(shell).toContain("console={consoleMode}");
     // A receptionist's "No active shift" reminder is not shown for the person being worked as (the shift gate is skipped then).
     expect(shell).toContain("const noShift = !workAs");

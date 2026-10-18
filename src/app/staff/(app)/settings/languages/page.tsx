@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowRight, Check } from "lucide-react";
 import { requirePagePermission } from "@/server/auth";
 import { db } from "@/server/db";
+import { operationalOnly } from "@/server/staff-pickers";
 import { getSettings } from "@/server/settings";
 import { TRANSLATABLE, contentCoverage } from "@/server/services/translations";
 import { COVERAGE } from "@/i18n/coverage";
@@ -44,7 +45,7 @@ export default async function LanguagesPage() {
   const [settings, content, staffZh, guestsZh] = await Promise.all([
     getSettings(),
     contentCoverage(),
-    db.user.count({ where: { isActive: true, preferredLanguage: "zh-CN" } }),
+    db.user.count({ where: operationalOnly({ isActive: true, preferredLanguage: "zh-CN" }) }),
     db.guest.count({ where: { preferredLanguage: "zh-CN" } }),
   ]);
   const zhOn = settings.enabledLanguages.includes("zh-CN");

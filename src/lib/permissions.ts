@@ -106,7 +106,7 @@ export const PERMISSIONS = {
   "assets.manage": msg("Add and update hotel assets"),
 
   // Audit and the Developer account
-  "audit.view": msg("See the full audit trail: who did what, when, as a Developer or as staff (read-only; nobody can change or delete it)"),
+  "audit.view": msg("See the full audit trail: who did what, when, as a Developer or as staff (read-only; the database refuses any change or delete — the Audit page names the one exception)"),
   "developer.access": msg("Developer super user: the developer console and system diagnostics. Held only by the Developer role — never by the Boss, the MD or any staff role"),
 } as const;
 
@@ -128,6 +128,8 @@ export const ALL_PERMISSIONS = (Object.keys(PERMISSIONS) as PermissionCode[]).fi
  * what a guest, a company or a supplier owes, change stock costs, move where guests pay, change an approval or spending limit, or
  * make or send a financial report. Money work is done (and attributed) by Finance, the Boss, the MD or a manager; a test account to
  * try a money flow is made by the Boss or the MD — the Developer cannot make one.
+ * It also cannot create or change accounts, passwords, login emails, roles or rights (owner, 2026-10-18): "users.manage" is denied, and
+ * the account service refuses a Developer whatever it holds. It can work as a person, suspend, sign out everywhere and re-activate.
  *
  * Every right is in exactly ONE of the three lists below (DEVELOPER_ALLOWED, DEVELOPER_DENIED, DEVELOPER_ONLY) — the unit test
  * fails for a right that is in none, so a NEW right is never given to the Developer until a person decides which list it belongs to.
@@ -146,7 +148,7 @@ export const DEVELOPER_ALLOWED: readonly PermissionCode[] = [
   "meeting.view", "meeting.manage",
   "hotel_qr.manage",
   // Staff, shifts and the system's configuration
-  "shifts.view", "shifts.work", "shifts.manage", "staff.activity.view", "users.manage", "settings.manage",
+  "shifts.view", "shifts.work", "shifts.manage", "staff.activity.view", "settings.manage",
   // Guests' requests, transport, website, booking requests
   "contact.view", "requests.view", "requests.manage",
   "transport.view", "transport.request", "transport.manage", "transport.driver",
@@ -184,12 +186,23 @@ export const DEVELOPER_DENIED: readonly PermissionCode[] = [
   "inventory.approve",              // approves waste, counts stock and corrects quantities: changes the stock's value
   "inventory.manage",               // sets an item's cost per unit and its opening quantity (stock valuation)
   "reports.daily.manage",           // makes, regenerates and sends the daily financial reports to the Boss
+  // Added 2026-10-18, and not about money: accounts.
+  "users.manage",                   // creates and changes accounts, passwords, login emails, roles and rights: only the Boss and the MD do that
 ];
 
 /**
+ * The denied rights that are about ACCOUNTS rather than money (owner, 2026-10-18): the Developer cannot create or change accounts, passwords,
+ * login emails, roles or rights at all — only the Boss and the MD can (Users page). Every right here is also in DEVELOPER_DENIED; the console
+ * uses this list only to word its answers truthfully ("because it writes money" would be wrong for these).
+ */
+export const DEVELOPER_ACCOUNT_RIGHTS: readonly PermissionCode[] = ["users.manage"];
+
+/**
  * Settings the Developer can NOT change even though it holds "settings.manage": they decide where guests pay, who may approve or
- * spend, what a guest owes (fees, tax, policies) or where the financial reports go. Checked on the server when the settings are saved
- * (updateSettingsAction) — a save that leaves these as they are works as before. Names are the HotelSettings fields.
+ * spend, what a guest owes (fees, tax, payment terms, policies), how long a booking is held without payment, which business day the
+ * figures belong to, or where the financial reports go. Every money-shaping field of the settings form is here. Checked on the server
+ * when the settings are saved (updateSettingsAction) — a save that leaves these as they are works as before. Names are the HotelSettings
+ * fields. (Discount limits, online payment, the payment methods and the gift budgets are saved on their own screens, each guarded there.)
  */
 export const DEVELOPER_LOCKED_SETTINGS: readonly string[] = [
   // Where guests pay (printed on every invoice and bill)
@@ -201,6 +214,13 @@ export const DEVELOPER_LOCKED_SETTINGS: readonly string[] = [
   "earlyDeparturePolicy", "noShowPolicy", "dateChangeExcessPolicy", "dateChangePayNow",
   // Where the financial reports go, and whether they go
   "reportEnabled", "shiftReportEnabled", "reportRecipients",
+  // Payment terms: how many days an invoice without company terms may stay unpaid
+  "invoiceDefaultDueDays",
+  // Holding a booking without payment, and what a no-show is: how long an unpaid booking holds its room, when a guest becomes a no-show,
+  // and whether the room is then released at once (the no-show policy above decides what happens to the money already paid)
+  "unpaidHoldHours", "noShowCutoffMinutes", "noShowAutoRelease",
+  // The day the figures belong to: where the business day starts decides which day every payment, sale and report counts in
+  "businessDayStartMinutes",
 ];
 
 const RECEPTIONIST: PermissionCode[] = [
@@ -374,7 +394,7 @@ export const DEFAULT_ROLES: Record<
   },
   DEVELOPER: {
     name: msg("Developer (super user)"),
-    description: msg("The system's developer: sees and troubleshoots every department, the settings, the staff accounts and the audit trail, with every action recorded as a Developer action. Cannot record, change, approve, pay, reverse or void money, decide what a guest or supplier owes, or change where guests pay or the money limits. Created only by a controlled setup — never from the Users page."),
+    description: msg("The system's developer: sees and troubleshoots every department, the settings and the audit trail, with every action recorded as a Developer action. Cannot record, change, approve, pay, reverse or void money, decide what a guest or supplier owes, or change where guests pay or the money limits. Cannot create or change accounts, passwords, roles or rights — only the Boss and the MD can. Created only by a controlled setup — never from the Users page."),
     permissions: [...DEVELOPER_ALLOWED, ...DEVELOPER_ONLY],
   },
   MANAGER: {

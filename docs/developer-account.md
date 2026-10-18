@@ -11,8 +11,8 @@ It is **not** a staff account with a bigger title. It is a different kind of acc
 - It has its own email and its own password. It is never a copy of the Boss, the MD or any staff login.
 - **Signing in is as simple as for anyone else: one email and one password.** There are no codes, no second step and no separate sign-in page for the Developer. The system looks at the account itself, on the server, and a Developer lands on the Developer console.
 - **Every action is written in the audit trail as a Developer action**, under your real name. The system decides who you are from your signed-in account on the server. It never takes it from a page, a department or the browser.
-- **It can never write money, and it can never decide about money** (section 8). It can look at money, but it cannot record, reverse, approve, pay or withdraw it, cannot decide what a guest or a supplier owes, and cannot change where guests pay or the money limits. This stays true while you work as someone else.
-- **It can never be used to take over an account.** You cannot see or change anyone's password or login email (section 5).
+- **It can never write money, and it can never decide about money** (section 8). It can look at money, but it cannot record, reverse, approve, pay or withdraw it, cannot decide what a guest, a group or a supplier owes, cannot change where guests pay, an account's opening balance or the money limits, and cannot send or hold back the financial reports. This stays true while you work as someone else.
+- **It can never be used to take over an account.** It cannot create or change accounts, passwords, login emails, roles or rights at all: only the Boss and the MD can (section 5). It cannot see anyone's password either.
 - There is **no sign-up page** and **no password in the code**. The account is made in one way only: by you, on your own computer, with the setup command in section 2.
 
 ## 2. Set up on the live database (step by step)
@@ -70,12 +70,15 @@ By default there can be only **one active Developer account**. A second one need
 
 - Open `/staff/login`, type the email and the password, press Sign in. That is all. A Developer lands on the console; every other person lands on their own dashboard, as always.
 - If the email or the password is wrong, or the account is switched off, the page shows **one and the same message** whatever the reason. Nobody can learn from it which accounts exist.
-- The Developer account is guarded harder than the staff accounts: after a few wrong tries (**5 for one Developer email in 15 minutes**) it makes you wait.
+- The Developer account is guarded harder than the staff accounts: after **5 wrong tries for one Developer email in 15 minutes** it is locked for the rest of that time (staff emails are held after 8 tries, and one address after 20). **Only wrong tries count.** A sign-in that works clears the count, so the right password never adds up toward the lock, and 4 wrong tries followed by the right password start again from zero.
+- **The lock does not tell.** While the Developer account is locked, the sign-in page gives the very same answer as for any wrong try ("Incorrect email or password."), and takes the same time, even when the right password is typed. A stranger cannot learn from the page that an email belongs to the Developer. For the same reason every email, whoever it belongs to and even one nobody holds, does the same database write before its password is checked (the Developer's email keeps its counter, every other email a counter that is never enforced), so the work behind the answer is the same. (The audit trail does know: the try is marked as locked.) The "Too many attempts" message you may see comes from the limits that are the same for every email, so it tells nothing about an account.
 - A wrong try on a real account is written in the audit trail (`auth.login_failed`, shown as the **System**, because nobody was signed in). The password that was typed is never written.
+- **Failed sign-in lines are capped.** Anyone on the internet can fail a sign-in for a real email, and the audit trail can never be cleaned. So at most **10 failed tries per account per hour** are written one by one. After that, ONE line for that hour (`auth.login_failed_suppressed`, shown as "More failed sign-ins followed in a short time") says that more tries came, and the rest are not written. A flood is visible, and cheap. The limits that stop the guessing are not changed by this.
 - Signing in ends any other session that browser had. One browser, one identity.
 - The Developer account is more powerful, so its session is short:
   - **4 hours at most** from signing in. After that you must sign in again, even if you are working.
-  - **30 minutes without use ends it.** Screens that refresh by themselves in the background (the alert bell) do not count as use, so an open tab cannot keep the session alive.
+  - **30 minutes without use ends it.** "Use" means you opening a page or pressing something. Screens that refresh by themselves in the background (the alert bell) do not count as use, so an open tab cannot keep the session alive.
+  - **No timer runs for the Developer.** Nothing watches the clock in the background: the two limits are checked when the next page or action arrives, and an old session simply does not work any more. The same is true of the end of Work as (section 5). The only thing that runs by itself is the daily clean-up that deletes expired sessions; it never renews a session or counts as use, and before it deletes a Developer's session that was still working as someone it writes the end of that Work as down (section 5).
 
   Staff sessions are not changed.
 
@@ -83,10 +86,10 @@ By default there can be only **one active Developer account**. A second one need
 
 When a Developer signs in, the menu on the left says **Developer console** and has four places. Your name and **Sign out** are at the bottom. Everything about the hotel is reached through **Business** (look only) or **Work as** (act as a person); the console itself never changes hotel data.
 
-- **Home.** How the system is doing. A greeting, then a **health score out of 100** (a ring, one plain sentence and three chips: to fix now / to look at / for information) with four numbers: the **database** (online, and how many milliseconds it took to answer), **people signed in today**, **actions saved in the last 24 hours** and **alerts waiting** over a day. Under it, **Needs your attention** and **Good to know** cards (each opens to say what it means and what to do), and three shortcuts: Access, Audit, Business. Five tabs go deeper: **Activity** (sign-ins and actions per day, busiest hours, where the work happens, most active people, recent sign-ins, accounts nobody uses), **Speed & size**, **Crashes & sign-ins**, **Settings** and **People & my actions** (what any role may do, and your own last 30 actions). Home only reads: it never changes hotel data.
+- **Home.** How the system is doing. A greeting, then a **health score out of 100** (a ring, one plain sentence and three chips: to fix now / to look at / for information) with four numbers: the **database** (online, and how many milliseconds it took to answer), **people signed in today**, **actions saved in the last 24 hours** (sign-ins, looking at pages or at Business, exports, refused or failed tries and the automatic notes are not counted as actions) and **alerts waiting** over a day. Under it, **Needs your attention** and **Good to know** cards (each opens to say what it means and what to do), and three shortcuts: Access, Audit, Business. Five tabs go deeper: **Activity** (sign-ins and actions per day, busiest hours, where the work happens, most active people, recent sign-ins, accounts nobody uses), **Speed & size**, **Crashes & sign-ins**, **Settings** and **People & my actions** (what any role may do, and your own last 30 actions). Home only reads: it never changes hotel data.
 - **Audit.** The permanent diary of the system (section 7).
 - **Business.** The hotel's data in plain read-only tables (section 9).
-- **Access.** Every staff account, grouped by role. Pick a person and press **Work as**, **Suspend** or **Sign out everywhere** (section 5).
+- **Access.** Every staff account, grouped by role. Pick a person and press **Work as**, **Suspend** or **Sign out everywhere** (section 5). The Boss's account has Work as only: it cannot be suspended or signed out from here.
 
 Every console page checks, on the server, that you are the Developer account. A staff member who types the address gets "no access". While you are **working as** someone, the console is closed: you see that person's own screens, and the console comes back when you press **Stop**. The two worlds are never mixed.
 
@@ -98,18 +101,34 @@ The Access page lists the accounts (every account except Developer accounts and 
 
 - You hold **that person's rights, minus everything about money** (the same list the Developer never holds, section 8). So you can do their ordinary work (look at a booking, check a guest in, move a room, take a restaurant order, mark a room clean) but a payment, a discount, an expense, a withdrawal, a purchase payment, an invoice or a cash handover is **refused by the system**, as it would be for the Developer. The decisions that belong to the Boss, the MD and the managers stay refused too.
 - A **bar at the top** of every page says who you are working as. Press **Stop** to come back to the console.
-- It ends **by itself after 4 hours**, and also when your Developer session ends (4 hours at most, 30 minutes without use).
+- It ends **by itself after 4 hours**, and also when your Developer session ends (4 hours at most, 30 minutes without use), or when that person's account is switched off or removed.
+- **When it ends by itself, the audit trail says so.** Nothing runs on a timer, so the first page or action that comes afterwards finds it over and writes ONE line, `developer.work_as_expired`: who it was, how long, and why it ended (the 4 hours, the account, or your session). If no page or action ever comes, the line is written when the session is removed: by the daily clean-up of expired sessions, by a new sign-in in the same browser, or by a password change or "sign out my other devices" on another of your sessions. Each of those writes the line just before it deletes the session (reason: your session ended), once per Work as, as you. Pressing Stop writes `developer.work_as_ended` as before. So a start never stays without an end. A new Work as can be started at once after one that ran out. This line is information, not a failure.
 - You cannot work as a Developer account, a switched-off account or the system account, and you cannot start a second one while you work as someone (press Stop first).
 - **The Boss is told, on WhatsApp, every time you start**, in the Boss's language: your name (Developer), who you are working as, their role and the time. The message is sent in the background like the reports: if WhatsApp is not set up or fails, Work as still starts and the audit trail still has the entry (see the honest limits, section 12).
-- A receptionist normally needs an open shift to work. While you work as them, that rule is skipped, so you can see their screens without starting a shift in their name.
+- **How the telling went is written down too** (`developer.work_as_notice`): how many people were meant to be told, how many were, how many were not. If nobody was told, or someone could not be, the line shows as **Failed** in the Audit, so you can ask the Boss to look.
+- **A shift belongs to a real person**: a reception shift holds one of the desk's two places, its closing counts the cash that person collected, and it sends the report to the Boss. So **Work as can never start, end, take over or close a shift**, and the Developer account has no shift of its own. While you work as someone you cannot change the shift plan (who works which day) either. The receptionist's rule "an open shift is needed to work" is skipped for you, so you can see their screens without a shift. Staff and managers are not changed.
 
 **Suspend.** Blocks the account and signs the person out until it is switched back on.
 
 - You must write a **reason** (at least 5 characters) and type **CONFIRM**. The reason is written in the audit trail.
-- It cannot be used on the **Boss's account** ("Can't be suspended here"), on Developer accounts, on the system account or on your own account, and not while you work as someone.
-- **You can only switch back on an account you suspended yourself**, and never an account whose role holds a money right (Finance, a manager, the MD…). For those, ask the Boss or the MD to switch it back on. This is on purpose: it means suspending cannot be used to lock out the people who run the money.
+- It cannot be used on the **Boss's account** (its row says "Can't be suspended or signed out here"), on Developer accounts, on the system account or on your own account, and not while you work as someone.
+- **You can only switch back on an account you suspended yourself**, and never an account whose role holds a right the Developer is denied: the rights about money, and the right to manage accounts (the Boss, the MD, the managers, Finance, the Accountant, Reception and the Restaurant Counter). For those, ask the Boss or the MD to switch it back on. A cook, a waiter or a driver, whose roles hold none of those rights, you can switch back on yourself. This is on purpose: it means suspending cannot be used to lock out the people who run the money, and switching back on cannot be used to change anything about an account.
+- **The Boss is told on WhatsApp every time you suspend an account**, in the Boss's language, like the message for Work as: your name (Developer), who was suspended and their role, the time and your reason, and where to switch the account back on (Staff & roles). It is sent in the background and never blocks the suspension. How the telling went is written down (`developer.access_notice`: how many were meant to be told, how many were), and a notice that reached nobody shows as **Failed** in the Audit.
 
-**Sign out everywhere.** Ends every open session of that person, on every phone and computer. They can sign straight back in (useful when a phone is lost). It cannot be used on yourself, on Developer accounts or on the system account, and not while you work as someone.
+**Sign out everywhere.** Ends every open session of that person, on every phone and computer. They can sign straight back in (useful when a phone is lost). It cannot be used on yourself, on the **Boss's account** (the button is not shown, and the server refuses it too), on Developer accounts or on the system account, and not while you work as someone. **The Boss is told on WhatsApp every time**, the same way as for a suspension (who, whom, when; `developer.access_notice` records how it went).
+
+**The risk, and the Boss's remedy (read this).** Suspending and signing out are real power. They are kept on purpose, because a lost or stolen staff account must be stoppable at once. But it means that **someone who stole the Developer's password could suspend the MD, Finance, the managers and Reception in a few clicks** (the Boss's own account cannot be suspended or signed out from here, so the Boss can always act). What limits the harm:
+
+- the Boss gets a WhatsApp message for every suspension and every sign-out, so a burst of them is seen within minutes;
+- every one is in the audit trail with its reason (`user.suspended`, `user.signed_out_everywhere`), and a notice that did not reach the Boss shows as Failed;
+- the Developer cannot switch back on an account it did not suspend, or any account whose role holds a right it is denied (money, accounts), so it cannot undo what the Boss or the MD did;
+- **the remedy:** the Boss or the MD opens **Staff & roles** (the Users page), opens the person and ticks **Account active**: the account is back at once, with its old rights. If the Developer's password may have been stolen, the owner switches the Developer account off (`npm run developer:setup -- --deactivate`) or changes its password (`--rotate`) from the computer that holds the database address (section 6).
+
+**The Developer cannot create or change accounts, passwords, login emails, roles or rights (owner, 2026-10-18).** Not on its own account and not while working as someone. Only the **Boss and the MD** can, from **Staff & roles** (the Users page). What the Developer keeps for accounts is exactly this page: **Work as**, **Suspend** (with a reason and the word CONFIRM), **Sign out everywhere**, and **re-activating an account it suspended itself** (above). Why there is no smaller version of this: an account the Developer made, or whose password it set, is an account it could sign in as, and that account is **not** a Developer, so none of the Developer's limits would apply to it. Every smaller version that was tried (letting the Developer manage only some accounts or only some rights) could be walked around: empty a role and then make an account in it; a password that outlives a role that is later widened; accounts whose use is not written down; one Developer changing another. So there is no smaller version. In practice:
+
+- the Developer role does not hold the right to manage accounts (`users.manage`), so the Users page sends it to "no access" and every Users action is refused before it starts;
+- the account service refuses a Developer a second time, whatever it holds: creating an account, changing a name, phone, login email, role or on/off switch, resetting or removing an account, and giving or taking a right. It says one thing, "The Developer account cannot create or change accounts, passwords, roles or rights. Ask the Boss or the MD.", before it reads or writes anything, and the refused try is written in the audit trail (`user.create_failed`, `user.update_failed`, `user.password_reset_failed`, `user.delete_failed`, `user.permission_change_failed`);
+- the same holds while you work as the Boss or the MD: you hold their rights minus everything about money and minus the right to manage accounts.
 
 **Safety rules while working as someone.** The system refuses all of these, on the server, whatever the screen shows:
 
@@ -119,6 +138,7 @@ The Access page lists the accounts (every account except Developer accounts and 
 - suspending or switching back on an account;
 - signing people out everywhere;
 - changing the person's own preferences (their language, their alert sound);
+- starting, ending, taking over or closing a shift, or changing the shift plan;
 - and, underneath all of that, **any write at all to the accounts, the sessions, the roles or the rights** in the database (a "fence" in the database layer, so a page that was forgotten still cannot do it).
 
 So Work as can never be used to take over an account.
@@ -137,6 +157,8 @@ Every one of these writes an entry in the audit trail (`developer.password_rotat
 
 If there is more than one Developer account, the command asks "Which Developer?" and you type the email.
 
+You can also change your own password from your account page (not while you work as someone). The same strength rule applies there: 14 characters or more, a capital, a small letter, a number, a symbol, and not your email. The page shows this rule under the field (staff see the ordinary staff rule).
+
 **If you forget the password:** there is no "forgot password" email for the Developer. Run `--rotate` on your computer. Nobody else (not the Boss, the MD or a manager) can see or reset the Developer account from the Users page, and you cannot see or reset anyone else's password from anywhere (not from the console and not through Work as).
 
 **Switch it off when you are not working on the system.** An account that is off cannot be attacked.
@@ -147,11 +169,13 @@ The Developer's Audit page is **`/staff/developer/audit`**. (The Boss and the MD
 
 - Each line is one thing that happened: **a coloured dot, one plain sentence** ("Neema checked a guest in."), then **who · date · code**, and badges on the right: **Developer** (when it was you), **Succeeded** or **Failed**, and the **module** (the kind of record).
 - **Dot colours:** gold = done by you (the Developer), including when you worked as someone; blue = normal staff work; grey = the system or the website; red = it failed.
-- **Work as is shown for what it is.** An entry written while you worked as Neema reads **"Nino (Developer) as Neema (Receptionist)"**, not just "Neema". The page also keeps who you were acting as, so the Boss can always see that it was you.
-- A failed sign-in is shown as the **System**, because nobody was signed in.
-- **Filters:** *Everything*, *Developer actions*, *Failures* (a failed attempt, a refusal, or an entry that says it did not work). A **search box** looks in who did it, what it was (the action's name or its plain words) and where (the kind of record or its number). A **date range** picks the days (the last 7 days to begin with, at most one year at a time).
+- **Work as is shown for what it is.** An entry written while you worked as Neema reads **"Nino (Developer) as Neema (Receptionist)"**, not just "Neema". The page also keeps who you were acting as, so the Boss can always see that it was you. The lines about Work as itself name the person: "Developer started working as Asha (Receptionist).", "Developer stopped working as Asha (Receptionist).". When a line does not say who (an old one, or a refused try, which keeps only the account's number), it says "another person".
+- A failed sign-in is shown as the **System**, because nobody was signed in. So is the one line that says more failed sign-ins followed than are listed.
+- **Filters:** *Everything*, *Developer actions*, *Failures* (a failed attempt, a refusal, an entry that says it did not work, or a Boss notice that nobody received). A Work as that ended by itself (`developer.work_as_expired`) is information, not a failure. A **search box** looks in who did it, what it was (the action's name or its plain words) and where (the kind of record or its number). A **date range** picks the days (the last 7 days to begin with, at most one year at a time).
 - **50 entries a page**, newest first, up to 200 pages for one search (narrow the dates to go further back). Times are in the hotel's time zone.
 - Open a line to see its exact time, the business day, the record, the address (IP), the reason given, what went wrong, and the **before and after** values. Anything that looks like a secret is hidden ("[hidden]") when it is shown.
+
+**Nothing here can be edited or deleted.** The database refuses it. The only change the system ever makes to an older line is marking a cancelled check-in as cancelled (section 12 has the exact truth, including who could get round the lock).
 
 Who may read the audit trail: **the Boss, the MD and the Developer**. Nobody else. The Boss and the MD can see every Developer action, but they cannot use the Developer account's special right (`developer.access`) and cannot give it to anyone.
 
@@ -174,7 +198,7 @@ This is a fixed, written-out list, not "everything except a few things". The Dev
 - withdraw money from the hotel's nTZS balance, or settle a withdrawal by hand;
 - confirm a restaurant payment by hand, or press **Check with nTZS** / **Check all with nTZS** (they record a payment that nTZS says arrived);
 - create, issue or cancel an invoice;
-- set where a payment account's books begin, or add or change a payment account.
+- set where a payment account's books begin (its **opening balance**), or add or change a payment account (its name, kind, account number and holder, and whether it takes payments or expenses). This is refused in the screen and again in the service, whichever way it is reached.
 
 **Decide what a guest, a company or a supplier owes**
 
@@ -182,33 +206,41 @@ This is a fixed, written-out list, not "everything except a few things". The Dev
 - confirm or hold a booking without payment;
 - cancel a booking or mark a no-show (that decides whether the payment is kept or a refund is due);
 - change room prices, seasons or promotions, or the selling prices of the restaurant menu (so the whole menu set-up is for the Boss and the MD);
-- set a company's credit limit or payment terms, or approve a booking above a company's credit;
+- set a company's credit limit or payment terms (also when adding a new company, which carries its terms), or approve a booking above a company's credit;
+- make a booking that a company pays for (it is confirmed unpaid, on the company's terms), or check out a stay that a company pays for (that issues the company's invoice);
 - get supplier quotations, issue purchase orders, record deliveries or attach supplier invoices;
 - record stock received (the price paid becomes the item's cost), approve waste, count stock or correct quantities, set up inventory items and their costs;
-- set the budgets and the gifts of the Spin to Win game.
+- set the budgets and the gifts of the Spin to Win game;
+- add or change an expense type (it sets the payee and the amount that new expenses start from);
+- set a **group's** prices and who pays: a discount on a room, a room the group (or its company) pays for, a company as the payer, payment terms, going over a company's credit, who pays, and a group's invoices, payments, final bill or cancellation. (A group whose rooms all pay their own bill, with no company and no terms, is only a set of held bookings and is allowed.)
+- move a guest to a **dearer room because of a problem in the hotel's own room**: the hotel then gives the difference away as "hotel compensation", which is a decision about what the guest pays. A hotel move to a room of the same price or a cheaper one, and every move a guest asks for (the system prices it), are not decisions. This is refused for a guest who has not arrived yet and for a guest in the hotel;
+- send **food and drinks with a booking** (a pre-order, or an order charged to the room): from the booking form, from a website request being confirmed, or from the rooms of a group that pay their own bill. They land on the guest's bill at the menu's prices. One check in the booking service covers all three doors;
+- change a **hotel service's price**, whether it is chargeable, or its price note (in English or in Chinese) on the website: they are the prices guests are shown. Its name, description and icon stay open to you;
+- cancel a check-in so that a payment's **credit** moves from the person who checked the guest in: when you cancel a check-in the credit stays where it was (the person's own cancel moves it, as before).
 
 **Change where guests pay, or a limit**
 
 - change the bank account, the mobile-money (Lipa) number or the "pay into" words and terms printed on invoices;
 - change the approval limits: what an expense may be approved for, what Finance may authorize alone, and whether the buyer of a purchase may also approve it;
 - change the fees (late checkout, room service, airport transfer), the tax, or the policies for early departure, no-shows and date changes;
+- change how many days an invoice may stay unpaid, how long an unpaid booking holds its room, when a guest becomes a no-show and whether the room is then released at once, or the hour the business day starts (it decides which day every payment and report counts in);
+- switch **Pay at the hotel** on or off on the Hotel QR (it lets a guest hold a room without paying), or switch on or off whether restaurant payments wait for a person to confirm them (the restaurant's sounds can still be changed);
 - change the list of payment methods, or switch online payment on or off.
 
 The server checks this when the settings are saved: if a Developer's save would change any of these, **the whole save is refused and nothing is written** (a save that leaves them as they are works). Every other setting (the hotel's name, times, contact details, languages, wifi, texts and links) the Developer can still change.
 
 **Send or hold back the financial reports**
 
-- make, regenerate or resend the daily reports to the Boss;
+- make, regenerate or resend the daily reports to the Boss, and make or resend the weekly and monthly reports and a shift report (they count what a shift collected and may be sent to the Boss);
 - change who receives the reports, or switch them off.
 
 **Make or take over an account that can do any of the above**
 
-- create, re-activate, change the role of, reset the password of, or remove a staff account whose role holds any of these rights (or the right to make accounts);
-- give any of these rights to any role.
+An account you make (with a password you chose), or whose password you reset, is an account you can sign in as. That account is **not** a Developer, so none of the Developer's limits would apply to it. So the Developer cannot create or change accounts, passwords, login emails, roles or rights **at all** (section 5). There is no smaller version: the Boss and the MD do it, from Staff & roles.
 
-**Who does these instead.** Finance, the managers, the Boss and the MD, who answer for them, and each action carries their name. **To test a money flow, ask the Boss or the MD to create a test staff account.** The Developer cannot make one, and cannot use any account that holds money rights.
+**Who does these instead.** Finance, the managers, the Boss and the MD, who answer for them, and each action carries their name. **To test a money flow, ask the Boss or the MD to create a test staff account.** The Developer cannot make one.
 
-**What the Developer can do.** Look at every page and every record in Business; work as any staff member for everything except money and account takeover (reservations, check-in and check-out, rooms and housekeeping, guests and customers, requests, transport trips, restaurant orders and the kitchen, stock use, assets); change the settings that are not about money; manage staff accounts that hold no money right (with a reason); suspend, sign out and work as people (section 5); read the audit trail.
+**What the Developer can do.** Look at every page and every record in Business; work as any staff member for everything except money and account takeover (reservations, check-in and check-out, rooms and housekeeping, guests and customers, requests, transport trips, restaurant orders and the kitchen, stock use, assets); change the settings that are not about money; suspend, sign out, re-activate its own suspensions and work as people (section 5); read the audit trail.
 
 Money stays intact in other ways too: the Developer's role is fixed by the system and is not editable from the Users page, and these limits are enforced on the server for every page and every action, not only by hiding buttons.
 
@@ -216,8 +248,11 @@ Other protections around the account:
 
 - Nobody can create the Developer account, or give its role to someone, from the Users page. Only the setup command creates it.
 - Nobody (the Boss and MD included) can give the Developer's special right to any role.
-- When the Developer makes a sensitive change to staff accounts or roles, or suspends someone, it must give a **reason** (at least 5 characters). The reason is written in the audit trail.
+- **The Developer's email is not singled out.** If anyone (on the Users page, or changing their own email on their account page) types the Developer's email, the answer is the same ordinary words as for any other address that is taken ("A staff account with this email already exists." on the Users page, "Another staff account already uses this email." on the account page). A different answer for the Developer's address would itself tell who the Developer is.
+- The **Users page is closed to the Developer** (section 5). Switching an account off is done from **Access**, with a reason and the word CONFIRM; switching back on follows the rule in section 5.
+- When the Developer suspends someone or switches an account back on, it must give a **reason** (at least 5 characters). The reason is written in the audit trail.
 - When the Developer tries something it is not allowed to do, the refusal is written in the audit trail too (`developer.denied`), so a permission problem is visible. A refused attempt to work as someone is written as `developer.work_as_refused`.
+- When a **staff member** reaches for the Developer's pages or actions, the refusal is written under THEIR name (`developer.endpoint_refused`, with the page), at most once in 10 minutes for the same person, so a loop of refused tries cannot fill the trail. This holds for the Developer's pages (opened by address) as well as for its actions.
 
 ## 9. Business: look, don't touch
 
@@ -245,15 +280,16 @@ Every entry in the audit trail has:
 - **Time**, shown in the hotel's time zone (East Africa time), and the **business day** it belongs to.
 - **Action** (for example `reservation.created`) and the **record** it touched.
 - **Before and after:** what the record said before and what it says now.
-- **Reason**, for the sensitive changes that ask for one (staff accounts, roles, suspending).
+- **Reason**, for the changes that ask for one (suspending and switching back on).
 - **Success or failure.** A **failed or refused attempt** is written too.
-- **Looking.** Looking is an action too. A Developer's **visit to a page** is written (`developer.viewed`) for every page except the sign-in page, the "no access" page and the person's own account page; the same page is written once in 10 minutes, so refreshing does not fill the trail. A look at a tab of Business is written (`developer.business_viewed`). A look at what a person can do is written. An **export or a download** (a CSV, a ledger, a stored file) is written **every time, before the data is sent**; if the entry cannot be written, nothing is sent.
+- **Looking.** Looking is an action too. A Developer's **visit to a page** is written (`developer.viewed`) for every page except the sign-in page and the "no access" page. The account page is written too, because while you work as someone it shows THAT person's profile, phone, email and devices. The same page is written once in 10 minutes, so refreshing does not fill the trail. If one person opens more than 1,000 pages in 10 minutes, ONE line (`developer.viewed_limit`) says so, and the visits that follow are still written, in a short form: a flood never hides a real visit. A look at a tab of Business is written (`developer.business_viewed`). A look at what a person can do is written. An **export or a download** (a CSV, a ledger, a stored file) is written **every time, before the data is sent**; if the entry cannot be written, nothing is sent.
 - **Working as someone.**
-  - `developer.work_as_started` when you start (who you work as, their role), `developer.work_as_ended` when you stop or it ends (with how long it lasted), `developer.work_as_refused` when an attempt was refused (with why).
+  - `developer.work_as_started` when you start (who you work as, their role), `developer.work_as_ended` when you press Stop (with how long it lasted), `developer.work_as_expired` when it ended by itself (who, how long, and why: the 4 hours, the account, or your session; also written when the session is removed with no request, section 5), `developer.work_as_notice` for how the message to the Boss went (recipients, told, not told), `developer.work_as_refused` when an attempt was refused (with why).
   - **Everything you do while working as someone is written under your own name**, as "Nino (Developer) as Neema (Receptionist)", never under Neema's name. The hotel's own records (for example who checked a guest in) still carry Neema's name, because that is how the hotel's books work. **The audit trail is where the truth is: it says it was you.**
   - Entries written by other people at the same moment are never touched.
-- **Suspending, switching back on, signing out everywhere:** `user.suspended` (with the reason), `user.reactivated` (with the reason), `user.signed_out_everywhere`, under your name.
-- **Failed sign-ins** on a real account.
+- **A refused try to change accounts:** when the Developer tries to create or change an account, a password, a login email, a role or a right (it is always refused, section 5), the try is written as `user.create_failed`, `user.update_failed`, `user.password_reset_failed`, `user.delete_failed` or `user.permission_change_failed`, with the one message. If it came through the Users page it is written as `developer.denied`.
+- **Suspending, switching back on, signing out everywhere:** `user.suspended` (with the reason), `user.reactivated` (with the reason), `user.signed_out_everywhere`, under your name; and `developer.access_notice` for how the message to the Boss about a suspension or a sign-out went (recipients, told, not told).
+- **Failed sign-ins** on a real account: at most 10 an hour for one account are written one by one; past that, one line (`auth.login_failed_suppressed`) says that more followed (section 3). A try refused by the Developer's lock is written as a failed sign-in marked "locked".
 - The **address (IP)** the request came from, where it is known.
 
 **Never recorded: secrets.** Passwords, hashes, tokens, API keys, PINs and similar values are replaced by "[hidden]" before anything is written. Screens do not show them either.
@@ -264,7 +300,7 @@ Every entry in the audit trail has:
 - [ ] **No sharing.** Nobody else uses the Developer account. Anyone else who needs access gets their own account with the right they need.
 - [ ] **Never reuse a staff password**, or any other password, for the Developer account.
 - [ ] A **separate email** that only you can read, kept safe with a strong password.
-- [ ] **Review the Audit every week**: look for sign-ins at odd times, failed sign-ins, `developer.denied` and `developer.work_as_refused` entries, every `developer.work_as_started` (do you remember each one?), and changes to staff accounts you do not remember.
+- [ ] **Review the Audit every week**: look for sign-ins at odd times, failed sign-ins and `auth.login_failed_suppressed` lines (a flood of tries), `developer.denied`, `developer.work_as_refused` and `developer.endpoint_refused` entries, every `developer.work_as_started` (do you remember each one? did the Boss get the `developer.work_as_notice`?), every `user.suspended` and `user.signed_out_everywhere` (did the Boss get the `developer.access_notice`?), any `developer.work_as_expired` (a Work as you forgot to stop), any `user.*_failed` line under the Developer's name (someone tried to change an account or a right: it was refused), and changes to staff accounts you do not remember.
 - [ ] **Press Stop** when you finish working as someone, and **Sign out** when you finish (the 4-hour and 30-minute limits are a safety net, not a plan).
 - [ ] **Switch the account off** (`--deactivate`) when you are not working on the system. Switch it back on with `--rotate --reactivate`.
 - [ ] **Rotate the password** (`--rotate`) every few months, and at once if you lose a device, or if someone else could have seen it.
@@ -272,21 +308,26 @@ Every entry in the audit trail has:
 - [ ] Work on a computer you trust, with a screen lock.
 - [ ] To test something with money in it, **ask the Boss or the MD for a test staff account**; do not look for a way round the wall.
 
-## 12. The audit trail cannot be changed or deleted, and the risks that remain (read this)
+## 12. The audit trail is locked, and the risks that remain (read this)
 
-**No edit and no delete.** There is no screen and no button to edit or delete an audit entry, for anyone, the Developer, the MD and the Boss included. On top of that, **a database lock (a trigger) refuses every change and every delete** of an audit row. Only new entries can be added.
+**No edit and no delete in the app.** There is no screen and no button to edit or delete an audit entry, for anyone, the Developer, the MD and the Boss included. On top of that, **a database lock (a trigger) refuses every change and every delete** of an audit row. Only new entries can be added. This is the sentence the Developer pages use: *the database refuses it; the only change the system ever makes to an older line is marking a cancelled check-in as cancelled.* That sentence is about the app. The exact truth, with every exception, is this:
 
-The honest limits of this lock:
-
-- **One narrow step in the app** changes an audit row: "cancel a check-in" relabels the two earlier check-in entries as "voided" (only the action word changes), and the cancellation itself is written as a new entry with the before-state. Nothing else in the app touches an old entry.
+- **One narrow step in the app changes an audit row.** "Cancel a check-in" relabels the earlier check-in lines of that booking as cancelled (a check-in becomes "checked a guest in — cancelled later"; a walk-in becomes a plain "made a booking"). Only the action word changes; the cancellation itself is written as a new line with the before-state. It looks the lines up by booking and action, **not by who did them**, so if a Developer did that check-in (also while working as someone), that Developer line is relabelled too, in the same way. Nothing else in the app touches an old line.
+- **When an account is removed**, the database itself blanks the link from its old lines to the account. The line keeps the name and the account type.
 - **The "clean start" maintenance script** (used once before launch) opens the lock for its own run on purpose.
-- **Someone who holds the database login can get round the lock.** The lock can be switched off by a setting inside a database session, and a person with owner-level access can remove the trigger itself. So **the database address and its login are the keys to the audit trail.** Keep them limited to as few people as possible, never put them in a chat or a repository, and change them if you think they were seen.
+- **Someone who holds the database login can get round the lock.** The lock can be switched off by a setting inside a database session, and a person with owner-level access can remove the trigger itself. So **the database address and its login are the keys to the audit trail.** Keep them limited to as few people as possible, never put them in a chat or a repository, and change them if you think they were seen. This is why the pages say "the database refuses it" and not "nobody can ever".
+
+- **The whole table can be emptied.** The lock refuses a change or a delete of a line; it does not stop `TRUNCATE`, the command that empties a whole table. The test setup and the one-time clean-start tool need it, so it is left open on purpose. It needs the database login too, so it is the same key as above.
+
+(The Boss's and the MD's Audit page, `/staff/audit`, says the same in its heading: the database refuses any change or delete, and the only change the system makes to an older line is marking a cancelled check-in as cancelled.)
 
 The Developer account is built so that a mistake or a stolen password cannot write money or hide who did what. It is not a perfect wall. These are the honest limits:
 
 - **The database login is the master key.** Whoever holds the database owner login can remove the audit-trail lock, and can change any record, money included, without the app.
 - **No multi-factor authentication (MFA) yet.** This system has none, for the Developer account or for any account. A Developer sign-in is protected by a strong password, the short session, the wait after wrong tries and the audit trail, but **if someone learns the password they can sign in**, and with it they can work as anyone (except for money). Adding MFA (a code from an app or a security key, at least for the Developer, the Boss and the MD) is the **recommended next step**. Until then, the checklist in section 11 matters even more.
 - **Work as is real power.** While you work as someone you can do everything that person can do **except money and taking over the account**: check guests in and out, move rooms, change what staff changed, answer guests. The hotel's own records will carry that person's name (see section 10); only the audit trail says it was you. Anyone who reads the hotel's records without the audit trail could think the person did it. That is why every start is told to the Boss and every action is written under your name.
+- **Suspend and sign out everywhere are real power.** With a stolen Developer password someone could lock the MD, Finance, the managers and Reception out in a few clicks (never the Boss). The Boss is told by WhatsApp every time and every one is in the trail, so it is seen quickly and the Boss or the MD switches the accounts back on from Staff & roles (section 5). That is a speed limit on the harm, not a wall.
+- **The account rule is a missing right and a second lock.** The Developer role does not hold `users.manage`, and the account service refuses a Developer again whatever it holds. Someone with the database login could still edit the role by hand: the service would still refuse, the console's Settings tab warns when the Developer holds a right it is denied, and running the seed again takes away any right the role should not hold.
 - **The message to the Boss is best effort.** It is sent in the background, like the reports. If WhatsApp is not set up, or the provider is down, Work as still starts and the audit trail still has the entry. It never blocks you, and the audit trail does not depend on it.
 - **A Developer sees everything**, including guests' details and the money figures. Looking is recorded, but it cannot be undone: a Developer who has seen something has seen it.
 - **The wall is code.** The rules in section 8 and the safety rules in section 5 are in the program and in the database, and tests check them. Whoever changes the program could also remove a rule, and the Developer account itself cannot stop that. A second pair of eyes on every change to the program before it goes live, and the weekly review of the audit trail, are the real safety.

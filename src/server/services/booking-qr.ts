@@ -9,6 +9,7 @@ import { englishT } from "@/i18n/translate";
 import { rateLimit } from "../rate-limit";
 import { getSettings, stayConfig } from "../settings";
 import { siteOrigin } from "../site-origin";
+import { refuseDeveloper } from "../developer-wall";
 import { qrSvg } from "@/lib/qr-svg";
 import { businessDateOf, businessRangeBounds, fromDbDate, isBusinessDate, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import type { Prisma } from "@/generated/prisma/client";
@@ -194,6 +195,8 @@ export async function setHotelQrSettings(input: { enabled?: boolean; payAtHotel?
   if (typeof input.payAtHotel === "boolean") data.hotelQrPayAtHotel = input.payAtHotel;
   return db.$transaction(async (tx) => {
     const before = await tx.hotelSettings.findUniqueOrThrow({ where: { id: 1 }, select: { hotelQrEnabled: true, hotelQrPayAtHotel: true } });
+    // "Pay at the hotel" lets a guest hold a room without paying: where and when guests pay is not the Developer's to change.
+    if (data.hotelQrPayAtHotel !== undefined && data.hotelQrPayAtHotel !== before.hotelQrPayAtHotel) await refuseDeveloper(actor, "hotel_qr.pay_at_hotel");
     const after = Object.keys(data).length ? await tx.hotelSettings.update({ where: { id: 1 }, data, select: { hotelQrEnabled: true, hotelQrPayAtHotel: true } }) : before;
     if (Object.keys(data).length) {
       await audit(tx, actor, {

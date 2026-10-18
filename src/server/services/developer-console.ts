@@ -6,10 +6,10 @@ import { DEVELOPER_IDLE_MINUTES, DEVELOPER_SESSION_HOURS } from "../auth";
 import { businessDayConfig, getSettings } from "../settings";
 import { localCalendarDate, localParts } from "@/lib/time/business-date";
 import { ntzsEnabled, ntzsLive } from "./ntzs";
-import { auditActionWords, isFailureEntry } from "./audit-trail";
+import { auditActionWords, isFailureEntry, workAsTargetOf, type WorkAsTarget } from "./audit-trail";
 import { SYSTEM_ROLE } from "./staff-accounts";
 import { WITHDRAWAL_UNSETTLED } from "@/lib/withdrawals";
-import { DEVELOPER_DENIED, isDeveloperOnly, PERMISSIONS, type PermissionCode } from "@/lib/permissions";
+import { DEVELOPER_ACCOUNT_RIGHTS, DEVELOPER_DENIED, isDeveloperOnly, PERMISSIONS, type PermissionCode } from "@/lib/permissions";
 import { msg } from "@/i18n/msg";
 
 /**
@@ -52,6 +52,9 @@ export const AUDIT_DEVELOPER_HREF = CONSOLE_HREF.audit;
 /** One plain sentence: why the Developer holds no money-writing right. Shown with the list of them. */
 export const MONEY_RULE = msg("The Developer can see and fix everything in the system but never writes money — so a test or a mistake can never change the hotel's money, and every money entry stays with the person who made it (Finance, the Boss or the MD).");
 
+/** One plain sentence: what the Developer can and cannot do with accounts (owner, 2026-10-18). Shown with the list of rights it does not hold. */
+export const ACCOUNTS_RULE = msg("The Developer cannot create or change accounts, passwords, login emails, roles or rights — only the Boss and the MD can. It can work as a person, suspend, sign out everywhere and switch back on an account it suspended itself.");
+
 /**
  * The Developer's own door: the account type AND the right, both read from the database for this request — and not while the
  * Developer is working as someone (then the rights are that person's, and the console is shut until they press Stop).
@@ -80,11 +83,13 @@ export interface DeveloperIdentity {
   accountType: "Developer";
   /** How many rights the session holds right now. */
   rightsCount: number;
-  /** The money-writing rights the Developer does NOT hold (in plain words), and the one-sentence reason. */
+  /** The rights the Developer does NOT hold — money, and the management of accounts (in plain words) — and the one-sentence reasons. */
   notHeld: { code: string; description: string }[];
   /** Money rights that ARE held although they should not be (a role that was changed outside the setup) — empty when all is as designed. */
   heldButDenied: string[];
   reason: string;
+  /** Why the Developer cannot manage accounts (see ACCOUNTS_RULE). */
+  accountsReason: string;
   session: {
     startedAt: Date;
     lastSeenAt: Date;
@@ -122,6 +127,7 @@ export async function developerIdentity(user: ConsoleUser, sessionTokenHash: str
     notHeld: DEVELOPER_DENIED.filter((c) => !user.permissions.has(c)).map((code) => ({ code, description: PERMISSIONS[code] })),
     heldButDenied: DEVELOPER_DENIED.filter((c) => user.permissions.has(c)),
     reason: MONEY_RULE,
+    accountsReason: ACCOUNTS_RULE,
     session,
   };
 }
@@ -253,7 +259,7 @@ export type Inspection =
   | {
       ok: true;
       person: { id: string; name: string; roleCode: string; roleName: string; active: boolean };
-      right: { code: string; description: string; developerOnly: boolean; developerMoneyRight: boolean };
+      right: { code: string; description: string; developerOnly: boolean; developerMoneyRight: boolean; developerAccountRight: boolean };
       has: boolean;
       /** The role that gives the right to this person (none when they do not have it). */
       grantedBy: { code: string; name: string } | null;
@@ -293,7 +299,12 @@ export async function inspectPermission(user: ConsoleUser, input: { userId: stri
   const result: Inspection = {
     ok: true,
     person: { id: person.id, name: person.fullName, roleCode: person.role.code, roleName: person.role.name, active: person.isActive },
-    right: { code, description: PERMISSIONS[code], developerOnly: isDeveloperOnly(code), developerMoneyRight: (DEVELOPER_DENIED as readonly string[]).includes(code) },
+    right: {
+      code, description: PERMISSIONS[code], developerOnly: isDeveloperOnly(code),
+      // A denied right is either about money or about accounts — each is told in its own words.
+      developerMoneyRight: (DEVELOPER_DENIED as readonly string[]).includes(code) && !(DEVELOPER_ACCOUNT_RIGHTS as readonly string[]).includes(code),
+      developerAccountRight: (DEVELOPER_ACCOUNT_RIGHTS as readonly string[]).includes(code),
+    },
     has,
     grantedBy: has ? { code: person.role.code, name: person.role.name } : null,
     rolesWithRight,
@@ -344,12 +355,21 @@ export function parseTab(raw: unknown): ConsoleTab {
 }
 
 /**
- * Entries that are NOT work: sign-ins and sign-outs, and the Developer's own looking, checking and refusals. They are kept in the audit
- * trail (and have their own charts and lists), but they are left out of every "actions" count on the console.
+ * Entries that are NOT work: sign-ins and sign-outs, the Developer's own looking, checking and taking data out, refusals and failed
+ * attempts (nothing was saved), and the automatic notes about Work as. They are kept in the audit trail (and have their own charts and
+ * lists), but they are left out of every "actions" count on the console, as the captions say ("Sign-ins and just looking are not counted").
+ * Starting or stopping Work as is a thing the Developer did on purpose, so those two still count.
  */
 export const NOT_WORK_ACTIONS: readonly string[] = [
-  "auth.login", "auth.logout", "auth.login_failed",
-  "developer.viewed", "developer.viewed_limit", "developer.inspected", "developer.denied",
+  // sign-ins
+  "auth.login", "auth.logout", "auth.login_failed", "auth.login_failed_suppressed",
+  // looking, checking, taking data out
+  "developer.viewed", "developer.viewed_limit", "developer.business_viewed", "developer.inspected", "developer.exported", "developer.downloaded",
+  // refused or failed: nothing was saved
+  "developer.denied", "developer.work_as_refused", "developer.endpoint_refused", "settings.update.refused",
+  "user.suspend_failed", "user.reactivate_failed", "user.sign_out_failed",
+  // automatic notes about Work as
+  "developer.work_as_expired", "developer.work_as_notice", "developer.access_notice",
 ];
 
 // ───────────────────────────────────────────── Settings tab ─────────────────────────────────────────────
@@ -387,6 +407,8 @@ export interface MyAction {
   action: string;
   /** What it was, in plain English ("looked at a page") — shown through t(). */
   words: string;
+  /** The person a Work as line was about (name and role), when the line says. The page names them in the sentence. */
+  target: WorkAsTarget | null;
   entityType: string;
   /** The page, for a visit. */
   path: string | null;
@@ -411,7 +433,7 @@ export async function myActions(user: ConsoleUser, limit = MY_ACTIONS_LIMIT): Pr
     const a = asRecord(r.after);
     const acting = asRecord(a.actingAs);
     return {
-      id: r.id, at: r.createdAt, action: r.action, words: auditActionWords(r.action), entityType: r.entityType,
+      id: r.id, at: r.createdAt, action: r.action, words: auditActionWords(r.action), target: workAsTargetOf(r.action, r.after), entityType: r.entityType,
       // A visit keeps its page as the record; a refusal keeps it in its detail.
       path: r.entityType === "Page" ? short(r.entityId, 300) : short(a.path, 300),
       actingAs: typeof acting.name === "string" ? { name: acting.name.slice(0, 120), role: short(acting.role, 80) } : null,

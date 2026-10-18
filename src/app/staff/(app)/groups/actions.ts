@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { authorize, requestMeta, type CurrentUser } from "@/server/auth";
+import { authorize, authorizeDecision, requestMeta, type CurrentUser } from "@/server/auth";
 import { AppError, runAction } from "@/server/errors";
 import { parseInput } from "@/server/validation";
 import { db } from "@/server/db";
@@ -77,6 +77,9 @@ const CreateSchema = z.object({
   creditOverride: z.object({ reason: z.string().trim().min(3, msg("Say why the company may go over its limit.")).max(300) }).nullable().optional(),
 });
 
+// THE MONEY WALL for groups (owner, 2026-10-14 / 2026-10-17): a discount, a room the group or its company pays for, a company as payer, payment terms,
+// a credit override, who pays, the group's invoices, payments, final bill and cancellation are refused for the Developer — also while it works as
+// someone — in the services (server/services/groups.ts) behind these actions. Everyone else is unchanged.
 export async function createGroupAction(input: z.input<typeof CreateSchema>) {
   return runAction(async () => {
     const user = await authorize("reservations.create");
@@ -170,7 +173,9 @@ export async function updateGroupAction(input: {
 /** Everyone has left: make the final group invoice from every room's bill. */
 export async function finalizeGroupAction(input: { groupId: string }) {
   return runAction(async () => {
-    const user = await authorize("invoices.manage", "reservations.check_out");
+    // The final group invoice is made and issued here. The Developer holds reservations.check_out, so this is a decision gate: it is always refused
+    // (and the refusal is written down). Reception and the managers pass as before.
+    const user = await authorizeDecision("invoices.manage", "reservations.check_out");
     const res = await finalizeGroup(input.groupId, await actor(user));
     refresh(input.groupId);
     return res;

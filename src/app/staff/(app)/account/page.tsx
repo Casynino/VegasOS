@@ -76,7 +76,8 @@ export default async function AccountPage() {
           <ProfileForm fullName={user.fullName} email={user.email} phone={me.phone} />
         </Panel>
         <Panel title={<span className="flex items-center gap-2"><KeyRound className="size-4 text-muted-foreground" />{t("Password")}</span>} subtitle={t("Changing it signs you out on your other devices")}>
-          <ChangePasswordForm />
+          {/* The Developer's own password follows the Developer rule (while working as someone this is that person's page: the staff rule). */}
+          <ChangePasswordForm developer={user.actorType === "DEVELOPER" && !user.workAs} />
         </Panel>
       </div>
 

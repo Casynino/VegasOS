@@ -148,7 +148,7 @@ async function main() {
       });
     }
     // The Developer role is exactly its allow-list (DEVELOPER_ALLOWED + the developer-only right): whatever else it holds — a hand
-    // edit in the database, an older and wider list — is taken away here. It never holds a right that writes or decides about money.
+    // edit in the database, an older and wider list (it once held "users.manage") — is taken away here. It never holds a right that writes or decides about money, or that manages accounts.
     if (roleCode === DEVELOPER_ROLE_CODE) {
       const allowed = def.permissions.map((p) => permId.get(p)!);
       await db.rolePermission.deleteMany({ where: { roleId: role.id, permissionId: { notIn: allowed } } });

@@ -4,6 +4,7 @@ import { randomBytes } from "node:crypto";
 import { db, type Tx } from "../db";
 import { audit } from "../audit";
 import { AppError } from "../errors";
+import { refuseDeveloper } from "../developer-wall";
 import { resolveAccountTx } from "./payment-accounts";
 import { getSettingsTx, stayConfig } from "../settings";
 import { addDays, businessDateOf, fromDbDate, toDbDate, type BusinessDate } from "@/lib/time/business-date";
@@ -129,6 +130,8 @@ export async function billCompanyTx(
 ) {
   if (!actor.userId) throw new AppError("Sign in required.", "UNAUTHENTICATED");
   const { r, lines } = await unbilledLines(tx, reservationId, { includeInHouse: !!opts.includeInHouse });
+  // Making and issuing a company (or group) invoice decides what the company owes: never the Developer, also when a check-out does it.
+  if (lines.length && (r.corporateCustomer || (r.billTo === "GROUP" && r.group))) await refuseDeveloper(actor, "invoices.manage");
   if (r.billTo === "GROUP" && r.group) return lines.length ? billToGroupTx(tx, r, lines, actor, opts) : null;
   const company = r.corporateCustomer;
   if (!company || lines.length === 0) return null;

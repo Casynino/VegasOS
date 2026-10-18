@@ -4,9 +4,10 @@ import { audit } from "../audit";
 import { AppError } from "../errors";
 import { assertNotWorkAs, currentSessionTokenHash, getCurrentUser, permissionsWhileWorkingAs, requestMeta, type CurrentUser } from "../auth";
 import { canBeWorkedAs, SYSTEM_ROLE_CODE, trueActor, withActingAs, withinWorkAsLimit, WORK_AS_HOURS } from "../work-as-session";
-import { MIN_REASON, roleBlocksDeveloper } from "./staff-accounts";
 import { tellBossSoon } from "./report-delivery";
-import { DEVELOPER_ROLE_CODE } from "@/lib/permissions";
+import { recordWorkAsEnded } from "./work-as-expired";
+import { keepEndpointRefusal } from "./endpoint-refusal";
+import { DEVELOPER_DENIED, DEVELOPER_ROLE_CODE } from "@/lib/permissions";
 import { staffHome } from "@/lib/staff-home";
 import { msg } from "@/i18n/msg";
 
@@ -21,7 +22,12 @@ import { msg } from "@/i18n/msg";
  *  The Boss is told on WhatsApp every time one starts.
  *
  *  WORK AS CAN NEVER TAKE OVER AN ACCOUNT: while working as someone no account, password, login email, role, right, session or preference
- *  can be changed — refused by assertNotWorkAs in the code AND by the write fence under it (server/db.ts).
+ *  can be changed — refused by assertNotWorkAs in the code AND by the write fence under it (server/db.ts). Outside work as, the Developer
+ *  cannot create or change accounts, passwords, login emails, roles or rights either (services/staff-accounts.ts): only the Boss and the MD.
+ *  Its whole share of accounts is this file: Work as, Suspend, Sign out everywhere, and switching back on what it suspended itself.
+ *
+ *  SUSPEND and SIGN OUT EVERYWHERE are kept (a compromised staff account must be stoppable at once), but they are power: so the Boss is told
+ *  on WhatsApp EVERY time, as for Work as (who, whom, when, why), and how the telling went is written down ("developer.access_notice").
  *
  *  Every function re-checks on the server that the caller is a Developer (the account's role in the database, never a form field or a
  *  parameter); a refused attempt by a Developer is kept in the audit trail.
@@ -29,17 +35,38 @@ import { msg } from "@/i18n/msg";
 
 const FORBIDDEN_DEV = "Only the Developer account can do this.";
 const notFound = () => new AppError(msg("Staff member not found."), "NOT_FOUND");
+/** The shortest reason that is accepted for a suspension or a re-activation. */
+const MIN_REASON = 5;
+
+/**
+ * Does this role (read from the database now) hold ANY right the Developer is denied — money, or the management of accounts
+ * (DEVELOPER_DENIED)? Then the Developer never switches its accounts back on, even ones it suspended itself: the Boss or the MD does that.
+ * (The Developer cannot create or change accounts, passwords, roles or rights at all — see services/staff-accounts.ts; this is the one
+ * account switch it has, and it stops short of the people who run the money.)
+ */
+async function roleHoldsDeniedRight(roleId: string): Promise<boolean> {
+  return (await db.rolePermission.count({ where: { roleId, permission: { code: { in: [...DEVELOPER_DENIED] } } } })) > 0;
+}
+/** Said to the Developer when it tries to switch back on an account whose role holds a right it is denied — and written in the failed attempt's audit entry. */
+export const REACTIVATE_REFUSAL = msg("The Developer account cannot switch this account back on: its role holds rights about money or accounts. Ask the Boss or the MD.");
 
 /** The request's address, or none outside a request (a job, a test without headers). */
 async function callerIp(): Promise<string | null> {
   try { return (await requestMeta()).ipAddress; } catch { return null; }
 }
 
+// Someone who is not a Developer at the Developer's door is kept in one place (the pages use it too): services/endpoint-refusal.ts.
+export { ENDPOINT_REFUSED_ACTION, ENDPOINT_REFUSED_MINUTES } from "./endpoint-refusal";
+
 /** A signed-in Developer session (while working as someone too) — for pages and actions of the Developer console. It does not go through authorize(). */
 export async function requireDeveloperSession(): Promise<CurrentUser> {
   const user = await getCurrentUser();
   if (!user) throw new AppError("Your session has expired. Please sign in again.", "UNAUTHENTICATED");
-  if (user.actorType !== "DEVELOPER") throw new AppError(FORBIDDEN_DEV, "FORBIDDEN");
+  if (user.actorType !== "DEVELOPER") {
+    // A staff member at the Developer's door: refused, and not without a trace.
+    await keepEndpointRefusal(user);
+    throw new AppError(FORBIDDEN_DEV, "FORBIDDEN");
+  }
   return user;
 }
 
@@ -89,13 +116,13 @@ export interface AccessPerson {
   canSuspend: boolean;
   canReactivate: boolean;
   canSignOut: boolean;
-  /** Why a button is missing, in English ("Can't be suspended here") — shown with t(). */
+  /** Why a button is missing, in English ("Can't be suspended or signed out here") — shown with t(). */
   note: string | null;
 }
 
 /** The order the roles are listed in: the Boss first, then management, then the departments; any other role after them by name. */
 const ROLE_ORDER = ["OWNER", "ADMIN", "MANAGER", "FINANCE", "ACCOUNTANT", "RECEPTIONIST", "RESTAURANT", "KITCHEN", "RESTAURANT_SCREEN", "DRIVER"];
-const NOTE_BOSS = msg("Can't be suspended here");
+const NOTE_BOSS = msg("Can't be suspended or signed out here");
 const NOTE_REACTIVATE = msg("Only the Boss or the MD can switch this account back on");
 
 /** What changes whether an account is on or off, as the audit trail kept it. */
@@ -141,7 +168,7 @@ export async function accessPeople(developer: CurrentUser): Promise<{ roleCode: 
   const offRoleIds = [...new Set(off.map((u) => u.roleId))];
   const [mine, blockedList] = await Promise.all([
     suspendedByMe(dev.id, off.map((u) => u.id)),
-    Promise.all(offRoleIds.map(async (roleId) => ((await roleBlocksDeveloper(roleId)) ? roleId : null))),
+    Promise.all(offRoleIds.map(async (roleId) => ((await roleHoldsDeniedRight(roleId)) ? roleId : null))),
   ]);
   const blockedRoles = new Set(blockedList.filter((r): r is string => r !== null));
 
@@ -186,8 +213,17 @@ export async function startWorkAs(developer: CurrentUser, targetUserId: string):
   if (!session || session.expiresAt <= new Date() || !session.user.isActive || session.user.role.code !== DEVELOPER_ROLE_CODE || session.userId !== developer?.actorId || developer.actorType !== "DEVELOPER") {
     return refuse(new AppError(FORBIDDEN_DEV, "FORBIDDEN"), "not a Developer session");
   }
-  if (developer.workAs || (session.workAsUserId && withinWorkAsLimit(session.workAsStartedAt))) {
-    return refuse(new AppError(msg("You are already working as someone. Press Stop first."), "CONFLICT"), "already working as someone");
+  const already = () => refuse(new AppError(msg("You are already working as someone. Press Stop first."), "CONFLICT"), "already working as someone");
+  if (developer.workAs) return already();
+  // The session row may still say "working as" although the loader no longer honours it (the 4 hours are over, or that person has since been
+  // switched off or removed): that is no work-as, so it must not block a new start. It is cleared first — and written down as ended by itself.
+  // Only a row that is STILL good (a start that raced this one) blocks.
+  if (session.workAsUserId || session.workAsStartedAt) {
+    const inTime = withinWorkAsLimit(session.workAsStartedAt);
+    const holder = session.workAsUserId && inTime ? await rawDb.user.findUnique({ where: { id: session.workAsUserId }, select: { isActive: true, role: { select: { code: true } } } }) : null;
+    if (holder && canBeWorkedAs(holder)) return already();
+    await recordWorkAsEnded({ id: session.id, workAsUserId: session.workAsUserId, workAsStartedAt: session.workAsStartedAt }, { id: developer.actorId, fullName: developer.actorName },
+      session.workAsUserId && !inTime ? "limit" : "account", ipAddress);
   }
 
   const target = await db.user.findUnique({ where: { id: targetUserId }, include: { role: { include: { permissions: { include: { permission: true } } } } } });
@@ -209,7 +245,14 @@ export async function startWorkAs(developer: CurrentUser, targetUserId: string):
   const developerName = developer.actorName;
   const person = target.fullName;
   const roleName = target.role.name;
-  tellBossSoon((t, settings) => t("{developer} (Developer) started working as {person} ({role}) at {time}.", { developer: developerName, person, role: t(roleName), time: t.time(now, settings.timezone) }));
+  tellBossSoon((t, settings) => t("{developer} (Developer) started working as {person} ({role}) at {time}.", { developer: developerName, person, role: t(roleName), time: t.time(now, settings.timezone) }),
+    // Once the notice is over, how it went is written down too — so the Boss's telling is traceable (best effort, it never blocks).
+    async (told) => {
+      await audit(db, { userId: developer.actorId, label: developer.actorName, ipAddress }, {
+        action: "developer.work_as_notice", entityType: "User", entityId: target.id,
+        after: { targetName: person, recipients: told.recipients, told: told.told, failed: told.failed },
+      });
+    });
 
   return { home: staffHome(permissionsWhileWorkingAs(target.role.permissions.map((rp) => rp.permission.code))) };
 }
@@ -224,11 +267,21 @@ export async function endWorkAs(user: CurrentUser): Promise<void> {
     select: { id: true, userId: true, workAsUserId: true, workAsStartedAt: true, workAsUser: { select: { fullName: true, role: { select: { name: true } } } } },
   });
   if (!session || session.userId !== user.actorId || !session.workAsUserId) return;
-  await rawDb.session.update({ where: { id: session.id }, data: { workAsUserId: null, workAsStartedAt: null } });
   const minutes = session.workAsStartedAt ? Math.max(0, Math.round((Date.now() - session.workAsStartedAt.getTime()) / 60_000)) : null;
-  await audit(db, { userId: user.actorId, label: user.actorName, ipAddress: await callerIp() }, {
-    action: "developer.work_as_ended", entityType: "User", entityId: session.workAsUserId,
-    after: { targetName: session.workAsUser?.fullName ?? null, targetRole: session.workAsUser?.role.name ?? null, minutes },
+  const ipAddress = await callerIp();
+  // The end and its line in the trail are ONE transaction (as when a work-as ends by itself, see work-as-expired.ts): an end is never left
+  // without its line. If the trail cannot be written, nothing changes — the Developer is still working as the person and may press Stop again.
+  // The clearing is the claim, so two Stops at the same moment (or a Stop and an end by itself) make ONE line.
+  await rawDb.$transaction(async (tx) => {
+    const claimed = await tx.session.updateMany({
+      where: { id: session.id, workAsUserId: session.workAsUserId, workAsStartedAt: session.workAsStartedAt },
+      data: { workAsUserId: null, workAsStartedAt: null },
+    });
+    if (claimed.count !== 1) return; // someone else ended it (and wrote the line) first
+    await audit(tx, { userId: user.actorId, label: user.actorName, ipAddress }, {
+      action: "developer.work_as_ended", entityType: "User", entityId: session.workAsUserId,
+      after: { targetName: session.workAsUser?.fullName ?? null, targetRole: session.workAsUser?.role.name ?? null, minutes },
+    });
   });
 }
 
@@ -249,7 +302,37 @@ function checkReason(raw: string | null | undefined): string {
   return reason;
 }
 
-/** Switch an account off and sign its person out everywhere, until it is switched back on. Needs a reason and the word CONFIRM. */
+/** A reason kept short for a WhatsApp message. */
+const shortReason = (reason: string, max = 200) => (reason.length > max ? `${reason.slice(0, max - 1)}…` : reason);
+
+/**
+ * The Boss is told, on WhatsApp, that the Developer suspended an account or signed a person out everywhere — the same way as when a Work as
+ * starts: who, whom, when and why, in each reader's language. It never blocks and never throws; how the telling went is written down
+ * ("developer.access_notice": who was meant to be told, who was), so a notice that reached nobody can be seen in the Audit.
+ */
+function tellBossAboutAccess(
+  developer: CurrentUser, ipAddress: string | null, now: Date,
+  what: { kind: "suspended"; reason: string } | { kind: "signed_out_everywhere" },
+  target: { id: string; fullName: string; role: { name: string } },
+) {
+  const developerName = developer.actorName;
+  const person = target.fullName;
+  const roleName = target.role.name;
+  tellBossSoon((t, settings) => {
+    const vars = { developer: developerName, person, role: t(roleName), time: t.time(now, settings.timezone) };
+    return what.kind === "suspended"
+      ? t("{developer} (Developer) suspended {person} ({role}) at {time}. Reason: {reason}. You can switch the account back on in Staff & roles.", { ...vars, reason: shortReason(what.reason) })
+      : t("{developer} (Developer) signed {person} ({role}) out of every phone and computer at {time}. They can sign straight back in.", vars);
+  },
+  async (told) => {
+    await audit(db, { userId: developer.actorId, label: developer.actorName, ipAddress }, {
+      action: "developer.access_notice", entityType: "User", entityId: target.id,
+      after: { what: what.kind, targetName: person, targetRole: roleName, recipients: told.recipients, told: told.told, failed: told.failed },
+    });
+  });
+}
+
+/** Switch an account off and sign its person out everywhere, until it is switched back on. Needs a reason and the word CONFIRM. The Boss is told. */
 export async function suspendAccount(developer: CurrentUser, targetUserId: string, input: { reason: string; confirm: string }): Promise<void> {
   await verifiedDeveloper(developer);
   return attempt(developer, "user.suspend_failed", targetUserId, {}, async () => {
@@ -270,12 +353,14 @@ export async function suspendAccount(developer: CurrentUser, targetUserId: strin
         after: { isActive: false, reason, signedOut: ended.count },
       });
     });
+    // Told only once the suspension stands (a refused or failed one tells nobody).
+    tellBossAboutAccess(developer, ipAddress, new Date(), { kind: "suspended", reason }, target);
   });
 }
 
 /**
  * Switch back on an account THIS Developer suspended — only that (not one the Boss, the MD or another Developer switched off), and never an
- * account whose role holds money rights or "users.manage" (the Boss or the MD does that).
+ * account whose role holds any right the Developer is denied (money, or the management of accounts: the Boss or the MD does that).
  */
 export async function reactivateAccount(developer: CurrentUser, targetUserId: string, input: { reason: string }): Promise<void> {
   await verifiedDeveloper(developer);
@@ -287,8 +372,8 @@ export async function reactivateAccount(developer: CurrentUser, targetUserId: st
     if (!(await suspendedByMe(developer.actorId, [target.id])).has(target.id)) {
       throw new AppError(msg("You can only switch back on accounts you suspended yourself."), "FORBIDDEN");
     }
-    if (await roleBlocksDeveloper(target.roleId)) {
-      throw new AppError(msg("The Developer account cannot do this: it would give access to money. Ask the Boss or the MD."), "FORBIDDEN");
+    if (await roleHoldsDeniedRight(target.roleId)) {
+      throw new AppError(REACTIVATE_REFUSAL, "FORBIDDEN");
     }
     const ipAddress = await callerIp();
     await db.$transaction(async (tx) => {
@@ -309,8 +394,10 @@ export async function signOutEverywhere(developer: CurrentUser, targetUserId: st
     assertNotWorkAs(developer, "sign people out everywhere");
     const target = await loadAccount(targetUserId);
     if (target.id === developer.actorId) throw new AppError(msg("You cannot sign yourself out here: use Sign out."), "FORBIDDEN");
+    // The Boss is never signed out from here (the Access page hides the button; the server refuses it too).
+    if (target.role.code === "OWNER") throw new AppError(msg("Can't sign the Boss out here"), "FORBIDDEN");
     const ipAddress = await callerIp();
-    return db.$transaction(async (tx) => {
+    const done = await db.$transaction(async (tx) => {
       const ended = await tx.session.deleteMany({ where: { userId: target.id } });
       await audit(tx, { userId: developer.actorId, label: developer.actorName, ipAddress }, {
         action: "user.signed_out_everywhere", entityType: "User", entityId: target.id,
@@ -318,5 +405,7 @@ export async function signOutEverywhere(developer: CurrentUser, targetUserId: st
       });
       return { sessionsEnded: ended.count };
     });
+    tellBossAboutAccess(developer, ipAddress, new Date(), { kind: "signed_out_everywhere" }, target);
+    return done;
   });
 }

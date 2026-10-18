@@ -7,7 +7,9 @@ import { db } from "@/server/db";
 import { audit } from "@/server/audit";
 import { assertNotWorkAs, authorize, currentSessionTokenHash, hashPassword, requestMeta, validatePasswordStrength, verifyPassword } from "@/server/auth";
 import { isRestaurantDevice } from "@/lib/permissions";
+import { validateDeveloperPassword } from "@/lib/developer-password";
 import { normalizePhone } from "@/server/services/guests";
+import { recordWorkAsOfSessionsEnding } from "@/server/services/session-cleanup";
 import { AppError, runAction, type ActionResult } from "@/server/errors";
 import { parseInput } from "@/server/validation";
 import { rateLimit } from "@/server/rate-limit";
@@ -29,7 +31,9 @@ export async function changePasswordAction(_prev: unknown, formData: FormData): 
     assertNotWorkAs(actor, "change a password");
     const input = parseInput(Schema, formData);
     await rateLimit(`pwchange:${actor.id}`, 10, 15 * 60);
-    const weak = validatePasswordStrength(input.newPassword);
+    // The Developer's own password follows the Developer rule (14+ characters, capital, small, number, symbol, not its email — the same
+    // as the setup command's and the document's); everyone else keeps the staff rule exactly as before.
+    const weak = actor.actorType === "DEVELOPER" ? validateDeveloperPassword(input.newPassword, actor.email) : validatePasswordStrength(input.newPassword);
     if (weak) throw new AppError(weak, "VALIDATION", { newPassword: weak });
     const user = await db.user.findUniqueOrThrow({ where: { id: actor.id } });
     if (!input.currentPassword) {
@@ -38,13 +42,16 @@ export async function changePasswordAction(_prev: unknown, formData: FormData): 
       throw new AppError("Current password is incorrect.", "VALIDATION", { currentPassword: msg("Incorrect") });
     }
     const { ipAddress } = await requestMeta();
+    const current = await currentSessionTokenHash();
+    // A Developer's other sessions may still carry a work-as: each is written down as ended before it is signed out (no request will ever come
+    // on a deleted session to do it). Staff are not asked: nothing changes for them.
+    if (current && actor.actorType === "DEVELOPER") await recordWorkAsOfSessionsEnding({ userId: actor.id, tokenHash: { not: current } }, ipAddress);
     await db.$transaction(async (tx) => {
       await tx.user.update({
         where: { id: actor.id },
         data: { passwordHash: await hashPassword(input.newPassword), mustChangePassword: false },
       });
       // A new password signs out every other device.
-      const current = await currentSessionTokenHash();
       if (current) await tx.session.deleteMany({ where: { userId: actor.id, tokenHash: { not: current } } });
       await audit(tx, { userId: actor.id, label: actor.fullName, ipAddress }, {
         action: "user.password_changed", entityType: "User", entityId: actor.id,
@@ -80,6 +87,7 @@ export async function updateProfileAction(_prev: unknown, formData: FormData): P
       if (!(await verifyPassword(user.passwordHash, input.currentPassword))) {
         throw new AppError("Password is incorrect.", "VALIDATION", { currentPassword: msg("Incorrect") });
       }
+      // Any address that is taken is worded the same, whoever holds it: the Developer's email is not singled out (as on the Users page).
       const taken = await db.user.findUnique({ where: { email: input.email } });
       if (taken) throw new AppError("Another staff account already uses this email.", "VALIDATION", { email: msg("Already in use") });
     }
@@ -114,6 +122,8 @@ export async function signOutOtherDevicesAction(): Promise<ActionResult<null>> {
     if (isRestaurantDevice(actor.permissions)) throw new AppError("The restaurant screen's other screens are signed out by the MD (Staff & roles).", "FORBIDDEN");
     const current = await currentSessionTokenHash();
     const { ipAddress } = await requestMeta();
+    // A Developer's other sessions may still carry a work-as: written down as ended before they are signed out (staff: nothing changes).
+    if (actor.actorType === "DEVELOPER") await recordWorkAsOfSessionsEnding({ userId: actor.id, ...(current && { tokenHash: { not: current } }) }, ipAddress);
     await db.$transaction(async (tx) => {
       const { count } = await tx.session.deleteMany({ where: { userId: actor.id, ...(current && { tokenHash: { not: current } }) } });
       await audit(tx, { userId: actor.id, label: actor.fullName, ipAddress }, {

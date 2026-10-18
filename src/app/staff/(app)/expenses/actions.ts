@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { authorize, requestMeta, type CurrentUser } from "@/server/auth";
+import { authorize, authorizeDecision, requestMeta, type CurrentUser } from "@/server/auth";
 import { AppError, runAction, type ActionResult } from "@/server/errors";
 import { db } from "@/server/db";
 import { audit } from "@/server/audit";
@@ -112,7 +112,8 @@ const ItemSchema = z.object({
 /** Add or edit an expense type (the Admin — financial set-up). Old expenses keep their records. */
 export async function saveExpenseItemAction(input: z.input<typeof ItemSchema>) {
   return runAction(async () => {
-    const user = await authorize("settings.manage");
+    // An expense type sets the default payee and amount that expenses start from: a money set-up the Developer cannot change.
+    const user = await authorizeDecision("settings.manage");
     const d = parseInput(ItemSchema, input);
     const a = await actor(user);
     await db.$transaction(async (tx) => {

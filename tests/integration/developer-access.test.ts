@@ -98,7 +98,7 @@ describe("the actions file", () => {
 // ═════════════════════════════════════ who may open the page, and what it lists ═════════════════════════════════════
 describe("the page's data", () => {
   it("lists exactly the active and the suspended accounts that are not Developer or system accounts, grouped by role, the Boss first", async () => {
-    const suspended = await makeUser("KITCHEN", { fullName: "Suspended Access", isActive: false });
+    const suspended = await makeUser("DRIVER", { fullName: "Suspended Access", isActive: false });
     await makeSession(dev.id);
     const page = await loadAccessPage();
 
@@ -107,7 +107,7 @@ describe("the page's data", () => {
     expect(listed.map((p) => p.id).sort()).toEqual(expected.map((u) => u.id).sort());
     expect(page.count).toBe(expected.length);
     // active and suspended both, never a Developer, never the system account
-    expect(listed.find((p) => p.id === suspended.id)).toMatchObject({ group: "KITCHEN", isActive: false });
+    expect(listed.find((p) => p.id === suspended.id)).toMatchObject({ group: "DRIVER", isActive: false });
     expect(listed.find((p) => p.id === rec.id)).toMatchObject({ group: "RECEPTIONIST", isActive: true });
     for (const hidden of [dev.id, dev2.id, system.id]) expect(listed.map((p) => p.id), hidden).not.toContain(hidden);
     // each person sits in the group of their own role; one group per role; the Boss's group first
@@ -125,14 +125,14 @@ describe("the page's data", () => {
   });
 
   it("the flags say what each button may do: work as an active person; not suspend the Boss (and say why); re-activate what this Developer suspended", async () => {
-    const victim = await makeUser("KITCHEN", { fullName: "Flags Access" });
+    const victim = await makeUser("DRIVER", { fullName: "Flags Access" });
     await makeSession(dev.id);
     expect((await suspendAction(undefined, form({ userId: victim.id, reason: "flags check", confirm: "CONFIRM" }))).ok).toBe(true);
     const page = await loadAccessPage();
     const all = page.groups.flatMap((g) => g.people);
     const find = (id: string) => all.find((p) => p.id === id)!;
     expect(find(rec.id)).toMatchObject({ isActive: true, canWorkAs: true, canSuspend: true, canSignOut: true, canReactivate: false });
-    expect(find(boss.id)).toMatchObject({ canSuspend: false, note: "Can't be suspended here" });
+    expect(find(boss.id)).toMatchObject({ canSuspend: false, note: "Can't be suspended or signed out here" });
     expect(find(victim.id)).toMatchObject({ isActive: false, canWorkAs: false, canSuspend: false, canReactivate: true });
   });
 
@@ -161,8 +161,8 @@ describe("the page's data", () => {
 // ═════════════════════════════════════ nobody but a Developer ═════════════════════════════════════
 describe("a person who is not a Developer is refused by every action — nothing changes, nothing is written for them", () => {
   it("the Boss, the MD and a receptionist (and nobody signed in) can start nothing, suspend nothing, re-activate nothing, sign nobody out, stop nothing", async () => {
-    const victim = await makeUser("KITCHEN", { fullName: "Victim Staff Access" });
-    const suspended = await makeUser("KITCHEN", { fullName: "Suspended Staff Access", isActive: false });
+    const victim = await makeUser("DRIVER", { fullName: "Victim Staff Access" });
+    const suspended = await makeUser("DRIVER", { fullName: "Suspended Staff Access", isActive: false });
     await makeSession(victim.id, { setCookie: false });
     const before = { victim: await state(victim.id), suspended: await state(suspended.id), sessions: await sessions(victim.id), rec: await state(rec.id) };
 
@@ -233,7 +233,7 @@ describe("Work as and Stop", () => {
   });
 
   it("is refused for a Developer, the system account, a suspended account, a missing person — and while already working as someone (Stop first)", async () => {
-    const suspended = await makeUser("KITCHEN", { fullName: "Suspended Work Access", isActive: false });
+    const suspended = await makeUser("DRIVER", { fullName: "Suspended Work Access", isActive: false });
     await makeSession(dev.id);
     const fresh = await watch(dev.id);
     const sessionRow = () => db.session.findFirstOrThrow({ where: { userId: dev.id }, orderBy: { createdAt: "desc" } });
@@ -267,7 +267,7 @@ describe("Work as and Stop", () => {
 // ═════════════════════════════════════ suspend ═════════════════════════════════════
 describe("Suspend", () => {
   it("needs a reason of 5+ characters and exactly CONFIRM — otherwise nothing changes; with both the account is blocked, its sessions end, one entry says why", async () => {
-    const victim = await makeUser("KITCHEN", { fullName: "Victim Suspend" });
+    const victim = await makeUser("DRIVER", { fullName: "Victim Suspend" });
     await makeSession(victim.id, { setCookie: false });
     await makeSession(victim.id, { setCookie: false });
     await makeSession(dev.id);
@@ -327,7 +327,7 @@ describe("Suspend", () => {
 // ═════════════════════════════════════ re-activate ═════════════════════════════════════
 describe("Re-activate", () => {
   it("gives back an account this Developer suspended, with a reason (5+ characters); the person can be worked as again", async () => {
-    const victim = await makeUser("KITCHEN", { fullName: "Victim Reactivate" });
+    const victim = await makeUser("DRIVER", { fullName: "Victim Reactivate" });
     await makeSession(dev.id);
     expect((await suspendAction(undefined, form({ userId: victim.id, reason: "for the test", confirm: "CONFIRM" }))).ok).toBe(true);
     const fresh = await watch(dev.id);
@@ -348,13 +348,13 @@ describe("Re-activate", () => {
     expect(rows[0]).toMatchObject({ actorType: "DEVELOPER", entityId: victim.id });
     expect(afterOf(rows[0]).reason).toBe("back on duty");
     expect(revalidated).toHaveBeenCalledWith(ACCESS);
-    expect(await redirectOf(() => startWorkAsAction(undefined, form({ userId: victim.id })))).toBe(await homeOf("KITCHEN"));
+    expect(await redirectOf(() => startWorkAsAction(undefined, form({ userId: victim.id })))).toBe(await homeOf("DRIVER"));
     await redirectOf(() => stopWorkAsAction());
   });
 
   it("is refused for an account somebody else suspended (another Developer, or straight in the database) and for an account whose role holds money rights", async () => {
-    const byOther = await makeUser("KITCHEN", { fullName: "Suspended By Other" });
-    const byDatabase = await makeUser("KITCHEN", { fullName: "Suspended In Database", isActive: false });
+    const byOther = await makeUser("DRIVER", { fullName: "Suspended By Other" });
+    const byDatabase = await makeUser("DRIVER", { fullName: "Suspended In Database", isActive: false });
     const money = await makeUser("RECEPTIONIST", { fullName: "Money Reactivate" });
 
     // another Developer suspends one; this Developer suspends the receptionist
@@ -382,7 +382,7 @@ describe("Re-activate", () => {
 // ═════════════════════════════════════ sign out everywhere ═════════════════════════════════════
 describe("Sign out everywhere", () => {
   it("ends every session of the person (their old cookie is no longer a user), one entry; the Developer's own session stays", async () => {
-    const victim = await makeUser("KITCHEN", { fullName: "Victim Signout" });
+    const victim = await makeUser("DRIVER", { fullName: "Victim Signout" });
     const token = await makeSession(victim.id);
     await makeSession(victim.id, { setCookie: false });
     await makeSession(victim.id, { setCookie: false });
@@ -421,8 +421,8 @@ describe("Sign out everywhere", () => {
 // ═════════════════════════════════════ not while working as someone ═════════════════════════════════════
 describe("while working as someone: no Suspend, no Re-activate, no Sign out — Work as can never take an account over", () => {
   it("each is refused and changes nothing; after Stop they work again", async () => {
-    const victim = await makeUser("KITCHEN", { fullName: "Victim While Working" });
-    const parked = await makeUser("KITCHEN", { fullName: "Parked While Working" });
+    const victim = await makeUser("DRIVER", { fullName: "Victim While Working" });
+    const parked = await makeUser("DRIVER", { fullName: "Parked While Working" });
     await makeSession(dev.id);
     expect((await suspendAction(undefined, form({ userId: parked.id, reason: "parked for the test", confirm: "CONFIRM" }))).ok).toBe(true);
     await makeSession(victim.id, { setCookie: false });
@@ -487,7 +487,7 @@ describe("the search box", () => {
 
 // ═════════════════════════════════════ the markup ═════════════════════════════════════
 describe("the page's markup", () => {
-  const boss1 = person({ id: "p-boss", fullName: "Rehema Boss", email: "boss@hotel.test", roleName: "Owner", canSuspend: false, note: "Can't be suspended here", lastSignedInAt: minutesAgo(3 * 24 * 60) });
+  const boss1 = person({ id: "p-boss", fullName: "Rehema Boss", email: "boss@hotel.test", roleName: "Owner", canSuspend: false, note: "Can't be suspended or signed out here", lastSignedInAt: minutesAgo(3 * 24 * 60) });
   const kitchen = person({ id: "p-kitchen", fullName: "Juma Cook", email: "juma@hotel.test", roleName: "Kitchen", lastSignedInAt: minutesAgo(19 * 60) });
   const mine = person({ id: "p-mine", fullName: "Zawadi Mine", email: "mine@hotel.test", roleName: "Kitchen", isActive: false, canWorkAs: false, canSuspend: false, canReactivate: true, lastSignedInAt: minutesAgo(5) });
   const theirs = person({ id: "p-theirs", fullName: "Baraka Theirs", email: "theirs@hotel.test", roleName: "Kitchen", isActive: false, canWorkAs: false, canSuspend: false, canReactivate: false, canSignOut: false, note: "Only the Boss or the MD can switch this account back on", lastSignedInAt: null });
@@ -511,8 +511,15 @@ describe("the page's markup", () => {
     expect(words).toContain("It ends by itself after 4 hours");
     expect(words).toContain("Money is never touched");
     expect(words).toContain("You must write a reason and type CONFIRM");
-    expect(words).toContain("Safety rules while working as someone");
-    for (const rule of ["change passwords or login emails", "create accounts", "change roles or rights", "suspend people", "sign people out of all devices", "take over an account", "The Boss is told every time you start"]) expect(words, rule).toContain(rule);
+    expect(words).toContain("Safety rules");
+    expect(words).not.toContain("Safety rules while working as someone");
+    for (const rule of [
+      "The Developer account cannot create or change accounts, passwords, login emails, roles or rights", "only the Boss and the MD can",
+      "work as a person, suspend an account, sign a person out everywhere", "switch back on an account you suspended yourself",
+      "While you work as someone you can't suspend people or sign them out of all devices either", "take over an account", "The Boss is told every time you start, suspend or sign someone out",
+    ]) expect(words, rule).toContain(rule);
+    // the old allow-list is gone from the page
+    for (const gone of ["short list", "harmless", "allow-list", "accounts you may manage"]) expect(words, gone).not.toContain(gone);
     expect(draw([group("OWNER", "Owner", [boss1])])).toContain("1 account. Pick a person");
   });
 
@@ -552,7 +559,7 @@ describe("the page's markup", () => {
     expect(html).toContain('aria-label="Sign Rehema Boss out everywhere"');
     expect(html).toContain('aria-label="Sign Juma Cook out everywhere"');
     expect(html).not.toContain('aria-label="Sign Baraka Theirs out everywhere"');
-    expect(text(html)).toContain("Can't be suspended here");
+    expect(text(html)).toContain("Can't be suspended or signed out here");
     expect(text(html)).toContain("Only the Boss or the MD can switch this account back on");
     // a search box
     expect(html).toContain('type="search"');
@@ -573,7 +580,8 @@ describe("the page's markup", () => {
     const words = text(html);
     expect(words).toContain("访问管理");
     expect(words).toContain("按钮的作用");
-    expect(words).toContain("以他人身份工作时的安全规则");
+    expect(words).toContain("安全规则");
+    expect(words).toContain("开发者账号不能创建或更改账号、密码、登录邮箱、角色或权限");
     expect(words).toContain("此处不能停用");
     expect(words).toContain("从未登录");
     expect(words).toContain("已启用");

@@ -100,15 +100,16 @@ export function SettingsTab({ t, s, when }: { t: T; s: SettingsData; when: (x: D
         {id.heldButDenied.length > 0 && (
           <p role="alert" className="mt-3 flex items-start gap-2 rounded-2xl border border-amber-500/40 bg-amber-500/[0.07] px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
             <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
-            <span>{t("This account holds {n} money right(s) the Developer role is meant never to hold: {codes}. Fix the role.", { n: id.heldButDenied.length, codes: id.heldButDenied.join(", ") })}</span>
+            <span>{t("This account holds {n} right(s) about money or accounts that the Developer role is meant never to hold: {codes}. Fix the role.", { n: id.heldButDenied.length, codes: id.heldButDenied.join(", ") })}</span>
           </p>
         )}
-        <p className="mt-3 text-xs text-muted-foreground">{t("Work as ends by itself after 4 hours, or when this session ends — whichever comes first.")}</p>
+        <p className="mt-3 text-xs text-muted-foreground">{t("Work as ends by itself after 4 hours, or when this session ends — whichever comes first. The end is written to the audit trail the next time you open a page, or when the session is removed.")}</p>
       </Panel>
 
-      <Panel title={t("What you cannot do")} subtitle={t("The Developer role never writes money. This is by design, and it is checked on the server — not only hidden on the screen.")}>
-        <h3 className="flex items-center gap-2 text-sm font-semibold"><ShieldCheck className="size-4 text-emerald-600" aria-hidden />{t("Rights you do not hold (money)")}</h3>
+      <Panel title={t("What you cannot do")} subtitle={t("The Developer role never writes money and never creates or changes accounts. This is by design, and it is checked on the server — not only hidden on the screen.")}>
+        <h3 className="flex items-center gap-2 text-sm font-semibold"><ShieldCheck className="size-4 text-emerald-600" aria-hidden />{t("Rights you do not hold (money and accounts)")}</h3>
         <p className="mt-1 text-xs text-muted-foreground">{t(id.reason)}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{t(id.accountsReason)}</p>
         <ul className="mt-2 grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
           {id.notHeld.map((r) => (
             <li key={r.code} className="min-w-0 leading-snug">
@@ -124,10 +125,10 @@ export function SettingsTab({ t, s, when }: { t: T; s: SettingsData; when: (x: D
 
       <Panel title={t("What is written down about you")} subtitle={t("Nothing you do here is secret from the owner. This is the whole list.")}>
         <ul className="space-y-2 text-sm leading-relaxed text-foreground/90">
-          <li>{t("Every page you open is written to the audit trail, once per page every 10 minutes. Only the sign-in page, the “no access” page and your own account page are left out.")}</li>
+          <li>{t("Every page you open is written to the audit trail, once per page every 10 minutes. Only the sign-in page and the “no access” page are left out.")}</li>
           <li>{t("Everything you change is kept as a Developer action. While you work as someone it reads like “Nino (Developer) as Neema (Reception)” — under your name, never theirs.")}</li>
-          <li>{t("Developer entries cannot be edited or deleted — not by the system and not from the database.")}</li>
-          <li>{t("The Boss and the other report recipients are told on WhatsApp every time you start working as someone.")}</li>
+          <li>{t("Developer entries cannot be edited or deleted — the database refuses it. The only change the system ever makes to an older line is marking a cancelled check-in as cancelled.")}</li>
+          <li>{t("The Boss and the other report recipients are told on WhatsApp every time you start working as someone, and the audit trail records whether they were reached.")}</li>
           <li>{t("An export or a download is written down before the file is sent, and refused if it cannot be written.")}</li>
           <li>{t("Every refusal you meet is kept, and every look at what a person can do.")}</li>
         </ul>

@@ -12,6 +12,7 @@ vi.mock("next/navigation", async () => {
 import { db } from "@/server/db";
 import { getCurrentUser, type CurrentUser } from "@/server/auth";
 import { AppError } from "@/server/errors";
+import { NOT_WORK_ACTIONS } from "@/server/services/developer-console";
 import { activityData, crashData, DATABASE_ITEM_ID, healthReport, healthScore, healthVerdict, LOGIN_LIMITS, SCORE, speedData, type HealthReport, type Severity } from "@/server/services/developer-health";
 import { browser, makeSession, makeUser, removeMadeUsers, thrownBy, type MadeUser } from "../support/developer";
 
@@ -422,6 +423,34 @@ describe("what was found about sign-ins and accounts (a day far from any other t
     const h = await healthReport(await as(dev), now);
     expect(h.signedInToday).toBe(2);
     expect(h.actionsToday).toBe(2);
+  });
+
+  it("EVERY look, refusal, failed try and note is left out of the action counts (Business views, exports, Work as notes included); starting Work as still counts", async () => {
+    healthyEnv();
+    const day = new Date("2041-07-10");
+    const put = (action: string, minutesBefore: number, userId: string, actorType: string) => row(action, minutesBefore, { userId, actorType, entityType: "Reservation", businessDate: day });
+    // the captions say: "Sign-ins and just looking are not counted" — so each name on the list must really be left out
+    for (const action of NOT_WORK_ACTIONS) {
+      const byDeveloper = action.startsWith("developer.") || action.startsWith("user.") || action.startsWith("settings.");
+      await put(action, 10, byDeveloper ? dev.id : rec.id, byDeveloper ? "DEVELOPER" : "STAFF");
+    }
+    await put("developer.business_viewed", 9, dev.id, "DEVELOPER"); // looking at Business twice: still no action
+    await put("developer.work_as_started", 12, dev.id, "DEVELOPER"); // done on purpose: one action
+    await put("reservation.created", 20, rec.id, "STAFF");           // staff work: one action
+    const user = await as(dev);
+    const h = await healthReport(user, now);
+    expect(h.actionsToday).toBe(2);
+    const a = await activityData(user, now);
+    expect(a.stats.teamActions24h).toBe(1);
+    expect(a.stats.developerActions24h).toBe(1);
+  });
+
+  it("the list of 'not work' names holds every look-and-check action the Developer's code writes (so no new one counts as work by mistake)", () => {
+    for (const looking of ["developer.viewed", "developer.viewed_limit", "developer.business_viewed", "developer.inspected", "developer.exported", "developer.downloaded"]) expect(NOT_WORK_ACTIONS, looking).toContain(looking);
+    for (const refused of ["developer.denied", "developer.work_as_refused", "developer.endpoint_refused", "settings.update.refused", "user.suspend_failed", "user.reactivate_failed", "user.sign_out_failed"]) expect(NOT_WORK_ACTIONS, refused).toContain(refused);
+    for (const note of ["developer.work_as_expired", "developer.work_as_notice", "developer.access_notice", "auth.login_failed_suppressed"]) expect(NOT_WORK_ACTIONS, note).toContain(note);
+    // what the Developer does on purpose is work
+    for (const work of ["developer.work_as_started", "developer.work_as_ended", "user.suspended", "user.reactivated", "user.signed_out_everywhere"]) expect(NOT_WORK_ACTIONS, work).not.toContain(work);
   });
 });
 

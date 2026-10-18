@@ -2,6 +2,7 @@ import "server-only";
 import { ONLINE_RECORDER_ID } from "./online-recorder";
 import { isHotelOrder } from "@/server/desk";
 import { db } from "../db";
+import { operationalOnly } from "../staff-pickers";
 import type { Prisma } from "@/generated/prisma/client";
 import type { MoneyAccountKind } from "@/generated/prisma/enums";
 import { businessDayConfig, getSettings, stayConfig } from "../settings";
@@ -557,7 +558,7 @@ export async function collectors(from: BusinessDate, to: BusinessDate, sources: 
   const role = { select: { name: true, code: true } } as const;
   const [staff, restaurantWho, roomsWho] = await Promise.all([
     db.user.findMany({
-      where: { isActive: true, role: { code: { notIn: ["MANAGER", "ADMIN", "OWNER"] }, permissions: { some: { permission: { code: { in: codes } } } } } },
+      where: operationalOnly({ isActive: true, role: { code: { notIn: ["MANAGER", "ADMIN", "OWNER"] }, permissions: { some: { permission: { code: { in: codes } } } } } }),
       orderBy: { fullName: "asc" }, select: { id: true, fullName: true, role },
     }),
     db.restaurantOrderPayment.findMany({ where: { collectedAt: { gte: start, lt: end }, collectedById: { not: null } }, distinct: ["collectedById"], select: { collectedBy: { select: { id: true, fullName: true, role } } } }),

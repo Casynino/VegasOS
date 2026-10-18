@@ -45,7 +45,7 @@ export default async function AuditTrailPage({ searchParams }: PageProps<"/staff
     <div className="w-full">
       <PageHeader
         title={t("Audit trail")}
-        description={t("Who did what, and when: Developer, staff, system and website actions. Read-only — no entry can be changed or deleted.")}
+        description={t("Who did what, and when: Developer, staff, system and website actions. Read-only — the database refuses any change or delete. The only change the system ever makes to an older line is marking a cancelled check-in as cancelled.")}
       />
 
       <form method="get" className="mb-4 grid gap-3 rounded-lg border bg-card p-3 sm:grid-cols-2 lg:grid-cols-4" aria-label={t("Filter the audit trail")}>

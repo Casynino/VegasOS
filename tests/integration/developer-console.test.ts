@@ -37,7 +37,7 @@ import DeveloperHomePage from "@/app/staff/(app)/developer/page";
 import { logDeveloperView, trackDeveloperView, trackDeveloperViewNow, VIEW_BURST_LIMIT, VIEW_LIMIT_ACTION } from "@/server/services/developer-view-log";
 import { recordDeveloperView } from "@/app/staff/(app)/developer/actions";
 import { HARMLESS_AREAS, HARMLESS_EXACT_PATHS, isHarmlessPath, isLoggedPath } from "@/lib/developer-paths";
-import { DEVELOPER_DENIED, PERMISSIONS } from "@/lib/permissions";
+import { DEVELOPER_ACCOUNT_RIGHTS, DEVELOPER_DENIED, PERMISSIONS } from "@/lib/permissions";
 import { auditOf, browser, makeSession, makeUser, redirectOf, removeMadeUsers, setRole, sha256, thrownBy, type MadeUser } from "../support/developer";
 
 /**
@@ -176,6 +176,17 @@ describe("who you are", () => {
     expect(id.notHeld.map((r) => r.code).sort()).toEqual([...DEVELOPER_DENIED].sort());
     for (const r of id.notHeld) expect(r.description).toBe(PERMISSIONS[r.code as keyof typeof PERMISSIONS]);
     expect(id.reason.length).toBeGreaterThan(20);
+    // "Rights you do not hold" lists the right to manage accounts too, and says in its own words why
+    expect(id.notHeld.map((r) => r.code)).toContain("users.manage");
+    expect(id.accountsReason).toContain("cannot create or change accounts, passwords, login emails, roles or rights");
+  });
+
+  it("the right to manage accounts that somehow is held is reported too, not hidden", async () => {
+    const { user, hash } = await as(dev);
+    const drifted = { ...user, permissions: new Set([...user.permissions, "users.manage" as const]) } as CurrentUser;
+    const id = await developerIdentity(drifted, hash);
+    expect(id.heldButDenied).toEqual(["users.manage"]);
+    expect(id.notHeld.map((r) => r.code)).not.toContain("users.manage");
   });
 
   it("a money right that somehow is held is reported, not hidden", async () => {
@@ -428,9 +439,19 @@ describe("who can do what", () => {
 
   it("a money-writing right: the Developer does not hold it, and the answer says it is by design", async () => {
     const { user } = await as(dev);
-    for (const code of DEVELOPER_DENIED) {
+    for (const code of DEVELOPER_DENIED.filter((c) => !DEVELOPER_ACCOUNT_RIGHTS.includes(c))) {
       const r = await inspectPermission(user, { userId: dev.id, code });
-      expect(r).toMatchObject({ ok: true, has: false, right: { developerMoneyRight: true } });
+      expect(r).toMatchObject({ ok: true, has: false, right: { developerMoneyRight: true, developerAccountRight: false } });
+    }
+  });
+
+  it("the right to manage accounts: the Developer does not hold it (owner, 2026-10-18), and the answer says it is about accounts — not money", async () => {
+    const { user } = await as(dev);
+    expect(DEVELOPER_ACCOUNT_RIGHTS).toEqual(["users.manage"]);
+    for (const code of DEVELOPER_ACCOUNT_RIGHTS) {
+      const r = await inspectPermission(user, { userId: dev.id, code });
+      expect(r).toMatchObject({ ok: true, has: false, right: { code, developerMoneyRight: false, developerAccountRight: true } });
+      if (r.ok) expect(r.rolesWithRight.map((x) => x.code).sort()).toEqual(["ADMIN", "OWNER"]);
     }
   });
 
@@ -521,7 +542,12 @@ describe("a Developer's visits: which pages count", () => {
   it("an address cannot be dressed up as a harmless page (codes, dots, double slashes), and one that cannot be read is written", () => {
     for (const p of ["/staff/account/../users", "/staff/%61ccount/../finance", "/staff//login/../settings", "/staff/./forbidden/../audit/", "/staff/reports%2Fdaily", "/staff/%E0%A4%A", "/staff/login%2F..%2Fusers"]) expect(isLoggedPath(p), p).toBe(true);
     // ...and the harmless pages stay harmless however they are spelled
-    for (const p of ["/staff/%61ccount", "/staff//account/", "/staff/./login", "/staff/account/../account?x=1"]) expect(isLoggedPath(p), p).toBe(false);
+    for (const p of ["/staff/%6Cogin", "/staff//login/", "/staff/./forbidden", "/staff/forbidden/../forbidden?x=1"]) expect(isLoggedPath(p), p).toBe(false);
+  });
+
+  it("the account page is NOT harmless: while a Developer works as someone it shows that person's profile, phone, email and sessions with devices and addresses — it is written, however it is spelled", () => {
+    for (const p of ["/staff/account", "/staff/account/", "/staff/%61ccount", "/staff//account/", "/staff/account/../account?x=1", "/staff/account/anything"]) expect(isLoggedPath(p), p).toBe(true);
+    expect(HARMLESS_AREAS).not.toContain("/staff/account");
   });
 });
 
@@ -562,12 +588,13 @@ describe("a Developer's visits: what is written", () => {
   it("a harmless page is not written; every other page is — a Developer's look at Reservations or the Rooms board included; and a staff member's visit is never written, whatever the page", async () => {
     const u = await makeUser("DEVELOPER", { fullName: "Viewer Five" });
     const me = { id: u.id, fullName: u.fullName, actorType: "DEVELOPER" as const };
-    expect(await logDeveloperView(me, "/staff/account")).toBe("harmless");
+    expect(await logDeveloperView(me, "/staff/forbidden")).toBe("harmless");
     expect(await logDeveloperView(me, "/staff/login")).toBe("harmless");
     expect(await logDeveloperView(me, null)).toBe("harmless");
     expect(await viewed(u.id)).toHaveLength(0);
-    for (const p of ["/staff/reservations", "/staff/guests", "/staff/sales", "/manager/dashboard", "/staff/restaurant/history", "/staff/a-page-built-next-year"]) expect(await logDeveloperView(me, p), p).toBe("logged");
-    expect((await viewed(u.id)).map((r) => r.entityId).sort()).toEqual(["/staff/reservations", "/staff/guests", "/staff/sales", "/manager/dashboard", "/staff/restaurant/history", "/staff/a-page-built-next-year"].sort());
+    const pages = ["/staff/account", "/staff/reservations", "/staff/guests", "/staff/sales", "/manager/dashboard", "/staff/restaurant/history", "/staff/a-page-built-next-year"];
+    for (const p of pages) expect(await logDeveloperView(me, p), p).toBe("logged");
+    expect((await viewed(u.id)).map((r) => r.entityId).sort()).toEqual([...pages].sort());
     for (const who of [rec, boss, md, mgr, fin]) {
       expect(await logDeveloperView({ id: who.id, fullName: who.fullName, actorType: "STAFF" }, "/staff/finance")).toBe("not-developer");
       expect(await viewed(who.id)).toHaveLength(0);
@@ -583,29 +610,52 @@ describe("a Developer's visits: what is written", () => {
     expect(await viewed(u.id, "/staff/payments")).toHaveLength(1);
   });
 
-  it("a flood of different addresses is stopped at the limit — and the trail says so, once (never silent)", async () => {
+  it("a flood of different addresses never erases evidence: past the (generous) limit ONE marker is written, and every distinct page is STILL written, compactly, once", async () => {
+    expect(VIEW_BURST_LIMIT).toBe(1000);
     const u = await makeUser("DEVELOPER", { fullName: "Viewer Seven" });
     const me = { id: u.id, fullName: u.fullName, actorType: "DEVELOPER" as const };
     await db.auditLog.createMany({
       data: Array.from({ length: VIEW_BURST_LIMIT }, (_, i) => ({ userId: u.id, actorType: "DEVELOPER", actorRole: "DEVELOPER", actorLabel: u.fullName, action: "developer.viewed", entityType: "Page", entityId: `/staff/users/flood${i}`, businessDate: new Date("2026-10-14") })),
     });
     const markers = () => db.auditLog.findMany({ where: { userId: u.id, action: VIEW_LIMIT_ACTION } });
-    expect(await logDeveloperView(me, "/staff/users/one-more")).toBe("limit");
-    expect(await viewed(u.id)).toHaveLength(VIEW_BURST_LIMIT); // the visit itself is not written...
+    // the 1001st page: the valve is shut — and the visit is written anyway
+    expect(await logDeveloperView(me, "/staff/users/one-more")).toBe("logged-over-limit");
+    expect(await viewed(u.id)).toHaveLength(VIEW_BURST_LIMIT + 1);
     const found = await markers();
-    expect(found).toHaveLength(1); // ...but ONE marker is
+    expect(found).toHaveLength(1); // ONE marker for the window
     const [marker] = found;
     expect(marker).toMatchObject({ actorType: "DEVELOPER", actorRole: "DEVELOPER", actorLabel: u.fullName, entityType: "Page", entityId: null, after: { limit: VIEW_BURST_LIMIT, windowMinutes: 10 } });
-    // more pages in the same window: still nothing written, still one marker
-    expect(await logDeveloperView(me, "/staff/users/two-more")).toBe("limit");
-    expect(await logDeveloperView(me, "/staff/settings")).toBe("limit");
-    // at the same moment, many requests: one marker
+    const [late] = await viewed(u.id, "/staff/users/one-more");
+    expect(late).toMatchObject({ actorType: "DEVELOPER", actorLabel: u.fullName, after: { path: "/staff/users/one-more", overLimit: true } });
+    // more pages in the same window: each one is written (compact), still one marker
+    expect(await logDeveloperView(me, "/staff/users/two-more")).toBe("logged-over-limit");
+    expect(await logDeveloperView(me, "/staff/settings")).toBe("logged-over-limit");
+    // at the same moment, many requests: one marker, and every distinct page is there once
     const burst = await Promise.all(Array.from({ length: 6 }, (_, i) => logDeveloperView(me, `/staff/finance/x${i}`)));
-    expect(burst.every((r) => r === "limit")).toBe(true);
+    expect(burst.every((r) => r === "logged-over-limit")).toBe(true);
     expect(await markers()).toHaveLength(1);
-    expect(await viewed(u.id)).toHaveLength(VIEW_BURST_LIMIT);
-    // a repeat of a page already written is a repeat, not a flood
+    expect(await viewed(u.id)).toHaveLength(VIEW_BURST_LIMIT + 1 + 2 + 6);
+    // the same page again is a repeat (at most once per page per 10 minutes) — before and after the limit alike
     expect(await logDeveloperView(me, "/staff/users/flood3")).toBe("repeat");
+    expect(await logDeveloperView(me, "/staff/settings")).toBe("repeat");
+    expect(await viewed(u.id, "/staff/settings")).toHaveLength(1);
+  });
+
+  it("past the limit the OTHER entries are untouched: exports, downloads and the work-as start / end are never counted by the valve and never held back by it", async () => {
+    const { logDeveloperExport } = await import("@/server/services/developer-view-log");
+    const u = await makeUser("DEVELOPER", { fullName: "Viewer Valve" });
+    const me = { id: u.id, fullName: u.fullName, actorType: "DEVELOPER" as const };
+    await db.auditLog.createMany({
+      data: Array.from({ length: VIEW_BURST_LIMIT }, (_, i) => ({ userId: u.id, actorType: "DEVELOPER", actorRole: "DEVELOPER", actorLabel: u.fullName, action: "developer.viewed", entityType: "Page", entityId: `/staff/valve/${i}`, businessDate: new Date("2026-10-14") })),
+    });
+    expect(await logDeveloperView(me, "/staff/valve/next")).toBe("logged-over-limit");
+    expect(await logDeveloperExport(me, { kind: "exported", module: "Report", entityId: "daily", after: { path: "/api/x" } })).toBe(true);
+    expect(await logDeveloperExport(me, { kind: "downloaded", module: "StoredFile", entityId: "f1", after: {} })).toBe(true);
+    expect(await db.auditLog.count({ where: { userId: u.id, action: { in: ["developer.exported", "developer.downloaded"] } } })).toBe(2);
+    // the work-as entries are written through audit() directly (they are not visits): the valve does not know them
+    await audit(db, { userId: u.id, label: u.fullName }, { action: "developer.work_as_started", entityType: "User", entityId: null, after: { targetName: "X" } });
+    await audit(db, { userId: u.id, label: u.fullName }, { action: "developer.work_as_ended", entityType: "User", entityId: null, after: { targetName: "X" } });
+    expect(await db.auditLog.count({ where: { userId: u.id, action: { in: ["developer.work_as_started", "developer.work_as_ended"] } } })).toBe(2);
   });
 
   it("the limit is counted for each Developer; a staff member's entries and a Developer's other entries never count toward it", async () => {
@@ -651,7 +701,7 @@ describe("a Developer's visits: from a page, a layout and an action", () => {
   it("it schedules nothing for a harmless page, for staff, or when no address is known — and it does schedule for any other page, the Rooms board too", async () => {
     const u = await makeUser("DEVELOPER", { fullName: "Hook Two" });
     const me = { id: u.id, fullName: u.fullName, actorType: "DEVELOPER" as const };
-    browser.headers.set("x-pathname", "/staff/account");
+    browser.headers.set("x-pathname", "/staff/forbidden");
     await trackDeveloperView(me);
     browser.headers.delete("x-pathname");
     await trackDeveloperView(me);

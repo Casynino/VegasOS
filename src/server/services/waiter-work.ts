@@ -14,6 +14,7 @@ import { OPEN_SESSION } from "./dining-core";
 import { awaitsOnlinePayment, CLOSED_STATUSES, waitersToAssign } from "./restaurant";
 import { setOrderWaiterTx, setRoomWaiterTx, setTableWaiterTx, shortOrder, type AssignActor, type AssignVia } from "./assignments";
 import { ensureWaiterShiftTx, lockWaiterTx, openWaiterShiftTx } from "./waiter-shift-core";
+import { refuseShiftWork } from "../shift-wall";
 
 /**
  * ONE RESTAURANT, MANY WAITERS — what each waiter is responsible for, and how it changes hands.
@@ -228,6 +229,8 @@ function blockersText(r: Awaited<ReturnType<typeof responsibilitiesTx>>, t: T = 
 
 /** The waiter starts their shift (it also starts by itself when they first take work). */
 export async function startWaiterShift(actor: WorkActor, now = new Date()) {
+  // A shift is a real person's: never started by a Developer, working as someone or not.
+  await refuseShiftWork(actor, "start or end a shift", "restaurant.shift");
   if (!isWaiter(actor)) throw new AppError("Restaurant shifts are for waiters.", "FORBIDDEN");
   const me = actor.userId!;
   try {
@@ -264,6 +267,7 @@ async function closeWaiterShiftTx(tx: Tx, shift: { id: string; userId: string; b
 
 /** The waiter closes their own shift — refused while any order or table is still theirs (transfer or finish it first). */
 export async function endWaiterShift(actor: WorkActor, note?: string | null, now = new Date()) {
+  await refuseShiftWork(actor, "start or end a shift", "restaurant.shift");
   if (!actor.userId) throw new AppError("Sign in first.", "FORBIDDEN");
   const me = actor.userId;
   const t = await actorT();
@@ -285,6 +289,8 @@ export async function endWaiterShift(actor: WorkActor, note?: string | null, now
  * them, the manager names the waiter on shift who takes all of it over, in the same step.
  */
 export async function closeWaiterShiftAsManager(actor: WorkActor & { userId: string; permissions: ReadonlySet<string> }, shiftId: string, reason: string, toUserId?: string | null, now = new Date()) {
+  // Closing someone's shift hands their tables and orders over and sends their report to the Boss: a Developer never does it.
+  await refuseShiftWork(actor, "close someone's shift", "shifts.manage");
   if (!actor.permissions.has("shifts.manage")) throw new AppError("Only a manager can close someone's shift.", "FORBIDDEN");
   const why = reason.trim();
   if (why.length < 5) throw new AppError("Say why you close this shift (e.g. the waiter left without closing).", "VALIDATION", { reason: "Required" });

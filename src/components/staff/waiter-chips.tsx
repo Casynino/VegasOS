@@ -5,6 +5,7 @@ import { Initials } from "@/components/dashboard/kit";
 import { cn } from "@/lib/utils";
 import { colleaguesAction } from "@/app/staff/(app)/restaurant/waiter-actions";
 import { useIsRestaurantDevice } from "./waiter-pin";
+import { useQuiet } from "./quiet";
 import { useT } from "@/i18n/client";
 
 type Waiter = { id: string; name: string; number?: string | null; onShiftSince: string | null };
@@ -17,6 +18,8 @@ const first = (n: string) => n.replace(/\s*\(.*\)/, "").trim().split(/\s+/)[0];
 export function WaiterChips({ value, onChange }: { value: string; onChange: (id: string) => void }) {
   const t = useT();
   const device = useIsRestaurantDevice();
+  // A quiet session (a Developer's) asks once when the screen opens, never again on a timer (it would keep the idle rule from ending the session).
+  const quiet = useQuiet();
   const [waiters, setWaiters] = useState<Waiter[] | null>(null);
 
   // Loaded now and again whenever the screen comes back into view (shifts start and end during the day).
@@ -28,9 +31,9 @@ export function WaiterChips({ value, onChange }: { value: string; onChange: (id:
     const again = () => { if (document.visibilityState === "visible") void load(); };
     window.addEventListener("focus", again);
     document.addEventListener("visibilitychange", again);
-    const timer = setInterval(again, 60_000);
-    return () => { live = false; window.removeEventListener("focus", again); document.removeEventListener("visibilitychange", again); clearInterval(timer); };
-  }, [device]);
+    const timer = quiet ? undefined : setInterval(again, 60_000);
+    return () => { live = false; window.removeEventListener("focus", again); document.removeEventListener("visibilitychange", again); if (timer) clearInterval(timer); };
+  }, [device, quiet]);
 
   if (!device) return null;
   // Only the waiters on shift take work.

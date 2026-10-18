@@ -15,8 +15,13 @@ import m_developer_logging from "./developer-logging";
 import m_developer_login from "./developer-login";
 import m_developer_pages from "./developer-pages";
 import m_developer_rights from "./developer-rights";
+import m_developer_session2 from "./developer-session2";
+import m_developer_session3 from "./developer-session3";
 import m_developer_shell from "./developer-shell";
+import m_developer_ui2 from "./developer-ui2";
 import m_developer_users from "./developer-users";
+import m_developer_wall2 from "./developer-wall2";
+import m_developer_wall3 from "./developer-wall3";
 import m_developer_workas from "./developer-workas";
 import m_finance_home from "./finance-home";
 import m_finance from "./finance";
@@ -66,8 +71,13 @@ const catalog: Catalog = {
   ...m_developer_login,
   ...m_developer_pages,
   ...m_developer_rights,
+  ...m_developer_session2,
+  ...m_developer_session3,
   ...m_developer_shell,
+  ...m_developer_ui2,
   ...m_developer_users,
+  ...m_developer_wall2,
+  ...m_developer_wall3,
   ...m_developer_workas,
   ...m_finance_home,
   ...m_finance,

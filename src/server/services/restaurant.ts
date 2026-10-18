@@ -1742,6 +1742,8 @@ export async function saveOrderSounds(input: OrderSoundSettings, actor: Actor) {
   if (!actor.permissions?.has("restaurant.menu") && !actor.permissions?.has("settings.manage")) throw new AppError("Only a manager can change the restaurant sounds.", "FORBIDDEN");
   await db.$transaction(async (tx) => {
     const before = await tx.hotelSettings.findUniqueOrThrow({ where: { id: 1 }, select: { orderSoundsEnabled: true, orderSoundVolume: true, newOrderSound: true, readyOrderSound: true, orderPaymentConfirm: true } });
+    // Whether a payment waits for a person to confirm it is a payment rule: the Developer cannot change it (the sounds are fine).
+    if (input.orderPaymentConfirm !== before.orderPaymentConfirm) await refuseDeveloper(actor, "restaurant.payments.confirm");
     await tx.hotelSettings.update({ where: { id: 1 }, data: { ...input, updatedById: actor.userId ?? null } });
     await audit(tx, actor, { action: "settings.order_sounds", entityType: "HotelSettings", entityId: "1", before, after: { ...input } });
   });

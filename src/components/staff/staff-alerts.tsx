@@ -41,19 +41,25 @@ const EVERY_MS = 5000;
  * tab, browser and device they use, until they tap it on again. Amber: on, but the browser still
  * wants one tap on the page before it may ring. The red number lists what is waiting. On the
  * restaurant portal the orders ring there (the same on / off).
+ *
+ * NOT FOR A DEVELOPER (owner, 2026-10-17): in a quiet session (src/lib/quiet.ts — the Developer's console AND while it works as someone)
+ * the bell is not drawn at all, so none of its timers exist: no polling, no automatic page refresh, no ring. The Developer is not part of the
+ * team that is rung for, and a bell that asks the server every few seconds would keep its 30-minute idle rule from ever ending the session.
  */
-export function StaffAlerts({ sound, soundOff, locked = false }: {
+export function StaffAlerts({ sound, soundOff, quiet = false }: {
   sound: AlertSound; soundOff: boolean;
-  /** A Developer is working as this person: the bell shows what is waiting for them, but the on / off choice is theirs alone (it is saved on their account). */
-  locked?: boolean;
+  /** A quiet session (a Developer's): nothing is drawn and nothing runs. */
+  quiet?: boolean;
 }) {
+  if (quiet) return null;
+  return <StaffBell sound={sound} soundOff={soundOff} />;
+}
+
+function StaffBell({ sound, soundOff }: { sound: AlertSound; soundOff: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
   const audio = useAudioReady();
   const muted = useMuted(soundOff);
-  // While a Developer works as someone, the person's own on / off choice is shown but never copied into this browser (it stays the Developer's own).
-  const lockedRef = useRef(locked);
-  useEffect(() => { lockedRef.current = locked; });
   const [items, setItems] = useState<StaffAlert[]>([]);
   const [online, setOnline] = useState(true);
   const seen = useRef<Set<string> | null>(null);
@@ -70,7 +76,7 @@ export function StaffAlerts({ sound, soundOff, locked = false }: {
 
   // Off on the account (e.g. switched on another computer): off here too.
   const firstOff = useRef(soundOff);
-  useEffect(() => { if (!lockedRef.current) syncMuted(firstOff.current, muteStamp()); }, []);
+  useEffect(() => { syncMuted(firstOff.current, muteStamp()); }, []);
 
   // The first tap anywhere lets the browser play sound (browsers need one) — it never switches the bell on or off.
   useEffect(() => {
@@ -93,7 +99,7 @@ export function StaffAlerts({ sound, soundOff, locked = false }: {
         const { items: all, soundOff: off } = (await res.json()) as { items: StaffAlert[]; soundOff: boolean };
         if (stop) return;
         setOnline(true);
-        if (!lockedRef.current) syncMuted(off, stamp);
+        syncMuted(off, stamp);
         setItems(all);
         const key = all.map((x) => x.id).join(",");
         if (last.current !== null && key !== last.current) router.refresh();
@@ -126,7 +132,6 @@ export function StaffAlerts({ sound, soundOff, locked = false }: {
   const on = sound.enabled && !muted;
   const tone: DotTone = !on ? "off" : audio && online ? "on" : "wait";
   const toggle = async () => {
-    if (locked) { toast(t("The sound is the person's own choice — it cannot be changed while you are working as them.")); return; }
     if (!sound.enabled) { toast(t("Sounds are switched off in the manager's sound settings.")); return; }
     if (on) {
       toast(t("Sound off — no ringing on any of your screens."));

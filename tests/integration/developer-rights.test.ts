@@ -118,12 +118,17 @@ const EDIT: Record<string, string> = {
   lateCheckoutFee: "1", roomServiceFee: "1", airportTransferPrice: "1", taxName: "No tax", taxRatePercent: "0", taxIncludedInRates: "flip",
   earlyDeparturePolicy: "CHARGE_FULL_STAY", noShowPolicy: "REFUND_DUE", dateChangeExcessPolicy: "CREDIT", dateChangePayNow: "flip",
   reportEnabled: "flip", shiftReportEnabled: "flip", reportRecipients: "Intruder, +255700000001",
+  // Payment terms, holding a booking without payment, what a no-show is, the business day (added with the money-wall review, 2026-10-17)
+  invoiceDefaultDueDays: "90", unpaidHoldHours: "72", noShowCutoffMinutes: "03:30", noShowAutoRelease: "flip", businessDayStartMinutes: "05:00",
 };
+/** The two settings whose form field is named differently (the form takes "HH:MM" under another name). */
+const FORM_FIELD: Record<string, string> = { noShowCutoffMinutes: "noShowCutoff", businessDayStartMinutes: "businessDayStart" };
 
 async function editFor(key: string): Promise<Record<string, string | null>> {
-  if (EDIT[key] !== "flip") return { [key]: EDIT[key] };
-  const current = (await form()).get(key);
-  return { [key]: current ? null : "on" };
+  const field = FORM_FIELD[key] ?? key;
+  if (EDIT[key] !== "flip") return { [field]: EDIT[key] };
+  const current = (await form()).get(field);
+  return { [field]: current ? null : "on" };
 }
 
 const FIELDS = [...DEVELOPER_LOCKED_SETTINGS] as (keyof Awaited<ReturnType<typeof settings>>)[];

@@ -1,5 +1,6 @@
 import "server-only";
 import { db } from "../db";
+import { withoutDeveloper } from "../staff-pickers";
 import { AppError } from "../errors";
 
 /**
@@ -110,7 +111,7 @@ export type BoardRow = Awaited<ReturnType<typeof procurementBoard>>["list"][numb
 export async function boardFilterOptions() {
   const [suppliers, requesters, departments] = await Promise.all([
     db.supplier.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
-    db.user.findMany({ where: { stockRequests: { some: {} } }, orderBy: { fullName: "asc" }, select: { id: true, fullName: true } }),
+    db.user.findMany({ where: withoutDeveloper({ stockRequests: { some: {} } }), orderBy: { fullName: "asc" }, select: { id: true, fullName: true } }),
     db.inventoryDepartment.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
   return { suppliers, requesters, departments };

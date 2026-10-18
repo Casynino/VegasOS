@@ -4,8 +4,9 @@ import { AppError } from "@/server/errors";
 import { redact, type ActorType } from "@/server/audit";
 import { getSettings } from "@/server/settings";
 import { DEVELOPER_ROLE_CODE } from "@/lib/permissions";
-import { friendlyAction } from "@/lib/activity-words";
+import { ACCOUNT_AND_DEVELOPER_WORDS, friendlyAction } from "@/lib/activity-words";
 import { msg } from "@/i18n/msg";
+import type { T } from "@/i18n/translate";
 import { addDays, diffDays, fromDbDate, isBusinessDate, localCalendarDate, toDbDate, zonedInstant } from "@/lib/time/business-date";
 import type { Prisma } from "@/generated/prisma/client";
 
@@ -65,52 +66,83 @@ export function assertCanViewAuditTrail(v: AuditViewer | null | undefined): asse
 /** Boss and MD see Developer actions (accountability); so does the Developer. Kept as one rule so it can only be narrowed in one place. */
 export const seesDeveloperActions = (v: AuditViewer): boolean => canViewAuditTrail(v);
 
-/** A failed attempt by its name: ending "_failed" (a sign-in, a staff change), or a refusal ("developer.denied", "….refused", "developer.work_as_refused"). */
+/**
+ * A failed attempt by its name: ending "_failed" (a sign-in, a staff change, "user.suspend_failed"), or a refusal ("developer.denied",
+ * "settings.update.refused", "developer.work_as_refused", "developer.endpoint_refused"). Notes are NOT failures: "developer.work_as_expired"
+ * (Work as ran out of time — it is information), "developer.viewed_limit", "auth.login_failed_suppressed" (a marker that says more failed
+ * sign-ins followed than are listed one by one — the failed sign-ins themselves are the failures).
+ */
 export const isFailureAction = (action: string): boolean => /(_failed|_refused|\.denied|\.refused)$/.test(action);
 
-/** A failure by its name, or by the entry itself saying so (a Developer's inspection that ended with `ok: false`). */
-export const isFailureEntry = (action: string, after: unknown): boolean => isFailureAction(action) || field(after, "ok") === false;
+/** A notice to the Boss (about a Work as, a suspension, a sign-out everywhere) that reached nobody, or not everybody (`after.told` / `after.failed`, written when the notice was over). */
+const bossNotToldAbout = (action: string, after: unknown): boolean =>
+  (action === "developer.work_as_notice" || action === "developer.access_notice") && (field(after, "told") === 0 || Number(field(after, "failed")) > 0);
+
+/** A failure by its name, or by the entry itself saying so (a Developer's inspection that ended with `ok: false`; a notice the Boss did not get). */
+export const isFailureEntry = (action: string, after: unknown): boolean => isFailureAction(action) || field(after, "ok") === false || bossNotToldAbout(action, after);
 
 // ─────────────────────────────────────────────── the words ───────────────────────────────────────────────
 
-/** Plain words for the entries the activity list has no words for (failed attempts, staff accounts, the audit trail itself). */
+/**
+ * Plain words for the entries the activity list has no words for (failed attempts, staff accounts, the audit trail itself). The Developer's
+ * and the account steps are in ONE table with the history lists (activity-words.ts); the few lines here are the audit trail's own wording.
+ */
 const WORDS: Record<string, string> = {
+  ...ACCOUNT_AND_DEVELOPER_WORDS,
   // A failed sign-in is nobody's action: it is the system's entry about an account that someone tried (see recordFailedSignIn).
   "auth.login_failed": msg("Failed sign-in (not signed in)"),
-  "developer.denied": msg("was refused — no permission"),
-  "developer.viewed": msg("looked at a page"),
-  "developer.viewed_limit": msg("opened very many pages in a short time (not every page is listed)"),
-  "developer.exported": msg("exported records to a file"),
-  "developer.downloaded": msg("downloaded a file"),
-  "developer.inspected": msg("checked what a person can do"),
-  "developer.business_viewed": msg("looked at the business data"),
-  "developer.work_as_started": msg("started working as another person"),
-  "developer.work_as_ended": msg("stopped working as another person"),
-  "developer.work_as_refused": msg("was refused when trying to work as another person"),
-  "developer.provisioned": msg("set up the Developer account"),
-  "developer.password_rotated": msg("changed the Developer password"),
-  "developer.deactivated": msg("switched the Developer account off"),
   "user.created": msg("added a staff account"),
   "user.deleted": msg("removed a staff account"),
+  "withdrawal.refused": msg("had a withdrawal refused"),
+  "setup.team_logins": msg("set up the team's sign-ins"),
   "user.updated": msg("changed a staff account's details"),
   "user.role_changed": msg("changed a staff account's role"),
   "user.deactivated": msg("switched a staff account off"),
   "user.reactivated": msg("switched a staff account back on"),
-  "user.suspended": msg("suspended a staff account"),
-  "user.signed_out_everywhere": msg("signed a person out of every device"),
   "user.password_reset": msg("reset a password"),
-  "user.create_failed": msg("could not add a staff account"),
-  "user.update_failed": msg("could not change a staff account"),
-  "user.password_reset_failed": msg("could not reset a password"),
-  "user.permission_change_failed": msg("could not change a role's rights"),
-  "user.delete_failed": msg("could not remove a staff account"),
-  "withdrawal.refused": msg("had a withdrawal refused"),
-  "setup.team_logins": msg("set up the team's sign-ins"),
 };
+
+/**
+ * Entries that read as a note, not as something a person did: the sentence has no "who" in front ("Failed sign-in …", "Working as Asha
+ * (Receptionist) ended by itself …"). Whoever wrote them (the system, or the Developer's own session) is still shown on the line below.
+ */
+export const NOTE_ACTIONS: ReadonlySet<string> = new Set(["auth.login_failed", "auth.login_failed_suppressed", "developer.work_as_expired", "developer.work_as_notice", "developer.access_notice"]);
 
 /** What an action was, in plain words ("checked a guest in"); the raw name when nobody wrote words for it. */
 export function auditActionWords(action: string): string {
   return WORDS[action] ?? friendlyAction(action);
+}
+
+/** The person a "Work as" line is about. */
+export interface WorkAsTarget { name: string; role: string | null }
+
+/** The entries about one Work as: they carry the person's name and role in their own record (`after.targetName` / `after.targetRole`). */
+const WORK_AS_ABOUT: ReadonlySet<string> = new Set(["developer.work_as_started", "developer.work_as_ended", "developer.work_as_expired", "developer.work_as_notice", "developer.access_notice"]);
+
+/**
+ * Who a Work as line was about, read from the line's own record. null when it does not say (an old line, a refused attempt — a refusal
+ * keeps the account's number, not its name). Never the Developer's own name.
+ */
+export function workAsTargetOf(action: string, after: unknown): WorkAsTarget | null {
+  if (!WORK_AS_ABOUT.has(action)) return null;
+  const name = short(field(after, "targetName"), 120);
+  return name ? { name, role: short(field(after, "targetRole"), 120) } : null;
+}
+
+/**
+ * The plain words of one line, with the person named when it is a Work as line: "started working as Asha (Receptionist)" — and the
+ * general words ("started working as another person") when the record does not say who. Translated here, because the name is in the middle.
+ */
+export function auditWordsFor(action: string, target: WorkAsTarget | null, t: T): string {
+  const person = target ? (target.role ? t("{name} ({role})", { name: target.name, role: t(target.role) }) : target.name) : null;
+  if (person) {
+    if (action === "developer.work_as_started") return t("started working as {person}", { person });
+    if (action === "developer.work_as_ended") return t("stopped working as {person}", { person });
+    if (action === "developer.work_as_expired") return t("Working as {person} ended by itself (the time was over or the session ended)", { person });
+    if (action === "developer.work_as_notice") return t("Notice to the Boss about working as {person}", { person });
+    if (action === "developer.access_notice") return t("Notice to the Boss about a change to the account of {person}", { person });
+  }
+  return t(auditActionWords(action));
 }
 
 // ─────────────────────────────────────────────── the filter ───────────────────────────────────────────────
@@ -195,7 +227,7 @@ function dateWhere(from: string, to: string, timezone: string): Prisma.AuditLogW
 /** What was typed, as plain text for a LIKE search: a % or _ is itself, not a wildcard (Postgres's escape character is the backslash). */
 const likeLiteral = (s: string) => s.replace(/[\\%_]/g, "\\$&");
 
-/** Rows that did not work: the same rule as isFailureEntry, as a database filter (a name ending _failed / _refused / .denied / .refused, or `after.ok` = false). */
+/** Rows that did not work: the same rule as isFailureEntry, as a database filter (a name ending _failed / _refused / .denied / .refused, `after.ok` = false, or a Boss notice nobody got). */
 const FAILURE_ROWS: Prisma.AuditLogWhereInput = {
   OR: [
     { action: { endsWith: "_failed" } },
@@ -203,6 +235,7 @@ const FAILURE_ROWS: Prisma.AuditLogWhereInput = {
     { action: { endsWith: ".denied" } },
     { action: { endsWith: ".refused" } },
     { after: { path: ["ok"], equals: false } },
+    { AND: [{ action: { in: ["developer.work_as_notice", "developer.access_notice"] } }, { OR: [{ after: { path: ["told"], equals: 0 } }, { after: { path: ["failed"], gt: 0 } }] }] },
   ],
 };
 

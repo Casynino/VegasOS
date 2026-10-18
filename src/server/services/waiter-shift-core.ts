@@ -4,6 +4,8 @@ import { audit } from "../audit";
 import { getSettingsTx, stayConfig } from "../settings";
 import { businessDateOf, toDbDate } from "@/lib/time/business-date";
 import type { Actor } from "./reservations";
+import { actsAsDeveloper } from "../developer-wall";
+import { workAsOfRequest } from "../db";
 
 /**
  * A WAITER'S SHIFT — the low-level pieces shared by the order engine, the tables and the waiter's
@@ -20,11 +22,16 @@ export async function lockWaiterTx(tx: Tx, ...userIds: (string | null | undefine
 /** The waiter's open restaurant shift, if any. */
 export const openWaiterShiftTx = (tx: Tx, userId: string) => tx.actualShift.findFirst({ where: { userId, endedAt: null, department: "RESTAURANT" } });
 
-/** Taking work starts the waiter's shift when it is not running yet — recorded like any start. */
+/**
+ * Taking work starts the waiter's shift when it is not running yet — recorded like any start.
+ * A Developer working as the waiter does the work but never starts a shift in their name (their shift is theirs, and its closing counts
+ * for them): then nothing is started and the shift that is already running (if any) is returned.
+ */
 export async function ensureWaiterShiftTx(tx: Tx, userId: string, actor: Actor, now: Date, why: string) {
   await lockWaiterTx(tx, userId);
   const open = await tx.actualShift.findFirst({ where: { userId, endedAt: null } });
   if (open) return open;
+  if (actsAsDeveloper(actor) || (await workAsOfRequest())?.targetId === userId) return null;
   const settings = await getSettingsTx(tx);
   const shift = await tx.actualShift.create({ data: { department: "RESTAURANT", businessDate: toDbDate(businessDateOf(now, stayConfig(settings))), userId, startedAt: now } });
   await audit(tx, actor, { action: "shift.started", entityType: "ActualShift", entityId: shift.id, after: { department: "RESTAURANT", waiterId: userId, started: why } });

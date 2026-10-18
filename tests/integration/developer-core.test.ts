@@ -259,12 +259,14 @@ describe("rights: the Developer-only right, the audit right, and no money for th
     expect(holders).toEqual(["ADMIN", "DEVELOPER", "OWNER"]);
   });
 
-  it("in the code: the Developer role holds no right that writes money", () => {
+  it("in the code: the Developer role holds no right that writes money, and none that manages accounts", () => {
     const has = new Set<string>(DEFAULT_ROLES.DEVELOPER.permissions);
     for (const denied of DEVELOPER_DENIED) expect(has.has(denied), denied).toBe(false);
+    expect(DEVELOPER_DENIED, "creating and changing accounts, passwords, emails, roles and rights is the Boss's and the MD's alone (owner, 2026-10-18)").toContain("users.manage");
+    expect(has.size, "56 rights").toBe(56);
     expect(DEVELOPER_DENIED).toEqual(expect.arrayContaining(["payments.record", "payments.reverse", "expenses.approve", "purchases.pay", "withdrawals.manage", "finance.manage", "restaurant.payments.confirm"]));
     // but it inspects and runs everything else
-    for (const code of ["reservations.view", "users.manage", "settings.manage", "audit.view", "developer.access", "ledger.view", "shifts.manage"] as PermissionCode[]) expect(has.has(code), code).toBe(true);
+    for (const code of ["reservations.view", "settings.manage", "audit.view", "developer.access", "ledger.view", "shifts.manage"] as PermissionCode[]) expect(has.has(code), code).toBe(true);
   });
 
   it("in the database: only the DEVELOPER role holds developer.access", async () => {
@@ -277,9 +279,11 @@ describe("rights: the Developer-only right, the audit right, and no money for th
     expect(holders.map((h) => h.role.code).sort()).toEqual(["ADMIN", "DEVELOPER", "OWNER"]);
   });
 
-  it("in the database: the DEVELOPER role has no money-writing right and has the whole of the rest", async () => {
+  it("in the database: the DEVELOPER role has no money-writing right and no 'users.manage', and has the whole of the rest", async () => {
     const has = await codesOf(DEVELOPER_ROLE_CODE);
     for (const denied of DEVELOPER_DENIED) expect(has.has(denied), denied).toBe(false);
+    expect(has.has("users.manage")).toBe(false);
+    expect(has.size).toBe(56);
     const missing = DEFAULT_ROLES.DEVELOPER.permissions.filter((p) => !has.has(p));
     expect(missing, "rights the code gives the Developer but the database does not").toEqual([]);
     const extra = [...has].filter((p) => !(DEFAULT_ROLES.DEVELOPER.permissions as string[]).includes(p));
@@ -519,7 +523,7 @@ describe("a refused Developer is kept in the audit trail; a refused staff member
     expect((rows[0].after as { needs: string[] }).needs).toEqual(["payments.record", "finance.manage"]);
   });
 
-  it("every money-writing right is refused for the Developer, each leaving its own entry", async () => {
+  it("every denied right (money, and the management of accounts) is refused for the Developer, each leaving its own entry", async () => {
     await makeSession(dev.id, { createdMinAgo: 5, seenMinAgo: 1 });
     const before = (await deniedOf(dev.id)).length;
     for (const code of DEVELOPER_DENIED) {
@@ -567,7 +571,10 @@ describe("a refused Developer is kept in the audit trail; a refused staff member
     expect(await redirectOf(() => requirePagePermission("audit.view"))).toBe("/staff/forbidden");
 
     expect(await deniedTotal()).toBe(before);
-    expect((await auditOf(rec.id)).length).toBe(mine);
+    // Not a 'developer.denied' entry, but the receptionist's try at the Developer's page is kept (once, as 'developer.endpoint_refused').
+    const after = await auditOf(rec.id);
+    expect(after.length).toBe(mine + 1);
+    expect(await auditOf(rec.id, "developer.endpoint_refused")).toHaveLength(1);
   });
 
   it("the Boss and the MD refused the Developer-only right: refused, and no 'developer.denied' entry", async () => {

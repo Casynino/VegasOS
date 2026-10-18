@@ -3,6 +3,7 @@ import { db, type Tx } from "../db";
 import { audit } from "../audit";
 import { AppError, isExclusionViolation } from "../errors";
 import { getSettingsTx, stayConfig } from "../settings";
+import { refuseDeveloper } from "../developer-wall";
 import { businessDateOf, eachDate, fromDbDate, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import { shortTimeRate } from "@/lib/short-time";
 import { CHECK_IN_READY } from "@/lib/room-status";
@@ -187,6 +188,10 @@ export async function changeRoomTx(tx: Tx, input: RoomChangeInput, actor: Actor,
 
   // Money: the system works it out.
   const q = await quoteTx(tx, rr.id, toRoom.id, now);
+  // The hotel moves a guest to a DEARER room at the old price: the difference is given away as "hotel compensation". Deciding to give value
+  // is a decision about what the guest pays — never the Developer's, on its own account or working as someone (as when it moves a guest in
+  // reassignRoomTx). A move to the same-priced or a cheaper room, and every move a guest asks for (the system prices it), are not decisions.
+  if (hotel && q.difference > 0) await refuseDeveloper(actor, "reservations.edit");
   const upgrade = !hotel && q.difference > 0;
   const downgrade = !hotel && q.difference < 0;
   // A cheaper room never lowers the price already agreed.

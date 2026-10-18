@@ -7,6 +7,7 @@ import { sweepWithdrawals } from "@/server/services/withdrawals";
 import { refreshOverdueInvoices } from "@/server/services/invoices";
 import { refreshBookingStates } from "@/server/services/booking-holds";
 import { db } from "@/server/db";
+import { removeExpiredSessions } from "@/server/services/session-cleanup";
 import { sendArrivalReminders } from "@/server/services/front-desk";
 import { businessToday } from "@/server/settings";
 
@@ -39,8 +40,8 @@ export async function GET(req: Request) {
     // Payments nTZS confirmed but we have not recorded yet are found first — before unpaid bookings are released.
     await safely("mobile payments", sweepMobilePayments(new Date(), Date.now() + 8_000));
     await safely("booking states", refreshBookingStates());
-    // Housekeeping: expired sessions and stale rate-limit windows.
-    await safely("expired sessions", db.session.deleteMany({ where: { expiresAt: { lt: new Date() } } }));
+    // Housekeeping: expired sessions (a Developer's "work as" that was still on one is written down as ended first) and stale rate-limit windows.
+    await safely("expired sessions", removeExpiredSessions());
     await safely("rate-limit windows", db.rateLimitBucket.deleteMany({ where: { windowStart: { lt: new Date(Date.now() - 86_400_000) } } }));
     // One time limit for the whole run (Vercel stops it at 60 s): every WhatsApp send starts only with time to finish.
     const until = t0 + 44_000;

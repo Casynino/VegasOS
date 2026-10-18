@@ -20,6 +20,8 @@ import { IdentityBanner, IdentityCard, IdentityChip, stripVars, type Identity } 
 import { cn } from "@/lib/utils";
 import { ReceptionSearch } from "./reception/search";
 import { StaffAlerts } from "./staff-alerts";
+import { QuietProvider } from "./quiet";
+import { sessionIsQuiet } from "@/lib/quiet";
 import { StackTableLabels } from "./stack-table-labels";
 import { WaiterPinProvider } from "./waiter-pin";
 import { CustomerFinderAccess } from "./customer-finder";
@@ -45,6 +47,9 @@ export async function StaffShell({ children }: { children: ReactNode }) {
   const workAs = user.workAs;
   const identity: Identity = { actorType: user.actorType, name: user.fullName, role: user.roleName, workAs: workAs ? { developerName: user.actorName, startedAt: workAs.startedAt } : undefined };
   const developer = identity.actorType === "DEVELOPER";
+  // A Developer's session is a QUIET one — in its console and while working as someone: no bell, no polling, no page that refreshes itself
+  // (each would count as use and keep the 30-minute idle rule from ever ending the session). See src/lib/quiet.ts.
+  const quiet = sessionIsQuiet(user);
   // A Developer signed in as itself lives in its console: its own menu, none of the hotel's desks, counters or searches.
   const consoleMode = developer && !workAs;
   const pathname = (await headers()).get("x-pathname") ?? "";
@@ -93,6 +98,7 @@ export async function StaffShell({ children }: { children: ReactNode }) {
 
   return (
     <I18nProvider locale={locale} catalog={catalog}>
+    <QuietProvider quiet={quiet}>
     <div id="staff-root" lang={LOCALE_META[locale].html} className={cn("dark flex min-h-svh flex-1 flex-col bg-canvas text-foreground", stripVars(identity))}>
       {/* A Developer: one unmistakable strip across every page (nothing for staff) — while working as someone, a taller one that says whom,
           for how long, and has Stop. Its height is the offset of the sticky parts below. */}
@@ -155,9 +161,9 @@ export async function StaffShell({ children }: { children: ReactNode }) {
               className="hidden size-10 shrink-0 place-items-center rounded-full border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:grid">
               <Globe className="size-4" />
             </a>
-            {/* The bell: rings for what is waiting for this person (bookings, requests, orders, bills…) on every page */}
+            {/* The bell: rings for what is waiting for this person (bookings, requests, orders, bills…) on every page. Not drawn for a Developer (quiet). */}
             <StaffAlerts sound={{ enabled: settings.orderSoundsEnabled, volume: settings.orderSoundVolume, newSound: settings.newOrderSound, readySound: settings.readyOrderSound }}
-              soundOff={user.soundOff} locked={!!workAs} />
+              soundOff={user.soundOff} quiet={quiet} />
             {/* Who is signed in: the real name and role, always. Top bar: name + role from xl, the name alone at lg (role in the tooltip and the side menu's card), hidden below lg — the bottom bar's Menu shows both on a tablet and a phone. */}
             {/* While a Developer works as someone, this shows that person and goes nowhere: their account page is theirs. */}
             {workAs ? (
@@ -190,6 +196,7 @@ export async function StaffShell({ children }: { children: ReactNode }) {
     {/* After a check-out done in place: the thank-you message, ready to send (opened by showCheckoutThanks). */}
     <CheckoutThanksHost />
     <Toaster richColors position="top-center" />
+    </QuietProvider>
     </I18nProvider>
   );
 }

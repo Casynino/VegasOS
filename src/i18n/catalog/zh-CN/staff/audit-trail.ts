@@ -5,7 +5,7 @@ const catalog: Catalog = {
   // Menu and page
   "Audit trail": "审计记录",
   "Developer console": "开发者控制台",
-  "Who did what, and when: Developer, staff, system and website actions. Read-only — no entry can be changed or deleted.": "谁在何时做了什么：开发者、员工、系统和官网的所有操作。仅可查看 — 任何记录都不能被修改或删除。",
+  "Who did what, and when: Developer, staff, system and website actions. Read-only — the database refuses any change or delete. The only change the system ever makes to an older line is marking a cancelled check-in as cancelled.": "谁在何时做了什么：开发者、员工、系统和官网的所有操作。仅可查看——数据库会拒绝任何修改或删除。系统对旧记录唯一会做的改动，是把已取消的入住标记为已取消。",
   "Times are in the hotel's time zone ({zone}). Newest first.": "时间均为酒店所在时区（{zone}）。最新的在前。",
 
   // Filters

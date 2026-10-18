@@ -4,6 +4,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import type { MoneyAccountKind } from "@/generated/prisma/enums";
 import { AppError } from "../errors";
 import { audit } from "../audit";
+import { refuseDeveloper } from "../developer-wall";
 import { getT } from "@/i18n/server";
 import { msg, msgf } from "@/i18n/msg";
 
@@ -240,7 +241,9 @@ export interface AccountInput {
  * clean start, for one). It is NOT income and NOT a payment — no payment, sale or ledger line is made; the account's balance is opening + in − out.
  * Needs a reason, is kept in the audit trail with the old and the new figure, and changes nothing that was recorded.
  */
-export async function setOpeningBalance(input: { accountId: string; amount: number; reason: string }, actor: { userId: string; label?: string; ipAddress?: string | null }) {
+export async function setOpeningBalance(input: { accountId: string; amount: number; reason: string }, actor: { userId: string; label?: string; ipAddress?: string | null; permissions?: ReadonlySet<string> }) {
+  // Where an account's books begin is money: never the Developer, whichever way it gets here (nothing is written).
+  await refuseDeveloper(actor, "settings.manage");
   if (!Number.isInteger(input.amount) || input.amount < 0 || input.amount > 2_000_000_000) throw new AppError("Enter the opening balance in whole shillings (0 or more).", "VALIDATION", { amount: msg("Invalid") });
   const reason = input.reason.trim();
   if (reason.length < 5) throw new AppError("Say what this opening balance is — at least 5 letters.", "VALIDATION", { reason: msg("Required") });
@@ -262,7 +265,9 @@ export async function setOpeningBalance(input: { accountId: string; amount: numb
  * Add or edit a payment account. Accounts are never deleted — an account with
  * history is deactivated: it disappears from new payments but its past stays linked.
  */
-export async function savePaymentAccount(input: AccountInput, actor: { userId: string; label?: string; ipAddress?: string | null }) {
+export async function savePaymentAccount(input: AccountInput, actor: { userId: string; label?: string; ipAddress?: string | null; permissions?: ReadonlySet<string> }) {
+  // Where guests pay and where money is kept is money: never the Developer, whichever way it gets here (nothing is written).
+  await refuseDeveloper(actor, "settings.manage");
   const name = input.name.trim();
   if (name.length < 2) throw new AppError("Give the account a name.", "VALIDATION", { name: msg("Required") });
   const data = {

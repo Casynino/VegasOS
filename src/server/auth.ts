@@ -9,8 +9,11 @@ import { AppError } from "./errors";
 import { msg } from "@/i18n/msg";
 import { audit } from "./audit";
 import { trackDeveloperView } from "./services/developer-view-log";
+import { carriesWorkAs, recordWorkAsEnded, type WorkAsEnd } from "./services/work-as-expired";
+import { recordWorkAsOfSessionsEnding } from "./services/session-cleanup";
+import { keepEndpointRefusal } from "./services/endpoint-refusal";
 import { canBeWorkedAs, markWorkingAs, SESSION_COOKIE, sha256, trueActor, withActingAs, withinWorkAsLimit } from "./work-as-session";
-import { DEVELOPER_DENIED, DEVELOPER_ONLY, DEVELOPER_ROLE_CODE, isRestaurantDevice, needsOwnShift, SHIFT_FREE_CODES, type PermissionCode } from "@/lib/permissions";
+import { DEVELOPER_DENIED, DEVELOPER_ONLY, DEVELOPER_ROLE_CODE, isDeveloperOnly, isRestaurantDevice, needsOwnShift, SHIFT_FREE_CODES, type PermissionCode } from "@/lib/permissions";
 
 export const STAFF_HINT_COOKIE = "vlh_staff";
 export { SESSION_COOKIE };
@@ -96,7 +99,15 @@ export async function destroySession(): Promise<void> {
   const jar = await cookies();
   const token = jar.get(SESSION_COOKIE)?.value;
   // Signing out ends THIS session — also a Developer's, also while working as someone (the person's own session, not an account change).
-  if (token) await rawDb.session.deleteMany({ where: { tokenHash: sha256(token) } });
+  if (token) {
+    const where = { tokenHash: sha256(token) };
+    // A Developer's session that still carries a work-as (a new sign-in in the same browser; a Stop already cleared its own) gets its
+    // "work as ended" entry before the row goes — no request will ever come on it to write it down.
+    let ipAddress: string | null = null;
+    try { ipAddress = (await requestMeta()).ipAddress; } catch { /* no address: the entry is still written */ }
+    await recordWorkAsOfSessionsEnding(where, ipAddress);
+    await rawDb.session.deleteMany({ where });
+  }
   jar.delete(SESSION_COOKIE);
   jar.delete(STAFF_HINT_COOKIE);
 }
@@ -132,11 +143,25 @@ export interface CurrentUser {
   workAs: { developerId: string; developerName: string; startedAt: Date } | null;
 }
 
+/** The signed-in person for this request, as read from the database — and the session row's own facts, for the "last seen" update. */
+interface Loaded {
+  user: CurrentUser;
+  sessionId: string;
+  lastSeenAt: Date;
+  /** The session's own account holds the Developer role. */
+  developer: boolean;
+  /** The shared restaurant screen (a long session that renews itself). */
+  device: boolean;
+  /** The "last seen" update was already considered for this request. */
+  touched: boolean;
+}
+
 /**
- * The signed-in person for this request. `touch` says whether this request counts as the person USING the system: the page loads and
- * actions do; a background poll (the alert bell) does not — otherwise an open tab would keep a Developer's 30-minute idle rule from ever ending the session.
+ * Read the signed-in person for this request (one read, shared by getCurrentUser and getCurrentUserQuiet). It does NOT count the request as the
+ * person USING the system — see touchSession: the page loads and actions do; a background poll does not, otherwise an open tab would keep a
+ * Developer's 30-minute idle rule from ever ending the session.
  */
-async function loadCurrentUser(touch: boolean): Promise<CurrentUser | null> {
+async function loadSession(): Promise<Loaded | null> {
   const jar = await cookies();
   const token = jar.get(SESSION_COOKIE)?.value;
   if (!token) return null;
@@ -147,22 +172,24 @@ async function loadCurrentUser(touch: boolean): Promise<CurrentUser | null> {
       user: { include: { role: { include: { permissions: { include: { permission: true } } } } } },
     },
   });
-  if (!session || session.expiresAt < new Date() || !session.user.isActive) return null;
+  if (!session) return null;
+  // A Developer's work-as that stops by itself (its 4 hours, the person switched off, the session over) is written down the first time it is noticed.
+  const endedByItself = async (why: WorkAsEnd) => {
+    if (session.user.role.code !== DEVELOPER_ROLE_CODE || !carriesWorkAs(session)) return;
+    let ipAddress: string | null = null;
+    try { ipAddress = (await requestMeta()).ipAddress; } catch { /* no address: the entry is still written */ }
+    await recordWorkAsEnded(session, { id: session.user.id, fullName: session.user.fullName }, why, ipAddress);
+  };
+  if (session.expiresAt < new Date() || !session.user.isActive) { await endedByItself("session"); return null; }
 
   const { user } = session;
   const permissions = new Set(user.role.permissions.map((rp) => rp.permission.code as PermissionCode));
   const developer = user.role.code === DEVELOPER_ROLE_CODE;
   const device = !developer && isRestaurantDevice(permissions);
   // The Developer's session is short and ends when unused; the restaurant screen keeps a long one; anyone else is back to 14 hours.
-  if (developer && (Date.now() > session.createdAt.getTime() + DEVELOPER_SESSION_HOURS * 3600_000 || Date.now() - session.lastSeenAt.getTime() > DEVELOPER_IDLE_MINUTES * 60_000)) return null;
+  if (developer && (Date.now() > session.createdAt.getTime() + DEVELOPER_SESSION_HOURS * 3600_000 || Date.now() - session.lastSeenAt.getTime() > DEVELOPER_IDLE_MINUTES * 60_000)) { await endedByItself("session"); return null; }
   if (!developer && !device && Date.now() > session.createdAt.getTime() + SESSION_HOURS * 3600_000) return null;
-  // The Developer's "last seen" is kept fresh every minute, so the 30-minute idle rule means 30 minutes of real inactivity (not 15 to 30).
-  if ((touch || !developer) && Date.now() - session.lastSeenAt.getTime() > (developer ? 1 : SLIDING_REFRESH_MINUTES) * 60_000) {
-    // The shared restaurant screen never signs itself out while it is in use.
-    const renew = device ? { expiresAt: new Date(Date.now() + DEVICE_SESSION_DAYS * 24 * 3600_000) } : {};
-    await rawDb.session.update({ where: { id: session.id }, data: { lastSeenAt: new Date(), ...renew } });
-  }
-
+  const loaded = (current: CurrentUser): Loaded => ({ user: current, sessionId: session.id, lastSeenAt: session.lastSeenAt, developer, device, touched: false });
   const own: CurrentUser = {
     id: user.id,
     email: user.email,
@@ -181,10 +208,15 @@ async function loadCurrentUser(touch: boolean): Promise<CurrentUser | null> {
 
   // WORK AS: honoured only for a session whose OWN user is the Developer, for 4 hours, and only for an active staff account — otherwise
   // (a staff session with a forged row, an old one, a switched-off or removed person) the Developer is simply themselves.
-  if (!developer || !session.workAsUserId || !withinWorkAsLimit(session.workAsStartedAt)) return own;
+  if (!developer) return loaded(own);
+  // Nothing to honour: either not working as anyone, or the 4 hours are over, or the person was removed (the row keeps the start time but loses the person).
+  if (!session.workAsUserId || !withinWorkAsLimit(session.workAsStartedAt)) {
+    await endedByItself(session.workAsUserId ? "limit" : "account");
+    return loaded(own);
+  }
   const target = await db.user.findUnique({ where: { id: session.workAsUserId }, include: { role: { include: { permissions: { include: { permission: true } } } } } });
-  if (!target || !canBeWorkedAs(target)) return own;
-  return {
+  if (!target || !canBeWorkedAs(target)) { await endedByItself("account"); return loaded(own); }
+  return loaded({
     id: target.id,
     email: target.email,
     fullName: target.fullName,
@@ -198,12 +230,29 @@ async function loadCurrentUser(touch: boolean): Promise<CurrentUser | null> {
     actorId: user.id,
     actorName: user.fullName,
     workAs: { developerId: user.id, developerName: user.fullName, startedAt: session.workAsStartedAt as Date },
-  };
+  });
 }
 
 /**
- * What a Developer holds while working as someone: the person's rights MINUS every right that moves or decides about money (DEVELOPER_DENIED)
- * and minus the Developer-only rights — so the ordinary rights checks refuse money by themselves. Also used to find the person's home page.
+ * This request IS the person using the system: renew the session's "last seen" (and the restaurant screen's long expiry). Done once per request.
+ * A Developer's "last seen" is kept fresh every minute, so the 30-minute idle rule means 30 minutes of real inactivity (not 15 to 30).
+ */
+async function touchSession(loaded: Loaded): Promise<void> {
+  if (loaded.touched) return;
+  loaded.touched = true;
+  if (Date.now() - loaded.lastSeenAt.getTime() <= (loaded.developer ? 1 : SLIDING_REFRESH_MINUTES) * 60_000) return;
+  // The shared restaurant screen never signs itself out while it is in use.
+  const renew = loaded.device ? { expiresAt: new Date(Date.now() + DEVICE_SESSION_DAYS * 24 * 3600_000) } : {};
+  await rawDb.session.update({ where: { id: loaded.sessionId }, data: { lastSeenAt: new Date(), ...renew } });
+}
+
+/** One read of the session per request, shared by the two readers below. */
+const loadedSession = cache(loadSession);
+
+/**
+ * What a Developer holds while working as someone: the person's rights MINUS every right that moves or decides about money, and the right to
+ * manage accounts (DEVELOPER_DENIED), and minus the Developer-only rights — so the ordinary rights checks refuse money, and the Users page,
+ * by themselves. Also used to find the person's home page.
  */
 export function permissionsWhileWorkingAs(theirs: Iterable<string>): Set<PermissionCode> {
   const blocked = new Set<string>([...DEVELOPER_DENIED, ...DEVELOPER_ONLY]);
@@ -220,11 +269,25 @@ export function assertNotWorkAs(user: { workAs?: object | null } | null | undefi
   if (user?.workAs) throw new AppError(`While you are working as someone you cannot ${what}.`, "FORBIDDEN");
 }
 
-/** The authenticated staff user for this request, or null. Cached per request. */
-export const getCurrentUser = cache(() => loadCurrentUser(true));
+/** The authenticated staff user for this request, or null. Cached per request. Counts as the person USING the system: a page load, an action. */
+export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
+  const loaded = await loadedSession();
+  if (!loaded) return null;
+  await touchSession(loaded);
+  return loaded.user;
+});
 
-/** The same person, for background polls only (the alert bell): never counts as the person using the system, so it cannot keep a Developer session awake. */
-export const getCurrentUserQuiet = cache(() => loadCurrentUser(false));
+/**
+ * The same person, for background polls and for reading a language (the alert bell's and the order boards' JSON polls, the translator): a
+ * Developer's session is NOT renewed by it, so a poll — or an old tab left open — can never keep the 30-minute idle rule from ending the
+ * session. Staff are renewed exactly as before (the bell keeps the reception screen signed in).
+ */
+export const getCurrentUserQuiet = cache(async (): Promise<CurrentUser | null> => {
+  const loaded = await loadedSession();
+  if (!loaded) return null;
+  if (!loaded.developer) await touchSession(loaded);
+  return loaded.user;
+});
 
 export function can(user: CurrentUser | null, permission: PermissionCode): boolean {
   return !!user && user.permissions.has(permission);
@@ -284,6 +347,9 @@ export async function requirePagePermission(...anyOf: PermissionCode[]): Promise
   const user = await requireUser();
   if (!anyOf.some((p) => user.permissions.has(p))) {
     await logDeveloperDenied(user, anyOf, "page");
+    // Someone who is NOT a Developer at the Developer's door (a page that needs the Developer-only right) leaves a trace under their own name:
+    // the same bounded entry the Developer's actions keep (once per person per 10 minutes). It never changes the answer.
+    if (user.actorType !== "DEVELOPER" && anyOf.some(isDeveloperOnly)) await keepEndpointRefusal(user);
     redirect("/staff/forbidden");
   }
   if (await withoutShift(user, anyOf)) {

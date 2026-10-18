@@ -24,7 +24,7 @@ export interface AccessPersonView {
   canSuspend: boolean;
   canReactivate: boolean;
   canSignOut: boolean;
-  /** Why a button is missing, in English (e.g. "Can't be suspended here"). */
+  /** Why a button is missing, in English (e.g. "Can't be suspended or signed out here"). */
   note: string | null;
 }
 export interface AccessGroupView {

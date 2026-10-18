@@ -3,6 +3,7 @@ import Link from "next/link";
 import { AlertTriangle, CheckCheck, ChevronRight, CircleDashed, Clock, ConciergeBell, FileText, History, ShieldAlert, UtensilsCrossed } from "lucide-react";
 import { can, requirePagePermission } from "@/server/auth";
 import { db } from "@/server/db";
+import { withoutDeveloper } from "@/server/staff-pickers";
 import { businessToday, getSettings } from "@/server/settings";
 import { addDays, toDbDate, isBusinessDate } from "@/lib/time/business-date";
 import { shiftLabel } from "@/lib/shift-label";
@@ -47,7 +48,7 @@ export default async function StaffShiftsPage({ searchParams }: PageProps<"/staf
         report: { select: { id: true, version: true, generatedAt: true, sendSkipped: true, deliveries: { select: { status: true, sentAt: true } } } },
       },
     }),
-    manager ? db.user.findMany({ where: { actualShifts: { some: {} } }, select: { id: true, fullName: true }, orderBy: { fullName: "asc" } }) : Promise.resolve([]),
+    manager ? db.user.findMany({ where: withoutDeveloper({ actualShifts: { some: {} } }), select: { id: true, fullName: true }, orderBy: { fullName: "asc" } }) : Promise.resolve([]),
   ]);
   const now = new Date();
   const clock = (d: Date) => t.time(d, s.timezone);

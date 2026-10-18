@@ -13,8 +13,10 @@ import { msg } from "@/i18n/msg";
  *  1. A VISIT to a page: "developer.viewed". Every page is written except the few plainly harmless ones (src/lib/developer-paths.ts —
  *     a new page is logged from day one). At most once per page per 10 minutes for the same person (refreshing, or moving between
  *     pages, does not fill the trail). Never blocks a page and never breaks one: it runs after the page is sent. A failed write does
- *     not break the page, but it leaves a line in the server log. There is a safety valve (VIEW_BURST_LIMIT entries in 10 minutes):
- *     when it is reached ONE marker entry "developer.viewed_limit" is written for that window — so a flood is never silent.
+ *     not break the page, but it leaves a line in the server log. There is a safety valve, and it can never erase evidence: after
+ *     VIEW_BURST_LIMIT (1000) entries in 10 minutes ONE marker entry "developer.viewed_limit" is written for that window, and the visits that
+ *     follow are STILL written — compactly (after.overLimit = true), still at most once per page per 10 minutes. Exports, downloads and
+ *     work-as start / end are never counted by the valve and never held back by it.
  *
  *  2. An EXPORT or a DOWNLOAD (a CSV, a ledger, a stored file): "developer.exported" / "developer.downloaded". Written BEFORE the data
  *     is sent, every single time (no 10-minute rule, no limit), and it FAILS CLOSED: when the entry cannot be written, nothing is sent.
@@ -29,17 +31,21 @@ export const VIEW_LIMIT_ACTION = "developer.viewed_limit";
 export const EXPORT_ACTION = "developer.exported";
 export const DOWNLOAD_ACTION = "developer.downloaded";
 export const VIEW_DEDUPE_MINUTES = 10;
-/** A safety valve: one person writes at most this many "viewed" entries in 10 minutes, whatever the addresses. Past it, one marker entry is written for the window. */
-export const VIEW_BURST_LIMIT = 100;
+/**
+ * A safety valve, set high on purpose (owner, 2026-10-17): after this many "viewed" entries from one person in 10 minutes, ONE marker entry is
+ * written for the window and the entries that follow are written in the compact form (after.overLimit) — never dropped. A burst of visits
+ * (a script, a loop, a crawl through the Developer's own pages) can no longer push a later, real visit out of the trail unseen.
+ */
+export const VIEW_BURST_LIMIT = 1000;
 
 /** A CurrentUser fits: while working as someone id / fullName are the person's, actorId / actorName the Developer's own. */
 export interface ViewActor extends IdentityFields { actorType: "DEVELOPER" | "STAFF" }
 export type ViewOutcome =
   | "logged"       // written
+  | "logged-over-limit" // written in the compact form: the safety valve is shut (the window's marker entry says so)
   | "repeat"       // the same page was already written within the last 10 minutes
   | "not-developer"
-  | "harmless"     // one of the few pages that are never written
-  | "limit";       // too many entries in 10 minutes: not written (the window's marker entry is)
+  | "harmless";    // one of the few pages that are never written
 
 /** A failure to write is never shown to the person, but it is never silent either: one line in the server log, with nothing secret in it. */
 function traceFailure(what: string, user: ViewActor, path: string | null | undefined, e: unknown) {
@@ -66,10 +72,11 @@ export async function logDeveloperView(user: ViewActor, rawPath: string | null |
     const actingId = (after: unknown) => ((after as { actingAs?: { id?: string } } | null)?.actingAs?.id) ?? null;
     if (recent.some((r) => actingId(r.after) === (who.actingAs?.id ?? null))) return "repeat" as const;
     if ((await tx.auditLog.count({ where: { action: VIEW_ACTION, userId: who.id, createdAt: { gte: since } } })) >= VIEW_BURST_LIMIT) {
-      // The valve is shut: the visit is not written, but the trail says so — once for the window, whatever happens after.
+      // The valve is shut: the trail says so once for the window, and the visit is STILL written, in the compact form (this page, once, for 10 minutes).
       const marked = await tx.auditLog.findFirst({ where: { action: VIEW_LIMIT_ACTION, userId: who.id, createdAt: { gte: since } }, select: { id: true } });
       if (!marked) await audit(tx, actor, { action: VIEW_LIMIT_ACTION, entityType: "Page", after: { limit: VIEW_BURST_LIMIT, windowMinutes: VIEW_DEDUPE_MINUTES } });
-      return "limit" as const;
+      await audit(tx, actor, { action: VIEW_ACTION, entityType: "Page", entityId: path, after: withActingAs({ path, overLimit: true }, who.actingAs) });
+      return "logged-over-limit" as const;
     }
     await audit(tx, actor, { action: VIEW_ACTION, entityType: "Page", entityId: path, after: withActingAs({ path }, who.actingAs) });
     return "logged" as const;

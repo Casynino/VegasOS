@@ -266,15 +266,16 @@ describe("what a Developer can do with the reports (the daily and room reports a
     expect(rows[0]).toMatchObject({ userId: mgr.id, actorType: "STAFF" });
   });
 
-  it("a Developer sending a shift report or a staff report again: allowed, and written under the Developer", async () => {
+  it("a Developer sending a shift report or a staff report again is refused like the other report decisions (nothing is sent or written as sent; the refusal is its own entry); a manager still can", async () => {
     const shiftReport = await generateShiftReport(shiftId);
-    expect((await as(dev, () => sendShiftReportAction({ reportId: shiftReport.id }))).ok).toBe(true);
-    expect((await as(dev, () => sendStaffReportAction({ reportId: staffReportId, force: true }))).ok).toBe(true);
-
-    const mine = async (action: string) => (await auditOf(dev.id, action)).map((r) => ({ type: r.entityType, id: r.entityId, actorType: r.actorType, role: r.actorRole, ip: r.ipAddress?.startsWith("41.") ? "an address" : r.ipAddress, userId: r.userId, after: r.after }));
-    const who = { actorType: "DEVELOPER", role: "DEVELOPER", ip: "an address", userId: dev.id }; // the request's address (a new one for each person at the keyboard)
-    expect(await mine("report.shift_sent")).toEqual([{ ...who, type: "ShiftReport", id: shiftReport.id, after: { force: false } }]);
-    expect(await mine("report.staff_sent")).toEqual([{ ...who, type: "StaffReport", id: staffReportId, after: { force: true } }]);
+    const before = await deniedBy(dev);
+    expect(await as(dev, () => sendShiftReportAction({ reportId: shiftReport.id }))).toMatchObject({ ok: false, code: "FORBIDDEN" });
+    expect(await as(dev, () => sendStaffReportAction({ reportId: staffReportId, force: true }))).toMatchObject({ ok: false, code: "FORBIDDEN" });
+    expect(await auditOf(dev.id, "report.shift_sent")).toHaveLength(0);
+    expect(await auditOf(dev.id, "report.staff_sent")).toHaveLength(0);
+    const denied = (await auditOf(dev.id, "developer.denied")).slice(before);
+    expect(denied).toHaveLength(2);
+    expect(denied.every((r) => r.actorType === "DEVELOPER" && r.userId === dev.id)).toBe(true);
 
     // an ordinary manager's send is theirs, as staff
     expect((await as(mgr, () => sendShiftReportAction({ reportId: shiftReport.id }))).ok).toBe(true);

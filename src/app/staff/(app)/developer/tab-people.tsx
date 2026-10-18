@@ -2,6 +2,7 @@ import { CircleCheck, KeyRound, Search, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { T } from "@/i18n/translate";
 import type { Inspection, PeopleTab as PeopleData } from "@/server/services/developer-console";
+import { auditWordsFor } from "@/server/services/audit-trail";
 import { Panel } from "@/components/dashboard/kit";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -33,6 +34,7 @@ function InspectionResult({ r, t }: { r: Inspection; t: T }) {
         </p>
         {r.right.developerOnly && <p className="mt-1 text-xs text-muted-foreground">{t("Only the Developer role holds this right. It cannot be given to any other role.")}</p>}
         {r.right.developerMoneyRight && <p className="mt-1 text-xs text-muted-foreground">{t("The Developer role never holds this right, because it writes money.")}</p>}
+        {r.right.developerAccountRight && <p className="mt-1 text-xs text-muted-foreground">{t("The Developer role never holds this right: only the Boss and the MD create or change accounts, passwords, roles and rights.")}</p>}
       </div>
 
       <p className="text-sm"><span className="text-muted-foreground">{t("Roles that hold this right:")}</span>{" "}{r.rolesWithRight.length ? r.rolesWithRight.map((x) => t(x.name)).join(", ") : t("none")}</p>
@@ -79,7 +81,7 @@ export function PeopleTab({ t, data, person, right, inspection, when, timezone }
         {inspection && <InspectionResult r={inspection} t={t} />}
       </Panel>
 
-      <Panel title={t("My last {n} actions", { n: 30 })} subtitle={t("From the audit trail: what you did and looked at, newest first. Nobody can change this list.")}>
+      <Panel title={t("My last {n} actions", { n: 30 })} subtitle={t("From the audit trail: what you did and looked at, newest first. You cannot change this list.")}>
         {data.myActions.length === 0 ? <Quiet>{t("You have no actions on record yet.")}</Quiet> : (
           <div className="overflow-x-auto">
             <table data-stack className="w-full min-w-[560px] text-sm">
@@ -94,7 +96,7 @@ export function PeopleTab({ t, data, person, right, inspection, when, timezone }
                     <td className="whitespace-nowrap py-2.5 pr-4 text-muted-foreground" title={t.dateTime(a.at, timezone)}>{when(a.at)}</td>
                     <td className="py-2.5 pr-4">
                       <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <span className="font-medium">{capital(t(a.words))}</span>
+                        <span className="font-medium">{capital(auditWordsFor(a.action, a.target, t))}</span>
                         {a.failed && <Tag tone="rose">{t("Failed")}</Tag>}
                       </span>
                       <span className="block break-all font-mono text-[11px] text-muted-foreground">{a.path ?? a.action}</span>

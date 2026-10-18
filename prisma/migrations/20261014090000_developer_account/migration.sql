@@ -5,14 +5,22 @@
 -- 1. The audit trail knows the TYPE of whoever acted (taken from the signed-in account when the entry is written).
 ALTER TABLE "audit_logs" ADD COLUMN "actorType" TEXT, ADD COLUMN "actorRole" TEXT;
 CREATE INDEX "audit_logs_actorType_createdAt_idx" ON "audit_logs" ("actorType", "createdAt");
--- What is already there is classified once: no Developer existed before this migration.
-UPDATE "audit_logs" a SET "actorType" = CASE WHEN a."userId" IS NULL THEN CASE WHEN a."actorLabel" = 'website' THEN 'WEBSITE' ELSE 'SYSTEM' END ELSE 'STAFF' END,
+-- What is already there is classified once: no Developer existed before this migration. The same rule as the app's audit writer
+-- (src/server/audit.ts, actorKind): no account behind the line = the website or the system; the online-payment system account
+-- (role SYSTEM_ONLINE, "Customer (paid by phone)") is the SYSTEM's, not a staff member's; every other account = STAFF. The role code
+-- is kept as the app keeps it. Idempotent: only lines with no type yet are touched, so running it again changes nothing.
+UPDATE "audit_logs" a SET
+  "actorType" = CASE
+    WHEN a."userId" IS NULL THEN CASE WHEN a."actorLabel" = 'website' THEN 'WEBSITE' ELSE 'SYSTEM' END
+    WHEN (SELECT r."code" FROM "users" u JOIN "roles" r ON r."id" = u."roleId" WHERE u."id" = a."userId") = 'SYSTEM_ONLINE' THEN 'SYSTEM'
+    ELSE 'STAFF'
+  END,
   "actorRole" = (SELECT r."code" FROM "users" u JOIN "roles" r ON r."id" = u."roleId" WHERE u."id" = a."userId")
  WHERE a."actorType" IS NULL;
 
 -- 2. The new rights.
 INSERT INTO "permissions" ("id", "code", "description") VALUES
-  ('perm_audit_view', 'audit.view', 'See the full audit trail: who did what, when, as a Developer or as staff (read-only; nobody can change or delete it)'),
+  ('perm_audit_view', 'audit.view', 'See the full audit trail: who did what, when, as a Developer or as staff (read-only; the database refuses any change or delete — the Audit page names the one exception)'),
   ('perm_developer_access', 'developer.access', 'Developer super user: the developer console and system diagnostics. Held only by the Developer role — never by the Boss, the MD or any staff role')
 ON CONFLICT ("code") DO NOTHING;
 
@@ -21,7 +29,7 @@ ON CONFLICT ("code") DO NOTHING;
 --    writes or decides about money (DEVELOPER_DENIED) is simply absent. A unit test checks that this list and the code are the same.
 INSERT INTO "roles" ("id", "code", "name", "description", "isSystem", "createdAt", "updatedAt")
 VALUES ('role_developer', 'DEVELOPER', 'Developer (super user)',
-  'The system''s developer: sees and troubleshoots every department, the settings, the staff accounts and the audit trail, with every action recorded as a Developer action. Cannot record, change, approve, pay, reverse or void money, decide what a guest or supplier owes, or change where guests pay or the money limits. Created only by a controlled setup — never from the Users page.',
+  'The system''s developer: sees and troubleshoots every department, the settings and the audit trail, with every action recorded as a Developer action. Cannot record, change, approve, pay, reverse or void money, decide what a guest or supplier owes, or change where guests pay or the money limits. Cannot create or change accounts, passwords, roles or rights — only the Boss and the MD can. Created only by a controlled setup — never from the Users page.',
   true, NOW(), NOW())
 ON CONFLICT ("code") DO NOTHING;
 INSERT INTO "role_permissions" ("roleId", "permissionId")
@@ -34,7 +42,7 @@ WHERE r."code" = 'DEVELOPER' AND p."code" IN (
   'rooms.view', 'rooms.status.update', 'rooms.manage', 'rooms.block',
   'meeting.view', 'meeting.manage',
   'hotel_qr.manage',
-  'shifts.view', 'shifts.work', 'shifts.manage', 'staff.activity.view', 'users.manage', 'settings.manage',
+  'shifts.view', 'shifts.work', 'shifts.manage', 'staff.activity.view', 'settings.manage',
   'contact.view', 'requests.view', 'requests.manage',
   'transport.view', 'transport.request', 'transport.manage', 'transport.driver',
   'website.manage', 'booking_requests.view', 'booking_requests.manage',

@@ -23,29 +23,49 @@ export const withLang = (url: string, lang: Locale) => (lang === DEFAULT_LOCALE 
 /** A recipient's language (English when not set or unknown). */
 export const recipientLang = (r: { lang?: string | null }): Locale => toLocale(r.lang) ?? DEFAULT_LOCALE;
 
+/** How a notice to the boss went: how many people it was meant for, how many were told, how many were not. */
+export interface BossNotice { recipients: number; told: number; failed: number }
+
 /**
  * A short notice to the boss (every report recipient) about something that just happened — not a report: the caller
  * sends it once, after the action is saved. Written in each reader's language. Never throws: a notice that could not
- * be sent is only logged, the action it tells about stays done.
+ * be sent is only logged, the action it tells about stays done. It says how many recipients were told (`told`), so a caller
+ * that must leave a trace of it (a Developer starting "Work as") can write it down.
  */
-export async function tellBoss(textFor: (t: T, settings: HotelSettings) => string) {
+export async function tellBoss(textFor: (t: T, settings: HotelSettings) => string): Promise<BossNotice> {
+  const result: BossNotice = { recipients: 0, told: 0, failed: 0 };
   try {
     const settings = await getSettings();
-    for (const r of (settings.reportRecipients as unknown as Recipient[]) ?? []) {
+    const recipients = (settings.reportRecipients as unknown as Recipient[]) ?? [];
+    result.recipients = recipients.length;
+    for (const r of recipients) {
       const sent = await sendMessage({ channel: r.channel ?? "WHATSAPP_CALLMEBOT", to: r.phone, text: textFor(await getTFor(recipientLang(r)), settings), apiKeyRef: r.apiKeyRef });
-      if (!sent.ok) console.error("[boss notice] not sent to", r.name ?? "a recipient", sent.error);
+      if (sent.ok) result.told++;
+      else console.error("[boss notice] not sent to", r.name ?? "a recipient", sent.error);
     }
   } catch (e) {
     console.error("[boss notice]", e);
   }
+  // Whoever was not reached (a failed send, or the run stopped early) counts as not told.
+  result.failed = result.recipients - result.told;
+  return result;
 }
 
-/** The same once the answer has gone out (never delays the desk); straight away where there is no request (a job, a test). */
-export function tellBossSoon(textFor: Parameters<typeof tellBoss>[0]) {
+/**
+ * The same once the answer has gone out (never delays the desk); straight away where there is no request (a job, a test).
+ * `then` is told how the notice went, when it is over (it must never throw; a failure in it is only logged).
+ */
+export function tellBossSoon(textFor: Parameters<typeof tellBoss>[0], then?: (result: BossNotice) => void | Promise<void>) {
+  const run = async () => {
+    const result = await tellBoss(textFor);
+    if (then) {
+      try { await then(result); } catch (e) { console.error("[boss notice] follow-up failed", e); }
+    }
+  };
   try {
-    after(() => tellBoss(textFor));
+    after(run);
   } catch {
-    void tellBoss(textFor);
+    void run();
   }
 }
 

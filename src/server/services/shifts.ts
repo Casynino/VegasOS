@@ -3,6 +3,7 @@ import { inHouseBalances } from "./guest-balances";
 import { db } from "../db";
 import { audit, type AuditActor } from "../audit";
 import { AppError, isUniqueViolation } from "../errors";
+import { refuseShiftPlanWhileWorkingAs, refuseShiftWork } from "../shift-wall";
 import { getSettingsTx, stayConfig } from "../settings";
 import { addDays, businessDateOf, eachDate, fromDbDate, isBusinessDate, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import { shiftLabel } from "@/lib/shift-label";
@@ -44,6 +45,8 @@ export async function getShiftOverview(today: BusinessDate) {
 }
 
 export async function startShift(actor: AuditActor & { userId: string }, opts: { replacementReason?: string | null }) {
+  // A shift is a real person's (it holds one of the desk's two places): never started by a Developer, working as someone or not.
+  await refuseShiftWork(actor, "start or end a shift", "shifts.work");
   try {
     return await db.$transaction(async (tx) => {
       const settings = await getSettingsTx(tx);
@@ -118,6 +121,8 @@ async function closeShiftTx(tx: Parameters<Parameters<typeof db.$transaction>[0]
 
 /** The receptionist closes their own shift (managers close someone else's with closeShiftAsManager). */
 export async function endShift(actor: AuditActor & { userId: string; permissions: ReadonlySet<string> }, closingNote: string) {
+  // Closing counts the cash that person collected and sends their report to the Boss: never done by a Developer.
+  await refuseShiftWork(actor, "start or end a shift", "shifts.work");
   return db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext('reception-shift'))::text`;
     const shift = await tx.actualShift.findFirst({ where: { endedAt: null, userId: actor.userId, department: "RECEPTION" } });
@@ -137,6 +142,8 @@ export async function endShift(actor: AuditActor & { userId: string; permissions
  * reason — kept on the shift, in the handover and in the audit, apart from a normal close.
  */
 export async function closeShiftAsManager(actor: AuditActor & { userId: string; permissions: ReadonlySet<string> }, shiftId: string, reason: string) {
+  // Closing someone's shift counts their cash and sends the report to the Boss: a Developer never does it.
+  await refuseShiftWork(actor, "close someone's shift", "shifts.manage");
   if (!actor.permissions.has("shifts.manage")) throw new AppError("Only a manager can close someone's shift.", "FORBIDDEN");
   const why = reason.trim();
   if (why.length < 5) throw new AppError("Say why you close this shift (e.g. the receptionist left without closing).", "VALIDATION", { reason: msg("Required") });
@@ -159,6 +166,7 @@ export async function closeShiftAsManager(actor: AuditActor & { userId: string; 
 const DESK_WORKER = { AND: [{ role: { permissions: { some: { permission: { code: "shifts.work" } } } } }, { NOT: { role: { permissions: { some: { permission: { code: "shifts.manage" } } } } } }] };
 
 export async function setSchedule(actor: AuditActor & { userId: string }, date: BusinessDate, userId: string | null, notes?: string | null) {
+  await refuseShiftPlanWhileWorkingAs(actor, "change the shift plan", "shifts.manage");
   if (!isBusinessDate(date)) throw new AppError("Invalid date.");
   return db.$transaction(async (tx) => {
     const before = await tx.shiftSchedule.findUnique({ where: { businessDate: toDbDate(date) }, include: { scheduledUser: true } });
@@ -184,6 +192,7 @@ export async function setSchedule(actor: AuditActor & { userId: string }, date: 
 }
 
 export async function swapShifts(actor: AuditActor & { userId: string }, a: BusinessDate, b: BusinessDate) {
+  await refuseShiftPlanWhileWorkingAs(actor, "change the shift plan", "shifts.manage");
   return db.$transaction(async (tx) => {
     const [sa, sb] = await Promise.all([
       tx.shiftSchedule.findUnique({ where: { businessDate: toDbDate(a) }, include: { scheduledUser: true } }),
@@ -205,6 +214,7 @@ export async function generateRotation(
   actor: AuditActor & { userId: string },
   input: { from: BusinessDate; days: number; userIds: string[]; overwrite: boolean },
 ) {
+  await refuseShiftPlanWhileWorkingAs(actor, "change the shift plan", "shifts.manage");
   if (input.userIds.length === 0) throw new AppError("Choose at least one receptionist.");
   if (input.days < 1 || input.days > 92) throw new AppError("Generate between 1 and 92 days at a time.");
   const dates = eachDate(input.from, addDays(input.from, input.days));

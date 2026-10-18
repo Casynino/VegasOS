@@ -1,5 +1,6 @@
 import "server-only";
 import { db } from "../db";
+import { operationalOnly } from "../staff-pickers";
 import { getSettings, businessDayConfig } from "../settings";
 import { businessRangeBounds, fromDbDate, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import { cashRecords, totalsOf } from "./cash-handover";
@@ -87,7 +88,7 @@ export async function reconciliationByStaff(from: BusinessDate, to: BusinessDate
   const cfg = businessDayConfig(await getSettings());
   const { start, end } = businessRangeBounds(from, to, cfg);
   const people = await db.user.findMany({
-    where: { isActive: true, role: { permissions: { some: { permission: { code: "cash.handover.submit" } } } } },
+    where: operationalOnly({ isActive: true, role: { permissions: { some: { permission: { code: "cash.handover.submit" } } } } }),
     select: { id: true, fullName: true, role: { select: { name: true } } },
     orderBy: { fullName: "asc" },
   });

@@ -2,15 +2,19 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { authorize, requestMeta } from "@/server/auth";
+import { authorize, authorizeDecision, requestMeta } from "@/server/auth";
 import { runAction, type ActionResult } from "@/server/errors";
 import { parseInput } from "@/server/validation";
 import { postMovement, recordCashCount, reverseMovement, reviewCashCount } from "@/server/services/finance";
 import { savePaymentAccount, setOpeningBalance } from "@/server/services/payment-accounts";
 import { msg } from "@/i18n/msg";
 
-async function actorWith(permission: "finance.manage" | "finance.view") {
-  const user = await authorize(permission);
+/**
+ * The acting person for a money action. `decision`: it is a decision about money (counting the cash is one), so the Developer is always refused —
+ * also while it works as someone — and the refusal is written down (authorizeDecision). For everyone else it is the same as authorize().
+ */
+async function actorWith(permission: "finance.manage" | "finance.view", decision = false) {
+  const user = decision ? await authorizeDecision(permission) : await authorize(permission);
   const { ipAddress } = await requestMeta();
   return { userId: user.id, label: user.fullName, ipAddress, permissions: user.permissions };
 }
@@ -54,7 +58,7 @@ const CountSchema = z.object({
 
 export async function recordCashCountAction(_prev: unknown, formData: FormData): Promise<ActionResult<{ difference: number }>> {
   return runAction(async () => {
-    const actor = await actorWith("finance.view");
+    const actor = await actorWith("finance.view", true);
     const c = await recordCashCount(parseInput(CountSchema, Object.fromEntries(formData)), actor);
     refresh();
     return { difference: c.difference };
@@ -81,12 +85,15 @@ const AccountSchema = z.object({
   isActive: z.string().optional().transform((v) => v === "on"),
 });
 
-/** Admin: add or edit a payment account (never deleted — deactivate instead). */
+/**
+ * Admin: add or edit a payment account (never deleted — deactivate instead).
+ * Where guests pay and where money is kept is money: the Developer (also working as the MD) is refused here and again in the service.
+ */
 export async function savePaymentAccountAction(_prev: unknown, formData: FormData): Promise<ActionResult<null>> {
   return runAction(async () => {
-    const user = await authorize("settings.manage");
+    const user = await authorizeDecision("settings.manage");
     const { ipAddress } = await requestMeta();
-    await savePaymentAccount(parseInput(AccountSchema, Object.fromEntries(formData)), { userId: user.id, label: user.fullName, ipAddress });
+    await savePaymentAccount(parseInput(AccountSchema, Object.fromEntries(formData)), { userId: user.id, label: user.fullName, ipAddress, permissions: user.permissions });
     refresh();
     return null;
   }, msg("Account saved."));
@@ -97,12 +104,15 @@ const OpeningSchema = z.object({
   amount: z.coerce.number().int(msg("Whole shillings only.")).min(0, msg("Enter 0 or more.")),
   reason: z.string().trim().min(5, msg("Say what this opening balance is — at least 5 letters.")).max(300),
 });
-/** The Boss and the MD: where an account's books begin (not income, not a payment). */
+/**
+ * The Boss and the MD: where an account's books begin (not income, not a payment).
+ * An opening balance is money: the Developer (also working as the MD) is refused here and again in the service.
+ */
 export async function setOpeningBalanceAction(_prev: unknown, formData: FormData): Promise<ActionResult<null>> {
   return runAction(async () => {
-    const user = await authorize("settings.manage");
+    const user = await authorizeDecision("settings.manage");
     const { ipAddress } = await requestMeta();
-    await setOpeningBalance(parseInput(OpeningSchema, Object.fromEntries(formData)), { userId: user.id, label: user.fullName, ipAddress });
+    await setOpeningBalance(parseInput(OpeningSchema, Object.fromEntries(formData)), { userId: user.id, label: user.fullName, ipAddress, permissions: user.permissions });
     refresh();
     return null;
   }, msg("Opening balance saved."));

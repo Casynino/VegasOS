@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { ALL_PERMISSIONS, DEFAULT_ROLES, DEVELOPER_ALLOWED, DEVELOPER_DENIED, DEVELOPER_LOCKED_SETTINGS, DEVELOPER_ONLY, DEVELOPER_ROLE_CODE, isDeveloperOnly, PERMISSIONS } from "./permissions";
+import { ALL_PERMISSIONS, DEFAULT_ROLES, DEVELOPER_ACCOUNT_RIGHTS, DEVELOPER_ALLOWED, DEVELOPER_DENIED, DEVELOPER_LOCKED_SETTINGS, DEVELOPER_ONLY, DEVELOPER_ROLE_CODE, isDeveloperOnly, PERMISSIONS } from "./permissions";
 
 /** Manager = hotel operations authority; Admin (MD) = everything the Manager has, plus set-up and control. */
 describe("manager and admin roles", () => {
@@ -189,10 +189,22 @@ describe("the Developer account's rights", () => {
     }
   });
 
-  it("the Developer holds the operational rights: reservations, rooms, users, settings, reports, ledger, finance view", () => {
+  it("the Developer cannot create or change accounts, passwords, login emails, roles or rights: it holds no 'users.manage' (owner, 2026-10-18); the Boss and the MD keep it", () => {
+    expect(developer.has("users.manage")).toBe(false);
+    expect(denied.has("users.manage")).toBe(true);
+    expect(DEVELOPER_ALLOWED as readonly string[]).not.toContain("users.manage");
+    expect(DEVELOPER_ACCOUNT_RIGHTS).toEqual(["users.manage"]);
+    for (const code of DEVELOPER_ACCOUNT_RIGHTS) expect(denied.has(code), `${code} is one of the denied rights`).toBe(true);
+    for (const code of ["OWNER", "ADMIN"]) expect(roleSet(code).has("users.manage"), code).toBe(true);
+    // It holds 56 rights: the allowed ones and its own (it was 57 while it held 'users.manage').
+    expect(developer.size).toBe(56);
+    expect(DEVELOPER_ALLOWED.length + DEVELOPER_ONLY.length).toBe(56);
+  });
+
+  it("the Developer holds the operational rights: reservations, rooms, settings, reports, ledger, finance view", () => {
     for (const p of [
       "reservations.view", "reservations.create", "reservations.edit", "reservations.check_in", "reservations.check_out",
-      "rooms.view", "rooms.status.update", "rooms.manage", "rooms.block", "users.manage", "settings.manage", "reports.view", "ledger.view", "finance.view",
+      "rooms.view", "rooms.status.update", "rooms.manage", "rooms.block", "settings.manage", "reports.view", "ledger.view", "finance.view",
       "shifts.view", "audit.view", "staff.activity.view", "guests.view", "inventory.view", "assets.view",
     ] as const) expect(developer.has(p), p).toBe(true);
     // Every reservations.* and rooms.* right the Developer is not explicitly denied.

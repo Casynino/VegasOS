@@ -8,7 +8,7 @@ import { CONSOLE_HREF, type ConsoleTab } from "@/server/services/developer-conso
 export function Shortcuts({ t }: { t: T }) {
   const cards = [
     { href: CONSOLE_HREF.access, icon: LogIn, title: t("Open Access (work as someone)"), text: t("Open the dashboard of the Boss, a manager or a team member to help them or to see what they see. Every click is recorded under your name.") },
-    { href: CONSOLE_HREF.audit, icon: ScrollText, title: t("Open Audit"), text: t("The permanent diary of everything done in the system — by staff and by you. It can never be edited or deleted.") },
+    { href: CONSOLE_HREF.audit, icon: ScrollText, title: t("Open Audit"), text: t("The permanent diary of everything done in the system — by staff and by you. Nothing in it is edited or deleted; the only change is that a cancelled check-in is marked as cancelled.") },
     { href: CONSOLE_HREF.business, icon: ChartColumn, title: t("Open Business"), text: t("See bookings, payments, stock and customers in read-only tables. Good for checking a number without risking a change.") },
   ];
   return (

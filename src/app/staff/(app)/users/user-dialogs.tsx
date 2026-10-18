@@ -36,20 +36,7 @@ function RoleSelect({ roles, defaultValue, disabled, onChange }: { roles: Role[]
   );
 }
 
-/** Asked only of the Developer: why this sensitive change — written in the audit trail with it. (The server asks for it too.) */
-function ReasonField({ id, error, hint }: { id: string; error?: string; hint?: string }) {
-  const t = useT();
-  return (
-    <div className="space-y-1.5">
-      <Label htmlFor={id}>{t("Reason (written in the audit trail)")}</Label>
-      <Input id={id} name="reason" maxLength={500} autoComplete="off" placeholder={t("At least 5 characters")} />
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
-      <FieldError message={error} />
-    </div>
-  );
-}
-
-export function CreateUserDialog({ roles, screenLogins = [], isDeveloper = false }: { roles: Role[]; /** The restaurant screen logins that already exist. */ screenLogins?: string[]; /** The signed-in person is the Developer (they give a reason). */ isDeveloper?: boolean }) {
+export function CreateUserDialog({ roles, screenLogins = [] }: { roles: Role[]; /** The restaurant screen logins that already exist. */ screenLogins?: string[] }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   // The restaurant's screen: one login for the whole restaurant (not a person) — waiters use their PIN on it.
@@ -86,7 +73,6 @@ export function CreateUserDialog({ roles, screenLogins = [], isDeveloper = false
                 <p className="text-xs text-muted-foreground">{t("At least 10 characters with letters and numbers.")}</p>
                 <FieldError message={e?.password} />
               </div>
-              {isDeveloper && <ReasonField id="create-reason" error={e?.reason} />}
               <DialogFooter>
                 <Button type="submit" disabled={pending}>{pending && <Loader2 className="animate-spin" />}{t("Create account")}</Button>
               </DialogFooter>
@@ -98,18 +84,10 @@ export function CreateUserDialog({ roles, screenLogins = [], isDeveloper = false
   );
 }
 
-export function EditUserDialog({ user, roles, isSelf, isDeveloper = false, roleLocked = false, limited = false, passwordLocked = false, screens = null }: {
+export function EditUserDialog({ user, roles, isSelf, screens = null }: {
   user: { id: string; fullName: string; phone: string; roleId: string; isActive: boolean; email: string };
   roles: Role[];
   isSelf: boolean;
-  /** The signed-in person is the Developer: sensitive changes ask for a reason. */
-  isDeveloper?: boolean;
-  /** A Developer account: its role is not changed here. */
-  roleLocked?: boolean;
-  /** An account with money access, seen by the Developer: only its name and phone can be changed, and it can be switched off — no email, role, password, switching on, or removal. */
-  limited?: boolean;
-  /** A Developer account's password is changed only by the setup script — never here. */
-  passwordLocked?: boolean;
   /** The restaurant screen's login: where it is signed in now (null: not the screen's account). */
   screens?: { id: string; label: string; lastSeen: string }[] | null;
 }) {
@@ -124,35 +102,27 @@ export function EditUserDialog({ user, roles, isSelf, isDeveloper = false, roleL
           <DialogTitle>{user.fullName}</DialogTitle>
           <DialogDescription>{user.email}</DialogDescription>
         </DialogHeader>
-        {limited && <p className="rounded-xl border border-border/70 bg-muted/40 px-3 py-2 text-xs leading-relaxed text-muted-foreground">{t("This account has access to money. The Developer account can change its name and phone and switch it off — nothing else. Ask the Boss or the MD.")}</p>}
         <ActionForm action={updateUserAction} onSuccess={() => setOpen(false)} className="space-y-3">
           {({ pending, fieldErrors: e }) => (
             <>
               <input type="hidden" name="userId" value={user.id} />
               <div className="space-y-1.5"><Label htmlFor="fullName">{t("Full name")}</Label><Input id="fullName" name="fullName" defaultValue={user.fullName} required /><FieldError message={e?.fullName} /></div>
-              <div className="space-y-1.5"><Label htmlFor="email">{t("Email")}</Label><Input id="email" name="email" type="email" defaultValue={user.email} readOnly={limited} required /><FieldError message={e?.email} /></div>
+              <div className="space-y-1.5"><Label htmlFor="email">{t("Email")}</Label><Input id="email" name="email" type="email" defaultValue={user.email} required /><FieldError message={e?.email} /></div>
               <div className="space-y-1.5"><Label htmlFor="phone">{t("Phone")}</Label><Input id="phone" name="phone" defaultValue={user.phone} /></div>
               <div className="space-y-1.5">
                 <Label htmlFor="roleId">{t("Department & role")}</Label>
-                <RoleSelect roles={roles} defaultValue={user.roleId} disabled={isSelf || roleLocked} />
-                {(isSelf || roleLocked) && <input type="hidden" name="roleId" value={user.roleId} />}
+                <RoleSelect roles={roles} defaultValue={user.roleId} disabled={isSelf} />
+                {isSelf && <input type="hidden" name="roleId" value={user.roleId} />}
               </div>
               {isSelf ? <input type="hidden" name="isActive" value="true" /> : (
-                <NativeCheckbox name="isActive" defaultChecked={user.isActive} disabled={limited && !user.isActive} label={t("Account active (unticking signs them out immediately)")} />
+                <NativeCheckbox name="isActive" defaultChecked={user.isActive} label={t("Account active (unticking signs them out immediately)")} />
               )}
-              {isDeveloper && <ReasonField id={`edit-reason-${user.id}`} error={e?.reason} hint={t("Needed when you change the role, the email, or switch the account on or off.")} />}
               <DialogFooter>
                 <Button type="submit" disabled={pending}>{pending && <Loader2 className="animate-spin" />}{t("Save")}</Button>
               </DialogFooter>
             </>
           )}
         </ActionForm>
-        {passwordLocked ? (
-          <>
-            <Separator />
-            <p className="text-xs text-muted-foreground">{t("A Developer password is changed only with the setup script, not here.")}</p>
-          </>
-        ) : !limited && (
         <>
           <Separator />
           <ActionForm action={resetPasswordAction} resetOnSuccess className="space-y-2">
@@ -165,13 +135,11 @@ export function EditUserDialog({ user, roles, isSelf, isDeveloper = false, roleL
                   <Button type="submit" variant="outline" disabled={pending}><KeyRound /> {t("Reset")}</Button>
                 </div>
                 <FieldError message={e?.password} />
-                {isDeveloper && <ReasonField id={`reset-reason-${user.id}`} error={e?.reason} />}
               </>
             )}
           </ActionForm>
         </>
-        )}
-        {!isSelf && !limited && (
+        {!isSelf && (
           <>
             <Separator />
             {!confirmDelete ? (
@@ -180,12 +148,11 @@ export function EditUserDialog({ user, roles, isSelf, isDeveloper = false, roleL
               </button>
             ) : (
               <ActionForm action={deleteUserAction} onSuccess={() => setOpen(false)} className="space-y-2">
-                {({ pending, fieldErrors: e }) => (
+                {({ pending }) => (
                   <>
                     <input type="hidden" name="userId" value={user.id} />
                     <p className="text-sm font-medium text-rose-600 dark:text-rose-400">{t("Remove {name}?", { name: user.fullName })}</p>
                     <p className="text-xs text-muted-foreground">{t("This cannot be undone. If they have records in the system the delete will be blocked — deactivate instead.")}</p>
-                    {isDeveloper && <ReasonField id={`delete-reason-${user.id}`} error={e?.reason} />}
                     <div className="flex gap-2">
                       <Button type="submit" variant="destructive" size="sm" disabled={pending}>{pending && <Loader2 className="animate-spin" />}<Trash2 />{t("Yes, remove")}</Button>
                       <Button type="button" variant="ghost" size="sm" onClick={() => setConfirmDelete(false)}>{t("Cancel")}</Button>

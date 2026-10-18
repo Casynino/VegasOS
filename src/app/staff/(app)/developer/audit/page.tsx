@@ -39,7 +39,7 @@ function addressOf(view: DeveloperAuditView, f: AuditFilter, page = 1) {
 /**
  * AUDIT — the permanent diary of the system, for the Developer: who did what, and when. The reader is the same audit-trail service as
  * the Boss's and the MD's page (src/server/services/audit-trail.ts); this page only reads. Nothing here edits or deletes an entry,
- * and the database itself refuses it for a Developer's own rows.
+ * and the database itself refuses it (the one change the app ever makes to an older line is marking a cancelled check-in as cancelled).
  */
 export default async function DeveloperAuditPage({ searchParams }: PageProps<"/staff/developer/audit">) {
   // The Developer's console and the "Work as" world are kept apart: while working as someone, this page is closed — to their own home.
@@ -58,7 +58,7 @@ export default async function DeveloperAuditPage({ searchParams }: PageProps<"/s
     <div className="w-full space-y-5">
       <PageHeader
         title={t("Audit")}
-        description={t("The permanent diary of the system: who did what, and when. Developer actions can't be edited or deleted — not even from the database.")}
+        description={t("The permanent diary of the system: who did what, and when. Developer actions can't be edited or deleted — the database refuses it. The only change the system ever makes to an older line is marking a cancelled check-in as cancelled.")}
       />
 
       <aside className="flex items-start gap-3 rounded-2xl border border-border/70 bg-card p-4 shadow-[0_2px_4px_rgba(15,23,42,0.03)]">

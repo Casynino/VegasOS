@@ -31,7 +31,7 @@ const catalog: Catalog = {
   "This account is not suspended.": "此账号未被停用。",
   "You can only switch back on accounts you suspended yourself.": "您只能重新启用由您自己停用的账号。",
   "You cannot sign yourself out here: use Sign out.": "不能在此让自己退出登录：请使用“退出登录”。",
-  // ("Can't be suspended here" and "Only the Boss or the MD can switch this account back on" — the notes on the Access list — are translated in developer-access.ts.)
+  // ("Can't be suspended or signed out here" and "Only the Boss or the MD can switch this account back on" — the notes on the Access list — are translated in developer-access.ts.)
   // The Boss's WhatsApp notice
   "{developer} (Developer) started working as {person} ({role}) at {time}.": "{developer}（开发者）已于 {time} 开始以 {person}（{role}）的身份工作。",
 };

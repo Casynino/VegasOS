@@ -159,7 +159,7 @@ const catalog: Catalog = {
   "Your session": "您的会话",
   "Work as ends by itself after 4 hours, or when this session ends — whichever comes first.": "“以此身份工作”会在 4 小时后或本会话结束时自动结束，以先到者为准。",
   "What you cannot do": "您不能做的事",
-  "The Developer role never writes money. This is by design, and it is checked on the server — not only hidden on the screen.": "开发者角色从不写入资金。这是刻意的设计，并在服务器上校验——不只是在屏幕上隐藏。",
+  "The Developer role never writes money and never creates or changes accounts. This is by design, and it is checked on the server — not only hidden on the screen.": "开发者角色从不写入资金，也从不创建或更改账号。这是刻意的设计，并在服务器上校验——不只是在屏幕上隐藏。",
   "The same wall holds while you work as someone: you hold their rights minus these, and the decisions about money stay refused.": "以他人身份工作时同样适用：您拥有对方的权限减去这些，涉及资金的决定仍会被拒绝。",
   "What is written down about you": "关于您的记录",
   "Nothing you do here is secret from the owner. This is the whole list.": "您在这里所做的一切对所有者都不是秘密。以下是完整清单。",

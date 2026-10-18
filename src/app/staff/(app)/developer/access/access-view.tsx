@@ -23,6 +23,7 @@ export function AccessView({ t, groups, count, nowIso, timezone }: { t: T; group
         <div className="grid gap-3 md:grid-cols-3">
           <GuideCard
             icon={<LogIn />} tone="gold" title={t("Work as")}
+            extra={t("It also ends when your session ends. Their shift is never started or closed for them.")}
             text={t("Opens that person's dashboard with their real permissions and data. A bar at the top shows who you are working as; press Stop to come back here. It ends by itself after 4 hours. Money is never touched: payments, revenue, expenses, withdrawals and purchases are refused while you work as someone.")}
           />
           <GuideCard
@@ -31,6 +32,7 @@ export function AccessView({ t, groups, count, nowIso, timezone }: { t: T; group
           />
           <GuideCard
             icon={<LogOut />} tone="plain" title={t("Sign out everywhere")}
+            extra={t("It is not offered for the Boss's account.")}
             text={t("Ends every open session on every phone and computer. The person can sign straight back in — useful if a phone was lost.")}
           />
         </div>
@@ -39,10 +41,14 @@ export function AccessView({ t, groups, count, nowIso, timezone }: { t: T; group
       <section aria-labelledby="safety-rules" className="flex items-start gap-3 rounded-3xl border border-emerald-500/30 bg-emerald-500/[0.06] p-4 sm:gap-4 sm:p-5">
         <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 [&_svg]:size-5"><ShieldCheck aria-hidden="true" /></span>
         <div className="min-w-0">
-          <h2 id="safety-rules" className="text-base font-semibold">{t("Safety rules while working as someone")}</h2>
+          <h2 id="safety-rules" className="text-base font-semibold">{t("Safety rules")}</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            {t("You can't change passwords or login emails, create accounts, change roles or rights, suspend people or sign people out of all devices while working as them — so Work as can never be used to take over an account. Money stays untouchable too. The Boss is told every time you start.")}
+            {t("The Developer account cannot create or change accounts, passwords, login emails, roles or rights — only the Boss and the MD can, in Staff & roles. Here you can work as a person, suspend an account, sign a person out everywhere and switch back on an account you suspended yourself.")}
           </p>
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            {t("While you work as someone you can't suspend people or sign them out of all devices either — so Work as can never be used to take over an account. Money stays untouchable too. The Boss is told every time you start, suspend or sign someone out.")}
+          </p>
+          <p className="mt-1.5 text-sm text-muted-foreground">{t("A shift is never started or closed for them either.")}</p>
         </div>
       </section>
 
@@ -57,7 +63,7 @@ const TONES = {
   plain: { card: "border-border/70 bg-card", tile: "bg-muted text-muted-foreground" },
 } as const;
 
-function GuideCard({ icon, tone, title, text }: { icon: ReactNode; tone: keyof typeof TONES; title: string; text: string }) {
+function GuideCard({ icon, tone, title, text, extra }: { icon: ReactNode; tone: keyof typeof TONES; title: string; text: string; extra?: string }) {
   const c = TONES[tone];
   return (
     <div className={cn("flex items-start gap-3 rounded-3xl border p-4 sm:p-5", c.card)}>
@@ -65,6 +71,7 @@ function GuideCard({ icon, tone, title, text }: { icon: ReactNode; tone: keyof t
       <div className="min-w-0">
         <h3 className="text-sm font-semibold">{title}</h3>
         <p className="mt-1 text-sm text-muted-foreground">{text}</p>
+        {extra && <p className="mt-1.5 text-sm text-muted-foreground">{extra}</p>}
       </div>
     </div>
   );

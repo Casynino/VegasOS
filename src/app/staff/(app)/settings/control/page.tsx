@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Armchair, BedDouble, BookOpenText, Boxes, ChefHat, ChevronRight, ClipboardList, FileChartColumn, Globe, History, Hotel, KeyRound, Landmark, Languages, Layers, Bell, NotebookText, Percent, QrCode, ScrollText, ShieldCheck, Sofa, Tags, UserCheck, UserCog, type LucideIcon, Gift } from "lucide-react";
 import { can, requirePagePermission } from "@/server/auth";
 import { db } from "@/server/db";
+import { operationalOnly } from "@/server/staff-pickers";
 import { businessToday, getSettings } from "@/server/settings";
 import { addDays, toDbDate } from "@/lib/time/business-date";
 import { cn } from "@/lib/utils";
@@ -28,7 +29,7 @@ export default async function ControlCentrePage() {
   const today = await businessToday();
   const s = await getSettings();
   const [users, roles, perms, auditToday, accounts, expenseTypes, promos, rooms, roomTypes, tables, menuItems, menuCats, stock, invCats, invDepts, suppliers, recipes, assets, lastReport] = await Promise.all([
-    db.user.count({ where: { isActive: true } }), db.role.count(), db.permission.count(),
+    db.user.count({ where: operationalOnly({ isActive: true }) }), db.role.count(), db.permission.count(),
     db.auditLog.count({ where: { businessDate: toDbDate(today) } }),
     db.moneyAccount.count({ where: { isActive: true } }), db.expenseCategory.count({ where: { isActive: true } }), db.promotion.count({ where: { isActive: true } }),
     db.room.count({ where: { isActive: true } }), db.roomType.count(),

@@ -13,8 +13,10 @@ const catalog: Catalog = {
   "Signs out at {time} unless you keep working (after {n} minutes without use).": "除非您继续操作，否则将在 {time} 退出登录（闲置 {n} 分钟后）。",
   "Signs out at {time} at the latest ({n} hours after signing in).": "最迟在 {time} 退出登录（登录后 {n} 小时）。",
   "Rights you hold": "您拥有的权限",
-  "This account holds {n} money right(s) the Developer role is meant never to hold: {codes}. Fix the role.": "此账号拥有 {n} 项开发者角色本应永远不具备的资金权限：{codes}。请修正该角色。",
-  "Rights you do not hold (money)": "您不具备的权限（资金）",
+  "This account holds {n} right(s) about money or accounts that the Developer role is meant never to hold: {codes}. Fix the role.": "此账号拥有 {n} 项开发者角色本应永远不具备的、涉及资金或账号管理的权限：{codes}。请修正该角色。",
+  "Rights you do not hold (money and accounts)": "您不具备的权限（资金和账号）",
+  "The Developer cannot create or change accounts, passwords, login emails, roles or rights — only the Boss and the MD can. It can work as a person, suspend, sign out everywhere and switch back on an account it suspended itself.": "开发者不能创建或更改账号、密码、登录邮箱、角色或权限——只有老板和总经理（MD）可以。它可以以某人的身份工作、停用账号、让某人在所有设备上退出登录，以及重新启用由它自己停用的账号。",
+  "The Developer role never holds this right: only the Boss and the MD create or change accounts, passwords, roles and rights.": "开发者角色永远不具备此权限：只有老板和总经理（MD）可以创建或更改账号、密码、角色和权限。",
   "The Developer can see and fix everything in the system but never writes money — so a test or a mistake can never change the hotel's money, and every money entry stays with the person who made it (Finance, the Boss or the MD).": "开发者可以查看并修复系统中的一切，但从不写入资金——因此测试或失误永远不会改动酒店的资金，每一笔资金记录都归其经办人（财务、老板或总经理）负责。",
 
   // System checks

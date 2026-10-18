@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/server/db";
 import { audit } from "@/server/audit";
-import { authorize, requestMeta, type CurrentUser } from "@/server/auth";
+import { authorize, authorizeDecision, requestMeta, type CurrentUser } from "@/server/auth";
 import { AppError, isUniqueViolation, runAction, type ActionResult } from "@/server/errors";
 import { parseInput } from "@/server/validation";
 import { moveMedia, updateMedia, uploadMedia } from "@/server/services/media";
@@ -126,6 +126,18 @@ export async function saveServiceAction(_prev: unknown, formData: FormData): Pro
     const zh = parseInput(ServiceZh, formData);
     let serviceId = id;
     const data = { ...d, description: d.description || null, icon: d.icon || null, price: d.price === "" || d.price === undefined ? null : d.price, priceNote: d.priceNote || null };
+    // A service's price, whether it is chargeable and its price note (in English and in Chinese) are the prices guests are shown: deciding
+    // them is not the Developer's (owner, 2026-10-18), also while it works as someone. Its name, description, icon and switches stay open to
+    // it, and a save that leaves these three as they are works. The refusal is written to the audit trail like any other.
+    if (user.actorType === "DEVELOPER") {
+      const was = id ? await db.hotelService.findUnique({ where: { id }, select: { price: true, isChargeable: true, priceNote: true } }) : null;
+      let changed = (was?.price ?? null) !== data.price || (was?.isChargeable ?? false) !== data.isChargeable || (was?.priceNote ?? null) !== data.priceNote;
+      if (!changed && formData.has("zh_name")) {
+        const wasZh = id ? await db.hotelServiceTranslation.findUnique({ where: { parentId_locale: { parentId: id, locale: "zh-CN" } }, select: { priceNote: true } }) : null;
+        changed = (wasZh?.priceNote ?? null) !== (zh.zh_priceNote?.trim() || null);
+      }
+      if (changed) await authorizeDecision("website.manage");
+    }
     try {
       if (id) {
         const before = await db.hotelService.findUniqueOrThrow({ where: { id } });

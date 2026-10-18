@@ -17,6 +17,7 @@ import type { GroupBilling, GroupType, Prisma } from "@/generated/prisma/client"
 import { msg, msgf, type Localized, type MsgVars } from "@/i18n/msg";
 import { getT } from "@/i18n/server";
 import { englishT } from "@/i18n/translate";
+import { refuseDeveloper } from "../developer-wall";
 
 /**
  * GroupBookingService — rooms that belong together (a company's staff, a
@@ -33,6 +34,23 @@ import { englishT } from "@/i18n/translate";
  * charges; a group invoice only moves what is owed from the rooms to the payer,
  * and a group payment settles that invoice.
  */
+
+/**
+ * A GROUP'S MONEY IS NOT THE DEVELOPER'S TO DECIDE (owner, 2026-10-14 and 2026-10-17). The single-booking versions are walled; these are the
+ * group ones: a discount on a room, a room the group (or its company) pays for — it is confirmed without any payment and adds to what the group
+ * owes —, a company as the payer, payment terms, going over a company's credit, who pays, the group's invoices, its payments, its final bill.
+ * Each is refused for the Developer, also while it works as someone (the refusal is written to the audit trail, nothing is written otherwise);
+ * a group whose rooms all pay their own bill, with no company and no terms, is a set of ordinary held bookings and is allowed.
+ * For everyone else every check below does nothing.
+ */
+async function refuseDeveloperGroupMoney(actor: Actor, what: { discount?: boolean; groupPays?: boolean; company?: boolean; terms?: boolean; creditOverride?: boolean }) {
+  const needs = [
+    what.discount && "reservations.discount_override",
+    what.groupPays && "reservations.confirm_unpaid",
+    (what.company || what.terms || what.creditOverride) && "corporate.manage",
+  ].filter(Boolean) as string[];
+  if (needs.length) await refuseDeveloper(actor, needs);
+}
 
 const REF = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const groupRef = () => `GRP-${Array.from(randomBytes(6), (b) => REF[b % REF.length]).join("")}`;
@@ -130,6 +148,10 @@ export async function createGroupBooking(input: CreateGroupInput, actor: Actor, 
   if (!input.contact.fullName?.trim()) throw new AppError("Enter the contact person.", "VALIDATION", { "contact.fullName": msg("Required") });
   if (input.rooms.length === 0) throw new AppError("Add at least one room.");
   if (input.rooms.length > 60) throw new AppError("A group can hold at most 60 rooms.");
+  await refuseDeveloperGroupMoney(actor, {
+    discount: input.rooms.some((r) => (r.discountPerNight ?? 0) > 0), groupPays: input.rooms.some((r) => !r.ownBill),
+    company: !!input.corporateCustomerId, terms: input.paymentTermDays != null, creditOverride: !!input.creditOverride,
+  });
   await expireUnpaidHolds(now);
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
@@ -198,6 +220,7 @@ async function createGroupTx(tx: Tx, input: CreateGroupInput, actor: Actor, now:
 
 /** Add one more room to a group (same rules: availability checked, the group pays unless "own bill"). */
 export async function addRoomToGroup(groupId: string, room: GroupRoomInput, actor: Actor, now = new Date()) {
+  await refuseDeveloperGroupMoney(actor, { discount: (room.discountPerNight ?? 0) > 0, groupPays: !room.ownBill });
   await expireUnpaidHolds(now);
   return db.$transaction(async (tx) => {
     const g = await tx.bookingGroup.findUnique({ where: { id: groupId }, include: { source: true, contactGuest: true } });
@@ -227,6 +250,8 @@ export async function addRoomToGroup(groupId: string, room: GroupRoomInput, acto
 
 /** Put an existing booking into a group (or take it out). */
 export async function setReservationGroup(reservationId: string, groupId: string | null, actor: Actor) {
+  // Putting a booking into a group (or taking it out) changes who pays for it.
+  await refuseDeveloper(actor, "reservations.edit");
   return db.$transaction(async (tx) => {
     const r = await tx.reservation.findUnique({ where: { id: reservationId }, include: { group: true } });
     if (!r) throw new AppError("Reservation not found.", "NOT_FOUND");
@@ -260,6 +285,13 @@ export async function updateGroup(
     if (!g) throw new AppError("Group not found.", "NOT_FOUND");
     const companyId = input.corporateCustomerId === undefined ? g.corporateCustomerId : input.corporateCustomerId || null;
     const leaderId = input.contact?.fullName?.trim() ? await resolveGuest(tx, input.contact) : g.contactGuestId;
+    // Who pays (the company, or the leader when there is none) and on what terms (one running bill or one invoice per room; the days to pay)
+    // decide what the group owes: refused for the Developer as a whole when any of it would change — the name, notes, type and billing
+    // details can still be saved. A save that leaves these as they are works as before.
+    await refuseDeveloperGroupMoney(actor, {
+      company: companyId !== g.corporateCustomerId || (!companyId && leaderId !== g.contactGuestId),
+      terms: (input.billing !== undefined && input.billing !== g.billing) || (input.paymentTermDays !== undefined && (input.paymentTermDays ?? null) !== (g.paymentTermDays ?? null)),
+    });
     // Who the invoice is made out to: the company, or the group itself (the leader is only the contact person).
     if (companyId !== g.corporateCustomerId) {
       const invoiced = await tx.invoice.count({ where: { groupId: g.id, status: { notIn: ["CANCELLED", "VOID"] } } });
@@ -396,6 +428,8 @@ export async function checkOutGroup(
 ): Promise<RoomResult[]> {
   if (!reservationIds.length) throw new AppError("Choose the rooms to check out.");
   const { rs } = await members(groupId, reservationIds);
+  // A room the group pays for moves its bill onto the group's invoice at check-out (made, and issued for a separate bill): money, never the Developer.
+  if (rs.some((r) => r.billTo === "GROUP")) await refuseDeveloper(actor, "invoices.manage");
   const out: Said[] = [];
   for (const r of rs) {
     const base = { reservationId: r.id, reference: r.reference, room: r.rooms[0]?.room.number ?? "—", guest: r.guest.fullName };
@@ -416,6 +450,8 @@ export async function checkOutGroup(
 }
 
 export async function cancelGroup(groupId: string, actor: Actor, reason: string) {
+  // A cancellation settles the money already paid (kept, or a refund due): not the Developer's decision.
+  await refuseDeveloper(actor, "reservations.cancel");
   if (!reason.trim()) throw new AppError("A cancellation reason is required.", "VALIDATION", { reason: msg("Required") });
   const { rs } = await members(groupId);
   const out: Said[] = [];
@@ -440,6 +476,8 @@ export async function cancelGroup(groupId: string, actor: Actor, reason: string)
  */
 export async function invoiceGroupRooms(groupId: string, reservationIds: string[], mode: "COMBINED" | "SEPARATE", actor: Actor) {
   if (!actor.userId) throw new AppError("Sign in required.", "UNAUTHENTICATED");
+  // Making and issuing an invoice is money: never the Developer.
+  await refuseDeveloper(actor, "invoices.manage");
   if (!reservationIds.length) throw new AppError("Tick the rooms to put on the invoice.");
   const { g, rs } = await members(groupId, reservationIds);
   const groupRooms = rs.filter((r) => r.billTo === "GROUP" && !["CANCELLED", "INQUIRY"].includes(r.status));
@@ -495,6 +533,8 @@ export async function recordGroupPayment(
   actor: Actor,
 ) {
   if (!actor.userId) throw new AppError("Sign in required.", "UNAUTHENTICATED");
+  // Recording a payment is money: never the Developer.
+  await refuseDeveloper(actor, "payments.record");
   if (!Number.isInteger(input.amount) || input.amount <= 0) throw new AppError("Enter the amount received.", "VALIDATION", { amount: msg("Invalid") });
   return db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT "id" FROM "booking_groups" WHERE "id" = ${groupId} FOR UPDATE`;
@@ -546,6 +586,8 @@ const LEFT_OR_OFF = ["CHECKED_OUT", "CANCELLED", "NO_SHOW", "INQUIRY"];
  */
 export async function finalizeGroup(groupId: string, actor: Actor, now = new Date()) {
   if (!actor.userId) throw new AppError("Sign in required.", "UNAUTHENTICATED");
+  // The final group invoice is made and issued here: money, never the Developer.
+  await refuseDeveloper(actor, "invoices.manage");
   const res = await db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT "id" FROM "booking_groups" WHERE "id" = ${groupId} FOR UPDATE`;
     const g = await tx.bookingGroup.findUnique({ where: { id: groupId }, include: { reservations: { select: { id: true, status: true, billTo: true, rooms: { select: { room: { select: { number: true } } } } } } } });

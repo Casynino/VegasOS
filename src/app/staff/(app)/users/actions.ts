@@ -12,13 +12,11 @@ import { createStaffAccount, deleteStaffAccount, resetStaffPassword, setRolePerm
 import { msg } from "@/i18n/msg";
 
 /*
- * Every rule (who may see or change a Developer account, who may give a right, the Developer's reason, the audit entries) lives
- * in server/services/staff-accounts.ts. Here: the signed-in person's own right to manage staff, the form, and the page refresh.
- * Who is acting — and whether it is the Developer — comes from the server's session, never from the form.
+ * Every rule (who may see or change a Developer account, who may give a right, the audit entries) lives in
+ * server/services/staff-accounts.ts. Here: the signed-in person's own right to manage staff, the form, and the page refresh.
+ * Who is acting — and whether it is the Developer, who can never get here (it holds no "users.manage") — comes from the server's
+ * session, never from the form.
  */
-
-/** The Developer's reason (only asked of a Developer; the server decides whether it is needed). */
-const reason = z.string().trim().max(500).optional().transform((v) => v || null);
 
 const CreateUserSchema = z.object({
   fullName: z.string().trim().min(2, msg("Full name is required.")).max(100),
@@ -27,7 +25,6 @@ const CreateUserSchema = z.object({
   phone: z.string().trim().max(30).optional().transform((v) => v || null),
   roleId: z.string().min(1, msg("Choose a role.")).max(64),
   password: z.string().min(1, msg("Set a temporary password.")),
-  reason,
 });
 
 export async function createUserAction(_prev: unknown, formData: FormData): Promise<ActionResult<null>> {
@@ -47,7 +44,6 @@ const UpdateUserSchema = z.object({
   phone: z.string().trim().max(30).transform((v) => v || null),
   roleId: z.string().min(1).max(64),
   isActive: z.preprocess((v) => v === "on" || v === "true", z.boolean()),
-  reason,
 });
 
 export async function updateUserAction(_prev: unknown, formData: FormData): Promise<ActionResult<null>> {
@@ -60,7 +56,7 @@ export async function updateUserAction(_prev: unknown, formData: FormData): Prom
   }, msg("Staff member updated."));
 }
 
-const ResetSchema = z.object({ userId: z.string().min(1).max(64), password: z.string().min(1, msg("Enter a temporary password.")), reason });
+const ResetSchema = z.object({ userId: z.string().min(1).max(64), password: z.string().min(1, msg("Enter a temporary password.")) });
 
 export async function resetPasswordAction(_prev: unknown, formData: FormData): Promise<ActionResult<null>> {
   return runAction(async () => {
@@ -76,7 +72,6 @@ const PermissionToggleSchema = z.object({
   // The server decides what may be given (a right that exists, and never a Developer-only one).
   permission: z.string().min(1).max(100),
   granted: z.boolean(),
-  reason: z.string().trim().max(500).optional().nullable().transform((v) => v || null),
 });
 
 export async function setRolePermissionAction(input: z.input<typeof PermissionToggleSchema>): Promise<ActionResult<null>> {
@@ -89,7 +84,7 @@ export async function setRolePermissionAction(input: z.input<typeof PermissionTo
   });
 }
 
-const DeleteSchema = z.object({ userId: z.string().min(1).max(64), reason });
+const DeleteSchema = z.object({ userId: z.string().min(1).max(64) });
 
 export async function deleteUserAction(_prev: unknown, formData: FormData): Promise<ActionResult<null>> {
   return runAction(async () => {

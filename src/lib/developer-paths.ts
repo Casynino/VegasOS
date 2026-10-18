@@ -1,8 +1,10 @@
 /**
  * Which pages a Developer's visit is written to the audit trail for (owner, 2026-10-14: read-only inspections of sensitive data
  * are logged too). The rule is turned around on purpose: this file lists only the pages that are plainly HARMLESS — the sign-in
- * page, the "no access" page, the person's own account page. EVERY other page is logged, so a page added tomorrow is logged from
- * its first day, and an address nobody foresaw is logged too. Plain functions, no server code — the server writes the entries;
+ * page and the "no access" page. EVERY other page is logged, so a page added tomorrow is logged from its first day, and an address
+ * nobody foresaw is logged too. The account page is NOT on this list: while a Developer works as someone it shows THAT person's
+ * profile, phone, email and open sessions with their devices and addresses — and even in its own console it lists the Developer's
+ * sessions with devices and addresses — so a visit to it is written like any other sensitive page. Plain functions, no server code — the server writes the entries;
  * the browser only uses the same rule to skip a pointless call.
  */
 
@@ -13,7 +15,6 @@ export const HARMLESS_EXACT_PATHS: readonly string[] = ["/", "/login", "/staff"]
 export const HARMLESS_AREAS: readonly string[] = [
   "/staff/login",     // the sign-in page
   "/staff/forbidden", // "you do not have access to this page"
-  "/staff/account",   // the person's own profile, password, language and sessions
 ];
 
 const MAX_PATH_LENGTH = 300;

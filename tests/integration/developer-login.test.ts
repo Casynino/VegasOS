@@ -17,7 +17,6 @@ vi.mock("@/server/audit", async (importOriginal) => {
 import { db } from "@/server/db";
 import { audit } from "@/server/audit";
 import { getCurrentUser } from "@/server/auth";
-import { AppError } from "@/server/errors";
 import { authenticate, DEVELOPER_LANDING } from "@/server/services/auth-login";
 import { loginAction, logoutAction, type LoginState } from "@/app/staff/(auth)/login/actions";
 import { auditOf, browser, makeSession, makeUser, Redirected, removeMadeUsers, sha256, thrownBy, type MadeUser } from "../support/developer";
@@ -148,13 +147,13 @@ describe("authenticate(): an email and a password — the account's own role say
     expect(unknown).toBeLessThan(known * 3);
   });
 
-  it("a Developer's account keeps its stricter lock: after 5 tries the 6th is refused BEFORE its password counts — even the right one", async () => {
+  it("a Developer's account keeps its stricter lock: after 5 tries the 6th is refused BEFORE its password counts — even the right one — and it answers as an ordinary failure (no 'Too many attempts' that would give the account away)", async () => {
     const d = await makeUser("DEVELOPER", { fullName: "Dev Lock Direct" });
     for (let i = 1; i <= 5; i++) expect((await authenticate(d.email, `wrong-pass-${i}-x`)).ok, `try ${i}`).toBe(false);
-    const refused = await thrownBy(() => authenticate(d.email, d.password));
-    expect(refused).toBeInstanceOf(AppError);
-    expect((refused as AppError).message).toBe(TOO_MANY);
-    expect((refused as AppError).code).toBe("RATE_LIMITED");
+    const refused = await authenticate(d.email, d.password); // the RIGHT password
+    expect(refused).toEqual({ ok: false, userId: d.id, actual: "DEVELOPER", passwordOk: false, active: true, locked: true });
+    // and it stays shut for as long as the window lasts
+    expect(await authenticate(d.email, d.password)).toMatchObject({ ok: false, locked: true });
   });
 
   it("a staff account has no such lock inside authenticate() (its limits are the sign-in action's: 8 per email, 20 per address)", async () => {
@@ -385,10 +384,15 @@ describe("one browser, one identity: switching needs a new sign-in, and logging 
     await signIn(dev.email, dev.password);
     await db.session.update({ where: { tokenHash: sha256(browser.sessionToken!) }, data: { workAsUserId: rec.id, workAsStartedAt: new Date() } });
     expect((await getCurrentUser())?.workAs).not.toBeNull();
+    const endedBefore = (await auditOf(dev.id, "developer.work_as_expired")).length;
     await signIn(dev.email, dev.password);
     expect(await sessionsOf(dev.id)).toHaveLength(1);
     const me = (await getCurrentUser())!;
     expect([me.id, me.workAs]).toEqual([dev.id, null]); // a new session starts as the Developer, never as the person
+    // the old session is deleted with no request ever coming on it, so the end of that work-as is written down now, as the Developer
+    const ended = (await auditOf(dev.id, "developer.work_as_expired")).slice(endedBefore);
+    expect(ended).toHaveLength(1);
+    expect(ended[0]).toMatchObject({ actorType: "DEVELOPER", entityId: rec.id, after: { endedBy: "session" } });
   });
 
   it("the Developer in one browser and the Boss in another: each is its own identity, neither disturbs the other", async () => {
@@ -447,11 +451,13 @@ describe("one browser, one identity: switching needs a new sign-in, and logging 
     expect([me.id, me.actorId, me.workAs?.developerId]).toEqual([rec.id, dev.id, dev.id]); // the screen is Asha's, the identity is the Developer's
     const devOut = (await auditOf(dev.id, "auth.logout")).length;
     const recOut = (await auditOf(rec.id, "auth.logout")).length;
+    const expiredBefore = (await auditOf(dev.id, "developer.work_as_expired")).length;
 
     expect(await thrownRedirect(() => logoutAction())).toBe("/staff/login");
     expect(await sessionsOf(dev.id)).toHaveLength(0); // the whole session is gone (it is not "stop working as", it is signing out)
     expect(browser.cookies.size).toBe(0);
     expect(await getCurrentUser()).toBeNull();
+    expect((await auditOf(dev.id, "developer.work_as_expired")).length).toBe(expiredBefore); // the end is the Stop's, written once — not a second "expired" line
 
     const rows = (await auditOf(dev.id, "auth.logout")).slice(devOut);
     expect(rows).toHaveLength(1);
@@ -478,26 +484,50 @@ describe("one browser, one identity: switching needs a new sign-in, and logging 
 
 // ───────────────────────────────────────────── rate limits ─────────────────────────────────────────────
 describe("a Developer's account is guarded harder than a staff account — found out from the account, not from a door", () => {
-  it("the 6th try on one Developer account within 15 minutes is refused — even with the right password — and signs nobody in", async () => {
+  it("the 6th try on one Developer account within 15 minutes is refused — even with the right password — signs nobody in, and says the SAME words as any wrong try", async () => {
     const d = await makeUser("DEVELOPER", { fullName: "Dev Limit" });
     for (let i = 1; i <= 5; i++) expect((await signIn(d.email, `wrong-pass-${i}-x`)).state?.error, `try ${i}`).toBe(FAIL);
     expect(await failedAbout(d.id)).toHaveLength(5);
 
     const sixth = await signIn(d.email, d.password);
     expect(sixth.to).toBeNull();
-    expect(sixth.state?.error).toBe(TOO_MANY);
+    expect(sixth.state?.error).toBe(FAIL); // not "Too many attempts": that would show the email is the Developer's
     expect(await sessionsOf(d.id)).toHaveLength(0);
     expect(browser.cookies.size).toBe(0);
     expect(await auditOf(d.id, "auth.login")).toHaveLength(0);
+    // the locked try is in the trail, marked as such (only the audit trail knows)
+    const rows = await failedAbout(d.id);
+    expect(rows).toHaveLength(6);
+    expect(rows[5].after).toMatchObject({ accountType: "DEVELOPER", reasonKind: "locked" });
 
-    expect((await signIn(d.email, d.password)).state?.error).toBe(TOO_MANY); // and it stays shut
+    const seventh = await signIn(d.email, d.password);
+    expect(seventh.state?.error).toBe(FAIL); // and it stays shut
+    expect(seventh.to).toBeNull();
+  });
+
+  it("the lock does not give the account away: the Developer's answers to wrong tries are word for word those of a staff email and of an unknown email, try by try — 'Too many attempts' comes at the 9th for all", async () => {
+    const d = await makeUser("DEVELOPER", { fullName: "Dev Oracle" });
+    const s = await makeUser("RECEPTIONIST", { fullName: "Staff Oracle" });
+    const ghost = `ghost-oracle-${Date.now()}@devtest.local`;
+    const transcript = async (email: string) => {
+      const said: (string | undefined)[] = [];
+      for (let i = 1; i <= 10; i++) { browser.reset(); said.push((await signIn(email, `wrong-pass-${i}-x`)).state?.error); }
+      return said;
+    };
+    const dev = await transcript(d.email);
+    expect(dev.slice(0, 8)).toEqual(Array(8).fill(FAIL)); // tries 6, 7 and 8 are locked — and say the usual words
+    expect(dev.slice(8)).toEqual([TOO_MANY, TOO_MANY]); // the sign-in action's own limit (8 per email) is the same for every email
+    expect(await transcript(s.email)).toEqual(dev);
+    expect(await transcript(ghost)).toEqual(dev);
   });
 
   it("the lock follows the account, not the address: tries from 6 different addresses are still stopped at the 6th", async () => {
     const d = await makeUser("DEVELOPER", { fullName: "Dev Limit Spread" });
     for (let i = 1; i <= 5; i++) { browser.reset(); expect((await signIn(d.email, `wrong-pass-${i}-x`)).state?.error).toBe(FAIL); }
     browser.reset();
-    expect((await signIn(d.email, d.password)).state?.error).toBe(TOO_MANY);
+    const locked = await signIn(d.email, d.password); // the right password, a 6th address: refused, with the usual words
+    expect(locked.to).toBeNull();
+    expect(locked.state?.error).toBe(FAIL);
     expect(await sessionsOf(d.id)).toHaveLength(0);
   });
 
@@ -505,14 +535,16 @@ describe("a Developer's account is guarded harder than a staff account — found
     const d = await makeUser("DEVELOPER", { fullName: "Dev Locked" });
     const other = await makeUser("DEVELOPER", { fullName: "Dev Other" });
     for (let i = 1; i <= 6; i++) await signIn(d.email, `wrong-pass-${i}-x`);
-    expect((await signIn(d.email, d.password)).state?.error).toBe(TOO_MANY);
+    const locked = await signIn(d.email, d.password);
+    expect(locked.to).toBeNull();
+    expect(locked.state?.error).toBe(FAIL);
     browser.reset();
     expect((await signIn(other.email, other.password)).to).toBe("/staff/developer");
     browser.reset();
     expect((await signIn(rec.email, rec.password)).to).toBe("/staff");
   });
 
-  it("the Developer's right password within its 5 tries signs in (the lock counts every try, the 5th still passes)", async () => {
+  it("the Developer's right password within its 5 tries signs in (the lock counts the wrong tries, and the 5th still passes)", async () => {
     const d = await makeUser("DEVELOPER", { fullName: "Dev Fifth" });
     for (let i = 1; i <= 4; i++) await signIn(d.email, `wrong-pass-${i}-x`);
     expect((await signIn(d.email, d.password)).to).toBe("/staff/developer");
@@ -699,7 +731,7 @@ describe("the visitor cannot tell the failures apart by the time they take", () 
     const t0 = performance.now();
     const refused = await signIn(d.email, "wrong-pass-6-x");
     const took = performance.now() - t0;
-    expect(refused.state?.error).toBe(TOO_MANY);
+    expect(refused.state?.error).toBe(FAIL); // locked — and answered like any wrong password
     const tU = performance.now();
     await signIn(`ghost-t-${Date.now()}@devtest.local`, "wrong-pass-1");
     const unknown = performance.now() - tU;

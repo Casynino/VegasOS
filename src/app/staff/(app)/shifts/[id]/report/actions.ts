@@ -35,6 +35,8 @@ export async function makeShiftReportAction(input: { shiftId: string }) {
   return runAction(async () => {
     const { shiftId } = parseInput(z.object({ shiftId: Id }), input);
     const user = await viewer(shiftId);
+    // Making a shift report counts what the shift collected and may send it to the Boss: the Developer never makes one (the refusal is written down).
+    if (user.actorType === "DEVELOPER") await authorizeDecision("shifts.manage", "reports.view");
     // Sent to the boss only when it is made now for a shift that ended in the last day — exactly as at the close. An
     // older shift (or one already reported) is only made here; a manager decides whether to send it.
     const [before, shift] = await Promise.all([
@@ -56,7 +58,8 @@ export async function makeShiftReportAction(input: { shiftId: string }) {
 /** Send the report's message to the boss again (or retry a failed one). */
 export async function sendShiftReportAction(input: { reportId: string; force?: boolean }) {
   return runAction(async () => {
-    const user = await authorize("shifts.manage", "reports.daily.manage");
+    // Sending a financial report to the Boss again (or forcing it) is a decision about the reports: never the Developer (the refusal is written down).
+    const user = await authorizeDecision("shifts.manage", "reports.daily.manage");
     const d = parseInput(z.object({ reportId: Id, force: z.boolean().optional() }), input);
     // Sending it again is written down under the real person, before the send (so even one that fails half way is on record).
     await audit(db, await whoPressed(user), { action: "report.shift_sent", entityType: "ShiftReport", entityId: d.reportId, after: { force: !!d.force } });

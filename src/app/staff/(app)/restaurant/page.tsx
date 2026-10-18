@@ -145,7 +145,7 @@ export default async function RestaurantPortalPage() {
   // Taking charge of an order is a waiter's (on the shared screen, with their PIN) — managers hand orders from the card.
   const takesCharge = !perms.watch && perms.serve && (device || worksWaiterShift(user.permissions));
   // A waiter's Home is this board (the same as the Counter's, from their side): their shift is a switch by the QR.
-  const shiftBar = ownPhone && worksWaiterShift(user.permissions) ? await (async () => {
+  const shiftBar = ownPhone && !user.workAs && worksWaiterShift(user.permissions) ? await (async () => {
     const [work, shift] = await Promise.all([
       waiterResponsibilities(user.id),
       db.actualShift.findFirst({ where: { userId: user.id, endedAt: null, department: "RESTAURANT" }, select: { id: true, startedAt: true } }),

@@ -1,6 +1,7 @@
 import { Info } from "lucide-react";
 import type { T } from "@/i18n/translate";
 import { LOGIN_LIMITS, type CrashData } from "@/server/services/developer-health";
+import { FAILED_SIGN_IN_ROWS_PER_HOUR } from "@/server/services/auth-login";
 import type { DeniedEntry } from "@/server/services/developer-console";
 import { Panel } from "@/components/dashboard/kit";
 import { BarChart, RankBars } from "./console-charts";
@@ -68,18 +69,18 @@ export function CrashesTab({ t, c, when }: { t: T; c: CrashData; when: (x: Date)
         <StatBlock
           label={t("Failed sign-ins")} value={num(t, f?.last24h)} caption={t("wrong tries in 24 hours")} warn={!!f?.last24h}
           tag={f?.last24h ? t("Look at it") : t("Quiet")} tagTone={f?.last24h ? "amber" : "emerald"}
-          note={t("A wrong password, or an account that is switched off. Nobody was signed in. Only real accounts are written down — an email nobody holds is not.")}
+          note={t("A wrong password, or an account that is switched off. Nobody was signed in. Only real accounts are written down — an email nobody holds is not. At most {n} tries for one account are written down each hour; if there are more, one line says so and this number is lower than the real tries.", { n: FAILED_SIGN_IN_ROWS_PER_HOUR })}
         />
         <StatBlock label={t("Failed sign-ins")} value={num(t, f?.last7d)} caption={t("wrong tries in 7 days")} tag={t("Week")} tagTone="slate" note={t("A few typing mistakes are normal. A steady stream on one account is not.")} />
         <StatBlock
           label={t("Paused right now")} value={num(t, paused)} caption={t("sign-in places or emails")} warn={!!paused}
           tag={paused ? t("Look at it") : t("None")} tagTone={paused ? "amber" : "emerald"}
-          note={t("After {dev} wrong tries in {minutes} minutes a Developer sign-in is paused for the rest of that time ({staff} for staff). Counts only — an email or an address is never shown.", { dev: LOGIN_LIMITS.developerEmail, minutes: LOGIN_LIMITS.windowMinutes, staff: LOGIN_LIMITS.staffEmail })}
+          note={t("After {dev} wrong tries in {minutes} minutes a Developer sign-in is paused for the rest of that time ({staff} for staff). Counts only — an email or an address is never shown. While a Developer sign-in is paused, the sign-in page gives the same answer as for any wrong password, so it does not tell anyone which email is a Developer's.", { dev: LOGIN_LIMITS.developerEmail, minutes: LOGIN_LIMITS.windowMinutes, staff: LOGIN_LIMITS.staffEmail })}
         />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-        <Panel title={t("Failed sign-ins per day")} subtitle={t("The last 7 days. Hover or press a bar for exact numbers.")}>
+        <Panel title={t("Failed sign-ins per day")} subtitle={t("The last 7 days. Hover a bar for exact numbers; the table below has them all.")}>
           {f
             ? <BarChart t={t} caption={t("Failed sign-ins per day")} empty={t("No failed sign-ins in the last 7 days.")} series={[{ key: "count", label: t("Failed sign-ins"), color: FAILED }]}
                 columns={f.byDay.map((d, i, all) => ({ key: d.date, tick: dayLabel(t, d.date), name: dayLabel(t, d.date), values: { count: d.count }, emphasise: i === all.length - 1 }))} />

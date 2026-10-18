@@ -1,5 +1,6 @@
 import "server-only";
 import { db } from "../db";
+import { operationalOnly } from "../staff-pickers";
 import { getSettings, businessDayConfig } from "../settings";
 import { businessRangeBounds, toDbDate, type BusinessDate } from "@/lib/time/business-date";
 import { accountBalances, paymentsByMethod } from "./finance";
@@ -54,7 +55,7 @@ export async function accountantOverview(range: { from: BusinessDate; to: Busine
     db.expense.aggregate({ where: { status: "PENDING_APPROVAL" }, _count: true, _sum: { amount: true } }),
     db.cashCount.count({ where: { status: "OPEN" } }),
     // The people who take cash and hand it over (the staff filter)
-    db.user.findMany({ where: { isActive: true, role: { permissions: { some: { permission: { code: "cash.handover.submit" } } } } }, select: { id: true, fullName: true }, orderBy: { fullName: "asc" } }),
+    db.user.findMany({ where: operationalOnly({ isActive: true, role: { permissions: { some: { permission: { code: "cash.handover.submit" } } } } }), select: { id: true, fullName: true }, orderBy: { fullName: "asc" } }),
   ]);
   const rev = pl.revenue;
   const shown = f.accountId ? accounts.filter((a) => a.id === f.accountId) : accounts;

@@ -3,7 +3,7 @@ import { ONLINE_RECORDER_ID } from "./online-recorder";
 import { discountLimit, discountTooBigMessage, roomDiscountLimit } from "@/lib/discounts";
 import { shortTimeRate } from "@/lib/short-time";
 import { randomBytes } from "node:crypto";
-import { db, type Tx } from "../db";
+import { db, workAsOfRequest, type Tx } from "../db";
 import { audit, type AuditActor } from "../audit";
 import { AppError, isExclusionViolation, isUniqueViolation } from "../errors";
 import { getSettingsTx, stayConfig } from "../settings";
@@ -361,6 +361,8 @@ export async function createReservationTx(tx: Tx, input: CreateReservationInput,
     if (!corp || corp.status !== "ACTIVE") throw new AppError("Corporate account is not active.");
     // A guest booked on a company with no company yet becomes one of its staff — offered next time.
     await tx.guest.updateMany({ where: { id: guestId, corporateCustomerId: null }, data: { corporateCustomerId: corp.id } });
+    // A booking the company pays is confirmed unpaid, on the company's payment terms: what a company owes is never the Developer's to decide.
+    if (billTo !== "GUEST" && !input.groupId) await refuseDeveloper(actor, "corporate.manage");
     if (billTo !== "GUEST" && !input.groupId && companyPays(billTo, covers, "ROOM")) {
       // Estimate of what this stay puts on the company's account (the room part).
       const estimate = assignments.reduce((sum, a) => sum + a.net, 0);
@@ -477,6 +479,10 @@ export async function createReservationTx(tx: Tx, input: CreateReservationInput,
   }
   const menuItems = (input.menuItems ?? []).filter((m) => m.quantity > 0);
   if (menuItems.length) {
+    // Food and drinks sent with a booking land on the guest's bill (a pre-order, or an order charged to the room): they add to what the guest
+    // owes at the menu's prices — never by the Developer, on its own account or working as someone. This one gate covers every way in:
+    // the booking form, a website request being converted, and a group's rooms that pay their own bill.
+    await refuseDeveloper(actor, "restaurant.orders");
     if (checkInNow && actor.permissions?.has("restaurant.orders")) {
       // In the hotel now: one order to the kitchen & bar, charged to the room — for this guest (reception's when the desk makes it).
       const desk = actor.permissions.has("dashboard.front_desk") && !["dashboard.manager", "dashboard.owner", "dashboard.admin"].some((p) => actor.permissions?.has(p as never));
@@ -669,7 +675,10 @@ async function checkInTx(
     await recalculateReservation(tx, r.id);
     // Paid online before arriving: that money now counts in the collections of whoever checks the guest in, at
     // check-in (owner, 2026-10-05) — the payment still says it was paid online.
-    const credited = actor.userId ? (await tx.payment.updateMany({
+    // Not by a Developer (working as the person, or on its own account): that would credit a payment — money — to someone who did not take it.
+    // It is left uncredited, for the real person to be credited when they check a guest in.
+    const developerActing = actsAsDeveloper(actor) || (!!actor.userId && (await workAsOfRequest())?.targetId === actor.userId);
+    const credited = actor.userId && !developerActing ? (await tx.payment.updateMany({
       where: { reservationId: r.id, recordedById: ONLINE_RECORDER_ID, creditedToId: null, status: "POSTED", kind: "PAYMENT" },
       data: { creditedToId: actor.userId, creditedAt: now },
     })).count : 0;
@@ -730,6 +739,9 @@ export async function cancelCheckIn(reservationId: string, actor: Actor, reason:
     if (block) throw new AppError(block, "CONFLICT");
     const inHouse = r.rooms.filter((x) => x.status === "CHECKED_IN");
     const first = [...inHouse].sort((a, b) => (a.checkedInAt?.getTime() ?? 0) - (b.checkedInAt?.getTime() ?? 0))[0];
+    // As at check-in: a Developer (on its own account, or working as the person) never moves a payment's credit between people — that
+    // would change whose collections a payment counts in. The credit stays where it is; the real person's own cancel un-credits it as before.
+    const developerActing = actsAsDeveloper(actor) || (!!actor.userId && (await workAsOfRequest())?.targetId === actor.userId);
 
     for (const rr of inHouse) {
       await tx.reservationRoom.update({ where: { id: rr.id }, data: { status: "CONFIRMED", checkedInAt: null, checkedInById: null, isLateArrival: false } });
@@ -741,7 +753,7 @@ export async function cancelCheckIn(reservationId: string, actor: Actor, reason:
         await setRoomStatusTx(tx, rr.roomId, was && was.fromStatus !== "OCCUPIED" ? was.fromStatus : "AVAILABLE", actor, `Check-in cancelled: ${r.reference}`);
       }
       // Money paid online that the check-in counted for whoever did it: not theirs any more — the right check-in counts it.
-      if (rr.checkedInById && rr.checkedInAt) {
+      if (rr.checkedInById && rr.checkedInAt && !developerActing) {
         await tx.payment.updateMany({
           where: { reservationId: r.id, recordedById: ONLINE_RECORDER_ID, creditedToId: rr.checkedInById, creditedAt: rr.checkedInAt },
           data: { creditedToId: null, creditedAt: null },

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useQuiet } from "./quiet";
 import type { SoundConfig } from "@/app/staff/(app)/restaurant/portal/types";
 import { msg } from "@/i18n/msg";
 import { setAlertSoundAction } from "./sound-actions";
@@ -196,6 +197,8 @@ export function useOrderAlerts({ attention, alertId, settings, sound, label, des
 }) {
   const seen = useRef<Set<string> | null>(null);
   const [fresh, setFresh] = useState<string[]>([]);
+  // A quiet session (a Developer's) never rings.
+  const quiet = useQuiet();
   const key = attention.join(",");
   const alerts = attention.map(alertId).join(",");
   const describeRef = useRef(describe);
@@ -210,15 +213,15 @@ export function useOrderAlerts({ attention, alertId, settings, sound, label, des
     const arrivedNews = news.filter((n) => !seen.current!.has(n));
     news.forEach((n) => seen.current!.add(n));
     if (!arrived.length) return;
-    if (sound && settings.enabled && claimRing(arrivedNews).length) ringAlert(sound, settings.volume);
+    if (sound && !quiet && settings.enabled && claimRing(arrivedNews).length) ringAlert(sound, settings.volume);
     // A pop-up from the browser plays the computer's own sound — so none while the bell is off.
-    if (sound && !isMuted() && typeof Notification !== "undefined" && Notification.permission === "granted") {
+    if (sound && !quiet && !isMuted() && typeof Notification !== "undefined" && Notification.permission === "granted") {
       try { new Notification(label, { body: arrived.map((id) => describeRef.current(id)).join("\n"), tag: `vegas-${label}`, requireInteraction: false }); } catch { /* ignored */ }
     }
     const t0 = setTimeout(() => setFresh((f) => [...new Set([...f, ...arrived])]), 0);
     const t = setTimeout(() => setFresh((f) => f.filter((id) => !arrived.includes(id))), 15000);
     return () => { clearTimeout(t0); clearTimeout(t); };
-  }, [key, alerts, sound, settings.enabled, settings.volume, label]);
+  }, [key, alerts, sound, settings.enabled, settings.volume, label, quiet]);
 
   // The tab title flashes while something is waiting.
   useEffect(() => {
@@ -240,7 +243,10 @@ export function useOrderAlerts({ attention, alertId, settings, sound, label, des
 export function useLiveOrders(refresh: () => void, everyMs = 3000) {
   const last = useRef<string | null>(null);
   const [online, setOnline] = useState(true);
+  // A quiet session (a Developer's) never polls or refreshes by itself: it would keep the 30-minute idle rule from ending the session.
+  const quiet = useQuiet();
   useEffect(() => {
+    if (quiet) return;
     let stop = false;
     const tick = async () => {
       if (document.visibilityState !== "visible") return;
@@ -260,6 +266,6 @@ export function useLiveOrders(refresh: () => void, everyMs = 3000) {
     const onShow = () => { if (document.visibilityState === "visible") { void tick(); refresh(); } };
     document.addEventListener("visibilitychange", onShow);
     return () => { stop = true; clearInterval(t); clearInterval(full); document.removeEventListener("visibilitychange", onShow); };
-  }, [refresh, everyMs]);
+  }, [refresh, everyMs, quiet]);
   return online;
 }

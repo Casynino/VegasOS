@@ -1,5 +1,6 @@
 import "server-only";
 import { db } from "../db";
+import { withoutDeveloper } from "../staff-pickers";
 import { buildReport } from "./reports";
 import { billsAsOf, checkedOutWithin } from "./room-sales";
 import type { DailyReportData } from "./daily-report";
@@ -123,7 +124,7 @@ export async function buildDailyDocument(date: BusinessDate, d: DailyReportData)
   const returning = new Set([...bookedToday, ...orderedToday].filter((x) => x.guestId && x.guest && x.guest.createdAt < bounds.start).map((x) => x.guestId!)).size;
 
   // ── Staff by role ──
-  const users = await db.user.findMany({ select: { id: true, fullName: true, role: { select: { name: true } } } });
+  const users = await db.user.findMany({ where: withoutDeveloper(), select: { id: true, fullName: true, role: { select: { name: true } } } });
   const staffRows = users.map((u) => {
     const p = d.people?.find((x) => x.name === u.fullName);
     const del = deliveredBy.find((x) => x.deliveredById === u.id)?._count ?? 0;
