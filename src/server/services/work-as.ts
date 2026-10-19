@@ -527,14 +527,22 @@ export async function findCustomers(developer: CurrentUser, query: string): Prom
   await verifiedDeveloper(developer);
   const q = (query ?? "").trim().slice(0, 80);
   if (q.length < 2) return [];
-  const digits = q.replace(/\D/g, "").replace(/^0+/, "");
+  // A number as it is spoken: "07", "0712 345", "+255 712" — numbers are kept as +255…, so a leading 0 is the start of a local number, and "07" finds every 07xx number.
+  const numberLike = /^[\d\s+()-]+$/.test(q);
+  const digits = q.replace(/\D/g, "");
+  const local = numberLike && /^\s*0(?!0)/.test(q) ? digits.slice(1) : null; // 0712… → +255712…
+  const inside = digits.replace(/^0+/, "");
+  const numbers = !numberLike ? [] : [
+    ...(local !== null ? [{ phone: { startsWith: `+255${local}` } }, { altPhone: { startsWith: `+255${local}` } }] : []),
+    ...(inside.length >= 3 ? [{ phone: { contains: inside } }, { altPhone: { contains: inside } }] : []),
+  ];
   const rows = await db.guest.findMany({
     where: {
       deletedAt: null,
       OR: [
         { fullName: { contains: q, mode: "insensitive" } },
         { reference: { contains: q, mode: "insensitive" } },
-        ...(digits.length >= 3 ? [{ phone: { contains: digits } }, { altPhone: { contains: digits } }] : []),
+        ...numbers,
       ],
     },
     orderBy: { updatedAt: "desc" }, take: 20,

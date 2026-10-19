@@ -556,7 +556,7 @@ describe("the page's markup", () => {
     expect(text(html)).toContain("Only the Boss or the MD can switch this account back on");
     // a search box
     expect(html).toContain('type="search"');
-    expect(html).toContain('aria-label="Search by name, email or role"');
+    expect(html).toContain('aria-label="Search by name, phone number, email or role"');
   });
 
   it("shows an empty list in words, and draws a name as plain text — it can never inject markup", () => {

@@ -17,7 +17,7 @@ const catalog: Catalog = {
   "While you work as someone you can't suspend people or sign them out of all devices either — so Work as can never be used to take over an account. Money stays untouchable too. The Boss is told every time you start, suspend or sign someone out.": "以他人身份工作期间，您同样不能停用他人或让他们退出所有设备——因此“以此身份工作”永远无法用来接管账号。资金同样无法触碰。每次您开始、停用或让某人退出登录时，老板都会收到通知。",
 
   // the people
-  "Search by name, email or role": "按姓名、邮箱或角色搜索",
+  "Search by name, phone number, email or role": "按姓名、电话号码、邮箱或角色搜索",
   "No one matches “{query}”.": "没有与“{query}”匹配的人员。",
   "There are no accounts to show.": "没有可显示的账号。",
   "account::Active": "已启用",

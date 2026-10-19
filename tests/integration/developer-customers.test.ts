@@ -56,6 +56,10 @@ describe("finding a customer", () => {
     expect((await findCustomers(d, "0712 000 111")).map((c) => c.id)).toContain(ann.id);
     expect((await findCustomers(d, "+255 712000111")).map((c) => c.id)).toContain(ann.id);
     expect((await findCustomers(d, "712000")).map((c) => c.id)).toContain(ann.id);
+    // "07" is the start of a local number: it finds the numbers that begin 07xx (+2557…), as the owner types it
+    expect((await findCustomers(d, "07")).map((c) => c.id)).toContain(ann.id);
+    expect((await findCustomers(d, "0712 00")).map((c) => c.id)).toContain(ann.id);
+    expect((await findCustomers(d, "0713")).map((c) => c.id)).not.toContain(ann.id);
     expect((await findCustomers(d, "712000")).map((c) => c.id)).not.toContain(removed.id);
     const ref = (await db.guest.findUniqueOrThrow({ where: { id: ann.id } })).reference!;
     expect((await findCustomers(d, ref)).map((c) => c.id)).toEqual([ann.id]);

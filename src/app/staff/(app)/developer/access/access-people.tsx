@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useT } from "@/i18n/client";
 import { AccessForm, FormProblem } from "./access-form";
+import { CustomerResults } from "./customers-panel";
 import { ago, filterGroups } from "./access-helpers";
 import { deleteAccountAction, reactivateAction, signOutEverywhereAction, startWorkAsAction, suspendAction } from "./actions";
 
@@ -46,6 +47,7 @@ export function AccessPeople({ groups, nowIso, timezone }: { groups: AccessGroup
   const t = useT();
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
+  const [customerCount, setCustomerCount] = useState<number | null>(null);
   const [target, setTarget] = useState<{ kind: DialogKind; person: AccessPersonView } | null>(null);
   const now = useMemo(() => new Date(nowIso), [nowIso]);
 
@@ -60,11 +62,11 @@ export function AccessPeople({ groups, nowIso, timezone }: { groups: AccessGroup
         <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
         <Input
           type="search" value={query} onChange={(e) => setQuery(e.target.value)} autoComplete="off" spellCheck={false}
-          placeholder={t("Search by name, email or role")} aria-label={t("Search by name, email or role")} className="h-10 pl-9"
+          placeholder={t("Search by name, phone number, email or role")} aria-label={t("Search by name, phone number, email or role")} className="h-10 pl-9"
         />
       </div>
 
-      {shown.length === 0 && (
+      {shown.length === 0 && (!q || q.length < 2 || customerCount === 0) && (
         <p className="rounded-2xl border border-dashed border-border bg-card/50 px-4 py-8 text-center text-sm text-muted-foreground">
           {q ? t("No one matches “{query}”.", { query: q }) : t("There are no accounts to show.")}
         </p>
@@ -88,6 +90,8 @@ export function AccessPeople({ groups, nowIso, timezone }: { groups: AccessGroup
           </ul>
         </section>
       ))}
+
+      <CustomerResults query={q} onCount={setCustomerCount} />
 
       <Dialog open={open} onOpenChange={setOpen}>
         {target && (

@@ -188,7 +188,7 @@ So Work as can never be used to take over an account.
 
 ## 5c. Customers on the Access page (owner, 2026-10-19)
 
-Under the people, a **Customers** search: type part of a name or of a phone number (0712 345 678, +255…) or the customer's reference (at least 2 characters; at most 20 shown — there are too many customers to list). Each customer found can be:
+The Access page's **one search box** (name, phone number, e-mail or role) also looks for customers: type part of a name or of a phone number (`07` finds every number that begins 07; `0712 345`, `+255…` work too) or the customer's reference — at least 2 characters. The accounts that match are listed as before and the customers under them as a **Customers · n** group (nothing is listed while the box is empty — there are too many; at most 20 shown, with a hint to type more). Each customer found can be:
 - **Suspended** — they can no longer book or order through the **public** pages (the website booking, the Hotel QR booking page and the online menu order): the page answers "We can't take this online. Please contact the hotel." The hotel's own staff, at the desk, still find and serve them. `Guest.suspendedAt`; checked in `resolveGuest` (public pages) and `online-orders.ts`; the restaurant's table QR orders are not covered. **Re-activate** switches it back on.
 - **Deleted** — with the desk's own rule (`removeCustomer`): nothing on record → gone; stays, orders or payments on record → those stay in the books and the personal details are wiped.
 Each is a plain confirm pop-up (nothing to type), Developer only, never while working as someone, and written to the Audit under the Developer (`guest.suspended`, `guest.reactivated`, `guest.deleted` / `guest.removed`).
