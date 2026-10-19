@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { runAction, type ActionResult } from "@/server/errors";
 import { parseInput } from "@/server/validation";
-import { createAccount, deleteAccount, endWorkAs, reactivateAccount, requireDeveloperSession, signOutEverywhere, startWorkAs, suspendAccount } from "@/server/services/work-as";
+import { createAccount, deleteAccount, deleteCustomer, endWorkAs, findCustomers, reactivateAccount, reactivateCustomer, requireDeveloperSession, signOutEverywhere, startWorkAs, suspendAccount, suspendCustomer, type CustomerHit } from "@/server/services/work-as";
 import { msg } from "@/i18n/msg";
 
 /*
@@ -125,4 +125,42 @@ export async function signOutEverywhereAction(first?: unknown, second?: unknown)
     revalidatePath(ACCESS);
     return null;
   }, msg("Signed out everywhere. The person can sign straight back in."));
+}
+
+// ───────────────────────────────────────────── customers ───────────────────
+
+const customerId = z.string().trim().min(1).max(64);
+
+/** FIND CUSTOMERS — by name or phone number (there are too many to list). */
+export async function findCustomersAction(query: string): Promise<ActionResult<CustomerHit[]>> {
+  return runAction(async () => {
+    const developer = await requireDeveloperSession();
+    return findCustomers(developer, String(query ?? ""));
+  });
+}
+
+/** SUSPEND a customer — they can no longer book or order through the public website / QR pages. */
+export async function suspendCustomerAction(id: string): Promise<ActionResult<null>> {
+  return runAction(async () => {
+    const developer = await requireDeveloperSession();
+    await suspendCustomer(developer, customerId.parse(id));
+    return null;
+  }, msg("Customer suspended."));
+}
+
+/** SWITCH A CUSTOMER BACK ON. */
+export async function reactivateCustomerAction(id: string): Promise<ActionResult<null>> {
+  return runAction(async () => {
+    const developer = await requireDeveloperSession();
+    await reactivateCustomer(developer, customerId.parse(id));
+    return null;
+  }, msg("Customer switched back on."));
+}
+
+/** DELETE a customer — with the desk's own rules (records with money stay in the books, the personal details are wiped). */
+export async function deleteCustomerAction(id: string): Promise<ActionResult<{ deleted: boolean }>> {
+  return runAction(async () => {
+    const developer = await requireDeveloperSession();
+    return deleteCustomer(developer, customerId.parse(id));
+  }, msg("Customer deleted."));
 }

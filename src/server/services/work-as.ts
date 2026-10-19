@@ -9,6 +9,7 @@ import { numberWaitersTx } from "./waiter-number";
 import { recordWorkAsEnded } from "./work-as-expired";
 import { keepEndpointRefusal } from "./endpoint-refusal";
 import { removeAccountAccess, unusablePasswordHash } from "./account-removal";
+import { removeCustomer } from "./guests";
 import { DEVELOPER_DENIED, DEVELOPER_ROLE_CODE } from "@/lib/permissions";
 import { isPermanentOwner, LAST_BOSS_REFUSAL, PERMANENT_OWNER_REFUSAL } from "@/lib/permanent-owners";
 import { staffHome } from "@/lib/staff-home";
@@ -512,4 +513,77 @@ export async function createAccount(developer: CurrentUser, input: NewAccountInp
     tellBossAboutAccess(developer, ipAddress, new Date(), { kind: "created" }, { id: userId, fullName: input.fullName, role: { name: role.name } });
     return { userId, fullName: input.fullName, email: input.email, roleName: role.name };
   });
+}
+
+// ─────────────────────────────────────────────── customers ───────────────────
+
+export interface CustomerHit { id: string; reference: string | null; fullName: string; phone: string | null; suspended: boolean }
+
+/**
+ * Find customers by name or phone number (owner, 2026-10-19: there are too many to list, so the Developer searches). Name: any part of it; number: any
+ * part of it, written the way it is spoken (0712 345 678, +255 712…) or the customer's reference. At most 20, newest activity first; removed customers are not there.
+ */
+export async function findCustomers(developer: CurrentUser, query: string): Promise<CustomerHit[]> {
+  await verifiedDeveloper(developer);
+  const q = (query ?? "").trim().slice(0, 80);
+  if (q.length < 2) return [];
+  const digits = q.replace(/\D/g, "").replace(/^0+/, "");
+  const rows = await db.guest.findMany({
+    where: {
+      deletedAt: null,
+      OR: [
+        { fullName: { contains: q, mode: "insensitive" } },
+        { reference: { contains: q, mode: "insensitive" } },
+        ...(digits.length >= 3 ? [{ phone: { contains: digits } }, { altPhone: { contains: digits } }] : []),
+      ],
+    },
+    orderBy: { updatedAt: "desc" }, take: 20,
+    select: { id: true, reference: true, fullName: true, phone: true, suspendedAt: true },
+  });
+  return rows.map((g) => ({ id: g.id, reference: g.reference, fullName: g.fullName, phone: g.phone, suspended: !!g.suspendedAt }));
+}
+
+async function loadCustomer(id: string) {
+  const g = await db.guest.findUnique({ where: { id: String(id) }, select: { id: true, fullName: true, phone: true, reference: true, suspendedAt: true, deletedAt: true } });
+  if (!g || g.deletedAt) throw new AppError(msg("Customer not found."), "NOT_FOUND");
+  return g;
+}
+
+/** Suspend a customer: they can no longer book or order through the public website / QR pages (the desk still serves them). Audited under the Developer. */
+export async function suspendCustomer(developer: CurrentUser, customerId: string): Promise<void> {
+  await verifiedDeveloper(developer);
+  assertNotWorkAs(developer, "suspend customers");
+  const g = await loadCustomer(customerId);
+  if (g.suspendedAt) throw new AppError(msg("This customer is already suspended."), "CONFLICT");
+  const ipAddress = await callerIp();
+  await db.$transaction(async (tx) => {
+    await tx.guest.update({ where: { id: g.id }, data: { suspendedAt: new Date() } });
+    await audit(tx, { userId: developer.actorId, label: developer.actorName, ipAddress }, {
+      action: "guest.suspended", entityType: "Guest", entityId: g.id, before: { fullName: g.fullName, phone: g.phone, reference: g.reference }, after: { suspended: true },
+    });
+  });
+}
+
+/** Switch a suspended customer back on. */
+export async function reactivateCustomer(developer: CurrentUser, customerId: string): Promise<void> {
+  await verifiedDeveloper(developer);
+  assertNotWorkAs(developer, "switch customers back on");
+  const g = await loadCustomer(customerId);
+  if (!g.suspendedAt) throw new AppError(msg("This customer is not suspended."), "CONFLICT");
+  const ipAddress = await callerIp();
+  await db.$transaction(async (tx) => {
+    await tx.guest.update({ where: { id: g.id }, data: { suspendedAt: null } });
+    await audit(tx, { userId: developer.actorId, label: developer.actorName, ipAddress }, {
+      action: "guest.reactivated", entityType: "Guest", entityId: g.id, before: { fullName: g.fullName, phone: g.phone, reference: g.reference }, after: { suspended: false },
+    });
+  });
+}
+
+/** Delete a customer with the rules the desk already has (guests.ts removeCustomer): no stays, orders or payments on record → gone; otherwise the records stay in the books and the personal details are wiped. */
+export async function deleteCustomer(developer: CurrentUser, customerId: string): Promise<{ deleted: boolean }> {
+  await verifiedDeveloper(developer);
+  assertNotWorkAs(developer, "delete customers");
+  const g = await loadCustomer(customerId);
+  const ipAddress = await callerIp();
+  return removeCustomer(g.id, { userId: developer.actorId, label: developer.actorName, ipAddress, permissions: new Set(["guests.delete"]) });
 }

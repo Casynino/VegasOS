@@ -92,8 +92,8 @@ beforeEach(() => {
 
 // ═════════════════════════════════════ the five actions, and nothing else ═════════════════════════════════════
 describe("the actions file", () => {
-  it("exports exactly the seven actions", () => {
-    expect(Object.keys(actionsModule).sort()).toEqual(["addAccountAction", "deleteAccountAction", "reactivateAction", "signOutEverywhereAction", "startWorkAsAction", "stopWorkAsAction", "suspendAction"]);
+  it("exports exactly the actions: the seven for accounts and the four for customers", () => {
+    expect(Object.keys(actionsModule).sort()).toEqual(["addAccountAction", "deleteAccountAction", "deleteCustomerAction", "findCustomersAction", "reactivateAction", "reactivateCustomerAction", "signOutEverywhereAction", "startWorkAsAction", "stopWorkAsAction", "suspendAction", "suspendCustomerAction"]);
   });
 });
 

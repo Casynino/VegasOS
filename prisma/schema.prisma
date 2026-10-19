@@ -593,6 +593,8 @@ model Guest {
   tags                String[]              @default([])
   /// Removed by a manager: personal details wiped, hidden from lists and lookups — stays and payments stay in the books.
   deletedAt           DateTime?
+  /// Suspended by the Developer (owner, 2026-10-19): this customer can no longer book or order through the public website / QR pages (the desk still serves them).
+  suspendedAt         DateTime?
   corporateCustomerId String?
   corporateCustomer   CorporateCustomer?    @relation(fields: [corporateCustomerId], references: [id])
   createdAt           DateTime              @default(now())

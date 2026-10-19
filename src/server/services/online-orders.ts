@@ -7,7 +7,7 @@ import { getSettings } from "../settings";
 import { siteOrigin } from "../site-origin";
 import { guestEventOn, prettyPhone, shortName, validPhone } from "@/lib/guest-messages";
 import { ORDER_EVENT_TYPE, orderEventFor, orderFacts, orderMessageText, type OrderEvent } from "@/lib/order-messages";
-import { normalizePhone, resolveGuest } from "./guests";
+import { normalizePhone, resolveGuest, assertCustomerNotSuspended } from "./guests";
 import { createRestaurantOrderTx, deliveryPlace, publicMenu } from "./restaurant";
 import { mediaUrl } from "./media";
 import { guestNotifyConnected, sendGuestText } from "./guest-notify";
@@ -146,6 +146,7 @@ export async function placeOnlineOrder(input: OnlineOrderInput, now = new Date()
       const paidFirst = !input.payOnline && (input.kind === "TAKEAWAY" || input.paidFirst) ? await paidFirstTx(tx, input.paidFirst, now) : null;
       // One customer, saved once: the phone finds them (or they are saved now).
       const guestId = await resolveGuest(tx, { fullName: name, phone, email: input.email?.trim() || null });
+      assertCustomerNotSuspended(await tx.guest.findUnique({ where: { id: guestId }, select: { suspendedAt: true } }));
       // Eating here at a free table they picked: the order goes to that table — theirs now (their session starts there).
       const picked = input.kind === "DINE_IN" && input.tableId ? await pickedTableTx(tx, input.tableId, now) : null;
       const sat = picked ? await sitAtPickedTableTx(tx, picked.id, guestId, now) : null;

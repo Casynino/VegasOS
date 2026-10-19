@@ -101,6 +101,12 @@ export function normalizePhone(value?: string | null): string | null {
   return digits;
 }
 
+/** A customer the Developer suspended can not book or order through the public pages (website, Hotel QR, online menu): they are asked to call the hotel. */
+export const SUSPENDED_CUSTOMER_MESSAGE = "We can't take this online. Please contact the hotel.";
+export function assertCustomerNotSuspended(guest: { suspendedAt?: Date | null } | null | undefined): void {
+  if (guest?.suspendedAt) throw new AppError(SUSPENDED_CUSTOMER_MESSAGE, "FORBIDDEN");
+}
+
 /**
  * Use the given guest, or match an existing guest by phone/email, or create
  * one. Matching only fills blank fields — it never overwrites stored ID data.
@@ -141,6 +147,7 @@ export async function resolveGuest(tx: Tx, input: GuestInput): Promise<string> {
     return created.id;
   }
   if (input.selfService) {
+    assertCustomerNotSuspended(existing);
     // Only a stand-in name ("Restaurant customer") gives way to the real one — as the restaurant's QR does.
     if (isPlaceholderName(existing.fullName) && !isPlaceholderName(clean.fullName)) await tx.guest.update({ where: { id: existing.id }, data: { fullName: clean.fullName } });
     return existing.id;

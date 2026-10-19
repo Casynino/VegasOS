@@ -25,6 +25,8 @@ export const ACCOUNT_AND_DEVELOPER_WORDS: Record<string, string> = {
   "developer.provisioned": msg("set up the Developer account"),
   "developer.password_rotated": msg("changed the Developer password"),
   "developer.deactivated": msg("switched the Developer account off"),
+  "guest.suspended": msg("suspended a customer"),
+  "guest.reactivated": msg("switched a customer back on"),
   "restaurant_order.item_prepared": msg("started preparing an order"),
   "guide_book.uploaded": msg("put guide books in the Guide books page"),
   "guide_book.removed": msg("took a guide book out of the Guide books page"),

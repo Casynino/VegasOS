@@ -14,6 +14,7 @@ import m_developer_compact_ca from "./developer-compact-ca";
 import m_developer_compact_cb from "./developer-compact-cb";
 import m_developer_compact_cc from "./developer-compact-cc";
 import m_developer_console from "./developer-console";
+import m_developer_customers from "./developer-customers";
 import m_developer_delete from "./developer-delete";
 import m_developer_extras from "./developer-extras";
 import m_developer_fixes from "./developer-fixes";
@@ -86,6 +87,7 @@ const catalog: Catalog = {
   ...m_developer_compact_cb,
   ...m_developer_compact_cc,
   ...m_developer_console,
+  ...m_developer_customers,
   ...m_developer_delete,
   ...m_developer_extras,
   ...m_developer_fixes,

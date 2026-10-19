@@ -186,6 +186,13 @@ So Work as can never be used to take over an account.
 - **The last active Boss** can be neither suspended nor deleted — the top authority must be kept. Another active Boss keeps it, and so does an active **permanent owner with the MD's role** (the owner's case, 2026-10-19: `bashleyair@gmail.com` is an MD and stands in, so the old Boss account `bashley@vegashoteltz.com` can be deleted; the reports go to the numbers in the hotel's settings, not to the Boss account). Only a Boss can grant the Boss role, so an MD stays an MD.
 - The Developer still cannot edit, re-role or reset the password of an existing account.
 
+## 5c. Customers on the Access page (owner, 2026-10-19)
+
+Under the people, a **Customers** search: type part of a name or of a phone number (0712 345 678, +255…) or the customer's reference (at least 2 characters; at most 20 shown — there are too many customers to list). Each customer found can be:
+- **Suspended** — they can no longer book or order through the **public** pages (the website booking, the Hotel QR booking page and the online menu order): the page answers "We can't take this online. Please contact the hotel." The hotel's own staff, at the desk, still find and serve them. `Guest.suspendedAt`; checked in `resolveGuest` (public pages) and `online-orders.ts`; the restaurant's table QR orders are not covered. **Re-activate** switches it back on.
+- **Deleted** — with the desk's own rule (`removeCustomer`): nothing on record → gone; stays, orders or payments on record → those stay in the books and the personal details are wiped.
+Each is a plain confirm pop-up (nothing to type), Developer only, never while working as someone, and written to the Audit under the Developer (`guest.suspended`, `guest.reactivated`, `guest.deleted` / `guest.removed`).
+
 ## 6. Changing the password, switching the account off
 
 All three jobs use the same command, in the same safe way as the setup (section 2, Steps 2 and 3). They ask you to type the database name first, like the setup does.

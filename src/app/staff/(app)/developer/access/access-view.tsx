@@ -2,6 +2,7 @@ import type { T } from "@/i18n/translate";
 import { PageHeader } from "@/components/staff/page-header";
 import { AccessPeople, type AccessGroupView } from "./access-people";
 import { AddAccountButton, type RoleChoice } from "./add-account-dialog";
+import { CustomersPanel } from "./customers-panel";
 
 /**
  * The Access page, drawn: the title and the count, then everyone grouped by role. (The "What the buttons do" cards and the "Safety rules" panel were
@@ -19,6 +20,8 @@ export function AccessView({ t, groups, roles = [], count, nowIso, timezone }: {
       />
 
       <AccessPeople groups={groups} nowIso={nowIso} timezone={timezone} />
+
+      <CustomersPanel />
     </div>
   );
 }
