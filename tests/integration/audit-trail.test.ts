@@ -489,11 +489,10 @@ describe("read-only: no way to change an entry", () => {
     expect(html).not.toMatch(/\b(delete|remove|edit|restore|undo)\b/i);
   });
 
-  it("a Developer's entry is marked (type badge, purple bar) and a failed one says Failed", () => {
+  it("a Developer's entry has a plain type badge — like the others, no purple bar (owner, 2026-10-19) — and a failed one says Failed", () => {
     const html = draw([row({ actorType: "DEVELOPER", actorName: "Dev One", roleName: "Developer (super user)" }), row({ actorName: "Asha" }), row({ actorType: "SYSTEM", actorName: null }), row({ actorType: "WEBSITE", actorName: "website" }), row({ ok: false, action: "auth.login_failed" })]);
     expect(html.match(/data-actor-type="DEVELOPER"/g)?.length).toBe(2); // the entry and its badge
-    expect(html).toContain("border-l-fuchsia-600");
-    expect(html).toContain("bg-fuchsia-700");
+    expect(html).not.toContain("fuchsia");
     expect(html.match(/data-result="failed"/g)?.length).toBe(1);
     expect(html.match(/data-result="ok"/g)?.length).toBe(4);
     for (const w of ["Developer", "Staff", "System", "Website", "Failed", "Done"]) expect(html).toContain(w);

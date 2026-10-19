@@ -154,15 +154,17 @@ describe("the Boss's Audit page", () => {
     rows = (await queryAuditTrail(BOSS, filter)).rows;
   });
 
-  it("a Developer who worked as Neema: the whole name, the tag beside it, and 'Acted as' in the details", () => {
+  it("a Developer who worked as Neema: his own name, a plain badge, 'as Neema' under it, no tag and no colour — 'Acted as' in the details (owner, 2026-10-19: simple, like the others)", () => {
     const html = draw(rows);
     const one = html.split("data-entry").filter((x) => x.includes("da.as_neema"))[0];
-    expect(one).toContain(LABEL);                                  // the whole label, not cut at the bracket
-    expect(one).toContain(TAG);
+    expect(one).toContain(LABEL);                                  // the whole label is the name's hover text and in the details, not cut at the bracket
+    expect(one).toContain(">Nino<");                               // the list shows his own name
+    expect(one).toContain("as Neema");
+    expect(one).not.toContain(TAG);
     expect(one).toContain("Acted as");
     expect(one).toContain("Neema (Receptionist)");
-    expect(one).toContain("data-actor-type=\"DEVELOPER\"");        // the badge stays
-    expect(html).toContain("border-l-fuchsia-600");                // and the Boss page's own colour
+    expect(one).toContain("data-actor-type=\"DEVELOPER\"");        // the badge stays, plain
+    expect(html).not.toContain("fuchsia");
   });
 
   it("the Developer on his own account and a staff member's line carry no tag and no 'Acted as'", () => {
@@ -178,7 +180,8 @@ describe("the Boss's Audit page", () => {
 
   it("in Chinese the tag and the fact are in Chinese; nothing says undefined or NaN", () => {
     const html = draw(rows, zh);
-    expect(html).toContain("由开发者操作 · 以 Neema 的身份");
+    expect(html).toContain("以 Neema 的身份");
+    expect(html).not.toContain("由开发者操作");
     expect(html).toContain("代为操作的对象");
     expect(html).toContain("Neema (前台)");
     expect(html).not.toMatch(/undefined|NaN/);
@@ -212,19 +215,19 @@ describe("the Activity page's rows and detail", () => {
 
   it("the details dialog: the 'Acted as' line and the tag, with and without, in both languages (the dialog itself draws a button)", () => {
     const Provider = I18nProvider as FunctionComponent<{ locale: Locale; catalog: Catalog | null; children?: ReactNode }>;
-    const line = (props: { actedAs?: string | null; doneBy?: string | null }, zhCn = false) => renderToStaticMarkup(
+    const line = (props: { actedAs?: string | null }, zhCn = false) => renderToStaticMarkup(
       zhCn ? createElement(Provider, { locale: "zh-CN", catalog: { ...zhFixes, ...zhAudit } }, createElement(ActedAsLine, props)) : createElement(ActedAsLine, props),
     );
-    const en = line({ actedAs: "Neema (Receptionist)", doneBy: TAG });
+    const en = line({ actedAs: "Neema (Receptionist)" });
     expect(en).toContain("Acted as");
     expect(en).toContain("Neema (Receptionist)");
-    expect(en).toContain(TAG);
-    const cn = line({ actedAs: "Neema (前台)", doneBy: "由开发者操作 · 以 Neema 的身份" }, true);
+    expect(en).not.toContain(TAG);
+    const cn = line({ actedAs: "Neema (前台)" }, true);
     expect(cn).toContain("代为操作的对象");
-    expect(cn).toContain("由开发者操作 · 以 Neema 的身份");
-    for (const none of [line({}), line({ actedAs: null, doneBy: null }), line({}, true)]) expect(none).toBe("");
+    expect(cn).toContain("Neema (前台)");
+    for (const none of [line({}), line({ actedAs: null }), line({}, true)]) expect(none).toBe("");
     for (const html of [en, cn]) expect(html).not.toMatch(/undefined|NaN/);
-    for (const props of [{ actedAs: "Neema (Receptionist)", doneBy: TAG }, { actedAs: null, doneBy: null }, {}]) {
+    for (const props of [{ actedAs: "Neema (Receptionist)" }, { actedAs: null }, {}]) {
       const html = renderToStaticMarkup(createElement(AuditDetail, { action: "dacta.x", before: null, after: { a: 1 }, ...props }));
       expect(html).toContain("<button");
       expect(html).not.toMatch(/undefined|NaN/);

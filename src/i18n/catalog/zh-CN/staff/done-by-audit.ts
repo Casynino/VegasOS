@@ -3,6 +3,7 @@ import type { Catalog } from "../../../translate";
 
 const catalog: Catalog = {
   "Acted as": "代为操作的对象",
+  "as {name}": "以 {name} 的身份",
   "started preparing an order": "开始备餐",
 };
 

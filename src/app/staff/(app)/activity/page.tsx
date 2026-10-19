@@ -13,8 +13,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { AuditDetail } from "./audit-detail";
 import { ACTIVITY_PAGE_SIZE as PAGE_SIZE, loadActivity } from "./data";
 import { ActorBadge } from "../audit/audit-rows";
-import { DoneByDeveloper } from "@/components/staff/done-by-developer";
-import { doneByText } from "@/lib/done-by-text";
 import { getT } from "@/i18n/server";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -78,22 +76,23 @@ export default async function ActivityPage({ searchParams }: PageProps<"/staff/a
               </TableHeader>
               <TableBody>
                 {rows.map((r) => {
-                  // A Developer who worked as someone: the whole label is the name, and the tag says it in plain words next to it.
-                  const doneBy = developers ? doneByText(t, r.actedAs && { as: { id: null, name: r.actedAs.name, role: r.actedAs.role } }) : null;
+                  // A Developer's entry looks like the others (owner, 2026-10-19): his own name, a plain badge, and "as Neema" when he worked as someone.
+                  const isDev = r.actorType === "DEVELOPER";
+                  const shown = isDev ? (r.who ?? "").split(" (Developer)")[0] || r.who : r.who;
                   const actedAs = r.actedAs ? `${r.actedAs.name}${r.actedAs.role ? ` (${t(r.actedAs.role)})` : ""}` : null;
                   return (
                   <TableRow key={r.id}>
                     <TableCell className="whitespace-nowrap text-muted-foreground">{t.dateTime(r.createdAt)}</TableCell>
                     <TableCell>
                       <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
-                        {r.who ?? t("System")}
+                        {shown ?? t("System")}
                         {developers && <ActorBadge type={r.actorType} t={t} />}
-                        {doneBy && <DoneByDeveloper text={doneBy} className="ml-0" />}
+                        {developers && isDev && r.actedAs && <span className="text-xs text-muted-foreground">{t("as {name}", { name: r.actedAs.name })}</span>}
                       </span>
                     </TableCell>
                     <TableCell className="font-mono text-xs">{r.action}</TableCell>
                     <TableCell className="hidden md:table-cell text-muted-foreground">{r.entityType}{r.entityId ? ` · ${r.entityId.slice(-8)}` : ""}</TableCell>
-                    <TableCell>{(r.before != null || r.after != null) && <AuditDetail action={r.action} before={r.before} after={r.after} actedAs={developers ? actedAs : null} doneBy={doneBy} />}</TableCell>
+                    <TableCell>{(r.before != null || r.after != null) && <AuditDetail action={r.action} before={r.before} after={r.after} actedAs={developers ? actedAs : null} />}</TableCell>
                   </TableRow>
                   );
                 })}

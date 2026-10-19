@@ -1,24 +1,23 @@
-import { ChevronDown, CircleCheck, CircleX, ShieldAlert } from "lucide-react";
+import { ChevronDown, CircleCheck, CircleX } from "lucide-react";
 import type { T } from "@/i18n/translate";
 import { msg } from "@/i18n/msg";
 import { cn } from "@/lib/utils";
 import { redact, type ActorType } from "@/server/audit";
 import { auditActionWords, type AuditRow } from "@/server/services/audit-trail";
 import { lineWho } from "@/lib/audit-line-who";
-import { DoneByDeveloper } from "@/components/staff/done-by-developer";
 
 /**
  * The audit trail's rows. Read-only on purpose: there is not one edit, delete, restore or "mark as read" control here, and the
  * rows are plain server-drawn HTML (a row opens with the browser's own <details> — no script, nothing to change in the page).
  *
  * Phone: every entry is a small card. From `md` up the same entry is one line of a grid, with a heading row above.
- * A Developer's entry has the same strong purple as the "DEVELOPER MODE" strip (a solid badge and a bar down its left edge),
- * so it is found at a glance.
+ * A Developer's entry looks like the others (owner, 2026-10-19: "too much — make it simple, just like the others"): his own name, a plain
+ * "Developer" badge, and "as Neema" under the name when he worked as someone; no purple, no bar, no tag. The full label is in the details.
  */
 
 const TYPE_LABEL: Record<ActorType, string> = { DEVELOPER: msg("Developer"), STAFF: msg("Staff"), SYSTEM: msg("System"), WEBSITE: msg("Website") };
 const TYPE_STYLE: Record<ActorType, string> = {
-  DEVELOPER: "bg-fuchsia-700 text-white",
+  DEVELOPER: "bg-muted text-foreground",
   STAFF: "bg-muted text-foreground",
   SYSTEM: "border border-border text-muted-foreground",
   WEBSITE: "bg-sky-100 text-sky-900 dark:bg-sky-950 dark:text-sky-200",
@@ -30,7 +29,6 @@ const COLUMNS = "md:grid-cols-[7.5rem_6.5rem_minmax(0,1.1fr)_minmax(0,1.6fr)_min
 export function ActorBadge({ type, t }: { type: ActorType; t: T }) {
   return (
     <span data-actor-type={type} className={cn("inline-flex h-5 w-fit shrink-0 items-center gap-1 rounded-full px-2 text-xs font-semibold whitespace-nowrap", TYPE_STYLE[type])}>
-      {type === "DEVELOPER" && <ShieldAlert className="size-3" aria-hidden="true" />}
       {t(TYPE_LABEL[type])}
     </span>
   );
@@ -79,6 +77,8 @@ function Json({ label, value, t }: { label: string; value: unknown; t: T }) {
 function Entry({ row, t, timezone }: { row: AuditRow; t: T; timezone: string }) {
   const dev = row.actorType === "DEVELOPER";
   const name = row.actorName ?? (row.actorType === "WEBSITE" ? t("Website") : row.actorType === "SYSTEM" ? t("System") : t("Unknown"));
+  // The list shows a Developer by his own name ("Nino"); the whole label ("Nino (Developer) as Neema (Receptionist)") is in the details.
+  const shownName = dev ? (name.split(" (Developer)")[0] || name) : name;
   // A Developer who worked as someone: the label above already says it whole; the tag and the "Acted as" fact say it again in plain words.
   const by = lineWho(t, { actorType: row.actorType, actorLabel: row.actorName, after: row.after });
   const actedAs = !by.asName ? null : row.actingAs ? `${row.actingAs.name}${row.actingAs.role ? ` (${t(row.actingAs.role)})` : ""}` : by.as;
@@ -86,7 +86,7 @@ function Entry({ row, t, timezone }: { row: AuditRow; t: T; timezone: string }) 
   // A readable id (a page's address, an order number) in full; an opaque one (a long random id) by its last characters.
   const record = row.entityId ? `${row.entityType} · ${/^[\w-]{16,}$/.test(row.entityId) ? `…${row.entityId.slice(-8)}` : row.entityId}` : row.entityType;
   return (
-    <li className={cn("border-l-2", dev ? "border-l-fuchsia-600" : "border-l-transparent")} data-entry data-actor-type={row.actorType}>
+    <li data-entry data-actor-type={row.actorType}>
       <details className="group">
         <summary
           className={cn(
@@ -100,12 +100,9 @@ function Entry({ row, t, timezone }: { row: AuditRow; t: T; timezone: string }) 
             <ActorBadge type={row.actorType} t={t} />
           </span>
           <span className="block min-w-0">
-            <span className="block truncate text-sm font-semibold" title={name}>{name}</span>
-            {(by.doneBy || row.roleName) && (
-              <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
-                {by.doneBy && <DoneByDeveloper text={by.doneBy} className="ml-0" />}
-                {row.roleName && <span className="truncate">{t(row.roleName)}</span>}
-              </span>
+            <span className="block truncate text-sm font-semibold" title={name}>{shownName}</span>
+            {(dev ? by.asName : row.roleName) && (
+              <span className="block truncate text-xs text-muted-foreground">{dev ? t("as {name}", { name: by.asName ?? "" }) : t(row.roleName ?? "")}</span>
             )}
           </span>
           <span className="block min-w-0">
@@ -127,7 +124,7 @@ function Entry({ row, t, timezone }: { row: AuditRow; t: T; timezone: string }) 
             <Fact label={t("Business day")}>{t.date(row.businessDate)}</Fact>
             <Fact label={t("Account type")}>{t(TYPE_LABEL[row.actorType])}</Fact>
             <Fact label={t("Who")}>{name}{row.roleName ? ` · ${t(row.roleName)}` : ""}</Fact>
-            {actedAs && <Fact label={t("Acted as")}>{actedAs}{by.doneBy && <DoneByDeveloper text={by.doneBy} />}</Fact>}
+            {actedAs && <Fact label={t("Acted as")}>{actedAs}</Fact>}
             <Fact label={t("Action")}><span className="font-mono text-xs">{row.action}</span></Fact>
             <Fact label={t("Module")}>{row.entityType}</Fact>
             {row.entityId && <Fact label={t("Record")}><span className="font-mono text-xs">{row.entityId}</span></Fact>}
