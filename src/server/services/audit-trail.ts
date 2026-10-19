@@ -9,6 +9,7 @@ import { msg } from "@/i18n/msg";
 import type { T } from "@/i18n/translate";
 import { addDays, diffDays, fromDbDate, isBusinessDate, localCalendarDate, toDbDate, zonedInstant } from "@/lib/time/business-date";
 import type { Prisma } from "@/generated/prisma/client";
+import { DEVELOPER_UNSHOWN_ACTIONS } from "@/lib/developer-noise";
 
 /**
  * The audit trail, read-only (owner, 2026-10-14). The one reader of audit_logs for the Audit trail page.
@@ -49,6 +50,8 @@ export interface AuditFilter {
   failures?: boolean;
   /** Free text: who (the name written with the entry), what (the action's name or its plain words) or where (the kind of record, its id). Developer's Audit page only. */
   q?: string;
+  /** Leave out a Developer's entries that are not a change (signing in, looking, refused tries, Work as notes): set by the Audit pages, never by the URL (owner, 2026-10-19). */
+  changesOnly?: boolean;
 }
 
 /** Whoever is looking: only the rights matter here. */
@@ -239,6 +242,18 @@ const FAILURE_ROWS: Prisma.AuditLogWhereInput = {
   ],
 };
 
+/**
+ * A Developer's entries that are NOT a change (owner, 2026-10-19): signing in, looking, taking data out, refused or failed tries, the notes about Work as. They stay
+ * in the database but no Audit page lists them — only what the Developer changed, added or removed.
+ */
+// (Only the action's NAME is looked at: a test of the entry's JSON data gives "unknown" for an entry that has none, and "not unknown" would hide it.)
+export const DEVELOPER_NOT_CHANGES: Prisma.AuditLogWhereInput = {
+  AND: [DEVELOPER_ROWS, { OR: [
+    { action: { in: [...DEVELOPER_UNSHOWN_ACTIONS] } },
+    { action: { endsWith: "_failed" } }, { action: { endsWith: "_refused" } }, { action: { endsWith: ".denied" } }, { action: { endsWith: ".refused" } },
+  ] }],
+};
+
 /** The actions whose plain words (the sentence a person reads) contain what was typed — so "suspended" or "business data" finds them. */
 function actionsWithWords(q: string): string[] {
   const needle = q.toLowerCase();
@@ -269,6 +284,7 @@ export function auditWhere(f: AuditFilter, o: { developers: boolean; timezone: s
   else if (f.actor === "STAFF") and.push(STAFF_ROWS);
   else if (f.actor === "SYSTEM") and.push(SYSTEM_ROWS);
   if (!o.developers) and.push({ NOT: DEVELOPER_ROWS });
+  if (f.changesOnly) and.push({ NOT: DEVELOPER_NOT_CHANGES });
   if (f.userId) and.push({ userId: f.userId });
   if (f.action) and.push({ action: { contains: likeLiteral(f.action), mode: "insensitive" } });
   if (f.module) and.push({ entityType: f.module });
@@ -403,7 +419,7 @@ export async function auditFilterChoices(viewer: AuditViewer, filter: AuditFilte
     }),
     db.auditLog.groupBy({
       by: ["entityType"],
-      where: { AND: [...dateWhere(filter.from, filter.to, timezone), ...(developers ? [] : [{ NOT: DEVELOPER_ROWS }])] },
+      where: { AND: [...dateWhere(filter.from, filter.to, timezone), ...(developers ? [] : [{ NOT: DEVELOPER_ROWS }]), ...(filter.changesOnly ? [{ NOT: DEVELOPER_NOT_CHANGES }] : [])] },
       orderBy: { entityType: "asc" },
       take: 200,
     }),

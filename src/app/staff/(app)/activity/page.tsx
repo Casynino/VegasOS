@@ -34,7 +34,7 @@ export default async function ActivityPage({ searchParams }: PageProps<"/staff/a
   const page = Math.max(1, Number(str(sp.page)) || 1);
 
   // Who sees what is decided in ./data.ts: a Developer's rows (and the Developer's account in the list) only for whoever holds "audit.view".
-  const { rows, total, users, areas, developers } = await loadActivity(viewer, { from, to, userId, area, page });
+  const { rows, total, users, areas, developers } = await loadActivity(viewer, { from, to, userId, area, page, changesOnly: true });
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const qs = (p: number) => new URLSearchParams({ from, to, ...(userId && { user: userId }), ...(area && { area }), page: String(p) }).toString();
 

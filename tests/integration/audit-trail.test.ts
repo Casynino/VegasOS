@@ -25,6 +25,7 @@ import {
   AUDIT_DEFAULT_DAYS, AUDIT_MAX_DAYS, AUDIT_MAX_PAGE, AUDIT_PAGE_SIZE, auditActionWords, auditFilterChoices, auditToday, auditWhere,
   isFailureAction, isFailureEntry, parseAuditFilter, parseDeveloperAuditFilter, queryAuditTrail, type AuditFilter, type AuditRow, type AuditViewer,
 } from "@/server/services/audit-trail";
+import { activityWhere } from "@/app/staff/(app)/activity/data";
 import { AuditList, showJson } from "@/app/staff/(app)/audit/audit-rows";
 import { DeveloperAuditList, auditSentence, auditWho } from "@/app/staff/(app)/developer/audit/developer-audit-rows";
 import DeveloperAuditPage from "@/app/staff/(app)/developer/audit/page";
@@ -814,5 +815,56 @@ describe("the Developer's Audit page: who may open it", () => {
       browser.reset();
       await db.session.updateMany({ where: { userId: dev.id }, data: { workAsUserId: null, workAsStartedAt: null } });
     }
+  });
+});
+
+// ═════════════════════════════ a Developer's trail shows only what he changed ═════════════════════════════
+describe("the Audit pages show a Developer's CHANGES only (owner, 2026-10-19: no track for signing in, looking or a refused try)", () => {
+  const NOISE = ["developer.viewed", "auth.login", "developer.denied", "user.suspend_failed", "developer.work_as_started", "developer.work_as_ended", "developer.work_as_notice", "developer.exported", "developer.inspected"];
+  const CHANGES = ["menu.price_changed", "user.suspended", "translation.saved", "reservation.created"];
+
+  it("with changesOnly (what the pages ask for) his sign-ins, looks, refused tries and Work as notes are left out; his changes, staff and system rows stay; the plain search still has everything", async () => {
+    const m = `${MOD}Changes`;
+    const at = new Date("2026-03-12T09:00:00Z");
+    for (const action of NOISE) await put({ at, user: dev, type: "DEVELOPER", action, module: m });
+    for (const action of CHANGES) await put({ at, user: dev, type: "DEVELOPER", action, module: m });
+    await put({ at, user: rec, type: "STAFF", action: "auth.login", module: m });
+    await put({ at, user: null, type: "SYSTEM", action: "cron.ran", module: m });
+    const day = { from: "2026-03-12", to: "2026-03-12" };
+    for (const viewer of [BOSS, viewerOf("ADMIN"), viewerOf("DEVELOPER")]) {
+      const shown = (await search(m, { ...day, changesOnly: true }, viewer)).rows.map((r) => r.action).sort();
+      expect(shown).toEqual([...CHANGES, "auth.login", "cron.ran"].sort());
+    }
+    // the plain search (not used by the pages) is unchanged: everything is still in the diary
+    expect((await search(m, day)).rows).toHaveLength(NOISE.length + CHANGES.length + 2);
+    // the module list the page offers does not name a module only noise belongs to
+    const onlyNoise = `${MOD}OnlyNoise`;
+    await put({ at, user: dev, type: "DEVELOPER", action: "developer.viewed", module: onlyNoise });
+    const choices = await auditFilterChoices(BOSS, { ...base, module: "", ...day, changesOnly: true });
+    expect(choices.modules).not.toContain(onlyNoise);
+    expect(choices.modules).toContain(m);
+  });
+
+  it("a Developer's failed entry (a name ending _failed, _refused, .denied) and one working as someone's look are noise too; his change as someone stays", async () => {
+    const m = `${MOD}ChangesAs`;
+    const at = new Date("2026-03-13T09:00:00Z");
+    const as = { actingAs: { id: "u1", name: "Bashley", role: "MD" } };
+    await put({ at, user: dev, type: "DEVELOPER", action: "restaurant.order_failed", module: m, after: as });
+    await put({ at, user: dev, type: "DEVELOPER", action: "something.refused", module: m });
+    await put({ at, user: dev, type: "DEVELOPER", action: "developer.viewed", module: m, after: as });
+    await put({ at, user: dev, type: "DEVELOPER", action: "menu.price_changed", module: m, after: as });
+    const rows = (await search(m, { from: "2026-03-13", to: "2026-03-13", changesOnly: true })).rows;
+    expect(rows.map((r) => r.action)).toEqual(["menu.price_changed"]);
+    expect(rows[0].actingAs).toMatchObject({ name: "Bashley" });
+  });
+
+  it("the Staff activity page asks the same: a viewer who may see Developer actions sees his changes only; one who may not sees none of his rows", async () => {
+    const at = new Date("2026-03-14T09:00:00Z");
+    for (const action of ["developer.viewed", "developer.work_as_started", "menu.price_changed"]) await put({ at, user: dev, type: "DEVELOPER", action, module: `${MOD}Act` });
+    const q = { from: "2026-03-14", to: "2026-03-14", userId: dev.id, page: 1 };
+    const actions = async (developers: boolean, changesOnly: boolean) => (await db.auditLog.findMany({ where: activityWhere({ ...q, changesOnly }, developers) })).map((r) => r.action).sort();
+    expect(await actions(true, true)).toEqual(["menu.price_changed"]);
+    expect(await actions(true, false)).toEqual(["developer.viewed", "developer.work_as_started", "menu.price_changed"]);
+    expect(await actions(false, true)).toEqual([]);
   });
 });

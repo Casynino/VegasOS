@@ -248,6 +248,10 @@ When the Developer works as someone, every screen that says who did a record als
 - New audit row `restaurant_order.item_prepared` (first tick that moves an item to preparing only), so a Developer working as a cook is visible.
 - Known limits: the time match is a few seconds wide (5 s on orders, 10 s on stays); "Given to" and "Looked after by" lines name who a request was given to, not who acted, so they carry no tag (the history lines do).
 
+## 7c. The Audit shows only what the Developer CHANGED (owner, 2026-10-19)
+
+"When I log in or try to change, that track should not be there — only when I make a change, modify, add or remove something do you leave a track." The Audit pages — the Developer's own (`/staff/developer/audit`), the Boss's and the MD's (`/staff/audit`) and the Staff activity page — list a Developer's entries **only when they are changes** (created, changed, removed, suspended, price changed…, also "as" someone). They leave out his signing in and out, looking at a page, checking, exporting or downloading, refused or failed tries, the notes about Work as, and the start and end of a Work as (the Boss is still told on WhatsApp when a Work as starts). The list is `DEVELOPER_UNSHOWN_ACTIONS` (src/lib/developer-noise.ts) plus any name ending `_failed`, `_refused`, `.denied`, `.refused`; the pages ask for `changesOnly`. Those entries are still written to the database (the Developer's own console, Security and Activity read them); only the Audit lists hide them. Who may open the Audit is unchanged: `audit.view` is held by the Boss, the MD and the Developer only — the Manager never opens it, and the Manager's Staff activity page never shows a Developer's entry at all.
+
 ## 8. What the Developer cannot do: write money, or decide about it
 
 The Developer can look at everything about money (the finance pages, the ledger, the reports) but **cannot write it and cannot decide about it**. The server refuses it, whatever the screen shows. **This is the same while you work as someone else:** the person's rights are given to you with every one of these taken out.

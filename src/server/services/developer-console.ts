@@ -337,23 +337,7 @@ export function parseTab(raw: unknown): ConsoleTab {
   return (CONSOLE_TABS as readonly string[]).includes(v as string) ? (v as ConsoleTab) : DEFAULT_TAB;
 }
 
-/**
- * Entries that are NOT work: sign-ins and sign-outs, the Developer's own looking, checking and taking data out, refusals and failed
- * attempts (nothing was saved), and the automatic notes about Work as. They are kept in the audit trail (and have their own charts and
- * lists), but they are left out of every "actions" count on the console, as the captions say ("Sign-ins and just looking are not counted").
- * Starting or stopping Work as is a thing the Developer did on purpose, so those two still count.
- */
-export const NOT_WORK_ACTIONS: readonly string[] = [
-  // sign-ins
-  "auth.login", "auth.logout", "auth.login_failed", "auth.login_failed_suppressed",
-  // looking, checking, taking data out
-  "developer.viewed", "developer.viewed_limit", "developer.business_viewed", "developer.inspected", "developer.exported", "developer.downloaded",
-  // refused or failed: nothing was saved
-  "developer.denied", "developer.work_as_refused", "developer.endpoint_refused", "settings.update.refused",
-  "user.suspend_failed", "user.reactivate_failed", "user.sign_out_failed", "user.create_failed", "user.delete_failed",
-  // automatic notes about Work as
-  "developer.work_as_expired", "developer.work_as_notice", "developer.access_notice",
-];
+export { NOT_WORK_ACTIONS } from "@/lib/developer-noise"; // sign-ins, looking, refused tries and notes: not work (the list lives in src/lib/developer-noise.ts)
 
 // ───────────────────────────────────────────── Settings tab ─────────────────────────────────────────────
 /** The settings the system runs on, by NAME only: whether each is set, never its value. */

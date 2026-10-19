@@ -3,7 +3,7 @@ import { db } from "@/server/db";
 import { redact, type ActorType } from "@/server/audit";
 import { DEVELOPER_ROLE_CODE } from "@/lib/permissions";
 import { toDbDate } from "@/lib/time/business-date";
-import { DEVELOPER_ROWS, seesDeveloperActions, type AuditViewer } from "@/server/services/audit-trail";
+import { DEVELOPER_NOT_CHANGES, DEVELOPER_ROWS, seesDeveloperActions, type AuditViewer } from "@/server/services/audit-trail";
 import { auditWho } from "@/lib/audit-who";
 import { actedAsName } from "@/lib/audit-line-who";
 import type { Prisma } from "@/generated/prisma/client";
@@ -25,6 +25,8 @@ export interface ActivityQuery {
   /** The first part of the action's name ("reservation"). */
   area?: string;
   page: number;
+  /** Leave out a Developer's entries that are not a change (the Staff activity page sets it; owner, 2026-10-19). */
+  changesOnly?: boolean;
 }
 
 export interface ActivityRow {
@@ -58,7 +60,11 @@ export function activityWhere(q: ActivityQuery, developers: boolean): Prisma.Aud
     ...(q.userId ? { userId: q.userId } : {}),
     ...(q.area ? { action: { startsWith: `${q.area}.` } } : {}),
     // Fail toward hiding: the Developer's own rows, and every "developer.*" entry (also the ones a setup script wrote about the account).
-    ...(developers ? {} : { AND: [{ NOT: DEVELOPER_ROWS }, { NOT: { action: { startsWith: "developer." } } }] }),
+    AND: [
+      // A Developer's entry that is not a change (signing in, looking, refused tries, notes about Work as) is left out when the page asks (owner, 2026-10-19).
+      ...(q.changesOnly ? [{ NOT: DEVELOPER_NOT_CHANGES }] : []),
+      ...(developers ? [] : [{ NOT: DEVELOPER_ROWS }, { NOT: { action: { startsWith: "developer." } } }]),
+    ],
   };
 }
 

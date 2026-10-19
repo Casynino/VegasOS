@@ -35,7 +35,9 @@ export default async function AuditTrailPage({ searchParams }: PageProps<"/staff
   const t = await getT();
   const { timezone } = await getSettings();
   const { filter, rangeShortened } = parseAuditFilter(await searchParams, auditToday(timezone));
-  const [result, choices] = await Promise.all([queryAuditTrail(user, filter), auditFilterChoices(user, filter)]);
+  // Only what the Developer changed is listed, never his sign-ins, looks or refused tries (owner, 2026-10-19).
+  const changes = { ...filter, changesOnly: true };
+  const [result, choices] = await Promise.all([queryAuditTrail(user, changes), auditFilterChoices(user, changes)]);
   // (A Developer's visit to this page is written to the audit trail by the layout, like every sensitive page.)
 
   const f = result.filter;

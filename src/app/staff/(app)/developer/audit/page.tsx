@@ -50,7 +50,7 @@ export default async function DeveloperAuditPage({ searchParams }: PageProps<"/s
   const t = await getT();
   const { timezone } = await getSettings();
   const { filter, view, rangeShortened } = parseDeveloperAuditFilter(await searchParams, auditToday(timezone));
-  const result = await queryAuditTrail(user, filter);
+  const result = await queryAuditTrail(user, { ...filter, changesOnly: true }); // only what the Developer changed (owner, 2026-10-19)
   const f = result.filter;
   const narrowed = view !== "all" || !!f.q;
 
