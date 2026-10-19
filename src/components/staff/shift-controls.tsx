@@ -19,6 +19,6 @@ export async function ShiftControls(props: ComponentProps<typeof ShiftControlsVi
  */
 export async function ManagerCloseShift(props: ComponentProps<typeof ManagerCloseShiftView>) {
   const user = await getCurrentUser();
-  if (user?.actorType === "DEVELOPER") return null;
+  if (user?.actorType === "DEVELOPER" && !user.workAs) return null;
   return <ManagerCloseShiftView {...props} />;
 }

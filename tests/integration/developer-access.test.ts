@@ -218,7 +218,8 @@ describe("Work as and Stop", () => {
     expect(me).toMatchObject({ id: rec.id, actorId: dev.id, actorType: "DEVELOPER", roleCode: "RECEPTIONIST" });
     expect(me?.workAs).toMatchObject({ developerId: dev.id, developerName: dev.fullName });
     expect(me?.permissions.has("developer.access")).toBe(false);
-    for (const code of DEVELOPER_DENIED) expect(me?.permissions.has(code), `no money right while working as someone: ${code}`).toBe(false);
+    // full access (owner, 2026-10-19): the money rights are the person's own too — the receptionist holds payments.record, so working as her the Developer does
+    expect(me?.permissions.has("payments.record")).toBe(true);
 
     // the diary: one entry, written as the Developer, about the person
     const started = (await fresh()).filter((r) => r.action === "developer.work_as_started");

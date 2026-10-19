@@ -255,11 +255,10 @@ describe("the Developer on its own account: every changing function is refused, 
     ]);
   });
 
-  it("whatever the actor claims about itself, a Developer is refused: the account type, the Developer role, or the work-as mark is enough", async () => {
+  it("whatever the actor claims about itself, the Developer's own account is refused: the account type or the Developer role is enough (working as someone it is a different matter: see below)", async () => {
     const claims: [string, AccountActor][] = [
       ["type Developer, role Boss", { id: dev.id, fullName: dev.fullName, roleCode: "OWNER", actorType: "DEVELOPER" }],
       ["role Developer, type staff", { id: dev.id, fullName: dev.fullName, roleCode: DEV, actorType: "STAFF" }],
-      ["type staff, role MD, but working as someone", { id: md.id, fullName: md.fullName, roleCode: "ADMIN", actorType: "STAFF", workAs: { developerId: dev.id } }],
     ];
     for (const [name, actor] of claims) {
       const state = await accountsState();
@@ -271,43 +270,33 @@ describe("the Developer on its own account: every changing function is refused, 
 });
 
 // ═════════════════════════════════════ working as anyone ═════════════════════════════════════
-describe("the Developer working as each shipped role's person: the same refusal, written under the Developer", () => {
-  it("every changing function, as every one of the ten people — nothing written, one failed attempt each, 'as' that person", async () => {
-    for (const code of SHIPPED) {
-      const victim = person[SHIPPED[(SHIPPED.indexOf(code) + 1) % SHIPPED.length]];
-      browser.reset(); // (a session cannot be written while the browser still works as someone: that is the fence)
-      await makeSession(victim.id, { setCookie: false });
-      const actor = await developerSession(person[code]);
-      expect(actor.workAs, code).toBeTruthy();
-      const other = victim.role === "DRIVER" ? roleId.KITCHEN : roleId.DRIVER;
-      await allRefused(`as ${code}`, [
-        { name: "create", failed: "user.create_failed", run: () => createStaffAccount(actor, { fullName: "Sneaky", email: mail("wa"), phone: null, roleId: roleId.DRIVER, password: pw() }) },
-        { name: "rename", failed: "user.update_failed", run: () => updateStaffAccount(actor, updateInput(victim, { fullName: "Taken Over" })) },
-        { name: "switch off", failed: "user.update_failed", run: () => updateStaffAccount(actor, updateInput(victim, { isActive: false })) },
-        { name: "role", failed: "user.update_failed", run: () => updateStaffAccount(actor, updateInput(victim, { roleId: other })) },
-        { name: "email", failed: "user.update_failed", run: () => updateStaffAccount(actor, updateInput(victim, { email: mail("wa-takeover") })) },
-        { name: "reset", failed: "user.password_reset_failed", run: () => resetStaffPassword(actor, { userId: victim.id, password: pw() }) },
-        { name: "delete", failed: "user.delete_failed", run: () => deleteStaffAccount(actor, { userId: victim.id }) },
-        { name: "give", failed: "user.permission_change_failed", run: () => setRolePermission(actor, { roleId: roleId[code], permission: "inventory.view", granted: true }) },
-        { name: "take", failed: "user.permission_change_failed", run: () => setRolePermission(actor, { roleId: roleId[code], permission: "rooms.view", granted: false }) },
-        { name: "give users.manage", failed: "user.permission_change_failed", run: () => setRolePermission(actor, { roleId: roleId.DRIVER, permission: "users.manage", granted: true }) },
-      ], person[code]);
-    }
+describe("the Developer working as someone has FULL access (owner, 2026-10-19): the account functions work as that person, written under the Developer", () => {
+  it("working as the MD: add an account, rename, switch off and on, change the role, reset the password, give and take a right, remove — all done, each 'as' the MD", async () => {
+    const victim = person.DRIVER;
+    const actor = await developerSession(md);
+    expect(actor.workAs).toBeTruthy();
+    const fresh = await watch(dev.id);
+    const newId = await createStaffAccount(actor, { fullName: "Made As Full Access", email: mail("full"), phone: null, roleId: roleId.DRIVER, password: pw() });
+    await updateStaffAccount(actor, updateInput(victim, { isActive: false }));
+    await updateStaffAccount(actor, updateInput(victim, { isActive: true }));
+    await resetStaffPassword(actor, { userId: victim.id, password: pw() });
+    await setRolePermission(actor, { roleId: roleId.DRIVER, permission: "inventory.view", granted: true });
+    await setRolePermission(actor, { roleId: roleId.DRIVER, permission: "inventory.view", granted: false });
+    await deleteStaffAccount(actor, { userId: typeof newId === "string" ? newId : (newId as { id: string }).id });
+    await updateStaffAccount(actor, updateInput(victim, { fullName: "Renamed By Full Access" }));
+    expect((await rawDb.user.findUniqueOrThrow({ where: { id: victim.id } })).fullName).toBe("Renamed By Full Access");
+    const rows = await fresh();
+    expect(rows.length, "one entry per change").toBeGreaterThanOrEqual(8);
+    expect(rows.every((r) => r.actorType === "DEVELOPER" && r.userId === dev.id), "every entry is the Developer's, never the MD's").toBe(true);
+    expect(rows.some((r) => String(r.action).endsWith("_failed") || r.action === "developer.denied")).toBe(false);
+    await updateStaffAccount(actor, updateInput(victim, { fullName: victim.fullName })); // put the name back
   });
 
-  it("the whole rights grid, working as the Boss and as the MD (the two people whose rights the Developer would most like to borrow)", async () => {
-    for (const who of [boss, md]) {
-      const actor = await developerSession(who);
-      const calls: Call[] = [];
-      for (const code of [...SHIPPED, DEV]) {
-        const held = await rightsOf(code);
-        for (const permission of ALL_RIGHTS) {
-          calls.push({ name: `give ${permission} to ${code}`, failed: "user.permission_change_failed", run: () => setRolePermission(actor, { roleId: roleId[code], permission, granted: true }) });
-          if (held.includes(permission)) calls.push({ name: `take ${permission} from ${code}`, failed: "user.permission_change_failed", run: () => setRolePermission(actor, { roleId: roleId[code], permission, granted: false }) });
-        }
-      }
-      await allRefused(`grid as ${who.role}`, calls, who);
-    }
+  it("working as the Boss: the Boss's own rights, including those of the Boss's account — the Users page opens", async () => {
+    const actor = await developerSession(boss);
+    expect(actor.workAs).toBeTruthy();
+    expect(actor.permissions.has("users.manage")).toBe(true);
+    expect((await requirePagePermission("users.manage")).id).toBe(boss.id);
   });
 });
 
@@ -326,12 +315,12 @@ describe("the Developer holds no 'users.manage': the Users page and its actions 
     expect(DEVELOPER_DENIED).toContain("users.manage");
   });
 
-  it("the Users page: a Developer — on its own account or working as the Boss or the MD — is sent to 'forbidden'; the MD and the Boss are not", async () => {
+  it("the Users page: the Developer on its own account is sent to 'forbidden'; working as the Boss or the MD it opens (full access); the MD and the Boss are not refused either", async () => {
     await developerSession(null);
     expect(await redirectOf(() => requirePagePermission("users.manage"))).toBe("/staff/forbidden");
     for (const who of [boss, md]) {
       await developerSession(who);
-      expect(await redirectOf(() => requirePagePermission("users.manage")), `as ${who.role}`).toBe("/staff/forbidden");
+      expect((await requirePagePermission("users.manage")).id, `as ${who.role}`).toBe(who.id);
     }
     for (const who of [boss, md]) {
       await signedInAs(who);
@@ -339,9 +328,9 @@ describe("the Developer holds no 'users.manage': the Users page and its actions 
     }
   });
 
-  it("every Users action: refused for the Developer (own account, and working as the Boss or the MD); nothing written; the entries are the Developer's 'denied' ones — never a user.* success", async () => {
+  it("every Users action: refused for the Developer on its own account; nothing written; the entries are the Developer's 'denied' ones — never a user.* success", async () => {
     const victim = person.DRIVER;
-    for (const who of [null, boss, md]) {
+    for (const who of [null as MadeUser | null]) {
       await developerSession(who);
       const before = await accountsState();
       const fresh = await watch(dev.id);
@@ -353,8 +342,8 @@ describe("the Developer holds no 'users.manage': the Users page and its actions 
         await deleteUserAction(undefined, form({ userId: victim.id })),
         await signOutScreenSessionAction(undefined, form({ sessionId: "any" })),
       ];
-      for (const r of results) expect(r, `as ${who?.role ?? "Developer"}`).toMatchObject({ ok: false, code: "FORBIDDEN" });
-      expect(await accountsState(), `as ${who?.role ?? "Developer"}`).toBe(before);
+      for (const r of results) expect(r, "the Developer").toMatchObject({ ok: false, code: "FORBIDDEN" });
+      expect(await accountsState(), "the Developer").toBe(before);
       const rows = await fresh();
       expect(rows.length, "one refusal per action").toBe(results.length);
       expect(rows.every((r) => r.action === "developer.denied" && r.actorType === "DEVELOPER" && String(r.entityId).includes("users.manage"))).toBe(true);

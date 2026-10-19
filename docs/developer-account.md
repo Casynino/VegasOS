@@ -178,6 +178,13 @@ The Access page lists the accounts (every account except Developer accounts and 
 
 So Work as can never be used to take over an account.
 
+## 5a. WORK AS = FULL ACCESS (owner, 2026-10-19) — this replaces the "money wall while working as someone" described in §5 and §8
+
+When the Developer works as a person he has **exactly that person's own rights and can change, add or modify anything that person can — money, the menu and prices, discounts and approvals, accounts, passwords, roles and rights, shifts**. Nothing is held back while he works as them (owner: "when I work as someone it should be full access, because I am working as that person").
+- **What did not change:** the audit trail. Every action is still written under the Developer's own name with who he acted as ("Nino (Developer) as Neema (Receptionist)"); the Boss is still told on WhatsApp when a Work as starts; Work as still ends after 4 hours or on Stop; a Developer, the system account and an inactive account still cannot be worked as; the Developer's OWN account (in his console, not working as anyone) still decides nothing and records no money.
+- **Code:** `permissionsWhileWorkingAs` (src/server/auth.ts) hands over the person's full rights (only Developer-only rights are withheld); `canDecide` / `authorizeDecision` allow a Developer who works as someone; `actsAsDeveloper` (src/server/developer-wall.ts) is true only for the Developer's own session, so the service-level walls and the shift wall do nothing while working as; `isDev` in staff-accounts.ts and the write fence in db.ts no longer stop account, role, right and password changes; `assertNotWorkAs` stays only on the Developer's own console powers (Add / suspend / delete / sign out from the Access page).
+- **Know this:** a payment or any record made while working as Neema is stored with Neema as its author (her shift and cash totals include it) while the Audit says the Developer did it. Online payments are still never credited to the person a Developer works as (reservations.ts check-in / cancel). The "Done by Developer" tags (§7b) do not yet cover money lines.
+
 ## 5b. Delete an account, and the permanent owners (owner, 2026-10-19)
 
 - **Delete** (a button next to Suspend on the Access page; a plain confirm pop-up, nothing to type — owner, 2026-10-19) works on **any account** — the Boss's and the MD's too — except the permanent owners, another Developer, yourself and the last active Boss. The Boss is told on WhatsApp, and the deletion is in the Audit under the Developer (without a reason).

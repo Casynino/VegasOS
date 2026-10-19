@@ -620,8 +620,10 @@ describe("sign a person out everywhere: never the Boss", () => {
     const devUser = await me();
     await makeSession(boss.id, { setCookie: false });
     await makeSession(md.id, { setCookie: false });
+    process.env.PERMANENT_OWNER_EMAILS = boss.email; // the Boss here is a permanent owner (owner, 2026-10-19); another Boss could be signed out
     const err = await thrownBy(() => signOutEverywhere(devUser, boss.id));
-    expect([(err as AppError).code, (err as AppError).message]).toEqual(["FORBIDDEN", "Can't sign the Boss out here"]);
+    delete process.env.PERMANENT_OWNER_EMAILS;
+    expect([(err as AppError).code, (err as AppError).message]).toEqual(["FORBIDDEN", "Can't sign a permanent owner out here"]);
     expect(await db.session.count({ where: { userId: boss.id } })).toBe(1);
     const failed = await entries("user.sign_out_failed", { entityId: boss.id });
     expect(failed).toHaveLength(1);

@@ -31,7 +31,6 @@ import { WORK_AS_HOURS } from "@/server/work-as-session";
 import { DeveloperAuditList, auditSentence, auditWho } from "@/app/staff/(app)/developer/audit/developer-audit-rows";
 import { BarChart } from "@/app/staff/(app)/developer/console-charts";
 import { HealthCard } from "@/app/staff/(app)/developer/health-card";
-import { AccessView } from "@/app/staff/(app)/developer/access/access-view";
 import type { HealthReport } from "@/server/services/developer-health";
 import { makeUser, removeMadeUsers, type MadeUser } from "../support/developer";
 
@@ -318,22 +317,6 @@ describe("the health card's four figures are a real definition list", () => {
   });
 });
 
-// ───────────────────────────────────────────── 4b. the Access page's words ─────────────────────────────────────────────
-describe("the Access page says what the buttons do today", () => {
-  const html = renderToStaticMarkup(createElement(AccessView, { t, groups: [], count: 0, nowIso: new Date().toISOString(), timezone: "Africa/Dar_es_Salaam" }));
-  const text = html.replace(/<[^>]+>/g, " ").replace(/&#x27;/g, "'").replace(/\s+/g, " ");
-
-  it("Work as: ends after 4 hours or with the session; no money; no shifts", () => {
-    expect(text).toContain("It ends by itself after 4 hours.");
-    expect(text).toContain("It also ends when your session ends. Their shift is never started or closed for them.");
-    expect(text).toContain("A shift is never started or closed for them either.");
-  });
-
-  it("Sign out everywhere: not offered for the Boss's account", () => {
-    expect(text).toContain("It is not offered for the Boss's account.");
-  });
-});
-
 // ───────────────────────────────────────────── 5. the migration's backfill ─────────────────────────────────────────────
 describe("the migration labels old audit lines like the app's audit writer does", () => {
   const sql = read("prisma/migrations/20261014090000_developer_account/migration.sql");
@@ -435,8 +418,8 @@ describe("a list of people that staff see leaves out the Developer and the syste
     "src/server/services/audit-trail.ts": { count: 1, why: "the Audit pages list everyone on purpose; the Developer only for those who may see Developer actions" },
     "src/server/services/developer-health.ts": { count: 1, why: "a timing probe on the Speed part: it finds one account id only to time the lookup — nothing about the person is read or shown" },
     "src/server/services/developer-console.ts": { count: 1, why: "the Developer's own console (inspect a person's rights): full on purpose" },
-    "src/server/services/developer-checks.ts": { count: 1, why: "the Developer's own system check: is there an active Boss account (it counts Boss accounts only, nothing else about anyone)" },
-    "src/server/services/work-as.ts": { count: 1, why: "the Developer's Access page; leaves out the Developer and the system account" },
+    "src/server/services/developer-checks.ts": { count: 2, why: "the Developer's own system check: is there an active Boss account, or a permanent owner (MD) standing in (it reads e-mail and role of MD accounts only to compare with the permanent-owner list, nothing is shown)" },
+    "src/server/services/work-as.ts": { count: 2, why: "the Developer's Access page (leaves out the Developer and the system account) and the check that another Boss or a permanent owner keeps the top authority" },
     "src/server/services/staff-accounts.ts": { count: 3, why: "the Users page for the Boss and the MD (it never lists the Developer), and two counts of active Bosses" },
     "src/server/services/shifts.ts": { count: 1, why: "a receptionist picked by id for the rota: DESK_WORKER = shifts.work without shifts.manage, which the Developer never matches (the other query is a lookup by ids)" },
     "src/server/services/restaurant.ts": { count: 2, why: "the waiter who brought money (not management: the Developer holds the dashboards, so it is excluded) and the account online payments are recorded under (needs revenue.record, which the Developer never holds)" },

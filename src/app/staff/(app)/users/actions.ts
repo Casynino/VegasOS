@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/server/db";
 import { audit } from "@/server/audit";
-import { assertNotWorkAs, authorize, requestMeta } from "@/server/auth";
+import { authorize, requestMeta } from "@/server/auth";
 import { AppError, runAction, type ActionResult } from "@/server/errors";
 import { parseInput } from "@/server/validation";
 import { isRestaurantDevice } from "@/lib/permissions";
@@ -100,7 +100,6 @@ export async function deleteUserAction(_prev: unknown, formData: FormData): Prom
 export async function signOutScreenSessionAction(_prev: unknown, formData: FormData): Promise<ActionResult<null>> {
   return runAction(async () => {
     const actor = await authorize("users.manage");
-    assertNotWorkAs(actor, "sign a screen out");
     const sessionId = String(formData.get("sessionId") ?? "");
     const session = await db.session.findUnique({ where: { id: sessionId }, include: { user: { include: { role: { include: { permissions: { include: { permission: true } } } } } } } });
     if (!session) throw new AppError("That screen is already signed out.", "NOT_FOUND");

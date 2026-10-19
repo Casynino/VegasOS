@@ -1,7 +1,6 @@
 import "server-only";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
-import { AppError } from "./errors";
 import { makeWorkAsReader } from "./work-as-session";
 
 const globalForPrisma = globalThis as unknown as { vlhRawDb?: PrismaClient; vlhDb?: PrismaClient };
@@ -36,9 +35,8 @@ const FENCED_WRITES = ["create", "createMany", "createManyAndReturn", "update", 
  */
 function fence(base: PrismaClient) {
   const guard = async ({ args, query }: { args: unknown; query: (args: never) => Promise<unknown> }) => {
-    if (await workAsOfRequest()) {
-      throw new AppError("While you are working as someone you cannot change accounts, sessions, roles or rights.", "FORBIDDEN");
-    }
+    // Since 2026-10-19 (owner: "when I work as someone it should be full access") the fence lets a Developer working as someone change accounts, sessions,
+    // roles and rights as that person; the audit trail still says who really did it. It is kept, doing nothing, so that no query path changes.
     return query(args as never);
   };
   const writes = Object.fromEntries(FENCED_WRITES.map((op) => [op, guard]));

@@ -5,7 +5,6 @@ import { getSettingsTx, stayConfig } from "../settings";
 import { businessDateOf, toDbDate } from "@/lib/time/business-date";
 import type { Actor } from "./reservations";
 import { actsAsDeveloper } from "../developer-wall";
-import { workAsOfRequest } from "../db";
 
 /**
  * A WAITER'S SHIFT — the low-level pieces shared by the order engine, the tables and the waiter's
@@ -31,7 +30,7 @@ export async function ensureWaiterShiftTx(tx: Tx, userId: string, actor: Actor, 
   await lockWaiterTx(tx, userId);
   const open = await tx.actualShift.findFirst({ where: { userId, endedAt: null } });
   if (open) return open;
-  if (actsAsDeveloper(actor) || (await workAsOfRequest())?.targetId === userId) return null;
+  if (actsAsDeveloper(actor)) return null; // the Developer's own account starts no shift; working as someone it is that person (owner, 2026-10-19)
   const settings = await getSettingsTx(tx);
   const shift = await tx.actualShift.create({ data: { department: "RESTAURANT", businessDate: toDbDate(businessDateOf(now, stayConfig(settings))), userId, startedAt: now } });
   await audit(tx, actor, { action: "shift.started", entityType: "ActualShift", entityId: shift.id, after: { department: "RESTAURANT", waiterId: userId, started: why } });

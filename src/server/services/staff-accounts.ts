@@ -47,7 +47,8 @@ export interface AccountActor {
 export interface AccountMeta { ipAddress?: string | null }
 
 /** A Developer: the account type, the Developer role, or a Developer working as someone (then the role is the person's, the type is still Developer). */
-const isDev = (a: AccountActor) => a.actorType === "DEVELOPER" || a.roleCode === DEVELOPER_ROLE_CODE || !!a.workAs;
+// The Developer's OWN account manages no accounts; working as someone it does, as that person (owner, 2026-10-19: full access).
+const isDev = (a: AccountActor) => (a.actorType === "DEVELOPER" && !a.workAs) || a.roleCode === DEVELOPER_ROLE_CODE;
 const notFound = () => new AppError(msg("Staff member not found."), "NOT_FOUND");
 
 /** The one thing a Developer is told by every changing function here — and what the failed attempt's audit entry says. */

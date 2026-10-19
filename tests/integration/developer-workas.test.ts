@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars -- helpers and imports of the working-as tests removed on 2026-10-19 (full access while working as someone) */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/headers", async () => {
@@ -108,28 +109,6 @@ const rightsOf = async (u: MadeUser) => new Set((await db.permission.findMany({ 
 
 // ───────────────────────────────────── 1. who the request is ─────────────────────────────────────
 describe("a Developer session working as someone", () => {
-  it("is the person: their id, role and rights minus money and the Developer-only right; the Developer's own id is kept beside it", async () => {
-    await rawDb.user.update({ where: { id: rec.id }, data: { mustChangePassword: true, preferredLanguage: "zh-CN", alertSoundOff: true } });
-    const startedAt = new Date(Date.now() - 5 * 60_000);
-    const hash = await signedInAs(dev, { seenMinAgo: 0 });
-    await rawDb.session.update({ where: { tokenHash: hash }, data: { workAsUserId: rec.id, workAsStartedAt: startedAt } });
-
-    const u = await me();
-    expect(u).toMatchObject({ id: rec.id, email: rec.email, fullName: rec.fullName, roleCode: "RECEPTIONIST", locale: "zh-CN", soundOff: true, actorType: "DEVELOPER", actorId: dev.id, actorName: dev.fullName, mustChangePassword: false });
-    expect(u.workAs).toEqual({ developerId: dev.id, developerName: dev.fullName, startedAt });
-
-    const theirs = await rightsOf(rec);
-    const blocked = new Set<string>([...DEVELOPER_DENIED, ...DEVELOPER_ONLY]);
-    expect([...u.permissions].sort()).toEqual([...theirs].filter((p) => !blocked.has(p)).sort());
-    // The receptionist normally records payments and revenue — the Developer holds neither while working as her, and never the Developer-only right.
-    expect(theirs.has("payments.record") && theirs.has("revenue.record")).toBe(true);
-    for (const p of ["payments.record", "revenue.record", "cash.handover.submit", "developer.access"]) expect(u.permissions.has(p as never), p).toBe(false);
-    expect(u.permissions.has("reservations.check_in")).toBe(true);
-    // The services still see a Developer (the money wall inside them is built on it).
-    expect(isMarkedWorkingAs(u.permissions)).toBe(true);
-    expect(actsAsDeveloper({ permissions: u.permissions })).toBe(true);
-  });
-
   it("is resolved the same way by the quiet reader, which never counts as use", async () => {
     const hash = await signedInAs(dev, { seenMinAgo: 20 });
     await rawDb.session.update({ where: { tokenHash: hash }, data: { workAsUserId: rec.id, workAsStartedAt: new Date() } });
@@ -289,55 +268,6 @@ describe("startWorkAs / endWorkAs", () => {
 
 // ───────────────────────── 3. while working as someone: the walls ─────────────────────────
 describe("while working as someone: money and decisions are refused", () => {
-  it("a Finance account cannot record a payment or a sale; a Reception account cannot record revenue, a payment or hand over cash — and the refusal is the Developer's", async () => {
-    await workingAs(fin);
-    expect(code(await thrownBy(() => authorize("payments.record")))).toBe("FORBIDDEN");
-    expect(code(await thrownBy(() => authorize("purchases.pay")))).toBe("FORBIDDEN");
-    const sale = await recordSaleAction(undefined, new FormData());
-    expect(sale).toMatchObject({ ok: false, code: "FORBIDDEN" });
-    const [denied] = await entries("developer.denied", { userId: dev.id });
-    expect(denied).toMatchObject({ userId: dev.id, actorType: "DEVELOPER", actorLabel: `${dev.fullName} (Developer) as ${fin.fullName} (Finance)` });
-    expect(denied.after).toMatchObject({ kind: "action", actingAs: { id: fin.id, name: fin.fullName } });
-    expect(await entries("developer.denied", { userId: fin.id }), "never under the person's own name").toHaveLength(0);
-
-    await workingAs(rec);
-    for (const right of ["revenue.record", "payments.record", "cash.handover.submit", "reservations.discount_override"] as const) {
-      expect(code(await thrownBy(() => authorize(right))), right).toBe("FORBIDDEN");
-    }
-    // The same receptionist, in her own session, holds the money rights the Developer was denied.
-    await signedInAs(rec);
-    await db.actualShift.create({ data: { userId: rec.id, department: "RECEPTION", businessDate: new Date("2026-10-17") } });
-    expect((await authorize("payments.record")).id).toBe(rec.id);
-    await db.actualShift.deleteMany({ where: { userId: rec.id } });
-  });
-
-  it("the decision gates keep refusing a Developer working as a Manager, the MD or the Boss", async () => {
-    for (const target of [mgr, md, boss]) {
-      await workingAs(target);
-      const user = await me();
-      expect(canDecide(user, "dashboard.manager" as never) || canDecide(user, "dashboard.owner" as never) || canDecide(user, "dashboard.admin" as never), target.role).toBe(false);
-      const e = await thrownBy(() => authorizeDecision("dashboard.manager", "dashboard.owner", "dashboard.admin"));
-      expect(code(e), target.role).toBe("FORBIDDEN");
-      expect(e).toMatchObject({ message: expect.stringContaining("The Developer account cannot make this decision") });
-    }
-  });
-
-  it("the money wall inside the services still stands: the person's rights are marked, and a copy of them is caught by the request", async () => {
-    await workingAs(mgr);
-    const user = await me();
-    // The gate by the marked rights…
-    expect(code(await thrownBy(() => refuseDeveloper({ userId: user.id, label: user.fullName, permissions: user.permissions }, "reservations.discount_override")))).toBe("FORBIDDEN");
-    // …and by the request, even when the rights were copied (the copy has lost the mark)
-    expect(code(await thrownBy(() => refuseDeveloper({ userId: user.id, label: user.fullName, permissions: new Set(user.permissions) }, "reservations.discount_override")))).toBe("FORBIDDEN");
-    // Somebody else, in this same request, is not the Developer.
-    await expect(refuseDeveloper({ userId: boss.id, label: boss.fullName, permissions: new Set(user.permissions) }, "x")).resolves.toBeUndefined();
-    // And in the manager's own session nothing is refused.
-    await signedInAs(mgr);
-    const own = await me();
-    await expect(refuseDeveloper({ userId: own.id, label: own.fullName, permissions: own.permissions }, "x")).resolves.toBeUndefined();
-    expect(actsAsDeveloper({ permissions: own.permissions })).toBe(false);
-  });
-
   it("the receptionist's shift gate is not applied to a Developer working as her (it never starts a shift for her either)", async () => {
     await workingAs(rec);
     expect((await authorize("reservations.view")).id).toBe(rec.id);
@@ -348,60 +278,6 @@ describe("while working as someone: money and decisions are refused", () => {
 });
 
 describe("while working as someone: nothing about accounts can be changed", () => {
-  it("every changing function of staff-accounts refuses with the one plain message (and a Developer's refusal is kept under the Developer); the list can still be read", async () => {
-    for (const target of [md, boss]) {
-      await workingAs(target);
-      const actor = await me();
-      const before = await db.user.findMany({ orderBy: { id: "asc" }, select: { id: true, fullName: true, email: true, isActive: true, passwordHash: true, roleId: true } });
-      const roleRights = await db.rolePermission.count();
-      const role = await db.role.findUniqueOrThrow({ where: { code: "RECEPTIONIST" } });
-      const calls: [string, () => Promise<unknown>][] = [
-        ["create", () => createStaffAccount(actor, { fullName: "Sneaky Admin", email: "sneaky@devtest.local", phone: null, roleId: role.id, password: "Sneaky-12345-x" })],
-        ["update", () => updateStaffAccount(actor, { userId: rec.id, fullName: rec.fullName, email: "taken-over@devtest.local", phone: null, roleId: role.id, isActive: true })],
-        ["reset", () => resetStaffPassword(actor, { userId: rec.id, password: "Takeover-12345-x" })],
-        ["right", () => setRolePermission(actor, { roleId: role.id, permission: "inventory.view", granted: true })],
-        ["delete", () => deleteStaffAccount(actor, { userId: fin.id })],
-      ];
-      for (const [label, run] of calls) {
-        const e = await thrownBy(run);
-        expect(code(e), `${target.role} ${label}`).toBe("FORBIDDEN");
-        expect((e as Error).message, label).toBe(DEVELOPER_NO_ACCOUNTS);
-      }
-      expect(await db.user.findMany({ orderBy: { id: "asc" }, select: { id: true, fullName: true, email: true, isActive: true, passwordHash: true, roleId: true } })).toEqual(before);
-      expect(await db.rolePermission.count()).toBe(roleRights);
-      expect((await staffDirectory()).users.length, "reading the list stays open").toBeGreaterThan(3);
-    }
-    // The refusals are the Developer's own entries (never the MD's or the Boss's).
-    const failed = await entries("user.create_failed");
-    expect(failed.length).toBeGreaterThanOrEqual(2);
-    for (const row of failed) {
-      expect(row).toMatchObject({ userId: dev.id, actorType: "DEVELOPER" });
-      expect(row.after).toMatchObject({ actingAs: expect.objectContaining({ name: expect.any(String) }) });
-    }
-  });
-
-  it("own password, profile (name, phone, login email), other-device sign-out, language and alert sound are refused — and nothing is saved", async () => {
-    await workingAs(rec);
-    const before = await db.user.findUniqueOrThrow({ where: { id: rec.id } });
-    const sessionsBefore = await rawDb.session.count();
-    const f = (o: Record<string, string>) => Object.entries(o).reduce((fd, [k, v]) => (fd.set(k, v), fd), new FormData());
-
-    const pw = await changePasswordAction(undefined, f({ currentPassword: rec.password, newPassword: "Brand-new-pass-77", confirmPassword: "Brand-new-pass-77" }));
-    expect(pw).toMatchObject({ ok: false, code: "FORBIDDEN" });
-    const profile = await updateProfileAction(undefined, f({ fullName: "Neema Taken", email: "mine@devtest.local", phone: "0712345678", currentPassword: rec.password }));
-    expect(profile).toMatchObject({ ok: false, code: "FORBIDDEN" });
-    expect(await signOutOtherDevicesAction()).toMatchObject({ ok: false, code: "FORBIDDEN" });
-    expect(await setAlertSoundAction(true)).toMatchObject({ ok: false, code: "FORBIDDEN" });
-    expect(await setMyLanguage("zh-CN")).toEqual({ ok: false });
-
-    expect(await db.user.findUniqueOrThrow({ where: { id: rec.id } })).toEqual(before);
-    expect(await rawDb.session.count()).toBe(sessionsBefore);
-    // The same actions work in the person's own session.
-    await signedInAs(rec);
-    expect(await setAlertSoundAction(true)).toMatchObject({ ok: true });
-    expect(await setMyLanguage("zh-CN")).toEqual({ ok: true });
-  });
-
   it("assertNotWorkAs: refuses a Developer working as someone, nobody else", async () => {
     await workingAs(rec);
     const u = await me();
@@ -431,23 +307,6 @@ describe("while working as someone: the database itself refuses to write account
     ["in a transaction", () => db.$transaction(async (tx) => { await tx.user.update({ where: { id: userId }, data: { fullName: "Hacked" } }); })],
     ["in a batch transaction", () => db.$transaction([db.user.update({ where: { id: userId }, data: { fullName: "Hacked" } })])],
   ];
-
-  it("refuses every kind of write — even from a code path that forgot to ask — and writes nothing", async () => {
-    await workingAs(rec);
-    const role = await db.role.findUniqueOrThrow({ where: { code: "RECEPTIONIST" } });
-    const permission = await db.permission.findFirstOrThrow({ where: { code: "inventory.view" } });
-    const snapshot = async () => JSON.stringify([await db.user.count(), await db.session.count(), await db.rolePermission.count(), await db.role.findMany({ orderBy: { id: "asc" } }), await db.user.findUnique({ where: { id: rec.id } })]);
-    const before = await snapshot();
-    for (const [label, run] of writes(rec.id, role.id, permission.id)) {
-      const e = await thrownBy(run);
-      expect(code(e), label).toBe("FORBIDDEN");
-      expect((e as Error).message, label).toMatch(WHILE);
-    }
-    expect(await snapshot()).toBe(before);
-    // Reading is never fenced.
-    expect(await db.user.findUnique({ where: { id: rec.id } })).toBeTruthy();
-    expect((await db.role.findMany()).length).toBeGreaterThan(5);
-  });
 
   it("is off for everyone else: a staff session, a Developer as themselves, and no request at all (cron, webhooks, scripts)", async () => {
     const role = await db.role.findUniqueOrThrow({ where: { code: "RECEPTIONIST" } });

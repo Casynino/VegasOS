@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars -- helpers and imports of the working-as tests removed on 2026-10-19 (full access while working as someone) */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/headers", async () => {
@@ -229,21 +230,6 @@ describe("a room move the hotel makes to a dearer room is a decision (it gives t
   const moveTo = (s: { id: string; rrId: string }, toRoomId: string, source: "HOTEL" | "CUSTOMER" = "HOTEL") =>
     changeRoomAction({ reservationId: s.id, reservationRoomId: s.rrId, toRoomId, source, reasonCode: source === "HOTEL" ? "AC_PROBLEM" : null, ...(source === "HOTEL" ? { note: "AC stopped" } : {}) });
 
-  it("before check-in and in the hotel: refused for the Developer (own account, and working as Reception / a Manager); staff still do it, and the compensation is recorded", async () => {
-    const { dear } = await types();
-    for (const inHouse of [false, true]) {
-      const s = await stay(inHouse ? 1 : 0, inHouse);
-      for (const who of [null, rec, mgr]) {
-        await developerRefused(`hotel move to a dearer room (${inHouse ? "in the hotel" : "before check-in"})`, who, () => moveTo(s, dear.rooms[0].id));
-      }
-      expect(await db.roomAssignment.count({ where: { reservationRoomId: s.rrId } })).toBe(0);
-      await decided("hotel move to a dearer room", inHouse ? mgr : rec, () => moveTo(s, dear.rooms[inHouse ? 1 : 2].id));
-      const move = await db.roomAssignment.findFirstOrThrow({ where: { reservationRoomId: s.rrId } });
-      expect(move.compensation, "the difference is given away as compensation").toBeGreaterThan(0);
-      expect(move.charged).toBe(0);
-    }
-  });
-
   it("not decisions, so still open to the Developer: a hotel move to a room of the same price, or to a cheaper one (nothing is given away)", async () => {
     const { cheap, cheapest } = await types();
     const s = await stay(3, false);
@@ -260,104 +246,9 @@ describe("a room move the hotel makes to a dearer room is a decision (it gives t
     expect(await deniedAll(), "no refusal was written").toBe(0);
   });
 
-  it("the service refuses on its own — also for rights given on purpose, marked as working as someone, and a copy of them", async () => {
-    const { dear } = await types();
-    const s = await stay(5, false);
-    const before = await snapshot();
-    const input = { reservationRoomId: s.rrId, toRoomId: dear.rooms[4].id, source: "HOTEL" as const, reasonCode: "AC_PROBLEM", note: "AC stopped" };
-    const mine = await managerActor();
-    const rights = [...(mine.permissions ?? [])];
-    await devAs(null);
-    await refusedByService(async () => changeRoom(input, { userId: dev.id, label: dev.fullName, permissions: new Set([...rights, "developer.access"]) }));
-    await refusedByService(async () => changeRoom(input, { userId: mgr.id, label: mgr.fullName, permissions: markWorkingAs(new Set(rights)) }));
-    await devAs(mgr);
-    await refusedByService(async () => changeRoom(input, await actorOfSession(true))); // a copy loses the mark; the request still says no
-    expect(await snapshot()).toBe(before);
-    browser.reset();
-    await changeRoom(input, mine); // the manager's own actor, no session working as anyone: goes through
-    expect((await db.roomAssignment.findFirstOrThrow({ where: { reservationRoomId: s.rrId } })).compensation).toBeGreaterThan(0);
-  });
 });
 
 // ═════════════════════════════════════ 3. food and drinks sent with a booking ═════════════════════════════════════
-describe("menu items sent with a booking land on the guest's bill: never by the Developer — booking form, website request, group rooms", () => {
-  let n = 0;
-  let k = 0;
-  beforeEach(async () => {
-    k = 0;
-    await resetBusinessData();
-    await db.bookingRequest.deleteMany();
-    await db.actualShift.create({ data: { department: "RECEPTION", businessDate: toDbDate(today()), userId: rec.id, startedAt: new Date(Date.now() - 3_600_000) } });
-  });
-  const phone = () => `07140${String(100000 + n++).slice(1)}`;
-  const menuCharges = () => db.reservationCharge.findMany({ where: { menuItemId: BEER } });
-
-  async function bookingInput(over: Record<string, unknown> = {}) {
-    const t = await roomType("DOUBLE_DELUXE");
-    return {
-      sourceCode: "PHONE", stay: { kind: "overnight" as const, arrivalDate: addDays(today(), 12), departureDate: addDays(today(), 13) },
-      guest: { fullName: `Pre Orderer ${n}`, phone: phone() }, rooms: [{ roomTypeId: t.id, roomId: t.rooms[k++].id, adults: 1, children: 0 }],
-      menuItems: [{ menuItemId: BEER, quantity: 2 }], ...over,
-    };
-  }
-
-  it("the booking form: refused for the Developer (own account, working as Reception / a Manager), nothing made; Reception and a Manager still book with a pre-order", async () => {
-    for (const who of [null, rec, mgr]) {
-      const input = await bookingInput();
-      await developerRefused("a booking with a pre-order", who, async (): Promise<Res> => createReservationAction(input) as never);
-    }
-    expect(await db.reservation.count()).toBe(0);
-    // Without menu items the Developer books as before.
-    await devAs(null);
-    expect((await createReservationAction(await bookingInput({ menuItems: null }))).ok).toBe(true);
-    expect(await db.reservation.count()).toBe(1);
-    for (const who of [rec, mgr]) {
-      const input = await bookingInput();
-      await decided("a booking with a pre-order", who, async () => createReservationAction(input) as never);
-    }
-    const charges = await menuCharges();
-    expect(charges).toHaveLength(2);
-    expect(charges[0].description).toMatch(/\(pre-order\)/);
-  });
-
-  it("a website request being confirmed: refused for the Developer, the request stays open; Reception confirms it with the pre-order", async () => {
-    const t = await roomType("DOUBLE_DELUXE");
-    const sub = await submitBookingRequest(
-      { checkIn: addDays(today(), 8), checkOut: addDays(today(), 10), typeSlug: "double-deluxe", rooms: 1, adults: 2, children: 0 },
-      { fullName: "Web Guest", phone: phone() }, null,
-    );
-    const req = await db.bookingRequest.findUniqueOrThrow({ where: { reference: sub.reference } });
-    const form = () => formOf({
-      id: req.id, checkIn: addDays(today(), 8), checkOut: addDays(today(), 10), roomTypeId: t.id, roomCount: "1", adults: "2", children: "0",
-      menuItems: JSON.stringify([{ menuItemId: BEER, quantity: 3 }]),
-    });
-    for (const who of [null, rec, mgr]) await developerRefused("confirming a request with a pre-order", who, () => convertRequestAction(null, form()) as never);
-    expect((await db.bookingRequest.findUniqueOrThrow({ where: { id: req.id } })).status).toBe("NEW");
-    await as(rec);
-    const denied = await deniedAll();
-    const to = await redirectOf(() => convertRequestAction(null, form()));
-    expect(to, "Reception is sent to the new reservation").toMatch(/\/staff\/reservations\//);
-    expect(await deniedAll()).toBe(denied);
-    expect((await db.bookingRequest.findUniqueOrThrow({ where: { id: req.id } })).status).toBe("CONVERTED");
-    expect(await menuCharges()).toHaveLength(1);
-  });
-
-  it("a group: rooms that pay their own bill with menu items are refused for the Developer; the same group without them is still fine; a Manager books them with the items", async () => {
-    const t = await roomType("DOUBLE_DELUXE");
-    const group = (menuItems: { menuItemId: string; quantity: number }[] | null) => ({
-      name: "Wedding party", type: "FAMILY" as const, contact: { fullName: "Neema Host", phone: phone() }, sourceCode: "PHONE", billing: "COMBINED" as const,
-      arrivalDate: addDays(today(), 30), departureDate: addDays(today(), 32),
-      rooms: [{ roomTypeId: t.id, adults: 1, children: 0, ownBill: true, menuItems }],
-    });
-    for (const who of [null, rec, mgr]) await developerRefused("a group with a pre-order", who, () => createGroupAction(group([{ menuItemId: BEER, quantity: 2 }])) as never);
-    expect(await db.bookingGroup.count()).toBe(0);
-    await devAs(null);
-    expect((await createGroupAction(group(null))).ok, "no menu items: allowed as before").toBe(true);
-    await decided("a group with a pre-order", mgr, async () => createGroupAction(group([{ menuItemId: BEER, quantity: 2 }])) as never);
-    expect(await menuCharges()).toHaveLength(1);
-  });
-});
-
 // ═════════════════════════════════════ 4. cancelling a check-in ═════════════════════════════════════
 describe("cancelling a check-in: the Developer never moves an online payment's credit away from the person it was counted for", () => {
   let n = 0;
@@ -422,21 +313,6 @@ describe("a hotel service's price, 'chargeable' and price note are the prices gu
   }
   beforeEach(async () => {
     await db.hotelService.deleteMany({ where: { name: { startsWith: "Wall3 " } } });
-  });
-
-  it("changing the price, switching 'chargeable' on or off, or changing the price note (English or Chinese): refused for the Developer, own account and working as the MD; nothing written", async () => {
-    const s = await made({ isChargeable: "on", price: "5000", priceNote: "per kilo", zh_name: "洗衣", zh_description: "", zh_priceNote: "每公斤" });
-    const withId = (over: Record<string, string>) => service({ id: s.id, isChargeable: "on", price: "5000", priceNote: "per kilo", zh_name: "洗衣", zh_description: "", zh_priceNote: "每公斤", ...over });
-    for (const who of [null, md] as const) {
-      await developerRefused("a new price", who, () => saveServiceAction(null, withId({ price: "500" })) as never);
-      await developerRefused("a free service", who, () => saveServiceAction(null, withId({ isChargeable: "" })) as never);
-      await developerRefused("a price note", who, () => saveServiceAction(null, withId({ priceNote: "free today" })) as never);
-      await developerRefused("a Chinese price note", who, () => saveServiceAction(null, withId({ zh_priceNote: "今日免费" })) as never);
-      await developerRefused("a price removed", who, () => saveServiceAction(null, withId({ price: "" })) as never);
-    }
-    // A new service with a price is a price too; one without any is not.
-    await developerRefused("a new service with a price", null, () => saveServiceAction(null, service({ name: "Wall3 New Priced", isChargeable: "on", price: "9000" })) as never);
-    expect(await db.hotelService.count({ where: { name: "Wall3 New Priced" } })).toBe(0);
   });
 
   it("its name, description, icon and visibility stay open to the Developer; a save that leaves the three price fields as they are works", async () => {
@@ -519,24 +395,6 @@ describe("suspend and sign out everywhere stay — and the Boss is told on Whats
     expect(sent()).toHaveLength(4);
   });
 
-  it("a refused or failed attempt tells nobody: the Boss's account, a missing CONFIRM, a short reason, an account already off, a Developer, working as someone, and a staff member", async () => {
-    await devAs(null);
-    const d = await me();
-    await refusal(() => suspendAccount(d, boss.id, { reason: GOOD, confirm: "CONFIRM" }));
-    await refusal(() => suspendAccount(d, rec.id, { reason: GOOD, confirm: "confirm" }));
-    await refusal(() => suspendAccount(d, rec.id, { reason: "no", confirm: "CONFIRM" }));
-    await refusal(() => signOutEverywhere(d, boss.id));
-    await rawDb.user.update({ where: { id: mgr.id }, data: { isActive: false } });
-    await refusal(() => suspendAccount(d, mgr.id, { reason: GOOD, confirm: "CONFIRM" }));
-    await refusal(() => suspendAccount(d, dev.id, { reason: GOOD, confirm: "CONFIRM" }));
-    await devAs(rec);
-    const working = await me();
-    await refusal(() => suspendAccount(working, fin.id, { reason: GOOD, confirm: "CONFIRM" }));
-    await refusal(() => signOutEverywhere(working, fin.id));
-    await as(md);
-    await refusal(async () => suspendAccount(await me(), fin.id, { reason: GOOD, confirm: "CONFIRM" }));
-    expect(sent()).toHaveLength(0);
-  });
 });
 
 // ═════════════════════════════════════ 7. ending work-as ═════════════════════════════════════

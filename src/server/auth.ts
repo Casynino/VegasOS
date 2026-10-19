@@ -13,7 +13,7 @@ import { carriesWorkAs, recordWorkAsEnded, type WorkAsEnd } from "./services/wor
 import { recordWorkAsOfSessionsEnding } from "./services/session-cleanup";
 import { keepEndpointRefusal } from "./services/endpoint-refusal";
 import { canBeWorkedAs, markWorkingAs, SESSION_COOKIE, sha256, trueActor, withActingAs, withinWorkAsLimit } from "./work-as-session";
-import { DEVELOPER_DENIED, DEVELOPER_ONLY, DEVELOPER_ROLE_CODE, isDeveloperOnly, isRestaurantDevice, needsOwnShift, SHIFT_FREE_CODES, type PermissionCode } from "@/lib/permissions";
+import { DEVELOPER_ONLY, DEVELOPER_ROLE_CODE, isDeveloperOnly, isRestaurantDevice, needsOwnShift, SHIFT_FREE_CODES, type PermissionCode } from "@/lib/permissions";
 
 export const STAFF_HINT_COOKIE = "vlh_staff";
 export { SESSION_COOKIE };
@@ -250,19 +250,20 @@ async function touchSession(loaded: Loaded): Promise<void> {
 const loadedSession = cache(loadSession);
 
 /**
- * What a Developer holds while working as someone: the person's rights MINUS every right that moves or decides about money, and the right to
- * manage accounts (DEVELOPER_DENIED), and minus the Developer-only rights — so the ordinary rights checks refuse money, and the Users page,
- * by themselves. Also used to find the person's home page.
+ * What a Developer holds while working as someone: FULL ACCESS (owner, 2026-10-19: "when I work as someone it should be full access — I should be
+ * able to change, add, modify anything, because I am working as that person"): exactly the person's own rights — money, menu, prices, accounts,
+ * passwords, shifts, everything. Only the Developer-only rights are never handed over (the person holds none anyway). The set is still marked as a
+ * Developer working as them, and the audit trail keeps saying who really acted ("Nino (Developer) as Neema"). Also used to find the person's home page.
  */
 export function permissionsWhileWorkingAs(theirs: Iterable<string>): Set<PermissionCode> {
-  const blocked = new Set<string>([...DEVELOPER_DENIED, ...DEVELOPER_ONLY]);
-  // Marked: the money wall inside the services still sees a Developer (see work-as-session.ts and developer-wall.ts).
+  const blocked = new Set<string>(DEVELOPER_ONLY);
   return markWorkingAs(new Set([...theirs].filter((p) => !blocked.has(p)) as PermissionCode[]));
 }
 
 /**
- * For every server action that must NOT be done as someone else — accounts, passwords, login emails, rights, sign-outs, a person's own
- * preferences: throws while a Developer is working as someone. (The database also refuses the writes — see the fence in server/db.ts.)
+ * For the Developer's OWN console powers that must not be used from inside a "work as" (suspend, delete or add accounts or customers, sign-outs
+ * from the Access page): throws while a Developer is working as someone. It is no longer used on the person's own screens — working as someone,
+ * the Developer may change anything that person can (owner, 2026-10-19).
  * `what` finishes the sentence: "While you are working as someone you cannot {what}."
  */
 export function assertNotWorkAs(user: { workAs?: object | null } | null | undefined, what: string): void {
@@ -299,7 +300,8 @@ export function can(user: CurrentUser | null, permission: PermissionCode): boole
  * everything, but those rights never let it decide: only the Boss, the MD and the managers make these decisions (owner, 2026-10-14).
  */
 export function canDecide(user: CurrentUser | null, permission: PermissionCode): boolean {
-  return !!user && user.actorType !== "DEVELOPER" && user.permissions.has(permission);
+  // The Developer on its own account never decides; working as someone it decides as that person (owner, 2026-10-19: full access).
+  return !!user && (user.actorType !== "DEVELOPER" || !!user.workAs) && user.permissions.has(permission);
 }
 
 /** For pages/layouts: redirect to login when signed out. */
@@ -368,7 +370,8 @@ export async function requirePagePermission(...anyOf: PermissionCode[]): Promise
  */
 export async function authorizeDecision(...anyOf: PermissionCode[]): Promise<CurrentUser> {
   const user = await authorize(...anyOf);
-  if (user.actorType === "DEVELOPER") {
+  // The Developer on its own account is refused; working as someone it decides as that person (owner, 2026-10-19: full access).
+  if (user.actorType === "DEVELOPER" && !user.workAs) {
     await logDeveloperDenied(user, anyOf, "action");
     throw new AppError("The Developer account cannot make this decision. Use the Boss, the MD or a manager account.", "FORBIDDEN");
   }
