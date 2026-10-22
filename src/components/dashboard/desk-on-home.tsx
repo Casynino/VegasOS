@@ -7,16 +7,16 @@ import { getT } from "@/i18n/server";
 import { Panel, PanelLink, SectionLabel } from "./kit";
 
 /**
- * On the manager's and the MD's home, near the top: every room right now — to watch, not to work
- * (no check-in, booking or payment buttons: reception runs the rooms). Tap a room to see it.
+ * On the manager's and the MD's home, near the top: every room right now — to watch more than to work (no booking or payment buttons: reception runs
+ * the rooms). A manager can still check a guest in or out from the room's window (owner, 2026-10-22). Tap a room to see it.
  */
-export async function RoomsOnHome({ today, rooms, discountMax }: { today: string; rooms: Awaited<ReturnType<typeof getRoomBoard>>; discountMax: number }) {
+export async function RoomsOnHome({ today, rooms, discountMax, checkIn = false, checkOut = false }: { today: string; rooms: Awaited<ReturnType<typeof getRoomBoard>>; discountMax: number; checkIn?: boolean; checkOut?: boolean }) {
   const t = await getT();
   return (
     <Panel title={<span className="flex items-center gap-2"><BedDouble className="size-4 text-muted-foreground" />{t("Every room right now")}</span>}
       subtitle={t("Live · tap a room to see who is in it, their bill and its history — or send it for maintenance")} action={<PanelLink href="/staff/finance/rooms">{t("Room performance")}</PanelLink>}>
       <RoomGrid rooms={rooms} today={today}
-        perms={{ transport: false, order: false, orderPayNow: false, pay: false, update: true, block: true, maintenanceOnly: true, checkIn: false, checkOut: false, book: true, discount: false, discountMax: 0, move: true, release: true, decide: { discountMax } }} />
+        perms={{ transport: false, order: false, orderPayNow: false, pay: false, update: true, block: true, maintenanceOnly: true, checkIn, checkOut, book: true, discount: false, discountMax: 0, move: true, release: true, decide: { discountMax } }} />
     </Panel>
   );
 }

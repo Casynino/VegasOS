@@ -86,7 +86,7 @@ export interface RoomGridPerms {
   transport?: boolean;
   /** Change room (move the guest) — and what the move screen may offer. */
   move?: boolean;
-  /** Managers and the MD: they watch the rooms and only look after maintenance (off sale / fixed) — cleaning is housekeeping's. */
+  /** Managers and the MD: they watch the rooms and look after maintenance (off sale / fixed) — cleaning is housekeeping's. They may check a guest in or out from the window (checkIn / checkOut), but not add nights or take a walk-in. */
   maintenanceOnly?: boolean;
   /** May release a room a no-show is holding. */
   release?: boolean;
@@ -269,7 +269,7 @@ function RoomPanel({ room, perms, overdue, onDone, today, methods, menu, recent,
   if (todayArrival && perms.checkIn) actions.push(<ActionTile key="in" icon={<LogIn />} tone={stay ? "plain" : "primary"} label={t("Check in {name}", { name: todayArrival.guest.fullName })}
     hint={stay ? t("After {name} checks out & it's cleaned", { name: stay.guestName.split(" ")[0] }) : dirty ? t("Clean the room, then one press") : t("Details are filled in — just confirm")}
     active={checkingIn === todayArrival.reservationRoomId} onClick={() => setCheckingIn(checkingIn === todayArrival.reservationRoomId ? null : todayArrival.reservationRoomId)} />);
-  if (stay && perms.checkOut && !stay.isDayUse) actions.push(<ActionTile key="nights" icon={<CalendarPlus />} label={t("Add nights")} hint={t("Guest is staying longer")} active={panel === "nights"} onClick={() => setPanel(panel === "nights" ? null : "nights")} />);
+  if (stay && perms.checkOut && !perms.maintenanceOnly && !stay.isDayUse) actions.push(<ActionTile key="nights" icon={<CalendarPlus />} label={t("Add nights")} hint={t("Guest is staying longer")} active={panel === "nights"} onClick={() => setPanel(panel === "nights" ? null : "nights")} />);
   if (stay && perms.pay && stay.balance > 0 && methods.length) actions.push(<ActionTile key="pay" icon={<Wallet />} label={t("Receive payment")} hint={t("Owes {amount}", { amount: formatTZS(stay.balance) })} active={panel === "pay"} onClick={() => setPanel(panel === "pay" ? null : "pay")} />);
   if (stay) actions.push(<ActionTile key="roombill" href={`/staff/stay-bill?reservation=${stay.reservationId}`} icon={<FileText />} label={t("Room bill")} hint={stay.balance > 0 ? t("View, print or download · owes {amount}", { amount: formatTZS(stay.balance) }) : t("View, print or download")} />);
   // Food & drinks from the menu, and other extras, go on the bill right here — no other page.
@@ -285,9 +285,9 @@ function RoomPanel({ room, perms, overdue, onDone, today, methods, menu, recent,
   if (qr) actions.push(<ActionTile key="qr" icon={<QrCode />} label={t("Room QR code")} hint={t("Download or print the room's card")} active={panel === "qr"} onClick={() => toggle("qr")} />);
   if (stay && perms.move && !(perms.decide && !stay.isDayUse)) actions.push(<ActionTile key="move" icon={<Repeat />} label={t("Change room")} hint={t("Guest asks (pays the difference) or room problem")} active={moving} onClick={() => setMoving(true)} />);
   const nextBooked = room.upcoming[0]?.arrivalDate ?? null;
-  if (free && perms.checkIn) actions.push(<ActionTile key="walkin" icon={<DoorOpen />} tone="primary" label={t("Walk-in guest")} hint={t("Check someone in to this room now")} active={panel === "walkin"} onClick={() => toggle("walkin")} />);
+  if (free && perms.checkIn && !perms.maintenanceOnly) actions.push(<ActionTile key="walkin" icon={<DoorOpen />} tone="primary" label={t("Walk-in guest")} hint={t("Check someone in to this room now")} active={panel === "walkin"} onClick={() => toggle("walkin")} />);
   if (perms.book && room.displayStatus !== "MAINTENANCE" && room.displayStatus !== "OUT_OF_SERVICE") {
-    actions.push(<ActionTile key="book" icon={<CalendarPlus />} tone={free && !perms.checkIn ? "primary" : "plain"} active={panel === "reserve"} onClick={() => toggle("reserve")}
+    actions.push(<ActionTile key="book" icon={<CalendarPlus />} tone={free && (!perms.checkIn || perms.maintenanceOnly) ? "primary" : "plain"} active={panel === "reserve"} onClick={() => toggle("reserve")}
       label={stay || arrival ? t("Reserve for later dates") : t("Reserve this room")}
       hint={stay ? t("Free from {date}", { date: t.date(stay.departureDate) }) : nextBooked ? t("Free until {date}", { date: t.date(nextBooked) }) : dirty ? t("Cleaned before the guest arrives") : t("No bookings coming")} />);
   }
@@ -485,7 +485,7 @@ function RoomPanel({ room, perms, overdue, onDone, today, methods, menu, recent,
                       </div>
                     )}
                     {open && perms.checkIn && (
-                      <CheckInHere booking={u} room={room} today={today} occupiedBy={stay} canEditDates={perms.checkOut} canClean={perms.update}
+                      <CheckInHere booking={u} room={room} today={today} occupiedBy={stay} canEditDates={perms.checkOut && !perms.maintenanceOnly} canClean={perms.update}
                         onMarkReady={() => submit("READY")} cleaning={pending} onDone={() => { setCheckingIn(null); onDone(); router.refresh(); }} />
                     )}
                   </li>

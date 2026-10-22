@@ -269,7 +269,7 @@ export async function OwnerOverview({ searchParams, basePath }: {
                 sub: plToday.expenseSummary.pending.count ? t.plural(plToday.expenseSummary.pending.count, "{n} expense to approve", "{n} expenses to approve") : t("nothing to approve"), tone: plToday.expenseSummary.pending.count ? "warn" : undefined, href: "/staff/expenses?status=PENDING_APPROVAL" },
             ]} />
         </div>
-        <div className="mt-4"><RoomsOnHome today={today} rooms={allRooms} discountMax={discountLimit(user.permissions, await getSettings())} /></div>
+        <div className="mt-4"><RoomsOnHome today={today} rooms={allRooms} discountMax={discountLimit(user.permissions, await getSettings())} checkIn={can(user, "reservations.check_in")} checkOut={can(user, "reservations.check_out")} /></div>
       </div>
 
       {/* ── Tables today: the restaurant floor, like the rooms ── */}

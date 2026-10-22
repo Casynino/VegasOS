@@ -9,12 +9,13 @@ import type { RoomGridPerms, RoomQrInfo } from "@/components/staff/rooms/room-gr
 /** What this person may do from a room's window (the rooms board and the room page). */
 export async function roomGridPerms(user: CurrentUser): Promise<RoomGridPerms> {
   // Managers and the MD watch the rooms and step in (maintenance, out of service, moving a guest,
-  // free nights, discounts) — check-in, check-out, payments, orders, bookings and cleaning are reception's.
+  // free nights, discounts) — payments, orders, bookings and cleaning are reception's. Check-in and check-out are reception's
+  // main job too, but a manager can do them from the room's window as well (owner, 2026-10-22: "not his main job, so just put it on the room").
   const settings = await getSettings();
   if (watchesRooms(user)) {
     return {
       // Their interventions: maintenance / out of service (close, reopen), moving a guest to another room, and their decisions.
-      update: can(user, "rooms.status.update"), block: can(user, "rooms.block"), maintenanceOnly: true, checkIn: false, checkOut: false, book: can(user, "reservations.create"), pay: false, discount: false, discountMax: 0, order: false, orderPayNow: false, transport: false, move: can(user, "reservations.edit"),
+      update: can(user, "rooms.status.update"), block: can(user, "rooms.block"), maintenanceOnly: true, checkIn: can(user, "reservations.check_in"), checkOut: can(user, "reservations.check_out"), book: can(user, "reservations.create"), pay: false, discount: false, discountMax: 0, order: false, orderPayNow: false, transport: false, move: can(user, "reservations.edit"),
       decide: { discountMax: discountLimit(user.permissions, settings) }, release: can(user, "reservations.cancel"),
     };
   }
