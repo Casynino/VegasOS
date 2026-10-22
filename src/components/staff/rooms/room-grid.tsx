@@ -86,7 +86,7 @@ export interface RoomGridPerms {
   transport?: boolean;
   /** Change room (move the guest) — and what the move screen may offer. */
   move?: boolean;
-  /** Managers and the MD: they watch the rooms and look after maintenance (off sale / fixed) — cleaning is housekeeping's. They may check a guest in or out from the window (checkIn / checkOut), but not add nights or take a walk-in. */
+  /** Managers and the MD: they watch the rooms and look after maintenance (off sale / fixed) — cleaning is housekeeping's. They may check a guest in or out from the window (checkIn / checkOut, a walk-in too), but not add nights or take money. */
   maintenanceOnly?: boolean;
   /** May release a room a no-show is holding. */
   release?: boolean;
@@ -285,9 +285,9 @@ function RoomPanel({ room, perms, overdue, onDone, today, methods, menu, recent,
   if (qr) actions.push(<ActionTile key="qr" icon={<QrCode />} label={t("Room QR code")} hint={t("Download or print the room's card")} active={panel === "qr"} onClick={() => toggle("qr")} />);
   if (stay && perms.move && !(perms.decide && !stay.isDayUse)) actions.push(<ActionTile key="move" icon={<Repeat />} label={t("Change room")} hint={t("Guest asks (pays the difference) or room problem")} active={moving} onClick={() => setMoving(true)} />);
   const nextBooked = room.upcoming[0]?.arrivalDate ?? null;
-  if (free && perms.checkIn && !perms.maintenanceOnly) actions.push(<ActionTile key="walkin" icon={<DoorOpen />} tone="primary" label={t("Walk-in guest")} hint={t("Check someone in to this room now")} active={panel === "walkin"} onClick={() => toggle("walkin")} />);
+  if (free && perms.checkIn) actions.push(<ActionTile key="walkin" icon={<DoorOpen />} tone="primary" label={t("Walk-in guest")} hint={t("Check someone in to this room now")} active={panel === "walkin"} onClick={() => toggle("walkin")} />);
   if (perms.book && room.displayStatus !== "MAINTENANCE" && room.displayStatus !== "OUT_OF_SERVICE") {
-    actions.push(<ActionTile key="book" icon={<CalendarPlus />} tone={free && (!perms.checkIn || perms.maintenanceOnly) ? "primary" : "plain"} active={panel === "reserve"} onClick={() => toggle("reserve")}
+    actions.push(<ActionTile key="book" icon={<CalendarPlus />} tone={free && !perms.checkIn ? "primary" : "plain"} active={panel === "reserve"} onClick={() => toggle("reserve")}
       label={stay || arrival ? t("Reserve for later dates") : t("Reserve this room")}
       hint={stay ? t("Free from {date}", { date: t.date(stay.departureDate) }) : nextBooked ? t("Free until {date}", { date: t.date(nextBooked) }) : dirty ? t("Cleaned before the guest arrives") : t("No bookings coming")} />);
   }
