@@ -13,8 +13,8 @@ import { IdentityBanner, IdentityCard, IdentityChip, WORK_AS_HOURS, spanWords, s
  * Who is signed in, always in view. THREE states:
  *  - staff: their own name and role in the menus, no strip;
  *  - a Developer signed in as itself: nothing (no strip);
- *  - a Developer WORKING AS someone: "Working as {name}" with a Stop button (time left in its tooltip) — on every page: a slim strip at the
- *    top of a phone or tablet (in the page's flow, nothing hidden under it), a small floating pill on a computer.
+ *  - a Developer WORKING AS someone: one small floating pill "Working as {name}" with a Stop button (time left in its tooltip) — on
+ *    every page, phone, tablet and computer, down at the bottom right (above the phone's bottom bar); the page keeps room for it.
  * All drawn on the server from the session; here they are drawn without the database.
  */
 const text = (html: string) => html.replace(/<script[\s\S]*?<\/script>/g, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
@@ -73,19 +73,20 @@ describe("state 3 — a Developer WORKING AS someone", () => {
     expect(html).toContain('title="Neema Reception (Receptionist) · started 12 min ago · ends in 3 h 48 min"');
   });
 
-  it("is a slim strip at the top of a phone or tablet (sticky, in the flow — it covers nothing) and the floating pill from lg; out of print", () => {
+  it("floats over the page at the bottom right, above the phone's bottom bar (not a strip at the top), and is out of print", () => {
     const html = banner(workingAs, t, at(5));
-    expect(html).toContain("sticky top-0");
-    expect(html).toContain("h-9 w-full");
-    expect(html).not.toMatch(/(^|[ "])fixed /); // fixed only from lg
-    expect(html).toContain("lg:fixed lg:bottom-5 lg:right-5");
+    expect(html).toContain("fixed bottom-20 right-3");
+    expect(html).toContain("lg:bottom-5 lg:right-5");
     expect(html).toContain("print:hidden");
+    expect(html).not.toContain("sticky");
+    expect(html).not.toContain("top-0");
   });
 
-  it("the shell's offset is the strip's height below lg and nothing from lg (the pill takes no room); nothing for anyone else", () => {
-    expect(stripVars(workingAs)).toBe("[--dev-strip:2.25rem] lg:[--dev-strip:0px]");
+  it("the page keeps room at the bottom of a phone for the pill (--work-pad) and none from lg; nothing for anyone else", () => {
+    expect(stripVars(workingAs)).toBe("[--work-pad:3rem] lg:[--work-pad:0px]");
     expect(stripVars(developer)).toBe("");
     expect(stripVars(receptionist)).toBe("");
+    expect(source("staff-shell.tsx")).toContain("pb-[calc(7rem+var(--work-pad,0px))]");
   });
 
   it("counts the time from when it started and from the 4-hour end — never negative", () => {

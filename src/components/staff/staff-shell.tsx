@@ -187,7 +187,7 @@ export async function StaffShell({ children }: { children: ReactNode }) {
           </div>
         </header>
         {/* On the shared restaurant screen, money and taking charge ask the waiter's PIN. */}
-        <main className="flex-1 px-3 pb-28 pt-5 sm:px-4 lg:pb-8 lg:pl-2 lg:pr-5 print:p-0"><WaiterPinProvider device={device}><CustomerFinderAccess allowed={!consoleMode && can(user, "guests.view")}>{children}</CustomerFinderAccess></WaiterPinProvider></main>
+        <main className="flex-1 px-3 pb-[calc(7rem+var(--work-pad,0px))] pt-5 sm:px-4 lg:pb-8 lg:pl-2 lg:pr-5 print:p-0"><WaiterPinProvider device={device}><CustomerFinderAccess allowed={!consoleMode && can(user, "guests.view")}>{children}</CustomerFinderAccess></WaiterPinProvider></main>
       </div>
 
       <StaffBottomBar home={home} sections={sections} requests={newRequests} canBook={!consoleMode && can(user, "reservations.view")} console={consoleMode}
