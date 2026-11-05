@@ -125,8 +125,8 @@ export default async function RoomPage({ params }: PageProps<"/staff/rooms/[id]"
       </section>
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_400px]">
-        {/* ── Actions (first on phones, a sticky side column on wide screens) ── */}
-        <aside className="space-y-4 lg:sticky lg:top-24 lg:col-start-2 lg:row-start-1 lg:self-start">
+        {/* ── Actions (first on phones, a sticky side column on wide screens; taller than the screen, it scrolls inside itself so the panel a tile opens is always reachable) ── */}
+        <aside className="space-y-4 lg:sticky lg:top-24 lg:col-start-2 lg:row-start-1 lg:max-h-[calc(100vh-7rem)] lg:self-start lg:overflow-y-auto lg:overscroll-contain lg:pr-1">
           <section className="rounded-3xl border border-border/70 bg-card p-4">
             <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">{t("What you can do now")}</p>
             {stay && (

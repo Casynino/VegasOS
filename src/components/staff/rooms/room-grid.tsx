@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState, useTransition } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -208,6 +208,23 @@ export function RoomGrid({ rooms, perms, today, methods = [], menu = null, recen
   );
 }
 
+/**
+ * A panel (pay, bill, check-out, history…) opens right under the shortcut tiles. In the room window, and on the room's own page, that
+ * is often below what is on screen — it then looks as if the button did nothing (owner, 2026-11-05: "I should be able to record
+ * payment"). Bring the panel that has just opened into view. Put the returned ref on the tiles' grid: the panel is the element after it.
+ */
+function usePanelInView(open: unknown) {
+  const tiles = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const panel = tiles.current?.nextElementSibling;
+    if (!(panel instanceof HTMLElement)) return;
+    panel.style.scrollMarginTop = "6rem";
+    panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [open]);
+  return tiles;
+}
+
 function RoomPanel({ room, perms, overdue, onDone, today, methods, menu, recent, qr, onPage = false }: {
   room: RoomBoardRoom; perms: RoomGridPerms; overdue: boolean; onDone: () => void; today: string; methods: PayAccount[]; menu: BillMenu | null; recent: RecentItem[];
   qr: RoomQrInfo | null;
@@ -252,6 +269,7 @@ function RoomPanel({ room, perms, overdue, onDone, today, methods, menu, recent,
   }
 
   const [panel, setPanel] = useState<"out" | "nights" | "pay" | "discount" | "repair" | "bill" | "transport" | "history" | "walkin" | "reserve" | "qr" | null>(null);
+  const tilesRef = usePanelInView(panel);
   const toggle = (p: NonNullable<typeof panel>) => setPanel(panel === p ? null : p);
   // One bill panel for both tiles: switching Restaurant order ⇄ Room service keeps the ticket.
   const [billStart, setBillStart] = useState<"RESTAURANT" | "ROOM_SERVICE">("RESTAURANT");
@@ -398,7 +416,7 @@ function RoomPanel({ room, perms, overdue, onDone, today, methods, menu, recent,
         )}
         {watching && <InsightHistory data={insight} room={room} />}
 
-        {actions.length > 0 && <div className="grid grid-cols-2 gap-2">{actions}</div>}
+        {actions.length > 0 && <div ref={tilesRef} className="grid grid-cols-2 gap-2">{actions}</div>}
 
         {stay && panel === "out" && (
           <CheckOutHere key={stay.reservationId} stay={stay} roomNumber={room.number} methods={methods} canPay={!!perms.pay} canCharge={!!perms.order} canDiscount={!!perms.discount} discountMax={deskMax}
@@ -811,6 +829,7 @@ function MeetingRoomPanel({ room, perms, today, methods, menu, recent, qr, onPag
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [panel, setPanel] = useState<"book" | "extras" | "pay" | "history" | "qr" | null>(null);
+  const tilesRef = usePanelInView(panel);
   const toggle = (p: NonNullable<typeof panel>) => setPanel(panel === p ? null : p);
   const stay = room.currentStay;
   const status = stay ? "OCCUPIED" : room.status;
@@ -890,7 +909,7 @@ function MeetingRoomPanel({ room, perms, today, methods, menu, recent, qr, onPag
             can={{ move: false, close: perms.update, block: perms.block, release: false, decide: null }} />
         )}
         {watching && <MeetingInsightBody data={insight} room={room} />}
-        <div className="grid grid-cols-2 gap-2">
+        <div ref={tilesRef} className="grid grid-cols-2 gap-2">
           {perms.book && !inRepair && <ActionTile icon={<CalendarPlus />} tone="primary" label={t("Book a meeting")} hint={t("Date, start and end time")} active={panel === "book"} onClick={() => toggle("book")} />}
           {stay && (perms.pay || (perms.order && menu)) && <ActionTile icon={<UtensilsCrossed />} label={t("Food & extras")} hint={t("Pick from the menu · on the bill")} active={panel === "extras"} onClick={() => toggle("extras")} />}
           {stay && perms.pay && stay.balance > 0 && methods.length > 0 && <ActionTile icon={<Wallet />} label={t("Receive payment")} hint={t("Owes {amount}", { amount: formatTZS(stay.balance) })} active={panel === "pay"} onClick={() => toggle("pay")} />}
