@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { db } from "@/server/db";
 import { can, requirePagePermission } from "@/server/auth";
-import { businessToday, getSettings } from "@/server/settings";
+import { businessToday } from "@/server/settings";
 import { financeHistory } from "@/server/services/finance-history";
 import { addDays, toDbDate } from "@/lib/time/business-date";
 import { formatTZS } from "@/lib/format";
@@ -26,11 +26,10 @@ export default async function PriceControlPage() {
   const user = await requirePagePermission("pricing.manage", "finance.view");
   const t = await getT();
   const today = await businessToday();
-  const [types, ahead, menu, settings, changes] = await Promise.all([
-    db.roomType.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true, category: true, baseRate: true, manualDiscountMax: true } }),
+  const [types, ahead, menu, changes] = await Promise.all([
+    db.roomType.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true, category: true, baseRate: true } }),
     db.roomNight.groupBy({ by: ["roomTypeId"], where: { businessDate: { gte: toDbDate(today) }, reservationRoom: { status: { in: ["RESERVED", "CONFIRMED", "CHECKED_IN"] } } }, _count: true }),
     db.menuItem.findMany({ where: { isActive: true }, orderBy: [{ category: { sortOrder: "asc" } }, { sortOrder: "asc" }], select: { id: true, name: true, price: true, type: true, isAvailable: true, category: { select: { name: true } } } }),
-    getSettings(),
     financeHistory({ from: addDays(today, -60), to: today, group: "prices" }),
   ]);
   const aheadOf = new Map(ahead.map((a) => [a.roomTypeId, a._count]));
@@ -55,14 +54,14 @@ export default async function PriceControlPage() {
           <table className="w-full min-w-[38rem] text-sm">
             <thead><tr className="border-b border-border/60 text-left text-[11px] uppercase tracking-wider text-muted-foreground">
               <th className="px-4 py-2 font-medium">{t("Room type")}</th><th className="px-2 py-2 text-right font-medium">{t("Standard price")}</th>
-              <th className="px-2 py-2 text-right font-medium">{t("Staff may take off, per night")}</th><th className="px-4 py-2 text-right font-medium">{t("Booked nights ahead")}</th>
+              <th className="px-2 py-2 text-right font-medium">{t("Staff discount, per night")}</th><th className="px-4 py-2 text-right font-medium">{t("Booked nights ahead")}</th>
             </tr></thead>
             <tbody className="divide-y divide-border/50">
               {types.map((r) => (
                 <tr key={r.id}>
                   <td className="px-4 py-2 font-medium">{t(r.name)}</td>
                   <td className="px-2 py-2 text-right tabular-nums">{formatTZS(r.baseRate)}{r.category === "MEETING_ROOM" && <span className="block text-[11px] text-muted-foreground">{t("per booking")}</span>}</td>
-                  <td className="px-2 py-2 text-right tabular-nums">{r.category === "MEETING_ROOM" ? "—" : formatTZS(r.manualDiscountMax ?? settings.manualDiscountMax)}</td>
+                  <td className="px-2 py-2 text-right tabular-nums">{r.category === "MEETING_ROOM" ? "—" : t("No limit")}</td>
                   <td className="px-4 py-2 text-right tabular-nums">{aheadOf.get(r.id) ?? 0}<span className="block text-[11px] text-muted-foreground">{t("keep the price they were booked at")}</span></td>
                 </tr>
               ))}

@@ -172,6 +172,7 @@ const catalog: Catalog = {
   "Staff reconciliation": "员工对账",
   "Refunds and corrections": "退款与更正",
   "Staff may take off at most {amount} a night.": "员工每晚最多可减 {amount}。",
+  "Staff discount, per night": "员工折扣（每晚）",
   "The Boss and the MD set these limits.": "这些上限由老板和总经理设置。",
   "All transactions (ledger)": "全部交易（总账）",
   "Each order copies the price when it is placed, so a new price never changes an old order — it counts from the next order. No cost price is kept for menu items, so no margin is shown.": "每张订单在下单时复制当时的价格，所以新价格不会改变旧订单——从下一张订单起生效。菜品未记录成本价，因此不显示毛利。",

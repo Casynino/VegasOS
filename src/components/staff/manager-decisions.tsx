@@ -326,7 +326,7 @@ function WholeBillForm({ reservationId, toPay, onDone }: { reservationId: string
 }
 
 /** The stay decisions' forms (shared by the room card and the booking page). */
-function StayForm({ mode, stay, discountMax, onDone, embedded }: { mode: "nights" | "late" | "discount"; stay: { reservationRoomId: string; ratePerNight: number; discountPerNight: number }; discountMax: number; onDone: () => void; embedded?: boolean }) {
+function StayForm({ mode, stay, onDone, embedded }: { mode: "nights" | "late" | "discount"; stay: { reservationRoomId: string; ratePerNight: number; discountPerNight: number }; discountMax: number; onDone: () => void; embedded?: boolean }) {
   const t = useT();
   const [nights, setNights] = useState(1);
   const [until, setUntil] = useState("14:00");
@@ -336,22 +336,24 @@ function StayForm({ mode, stay, discountMax, onDone, embedded }: { mode: "nights
   const go = () => start(async () => {
     const r = mode === "nights" ? await freeNightsAction({ reservationRoomId: stay.reservationRoomId, nights, reason })
       : mode === "late" ? await freeLateCheckoutAction({ reservationRoomId: stay.reservationRoomId, until, reason })
-      : await roomDiscountAction({ reservationRoomId: stay.reservationRoomId, perNight: Number(perNight) || 0, reason });
+      : await roomDiscountAction({ reservationRoomId: stay.reservationRoomId, perNight: off, reason });
     if (r.ok) { toast.success(r.message ?? t("Done.")); onDone(); } else toast.error(r.error);
   });
+  // Any amount; a night never goes below zero, so what is shown and saved is never more than the room price.
+  const off = Math.min(Number(perNight) || 0, Math.max(0, stay.ratePerNight));
   const confirm = mode === "nights" ? t.plural(nights, "Give {n} night free (worth about TZS {amount})", "Give {n} nights free (worth about TZS {amount})", { amount: n(nights * Math.max(0, stay.ratePerNight - stay.discountPerNight)) })
-    : mode === "late" ? t("Let them stay until {time}, free", { time: until }) : t("Save TZS {amount} off each night", { amount: n(Number(perNight) || 0) });
+    : mode === "late" ? t("Let them stay until {time}, free", { time: until }) : t("Save TZS {amount} off each night", { amount: n(off) });
   return (
     <div className={cn("space-y-2.5", !embedded && "mt-3")}>
       {mode === "nights" && <div className="flex flex-wrap gap-1.5">{[1, 2, 3, 5, 7].map((k) => <Chip key={k} on={nights === k} onClick={() => setNights(k)}>{t.plural(k, "+{n} night", "+{n} nights")}</Chip>)}</div>}
       {mode === "late" && <div className="flex flex-wrap gap-1.5">{["13:00", "14:00", "16:00", "18:00", "20:00"].map((h) => <Chip key={h} on={until === h} onClick={() => setUntil(h)}>{h}</Chip>)}</div>}
       {mode === "discount" && (
-        <label className="block text-xs text-muted-foreground">{t("Off each night (the most is TZS {max}) · now TZS {rate} a night", { max: n(discountMax), rate: n(stay.ratePerNight) })}
+        <label className="block text-xs text-muted-foreground">{t("Off each night · now TZS {rate} a night", { rate: n(stay.ratePerNight) })}
           <input inputMode="numeric" value={perNight} onChange={(e) => setPerNight(e.target.value.replace(/\D/g, ""))} placeholder={t("e.g. 10000")} className={cn(field, "mt-1")} />
         </label>
       )}
       <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("Why? e.g. VIP guest, noise complaint, loyal customer")} className={field} />
-      <GoldConfirm pending={pending} disabled={reason.trim().length < 3 || (mode === "discount" && (Number(perNight) || 0) > discountMax)} onClick={go}>{confirm}</GoldConfirm>
+      <GoldConfirm pending={pending} disabled={reason.trim().length < 3} onClick={go}>{confirm}</GoldConfirm>
     </div>
   );
 }

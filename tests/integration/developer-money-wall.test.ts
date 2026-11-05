@@ -35,7 +35,7 @@ import { chargeSessionToRoomAction } from "@/app/staff/(app)/restaurant/tables/a
 import { adjustTripPriceAction, saveTransportServiceAction } from "@/app/staff/(app)/transport/actions";
 import { saveCorporateAction } from "@/app/staff/(app)/corporate/actions";
 import {
-  saveDiscountRulesAction, savePriceRuleAction, savePromotionAction, saveRoomDiscountLimitAction, setPriceRuleActiveAction, setPromotionActiveAction, updateRoomPriceAction,
+  saveDiscountRulesAction, savePriceRuleAction, savePromotionAction, setPriceRuleActiveAction, setPromotionActiveAction, updateRoomPriceAction,
 } from "@/app/staff/(app)/settings/pricing/actions";
 import { managerActor, resetBusinessData, roomType, waiterActor } from "../support/helpers";
 import { browser, makeSession, makeUser, removeMadeUsers, thrownBy, giveDeveloperRoleHotelWork, takeHotelWorkFromDeveloperRole, type MadeUser } from "../support/developer";
@@ -514,10 +514,8 @@ describe("transport prices, a company's credit, room prices and discount limits:
 
   it("room prices, promotions, date prices and the discount rules", async () => {
     const t = await roomType("DOUBLE_DELUXE");
-    const settings = await db.hotelSettings.findUniqueOrThrow({ where: { id: 1 } });
     const price = (rate: number) => { const f = new FormData(); f.set("roomTypeId", t.id); f.set("baseRate", String(rate)); return f; };
-    const rules = (max: number) => { const f = new FormData(); f.set("manualDiscountMax", String(max)); f.set("receptionCanDiscount", "on"); f.set("managerCanDiscount", "on"); return f; };
-    const limit = (max: string) => { const f = new FormData(); f.set("roomTypeId", t.id); f.set("manualDiscountMax", max); return f; };
+    const rules = () => { const f = new FormData(); f.set("receptionCanDiscount", "on"); f.set("managerCanDiscount", "on"); return f; };
     const from = addDays(today(), 400), to = addDays(today(), 405);
     const promo = { name: "Wall test promotion", type: "PERCENT" as const, value: 10, scope: "ALL" as const, roomTypeIds: [], roomIds: [], channel: "ALL" as const, startDate: from, endDate: to, daysOfWeek: [], isActive: true };
     const rule = { name: "Wall test date price", scope: "ALL" as const, roomTypeIds: [], roomIds: [], price: 50_000, startDate: from, endDate: to, daysOfWeek: [], isActive: true };
@@ -532,12 +530,11 @@ describe("transport prices, a company's credit, room prices and discount limits:
       await developerRefused("switching a promotion", () => setPromotionActiveAction({ id: p.id, isActive: false }));
       await developerRefused("a date price", () => savePriceRuleAction({ ...rule, name: "Wall test date price 2", price: 1_000 }));
       await developerRefused("switching a date price", () => setPriceRuleActiveAction({ id: r.id, isActive: false }));
-      await developerRefused("the discount rules", () => saveDiscountRulesAction(null, rules(5_000_000)));
-      await developerRefused("a room type's discount limit", () => saveRoomDiscountLimitAction(null, limit("500000")));
+      await developerRefused("the discount rules", () => saveDiscountRulesAction(null, rules()));
 
       // The Boss: the same screens, unchanged numbers (nothing of the hotel's changes).
       await decided("a room price (unchanged)", boss, () => updateRoomPriceAction(null, price(t.baseRate)));
-      await decided("the discount rules (unchanged)", md, () => saveDiscountRulesAction(null, rules(settings.manualDiscountMax)));
+      await decided("the discount rules (unchanged)", md, () => saveDiscountRulesAction(null, rules()));
       await decided("switching a promotion", boss, () => setPromotionActiveAction({ id: p.id, isActive: false }));
     } finally {
       await db.promotion.deleteMany({ where: { name: { startsWith: "Wall test" } } });

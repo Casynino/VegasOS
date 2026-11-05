@@ -864,8 +864,8 @@ export async function extendStayAction(input: {
       if (!Number.isInteger(disc) || disc < 0) throw new AppError("Enter a valid discount.");
     }
     const actor = await actorFor(user);
-    // Refused before anything changes: the discount must fit the room's own limit (checked again when it is saved).
-    if (disc != null) await assertRoomDiscount(input.reservationRoomId, disc, actor, input.moveToRoomId);
+    // Refused before anything changes when this person may not give discounts (checked again when it is saved).
+    if (disc != null) await assertRoomDiscount(input.reservationRoomId, disc, actor);
     const p = await extendStay(input.reservationRoomId, input.newDeparture, actor, { moveToRoomId: input.moveToRoomId ?? null });
     if (disc != null) await changeDiscount(input.reservationRoomId, disc, input.discountReason?.trim() || "Discount on extended stay", actor);
     refresh(input.reservationId);

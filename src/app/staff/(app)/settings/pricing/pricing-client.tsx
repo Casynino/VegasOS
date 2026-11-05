@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { formatTZS } from "@/lib/format";
 import { priceNight, WEEKDAYS, type PriceRuleLite, type PromoRule } from "@/lib/pricing";
 import { cn } from "@/lib/utils";
-import { saveDiscountRulesAction, savePriceRuleAction, savePromotionAction, saveRoomDiscountLimitAction, setPriceRuleActiveAction, setPromotionActiveAction, updateRoomPriceAction } from "./actions";
+import { saveDiscountRulesAction, savePriceRuleAction, savePromotionAction, setPriceRuleActiveAction, setPromotionActiveAction, updateRoomPriceAction } from "./actions";
 import { useT } from "@/i18n/client";
 import { msg } from "@/i18n/msg";
 
@@ -208,74 +208,22 @@ export function PromotionSwitch({ id, isActive }: { id: string; isActive: boolea
   );
 }
 
-export function DiscountRulesForm({ rules }: { rules: { manualDiscountMax: number; receptionCanDiscount: boolean; managerCanDiscount: boolean } }) {
+export function DiscountRulesForm({ rules }: { rules: { receptionCanDiscount: boolean; managerCanDiscount: boolean } }) {
   const t = useT();
   const router = useRouter();
   return (
     <ActionForm action={saveDiscountRulesAction} onSuccess={() => router.refresh()} className="space-y-4">
-      {({ pending, fieldErrors: e }) => (
+      {({ pending }) => (
         <>
           <div className="space-y-2">
             <label className="flex items-center gap-2.5 text-sm"><input type="checkbox" name="receptionCanDiscount" defaultChecked={rules.receptionCanDiscount} className="size-4 accent-[oklch(0.75_0.13_80)]" />{t("Receptionists may give a discount")}</label>
             <label className="flex items-center gap-2.5 text-sm"><input type="checkbox" name="managerCanDiscount" defaultChecked={rules.managerCanDiscount} className="size-4 accent-[oklch(0.75_0.13_80)]" />{t("Managers may give a discount")}</label>
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="max">{t("Most off a room, per night (TZS)")}</Label>
-            <Input id="max" name="manualDiscountMax" type="number" min={0} step={1000} defaultValue={rules.manualDiscountMax} className="w-40 tabular-nums" />
-            <FieldError message={e?.manualDiscountMax} />
-            <p className="text-[11px] text-muted-foreground">{t("Staff see buttons of 5k, 10k, 15k … up to this amount. Every discount is logged with who gave it and why.")}</p>
-          </div>
+          <p className="text-[11px] text-muted-foreground">{t("There is no maximum: whoever may give a discount can give any amount (never more than the room price). Every discount is logged with who gave it and why.")}</p>
           <Button type="submit" size="sm" disabled={pending}>{pending && <Loader2 className="animate-spin" />}{t("Save rules")}</Button>
         </>
       )}
     </ActionForm>
-  );
-}
-
-/** Each room type's staff discount limit: the hotel's, or its own (the Twin room: 40,000) — changed right in its row. */
-export function RoomDiscountLimits({ types, hotelMax }: { types: { id: string; name: string; limit: number | null }[]; hotelMax: number }) {
-  const t = useT();
-  const router = useRouter();
-  const [editing, setEditing] = useState<string | null>(null);
-  return (
-    <div className="mt-5 border-t border-border/70 pt-4">
-      <p className="text-sm font-medium">{t("A room with its own limit")}</p>
-      <p className="text-[11px] text-muted-foreground">{t("Every room follows the limit above. Give a room its own when it should allow more, or less.")}</p>
-      <ul className="mt-2 divide-y divide-border/60">
-        {types.map((rt) => (
-          <li key={rt.id} className="py-2">
-            {editing === rt.id ? (
-              <ActionForm action={saveRoomDiscountLimitAction} onSuccess={() => { setEditing(null); router.refresh(); }} className="space-y-1.5">
-                {({ pending, fieldErrors: e }) => (
-                  <>
-                    <input type="hidden" name="roomTypeId" value={rt.id} />
-                    <Label htmlFor={`limit-${rt.id}`}>{t("{name}: most off per night (TZS)", { name: t(rt.name) })}</Label>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Input id={`limit-${rt.id}`} name="manualDiscountMax" type="number" min={0} step={1000} defaultValue={rt.limit ?? ""} placeholder={String(hotelMax)} autoFocus className="h-8 w-32 tabular-nums" />
-                      <Button type="submit" size="sm" disabled={pending}>{pending && <Loader2 className="animate-spin" />}{t("Save")}</Button>
-                      <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(null)}>{t("Cancel")}</Button>
-                    </div>
-                    <FieldError message={e?.manualDiscountMax} />
-                    <p className="text-[11px] text-muted-foreground">{t("Leave it empty to follow the hotel's limit.")}</p>
-                  </>
-                )}
-              </ActionForm>
-            ) : (
-              <div className="flex items-center justify-between gap-3 text-sm">
-                <span className="min-w-0 truncate">{t(rt.name)}</span>
-                <span className="flex shrink-0 items-center gap-2.5">
-                  {rt.limit != null && <span className="text-[11px] text-[oklch(0.8_0.11_82)]">{t("own limit")}</span>}
-                  <span className={cn("tabular-nums", rt.limit == null ? "text-muted-foreground" : "font-semibold")}>{formatTZS(rt.limit ?? hotelMax)}</span>
-                  <button type="button" onClick={() => setEditing(rt.id)} aria-label={t("Change the discount limit of {name}", { name: t(rt.name) })} className="rounded p-1 text-muted-foreground hover:text-foreground">
-                    <Pencil className="size-3.5" />
-                  </button>
-                </span>
-              </div>
-            )}
-          </li>
-        ))}
-      </ul>
-    </div>
   );
 }
 

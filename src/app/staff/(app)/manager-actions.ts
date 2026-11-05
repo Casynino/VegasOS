@@ -57,11 +57,11 @@ export async function freeLateCheckoutAction(input: { reservationRoomId: string;
   }, msg("Late checkout given, free."));
 }
 
-/** A discount on the room price, per night (within the hotel's limit). */
+/** A discount on the room price, per night (any amount; a night never goes below zero). */
 export async function roomDiscountAction(input: { reservationRoomId: string; perNight: number; reason: string }): Promise<ActionResult<null>> {
   return runAction(async () => {
     const user = await authorizeDecision(...DECIDERS);
-    const d = z.object({ reservationRoomId: Id, perNight: z.coerce.number().int().min(0).max(10_000_000), reason: Reason }).parse(input);
+    const d = z.object({ reservationRoomId: Id, perNight: z.coerce.number().int().min(0), reason: Reason }).parse(input);
     await changeDiscount(d.reservationRoomId, d.perNight, d.reason, await actor(user));
     refresh();
     return null;

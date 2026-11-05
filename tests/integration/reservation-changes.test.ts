@@ -96,10 +96,15 @@ describe("reservation changes & no-shows", () => {
     expect(h.changes).toContainEqual({ field: "Account", from: "Cash", to: "CRDB Bank" });
   });
 
-  it("D — reception cannot lower the price beyond the discount rules (80,000 → 70,000 only as an authorised discount)", async () => {
+  it("D — reception may give any discount amount (no maximum), as an audited discount; prices and payments stay out of its hands", async () => {
     const r = await paidBooking();
-    await expect(changeDiscount(r.rooms[0].id, 50_000, "friend", await receptionistActor())).rejects.toThrow();
     const rec = await receptionistActor();
+    const paidBefore = (await db.reservation.findUniqueOrThrow({ where: { id: r.id } })).paidAmount;
+    await changeDiscount(r.rooms[0].id, 50_000, "friend", rec);
+    const after = await db.reservation.findUniqueOrThrow({ where: { id: r.id } });
+    expect(after.netAmount).toBe(60_000); // 2 nights × (80,000 − 50,000)
+    expect(after.paidAmount).toBe(paidBefore); // the payment record is never touched by a discount
+    expect(await db.auditLog.count({ where: { action: "reservation.discount_changed", entityId: r.id, userId: rec.userId } })).toBe(1);
     expect(rec.permissions?.has("pricing.manage")).toBe(false);
     expect(rec.permissions?.has("payments.reverse")).toBe(false);
   });

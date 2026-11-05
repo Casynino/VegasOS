@@ -569,6 +569,7 @@ const catalog: Catalog = {
   "+{n} night": "+{n} 晚",
   "+{n} nights": "+{n} 晚",
   "Off each night (the most is TZS {max}) · now TZS {rate} a night": "每晚减免（最多 TZS {max}）· 当前每晚 TZS {rate}",
+  "Off each night · now TZS {rate} a night": "每晚减免 · 当前每晚 TZS {rate}",
   "Why? e.g. VIP guest, noise complaint, loyal customer": "原因？例如 VIP 客人、噪音投诉、忠实顾客",
   "Room {room} closed — under maintenance.": "{room} 号房已关闭——维修中。",
   "Room {room} closed — out of service.": "{room} 号房已关闭——停用。",

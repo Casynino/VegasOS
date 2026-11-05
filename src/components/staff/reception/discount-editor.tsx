@@ -17,8 +17,8 @@ const REASONS = [msg("Long stay"), msg("Returning guest"), msg("Paid in advance"
 
 /**
  * The discount buttons used everywhere (booking, walk-in, check-in, add nights,
- * checkout): No discount · 10k · 20k, plus bigger amounts for managers and an
- * "Other" box. `max` is the most this user may give per night (null = no limit).
+ * checkout): No discount · 5k · 10k …, plus an "Other" box that takes any amount.
+ * There is no maximum (owner, 2026-11-05): only the room price bounds a night. `max` is kept for callers (always no cap).
  */
 export function DiscountChips({ value, onChange, rate, max, current, usual, size = "sm" }: {
   value: number; onChange: (perNight: number) => void; rate: number; max: number | null;
@@ -41,7 +41,7 @@ export function DiscountChips({ value, onChange, rate, max, current, usual, size
             {v > 0 && v === current ? <span className="ml-1 opacity-75">· {t("now")}</span> : v > 0 && v === usual ? <span className="ml-1 opacity-75">· {t("usual")}</span> : null}
           </button>
         ))}
-        <Input aria-label={t("Other discount per night")} type="number" min={0} max={max ?? rate} step={1000} placeholder={t("Other")}
+        <Input aria-label={t("Other discount per night")} type="number" min={0} max={rate} step={1000} placeholder={t("Other")}
           value={other || (!onChip && value > 0 ? String(value) : "")}
           onChange={(e) => {
             setOther(e.target.value);
@@ -49,7 +49,6 @@ export function DiscountChips({ value, onChange, rate, max, current, usual, size
           }}
           className={cn("w-24 rounded-full bg-card px-3", size === "xs" ? "h-6 text-[11px]" : "h-7 text-xs")} />
       </div>
-      {max != null && <p className="text-[11px] text-muted-foreground">{t("Most {amount} off per night.", { amount: formatTZS(max) })}</p>}
     </div>
   );
 }
@@ -64,7 +63,7 @@ export function DiscountEditor({ reservationId, room, canEdit, defaultOpen = fal
   canEdit: boolean;
   defaultOpen?: boolean;
   onSaved?: () => void;
-  /** Most this user may give per night; null = no desk limit (manager). */
+  /** Always no cap now (kept so callers need no change); the room price still bounds a night. */
   max?: number | null;
 }) {
   const t = useT();

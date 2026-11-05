@@ -123,15 +123,18 @@ describe("reservation engine", () => {
     await expect(make("2026-10-11", "2026-10-13")).rejects.toThrow(/no longer available/);
   });
 
-  it("discounts: none by default, up to 20,000 off per night for anyone, audited", async () => {
+  it("discounts: none by default, any amount for reception and managers (no maximum), audited", async () => {
     const ex = await roomType("EXECUTIVE");
     const input = {
       sourceCode: "PHONE", guest,
       stay: { kind: "overnight" as const, arrivalDate: "2026-10-10", departureDate: "2026-10-11" },
       rooms: [{ roomTypeId: ex.id, adults: 1, children: 0, discountPerNight: 30_000, discountReason: "Loyal guest" }],
     };
-    await expect(createReservation(input, await receptionistActor(), NOW)).rejects.toThrow(/most off a room/);
-    await expect(createReservation(input, await managerActor(), NOW)).rejects.toThrow(/most off a room/);
+    // 30,000 off a night is above the old 20,000 limit: nothing blocks the amount any more (owner, 2026-11-05).
+    const byReception = await createReservation({ ...input, stay: { ...input.stay, arrivalDate: "2026-10-20", departureDate: "2026-10-21" } }, await receptionistActor(), NOW);
+    expect(byReception.netAmount).toBe(70_000);
+    const byManager = await createReservation({ ...input, stay: { ...input.stay, arrivalDate: "2026-10-22", departureDate: "2026-10-23" } }, await managerActor(), NOW);
+    expect(byManager.netAmount).toBe(70_000);
 
     const none = await createReservation({ ...input, rooms: [{ ...input.rooms[0], discountPerNight: 0 }] }, await receptionistActor(), NOW);
     expect(none.netAmount).toBe(100_000);
@@ -140,7 +143,8 @@ describe("reservation engine", () => {
     const r = await createReservation({ ...input, stay: { ...input.stay, arrivalDate: "2026-10-12", departureDate: "2026-10-13" }, rooms: [{ ...input.rooms[0], discountPerNight: 15_000, discountReason: "" }] }, await receptionistActor(), NOW);
     expect(r.netAmount).toBe(85_000);
     expect(await db.auditLog.count({ where: { action: "reservation.discount_changed", entityId: r.id } })).toBe(1);
-    await expect(changeDiscount(r.rooms[0].id, 25_000, "", await managerActor())).rejects.toThrow(/most off a room/);
+    await changeDiscount(r.rooms[0].id, 25_000, "", await managerActor());
+    expect((await db.reservation.findUniqueOrThrow({ where: { id: r.id } })).netAmount).toBe(75_000);
     await changeDiscount(r.rooms[0].id, 20_000, "Long stay", await receptionistActor());
     expect((await db.reservation.findUniqueOrThrow({ where: { id: r.id } })).netAmount).toBe(80_000);
   });

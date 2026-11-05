@@ -9,7 +9,7 @@ import { priceNight, promoLabel, WEEKDAYS, type PromoRule } from "@/lib/pricing"
 import { formatTZS } from "@/lib/format";
 import { Panel } from "@/components/dashboard/kit";
 import { cn } from "@/lib/utils";
-import { DiscountRulesForm, PriceEditor, PriceRuleButton, PriceRuleSwitch, PromotionButton, PromotionSwitch, RoomDiscountLimits, type PriceRuleData, type PricingContext, type PricingType, type PromotionData } from "./pricing-client";
+import { DiscountRulesForm, PriceEditor, PriceRuleButton, PriceRuleSwitch, PromotionButton, PromotionSwitch, type PriceRuleData, type PricingContext, type PricingType, type PromotionData } from "./pricing-client";
 import { getT } from "@/i18n/server";
 import { msg } from "@/i18n/msg";
 
@@ -45,9 +45,6 @@ export default async function PricingPage() {
   ]);
   const types: PricingType[] = typesRaw.map((rt) => ({ id: rt.id, name: rt.name, baseRate: rt.baseRate, rooms: rt.rooms }));
   const meetingTypes = new Set(typesRaw.filter((rt) => rt.category === "MEETING_ROOM").map((rt) => rt.id));
-  // A room type can have its own staff discount limit (the Twin room: 40,000); the others follow the hotel's.
-  const roomLimits = typesRaw.filter((rt) => rt.category !== "MEETING_ROOM").map((rt) => ({ id: rt.id, name: rt.name, limit: rt.manualDiscountMax }));
-  const ownLimits = roomLimits.filter((x) => x.limit != null);
   const tonight = await loadPricing(db, today, today);
   const everything = await loadPricing(db, "2000-01-01", "2199-12-31");
   const context: PricingContext = { today, promos: everything.promos, rules: everything.rules };
@@ -97,7 +94,7 @@ export default async function PricingPage() {
     { label: t("Prices from"), value: rates.length ? `${n(Math.min(...rates))} – ${n(Math.max(...rates))}` : "—", sub: t("TZS a night"), icon: Tag, tint: "bg-[oklch(0.72_0.12_80/0.18)] text-[oklch(0.8_0.11_82)]" },
     { label: t("Promotions running"), value: String(running.length), sub: running.length ? running.map((p) => p.name).slice(0, 2).join(" · ") : t("rooms sell at their price"), icon: BadgePercent, tint: "bg-rose-500/15 text-rose-400" },
     { label: t("Date prices"), value: String(liveRules.length), sub: comingRules.length ? t("{n} coming", { n: comingRules.length }) : liveRules.length ? t("running tonight") : t("none set"), icon: CalendarClock, tint: "bg-violet-500/15 text-violet-400" },
-    { label: t("Staff discount limit"), value: `TZS ${n(settings.manualDiscountMax)}`, sub: `${t("per night · {who}", { who: [settings.receptionCanDiscount && t("reception"), settings.managerCanDiscount && t("managers")].filter(Boolean).join(" & ") || t("nobody") })}${ownLimits.map((x) => ` · ${t(x.name)} ${n(x.limit!)}`).join("")}`, icon: Percent, tint: "bg-emerald-500/15 text-emerald-400" },
+    { label: t("Staff discounts"), value: t("No limit"), sub: t("per night · {who}", { who: [settings.receptionCanDiscount && t("reception"), settings.managerCanDiscount && t("managers")].filter(Boolean).join(" & ") || t("nobody") }), icon: Percent, tint: "bg-emerald-500/15 text-emerald-400" },
   ];
 
   return (
@@ -249,14 +246,12 @@ export default async function PricingPage() {
           <Panel title={t("Staff discounts")} subtitle={t("The discount reception or a manager may give on one guest's room, on top of the price.")}>
             {setsLimits ? (
               <>
-                <DiscountRulesForm rules={{ manualDiscountMax: settings.manualDiscountMax, receptionCanDiscount: settings.receptionCanDiscount, managerCanDiscount: settings.managerCanDiscount }} />
-                <RoomDiscountLimits types={roomLimits} hotelMax={settings.manualDiscountMax} />
+                <DiscountRulesForm rules={{ receptionCanDiscount: settings.receptionCanDiscount, managerCanDiscount: settings.managerCanDiscount }} />
               </>
             ) : (
               <div className="space-y-2 text-sm">
-                <p>{t("Staff may take off at most {amount} a night.", { amount: formatTZS(settings.manualDiscountMax) })}</p>
-                {roomLimits.filter((r) => r.limit != null).map((r) => <p key={r.id} className="text-muted-foreground">{t("{name}: most off per night (TZS)", { name: t(r.name) })} {formatTZS(r.limit ?? 0)}</p>)}
-                <p className="text-xs text-muted-foreground">{t("The Boss and the MD set these limits.")}</p>
+                <p>{t("Staff who may give a discount can give any amount, per night.")}</p>
+                <p className="text-xs text-muted-foreground">{t("The Boss and the MD set who may give discounts.")}</p>
               </div>
             )}
           </Panel>
@@ -274,7 +269,7 @@ export default async function PricingPage() {
                         : h.action === "pricing.promotion_updated" ? t("Changed “{name}”", { name })
                           : h.action === "pricing.promotion_activated" ? t("Switched on “{name}”", { name })
                             : h.action === "pricing.promotion_deactivated" ? t("Switched off “{name}”", { name })
-                              : h.action === "pricing.discount_rules" ? t("Staff discount rules: most {amount}", { amount: formatTZS(Number(a.manualDiscountMax)) })
+                              : h.action === "pricing.discount_rules" ? (a.manualDiscountMax == null ? t("Staff discount rules changed") : t("Staff discount rules: most {amount}", { amount: formatTZS(Number(a.manualDiscountMax)) }))
                                 : h.action === "pricing.room_discount_limit" ? (a.manualDiscountMax == null
                                   ? t("{name}: staff discount follows the hotel's limit", { name: t(name) })
                                   : t("{name}: staff discount up to {amount}", { name: t(name), amount: formatTZS(Number(a.manualDiscountMax)) }))
