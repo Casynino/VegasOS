@@ -9,8 +9,10 @@ import { WORK_AS_HOURS } from "@/server/work-as-session";
  *
  * - A Developer signed in as itself (in its own console) sees NO strip — the console's side menu says where it is (owner, 2026-10-18); formerly one strip: "DEVELOPER MODE — SUPER USER",
  *   its name, and two plain links — Console, and Sign out.
- * - A Developer WORKING AS someone sees one small floating pill, bottom right, on every page: "Working as Neema" and a Stop button (owner, 2026-10-18:
- *   the full-width bar was too much). It takes no room in the page; the time left is in its tooltip. Sign out is in the side menu.
+ * - A Developer WORKING AS someone sees "Working as Neema" and a Stop button on every page (the time left is in its tooltip; Sign out is in the side menu):
+ *   on a computer (lg and up) one small floating pill, bottom right (owner, 2026-10-18: the full-width bar was too much there); on a phone or
+ *   tablet a slim strip at the top of the page that stays in view and pushes the page down — a floating pill there covered the page's
+ *   own buttons and the bottom bar (owner, 2026-11-05: it must look arranged, like the app normally does on a phone).
  * - Everyone sees their own real name and role: beside the picture in the top bar from `xl`, the name alone at `lg` (the role is in the
  *   tooltip and in the side menu's account card), and in the bottom bar's Menu on a tablet or a phone. While a Developer works as
  *   someone, those show the PERSON being worked as.
@@ -33,9 +35,11 @@ export interface Identity {
 /** Work as ends by itself this many hours after it started — the server's own number (server/work-as-session.ts); here it is only told to the Developer. */
 export { WORK_AS_HOURS };
 
-/** The shell's offset variable for this identity: none — the pill floats, it takes no space in the page (kept so the shell and its sticky parts need no change). */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export const stripVars = (_identity: Identity) => "";
+/**
+ * The shell's offset variable (--dev-strip) for this identity: the height of the strip's phone/tablet form, so the sticky top bar sits right
+ * under it. From lg the strip is the floating pill, which takes no room, so the offset is 0 there. Nothing for anyone else.
+ */
+export const stripVars = (identity: Identity) => (identity.actorType === "DEVELOPER" && identity.workAs ? "[--dev-strip:2.25rem] lg:[--dev-strip:0px]" : "");
 
 type SignOutAction = () => void | Promise<void>;
 
@@ -64,7 +68,7 @@ export function IdentityBanner({ identity, t, stopWorkAs, now }: {
   now?: Date;
 }) {
   if (identity.actorType !== "DEVELOPER" || !identity.workAs) return null;
-  // A small pill, fixed bottom right (above the phone's bottom bar): who you are working as, and Stop. It floats over the page, so it adds no height.
+  // Below lg: a slim strip, sticky at the top, in the page's flow (2.25rem — the shell's --dev-strip offset). From lg: a small pill, fixed bottom right, over the page.
   const clock = workAsClock(identity.workAs.startedAt, now);
   const label = t("Working as {name}", { name: identity.name });
   const tip = t("{name} ({role}) · started {elapsed} ago · ends in {left}", { name: identity.name, role: t(identity.role), elapsed: spanWords(clock.elapsedMs, t), left: spanWords(clock.leftMs, t) });
@@ -74,7 +78,7 @@ export function IdentityBanner({ identity, t, stopWorkAs, now }: {
       aria-label={label}
       data-identity="work-as"
       title={tip}
-      className="fixed bottom-20 right-3 z-50 flex max-w-[calc(100vw-1.5rem)] items-center gap-2 rounded-full bg-fuchsia-700 py-1 pl-3.5 pr-1 text-white shadow-lg shadow-black/30 lg:bottom-5 lg:right-5 print:hidden"
+      className="sticky top-0 z-50 flex h-9 w-full shrink-0 items-center justify-between gap-2 bg-fuchsia-700 pl-3.5 pr-1 text-white lg:fixed lg:bottom-5 lg:right-5 lg:top-auto lg:h-auto lg:w-auto lg:max-w-[calc(100vw-1.5rem)] lg:justify-start lg:rounded-full lg:py-1 lg:shadow-lg lg:shadow-black/30 print:hidden"
     >
       <span className="min-w-0 truncate text-xs font-semibold">{label}</span>
       <form action={stopWorkAs} className="shrink-0">
