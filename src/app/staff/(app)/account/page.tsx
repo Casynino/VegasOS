@@ -43,10 +43,10 @@ export default async function AccountPage() {
         <div className="flex flex-wrap items-center gap-4 sm:gap-5">
           <Initials name={user.fullName} className="size-16 text-xl ring-4 ring-white/10 sm:size-20 sm:text-2xl" />
           <div className="min-w-0 flex-1">
-            <h1 className="truncate text-2xl font-semibold tracking-tight sm:text-3xl">{user.fullName}</h1>
+            <h1 className="break-words text-2xl font-semibold tracking-tight sm:truncate sm:text-3xl">{user.fullName}</h1>
             <p className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-[oklch(0.72_0.12_80/0.2)] px-2.5 py-0.5 text-xs font-medium text-[#f2d28c]"><ShieldCheck className="size-3.5" />{t(user.roleName)}</p>
             <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm text-white/70">
-              <span className="inline-flex min-w-0 items-center gap-1.5"><Mail className="size-4 shrink-0" /><span className="truncate">{user.email}</span></span>
+              <span className="inline-flex min-w-0 items-center gap-1.5"><Mail className="size-4 shrink-0" /><span className="min-w-0 break-all sm:truncate">{user.email}</span></span>
               <span className="inline-flex items-center gap-1.5"><Phone className="size-4" />{me.phone ?? t("No phone added")}</span>
             </div>
           </div>
@@ -71,7 +71,7 @@ export default async function AccountPage() {
         </section>
       )}
 
-      <div className="grid gap-6 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <Panel title={<span className="flex items-center gap-2"><UserRound className="size-4 text-muted-foreground" />{t("Personal details")}</span>} subtitle={t("Your name, email and phone as the team sees them")}>
           <ProfileForm fullName={user.fullName} email={user.email} phone={me.phone} />
         </Panel>
@@ -81,7 +81,7 @@ export default async function AccountPage() {
         </Panel>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <Panel className="xl:col-span-2" title={<span className="flex items-center gap-2"><Laptop className="size-4 text-muted-foreground" />{t("Signed-in devices")}</span>}
           subtitle={t("Where your account is signed in right now")}>
           <ul className="divide-y divide-border">
@@ -94,7 +94,7 @@ export default async function AccountPage() {
                   <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-muted text-muted-foreground"><Icon className="size-5" /></span>
                   <span className="min-w-0 flex-1">
                     <span className="block font-medium text-foreground">{d.label}{here && <span className="ml-2 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">{t("This device")}</span>}</span>
-                    <span className="block truncate text-xs text-muted-foreground">{t("Last active {time}", { time: t.dateTime(s.lastSeenAt) })}{s.ipAddress ? ` · ${s.ipAddress}` : ""}</span>
+                    <span className="block break-words text-xs text-muted-foreground sm:truncate">{t("Last active {time}", { time: t.dateTime(s.lastSeenAt) })}{s.ipAddress ? ` · ${s.ipAddress}` : ""}</span>
                   </span>
                 </li>
               );

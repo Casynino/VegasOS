@@ -44,7 +44,7 @@ export function AddAccountButton({ roles }: { roles: RoleChoice[] }) {
   if (!roles.length) return null;
   return (
     <>
-      <Button onClick={() => { setRound((n) => n + 1); setOpen(true); }}><UserPlus />{t("Add an account")}</Button>
+      <Button className="h-10 sm:h-8" onClick={() => { setRound((n) => n + 1); setOpen(true); }}><UserPlus />{t("Add an account")}</Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <AddAccountForm key={round} roles={roles} close={() => setOpen(false)} />
@@ -74,10 +74,10 @@ export function AddAccountForm({ roles, close }: { roles: RoleChoice[]; close: (
           <DialogDescription>{t("Give {name} this email and password. They can sign in right away and change the password whenever they wish.", { name: made.fullName })}</DialogDescription>
         </DialogHeader>
         <dl className="space-y-2 rounded-xl border border-border bg-muted/40 p-3 text-sm">
-          <div className="flex items-baseline justify-between gap-3"><dt className="text-muted-foreground">{t("Email")}</dt><dd className="min-w-0 truncate font-medium">{made.email}</dd></div>
+          <div className="flex items-baseline justify-between gap-3"><dt className="text-muted-foreground">{t("Email")}</dt><dd className="min-w-0 break-all text-right font-medium sm:truncate sm:text-left">{made.email}</dd></div>
           <div className="flex items-baseline justify-between gap-3"><dt className="text-muted-foreground">{t("Temporary password")}</dt><dd className="font-mono text-base font-semibold tracking-wide">{made.password}</dd></div>
         </dl>
-        <DialogFooter>
+        <DialogFooter className="max-sm:[&>button]:h-10">
           <Button type="button" variant="outline" onClick={async () => {
             try { await navigator.clipboard.writeText(text); setCopied(true); toast.success(t("Copied")); } catch { toast.error(t("Could not copy. Select the text and copy it.")); }
           }}>{copied ? <Check /> : <Copy />}{t("Copy")}</Button>
@@ -116,7 +116,7 @@ export function AddAccountForm({ roles, close }: { roles: RoleChoice[]; close: (
                 {roles.map((r) => (
                   <label key={r.id} className="cursor-pointer">
                     <input type="radio" name="roleId" value={r.id} checked={roleId === r.id} onChange={() => setRoleId(r.id)} className="peer sr-only" />
-                    <span className={cn("inline-flex h-9 items-center rounded-full border border-border px-3.5 text-sm transition-colors", "hover:bg-muted peer-checked:border-transparent peer-checked:bg-primary peer-checked:text-primary-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-ring")}>{t(r.name)}</span>
+                    <span className={cn("inline-flex h-10 items-center rounded-full sm:h-9 border border-border px-3.5 text-sm transition-colors", "hover:bg-muted peer-checked:border-transparent peer-checked:bg-primary peer-checked:text-primary-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-ring")}>{t(r.name)}</span>
                   </label>
                 ))}
               </div>
@@ -125,15 +125,15 @@ export function AddAccountForm({ roles, close }: { roles: RoleChoice[]; close: (
             <div className="space-y-1.5">
               <Label htmlFor="add-password">{t("Temporary password")}</Label>
               <div className="flex gap-2">
-                <Input id="add-password" name="password" type={show ? "text" : "password"} value={password} onChange={(ev) => setPassword(ev.target.value)} autoComplete="off" spellCheck={false} className="font-mono" aria-invalid={!!e?.password} />
-                <Button type="button" variant="outline" size="icon" onClick={() => setShow((v) => !v)} aria-label={show ? t("Hide password") : t("Show password")}>{show ? <EyeOff /> : <Eye />}</Button>
-                <Button type="button" variant="outline" size="icon" onClick={() => setPassword(makeTemporaryPassword())} aria-label={t("Make another password")}><RefreshCw /></Button>
+                <Input id="add-password" name="password" type={show ? "text" : "password"} value={password} onChange={(ev) => setPassword(ev.target.value)} autoComplete="off" spellCheck={false} className="h-10 font-mono sm:h-9" aria-invalid={!!e?.password} />
+                <Button type="button" variant="outline" size="icon" className="size-10 sm:size-8" onClick={() => setShow((v) => !v)} aria-label={show ? t("Hide password") : t("Show password")}>{show ? <EyeOff /> : <Eye />}</Button>
+                <Button type="button" variant="outline" size="icon" className="size-10 sm:size-8" onClick={() => setPassword(makeTemporaryPassword())} aria-label={t("Make another password")}><RefreshCw /></Button>
               </div>
               <p className="text-xs text-muted-foreground">{t("Made for you. They can change it any time from their account page.")}</p>
               {e?.password && <p className="text-xs text-destructive">{e.password}</p>}
             </div>
             <FormProblem message={error && !e ? error : undefined} />
-            <DialogFooter>
+            <DialogFooter className="max-sm:[&>button]:h-10">
               <Button type="button" variant="outline" onClick={close} disabled={pending}>{t("Cancel")}</Button>
               <Button type="submit" disabled={pending || !ready}>{pending ? <Loader2 className="animate-spin" /> : <UserPlus />}{t("Create account")}</Button>
             </DialogFooter>

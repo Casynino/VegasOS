@@ -1310,6 +1310,16 @@ html:has(.pub-site) { background-color: var(--pub-night); }
   }
 }
 
+/* The staff app on a phone or tablet behaves like an app (owner, 2026-11-05: "pages keep zooming in and out, overlaying"):
+   - no page is ever wider than the screen — a wide part makes the phone shrink the WHOLE page to fit ("zooming out") and lets it
+     slide sideways; anything that still sticks out is cut at the screen's edge (clip, not hidden: nothing becomes a scroll box, so the
+     sticky top bar keeps working). Parts that scroll sideways on purpose (tables, tabs) are their own scroll boxes and are unaffected.
+   - a double tap never zooms (the pinch still works). The viewport's minimum scale (src/lib/staff-viewport.ts) keeps it from zooming out. */
+#staff-root { touch-action: manipulation; }
+@media (max-width: 1023px) {
+  #staff-root { overflow-x: clip; }
+}
+
 /* Phones: a table marked data-stack shows each row as a small card (its first cell as the title,
    the others labelled from the table's headings) — no sideways scrolling. See StackTableLabels. */
 @media (max-width: 639px) {

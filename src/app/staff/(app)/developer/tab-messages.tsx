@@ -35,7 +35,7 @@ export function MessagesTab({ t, d, when }: { t: T; d: MessagesData; when: (x: D
   return (
     <div className="space-y-4">
       {/* The Boss's reports themselves are the panels right under "Needs your attention" (boss-reports.tsx); here is how the sending went. */}
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <StatBlock
           icon={Send} label={t("WhatsApp deliveries, 24 hours")} value={d.deliveries24h ? num(t, d.deliveries24h.sent) : "—"} caption={t("sent in the last 24 hours")} warn={!!d.deliveries24h?.failed}
           tag={d.deliveries24h ? (d.deliveries24h.failed > 0 ? t("{n} failed", { n: d.deliveries24h.failed }) : t("None failed")) : undefined} tagTone={d.deliveries24h?.failed ? "amber" : "emerald"}
@@ -63,7 +63,7 @@ export function MessagesTab({ t, d, when }: { t: T; d: MessagesData; when: (x: D
                 <span key="w" className="whitespace-nowrap">{when(p.at)}</span>,
                 t(p.purpose),
                 <span key="r" className="font-mono text-xs">{p.recipient}</span>,
-                <span key="a">{num(t, p.attempts)}{p.status === "FAILED" && !p.reminder && <span className="ml-1.5 inline-block">{p.atMax ? <Tag tone="rose">{t("no more automatic tries")}</Tag> : <Tag tone="sky">{t("fewer than {max} tries", { max: d.maxAttempts })}</Tag>}</span>}</span>,
+                <span key="a">{num(t, p.attempts)}{p.status === "FAILED" && !p.reminder && <span className="mt-1 block sm:ml-1.5 sm:mt-0 sm:inline-block">{p.atMax ? <Tag tone="rose" className="whitespace-normal text-center sm:whitespace-nowrap">{t("no more automatic tries")}</Tag> : <Tag tone="sky" className="whitespace-normal text-center sm:whitespace-nowrap">{t("fewer than {max} tries", { max: d.maxAttempts })}</Tag>}</span>}</span>,
                 t(p.kind),
               ],
             }))}

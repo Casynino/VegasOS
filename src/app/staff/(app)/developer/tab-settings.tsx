@@ -21,7 +21,7 @@ function minutesWords(t: T, total: number) {
 /** A list in two columns with a line between the columns and a line above every row (one column on a phone). An odd last row leaves its neighbour empty, so the line still runs to the bottom. */
 function TwoCols({ count, label, children }: { count: number; label: string; children: ReactNode }) {
   return (
-    <ul aria-label={label} className="grid md:grid-cols-2">
+    <ul aria-label={label} className="grid grid-cols-1 md:grid-cols-2">
       {children}
       {count % 2 === 1 && <li aria-hidden className="hidden border-t border-border/60 md:block md:border-l" />}
     </ul>
@@ -130,12 +130,12 @@ function YouStrip({ t, id, when }: { t: T; id: SettingsData["identity"]; when: (
         <details className="group ml-auto open:ml-0 open:w-full">
           <summary
             title={`${t(id.reason)} ${t(id.accountsReason)}`}
-            className="flex cursor-pointer list-none items-center justify-end gap-1.5 text-sm font-medium text-muted-foreground marker:content-none hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold group-open:justify-start [&::-webkit-details-marker]:hidden"
+            className="-my-2 flex cursor-pointer list-none items-center justify-end gap-1.5 py-2 text-sm font-medium sm:my-0 sm:py-0 text-muted-foreground marker:content-none hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold group-open:justify-start [&::-webkit-details-marker]:hidden"
           >
             <span>{t("Rights you do not hold ({n})", { n: id.notHeld.length })}</span>
             <ChevronDown className="size-4 shrink-0 transition-transform group-open:rotate-180" aria-hidden />
           </summary>
-          <ul className="mt-2 grid gap-x-6 gap-y-1.5 border-t border-border/60 pt-3 text-sm sm:grid-cols-2">
+          <ul className="mt-2 grid grid-cols-1 gap-x-6 gap-y-1.5 border-t border-border/60 pt-3 text-sm sm:grid-cols-2">
             {id.notHeld.map((r) => (
               <li key={r.code} className="min-w-0 leading-snug">
                 <span className="break-words">{t(r.description)}</span>

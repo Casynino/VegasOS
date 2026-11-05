@@ -58,7 +58,7 @@ function Avatar({ name }: { name: string }) {
 function PersonLine({ name, role, children }: { name: string; role?: string | null; children: ReactNode }) {
   return (
     <li className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
-      <span className="min-w-0 flex-1 truncate text-sm"><span className="font-medium">{name}</span>{role && <span className="text-xs text-muted-foreground"> · {role}</span>}</span>
+      <span className="min-w-0 flex-1 break-words text-sm sm:truncate"><span className="font-medium">{name}</span>{role && <span className="text-xs text-muted-foreground"> · {role}</span>}</span>
       {children}
     </li>
   );
@@ -100,11 +100,13 @@ export function ActivityTab({ t, a, now, timezone }: { t: T; a: ActivityData; no
   const titleActive = t("Most active people");
   const titleIdle = t("Not using the system");
   const gutter = "-mx-4 -mb-4 sm:-mx-6 sm:-mb-6";
+  /** A table runs to the panel's edges only from a tablet up: on a phone its rows are stacked cards (no cell padding), so the panel keeps its own padding. */
+  const tableGutter = "sm:-mx-6 sm:-mb-6";
 
   return (
     <div className="space-y-4">
       {/* ── the four figures ── */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatBlock
           icon={Users} label={t("Signed in today")} value={num(t, s.peopleSignedIn24h)} caption={t("different people in 24 hours")}
           tag={t.ctx("console", "Live")} tagTone="sky"
@@ -152,7 +154,7 @@ export function ActivityTab({ t, a, now, timezone }: { t: T; a: ActivityData; no
       </Panel>
 
       {/* ── sign-ins and actions per day ── */}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {chartPanel("sign-ins", t("Sign-ins per day"), t("Last 14 days, by role. Hover a bar for the numbers."), dayRule, a.signInsPerDay, !!a.signInsPerDay?.some((d) => d.total > 0), t("Nobody signed in during these 14 days."), () => (
           <BarChart t={t} columns={signInColumns!} series={a.roles.map((r) => ({ key: r.code, label: t(r.name), color: colours[r.code] }))} caption={t("Sign-ins per day")} empty={none} />
         ))}
@@ -166,7 +168,7 @@ export function ActivityTab({ t, a, now, timezone }: { t: T; a: ActivityData; no
       </div>
 
       {/* ── the busiest hours and where the work happens ── */}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {chartPanel(
           "hours", t("Busiest hours of the day"),
           a.busiestHour !== null ? t("Hotel time, last 14 days. The peak is around {hour}.", { hour: hourName(a.busiestHour) }) : t("Hotel time, last 14 days."),
@@ -180,11 +182,11 @@ export function ActivityTab({ t, a, now, timezone }: { t: T; a: ActivityData; no
       </div>
 
       {/* ── the table of the latest sign-ins | who is online, who does the most, who does not use the system ── */}
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <Panel
           level={3} title={<span title={t("Addresses are shown only here, only to the Developer.")}>{titleRecent}</span>}
           subtitle={t("Successful sign-ins, newest first: who, on what device, from where.")}
-          className="flex flex-col" bodyClassName={a.recentSignIns !== null && recent.length > 0 ? cn("flex flex-1 flex-col", gutter) : undefined}
+          className="flex flex-col" bodyClassName={a.recentSignIns !== null && recent.length > 0 ? cn("flex flex-1 flex-col", tableGutter) : undefined}
         >
           {a.recentSignIns === null ? <PanelNote>{unread}</PanelNote> : recent.length === 0 ? <PanelNote>{t("Nobody has signed in yet.")}</PanelNote> : (
             <FillScroll label={titleRecent} maxH="max-h-96" minH="lg:min-h-[24rem]" className="border-t border-border/60">
@@ -209,7 +211,7 @@ export function ActivityTab({ t, a, now, timezone }: { t: T; a: ActivityData; no
                       </td>
                       <td data-label={t("Device")} className="py-3 pr-4">
                         {r.device
-                          ? <span className="inline-flex items-center gap-2 whitespace-nowrap">{r.device.phone ? <Smartphone className="size-4 shrink-0 text-muted-foreground" aria-hidden /> : <Monitor className="size-4 shrink-0 text-muted-foreground" aria-hidden />}{r.device.label}</span>
+                          ? <span className="inline-flex items-center gap-2 whitespace-nowrap max-sm:whitespace-normal">{r.device.phone ? <Smartphone className="size-4 shrink-0 text-muted-foreground" aria-hidden /> : <Monitor className="size-4 shrink-0 text-muted-foreground" aria-hidden />}{r.device.label}</span>
                           : <span className="text-muted-foreground" title={t("Session ended")}>—</span>}
                       </td>
                       <td data-label={t("From")} className="py-3 pr-4 font-mono text-xs text-foreground/80">{r.ip ?? <span className="font-sans text-sm text-muted-foreground">—</span>}</td>

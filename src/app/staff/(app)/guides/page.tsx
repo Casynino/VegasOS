@@ -63,7 +63,7 @@ export default async function GuideBooksPage() {
         <p role="status" className="rounded-2xl bg-muted/40 px-4 py-4 text-sm text-muted-foreground">{isDeveloper ? t("No guide book is here yet. Use Upload books to put them in.") : t("The guide books are being put here. Please come back soon.")}</p>
       )}
 
-      <ul className="grid gap-4 lg:grid-cols-2">
+      <ul className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {rows.map(({ info, file }) => (
           <li key={info.file} className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-card p-4 sm:p-5">
             <div className="flex items-start gap-3">

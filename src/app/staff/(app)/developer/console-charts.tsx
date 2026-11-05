@@ -126,7 +126,7 @@ export function BarChart({ t, columns, series, caption, empty, format, axis, gro
       )}
       {/* the same numbers as a table, for everyone: a phone has no hover, and a screen reader cannot read a tooltip */}
       <details className="group mt-3 text-xs">
-        <summary className="inline-flex cursor-pointer list-none items-center text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold [&::-webkit-details-marker]:hidden">
+        <summary className="inline-flex cursor-pointer list-none items-center text-muted-foreground max-sm:py-2 underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold [&::-webkit-details-marker]:hidden">
           <span className="group-open:hidden">{t("Show the numbers")}</span>
           <span className="hidden group-open:inline">{t("Hide the numbers")}</span>
         </summary>
@@ -158,7 +158,7 @@ export function RankBars({ t, rows, color, caption, empty, format }: { t: T; row
         {rows.map((r) => (
           <li key={r.key} title={`${r.label}: ${fmt(r.value)}`}>
             <div className="mb-1 flex items-baseline justify-between gap-3 text-sm">
-              <span className="min-w-0 truncate font-medium text-foreground">{r.label}{r.note && <span className="ml-1.5 text-xs font-normal text-muted-foreground">{r.note}</span>}</span>
+              <span className="min-w-0 break-words font-medium text-foreground sm:truncate">{r.label}{r.note && <span className="ml-1.5 text-xs font-normal text-muted-foreground">{r.note}</span>}</span>
               <span className="shrink-0 font-semibold tabular-nums">{fmt(r.value)}</span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-muted" aria-hidden>

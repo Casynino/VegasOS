@@ -79,14 +79,14 @@ export function HealthCard({ t, h }: { t: T; h: HealthReport }) {
           <ul className="mt-4 flex flex-wrap gap-2 text-xs font-medium" aria-label={t("Summary")}>
             {([[h.counts.fix, t("{n} to fix now", { n: h.counts.fix }), "bg-rose-500"], [h.counts.look, t("{n} to look at", { n: h.counts.look }), "bg-amber-500"], [h.counts.info, t("{n} for information", { n: h.counts.info }), "bg-muted-foreground/50"]] as const).map(([n, text, dot]) => (
               <li key={text} className="inline-flex items-center gap-1.5 rounded-full bg-muted/60 px-3 py-1 text-foreground/80 ring-1 ring-inset ring-border">
-                <span className={cn("size-1.5 rounded-full", n > 0 ? dot : "bg-muted-foreground/40")} aria-hidden />{text}
+                <span className={cn("size-1.5 shrink-0 rounded-full", n > 0 ? dot : "bg-muted-foreground/40")} aria-hidden />{text}
               </li>
             ))}
           </ul>
         </div>
       </div>
 
-      <dl className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <dl className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Figure
           label={t("Database")} value={offline ? t("Offline") : t("Online")} tone={offline ? "bad" : "ok"}
           caption={offline ? t("did not answer") : h.database.ms !== null ? `${t("{ms} ms to answer", { ms: h.database.ms })}${h.databaseLink ? ` · ${h.databaseLink === "Pooled" ? t("pooled") : t("direct")}` : ""}` : t("answers")}

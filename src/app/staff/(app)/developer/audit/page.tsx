@@ -27,6 +27,13 @@ const CHIPS: { view: DeveloperAuditView; label: string }[] = [
   { view: "failures", label: msg("Failures") },
 ];
 
+/**
+ * The two date fields. On a phone they share one row (each takes half) and keep to their column — iPhone Safari otherwise gives a date
+ * field its own width and spills it out of a narrow row (the same fix the public site uses); from tablet size up they are as before.
+ */
+const DATE_FIELD =
+  "h-10 w-auto max-sm:min-w-0 max-sm:max-w-full max-sm:flex-1 max-sm:basis-[8.5rem] max-sm:appearance-none max-sm:[&::-webkit-date-and-time-value]:min-h-[1.5em] max-sm:[&::-webkit-date-and-time-value]:text-left";
+
 /** The address of one search (the chips, the search words, the dates and the page number — nothing else is ever put in it). */
 function addressOf(view: DeveloperAuditView, f: AuditFilter, page = 1) {
   const q = new URLSearchParams({ from: f.from, to: f.to });
@@ -95,13 +102,13 @@ export default async function DeveloperAuditPage({ searchParams }: PageProps<"/s
 
       <form method="get" className="flex flex-wrap items-end gap-2" aria-label={t("Search the audit")}>
         {view !== "all" && <input type="hidden" name="view" value={view} />}
-        <div className="relative min-w-[14rem] flex-1">
+        <div className="relative min-w-[14rem] flex-1 max-sm:basis-full">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
           <Input name="q" defaultValue={f.q ?? ""} maxLength={80} autoComplete="off" placeholder={t("Search who, what or where…")} aria-label={t("Search who, what or where…")} className="h-10 pl-9" />
         </div>
-        <Input name="from" type="date" defaultValue={f.from} aria-label={t.ctx("date", "From")} className="h-10 w-auto" />
-        <Input name="to" type="date" defaultValue={f.to} aria-label={t.ctx("date", "To")} className="h-10 w-auto" />
-        <Button type="submit" className="h-10 px-4">{t("Filter")}</Button>
+        <Input name="from" type="date" defaultValue={f.from} aria-label={t.ctx("date", "From")} className={DATE_FIELD} />
+        <Input name="to" type="date" defaultValue={f.to} aria-label={t.ctx("date", "To")} className={DATE_FIELD} />
+        <Button type="submit" className="h-10 px-4 max-sm:w-full">{t("Filter")}</Button>
         {(narrowed || f.page > 1) && <Link href="/staff/developer/audit" className="py-2 text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground">{t("Clear filters")}</Link>}
       </form>
 
@@ -127,8 +134,8 @@ export default async function DeveloperAuditPage({ searchParams }: PageProps<"/s
         <nav aria-label={t("Pages")} className="flex items-center justify-between gap-3 text-sm">
           <span className="text-muted-foreground">{t("Page {page}", { page: f.page })} · {t.plural(result.rows.length, "{n} entry shown", "{n} entries shown")}</span>
           <div className="flex gap-2">
-            {result.hasPrevious && <Link className={buttonVariants({ variant: "outline", size: "sm" })} href={addressOf(view, f, f.page - 1)} rel="prev">{t.ctx("page", "Previous")}</Link>}
-            {result.hasNext && <Link className={buttonVariants({ variant: "outline", size: "sm" })} href={addressOf(view, f, f.page + 1)} rel="next">{t.ctx("page", "Next")}</Link>}
+            {result.hasPrevious && <Link className={buttonVariants({ variant: "outline", size: "sm", className: "max-sm:h-10 max-sm:px-4" })} href={addressOf(view, f, f.page - 1)} rel="prev">{t.ctx("page", "Previous")}</Link>}
+            {result.hasNext && <Link className={buttonVariants({ variant: "outline", size: "sm", className: "max-sm:h-10 max-sm:px-4" })} href={addressOf(view, f, f.page + 1)} rel="next">{t.ctx("page", "Next")}</Link>}
           </div>
         </nav>
       )}

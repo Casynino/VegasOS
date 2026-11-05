@@ -79,7 +79,7 @@ export function ConsoleBanner({ date, tag, title, subtitle }: { date: string; ta
         <span>{date}</span>
         <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-white">{tag}</span>
       </div>
-      <h1 className="mt-3 text-3xl font-bold leading-tight tracking-tight sm:text-[2.6rem]">{title}</h1>
+      <h1 className="mt-3 break-words text-3xl font-bold leading-tight tracking-tight sm:text-[2.6rem]">{title}</h1>
       <p className="mt-2 max-w-4xl text-sm leading-relaxed text-white/90 sm:text-base">{subtitle}</p>
     </section>
   );

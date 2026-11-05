@@ -34,7 +34,7 @@ function InspectionResult({ r, t }: { r: Inspection; t: T }) {
     <div className="mt-4 space-y-3" aria-live="polite">
       <div className={cn("rounded-2xl border px-4 py-3", r.has ? "border-emerald-500/40 bg-emerald-500/[0.07]" : "border-border bg-muted/40")}>
         <p className="flex items-center gap-2 text-base font-semibold">
-          {r.has ? <CircleCheck className="size-5 text-emerald-600" aria-hidden /> : <ShieldAlert className="size-5 text-muted-foreground" aria-hidden />}
+          {r.has ? <CircleCheck className="size-5 shrink-0 text-emerald-600" aria-hidden /> : <ShieldAlert className="size-5 shrink-0 text-muted-foreground" aria-hidden />}
           {r.has ? t("Yes — {name} can do this", { name: r.person.name }) : t("No — {name} cannot do this", { name: r.person.name })}
         </p>
         <p className="mt-1 break-words text-sm">{t(r.right.description)}</p>
@@ -51,8 +51,8 @@ function InspectionResult({ r, t }: { r: Inspection; t: T }) {
       <p className="text-sm"><span className="text-muted-foreground">{t("Roles that hold this right:")}</span>{" "}{r.rolesWithRight.length ? r.rolesWithRight.map((x) => t(x.name)).join(", ") : t("none")}</p>
 
       <details className="group rounded-2xl border border-border/70 px-3 py-2">
-        <summary className="flex cursor-pointer items-center gap-2 text-sm font-medium"><KeyRound className="size-4 text-muted-foreground" aria-hidden />{t("Everything {name} can do ({n} rights)", { name: r.person.name, n: r.rights.length })}</summary>
-        <ul className="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-2">
+        <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-medium marker:content-none [&::-webkit-details-marker]:hidden"><KeyRound className="size-4 shrink-0 text-muted-foreground" aria-hidden />{t("Everything {name} can do ({n} rights)", { name: r.person.name, n: r.rights.length })}</summary>
+        <ul className="mt-3 grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
           {r.rights.map((x) => (
             <li key={x.code} className="min-w-0 text-sm leading-snug">
               <span className="font-mono text-xs">{x.code}</span>
@@ -71,7 +71,7 @@ export function PeopleTab({ t, data, person, right, inspection, when, timezone, 
   const accounts = data.roles.reduce((n, r) => n + r.total, 0);
   const active = data.roles.reduce((n, r) => n + r.active, 0);
   const recent = data.myActions.slice(0, 6);
-  const link = "shrink-0 text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline";
+  const link = "-m-2 shrink-0 p-2 text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline";
   return (
     <div className="space-y-4">
       {/* the accounts, grouped by what they do (Target's look): icon, role, what it is for, how many are active, how many accounts */}
@@ -80,7 +80,7 @@ export function PeopleTab({ t, data, person, right, inspection, when, timezone, 
         action={<Link href={CONSOLE_HREF.access} className={link}>{t("Open Access")}</Link>}
         bodyClassName="-mx-4 -mb-4 sm:-mx-6 sm:-mb-6"
       >
-        <ul className="grid border-t border-border/60 sm:grid-cols-2">
+        <ul className="grid grid-cols-1 border-t border-border/60 sm:grid-cols-2">
           {data.roles.map((r) => {
             const Icon = ROLE_ICON[r.code] ?? Users;
             return (
@@ -102,7 +102,7 @@ export function PeopleTab({ t, data, person, right, inspection, when, timezone, 
         </ul>
       </Panel>
 
-      <div className="grid items-start gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
         <Panel
           level={3} title={t("Your recent actions")} subtitle={t("The last things recorded under your name.")}
           action={<Link href={AUDIT_DEVELOPER_HREF} className={link}>{t("See all")}</Link>}
@@ -144,15 +144,15 @@ export function PeopleTab({ t, data, person, right, inspection, when, timezone, 
       </div>
 
       <Panel level={3} title={t("Who can do what")} subtitle={t("Pick a person and a right to see if that person has it.")}>
-        <form method="get" action="/staff/developer#people" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
-          <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+        <form method="get" action="/staff/developer#people" className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
+          <label className="grid grid-cols-1 gap-1.5 text-xs font-medium text-muted-foreground">
             {t("Person")}
             <NativeSelect name="person" defaultValue={person} className="h-10 text-sm text-foreground">
               <option value="">{t("Choose a person")}</option>
               {data.people.map((p) => <option key={p.id} value={p.id}>{p.name} · {t(p.roleName)}{p.active ? "" : ` · ${t("not active")}`}</option>)}
             </NativeSelect>
           </label>
-          <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+          <label className="grid grid-cols-1 gap-1.5 text-xs font-medium text-muted-foreground">
             {t("Right")}
             <NativeSelect name="right" defaultValue={right} className="h-10 text-sm text-foreground">
               <option value="">{t("Choose a right")}</option>

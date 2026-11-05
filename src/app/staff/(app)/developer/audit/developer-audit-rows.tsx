@@ -111,7 +111,7 @@ function Entry({ row, t, timezone }: { row: AuditRow; t: T; timezone: string }) 
         <summary className="grid cursor-pointer list-none grid-cols-[0.625rem_minmax(0,1fr)_1rem] items-start gap-x-3 gap-y-2 px-4 py-3.5 outline-none hover:bg-muted/40 focus-visible:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring/60 md:grid-cols-[0.625rem_minmax(0,1fr)_auto_1rem] [&::-webkit-details-marker]:hidden">
           <Dot row={row} />
           <span className="col-start-2 row-start-1 block min-w-0">
-            <span className="block text-sm font-medium leading-snug">{auditSentence(row, t)}</span>
+            <span className="block break-words text-sm font-medium leading-snug">{auditSentence(row, t)}</span>
             <span className="mt-0.5 block break-words text-xs text-muted-foreground">
               {who} · {date} · <span className="font-mono" title={row.action}>{row.action}</span>
             </span>
@@ -120,7 +120,7 @@ function Entry({ row, t, timezone }: { row: AuditRow; t: T; timezone: string }) 
           <ChevronDown className="col-start-3 row-start-1 mt-1 size-4 text-muted-foreground transition-transform group-open:rotate-180 md:col-start-4" aria-hidden="true" />
         </summary>
         <div className="space-y-3 border-t bg-muted/30 px-4 py-3 md:pl-9">
-          <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
             <Fact label={t("Exact time")}>{exact}</Fact>
             <Fact label={t("Business day")}>{t.date(row.businessDate)}</Fact>
             <Fact label={t("Who")}>{who}</Fact>
@@ -132,7 +132,7 @@ function Entry({ row, t, timezone }: { row: AuditRow; t: T; timezone: string }) 
             {row.reason && <Fact wide label={t("Reason given")}>{row.reason}</Fact>}
             {row.problem && <Fact wide label={t("What went wrong")}>{row.problem}</Fact>}
           </dl>
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <Json label={t("Before")} value={row.before} t={t} />
             <Json label={t("After")} value={row.after} t={t} />
           </div>

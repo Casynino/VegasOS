@@ -110,7 +110,7 @@ export function AccessPeople({ groups, nowIso, timezone }: { groups: AccessGroup
 function PersonRow({ p, now, timezone, ask }: { p: AccessPersonView; now: Date; timezone: string; ask: (kind: DialogKind, person: AccessPersonView) => void }) {
   const t = useT();
   const last = p.lastSignedInAt ? new Date(p.lastSignedInAt) : null;
-  const plain = { variant: "ghost", className: "h-9 gap-1.5 px-2.5" } as const;
+  const plain = { variant: "ghost", className: "h-10 gap-1.5 px-2.5 sm:h-9" } as const;
   return (
     <li className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5">
       <div className="flex min-w-0 items-start gap-3">
@@ -136,7 +136,7 @@ function PersonRow({ p, now, timezone, ask }: { p: AccessPersonView; now: Date; 
             {({ pending }) => (
               <>
                 <input type="hidden" name="userId" value={p.id} />
-                <Button type="submit" className="h-9 gap-1.5 px-3" disabled={pending} aria-label={t("Work as {name}", { name: p.fullName })}>
+                <Button type="submit" className="h-10 gap-1.5 px-3 sm:h-9" disabled={pending} aria-label={t("Work as {name}", { name: p.fullName })}>
                   {pending ? <Loader2 className="animate-spin" /> : <LogIn />}{t("Work as")}
                 </Button>
               </>
@@ -179,7 +179,7 @@ function SuspendDialog({ person, close }: { person: AccessPersonView; close: () 
     <>
       <DialogHeader icon={<UserX />} eyebrow={t("Access")} tone="amber">
         <DialogTitle>{t("Suspend {name}?", { name: person.fullName })}</DialogTitle>
-        <DialogDescription>{person.email}</DialogDescription>
+        <DialogDescription className="break-words">{person.email}</DialogDescription>
       </DialogHeader>
       <AccessForm action={suspendAction} onSuccess={close} className="space-y-3">
         {({ pending, error, fieldErrors: e }) => (
@@ -199,7 +199,7 @@ function SuspendDialog({ person, close }: { person: AccessPersonView; close: () 
               {e?.confirm && <p className="text-xs text-destructive">{e.confirm}</p>}
             </div>
             <FormProblem message={error && !e ? error : undefined} />
-            <DialogFooter>
+            <DialogFooter className="max-sm:[&>button]:h-10">
               <Cancel close={close} pending={pending} />
               <Button type="submit" variant="destructive" disabled={pending || !ready}>{pending ? <Loader2 className="animate-spin" /> : <UserX />}{t("Suspend")}</Button>
             </DialogFooter>
@@ -216,7 +216,7 @@ function DeleteDialog({ person, close }: { person: AccessPersonView; close: () =
     <>
       <DialogHeader icon={<Trash2 />} eyebrow={t("Access")} tone="amber">
         <DialogTitle>{t("Delete {name}?", { name: person.fullName })}</DialogTitle>
-        <DialogDescription>{person.email}</DialogDescription>
+        <DialogDescription className="break-words">{person.email}</DialogDescription>
       </DialogHeader>
       <AccessForm action={deleteAccountAction} onSuccess={close} className="space-y-3">
         {({ pending, error }) => (
@@ -226,7 +226,7 @@ function DeleteDialog({ person, close }: { person: AccessPersonView; close: () =
               {t("{name} loses all access and is removed from the system. Everything {name} did stays recorded under their name.", { name: person.fullName })}
             </p>
             <FormProblem message={error} />
-            <DialogFooter>
+            <DialogFooter className="max-sm:[&>button]:h-10">
               <Cancel close={close} pending={pending} />
               <Button type="submit" variant="destructive" disabled={pending}>{pending ? <Loader2 className="animate-spin" /> : <Trash2 />}{t("Delete")}</Button>
             </DialogFooter>
@@ -245,7 +245,7 @@ function ReactivateDialog({ person, close }: { person: AccessPersonView; close: 
     <>
       <DialogHeader icon={<UserCheck />} eyebrow={t("Access")} tone="emerald">
         <DialogTitle>{t("Re-activate {name}?", { name: person.fullName })}</DialogTitle>
-        <DialogDescription>{person.email}</DialogDescription>
+        <DialogDescription className="break-words">{person.email}</DialogDescription>
       </DialogHeader>
       <AccessForm action={reactivateAction} onSuccess={close} className="space-y-3">
         {({ pending, error, fieldErrors: e }) => (
@@ -258,7 +258,7 @@ function ReactivateDialog({ person, close }: { person: AccessPersonView; close: 
               {e?.reason && <p className="text-xs text-destructive">{e.reason}</p>}
             </div>
             <FormProblem message={error && !e ? error : undefined} />
-            <DialogFooter>
+            <DialogFooter className="max-sm:[&>button]:h-10">
               <Cancel close={close} pending={pending} />
               <Button type="submit" disabled={pending || !ready}>{pending ? <Loader2 className="animate-spin" /> : <UserCheck />}{t("Re-activate")}</Button>
             </DialogFooter>
@@ -275,7 +275,7 @@ function SignOutDialog({ person, close }: { person: AccessPersonView; close: () 
     <>
       <DialogHeader icon={<LogOut />} eyebrow={t("Access")} tone="sky">
         <DialogTitle>{t("Sign {name} out everywhere?", { name: person.fullName })}</DialogTitle>
-        <DialogDescription>{person.email}</DialogDescription>
+        <DialogDescription className="break-words">{person.email}</DialogDescription>
       </DialogHeader>
       <AccessForm action={signOutEverywhereAction} onSuccess={close} className="space-y-3">
         {({ pending, error }) => (
@@ -283,7 +283,7 @@ function SignOutDialog({ person, close }: { person: AccessPersonView; close: () 
             <input type="hidden" name="userId" value={person.id} />
             <p className="text-sm text-muted-foreground">{t("Ends every open session on every phone and computer. The person can sign straight back in.")}</p>
             <FormProblem message={error} />
-            <DialogFooter>
+            <DialogFooter className="max-sm:[&>button]:h-10">
               <Cancel close={close} pending={pending} />
               <Button type="submit" disabled={pending}>{pending ? <Loader2 className="animate-spin" /> : <LogOut />}{t("Sign out everywhere")}</Button>
             </DialogFooter>

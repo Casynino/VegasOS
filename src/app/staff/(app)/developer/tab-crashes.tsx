@@ -256,7 +256,7 @@ export function ErrorsTab({ t, c, when, now = new Date() }: { t: T; c: CrashData
   const newestRun = sys.jobs.reduce<JobStatus | null>((a, j) => (j.lastRunAt && (!a || !a.lastRunAt || j.lastRunAt > a.lastRunAt) ? j : a), null);
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatBlock
           icon={Bug} label={t("Server errors")} value={num(t, sys.errors24h)} caption={t("different errors in 24 hours")} warn={sys.errors24h > 0}
           tag={sys.errors24h > 0 ? t("Look at it") : t("Quiet")} tagTone={sys.errors24h ? "amber" : "emerald"}
@@ -384,7 +384,7 @@ export function SecurityTab({ t, c, when, now = new Date() }: { t: T; c: CrashDa
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatBlock
           icon={UserX} label={t("Failed sign-ins")} value={num(t, c.failed14d)} caption={t("in 14 days")} warn={!!f?.last24h}
           tag={c.failed14d === null ? undefined : c.failed14d > 0 ? t("Look at it") : t("Quiet")} tagTone={c.failed14d ? "amber" : "emerald"}
@@ -415,7 +415,7 @@ export function SecurityTab({ t, c, when, now = new Date() }: { t: T; c: CrashDa
         </>
       ) : (
         <>
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
             <Panel
               level={3} title={chartTitle} bodyClassName={hasChart ? undefined : TABLE_BLEED}
               subtitle={f.last24h ? t("{n} wrong tries in the last 24 hours.", { n: f.last24h }) : t("No failed sign-ins in the last 24 hours.")}
@@ -431,7 +431,7 @@ export function SecurityTab({ t, c, when, now = new Date() }: { t: T; c: CrashDa
             </Panel>
             <LatestPanel t={t} c={c} when={when} now={now} />
           </div>
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <AddressPanel t={t} c={c} when={when} now={now} />
             <DeniedPanel t={t} rows={c.denied} when={when} />
           </div>

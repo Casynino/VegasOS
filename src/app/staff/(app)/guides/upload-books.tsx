@@ -53,12 +53,12 @@ export function UploadBooks() {
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button" disabled={busy} onClick={() => input.current?.click()}
-          className="inline-flex items-center gap-2 rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background transition-colors hover:bg-foreground/90 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
+          className="inline-flex items-center gap-2 rounded-lg bg-foreground px-4 py-2.5 text-sm sm:py-2 font-medium text-background transition-colors hover:bg-foreground/90 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
         >{busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Upload className="size-4" aria-hidden />}{t("Upload books")}</button>
         <p className="text-sm text-muted-foreground">{t("Choose the PDFs from the guides/pdf folder. The same name replaces the old book.")}</p>
       </div>
       <input ref={input} type="file" accept="application/pdf,.pdf" multiple hidden onChange={(e) => { const files = [...(e.target.files ?? [])]; if (files.length) void run(files); }} />
-      {status && <p role="status" className={`mt-3 text-sm ${failed ? "text-rose-600 dark:text-rose-400" : "text-muted-foreground"}`}>{status}</p>}
+      {status && <p role="status" className={`mt-3 text-sm break-words ${failed ? "text-rose-600 dark:text-rose-400" : "text-muted-foreground"}`}>{status}</p>}
     </div>
   );
 }

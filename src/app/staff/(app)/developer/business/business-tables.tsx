@@ -23,7 +23,8 @@ const LIMIT_NOTE = msg("Latest {n} · read-only");
 const NUM = "text-right tabular-nums whitespace-nowrap";
 const HEAD = "h-9 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground";
 
-const chip = "inline-flex items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium";
+// On a phone a chip may wrap inside its half-width card column (e.g. "Not paid · room not held") instead of spilling into the next column.
+const chip = "inline-flex items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium max-sm:max-w-full max-sm:whitespace-normal max-sm:rounded-2xl";
 const quiet = "border-border bg-muted/50 text-muted-foreground";
 const warn = "border-amber-500/40 bg-amber-500/15 text-amber-800 dark:text-amber-300";
 const bad = "border-red-600/30 bg-red-600/10 text-red-700 dark:text-red-300";
@@ -89,7 +90,7 @@ export function PaymentsTable({ rows, t, timezone }: { rows: PaymentRow[]; t: T;
             <Cell label={t("When")} className="whitespace-nowrap">{when(t, p.at, timezone)}</Cell>
             <Cell label={t("For")}>
               <span className="font-mono text-xs">{p.forWhat ?? "—"}</span>
-              {p.reference && <span className="block truncate font-mono text-[11px] text-muted-foreground">{p.reference}</span>}
+              {p.reference && <span className="block break-all font-mono text-[11px] text-muted-foreground sm:break-normal sm:truncate">{p.reference}</span>}
             </Cell>
             <Cell label={t("Kind")}><span className={cn(chip, p.kind === "REFUND" ? warn : quiet)}>{p.kind === "REFUND" ? t("Refund") : t("Payment")}</span></Cell>
             <Cell label={t("Amount")} className={cn(NUM, p.reversed && "text-muted-foreground line-through")}>{formatTZS(p.amount)}</Cell>
@@ -113,7 +114,7 @@ export function ExpensesTable({ rows, t, timezone }: { rows: ExpenseRow[]; t: T;
           <TableRow key={e.id}>
             <Cell label={t("When")} className="whitespace-nowrap">{when(t, e.at, timezone)}</Cell>
             <Cell label={t("Expense")}>
-              <span className="block max-w-[28ch] truncate sm:max-w-none">{e.description}</span>
+              <span className="block sm:truncate">{e.description}</span>
               <span className="block text-xs text-muted-foreground">{t(e.category)}{e.number ? ` · ${e.number}` : ""}</span>
             </Cell>
             <Cell label={t("Payee")}>{e.payee ?? dash}</Cell>

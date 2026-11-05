@@ -42,7 +42,7 @@ export function ShareBook({ file, title, canShare, url, downloadUrl }: { file: s
     if (!url) return;
     try { await navigator.clipboard.writeText(url); setState("copied"); setTimeout(() => setState("idle"), 2500); } catch { setState("failed"); }
   };
-  const base = "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold";
+  const base = "inline-flex items-center gap-1.5 rounded-lg border px-3 py-2.5 text-sm sm:py-1.5 font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold";
   const button = `${base} border-border bg-background text-foreground hover:bg-muted`;
   const solid = `${base} border-transparent bg-foreground text-background hover:bg-foreground/90`; // the main button: its own colours, nothing inherited to fight with
   const sharing = canShare && !!url && !!downloadUrl;

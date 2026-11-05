@@ -49,7 +49,7 @@ export function SpeedTab({ t, s, dataChecks = [] }: { t: T; s: SpeedData; dataCh
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Panel
           level={3} title={t("Database speed")} subtitle={t("Each bar is one typical thing the app does. Shorter is faster.")}
           action={<Tag tone={avg === null ? "rose" : avg < FAST_MS ? "emerald" : avg < SLOW_MS ? "amber" : "rose"}>{avg === null ? t("No answer") : t("average {ms} ms", { ms: avg })}</Tag>}
@@ -110,7 +110,7 @@ export function SpeedTab({ t, s, dataChecks = [] }: { t: T; s: SpeedData; dataCh
         subtitle={<span title={t("Rules that must always be true. If one fails, numbers on screen may be wrong.")}>{t("Rules that must always be true.")}</span>}
       >
         {checks.length === 0 ? <Empty>{t("This could not be read just now.")}</Empty> : (
-          <ul aria-label={t("Data checks")} className="grid gap-x-8 gap-y-2.5 md:grid-cols-2">
+          <ul aria-label={t("Data checks")} className="grid grid-cols-1 gap-x-8 gap-y-2.5 md:grid-cols-2">
             {checks.map((c) => (
               <li key={c.id} className="flex items-start gap-2 text-sm" title={t(c.what.key, c.what.vars)}>
                 {c.state === "ok" ? <CircleCheck className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden /> : <CircleAlert className="mt-0.5 size-4 shrink-0 text-rose-600 dark:text-rose-400" aria-hidden />}

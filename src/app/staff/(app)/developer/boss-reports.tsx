@@ -47,13 +47,13 @@ function WhenCell({ t, k, now, timezone }: { t: T; k: ReportKindRow; now: Date; 
 function DayRow({ t, row, k, yesterday, now, timezone }: { t: T; row: ReportDayRow; k: ReportKindRow; yesterday: string; now: Date; timezone: string }) {
   const hover = k.madeAt ? [t("Made {time}", { time: t.dateTime(k.madeAt, timezone) }), t("version {n}", { n: k.version ?? 1 }), k.automatic ? t("automatic") : t("made by a person"), k.sentAt ? t("sent {time}", { time: t.dateTime(k.sentAt, timezone) }) : t("not sent")].join(" · ") : undefined;
   return (
-    <li title={hover} className="flex items-center gap-3 border-t border-border/60 px-5 py-3 sm:px-6">
-      <span className="min-w-0 flex-1 truncate text-sm font-medium">
+    <li title={hover} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-t border-border/60 px-5 py-3 sm:flex sm:px-6">
+      <span className="min-w-0 text-sm font-medium sm:flex-1 sm:truncate">
         {t.dayMonth(row.date)}
         {row.date === yesterday && <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{t("Yesterday")}</span>}
       </span>
       <StatePill t={t} state={k.state} />
-      <span className="w-[8.5rem] text-right"><WhenCell t={t} k={k} now={now} timezone={timezone} /></span>
+      <span className={cn("col-span-2 sm:w-[8.5rem] sm:text-right", !k.sentAt && !k.madeAt && "max-sm:hidden")}><WhenCell t={t} k={k} now={now} timezone={timezone} /></span>
     </li>
   );
 }
@@ -74,8 +74,8 @@ function ReportPanel({ t, title, subtitle, rows, pick, yesterday, now, timezone,
       <header className="flex items-center gap-3 px-5 py-4 sm:px-6">
         <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-[linear-gradient(135deg,#c084fc,#7c3aed)] text-white shadow-sm" aria-hidden><FileText className="size-5" /></span>
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-base font-semibold sm:text-lg">{title}</h2>
-          <p className="truncate text-sm text-muted-foreground">{subtitle}</p>
+          <h2 className="break-words text-base font-semibold sm:truncate sm:text-lg">{title}</h2>
+          <p className="break-words text-sm text-muted-foreground sm:truncate">{subtitle}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2.5" title={t("{n} of {m} sent", { n: sent, m: counted })}>
           <span className="flex items-end gap-[3px]" aria-hidden>
@@ -99,7 +99,7 @@ function ReportPanel({ t, title, subtitle, rows, pick, yesterday, now, timezone,
       )}
       {footer && (
         <div className="flex items-center gap-3 border-t border-border/60 px-5 py-3 text-sm sm:px-6">
-          <span className="min-w-0 flex-1 truncate text-muted-foreground">{footer.label}</span>
+          <span className="min-w-0 flex-1 text-muted-foreground sm:truncate">{footer.label}</span>
           {footer.sentAt
             ? <><span className={cn("text-sm font-medium", footer.failed ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400")}>{footer.failed ? t("Look at it") : t("Sent")}</span><span className="whitespace-nowrap text-muted-foreground"><span className="tabular-nums">{t.time(footer.sentAt, timezone)}</span> · {agoText(t, footer.sentAt, now)}</span></>
             : <span className="text-muted-foreground">{t("None yet")}</span>}
@@ -118,7 +118,7 @@ export function BossReports({ t, d, now, timezone }: { t: T; d: MessagesData; no
     return { label: t(PURPOSE_WORDS[key]), sentAt: r?.lastSentAt ?? null, failed: !!r && r.failed7d > 0 };
   };
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
       <ReportPanel
         t={t} title={who ? t("Daily report to {name}", { name: who }) : t("Daily report")} subtitle={t("Made when the hotel day closes at {time}, sent on WhatsApp.", { time: d.dayStart })}
         rows={d.reportDays} pick={(r) => r.daily} yesterday={yesterday} now={now} timezone={timezone} footer={other("STAFF_REPORT")} nobody={d.recipients === 0}

@@ -2,6 +2,9 @@ import { after } from "next/server";
 import { StaffShell } from "@/components/staff/staff-shell";
 import { sweepMobilePaymentsIfDue } from "@/server/services/mobile-payments";
 import { sweepWithdrawalsIfDue } from "@/server/services/withdrawals";
+import { STAFF_VIEWPORT } from "@/lib/staff-viewport";
+
+export const viewport = STAFF_VIEWPORT;
 
 export default function FinanceLayout({ children }: LayoutProps<"/finance">) {
   // Finance holds the money, so its home does what the staff pages do: a mobile-money payment nTZS confirmed but we have not

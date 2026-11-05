@@ -52,7 +52,7 @@ export function WorkAsCard({ people }: { people: PersonChoice[] }) {
             <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
             <Input value={query} onChange={(e) => setQuery(e.target.value)} className="pl-9" placeholder={t("Search by name or role")} aria-label={t("Search by name or role")} autoComplete="off" />
           </div>
-          <ul className="-mx-1 max-h-[55vh] space-y-1 overflow-y-auto px-1">
+          <ul className="-mx-1 max-h-[45svh] space-y-1 sm:max-h-[55vh] overflow-y-auto px-1">
             {shown.map((p) => (
               <li key={p.id}>
                 <ActionForm action={startWorkAsAction}>

@@ -17,7 +17,7 @@ export function DataTable({ cols, rows, empty, more, compact, scroll }: {
 }) {
   if (rows.length === 0) return <Quiet>{empty}</Quiet>;
   return (
-    <div>
+    <div className="min-w-0">
       <div
         className={cn("overflow-x-auto", scroll && "max-h-[21.5rem] overflow-y-auto overscroll-contain focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gold")}
         {...(scroll ? { tabIndex: 0, role: "region", "aria-label": scroll } : {})}

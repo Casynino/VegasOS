@@ -25,12 +25,12 @@ export function RemoveBook({ file, title }: { file: string; title: string }) {
     const res = await removeGuideBookAction(file);
     if (res.ok) router.refresh(); else setError(res.error);
   });
-  if (!sure) return <button ref={removeButton} type="button" onClick={() => { setError(null); setSure(true); }} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"><Trash2 className="size-3.5" aria-hidden />{t("Remove")}</button>;
+  if (!sure) return <button ref={removeButton} type="button" onClick={() => { setError(null); setSure(true); }} className="inline-flex min-h-10 items-center gap-1.5 text-sm text-muted-foreground transition-colors sm:min-h-0 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"><Trash2 className="size-3.5" aria-hidden />{t("Remove")}</button>;
   return (
     <span className="inline-flex flex-wrap items-center gap-2 text-sm">
       <span className="text-muted-foreground">{t("Remove {title}?", { title })}</span>
-      <button ref={confirmButton} type="button" onClick={go} disabled={pending} className="font-medium text-rose-600 hover:underline disabled:opacity-60 dark:text-rose-400">{t("Yes, remove")}</button>
-      <button type="button" onClick={() => setSure(false)} className="text-muted-foreground hover:underline">{t("No")}</button>
+      <button ref={confirmButton} type="button" onClick={go} disabled={pending} className="min-h-10 px-3 font-medium text-rose-600 hover:underline disabled:opacity-60 sm:min-h-0 sm:px-0 dark:text-rose-400">{t("Yes, remove")}</button>
+      <button type="button" onClick={() => setSure(false)} className="min-h-10 px-3 text-muted-foreground hover:underline sm:min-h-0 sm:px-0">{t("No")}</button>
       {error && <span role="alert" className="text-rose-600 dark:text-rose-400">{error}</span>}
     </span>
   );

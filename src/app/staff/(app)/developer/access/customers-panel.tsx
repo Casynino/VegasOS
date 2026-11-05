@@ -54,7 +54,7 @@ export function CustomerResults({ query, onCount }: { query: string; onCount?: (
     await run(q);
   };
   const choose = (kind: Ask["kind"], customer: Hit) => { setAsk({ kind, customer }); setError(null); setOpen(true); };
-  const plain = { variant: "ghost", className: "h-9 gap-1.5 px-2.5 text-muted-foreground hover:text-foreground" } as const;
+  const plain = { variant: "ghost", className: "h-10 gap-1.5 px-2.5 text-muted-foreground hover:text-foreground sm:h-9" } as const;
 
   if (!ready) return null;
   const shown = hits;
@@ -72,7 +72,7 @@ export function CustomerResults({ query, onCount }: { query: string; onCount?: (
               <li key={c.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 sm:px-5">
                 <div className="min-w-0">
                   <p className="flex flex-wrap items-center gap-2 text-sm font-semibold">
-                    <span className="truncate">{c.fullName}</span>
+                    <span className="min-w-0 break-words sm:truncate">{c.fullName}</span>
                     <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{t("Customer")}</span>
                     {c.suspended && <span className="rounded-full bg-rose-500/12 px-2 py-0.5 text-xs font-medium text-rose-700 dark:text-rose-300">{t("Suspended")}</span>}
                   </p>
@@ -104,7 +104,7 @@ export function CustomerResults({ query, onCount }: { query: string; onCount?: (
                   : t("{name} can book and order through the website and the QR pages again.", { name: ask.customer.fullName })}
             </p>
             {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-            <DialogFooter>
+            <DialogFooter className="max-sm:[&>button]:h-10">
               <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={busy}>{t("Cancel")}</Button>
               <Button type="button" variant={ask.kind === "reactivate" ? "default" : "destructive"} onClick={() => void confirm()} disabled={busy}>
                 {busy ? <Loader2 className="animate-spin" /> : ask.kind === "delete" ? <Trash2 /> : ask.kind === "suspend" ? <UserX /> : <UserCheck />}
