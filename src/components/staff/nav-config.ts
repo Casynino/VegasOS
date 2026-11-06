@@ -46,32 +46,33 @@ export const NAV: NavSection[] = [
       { href: "/staff/expenses", label: msg("Expenses"), icon: "Receipt", anyOf: ["expenses.record", "expenses.view_all"] },
       { href: "/staff/finance/accounts", label: msg("Accounts"), icon: "Landmark", anyOf: ["ledger.view", "finance.view"] },
       // Invoices are not in the sidebar (the owner's choice) — they open from a booking, a group or a company.
-      { href: "/staff/corporate", label: msg("Companies"), icon: "Building2", anyOf: ["corporate.view"] },
-      // The money each person collected from customers — their own ("My collections"); managers pick anyone.
-      { href: "/staff/collections", label: msg("Collections"), icon: "Coins", anyOf: ["revenue.record", "payments.record", "dashboard.manager", "dashboard.owner", "dashboard.admin"] },
-      { href: "/staff/finance/receivables", label: msg("Who owes us"), icon: "HandCoins", anyOf: ["finance.view"] },
-      { href: "/staff/finance/history", label: msg("Edit history"), icon: "History", anyOf: ["finance.view"] },
-      // The cash reception and the Restaurant Counter hand to Finance (Finance receives; managers watch).
-      ...(CASH_HANDOVER_ON ? [{ href: "/staff/accountant/handovers", label: msg("Cash handovers"), icon: "HandCoins", anyOf: ["cash.handover.view", "cash.handover.review"] as PermissionCode[] }] : []),
-      { href: "/staff/finance/ledger", label: msg("General ledger"), icon: "ArrowLeftRight", anyOf: ["ledger.view", "finance.view"] },
+      // Money out of nTZS... is "Withdraw"; nTZS itself is the hotel's one online payment: status, on/off per service, every attempt, reconciliation.
+      // After the four above, every page goes from the shortest name to the longest (a staircase, owner 2026-10-13) — one simple word each (owner, 2026-11-06).
+      { href: "/staff/finance/online", label: msg("nTZS"), icon: "Smartphone", anyOf: ["finance.view"] },
+      { href: "/staff/finance/receivables", label: msg("Debts"), icon: "HandCoins", anyOf: ["finance.view"] },
+      { href: "/staff/finance/ledger", label: msg("Ledger"), icon: "ArrowLeftRight", anyOf: ["ledger.view", "finance.view"] },
+      { href: "/staff/finance/history", label: msg("History"), icon: "History", anyOf: ["finance.view"] },
       // Money out of nTZS, to a phone or a bank — only for those who may withdraw (the Boss and the administrator).
-      { href: "/staff/finance/withdraw", label: msg("Withdraw funds"), icon: "BanknoteArrowUp", anyOf: ["withdrawals.manage"] },
-      // nTZS — the hotel's one online payment: status, on/off per service, every attempt, reconciliation.
-      { href: "/staff/finance/online", label: msg("Online payments"), icon: "Smartphone", anyOf: ["finance.view"] },
+      { href: "/staff/finance/withdraw", label: msg("Withdraw"), icon: "BanknoteArrowUp", anyOf: ["withdrawals.manage"] },
+      { href: "/staff/corporate", label: msg("Companies"), icon: "Building2", anyOf: ["corporate.view"] },
       // Finance's Home is a portal of its own: it is the Finance person's Home pill, not an item in the Boss's, the MD's or the Manager's menu
       // (the Boss and the MD have their own dashboard; Finance's work reaches them through the pages above and their own dashboard).
-      { href: "/finance/dashboard", label: msg("Finance dashboard"), icon: "BarChart3", anyOf: ["dashboard.finance"], allOf: ["finance.view"], hideIf: ["dashboard.admin", "dashboard.owner", "dashboard.manager"] },
+      { href: "/finance/dashboard", label: msg("Dashboard"), icon: "BarChart3", anyOf: ["dashboard.finance"], allOf: ["finance.view"], hideIf: ["dashboard.admin", "dashboard.owner", "dashboard.manager"] },
+      // The cash reception and the Restaurant Counter hand to Finance (Finance receives; managers watch).
+      ...(CASH_HANDOVER_ON ? [{ href: "/staff/accountant/handovers", label: msg("Handovers"), icon: "HandCoins", anyOf: ["cash.handover.view", "cash.handover.review"] as PermissionCode[] }] : []),
+      // The money each person collected from customers — their own ("My collections"); managers pick anyone.
+      { href: "/staff/collections", label: msg("Collections"), icon: "Coins", anyOf: ["revenue.record", "payments.record", "dashboard.manager", "dashboard.owner", "dashboard.admin"] },
     ],
   },
   {
-    title: msg("Front office"), icon: "ConciergeBell",
+    title: msg("Reception"), icon: "ConciergeBell",
     items: [
       // Reception's own page; managers and the MD get its rooms and guests owing on their home instead.
-      { href: "/reception/dashboard", label: msg("Front desk"), icon: "LayoutDashboard", anyOf: ["dashboard.front_desk"], hideIf: ["dashboard.manager", "dashboard.owner", "dashboard.admin"] },
+      { href: "/reception/dashboard", label: msg("Desk"), icon: "LayoutDashboard", anyOf: ["dashboard.front_desk"], hideIf: ["dashboard.manager", "dashboard.owner", "dashboard.admin"] },
       // Reception's job: managers and the MD follow check-ins and check-outs on their home, they don't do them.
       { href: "/staff/check-in", label: msg("Check-in"), icon: "DoorOpen", anyOf: ["reservations.check_in"], hideIf: ["dashboard.manager", "dashboard.owner", "dashboard.admin"] },
       { href: "/staff/check-out", label: msg("Check-out"), icon: "DoorClosed", anyOf: ["reservations.check_out"], hideIf: ["dashboard.manager", "dashboard.owner", "dashboard.admin"] },
-      { href: "/staff/driver", label: msg("My trips"), icon: "Car", anyOf: ["transport.driver"], hideIf: ["reservations.view"] },
+      { href: "/staff/driver", label: msg("Trips"), icon: "Car", anyOf: ["transport.driver"], hideIf: ["reservations.view"] },
     ],
   },
   {
@@ -83,30 +84,30 @@ export const NAV: NavSection[] = [
       { href: "/staff/reservations", label: msg("Stays"), icon: "CalendarCheck", anyOf: ["reservations.view"] },
       { href: "/staff/booking-requests", label: msg("Online"), icon: "Inbox", anyOf: ["booking_requests.view"] },
       // The "Scan to book your stay" card: reception shows and prints it and follows its bookings; the Admin manages it.
-      { href: "/staff/hotel-qr", label: msg("Hotel QR"), icon: "QrCode", anyOf: ["reservations.view", "hotel_qr.manage"] },
+      { href: "/staff/hotel-qr", label: msg("QR"), icon: "QrCode", anyOf: ["reservations.view", "hotel_qr.manage"] },
       { href: "/staff/reservations/calendar", label: msg("Calendar"), icon: "CalendarRange", anyOf: ["reservations.view"] },
     ],
   },
   {
-    title: msg("Hotel services"), icon: "BedDouble",
+    title: msg("Services"), icon: "BedDouble", ordered: true,
+    // Listed order: shortest name first, then the guests' requests and the purchases together at the bottom (owner, 2026-10-13) — kept by hand now that the names are one word.
     items: [
-      { href: "/staff/rooms", label: msg("Rooms"), icon: "BedDouble", anyOf: ["rooms.view"] },
-      // The printable Housekeeping Checklist and In-House Guest & Breakfast List (also on reception's dashboard).
-      { href: "/staff/lists", label: msg("Daily lists"), icon: "ClipboardList", anyOf: ["dashboard.front_desk"] },
-      // The guests' requests (towels, cleaning, repairs) and, right beside it, what the front desk asks Finance to buy (owner, 2026-10-13) — both at the bottom, by name length.
-      { href: "/staff/requests", label: msg("Guest requests"), icon: "ClipboardCheck", anyOf: ["requests.view"] },
-      // Reception asks for what the front desk needs (tables, paper, supplies) and Finance reviews it. Those who work in the Stores find it there.
-      { href: "/staff/stock-requests", label: msg("Purchase requests"), icon: "ClipboardList", anyOf: ["inventory.request"], hideIf: ["inventory.view", "expenses.approve", "inventory.receive", "restaurant.device"] },
-
-      { href: "/staff/transport", label: msg("Transport"), icon: "BusFront", anyOf: ["transport.view", "transport.manage"] },
-      { href: "/staff/meeting-room", label: msg("Meetings"), icon: "Presentation", anyOf: ["meeting.view"] },
       // Gifts for checked-in guests (a wheel on the room's own card): the Admin sets it up; managers follow what was given.
-      { href: "/staff/spin-to-win", label: msg("Spin to Win"), icon: "Gift", anyOf: ["spin.manage", "reports.view"] },
+      { href: "/staff/spin-to-win", label: msg("Spin"), icon: "Gift", anyOf: ["spin.manage", "reports.view"] },
+      // The printable Housekeeping Checklist and In-House Guest & Breakfast List (also on reception's dashboard).
+      { href: "/staff/lists", label: msg("Lists"), icon: "ClipboardList", anyOf: ["dashboard.front_desk"] },
+      { href: "/staff/rooms", label: msg("Rooms"), icon: "BedDouble", anyOf: ["rooms.view"] },
+      { href: "/staff/meeting-room", label: msg("Meetings"), icon: "Presentation", anyOf: ["meeting.view"] },
+      { href: "/staff/transport", label: msg("Transport"), icon: "BusFront", anyOf: ["transport.view", "transport.manage"] },
+      // The guests' requests (towels, cleaning, repairs) and, right beside it, what the front desk asks Finance to buy (owner, 2026-10-13) — both at the bottom.
+      { href: "/staff/requests", label: msg("Requests"), icon: "ClipboardCheck", anyOf: ["requests.view"] },
+      // Reception asks for what the front desk needs (tables, paper, supplies) and Finance reviews it. Those who work in the Stores find it there.
+      { href: "/staff/stock-requests", label: msg("Purchases"), icon: "ClipboardList", anyOf: ["inventory.request"], hideIf: ["inventory.view", "expenses.approve", "inventory.receive", "restaurant.device"] },
     ],
   },
   {
     // Everything restaurant together: the orders (the portal), taking an order, the tables and the menu.
-    title: msg("Restaurant & Bar"), icon: "UtensilsCrossed", ordered: true,
+    title: msg("Restaurant"), icon: "UtensilsCrossed", ordered: true,
     // The owner's order: the live orders, a new order, the tables, (the menu), history, bookings —
     // short, simple names that step up from small to big: Live · Sell · Tables · History · Bookings.
     items: [
@@ -114,9 +115,9 @@ export const NAV: NavSection[] = [
       // managers and the MD (Waiters page), not on the waiter's phone (owner, 2026-10-04).
       { href: "/staff/restaurant/waiter/payments", label: msg("Collections"), icon: "HandCoins", anyOf: ["restaurant.shift"], hideIf: ["dashboard.manager", "dashboard.owner", "dashboard.admin", "restaurant.device"] },
       // The waiter's own shifts, each with the report made when it ended.
-      { href: "/staff/shifts/all", label: msg("My shifts"), icon: "Clock", anyOf: ["restaurant.shift"], hideIf: ["dashboard.manager", "dashboard.owner", "dashboard.admin", "restaurant.device", "shifts.manage"] },
+      { href: "/staff/shifts/all", label: msg("Shifts"), icon: "Clock", anyOf: ["restaurant.shift"], hideIf: ["dashboard.manager", "dashboard.owner", "dashboard.admin", "restaurant.device", "shifts.manage"] },
       // Their own shift, weekly and monthly reports.
-      { href: "/staff/reports/staff", label: msg("My reports"), icon: "FileText", anyOf: ["restaurant.shift"], hideIf: ["dashboard.manager", "dashboard.owner", "dashboard.admin", "restaurant.device", "shifts.manage", "reports.view"] },
+      { href: "/staff/reports/staff", label: msg("Reports"), icon: "FileText", anyOf: ["restaurant.shift"], hideIf: ["dashboard.manager", "dashboard.owner", "dashboard.admin", "restaurant.device", "shifts.manage", "reports.view"] },
       { href: "/staff/restaurant", label: msg("Live"), icon: "ReceiptText", anyOf: ["restaurant.orders", "restaurant.menu", "kitchen.orders", "restaurant.serve"] },
       // Waiters and reception take orders; managers and the MD watch the restaurant (Live, Tables, History).
       { href: "/staff/restaurant/pos", label: msg("Sell"), icon: "CirclePlus", anyOf: ["restaurant.orders", "kitchen.orders"], hideIf: ["dashboard.manager", "dashboard.owner", "dashboard.admin"] },
@@ -129,7 +130,7 @@ export const NAV: NavSection[] = [
       { href: "/staff/restaurant/waiters", label: msg("Waiters"), icon: "Users", anyOf: ["dashboard.manager", "dashboard.owner", "dashboard.admin"] },
       { href: "/staff/restaurant/reservations", label: msg("Reservations"), icon: "CalendarClock", anyOf: ["restaurant.orders", "restaurant.serve"] },
       // The Restaurant Counter asks for restocking and supplies here; the kitchen finds it in the Stores.
-      { href: "/staff/stock-requests", label: msg("Purchase requests"), icon: "ClipboardList", anyOf: ["inventory.request"], hideIf: ["inventory.view", "expenses.approve", "inventory.receive", "dashboard.front_desk"] },
+      { href: "/staff/stock-requests", label: msg("Purchases"), icon: "ClipboardList", anyOf: ["inventory.request"], hideIf: ["inventory.view", "expenses.approve", "inventory.receive", "dashboard.front_desk"] },
       // Waiters see customers here (their one section); reception and managers find them in Settings.
       { href: "/staff/guests", label: msg("Customers"), icon: "Contact", anyOf: ["guests.view"], hideIf: ["reservations.view"] },
     ],
@@ -140,10 +141,10 @@ export const NAV: NavSection[] = [
     items: [
       { href: "/staff/assets", label: msg("Assets"), icon: "Sofa", anyOf: ["assets.view"] },
       { href: "/staff/inventory", label: msg("Inventory"), icon: "Boxes", anyOf: ["inventory.view"] },
+      // Ask → review → buy → final approval: the kitchen, waiters and reception ask; managers review, buy and approve.
+      { href: "/staff/stock-requests", label: msg("Purchases"), icon: "ClipboardList", anyOf: ["inventory.view", "expenses.approve", "inventory.receive"] },
       // Approved purchases: quotations → price authorized by Finance → order → delivery → invoice → payment.
       { href: "/staff/procurement", label: msg("Procurement"), icon: "ClipboardCheck", anyOf: ["dashboard.procurement", "procurement.manage", "purchases.authorize", "purchases.pay"] },
-      // Ask → review → buy → final approval: the kitchen, waiters and reception ask; managers review, buy and approve.
-      { href: "/staff/stock-requests", label: msg("Purchase requests"), icon: "ClipboardList", anyOf: ["inventory.view", "expenses.approve", "inventory.receive"] },
     ],
   },
   {
@@ -151,15 +152,15 @@ export const NAV: NavSection[] = [
     items: [
       { href: "/staff/shifts", label: msg("Shifts"), icon: "Clock", anyOf: ["shifts.view"] },
       // The person's own shift (the one running now, or the last) — one tap from anywhere.
-      { href: "/staff/shifts/me", label: msg("My shift"), icon: "History", anyOf: ["shifts.work"], hideIf: ["shifts.manage", "dashboard.manager", "dashboard.owner", "dashboard.admin"] },
+      { href: "/staff/shifts/me", label: msg("Current"), icon: "History", anyOf: ["shifts.work"], hideIf: ["shifts.manage", "dashboard.manager", "dashboard.owner", "dashboard.admin"] },
       // Their own shift, weekly and monthly reports.
-      { href: "/staff/reports/staff", label: msg("My reports"), icon: "FileText", anyOf: ["shifts.work"], hideIf: ["shifts.manage", "reports.view", "dashboard.manager", "dashboard.owner", "dashboard.admin"] },
+      { href: "/staff/reports/staff", label: msg("Reports"), icon: "FileText", anyOf: ["shifts.work"], hideIf: ["shifts.manage", "reports.view", "dashboard.manager", "dashboard.owner", "dashboard.admin"] },
       // Everyone's shifts (waiters and reception) with the report made when each ended — managers, the MD and the owner.
-      { href: "/staff/shifts/all", label: msg("Staff shifts"), icon: "History", anyOf: ["shifts.manage", "reports.view"] },
+      { href: "/staff/shifts/all", label: msg("Team"), icon: "History", anyOf: ["shifts.manage", "reports.view"] },
       { href: "/staff/activity", label: msg("Activity"), icon: "Activity", anyOf: ["staff.activity.view"] },
       // The full record of who did what — Developer actions included — read-only: the Boss, the MD and the Developer.
-      { href: "/staff/audit", label: msg("Audit trail"), icon: "History", anyOf: ["audit.view"] },
-      { href: "/staff/users", label: msg("Staff & roles"), icon: "UserCog", anyOf: ["users.manage"] },
+      { href: "/staff/audit", label: msg("Audit"), icon: "History", anyOf: ["audit.view"] },
+      { href: "/staff/users", label: msg("Staff"), icon: "UserCog", anyOf: ["users.manage"] },
     ],
   },
   {
@@ -168,20 +169,20 @@ export const NAV: NavSection[] = [
       { href: "/admin/dashboard", label: msg("Overview"), icon: "BarChart3", anyOf: ["dashboard.admin"] },
       { href: "/manager/dashboard", label: msg("Overview"), icon: "BarChart3", anyOf: ["dashboard.manager", "dashboard.owner"], hideIf: ["dashboard.admin"] },
       { href: "/staff/reports", label: msg("Reports"), icon: "FileChartColumn", anyOf: ["reports.view"] },
-      { href: "/staff/reports/daily", label: msg("Daily reports"), icon: "NotebookText", anyOf: ["reports.view"] },
+      { href: "/staff/reports/daily", label: msg("Daily"), icon: "NotebookText", anyOf: ["reports.view"] },
       // Every shift's report, and the weekly / monthly report the boss gets (the business and the team).
-      { href: "/staff/reports/staff", label: msg("Weekly & monthly"), icon: "CalendarRange", anyOf: ["reports.view", "shifts.manage"] },
+      { href: "/staff/reports/staff", label: msg("Weekly"), icon: "CalendarRange", anyOf: ["reports.view", "shifts.manage"] },
     ],
   },
   {
     title: msg("Settings"), icon: "Settings",
     items: [
-      { href: "/staff/settings/control", label: msg("Control centre"), icon: "ShieldCheck", anyOf: ["settings.manage", "users.manage", "inventory.manage"] },
+      { href: "/staff/settings/control", label: msg("Control"), icon: "ShieldCheck", anyOf: ["settings.manage", "users.manage", "inventory.manage"] },
       { href: "/staff/website", label: msg("Website"), icon: "Globe", anyOf: ["website.manage"] },
       { href: "/staff/messages", label: msg("Messages"), icon: "MessageSquareText", anyOf: ["contact.view"] },
       { href: "/staff/settings", label: msg("Hotel"), icon: "Hotel", anyOf: ["settings.manage"] },
-      { href: "/staff/settings/pricing", label: msg("Room pricing"), icon: "Tags", anyOf: ["pricing.manage"] },
-      { href: "/staff/settings/expenses", label: msg("Expense types"), icon: "Layers", anyOf: ["settings.manage"] },
+      { href: "/staff/settings/pricing", label: msg("Pricing"), icon: "Tags", anyOf: ["pricing.manage"] },
+      { href: "/staff/settings/expenses", label: msg("Categories"), icon: "Layers", anyOf: ["settings.manage"] },
       // Which languages guests are offered, and how much of the hotel's text is in Chinese.
       { href: "/staff/settings/languages", label: msg("Languages"), icon: "Languages", anyOf: ["settings.manage"] },
       { href: "/staff/guests", label: msg("Customers"), icon: "Contact", anyOf: ["reservations.view"] },
@@ -191,7 +192,7 @@ export const NAV: NavSection[] = [
     // Each person's own department guide book (the Boss, the MD and the Manager: all of them) — to download, read and print (owner, 2026-10-19).
     title: msg("Help"), icon: "BookOpenText",
     items: [
-      { href: "/staff/guides", label: msg("Guide books"), icon: "BookOpenText", anyOf: GUIDE_ANY_RIGHTS.filter((p) => p !== "developer.access") }, // the Developer has it in his own console menu
+      { href: "/staff/guides", label: msg("Guides"), icon: "BookOpenText", anyOf: GUIDE_ANY_RIGHTS.filter((p) => p !== "developer.access") }, // the Developer has it in his own console menu
     ],
   },
 ];
@@ -203,13 +204,13 @@ export const NAV: NavSection[] = [
  */
 export const DEVELOPER_CONSOLE: NavSection = {
   // No heading: the menu is these five (owner, 2026-10-18: like the console on ORA — Home, Audit, Access, Business — and the Guide books).
-  title: msg("Developer console"), icon: "Layers", ordered: true,
+  title: msg("Console"), icon: "Layers", ordered: true,
   items: [
     { href: "/staff/developer", label: msg("Home"), icon: "LayoutGrid", anyOf: ["developer.access"] },
     { href: "/staff/developer/audit", label: msg("Audit"), icon: "History", anyOf: ["developer.access"] },
     { href: "/staff/developer/access", label: msg("Access"), icon: "UserCog", anyOf: ["developer.access"] },
     { href: "/staff/developer/business", label: msg("Business"), icon: "BarChart3", anyOf: ["developer.access"] },
-    { href: "/staff/guides", label: msg("Guide books"), icon: "BookOpenText", anyOf: ["developer.access"] },
+    { href: "/staff/guides", label: msg("Guides"), icon: "BookOpenText", anyOf: ["developer.access"] },
   ],
 };
 

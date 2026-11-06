@@ -10,14 +10,14 @@ describe("the Finance menu", () => {
     const rest = labels.slice(4);
     expect(rest).toEqual([...rest].sort((a, b) => a.length - b.length || a.localeCompare(b)));
     // Finance's Home is the Home pill — not listed again; and the old "Finance desk" is gone
-    expect(labels).not.toContain("Finance dashboard");
+    expect(labels).not.toContain("Dashboard");
     expect(labels).not.toContain("Finance desk");
   });
 
   it("the Boss, the MD and the Manager do not get Finance's Home in their menu — they have their own dashboard", () => {
     for (const role of ["OWNER", "ADMIN", "MANAGER"] as const) {
       const labels = visibleNav(new Set<string>(DEFAULT_ROLES[role].permissions)).flatMap((s) => s.items.map((i) => i.label));
-      expect(labels, role).not.toContain("Finance dashboard");
+      expect(labels, role).not.toContain("Dashboard");
       expect(labels, role).not.toContain("Finance desk");
     }
   });
@@ -30,17 +30,16 @@ describe("the Stores menu", () => {
       expect(labels, role).toEqual([...labels].sort((a, b) => a.length - b.length || a.localeCompare(b)));
     }
     const all = visibleNav(new Set<string>(DEFAULT_ROLES.OWNER.permissions)).find((s) => s.title === "Stores")!.items.map((i) => i.label);
-    expect(all).toEqual(["Assets", "Inventory", "Procurement", "Purchase requests"]);
+    expect(all).toEqual(["Assets", "Inventory", "Purchases", "Procurement"]);
   });
 });
 
 describe("Reception's menu", () => {
-  it("the guests' requests and the purchase requests sit together at the bottom of Hotel services", () => {
-    const section = visibleNav(new Set<string>(DEFAULT_ROLES.RECEPTIONIST.permissions)).find((x) => x.title === "Hotel services")!;
+  it("the guests' requests and the purchases sit together at the bottom of Services", () => {
+    const section = visibleNav(new Set<string>(DEFAULT_ROLES.RECEPTIONIST.permissions)).find((x) => x.title === "Services")!;
     const labels = section.items.map((i) => i.label);
-    expect(labels.slice(-2)).toEqual(["Guest requests", "Purchase requests"]);
-    expect(visibleNav(new Set<string>(DEFAULT_ROLES.RECEPTIONIST.permissions)).find((x) => x.title === "Front office")!.items.map((i) => i.label)).not.toContain("Purchase requests");
-    expect(labels).not.toContain("Requests");
+    expect(labels.slice(-2)).toEqual(["Requests", "Purchases"]);
+    expect(visibleNav(new Set<string>(DEFAULT_ROLES.RECEPTIONIST.permissions)).find((x) => x.title === "Reception")!.items.map((i) => i.label)).not.toContain("Purchases");
   });
 });
 
@@ -53,20 +52,20 @@ describe("the Audit trail (Boss, MD) and the Developer's console", () => {
   const flat = (sections: ReturnType<typeof navFor>) => sections.flatMap((s) => s.items.map((i) => i.label));
   const developerAsItself = { actorType: "DEVELOPER" as const, workAs: null, permissions: permsOf("DEVELOPER") };
 
-  it("a Developer signed in as itself sees ONLY the Developer console: Home, Audit, Access, Business, Guide books — in that order, with no heading", () => {
+  it("a Developer signed in as itself sees ONLY the Developer console: Home, Audit, Access, Business, Guides — in that order, with no heading", () => {
     const sections = navFor(developerAsItself, { home: "/staff/developer" });
     expect(sections).toHaveLength(1);
-    expect(sections[0].title).toBe("Developer console");
+    expect(sections[0].title).toBe("Console");
     expect(sections[0].titled).toBeFalsy();
     expect(sections[0].items.map((i) => [i.label, i.href])).toEqual([
       ["Home", "/staff/developer"],
       ["Audit", "/staff/developer/audit"],
       ["Access", "/staff/developer/access"],
       ["Business", "/staff/developer/business"],
-      ["Guide books", "/staff/guides"],
+      ["Guides", "/staff/guides"],
     ]);
-    // nothing of the hotel's own menu: no Finance, Front office, Bookings, People…, no "Audit trail" of the Boss
-    expect(flat(sections)).not.toContain("Audit trail");
+    // nothing of the hotel's own menu: no Finance, Reception, Bookings, People…, and not the Boss's audit trail page (the console's own Audit is another page)
+    expect(sections[0].items.map((i) => i.href)).not.toContain("/staff/audit");
     expect(flat(sections)).not.toContain("Overview");
   });
 
@@ -90,7 +89,7 @@ describe("the Audit trail (Boss, MD) and the Developer's console", () => {
     expect(labels).toContain("Check-in");
     expect(labels).toContain("Check-out");
     expect(labels).toContain("Stays");
-    expect(sections.map((s) => s.title)).not.toContain("Developer console");
+    expect(sections.map((s) => s.title)).not.toContain("Console");
     expect(labels).not.toContain("Audit");
     expect(labels).not.toContain("Access");
     // and the same as a real receptionist sees (the money rights Reception holds are not in the Developer's copy — nothing extra shows)
@@ -100,16 +99,16 @@ describe("the Audit trail (Boss, MD) and the Developer's console", () => {
   it("a Developer working as the Boss does not get the Boss's money pages — they come from the rights minus the money rights", () => {
     const asBoss = { actorType: "DEVELOPER" as const, workAs: { developerId: "d1", developerName: "Dev", startedAt: new Date() }, permissions: asPerson("OWNER") };
     const labels = flat(navFor(asBoss, { home: "/admin/dashboard" }));
-    expect(labels).not.toContain("Withdraw funds");
-    expect(labels).not.toContain("Developer console");
+    expect(labels).not.toContain("Withdraw");
+    expect(labels).not.toContain("Console");
   });
 
-  it("the Boss and the MD read the Audit trail (Developer actions are theirs to see) but never get the Developer console", () => {
+  it("the Boss and the MD read the Audit page (Developer actions are theirs to see) but never get the Developer console", () => {
     for (const role of ["OWNER", "ADMIN"] as const) {
       const labels = labelsOf(role);
-      expect(labels, role).toContain("Audit trail");
-      expect(labels, role).not.toContain("Developer console");
-      expect(flat(navFor({ actorType: "STAFF", workAs: null, permissions: permsOf(role) })), role).toContain("Audit trail");
+      expect(labels, role).toContain("Audit");
+      expect(labels, role).not.toContain("Console");
+      expect(flat(navFor({ actorType: "STAFF", workAs: null, permissions: permsOf(role) })), role).toContain("Audit");
       expect(flat(navFor({ actorType: "STAFF", workAs: null, permissions: permsOf(role) })), role).not.toContain("Access");
     }
   });
@@ -117,16 +116,16 @@ describe("the Audit trail (Boss, MD) and the Developer's console", () => {
   it("every other role — Manager, Finance, Accountant, Reception, the restaurant, the kitchen, the driver — sees neither", () => {
     for (const role of ["MANAGER", "FINANCE", "ACCOUNTANT", "RECEPTIONIST", "RESTAURANT", "RESTAURANT_SCREEN", "KITCHEN", "DRIVER"] as const) {
       const labels = labelsOf(role);
-      expect(labels, role).not.toContain("Audit trail");
-      expect(labels, role).not.toContain("Developer console");
+      expect(labels, role).not.toContain("Audit");
+      expect(labels, role).not.toContain("Console");
     }
   });
 
-  it("the normal menu holds the Audit trail (audit.view) and no longer the old 'Developer console' item — the console replaced it", () => {
-    expect(itemOf("Audit trail")).toEqual([expect.objectContaining({ href: "/staff/audit", anyOf: ["audit.view"] })]);
-    expect(itemOf("Audit trail")[0].allOf).toBeUndefined();
-    expect(itemOf("Developer console")).toEqual([]);
-    expect(visibleNav(permsOf("OWNER")).find((s) => s.title === "People")!.items.map((i) => i.label)).toContain("Audit trail");
+  it("the normal menu holds the Audit page (audit.view) and no longer the old 'Developer console' item — the console replaced it", () => {
+    expect(itemOf("Audit")).toEqual([expect.objectContaining({ href: "/staff/audit", anyOf: ["audit.view"] })]);
+    expect(itemOf("Audit")[0].allOf).toBeUndefined();
+    expect(itemOf("Console")).toEqual([]);
+    expect(visibleNav(permsOf("OWNER")).find((s) => s.title === "People")!.items.map((i) => i.label)).toContain("Audit");
   });
 
   it("staff menus are unchanged by the console: the normal menu of any non-Developer is exactly visibleNav", () => {
@@ -135,8 +134,8 @@ describe("the Audit trail (Boss, MD) and the Developer's console", () => {
     }
   });
 
-  it("a right alone decides in the normal menu: audit.view gives the Audit trail, the Developer-only right gives nothing there", () => {
-    expect(visibleNav(new Set(["audit.view"])).flatMap((s) => s.items.map((i) => i.label))).toEqual(["Audit trail"]);
+  it("a right alone decides in the normal menu: audit.view gives the Audit page, the Developer-only right gives nothing there", () => {
+    expect(visibleNav(new Set(["audit.view"])).flatMap((s) => s.items.map((i) => i.label))).toEqual(["Audit"]);
     expect(visibleNav(new Set(["developer.access"])).flatMap((s) => s.items.map((i) => i.label))).toEqual([]);
   });
 });
