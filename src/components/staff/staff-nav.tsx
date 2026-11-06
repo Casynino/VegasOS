@@ -34,7 +34,9 @@ function saveChoices(choices: Record<string, boolean>) {
  *  - the group that holds the page you are on is open (and opens by itself when you go to a page inside a closed one);
  *  - what you open or close is remembered on this device;
  *  - a closed group still shows the red count of what waits inside it (e.g. new online bookings), so nothing is hidden from you.
- * One group only (the restaurant, the Developer's console): no folding — its pages are simply listed.
+ * A group with just one page is a plain row (no folding, no chevron) — like Search or Customers in the Target console. One group
+ * only (the restaurant, the Developer's console): no folding — its pages are simply listed.
+ * Small and tight on purpose (owner, 2026-11-06: "small and nice, just like Target Express"): 13px rows, 11px small-caps group names.
  */
 export function StaffNav({ sections, home, onNavigate }: { sections: NavSection[]; home?: string; onNavigate?: () => void }) {
   const pathname = usePathname();
@@ -78,12 +80,12 @@ export function StaffNav({ sections, home, onNavigate }: { sections: NavSection[
     setRevealed((r) => (r === title ? null : r));
   };
 
-  const row = "flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm transition-colors";
+  const row = "flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] transition-colors";
   const rowOn = "bg-[oklch(0.96_0.035_85)] font-semibold text-slate-900 dark:bg-gold/15 dark:text-white";
   const rowOff = "text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-white";
 
   const pages = (section: NavSection, single: boolean) => (
-    <ul className={cn("space-y-0.5", !single && "ml-[1.15rem] border-l border-slate-200 pb-1 pl-2 pt-0.5 dark:border-white/10")}>
+    <ul className={cn("space-y-0.5", !single && "ml-[1.05rem] border-l border-slate-200 pb-0.5 pl-2 pt-0.5 dark:border-white/10")}>
       {section.items.map((item) => {
         const Icon = ICONS[item.icon] ?? LayoutDashboard;
         const active = isActive(item.href);
@@ -91,7 +93,7 @@ export function StaffNav({ sections, home, onNavigate }: { sections: NavSection[
           <li key={item.href} className="relative">
             {active && !single && <span className="absolute -left-[9px] top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-[oklch(0.72_0.12_80)]" aria-hidden />}
             <Link href={item.href} onClick={onNavigate} aria-current={active ? "page" : undefined} className={cn(row, active ? rowOn : rowOff)}>
-              <Icon className={cn("size-4 shrink-0", active ? "text-[oklch(0.6_0.12_78)]" : "text-slate-400")} />
+              <Icon className={cn("size-[15px] shrink-0", active ? "text-[oklch(0.6_0.12_78)]" : "text-slate-400")} />
               <span className="flex-1 truncate">{t.ctx("nav", item.label)}</span>
               {item.badge ? <span className="rounded-full bg-rose-500 px-1.5 text-[11px] font-semibold tabular-nums text-white" aria-label={t("{n} new", { n: item.badge })}>{item.badge}</span> : null}
             </Link>
@@ -102,11 +104,11 @@ export function StaffNav({ sections, home, onNavigate }: { sections: NavSection[
   );
 
   return (
-    <nav aria-label={t("Staff navigation")} className={folding ? "space-y-1" : "space-y-5"}>
+    <nav aria-label={t("Staff navigation")} className={folding ? "space-y-0.5" : "space-y-5"}>
       {home && (
         <Link href={home} onClick={onNavigate} aria-current={homeActive ? "page" : undefined}
-          className={cn(row, "font-medium", folding && "mb-2 py-2.5", homeActive ? rowOn : "text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-white/5 dark:hover:text-white")}>
-          <LayoutGrid className={cn("size-4 shrink-0", homeActive ? "text-[oklch(0.6_0.12_78)] dark:text-[oklch(0.8_0.11_82)]" : "text-slate-400")} />{t("Home")}
+          className={cn(row, "font-medium", folding && "mb-1.5 py-2", homeActive ? rowOn : "text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-white/5 dark:hover:text-white")}>
+          <LayoutGrid className={cn("size-[15px] shrink-0", homeActive ? "text-[oklch(0.6_0.12_78)] dark:text-[oklch(0.8_0.11_82)]" : "text-slate-400")} />{t("Home")}
         </Link>
       )}
       {sections.map((section, n) => {
@@ -126,6 +128,19 @@ export function StaffNav({ sections, home, onNavigate }: { sections: NavSection[
             </div>
           );
         }
+        if (section.items.length === 1) {
+          // A group with one page is that page, as a plain row.
+          const item = section.items[0];
+          const Icon = ICONS[item.icon] ?? SIcon;
+          const active = isActive(item.href);
+          return (
+            <Link key={section.title} href={item.href} onClick={onNavigate} aria-current={active ? "page" : undefined} className={cn(row, "font-medium", active ? rowOn : "text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-white/5 dark:hover:text-white")}>
+              <Icon className={cn("size-[15px] shrink-0", active ? "text-[oklch(0.6_0.12_78)] dark:text-[oklch(0.8_0.11_82)]" : "text-slate-400")} />
+              <span className="flex-1 truncate">{t.ctx("nav", item.label)}</span>
+              {item.badge ? <span className="rounded-full bg-rose-500 px-1.5 text-[11px] font-semibold tabular-nums text-white" aria-label={t("{n} new", { n: item.badge })}>{item.badge}</span> : null}
+            </Link>
+          );
+        }
         const open = isOpen(section.title);
         const waiting = section.items.reduce((sum, i) => sum + (i.badge ?? 0), 0);
         const here = section.title === activeTitle;
@@ -134,13 +149,13 @@ export function StaffNav({ sections, home, onNavigate }: { sections: NavSection[
         return (
           <div key={section.title}>
             <button type="button" id={head} aria-expanded={open} aria-controls={panel} onClick={() => toggle(section.title)}
-              className={cn("flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2.5 text-left text-[11.5px] font-semibold uppercase tracking-[0.16em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[oklch(0.72_0.12_80)]/60",
+              className={cn("flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.14em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[oklch(0.72_0.12_80)]/60",
                 here ? "text-slate-800 dark:text-white" : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white", "hover:bg-slate-100 dark:hover:bg-white/5")}>
-              <SIcon className={cn("size-4 shrink-0", here ? "text-[oklch(0.6_0.12_78)] dark:text-[oklch(0.8_0.11_82)]" : "text-slate-400")} />
+              <SIcon className={cn("size-[15px] shrink-0", here ? "text-[oklch(0.6_0.12_78)] dark:text-[oklch(0.8_0.11_82)]" : "text-slate-400")} />
               <span className="flex-1 truncate">{t.ctx("nav", section.title)}</span>
               {!open && waiting > 0 && <span className="rounded-full bg-rose-500 px-1.5 text-[11px] font-semibold normal-case tracking-normal tabular-nums text-white" aria-label={t("{n} new", { n: waiting })}>{waiting}</span>}
               {!open && here && waiting === 0 && <span className="size-1.5 rounded-full bg-[oklch(0.72_0.12_80)]" aria-hidden />}
-              <ChevronRight className={cn("size-4 shrink-0 text-slate-400", animate && "transition-transform duration-200 motion-reduce:transition-none", open && "rotate-90")} aria-hidden />
+              <ChevronRight className={cn("size-3.5 shrink-0 text-slate-400", animate && "transition-transform duration-200 motion-reduce:transition-none", open && "rotate-90")} aria-hidden />
             </button>
             {/* Closed: height 0 and inert (no focus, no reading by a screen reader); the grid-rows slide needs no measuring. */}
             <div id={panel} role="group" aria-labelledby={head} inert={!open}
