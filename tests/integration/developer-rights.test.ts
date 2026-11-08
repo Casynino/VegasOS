@@ -100,7 +100,7 @@ async function form(edits: Record<string, string | null> = {}): Promise<FormData
   const ticked: Record<string, boolean> = {
     purchaseApproverMustDiffer: s.purchaseApproverMustDiffer, taxIncludedInRates: s.taxIncludedInRates, reportEnabled: s.reportEnabled, shiftReportEnabled: s.shiftReportEnabled,
     publicBookingEnabled: s.publicBookingEnabled, breakfastIncluded: !!breakfast && breakfast.isActive && breakfast.isPublic, noShowAutoRelease: s.noShowAutoRelease,
-    dateChangePayNow: s.dateChangePayNow, notifyBookingCreated: !!notify.bookingCreated, notifyCheckIn: !!notify.checkIn, notifyCheckOut: !!notify.checkOut, notifyOrders: !!notify.orders,
+    dateChangePayNow: s.dateChangePayNow, notifyBookingCreated: notify.bookingCreated !== false, notifyCheckIn: notify.checkIn !== false, notifyCheckOut: notify.checkOut !== false, notifyOrders: notify.orders !== false,
     publicOrderingEnabled: s.publicOrderingEnabled, ...Object.fromEntries(s.breakfastDays.length ? [0, 1, 2, 3, 4, 5, 6].map((d) => [`breakfastDay${d}`, s.breakfastDays.includes(d)]) : []),
   };
   for (const [k, on] of Object.entries(ticked)) f[k] = on ? "on" : null;

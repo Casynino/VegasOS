@@ -12,6 +12,8 @@ export async function resetBusinessData() {
   // Uploaded files, except website / menu photos (a cascade would take the menu with it).
   await db.$executeRawUnsafe(`DELETE FROM "stored_files" s WHERE NOT EXISTS (SELECT 1 FROM "media_assets" m WHERE m."fileId" = s."id")`);
   await db.room.updateMany({ data: { status: "AVAILABLE", statusNote: null } });
+  // Guest messages are on unless the hotel switched one off; a test that saved the settings form may have left them off in this shared test database.
+  await db.hotelSettings.updateMany({ data: { guestNotifications: {} } });
   // The hotel's standard "Website price" (20,000 off a night for the guest's own bookings) is part of its set-up, from the migration that created it. Another
   // test may have switched it off or deleted it in this shared test database — every test that books through the website starts with it in place.
   await db.promotion.upsert({
