@@ -75,7 +75,7 @@ type Preview = CheckOutPreview;
 function Box({ icon, title, action, children, className }: { icon: React.ReactNode; title: string; action?: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
     <section className={cn("rounded-3xl border border-border/70 bg-card p-4 sm:p-5", className)}>
-      <div className="mb-3 flex items-center justify-between gap-2">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground [&_svg]:size-3.5">{icon}{title}</h3>
         {action}
       </div>
@@ -393,12 +393,14 @@ export function StayWorkspace({ s, methods, perms, recent, menu = null, menuPayN
             <FileText className="size-4" />{t("Room bill")}
           </Link>
         </div>
-        <dl className="grid grid-cols-2 border-t border-border/70 text-sm sm:grid-cols-4">
+        <div className="@container">
+        <dl className="grid grid-cols-2 border-t border-border/70 text-sm @xl:grid-cols-4">
           <div className="px-4 py-3 sm:px-6"><dt className="text-xs text-muted-foreground">{t("Checked in")}</dt><dd className="font-semibold">{s.rooms[0]?.checkedInAt ? dt(t, s.rooms[0].checkedInAt) : "—"}</dd></div>
           <div className="px-4 py-3 sm:px-6"><dt className="text-xs text-muted-foreground">{t("Checkout")}</dt><dd className={cn("font-semibold", s.state === "OVERDUE" && "text-rose-600 dark:text-rose-400")}>{dt(t, s.checkoutAt)}</dd></div>
           <div className="px-4 py-3 sm:px-6"><dt className="text-xs text-muted-foreground">{t("Nights")}</dt><dd className="font-semibold">{s.rooms.reduce((a, r) => Math.max(a, r.nights), 0)}</dd></div>
           <div className="px-4 py-3 sm:px-6"><dt className="text-xs text-muted-foreground">{overstayCharged ? t("To pay now") : t("Balance")}</dt><dd className={cn("text-base font-bold tabular-nums", bal > 0 ? "text-rose-600 dark:text-rose-400" : bal < 0 ? "text-amber-700 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400")}>{bal > 0 ? formatTZS(bal) : bal < 0 ? t("Credit {amount}", { amount: formatTZS(-bal) }) : t("Paid")}</dd></div>
         </dl>
+        </div>
         {s.state === "OVERDUE" && (
           <p className="flex items-start gap-2 border-t border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-700 sm:px-6 dark:text-rose-300">
             <AlertTriangle className="mt-0.5 size-4 shrink-0" />{t("Checkout time passed at {time}.", { time: time(t, s.checkoutAt) })}{(preview?.overstayNights ?? 0) > 0 ? ` ${t.plural(preview!.overstayNights, "The {n} extra night is on the bill already.", "The {n} extra nights are on the bill already.")}` : ""} {t("Check the guest out below — or add nights if they are staying on.")}
@@ -406,7 +408,7 @@ export function StayWorkspace({ s, methods, perms, recent, menu = null, menuPayN
         )}
       </header>
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         {/* Account */}
         <Box icon={<Receipt />} title={t("Account")}
           action={perms.pay && <div className="flex gap-1.5">
@@ -569,7 +571,7 @@ export function StayWorkspace({ s, methods, perms, recent, menu = null, menuPayN
             ) : preview.company && billed !== 0 && <CompanyBillBox company={preview.company} mode={mode} onMode={setInvoiceMode} />}
 
             {owes && perms.pay && (
-              <div className="grid gap-2 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                 <div className="space-y-1"><Label htmlFor="pay-method" className="text-xs">{t("Payment method")}</Label>
                   <AccountSelect id="pay-method" accounts={methods} value={pay.accountId} onChange={(v) => setPay({ ...pay, accountId: v })} /></div>
                 <div className="space-y-1"><Label htmlFor="pay-amount" className="text-xs">{t("Amount received (TZS)")}</Label>

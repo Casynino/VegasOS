@@ -92,7 +92,7 @@ export function ReportActions({ fileName, csv, share, target = "report", downloa
   const printBtn = <button key="print" type="button" onClick={() => window.print()} className={cn(btn, !download && main)}><Printer className="size-3.5" />{t("Print")}</button>;
   const pdfBtn = <button key="pdf" type="button" onClick={pdf} disabled={busy} className={cn(btn, download && main)}>{busy ? <Loader2 className="size-3.5 animate-spin" /> : <FileDown className="size-3.5" />}{download ? t("Download PDF") : "PDF"}</button>;
   return (
-    <div className="flex w-full items-center gap-2 sm:w-auto print:hidden">
+    <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:flex-nowrap print:hidden">
       {download ? [pdfBtn, printBtn] : [printBtn, pdfBtn]}
       {csv && <a href={csv} className={btn}><FileSpreadsheet className="size-3.5" />{t("Excel")}<span className="hidden sm:inline"> (CSV)</span></a>}
       {share && <button type="button" onClick={shareIt} className={btn}><Share2 className="size-3.5" />{t("Share")}</button>}

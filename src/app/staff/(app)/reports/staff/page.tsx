@@ -138,12 +138,12 @@ export default async function StaffReportsPage() {
         </p>
       </section>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {so(t("This week"), "WEEK", week, weekShifts)}
         {so(t("This month"), "MONTH", month, monthShifts)}
       </div>
 
-      <div className="grid items-start gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
         {list(t("Weekly reports"), <CalendarDays className="size-4 text-muted-foreground" />, weekly, manager ? t("The first weekly report is made next Monday morning.") : t("Your first weekly report is made next Monday."),
           manager && !has("WEEK", lastWeek.from) ? <MakePeriodReportButton kind="WEEK" label={t("Make last week's report")} className="h-8 text-xs" /> : undefined)}
         {list(t("Monthly reports"), <CalendarRange className="size-4 text-muted-foreground" />, monthly, manager ? t("The first monthly report is made on the 1st.") : t("Your first monthly report is made on the 1st."),
@@ -156,7 +156,7 @@ export default async function StaffReportsPage() {
           {(["RECEPTION", "RESTAURANT"] as const).filter((k) => byPerson.some((p) => p.department === k)).map((k) => (
           <div key={k} className="mt-3 first:mt-0">
           <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{k === "RECEPTION" ? t("Reception") : t("Restaurant & bar")}</p>
-          <ul className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+          <ul className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
             {byPerson.filter((p) => p.department === k).map((p) => (
               <li key={p.id} className="rounded-2xl border border-border/70 p-3.5">
                 <div className="flex items-center gap-3">
@@ -184,7 +184,7 @@ export default async function StaffReportsPage() {
           <Link href="/staff/shifts/all" className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-muted">{manager ? t("All shifts") : t("All my shifts")}</Link>
         </div>
         {shifts.length === 0 ? <p className="rounded-2xl border border-dashed border-border/80 px-4 py-8 text-center text-sm text-muted-foreground">{t("Shift reports show here once a shift has ended.")}</p> : (
-          <ul className="grid gap-1 md:grid-cols-2">
+          <ul className="grid grid-cols-1 gap-1 md:grid-cols-2">
             {shifts.map((x) => {
               const d = x.report?.data as unknown as ShiftReportData | undefined;
               const clock = (x: Date) => t.time(x, s.timezone);

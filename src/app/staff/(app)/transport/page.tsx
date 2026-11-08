@@ -147,7 +147,7 @@ export default async function TransportPage({ searchParams }: PageProps<"/staff/
                       <li key={trip.id} className="flex items-center">
                         <div className="min-w-0 flex-1">
                         <TripRowButton trip={v} {...ctx}>
-                          <span className="grid gap-x-4 gap-y-1.5 px-4 py-3 transition-colors hover:bg-muted/40 md:grid-cols-[5.5rem_minmax(0,1.6fr)_minmax(0,1.6fr)_minmax(0,1fr)_9.5rem] md:items-center">
+                          <span className="grid gap-x-4 gap-y-1.5 px-4 py-3 transition-colors hover:bg-muted/40 md:grid-cols-[5.5rem_minmax(0,1.6fr)_minmax(0,1.6fr)_minmax(6rem,1fr)_9.5rem] md:items-center">
                             <span className="flex items-baseline gap-2 md:block">
                               <span className="block text-lg font-semibold leading-none tabular-nums">{t.time(trip.pickupAt)}</span>
                               <span className="font-mono text-[11px] text-muted-foreground">{trip.reference}</span>

@@ -9,6 +9,7 @@ import { newStockRequestCount } from "@/server/services/stock-requests";
 import { staffHome } from "@/lib/staff-home";
 import { navFor } from "@/components/staff/nav-config";
 import { PhoneMenuButton, PhoneMenuProvider } from "@/components/staff/phone-menu";
+import { MobileBack } from "@/components/staff/mobile-back";
 import { StaffFrame } from "@/components/staff/staff-frame";
 import { AtWidth } from "@/components/staff/at-width";
 import type { SidebarProps } from "@/components/staff/glass-sidebar";
@@ -96,7 +97,8 @@ export async function StaffShell({ children }: { children: ReactNode }) {
   const [catalog, t] = await Promise.all([clientCatalog(locale, ["staff"]), getT()]);
 
   // The side menu (a computer's floating panel and the phone's drawer): the same panel, the same words.
-  const sidebarFolded = (await cookies()).get(SIDEBAR_COOKIE)?.value === "rail";
+  // Folded to the icon rail by default (owner, 2026-11-08): the menu opens only when the person opens it, and then stays as they left it.
+  const sidebarFolded = (await cookies()).get(SIDEBAR_COOKIE)?.value !== "open";
   const sidebar: SidebarProps = {
     sections, home: consoleMode ? undefined : home, find: !consoleMode && can(user, "reservations.view"), hotelName: settings.hotelName,
     user: { name: user.fullName, role: user.roleName, developer, workAs: !!workAs },
@@ -127,8 +129,11 @@ export async function StaffShell({ children }: { children: ReactNode }) {
           <div className="flex h-14 items-center gap-3 rounded-[1.5rem] border border-border/70 bg-card/85 px-3 shadow-[0_10px_30px_-20px_rgba(15,23,42,0.35)] backdrop-blur-xl sm:px-4">
             <PhoneMenuButton label={t("Open menu")} />
             <div className="min-w-0 max-md:flex-1 shrink">
-              <p className="truncate text-sm font-semibold text-foreground"><span className="sm:hidden">{new Date(`${today}T12:00:00Z`).toLocaleDateString(t.intl, { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" })}</span><span className="hidden sm:inline">{t.date(today, true)}</span></p>
-              <p className="hidden text-xs text-muted-foreground sm:block">{t("Hotel day 04:00 → 04:00")}</p>
+              {/* A department's home shows the date; every other page shows "‹ Back" (a phone has no back button of its own in an app or a link). */}
+              <MobileBack home={home} roots={[home, "/staff", "/staff/developer"]} label={t("Back")}>
+                <p className="truncate text-sm font-semibold text-foreground"><span className="sm:hidden">{new Date(`${today}T12:00:00Z`).toLocaleDateString(t.intl, { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" })}</span><span className="hidden sm:inline">{t.date(today, true)}</span></p>
+                <p className="hidden text-xs text-muted-foreground sm:block">{t("Hotel day 04:00 → 04:00")}</p>
+              </MobileBack>
             </div>
             <div className="flex min-w-0 flex-1 justify-center max-md:hidden">
               {!consoleMode && can(user, "reservations.view") && <ReceptionSearch className="w-full max-w-md" />}

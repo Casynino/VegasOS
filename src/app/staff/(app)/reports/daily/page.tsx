@@ -31,7 +31,7 @@ export default async function DailyReportsPage() {
       {/* How it works, and today's */}
       <section className="flex flex-wrap items-center gap-3 rounded-3xl border border-border/70 bg-card px-4 py-3.5 sm:px-5">
         <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-[oklch(0.72_0.12_80/0.16)] text-[oklch(0.62_0.11_78)] dark:text-[oklch(0.8_0.11_82)]"><Clock9 className="size-5" /></span>
-        <div className="min-w-0 flex-1 text-sm">
+        <div className="min-w-[12rem] flex-1 text-sm sm:min-w-0">
           <p className="font-semibold">{t("Made automatically at 07:00, every day")}</p>
           <p className="text-xs text-muted-foreground">{t("Nobody needs to make it: the system builds the day's report (hotel day 04:00 → 04:00), keeps it here and sends the summary to the Boss.")}</p>
         </div>

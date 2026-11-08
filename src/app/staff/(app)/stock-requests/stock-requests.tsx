@@ -186,8 +186,8 @@ export function RequestRows({ list, me, onOpen }: { list: StockReqView[]; me: Vi
         const amount = money ? r.purchase?.expense?.amount ?? r.purchase?.total ?? null : null;
         return (
           <li key={r.id}>
-            <button type="button" onClick={() => onOpen(r.id)} className={cn("flex w-full items-center gap-3 rounded-2xl px-2.5 py-3 text-left transition hover:bg-muted/50", !live && "opacity-80")}>
-              <DeptBadge code={r.department} />
+            <button type="button" onClick={() => onOpen(r.id)} className={cn("grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 rounded-2xl px-2.5 py-3 text-left transition hover:bg-muted/50 sm:flex sm:gap-3", !live && "opacity-80")}>
+              <DeptBadge code={r.department} className="row-span-2" />
               <span className="min-w-0 flex-1 leading-tight">
                 <span className="flex flex-wrap items-center gap-x-2 text-sm font-semibold">
                   <span className="font-mono">{r.number}</span>
@@ -201,8 +201,8 @@ export function RequestRows({ list, me, onOpen }: { list: StockReqView[]; me: Vi
                 {person(r.by)}<span className="block">{when(r.at, t)}</span>{r.byDoneBy ? <DoneByDeveloper text={r.byDoneBy} className="ml-0 mt-0.5" /> : null}
               </span>
               {amount != null && amount > 0 && <span className="hidden shrink-0 text-sm font-semibold tabular-nums sm:block">{formatTZS(amount)}</span>}
-              <StatusChip status={r.status} simple={!me.reviewer && !me.buyer} />
-              <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+              <StatusChip status={r.status} simple={!me.reviewer && !me.buyer} className="col-start-2 row-start-2 justify-self-start whitespace-normal rounded-xl sm:whitespace-nowrap sm:rounded-full" />
+              <ChevronRight className="col-start-3 row-span-2 row-start-1 size-4 shrink-0 text-muted-foreground" />
             </button>
           </li>
         );

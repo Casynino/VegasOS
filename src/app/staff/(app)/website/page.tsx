@@ -42,7 +42,7 @@ export default async function WebsitePage() {
         description={t("Change the public website's text, photos and services — in English and Chinese — without a developer. Changes go live immediately and are audited.")}
         actions={<Link href="/" target="_blank" className={buttonVariants({ variant: "outline" })}><ExternalLink /> {t("View website")}</Link>} />
       <Tabs defaultValue="content">
-        <TabsList className="mb-4">
+        <TabsList className="mb-4 max-w-full justify-start overflow-x-auto overflow-y-hidden [scrollbar-width:none]">
           <TabsTrigger value="content">{t("Text & photos")}</TabsTrigger>
           <TabsTrigger value="media">{t("Media library ({n})", { n: media.filter((m) => m.isActive).length })}</TabsTrigger>
           <TabsTrigger value="services">{t("Services ({n})", { n: services.filter((s) => s.isActive).length })}</TabsTrigger>

@@ -259,7 +259,7 @@ export function TablesBoard({ places, hotel, phone, canManage, canSetUp = canMan
               ...(blockedCount ? [{ label: t("Blocked"), value: String(blockedCount), tone: "text-amber-300" }] : []),
               ...(money ? [{ label: can.pay ? t("To collect") : t("Unpaid"), value: toCollect ? `${num(Math.round(toCollect / 1000))}k` : "0", tone: toCollect ? "text-rose-300" : "text-muted-foreground/70" }] : []),
             ].map((x) => (
-              <div key={x.label} className="px-3.5 py-2 text-center sm:px-4">
+              <div key={x.label} className="px-2 py-2 text-center sm:px-4">
                 <dd className={cn("text-[22px] font-semibold leading-none tabular-nums", x.tone)}>{x.value}</dd>
                 <dt className="mt-1 whitespace-nowrap text-[11px] text-muted-foreground">{x.label}</dt>
               </div>
@@ -284,7 +284,7 @@ export function TablesBoard({ places, hotel, phone, canManage, canSetUp = canMan
       </header>
 
       {/* The floor: one panel per area */}
-      <section className={cn("grid items-stretch gap-4", areas.length > 1 && "xl:grid-cols-2")}>
+      <section className={cn("grid grid-cols-1 items-stretch gap-4", areas.length > 1 && "xl:grid-cols-2")}>
         {areas.map((area) => {
           const here = spots.filter((c) => (c.area ?? "") === area);
           const tbls = here.filter((c) => c.kind === "TABLE");
@@ -360,7 +360,7 @@ function TableArt({ n, state, lit }: { n: number | null; state: TState; lit: num
   const chairs: [number, number, number, number][] = [[44, 4, 20, 10], [76, 4, 20, 10], [44, 86, 20, 10], [76, 86, 20, 10], [8, 40, 10, 20], [122, 40, 10, 20]];
   const on = state !== "free";
   return (
-    <div className="relative mx-auto aspect-[140/100] h-full max-h-[118px] min-h-[76px]">
+    <div className="relative mx-auto aspect-[140/100] h-full max-h-[118px] min-h-[76px] min-w-0 max-w-full">
       <svg viewBox="0 0 140 100" className="absolute inset-0 size-full" aria-hidden>
         {chairs.map(([x, y, w, h], k) => (
           <rect key={k} x={x} y={y} width={w} height={h} rx="5" className={cn("transition-colors", on && (state === "reserved" || k < lit) ? st.chair : STATE.free.chair)} />

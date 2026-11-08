@@ -179,7 +179,7 @@ async function Overview({ today, deptId, items, pending, perms, setup, wasteHref
           </div>
         ))}
       </section>
-      <div className="grid items-start gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
         <AlertsPanel items={items} expiring={exp} pendingWaste={pending} wasteHref={wasteHref} perms={perms} setup={setup} />
         <div className="space-y-4">
           <section className="rounded-3xl border border-border/70 bg-card px-4 py-3">

@@ -106,7 +106,7 @@ export default async function CheckOutPage({ searchParams }: PageProps<"/staff/c
     <div className="w-full space-y-5">
       <PageHeader eyebrow={t("Front desk")} title={t("Check out")} description={t("Pick the room. See the account, extend the stay, receive payment and check the guest out — all in one place.")} />
 
-      <div className="grid items-start gap-5 lg:grid-cols-[20rem_minmax(0,1fr)] 2xl:grid-cols-[23rem_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[20rem_minmax(0,1fr)] 2xl:grid-cols-[23rem_minmax(0,1fr)]">
         <aside className="overflow-hidden rounded-3xl border border-border/70 bg-card lg:sticky lg:top-24">
           <form role="search" className="border-b border-border/70 p-3">
             <label className="relative block">
@@ -128,7 +128,7 @@ export default async function CheckOutPage({ searchParams }: PageProps<"/staff/c
                       <li key={r.id}>
                         <Link href={href(r.id)} scroll={false} aria-current={active ? "true" : undefined}
                           className={cn("flex items-center gap-3 rounded-2xl px-3 py-2.5 transition-colors", active ? "bg-[oklch(0.95_0.045_85)] dark:bg-[oklch(0.72_0.12_80/0.16)]" : "hover:bg-muted")}>
-                          <span className={cn("grid size-10 shrink-0 place-items-center rounded-xl text-sm font-bold tabular-nums",
+                          <span className={cn("grid h-10 min-w-10 shrink-0 place-items-center rounded-xl px-1 text-sm font-bold tabular-nums",
                             r.state === "OVERDUE" ? "bg-rose-500/15 text-rose-700 dark:text-rose-300" : r.state === "DUE_TODAY" ? "bg-amber-500/15 text-amber-800 dark:text-amber-300" : "bg-muted text-foreground")}>
                             {r.rooms.map((x) => x.room.number).join("·")}
                           </span>

@@ -95,7 +95,7 @@ export async function QrBookings({ rows, list, q, newSince, keep, take, today, m
           title={q ? t("No QR booking matches \"{q}\"", { q }) : list === "all" ? t("No bookings from the QR yet") : t("Nothing here right now")}
           description={q ? t("Search by reference, name or phone number.") : t("When a guest books from the QR it appears here at once.")} />
       ) : (
-        <ul className="grid gap-2.5 lg:grid-cols-2">
+        <ul className="grid grid-cols-1 gap-2.5 lg:grid-cols-2">
           {rows.map((r) => {
             const chip = payChip(r);
             const status = RESERVATION_STATUS_META[r.status];
