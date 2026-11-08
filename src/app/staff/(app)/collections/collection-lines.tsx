@@ -130,8 +130,8 @@ export async function PaymentRow({ r, meId, confirm, waiters = true, collector =
           </span>
           {/* What and where */}
           <span className="min-w-0">
-            <span className="flex min-w-0 items-center gap-2 text-sm">
-              {/* Hotel or restaurant money — at a glance */}
+            <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-sm sm:flex-nowrap">
+              {/* Hotel or restaurant money — at a glance (on a phone the place may drop to its own line instead of squeezing) */}
               <span className={cn("shrink-0 rounded-md px-1.5 py-px text-[10px] font-bold uppercase tracking-wider", SOURCE_TONE[r.source])}>{r.source === "ROOMS" ? t("Hotel") : r.source === "RESTAURANT" ? t("Restaurant") : t("Sale")}</span>
               {r.href
                 ? <Link href={r.href} className={cn("font-semibold underline-offset-2 hover:underline", r.orderNo ? "shrink-0" : "min-w-0 truncate")}>{r.orderNo ? t("Order {number}", { number: r.orderNo }) : said(t, r.what)}</Link>
