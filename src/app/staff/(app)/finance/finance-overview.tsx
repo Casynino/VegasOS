@@ -1,6 +1,6 @@
 import Link from "next/link";
 import {
-  AlertTriangle, BedDouble, Building2, CheckCircle2, ChevronRight, CupSoda, Landmark, Percent, Presentation, Receipt, Tag, UtensilsCrossed, Users, Wallet,
+  AlertTriangle, BedDouble, Building2, CheckCircle2, CupSoda, Landmark, Percent, Presentation, Receipt, Tag, UtensilsCrossed, Users, Wallet,
 } from "lucide-react";
 import { db } from "@/server/db";
 import { change, dailyMoney, guestMovement, occupancy, onTheBooks, outstanding, previousRange, profitLoss, restaurantSummary, stayPatterns, topCustomers } from "@/server/services/reporting";
@@ -12,7 +12,7 @@ import { formatTZS } from "@/lib/format";
 import { getT } from "@/i18n/server";
 import type { T } from "@/i18n/translate";
 import { cn } from "@/lib/utils";
-import { Delta, Panel, PanelLink } from "@/components/dashboard/kit";
+import { AttentionCards, Delta, Panel, PanelLink, SectionLabel } from "@/components/dashboard/kit";
 import { Donut } from "@/components/dashboard/light-charts";
 import { FinanceTabs, PeriodPicker, periodLabel } from "@/components/staff/finance/finance-nav";
 import { MoneyChart, type MoneyPoint } from "@/components/staff/finance/money-chart";
@@ -429,22 +429,16 @@ export async function BusinessDetail({ p, today, full = false, chrome, restauran
       </div>
 
       {/* ── 7 · To follow up ── */}
-      {full && <Panel title={t("Needs attention")} subtitle={t("Things to follow up")}>
-        {alerts.length === 0 ? <p className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400"><CheckCircle2 className="size-4" />{t("All clear — nothing overdue, nothing waiting.")}</p> : (
-          <ul className="grid gap-2 md:grid-cols-2">
-            {alerts.map((a) => (
-              <li key={a.text}>
-                <Link href={a.href} className="group flex items-center gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/[0.06] px-3.5 py-2.5 text-sm transition-colors hover:bg-amber-500/10">
-                  <AlertTriangle className="size-4 shrink-0 text-amber-500" />
-                  <span className="min-w-0 flex-1 leading-snug">{a.text}</span>
-                  {a.amount !== null && <span className="shrink-0 font-semibold tabular-nums">{formatTZS(a.amount)}</span>}
-                  <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Panel>}
+      {/* the same small "needs attention" list as every home (owner, 2026-11-08) */}
+      {full && (
+        <section>
+          <SectionLabel title={t("Needs attention")} count={alerts.length} t={t} />
+          <AttentionCards
+            t={t} emptyTitle={t("All clear — nothing overdue, nothing waiting.")} emptyDetail=""
+            items={alerts.map((a) => ({ tone: "amber" as const, icon: <AlertTriangle />, title: a.text, meta: a.amount !== null ? formatTZS(a.amount) : undefined, href: a.href }))}
+          />
+        </section>
+      )}
 
       {full && <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><Percent className="size-3.5" />{t("Income is what the hotel earned; money received is what actually came in. A payment only settles what a guest owes — it is never counted as income twice. Figures come straight from bookings, orders, payments and expenses recorded by staff.")}</p>}
     </div>

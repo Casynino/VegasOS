@@ -54,19 +54,19 @@ export function AttentionPanel({ t, items, checks }: { t: T; items: HealthItem[]
   return (
     <section aria-labelledby="attention-title" className="space-y-2.5">
       <div className="flex items-center justify-between gap-4">
-        <h2 id="attention-title" className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">{t("Needs your attention")}</h2>
+        <h2 id="attention-title" className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">{t("Needs your attention")}</h2>
         <Verdict t={t} fix={fixN} look={lookN} />
       </div>
       <div className="overflow-hidden rounded-xl border border-border/70 bg-card">
         {need.length === 0 ? (
-          <div className="flex items-center gap-3 px-4 py-3">
-            <CircleCheck className="size-5 shrink-0 text-emerald-500" aria-hidden />
-            <p className="min-w-0 text-sm leading-snug"><strong className="font-semibold text-foreground">{t("Nothing needs your attention.")}</strong> <span className="text-muted-foreground">{t("Nothing is broken, and every required setting is in place.")}</span></p>
+          <div className="flex items-center gap-2.5 px-3.5 py-3">
+            <CircleCheck className="size-4 shrink-0 text-emerald-500" aria-hidden />
+            <p className="min-w-0 text-[13px] leading-snug"><strong className="font-semibold text-foreground">{t("Nothing needs your attention.")}</strong> <span className="text-muted-foreground">{t("Nothing is broken, and every required setting is in place.")}</span></p>
           </div>
         ) : (
           <AttentionList
             rows={rows}
-            labels={{ all: t("Needs your attention"), whatItMeans: t("What it means"), whatToDo: t("What to do"), whoFixes: t("Who fixes it"), whereToLook: t("Where to look"), scrollMore: t("scroll for {n} more", { n: "{n}" }) }}
+            labels={{ all: t("Needs your attention"), whatItMeans: t("What it means"), whatToDo: t("What to do"), whoFixes: t("Who fixes it"), whereToLook: t("Where to look") }}
           />
         )}
 

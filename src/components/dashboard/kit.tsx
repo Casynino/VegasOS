@@ -1,7 +1,7 @@
 import Image from "next/image";
 import { GuideBookTrigger } from "@/components/staff/guide-book-dialog";
 import Link from "next/link";
-import { TrendingDown, TrendingUp } from "lucide-react";
+import { CircleCheck, TrendingDown, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { englishT, type T } from "@/i18n/translate";
 import { AttentionList, type AttentionRow } from "./attention-list";
@@ -286,9 +286,9 @@ export type AttentionItem = AttentionRow;
 export function AttentionCards({ items, emptyTitle, emptyDetail, t = englishT }: { items: AttentionItem[]; emptyTitle?: string; emptyDetail?: string; t?: T }) {
   if (items.length === 0) {
     return (
-      <div className="flex items-center gap-3 rounded-2xl border border-emerald-100 bg-linear-to-br from-emerald-50 to-card p-4 dark:border-emerald-500/20 dark:from-emerald-500/10">
-        <span className="grid size-10 place-items-center rounded-xl bg-emerald-500 text-white shadow-[0_8px_18px_-8px_var(--color-emerald-500)]">✓</span>
-        <span><span className="block text-sm font-semibold text-foreground">{emptyTitle ?? t("All good — nothing needs you")}</span><span className="text-xs text-muted-foreground">{emptyDetail ?? t("No unpaid departures, no waiting requests, nothing blocked.")}</span></span>
+      <div className="flex items-center gap-2.5 rounded-xl border border-border/70 bg-card px-3.5 py-3">
+        <CircleCheck className="size-4 shrink-0 text-emerald-500" aria-hidden />
+        <span className="min-w-0 text-[13px] leading-snug"><span className="font-semibold text-foreground">{emptyTitle ?? t("All good — nothing needs you")}</span> <span className="text-[11px] text-muted-foreground">{emptyDetail ?? t("No unpaid departures, no waiting requests, nothing blocked.")}</span></span>
       </div>
     );
   }

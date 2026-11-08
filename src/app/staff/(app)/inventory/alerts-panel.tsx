@@ -11,6 +11,7 @@ import { ItemSheet, type Perms } from "./item-sheet";
 import type { Setup } from "./item-form";
 import { useRun } from "./ui";
 import { useT } from "@/i18n/client";
+import { ShowRows } from "@/components/dashboard/show-rows";
 
 type Expiring = { id: string; item: { id: string; name: string; unit: string; quantity: number; department: { name: string } }; received: number; expiresOn: string; expired: boolean };
 
@@ -30,39 +31,42 @@ export function AlertsPanel({ items, expiring, pendingWaste, wasteHref, perms, s
   const current = open ? items.find((i) => i.id === open) : null;
 
   return (
-    <section className="overflow-hidden rounded-3xl border border-border/70 bg-card">
-      <p className="flex items-center gap-2 border-b border-border/70 px-4 py-3 text-sm font-semibold">
-        <AlertTriangle className={cn("size-4", total ? "text-amber-500" : "text-emerald-500")} />{t("Needs attention")}<span className="font-normal text-muted-foreground">· {total || t("all good")}</span>
+    <section className="overflow-hidden rounded-xl border border-border/70 bg-card">
+      <p className="flex items-center gap-2 border-b border-border/70 px-3.5 py-2 text-[13px] font-semibold">
+        <AlertTriangle className={cn("size-3.5", total ? "text-amber-500" : "text-emerald-500")} />{t("Needs attention")}<span className="font-normal text-muted-foreground">· {total || t("all good")}</span>
       </p>
-      {total === 0 && <p className="px-4 py-8 text-center text-sm text-muted-foreground">{t("Every item is between its minimum and maximum.")}</p>}
+      {total === 0 && <p className="px-3.5 py-5 text-center text-[13px] text-muted-foreground">{t("Every item is between its minimum and maximum.")}</p>}
+      {/* the same small list as every "needs attention": three rows in view, the rest a scroll away */}
+      <ShowRows show={3} total={total} compact>
       <ul className="divide-y divide-border/50">
         {pendingWaste > 0 && (
-          <li><Link href={wasteHref} className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/40">
-            <span className="grid size-8 place-items-center rounded-xl bg-amber-500/15 text-amber-600"><Trash2 className="size-4" /></span>
-            <span className="min-w-0 flex-1 text-sm font-medium">{t("Waste waiting for approval")}<span className="block text-[11px] font-normal text-muted-foreground">{t.plural(pendingWaste, "{n} report — the stock drops when approved", "{n} reports — the stock drops when approved")}</span></span>
-            <ChevronRight className="size-4 text-muted-foreground" />
+          <li data-row><Link href={wasteHref} className="flex items-center gap-2.5 px-3.5 py-2.5 hover:bg-muted/40">
+            <span className="grid size-7 place-items-center rounded-lg bg-amber-500/15 text-amber-600"><Trash2 className="size-3.5" /></span>
+            <span className="min-w-0 flex-1 text-[13px] font-semibold leading-tight">{t("Waste waiting for approval")}<span className="block text-[11px] font-normal text-muted-foreground">{t.plural(pendingWaste, "{n} report — the stock drops when approved", "{n} reports — the stock drops when approved")}</span></span>
+            <ChevronRight className="size-3.5 text-muted-foreground" />
           </Link></li>
         )}
         {groups.flatMap((g) => g.rows.map((i) => (
-          <li key={i.id}><button type="button" onClick={() => setOpen(i.id)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-muted/40">
-            <span className={cn("size-2.5 shrink-0 rounded-full", LEVEL_META[g.level].dot)} />
-            <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{i.name}</span><span className="block truncate text-[11px] text-muted-foreground">{t(LEVEL_META[g.level].label)} · {g.why(i)} · {t(i.department.name)}</span></span>
-            <span className={cn("shrink-0 text-sm font-semibold tabular-nums", g.level === "OUT" ? "text-rose-600 dark:text-rose-400" : g.level === "LOW" ? "text-amber-600 dark:text-amber-400" : "")}>{formatQty(i.quantity, i.unit, t)}</span>
+          <li key={i.id} data-row><button type="button" onClick={() => setOpen(i.id)} className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left hover:bg-muted/40">
+            <span className={cn("size-2 shrink-0 rounded-full", LEVEL_META[g.level].dot)} />
+            <span className="min-w-0 flex-1 leading-tight"><span className="block truncate text-[13px] font-semibold">{i.name}</span><span className="block truncate text-[11px] text-muted-foreground">{t(LEVEL_META[g.level].label)} · {g.why(i)} · {t(i.department.name)}</span></span>
+            <span className={cn("shrink-0 text-[13px] font-semibold tabular-nums", g.level === "OUT" ? "text-rose-600 dark:text-rose-400" : g.level === "LOW" ? "text-amber-600 dark:text-amber-400" : "")}>{formatQty(i.quantity, i.unit, t)}</span>
           </button></li>
         )))}
         {expiring.map((e) => (
-          <li key={e.id} className="flex items-center gap-3 px-4 py-2.5">
-            <span className={cn("grid size-8 shrink-0 place-items-center rounded-xl", e.expired ? "bg-rose-500/12 text-rose-600" : "bg-amber-500/15 text-amber-600")}><CalendarClock className="size-4" /></span>
-            <button type="button" onClick={() => setOpen(e.item.id)} className="min-w-0 flex-1 text-left">
-              <span className="block truncate text-sm font-medium">{e.item.name}</span>
+          <li key={e.id} data-row className="flex items-center gap-2.5 px-3.5 py-2.5">
+            <span className={cn("grid size-7 shrink-0 place-items-center rounded-lg", e.expired ? "bg-rose-500/12 text-rose-600" : "bg-amber-500/15 text-amber-600")}><CalendarClock className="size-3.5" /></span>
+            <button type="button" onClick={() => setOpen(e.item.id)} className="min-w-0 flex-1 text-left leading-tight">
+              <span className="block truncate text-[13px] font-semibold">{e.item.name}</span>
               <span className="block truncate text-[11px] text-muted-foreground">{e.expired ? t("Expired {date}", { date: t.shortDate(e.expiresOn) }) : t("Expires {date}", { date: t.shortDate(e.expiresOn) })} · {t("delivery of {qty}", { qty: formatQty(e.received, e.item.unit, t) })} · {t(e.item.department.name)}</span>
             </button>
             {(perms.use || perms.approve) && (
-              <button type="button" disabled={pending} onClick={() => run(() => clearExpiryAction({ id: e.id }))} title={t("Used up or thrown away")} className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg border border-border px-2 text-[11px] font-semibold hover:bg-muted"><Check className="size-3.5" />{t("Dealt with")}</button>
+              <button type="button" disabled={pending} onClick={() => run(() => clearExpiryAction({ id: e.id }))} title={t("Used up or thrown away")} className="inline-flex h-7 shrink-0 items-center gap-1 rounded-lg border border-border px-2 text-[11px] font-semibold hover:bg-muted"><Check className="size-3" />{t("Dealt with")}</button>
             )}
           </li>
         ))}
       </ul>
+      </ShowRows>
       {current && <ItemSheet item={current} perms={perms} setup={setup} onClose={() => setOpen(null)} initial={current.level === "OVER" ? "history" : perms.receive ? "receive" : "history"} />}
     </section>
   );

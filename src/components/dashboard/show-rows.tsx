@@ -18,7 +18,7 @@ const HIDE_AFTER: Record<number, string> = {
   4: "[&_[data-row]:nth-child(n+5)]:hidden", 5: "[&_[data-row]:nth-child(n+6)]:hidden",
 };
 
-export function ShowRows({ show = 3, total, children, className }: { show?: number; total: number; children: ReactNode; className?: string }) {
+export function ShowRows({ show = 3, total, children, className, compact = false }: { show?: number; total: number; children: ReactNode; className?: string; /** the slimmest bar underneath (11 px text) — "Needs your attention" */ compact?: boolean }) {
   const t = useT();
   const box = useRef<HTMLDivElement>(null);
   const [max, setMax] = useState<number | null>(null);
@@ -70,8 +70,9 @@ export function ShowRows({ show = 3, total, children, className }: { show?: numb
         <div aria-hidden style={{ bottom: foot }} className={cn("pointer-events-none absolute inset-x-0 h-4 bg-gradient-to-t from-black/25 to-transparent transition-opacity dark:from-black/50", !below && "opacity-0")} />
       </div>
       <button type="button" onClick={step}
-        className="flex w-full items-center justify-center gap-1.5 border-t border-border/60 bg-muted/30 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
-        {below ? <><ChevronDown className="size-3.5" />{t("Scroll for {n} more", { n: below })}</> : <><ChevronUp className="size-3.5" />{t("Back to the top")}</>}
+        className={cn("flex w-full items-center justify-center border-t border-border/60 bg-muted/30 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+          compact ? "gap-1 py-1.5 text-[11px]" : "gap-1.5 py-2 text-xs font-medium")}>
+        {below ? <><ChevronDown className={compact ? "size-3" : "size-3.5"} />{t("Scroll for {n} more", { n: below })}</> : <><ChevronUp className={compact ? "size-3" : "size-3.5"} />{t("Back to the top")}</>}
       </button>
     </div>
   );

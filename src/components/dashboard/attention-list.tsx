@@ -20,9 +20,10 @@ const TONE: Record<AttentionTone, { bar: string; icon: string }> = {
 };
 
 /**
- * Things that need someone, as one card: area chips on top (All · Front desk ·
- * Money …), then one slim row per item — coloured bar, icon, what and why, and
- * a tap through to fix it. Three rows in view; the rest are a scroll away.
+ * Things that need someone — the SAME look as Super Drive's "Needs your attention" (owner, 2026-11-08: "very small, exactly like that one"):
+ * area chips ABOVE the card as flat 11 px pills (All · Front desk · Money …), then in the card one slim row per item — a 3 px coloured bar,
+ * a 16 px icon, a 13 px title and an 11 px line under it, and a small chevron. Three rows in view; the rest are a scroll away under a slim
+ * "Scroll for n more" bar. On a phone the title may take two lines and the time ("43 d waiting") sits in front of the detail line.
  */
 /** Rows with no area are grouped under this (its English is the key; shown in the reader's language). */
 const OTHER = msg("Other");
@@ -35,36 +36,44 @@ export function AttentionList({ items, show = 3 }: { items: AttentionRow[]; show
   const rows = on ? items.filter((i) => (i.group ?? OTHER) === on) : items;
   const chip = (label: string, count: number, active: boolean, value: string | null) => (
     <button key={label} type="button" onClick={() => setPick(value)} aria-pressed={active}
-      className={cn("inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
-        active ? "border-sky-500 bg-sky-500 text-white" : "border-border bg-card text-foreground/80 hover:bg-muted")}>
-      {t(label)}<span className={cn("tabular-nums", active ? "text-white/80" : "text-muted-foreground")}>{count}</span>
+      className={cn("shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors sm:shrink",
+        active ? "bg-sky-500 text-white" : "bg-muted text-muted-foreground hover:text-foreground")}>
+      {t(label)} <span className="tabular-nums opacity-60">{count}</span>
     </button>
   );
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-border/70 bg-card">
-      <div className="flex gap-1.5 overflow-x-auto border-b border-border/70 px-4 py-2.5 [scrollbar-width:none]">
+    <div>
+      {/* one line that slides sideways on a phone; wraps on a computer */}
+      <div className="mb-2 flex gap-1.5 overflow-x-auto [scrollbar-width:none] sm:flex-wrap sm:overflow-visible">
         {chip(msg("All"), items.length, !on, null)}
         {groups.map((g) => chip(g, items.filter((i) => (i.group ?? OTHER) === g).length, on === g, g))}
       </div>
-      <ShowRows key={on ?? "all"} show={show} total={rows.length}>
-        <ul className="divide-y divide-border/60">
-          {rows.map((a) => (
-            <li key={a.title} data-row>
-              <Link href={a.href} className="group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/40 sm:px-5">
-                <span aria-hidden className={cn("h-8 w-[3px] shrink-0 rounded-full", TONE[a.tone].bar)} />
-                <span className={cn("shrink-0 [&_svg]:size-[18px]", TONE[a.tone].icon)}>{a.icon}</span>
-                <span className="min-w-0 flex-1 leading-snug">
-                  <span className="block text-sm font-semibold text-foreground">{a.title}</span>
-                  {a.detail && <span className="block truncate text-xs text-muted-foreground">{a.detail}</span>}
-                </span>
-                {a.meta && <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">{a.meta}</span>}
-                <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </ShowRows>
+      <div className="overflow-hidden rounded-xl border border-border/70 bg-card">
+        <ShowRows key={on ?? "all"} show={show} total={rows.length} compact>
+          <ul className="divide-y divide-border/60">
+            {rows.map((a) => (
+              <li key={a.title} data-row>
+                <Link href={a.href} className="group flex items-center gap-2.5 px-3.5 py-2.5 transition-colors hover:bg-muted/40">
+                  <span aria-hidden className={cn("h-7 w-[3px] shrink-0 rounded-full", TONE[a.tone].bar)} />
+                  <span className={cn("shrink-0 [&_svg]:size-4", TONE[a.tone].icon)}>{a.icon}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="line-clamp-2 text-[13px] font-semibold leading-tight text-foreground sm:line-clamp-1">{a.title}</span>
+                    {(a.detail || a.meta) && (
+                      <span className="block truncate text-[11px] leading-tight text-muted-foreground">
+                        {a.meta && <span className="font-medium text-foreground/80 sm:hidden">{a.meta}{a.detail ? " · " : ""}</span>}
+                        {a.detail}
+                      </span>
+                    )}
+                  </span>
+                  {a.meta && <span className="hidden shrink-0 text-[11px] tabular-nums text-muted-foreground sm:block">{a.meta}</span>}
+                  <ChevronRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </ShowRows>
+      </div>
     </div>
   );
 }
