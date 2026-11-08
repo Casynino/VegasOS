@@ -1,7 +1,8 @@
 import { GuestI18n } from "@/components/i18n/guest-i18n";
-import { STAFF_VIEWPORT } from "@/lib/staff-viewport";
+import { STAFF_APP_METADATA, STAFF_VIEWPORT } from "@/lib/staff-viewport";
 
 export const viewport = STAFF_VIEWPORT;
+export const metadata = STAFF_APP_METADATA;
 
 /** Before signing in: the language of this device (the person's choice, else a Chinese phone → Chinese). */
 export default function SignInLayout({ children }: { children: React.ReactNode }) {

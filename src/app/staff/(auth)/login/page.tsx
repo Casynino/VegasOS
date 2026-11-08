@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import type { CSSProperties } from "react";
 import { ArrowLeft, Lock, ShieldCheck } from "lucide-react";
 import { getCurrentUser } from "@/server/auth";
 import { getSettings } from "@/server/settings";
@@ -11,6 +12,9 @@ import { DEFAULT_LOCALE } from "@/i18n/config";
 import { msg } from "@/i18n/msg";
 import { getT, guestLocale } from "@/i18n/server";
 import { LoginForm } from "./login-form";
+import { LoginGate } from "./login-gate";
+import { LoginScene } from "./login-scene";
+import "./login.css";
 
 export async function generateMetadata(): Promise<Metadata> {
   await guestLocale();
@@ -21,11 +25,13 @@ export async function generateMetadata(): Promise<Metadata> {
 /** The words the sign-in form shows — the browser gets only these here (the staff app's strings come after sign-in). */
 const FORM_WORDS = [msg("Email"), msg("you@vegashoteltz.com"), msg("Password"), msg("Hide password"), msg("Show password"), msg("Signing in…"), msg("Sign in")];
 
+const rd = (s: number) => ({ "--rd": `${s}s` }) as CSSProperties;
+
 /**
- * The staff door. Always dark, over a real photo of the hotel, because the
- * first screen staff see each shift should feel like the hotel — not like
- * the login of a product bought off a shelf. One form for every role; the
- * right dashboard opens after sign-in.
+ * The staff door. Always dark, over the hotel at night (login-scene.tsx, animated), because the first screen staff see each
+ * shift should feel like the hotel — not like the login of a product bought off a shelf. One form for every role; the right
+ * dashboard opens after sign-in. On a phone the page shows the welcome and one small Sign in button that opens the form as a
+ * pop-up (login-gate.tsx); on a tablet or computer the card stays on the page.
  */
 export default async function LoginPage() {
   await guestLocale();
@@ -38,14 +44,11 @@ export default async function LoginPage() {
 
   return (
     <div className="relative isolate flex min-h-svh flex-1 flex-col overflow-hidden bg-[#0b0906] text-white">
-      <Image
-        src="/images/room-red/room-red-04.webp" alt="" fill priority sizes="100vw"
-        className="-z-20 object-cover opacity-45"
-      />
-      <div aria-hidden="true" className="absolute inset-0 -z-10 bg-[linear-gradient(100deg,#0b0906_18%,rgba(11,9,6,0.82)_48%,rgba(11,9,6,0.55)_100%)]" />
-      <div aria-hidden="true" className="absolute -right-40 -top-40 -z-10 size-[40rem] rounded-full bg-gold/10 blur-3xl" />
+      {/* the browser's own bars (top and bottom of a phone) take the page's colour: dark, like the picture */}
+      <style>{"html,body{background:#0b0906}"}</style>
+      <LoginScene />
 
-      <header className="flex items-center justify-between gap-3 px-4 py-4 sm:px-10 sm:py-7">
+      <header className="vg-up flex items-center justify-between gap-3 px-4 py-4 sm:px-10 sm:py-7" style={rd(0.05)}>
         <Link href="/" className="flex items-center gap-3 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold">
           <Image src="/brand/logo-192.png" alt="" width={48} height={48} className="size-9 sm:size-11" />
           <span className="leading-none">
@@ -58,9 +61,9 @@ export default async function LoginPage() {
         </Link>
       </header>
 
-      <main className="flex flex-1 items-center px-4 py-4 sm:px-10 sm:py-8">
+      <main className="flex flex-1 items-center px-4 py-4 max-md:items-start max-md:pt-[8svh] sm:px-10 sm:py-8 lg:pb-[20svh]">
         <div className="mx-auto grid w-full max-w-6xl items-center gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(360px,420px)]">
-          <div className="hidden lg:block">
+          <div className="vg-up hidden lg:block" style={rd(0.15)}>
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gold">Mlimani City · Dar es Salaam</p>
             <h1 className="mt-6 font-display text-6xl leading-[1.02]">{t("Welcome back.")}</h1>
             <p className="mt-5 max-w-md text-[15px] leading-relaxed text-white/70">
@@ -72,25 +75,37 @@ export default async function LoginPage() {
             <p className="mt-6 text-sm text-white/50">{t("Reception · Management · Administration — one sign-in for the whole hotel.")}</p>
           </div>
 
-          <div className="relative w-full">
-            <div aria-hidden="true" className="absolute -inset-px rounded-[1.4rem] bg-gradient-to-b from-gold/35 via-white/5 to-transparent sm:rounded-[1.75rem]" />
-            <div className="relative rounded-[1.4rem] border border-white/10 bg-[#15120e]/80 p-5 shadow-[0_24px_80px_-20px_rgba(0,0,0,0.9)] backdrop-blur-xl sm:rounded-[1.75rem] sm:p-8">
-              <span className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.2em] text-white/55">
-                <Lock className="size-3" aria-hidden="true" /> {t("Staff access only")}
-              </span>
-              <h2 className="mt-2 font-display text-[28px] leading-tight sm:mt-4 sm:text-4xl">{t("Sign in")}</h2>
-              <p className="mt-1 text-[13px] text-white/55 sm:text-sm">{t("Your dashboard opens for your role.")}</p>
-              <div className="mt-5 sm:mt-7">
-                <I18nProvider locale={t.locale} catalog={formWords}>
-                  <LoginForm />
-                </I18nProvider>
+          <LoginGate
+            openLabel={t("Sign in")}
+            closeLabel={t("Close")}
+            intro={
+              <>
+                <p className="vg-up text-[10px] font-semibold uppercase tracking-[0.26em] text-gold" style={rd(0.2)}>Mlimani City · Dar es Salaam</p>
+                <h1 className="vg-up mt-3 font-display text-[46px] leading-[1.02]" style={rd(0.3)}>{t("Welcome back.")}</h1>
+                <p className="vg-up mt-3 max-w-[16rem] text-balance text-[13px] leading-relaxed text-white/60" style={rd(0.42)}>{t("Your dashboard opens for your role.")}</p>
+              </>
+            }
+          >
+            <div className="relative w-full">
+              <div aria-hidden="true" className="absolute -inset-px rounded-[1.4rem] bg-gradient-to-b from-gold/35 via-white/5 to-transparent sm:rounded-[1.75rem]" />
+              <div className="relative rounded-[1.4rem] border border-white/10 bg-[#15120e]/88 p-5 shadow-[0_24px_80px_-20px_rgba(0,0,0,0.9)] backdrop-blur-xl sm:rounded-[1.75rem] sm:p-8">
+                <span className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.2em] text-white/55">
+                  <Lock className="size-3" aria-hidden="true" /> {t("Staff access only")}
+                </span>
+                <h2 className="mt-2 font-display text-[28px] leading-tight sm:mt-4 sm:text-4xl">{t("Sign in")}</h2>
+                <p className="mt-1 text-[13px] text-white/55 sm:text-sm">{t("Your dashboard opens for your role.")}</p>
+                <div className="mt-5 sm:mt-7">
+                  <I18nProvider locale={t.locale} catalog={formWords}>
+                    <LoginForm />
+                  </I18nProvider>
+                </div>
+                <p className="mt-5 flex items-start gap-2 border-t border-white/10 pt-4 text-[12px] leading-relaxed text-white/45 sm:mt-6 sm:pt-5">
+                  <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-white/35" aria-hidden="true" />
+                  {t("Forgot your password? Ask the hotel administrator.")}
+                </p>
               </div>
-              <p className="mt-5 flex items-start gap-2 border-t border-white/10 pt-4 text-[12px] leading-relaxed text-white/45 sm:mt-6 sm:pt-5">
-                <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-white/35" aria-hidden="true" />
-                {t("Forgot your password? Ask the hotel administrator.")}
-              </p>
             </div>
-          </div>
+          </LoginGate>
         </div>
       </main>
 

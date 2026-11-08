@@ -1,0 +1,266 @@
+/* Staff sign-in: the hotel at night behind the form (drawn by login-scene.tsx). Decorative only. Gold, warm black, a little deep teal. */
+
+.vg-scene {
+  --vg-gold: 226, 186, 110;
+  --floor: 15cqh; /* the polished floor under the horizon */
+  --sky: 40cqh; /* the height of the skyline */
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  container-type: size;
+  pointer-events: none;
+  z-index: -1; /* behind the page's own content (the page makes its own stacking layer) */
+  background:
+    radial-gradient(760px 460px at 0% 0%, rgba(22, 70, 74, 0.3), transparent 62%),
+    radial-gradient(900px 540px at 80% -6%, rgba(var(--vg-gold), 0.15), transparent 62%),
+    radial-gradient(760px 480px at 6% 98%, rgba(150, 96, 40, 0.2), transparent 62%),
+    linear-gradient(180deg, #0a0805 0%, #110c07 52%, #1a1209 100%);
+}
+@media (min-width: 768px) {
+  /* a wide screen shows the whole drawing (1600 x 440), so the skyline's height follows the width */
+  .vg-scene { --sky: min(54cqh, 27.5cqw); }
+}
+
+/* slow lights drifting in the dark */
+.vg-glow {
+  position: absolute;
+  border-radius: 50%;
+  will-change: transform;
+}
+.vg-glow-a {
+  top: -22cqh;
+  right: -24cqw;
+  width: 90cqw;
+  height: 90cqw;
+  max-width: 1000px;
+  max-height: 1000px;
+  background: radial-gradient(closest-side, rgba(var(--vg-gold), 0.2), transparent);
+  animation: vg-drift-a 24s ease-in-out infinite alternate;
+}
+.vg-glow-b {
+  bottom: -18cqh;
+  left: -30cqw;
+  width: 100cqw;
+  height: 100cqw;
+  max-width: 1100px;
+  max-height: 1100px;
+  background: radial-gradient(closest-side, rgba(176, 108, 40, 0.18), transparent);
+  animation: vg-drift-b 30s ease-in-out infinite alternate;
+}
+@keyframes vg-drift-a {
+  to { transform: translate3d(-9cqw, 7cqh, 0) scale(1.15); }
+}
+@keyframes vg-drift-b {
+  to { transform: translate3d(11cqw, -6cqh, 0) scale(0.94); }
+}
+
+/* stars: three groups that twinkle at their own pace */
+.vg-stars { position: absolute; inset: 0 0 45% 0; }
+.vg-star {
+  position: absolute;
+  border-radius: 50%;
+  background: #fff3d6;
+  box-shadow: 0 0 6px 1px rgba(255, 236, 190, 0.55);
+}
+.vg-stars-0 { animation: vg-star 5s ease-in-out infinite; }
+.vg-stars-1 { animation: vg-star 7.5s ease-in-out -2s infinite; }
+.vg-stars-2 { animation: vg-star 10s ease-in-out -5s infinite; }
+@keyframes vg-star {
+  0%, 100% { opacity: 0.2; }
+  50% { opacity: 0.95; }
+}
+
+/* the glow behind the hotel */
+.vg-halo {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--floor) + var(--sky) * 0.3);
+  width: min(86cqw, 760px);
+  aspect-ratio: 1;
+  transform: translate(-50%, 50%);
+  background: radial-gradient(closest-side, rgba(var(--vg-gold), 0.22), rgba(var(--vg-gold), 0.05) 60%, transparent);
+}
+
+/* two searchlights, sweeping slowly across the sky from the horizon */
+.vg-beam {
+  --bw: clamp(150px, 20cqw, 300px);
+  position: absolute;
+  bottom: var(--floor);
+  width: var(--bw);
+  height: 82cqh;
+  margin-left: calc(var(--bw) / -2);
+  transform-origin: 50% 100%;
+  clip-path: polygon(46% 100%, 54% 100%, 100% 0, 0 0);
+  background: linear-gradient(0deg, rgba(var(--vg-gold), 0.5), rgba(var(--vg-gold), 0.12) 48%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 38%, #000 62%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 38%, #000 62%, transparent);
+  opacity: 0.42;
+  will-change: transform;
+}
+.vg-beam-l { left: 24%; animation: vg-sweep-l 15s ease-in-out infinite alternate; }
+.vg-beam-r { left: 76%; animation: vg-sweep-r 19s ease-in-out -7s infinite alternate; }
+@keyframes vg-sweep-l {
+  from { transform: rotate(-36deg); }
+  to { transform: rotate(-4deg); }
+}
+@keyframes vg-sweep-r {
+  from { transform: rotate(34deg); }
+  to { transform: rotate(5deg); }
+}
+
+/* the city */
+.vg-sky {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: var(--floor);
+  height: var(--sky);
+}
+.vg-sky svg,
+.vg-sky-r svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+/* windows: six groups that switch off and on at their own pace */
+.vg-w { animation: vg-tw 6s linear infinite; }
+.vg-w0 { animation-duration: 5.3s; animation-delay: -1s; }
+.vg-w1 { animation-duration: 7.1s; animation-delay: -4s; }
+.vg-w2 { animation-duration: 8.9s; animation-delay: -2s; }
+.vg-w3 { animation-duration: 6.2s; animation-delay: -5s; }
+.vg-w4 { animation-duration: 10.7s; animation-delay: -7s; }
+.vg-w5 { animation-duration: 12.3s; animation-delay: -3s; }
+@keyframes vg-tw {
+  0%, 38% { opacity: 1; }
+  44%, 66% { opacity: 0.07; }
+  72%, 100% { opacity: 1; }
+}
+.vg-beacon { animation: vg-blink 2.6s ease-in-out infinite; }
+@keyframes vg-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.12; }
+}
+
+/* the horizon: a thin line of gold light with a haze above it */
+.vg-horizon {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: var(--floor);
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(var(--vg-gold), 0.85) 28%, #f6d68a 50%, rgba(var(--vg-gold), 0.85) 72%, transparent);
+  box-shadow: 0 0 18px 2px rgba(var(--vg-gold), 0.35);
+}
+.vg-horizon::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 1px;
+  height: 90px;
+  background: linear-gradient(0deg, rgba(var(--vg-gold), 0.13), transparent);
+}
+
+/* the floor: the hotel mirrored, fading away, with thin lights sliding over it */
+.vg-floor {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--floor);
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(var(--vg-gold), 0.07), rgba(8, 6, 3, 0.7));
+  -webkit-mask-image: linear-gradient(180deg, #000, rgba(0, 0, 0, 0.2));
+  mask-image: linear-gradient(180deg, #000, rgba(0, 0, 0, 0.2));
+}
+.vg-sky-r {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: var(--sky);
+  opacity: 0.38;
+  transform: scaleY(-1);
+}
+.vg-ripple {
+  position: absolute;
+  left: 0;
+  top: var(--t);
+  width: var(--w);
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(var(--vg-gold), 0.6), transparent);
+  animation: vg-ripple var(--d) linear infinite;
+  animation-delay: var(--s);
+  will-change: transform;
+}
+@keyframes vg-ripple {
+  from { transform: translateX(-40cqw); }
+  to { transform: translateX(110cqw); }
+}
+
+/* gold dust rising from the city */
+.vg-dust {
+  position: absolute;
+  left: var(--l);
+  bottom: var(--floor);
+  width: var(--z);
+  height: var(--z);
+  border-radius: 50%;
+  background: #f6d68a;
+  box-shadow: 0 0 8px 1px rgba(var(--vg-gold), 0.8);
+  opacity: 0;
+  animation: vg-dust var(--d) linear infinite;
+  animation-delay: var(--s);
+  will-change: transform, opacity;
+}
+@keyframes vg-dust {
+  0% { transform: translate3d(0, 0, 0); opacity: 0; }
+  14% { opacity: 0.85; }
+  100% { transform: translate3d(var(--dx), -54cqh, 0); opacity: 0; }
+}
+
+/* the edges fall into the dark, so the words and the form read clearly */
+.vg-vignette {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(120% 90% at 50% 45%, transparent 55%, rgba(5, 4, 2, 0.62)),
+    linear-gradient(180deg, rgba(8, 6, 3, 0.5), transparent 26%);
+}
+
+/* things that come in when the page opens */
+.vg-up {
+  animation: vg-up 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: var(--rd, 0s);
+}
+@keyframes vg-up {
+  from { opacity: 0; transform: translate3d(0, 14px, 0); }
+  to { opacity: 1; transform: none; }
+}
+@media (min-width: 768px) {
+  .vg-panel {
+    animation: vg-up 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) 0.2s both;
+  }
+}
+/* the sign-in pop-up on a phone */
+@media (max-width: 767.98px) {
+  .vg-panel-open {
+    animation: vg-pop 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+}
+@keyframes vg-pop {
+  from { opacity: 0; transform: translate3d(0, 12px, 0) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vg-scene *,
+  .vg-up,
+  .vg-panel,
+  .vg-panel-open {
+    animation: none !important;
+  }
+  .vg-star { opacity: 0.6; }
+  .vg-dust { display: none; }
+}

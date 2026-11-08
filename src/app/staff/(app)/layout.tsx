@@ -6,9 +6,10 @@ import { sweepMobilePaymentsIfDue } from "@/server/services/mobile-payments";
 import { sweepWithdrawalsIfDue } from "@/server/services/withdrawals";
 import { trackDeveloperView } from "@/server/services/developer-view-log";
 import { DeveloperViewBeacon } from "./developer/view-beacon";
-import { STAFF_VIEWPORT } from "@/lib/staff-viewport";
+import { STAFF_APP_METADATA, STAFF_PAINT, STAFF_VIEWPORT } from "@/lib/staff-viewport";
 
 export const viewport = STAFF_VIEWPORT;
+export const metadata = STAFF_APP_METADATA;
 
 export default function StaffLayout({ children }: LayoutProps<"/staff">) {
   // A mobile-money payment nTZS confirmed but we have not recorded yet is found while staff work (after the page is sent).
@@ -17,6 +18,7 @@ export default function StaffLayout({ children }: LayoutProps<"/staff">) {
   after(() => sweepWithdrawalsIfDue().catch((e) => console.error("[ntzs] withdrawals sweep failed", e)));
   return (
     <>
+      <style>{STAFF_PAINT}</style>
       <StaffShell>{children}</StaffShell>
       <Suspense fallback={null}><DeveloperVisits /></Suspense>
     </>
