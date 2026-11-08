@@ -60,8 +60,8 @@ export function StaffBottomBar({ home, sidebar, requests, canBook, user, console
             <Menu className="size-5" />{t("Menu")}
           </SheetTrigger>
           {/* The drawer is only a frame (as in the owner's Target console): the glass panel inside it is the side menu, with its own round close button. */}
-          <SheetContent side="left" showCloseButton={false}
-            className="flex h-[100dvh] flex-col gap-0 border-0 bg-transparent py-3 pl-3 pr-0 text-foreground shadow-none data-[side=left]:w-[15.75rem] data-[side=left]:max-w-[80vw]">
+          <SheetContent side="left" showCloseButton={false} initialFocus={false}
+            className="flex h-[100dvh] flex-col gap-0 border-0 bg-transparent pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-3 pr-0 pt-[max(0.75rem,env(safe-area-inset-top))] text-foreground shadow-none data-[side=left]:w-[16.5rem] data-[side=left]:max-w-[84vw] data-[side=left]:sm:w-[19rem]">
             <SheetTitle className="sr-only">{t("Staff navigation")}</SheetTitle>
             {user.developer && user.workAs && <p className="mx-0 mb-2 rounded-xl bg-fuchsia-700 px-2.5 py-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-white">{t("DEVELOPER MODE — you are working as {name} ({role})", { name: user.name, role: t(user.role) })}</p>}
             <div className="min-h-0 flex-1"><GlassSidebar mode="sheet" sidebar={sidebar} onNavigate={() => setOpen(false)} onClose={() => setOpen(false)} /></div>

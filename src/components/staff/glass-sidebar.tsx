@@ -112,6 +112,10 @@ export function GlassSidebar({ mode, sidebar, bell, collapsed = false, onCollaps
   const router = useRouter();
   const pathname = usePathname();
   const rail = mode === "desktop" && collapsed;
+  // The phone's drawer is roomier than the computer's panel (owner, 2026-11-08: "the best experience on every phone, like an app"): bigger words and icons,
+  // 44px rows for a thumb, and a swipe to the left closes it.
+  const phone = mode === "sheet";
+  const swipe = useRef<{ x: number; y: number } | null>(null);
 
   const multi = sections.length > 1;
   /** Groups fold open; a group with one page is that page, a plain row (and with only one group everything is a plain list). */
@@ -209,8 +213,8 @@ export function GlassSidebar({ mode, sidebar, bell, collapsed = false, onCollaps
       </span>
       {compact ? null : (
         <span className="min-w-0 leading-tight">
-          <span className="block truncate text-sm font-semibold tracking-tight g-strong">{hotelName}</span>
-          <span className="mt-0.5 block truncate text-xs g-soft">{t("Hotel management")}</span>
+          <span className={cn("block truncate font-semibold tracking-tight g-strong", phone ? "text-base" : "text-sm")}>{hotelName}</span>
+          <span className={cn("mt-0.5 block truncate g-soft", phone ? "text-[13px]" : "text-xs")}>{t("Hotel management")}</span>
         </span>
       )}
     </Link>
@@ -226,9 +230,9 @@ export function GlassSidebar({ mode, sidebar, bell, collapsed = false, onCollaps
     return (
       <li key={`${item.href}:${item.label}`}>
         <Link href={item.href} onClick={onNavigate} aria-current={active ? "page" : undefined}
-          className={cn("relative flex items-center gap-3 rounded-lg", FOCUS, child ? "px-3 py-1.5 text-[13px]" : "px-3 py-2 text-[13px]",
-            mode === "sheet" && (child ? "min-h-9" : "min-h-10"), active ? "glass-active font-medium g-strong" : "glass-row g-text g-hover")}>
-          <Icon className={cn("shrink-0", child ? "size-4" : "size-[18px]", active && "g-gold")} />
+          className={cn("relative flex items-center gap-3 rounded-lg", FOCUS, child ? (phone ? "min-h-10 px-3 py-2 text-[14.5px]" : "px-3 py-1.5 text-[13px]") : (phone ? "min-h-11 px-3 py-2.5 text-[15.5px]" : "px-3 py-2 text-[13px]"),
+            active ? "glass-active font-medium g-strong" : "glass-row g-text g-hover")}>
+          <Icon className={cn("shrink-0", phone ? (child ? "size-[18px]" : "size-[21px]") : (child ? "size-4" : "size-[18px]"), active && "g-gold")} />
           <span className="min-w-0 flex-1 truncate">{nav(item.label)}</span>
           {where ? <span className="shrink-0 text-[11px] g-soft">{where}</span> : null}
           {itemBadge(item)}
@@ -260,8 +264,8 @@ export function GlassSidebar({ mode, sidebar, bell, collapsed = false, onCollaps
       </div>
 
       <div className="flex items-center gap-1 px-3 pb-1.5">
-        <label className="glass-field flex min-w-0 flex-1 items-center gap-2.5 px-3.5 py-2 text-sm g-soft">
-          <Search className="size-4 shrink-0" />
+        <label className={cn("glass-field flex min-w-0 flex-1 items-center gap-2.5 px-3.5 g-soft", phone ? "py-3 text-[15px]" : "py-2 text-sm")}>
+          <Search className={cn("shrink-0", phone ? "size-[18px]" : "size-4")} />
           <input ref={searchRef} value={query} onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && results?.[0]) { e.preventDefault(); setQuery(""); onNavigate?.(); router.push(results[0].item.href); }
@@ -306,12 +310,12 @@ export function GlassSidebar({ mode, sidebar, bell, collapsed = false, onCollaps
                   return (
                     <div key={g.title} className="mt-0.5">
                       <button type="button" onClick={() => folds.toggle(g.title)} aria-expanded={open}
-                        className={cn("glass-row g-hover flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-[13px] font-medium", FOCUS, mode === "sheet" && "min-h-10", here ? "g-strong" : "g-text")}>
-                        <GroupIcon className={cn("size-[18px] shrink-0", here ? "g-gold" : "g-icon")} />
+                        className={cn("glass-row g-hover flex w-full items-center gap-3 rounded-lg px-3 text-left font-medium", FOCUS, phone ? "min-h-11 py-2.5 text-[15.5px]" : "py-2 text-[13px]", here ? "g-strong" : "g-text")}>
+                        <GroupIcon className={cn("shrink-0", phone ? "size-[21px]" : "size-[18px]", here ? "g-gold" : "g-icon")} />
                         <span className="min-w-0 flex-1 truncate">{nav(g.title)}</span>
                         {!open && waiting > 0 && <span className="rounded-full bg-rose-500 px-1.5 text-[10px] font-bold leading-4 tabular-nums text-white" aria-label={t("{n} new", { n: waiting })}>{waiting}</span>}
                         {!open && here && waiting === 0 && <span className="size-1.5 rounded-full bg-[oklch(0.76_0.13_82)]" aria-hidden />}
-                        <ChevronDown className={cn("g-icon size-[15px] shrink-0", folds.animate && "transition-transform duration-200 motion-reduce:transition-none", open && "rotate-180")} />
+                        <ChevronDown className={cn("g-icon shrink-0", phone ? "size-[17px]" : "size-[15px]", folds.animate && "transition-transform duration-200 motion-reduce:transition-none", open && "rotate-180")} />
                       </button>
                       <div className={cn("grid", folds.animate && "transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none", open ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}>
                         <div className="overflow-hidden" inert={!open}>
@@ -372,7 +376,19 @@ export function GlassSidebar({ mode, sidebar, bell, collapsed = false, onCollaps
     </div>
   );
 
-  if (mode === "sheet") return <div className="glass-panel glass-drawer h-full">{full}</div>;
+  if (mode === "sheet") {
+    return (
+      <div className="glass-panel glass-drawer h-full"
+        onTouchStart={(e) => { const p = e.touches[0]; swipe.current = { x: p.clientX, y: p.clientY }; }}
+        onTouchEnd={(e) => {
+          const from = swipe.current; swipe.current = null;
+          const p = e.changedTouches[0];
+          if (from && from.x - p.clientX > 70 && Math.abs(p.clientY - from.y) < 45) onClose?.();
+        }}>
+        {full}
+      </div>
+    );
+  }
 
   return (
     <aside aria-label={t("Staff navigation")}
@@ -429,10 +445,10 @@ function Footer({ mode, rail, user, languages, onNavigate }: {
       <div aria-hidden className="glass-divider mb-2 w-full" />
       <DropdownMenu>
         <DropdownMenuTrigger render={<button type="button" title={user.name} data-hint={user.name} className={cn("glass-row flex w-full items-center gap-3 rounded-full text-left", FOCUS, rail ? "justify-center p-1" : "px-2 py-2")} />}>
-          <Initials name={user.name} className={cn("size-10 text-xs", user.developer && "ring-2 ring-fuchsia-500")} />
+          <Initials name={user.name} className={cn("text-xs", mode === "sheet" ? "size-11" : "size-10", user.developer && "ring-2 ring-fuchsia-500")} />
           {rail ? <span className="sr-only">{user.name}</span> : (
             <span className="min-w-0 flex-1 leading-tight">
-              <span className="g-strong block truncate text-sm font-semibold">{firstName}</span>
+              <span className={cn("g-strong block truncate font-semibold", mode === "sheet" ? "text-base" : "text-sm")}>{firstName}</span>
               <span className={cn("block truncate text-[11px]", user.developer ? "font-semibold text-fuchsia-300" : "g-soft")}>{user.developer && !user.workAs ? t("Developer") : t(user.role)}</span>
             </span>
           )}
