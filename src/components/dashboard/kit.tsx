@@ -222,37 +222,18 @@ export function HeroBanner({ eyebrow, title, subtitle, chips, actions, extra, as
   );
 }
 
-/** Each quick action keeps its own colour, as a soft tinted icon (and a matching count badge). */
-const QA_TINT = {
-  gold: { chip: "bg-[oklch(0.72_0.12_80/0.18)] text-[oklch(0.55_0.11_75)] dark:text-[oklch(0.84_0.11_82)]", badge: "bg-[oklch(0.72_0.12_80)] text-black" },
-  emerald: { chip: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300", badge: "bg-emerald-500 text-white" },
-  sky: { chip: "bg-sky-500/15 text-sky-600 dark:text-sky-300", badge: "bg-sky-500 text-white" },
-  violet: { chip: "bg-violet-500/15 text-violet-600 dark:text-violet-300", badge: "bg-violet-500 text-white" },
-  rose: { chip: "bg-rose-500/15 text-rose-600 dark:text-rose-300", badge: "bg-rose-500 text-white" },
-  amber: { chip: "bg-amber-500/15 text-amber-700 dark:text-amber-300", badge: "bg-amber-500 text-black" },
-  teal: { chip: "bg-teal-500/15 text-teal-600 dark:text-teal-300", badge: "bg-teal-500 text-white" },
-} as const;
-export type QuickTone = keyof typeof QA_TINT;
-/** The desktop pills (copied from the owner's Target console, 2026-11-08): the first two are SOLID in their own colour, every other one is tinted — a wash of its colour, a fine edge of it, the words in it. */
-const QA_SOLID: Record<QuickTone, string> = {
-  gold: "bg-linear-to-b from-[oklch(0.87_0.085_86)] to-[oklch(0.7_0.12_76)] text-[oklch(0.2_0.03_60)] shadow-[0_8px_22px_-12px_oklch(0.7_0.12_80)] hover:brightness-105",
-  emerald: "bg-emerald-500 text-white hover:bg-emerald-400",
-  sky: "bg-sky-500 text-white hover:bg-sky-400",
-  violet: "bg-violet-500 text-white hover:bg-violet-400",
-  rose: "bg-rose-500 text-white hover:bg-rose-400",
-  amber: "bg-amber-500 text-black hover:bg-amber-400",
-  teal: "bg-teal-500 text-white hover:bg-teal-400",
+/** The tones a quick action may name: they colour its ICON only (a thin glyph — on a phone and on a computer alike). */
+export type QuickTone = "gold" | "emerald" | "sky" | "violet" | "rose" | "amber" | "teal";
+/**
+ * The computer's quick actions (owner, 2026-11-08, with his Target console as the example: "clean, not so much colour"): every action is the SAME
+ * calm pill — a soft rounded pill on the page's own surface with a fine edge, plain words — and only its small icon carries a colour.
+ * A count is the one other colour (red = something waits).
+ */
+const QA_PILL = "group inline-flex h-10 shrink-0 items-center gap-2 rounded-full border border-border/60 bg-card/50 px-4 text-sm font-medium text-foreground/85 transition-colors hover:border-border hover:bg-muted/60 hover:text-foreground [&_svg]:size-4";
+const QA_ICON: Record<QuickTone, string> = {
+  gold: "[&_svg]:text-[oklch(0.82_0.11_82)]", emerald: "[&_svg]:text-emerald-400", sky: "[&_svg]:text-sky-400", violet: "[&_svg]:text-violet-400",
+  rose: "[&_svg]:text-rose-400", amber: "[&_svg]:text-amber-400", teal: "[&_svg]:text-teal-400",
 };
-const QA_TINT_PILL: Record<QuickTone, string> = {
-  gold: "border-[oklch(0.72_0.12_80/0.4)] bg-[oklch(0.72_0.12_80/0.1)] text-[oklch(0.84_0.11_82)] hover:bg-[oklch(0.72_0.12_80/0.16)]",
-  emerald: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15",
-  sky: "border-sky-500/30 bg-sky-500/10 text-sky-300 hover:bg-sky-500/15",
-  violet: "border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/15",
-  rose: "border-rose-500/30 bg-rose-500/10 text-rose-300 hover:bg-rose-500/15",
-  amber: "border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/15",
-  teal: "border-teal-500/30 bg-teal-500/10 text-teal-300 hover:bg-teal-500/15",
-};
-const QA_PILL = "group inline-flex h-10 shrink-0 items-center gap-2 rounded-full border px-4 text-sm font-medium transition-colors [&_svg]:size-4";
 /**
  * Quick actions as one slim row of pills: the main job (the gold one — New
  * booking) first, then every other everyday job with a small tinted icon and a
@@ -273,9 +254,9 @@ export function QuickActions({ items, t = englishT }: { items: { href: string; l
       ))}
     </nav>
     <nav aria-label={t("Quick actions")} className="hidden items-center gap-2 overflow-x-auto py-1 [scrollbar-width:none] sm:flex md:flex-wrap md:overflow-visible">
-      {[...(primary ? [primary] : []), ...rest].map((a, n) => {
-        const look = cn(QA_PILL, n < 2 ? cn("border-transparent font-semibold", QA_SOLID[a.tone]) : QA_TINT_PILL[a.tone]);
-        const count = a.badge ? <span className={cn("-mr-1.5 min-w-5 rounded-full px-1.5 text-center text-[11px] font-bold leading-5 tabular-nums", n < 2 ? "bg-black/25 text-white" : QA_TINT[a.tone].badge)}>{a.badge}</span> : null;
+      {[...(primary ? [primary] : []), ...rest].map((a) => {
+        const look = cn(QA_PILL, QA_ICON[a.tone]);
+        const count = a.badge ? <span className="-mr-1.5 min-w-5 rounded-full bg-rose-500 px-1.5 text-center text-[11px] font-bold leading-5 tabular-nums text-white">{a.badge}</span> : null;
         // The guide book: a button that opens its pop-up, in the same look as the other pills.
         return a.guide ? (
           <GuideBookTrigger key={a.label} className={look}>{a.icon}{a.label}</GuideBookTrigger>

@@ -223,7 +223,7 @@ export async function OwnerOverview({ searchParams, basePath }: {
 
   return (
     <div className="w-full space-y-6">
-      <NameBanner name={firstName} role={t(user.roleName)} />
+      <NameBanner name={firstName} role={user.roleName} />
 
       {quick.length > 0 && <QuickActions t={t} items={quick} />}
 

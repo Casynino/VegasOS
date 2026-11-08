@@ -89,7 +89,7 @@ export default async function DeveloperHomePage({ searchParams }: PageProps<"/st
   return (
     <div className="w-full space-y-8">
       <div className="space-y-6">
-        <NameBanner name={greeting.firstName} role={t("Developer")} />
+        <NameBanner name={greeting.firstName} role="Developer" />
         <Shortcuts t={t} people={people} roles={roles.map((r) => ({ id: r.id, name: r.name }))} />
         <HealthCard t={t} h={health} />
         <AttentionPanel t={t} items={health.items} checks={health.checks} />

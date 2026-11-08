@@ -53,6 +53,9 @@ const catalog: Catalog = {
   "Collapse": "收起",
   "Expand": "展开",
   "No page matches that.": "没有匹配的页面。",
+  // The banner's short role words (owner, 2026-11-08).
+  "Boss": "老板",
+  "Director": "总经理",
   // The menu's one-word names (owner, 2026-11-06): the plain word first (the check needs it), then the meaning it has in the menu.
   "Debts": "欠款",
   "Handovers": "交接",

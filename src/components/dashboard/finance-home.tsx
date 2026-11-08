@@ -145,7 +145,7 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
 
   return (
     <div className="w-full space-y-6">
-      <NameBanner name={first} role={t(user.roleName)} />
+      <NameBanner name={first} role={user.roleName} />
 
       {quick.length > 0 && <QuickActions t={t} items={quick} />}
       <JumpNav label={t("Jump to")} items={jump} />

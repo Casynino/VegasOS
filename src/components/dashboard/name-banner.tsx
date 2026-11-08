@@ -9,6 +9,10 @@ import { cn } from "@/lib/utils";
  * their job title small in gold under it, then today's date — nothing else (no greeting, no explanation: the figures are right below).
  * Read from whoever is shown, so the name and the title can never disagree. The bell and the account live in the side menu.
  */
+/** The long role names read short in the banner (owner, 2026-11-08: "Director, not the full word"). */
+const SHORT_ROLE: Record<string, string> = { "Owner / Boss": "Boss", "Managing Director (MD)": "Director" };
+
+/** `role` is the role's name as stored (English); it is shortened if it is a long one and translated here. */
 export async function NameBanner({ name, role, image = "/images/exterior/exterior-02.webp" }: { name: string; role: string; image?: string }) {
   const [t, settings] = await Promise.all([getT(), getSettings()]);
   const date = new Intl.DateTimeFormat(t.intl, { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: settings.timezone }).format(new Date());
@@ -32,7 +36,7 @@ export async function NameBanner({ name, role, image = "/images/exterior/exterio
           <span className={cn("min-w-0 break-words", long ? "pl-[0.2em] sm:pl-[0.3em]" : "pl-[0.32em] sm:pl-[0.5em]")}>{name}</span>
           <span aria-hidden className="hidden h-px w-10 shrink-0 bg-[oklch(0.78_0.13_82)]/60 sm:block" />
         </h1>
-        <p className="mt-1.5 text-[10px] font-semibold uppercase tracking-[0.32em] text-[oklch(0.84_0.11_82)] sm:mt-2 sm:text-[11px]">{role}</p>
+        <p className="mt-1.5 text-[10px] font-semibold uppercase tracking-[0.32em] text-[oklch(0.84_0.11_82)] sm:mt-2 sm:text-[11px]">{t(SHORT_ROLE[role] ?? role)}</p>
         <p className="mt-1 text-xs text-white/65 sm:mt-1.5 sm:text-sm">{date}</p>
       </div>
     </section>
