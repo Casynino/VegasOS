@@ -14,7 +14,7 @@ import { getCurrentUser, type CurrentUser } from "@/server/auth";
 import { AppError } from "@/server/errors";
 import { NOT_WORK_ACTIONS } from "@/server/services/developer-console";
 import { CHECK_IDS } from "@/server/services/developer-checks";
-import { resetBusinessData } from "../support/helpers";
+import { freshJobRecording, resetBusinessData } from "../support/helpers";
 import { crashData, DATABASE_ITEM_ID, healthReport, healthScore, healthVerdict, LOGIN_LIMITS, SCORE, speedData, type HealthReport, type Severity } from "@/server/services/developer-health";
 import { browser, makeSession, makeUser, removeMadeUsers, thrownBy, type MadeUser } from "../support/developer";
 
@@ -106,6 +106,9 @@ function healthyEnv() {
 }
 
 // ───────────────────────────────────────────── 1. the score ─────────────────────────────────────────────
+let restoreRecording: (() => Promise<void>) | null = null;
+afterEach(async () => { await restoreRecording?.(); restoreRecording = null; });
+
 describe("the score rule", () => {
   const items = (fix: number, look: number, info = 0) => [
     ...Array.from({ length: fix }, (_, i) => ({ id: `f${i}`, severity: "fix" as Severity })),
@@ -152,6 +155,7 @@ describe("a clean system and a dead database", () => {
     // The test database is shared by many test files: a clean hotel is made here (no business data, rooms free, an empty system log).
     await resetBusinessData();
     await db.$executeRaw`DELETE FROM "system_events"`;
+    restoreRecording = await freshJobRecording(); // a brand-new install: no run recorded yet, and not yet time to expect any
     const h = await healthReport(await as(dev));
     expect(h.items.filter((i) => i.severity !== "info")).toEqual([]);
     expect(h.counts.fix).toBe(0);
@@ -315,6 +319,7 @@ describe("failed messages and withdrawals are system problems; the hotel's own w
     healthyEnv();
     await resetBusinessData();
     await db.$executeRaw`DELETE FROM "system_events"`;
+    restoreRecording = await freshJobRecording(); // a brand-new install: no run recorded yet, and not yet time to expect any
     const user = await as(dev);
     const days = (n: number) => new Date(Date.now() - n * 86_400_000);
     made.shifts.push((await db.actualShift.create({ data: { userId: rec.id, department: "RECEPTION", businessDate: new Date("2026-10-14"), startedAt: days(3) } })).id);

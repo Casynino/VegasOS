@@ -513,6 +513,8 @@ describe("transport prices, a company's credit, room prices and discount limits:
   });
 
   it("room prices, promotions, date prices and the discount rules", async () => {
+    // The standard "Website price" (restored by every reset) covers every night at the same priority: this test makes its own promotion, so it starts without it.
+    await db.promotion.deleteMany({ where: { id: "promo_website_standard" } });
     const t = await roomType("DOUBLE_DELUXE");
     const price = (rate: number) => { const f = new FormData(); f.set("roomTypeId", t.id); f.set("baseRate", String(rate)); return f; };
     const rules = () => { const f = new FormData(); f.set("receptionCanDiscount", "on"); f.set("managerCanDiscount", "on"); return f; };

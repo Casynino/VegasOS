@@ -21,6 +21,19 @@ export async function resetBusinessData() {
   });
 }
 
+/**
+ * The job record "started" when its migration was applied; a job never seen is overdue once it has had time to run since then. In a long-lived test
+ * database that moment is far in the past, so "no run recorded yet" would read as "overdue". This sets the start to NOW (a brand-new install) and
+ * returns a function that puts the real time back — call it in afterEach.
+ */
+export async function freshJobRecording(): Promise<() => Promise<void>> {
+  const name = "20261018120000_system_events";
+  const rows = await db.$queryRaw<{ at: Date | null }[]>`SELECT finished_at AS at FROM _prisma_migrations WHERE migration_name = ${name}`;
+  const original = rows[0]?.at ?? null;
+  await db.$executeRaw`UPDATE _prisma_migrations SET finished_at = now() WHERE migration_name = ${name}`;
+  return async () => { if (original) await db.$executeRaw`UPDATE _prisma_migrations SET finished_at = ${original} WHERE migration_name = ${name}`; };
+}
+
 export async function managerActor(): Promise<Actor> {
   const u = await db.user.findUniqueOrThrow({ where: { email: "manager@vegas.test" } });
   return { userId: u.id, label: u.fullName, permissions: new Set(ALL_PERMISSIONS) };

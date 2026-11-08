@@ -27,8 +27,8 @@ import { crashData, healthReport } from "@/server/services/developer-health";
 import DeveloperHomePage from "@/app/staff/(app)/developer/page";
 import { CrashesTab } from "@/app/staff/(app)/developer/tab-crashes";
 import { AttentionPanel } from "@/app/staff/(app)/developer/attention-panel";
-import { resetBusinessData } from "../support/helpers";
-import { browser, makeSession, makeUser, removeMadeUsers, thrownBy, type MadeUser } from "../support/developer";
+import { freshJobRecording, resetBusinessData } from "../support/helpers";
+import { browser, makeSession, makeUser, removeMadeUsers, resolveAsync, thrownBy, type MadeUser } from "../support/developer";
 
 /**
  * THE SYSTEM CHECKS (owner, 2026-10-18), against a real database. THE DEVELOPER DOES NOT DO OPERATIONS: every check here is about the
@@ -176,6 +176,9 @@ afterEach(async () => {
 });
 
 // ───────────────────────────────────────────── 0. the door, the clean world, the shape ─────────────────────────────────────────────
+let restoreRecording: (() => Promise<void>) | null = null;
+afterEach(async () => { await restoreRecording?.(); restoreRecording = null; });
+
 describe("the checks as a whole", () => {
   it("a clean hotel: every check runs and every one is fine; each has an id, a group, words, a who", async () => {
     const rs = await run();
@@ -535,6 +538,7 @@ describe("jobs", () => {
 
   it("jobs-overdue: with no run recorded at all yet it says 'could not be checked' instead of 'all well'", async () => {
     await db.$executeRaw`DELETE FROM "system_events"`;
+    restoreRecording = await freshJobRecording(); // a brand-new install: nothing recorded, and not yet time to expect anything
     const r = await stateOf("jobs-overdue");
     expect(r.state).toBe("unknown");
     expect(r.summary.text).toBe("Could not be checked: no run of any job has been recorded yet.");
@@ -956,6 +960,7 @@ describe("the health report uses the checks", () => {
 
   it("a check that could not be run is information (one card, no cost), never a problem", async () => {
     await db.$executeRaw`DELETE FROM "system_events"`; // no run recorded: jobs-overdue cannot say
+    restoreRecording = await freshJobRecording();
     const h = await healthReport(await as(dev));
     expect(h.checks.find((c) => c.id === "jobs-overdue")!.state).toBe("unknown");
     const info = h.items.find((i) => i.id === "checks-unknown")!;
@@ -1016,7 +1021,8 @@ describe("one cause is shown once, and what did not apply is not counted as fine
 
 // ───────────────────────────────────────────── 10. the tabs ─────────────────────────────────────────────
 describe("the Problems tab and the Crashes tab", () => {
-  const draw = async (search: Record<string, string> = {}) => renderToStaticMarkup(await DeveloperHomePage({ searchParams: Promise.resolve(search) } as never));
+  // The page's parts (the name banner, the sections) are async server components: resolve them the way the server does before drawing the markup.
+  const draw = async (search: Record<string, string> = {}) => renderToStaticMarkup((await resolveAsync(await DeveloperHomePage({ searchParams: Promise.resolve(search) } as never))) as never);
   const textOf = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/&#x27;/g, "'").replace(/&amp;/g, "&").replace(/\s+/g, " ");
 
   it("the attention panel is at the top: a card for each problem, then ONE closed row 'What was checked · n of 31 fine, n not checked yet' that opens to every check", async () => {
