@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronLeft, ChevronRight, Globe, Languages, LayoutGrid, LogOut, Search, UserRound, X } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { logoutAction } from "@/app/staff/(auth)/login/actions";
 import { LOCALES, LOCALE_META, type Locale } from "@/i18n/config";
 import { useLocale, useT } from "@/i18n/client";
@@ -455,10 +455,13 @@ function Footer({ mode, rail, user, languages, onNavigate }: {
           )}
         </DropdownMenuTrigger>
         <DropdownMenuContent side={rail ? "right" : "top"} align={rail ? "end" : "start"} sideOffset={rail ? 12 : 8} className="w-56 rounded-xl p-1 shadow-[0_12px_30px_-12px_rgba(0,0,0,0.55)]">
-          <DropdownMenuLabel className="px-2.5 pb-1.5 pt-1 font-normal">
-            <span className="block break-words text-[13px] font-semibold leading-snug text-foreground">{user.name}</span>
-            <span className={cn("block truncate text-[11px]", user.developer ? "font-semibold text-fuchsia-300" : "text-muted-foreground")}>{user.developer && !user.workAs ? t("Developer") : t(user.role)}</span>
-          </DropdownMenuLabel>
+          {/* Base UI: a menu label must sit inside a group, or the menu throws (error 31) the moment it opens. */}
+          <DropdownMenuGroup>
+            <DropdownMenuLabel className="px-2.5 pb-1.5 pt-1 font-normal">
+              <span className="block break-words text-[13px] font-semibold leading-snug text-foreground">{user.name}</span>
+              <span className={cn("block truncate text-[11px]", user.developer ? "font-semibold text-fuchsia-300" : "text-muted-foreground")}>{user.developer && !user.workAs ? t("Developer") : t(user.role)}</span>
+            </DropdownMenuLabel>
+          </DropdownMenuGroup>
           {/* The account page of the person shown — the Developer's own, or (working as someone) that person's, as they see it. */}
           <DropdownMenuItem className={item} render={<Link href="/staff/account" onClick={onNavigate} />}>
             <UserRound className="size-3.5" />{t("My account")}
