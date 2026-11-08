@@ -16,14 +16,16 @@ import { ChevronLeft } from "lucide-react";
 const KEY = "vlh.nav.trail";
 const MAX = 8;
 
-function read(): string[] {
+/** The trail is kept with the person it belongs to: somebody else signing in on the same tab starts a new one. */
+function read(owner: string): string[] {
   try {
-    const v = JSON.parse(sessionStorage.getItem(KEY) ?? "[]");
-    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+    const v = JSON.parse(sessionStorage.getItem(KEY) ?? "{}");
+    if (!v || v.o !== owner || !Array.isArray(v.t)) return [];
+    return v.t.filter((x: unknown): x is string => typeof x === "string");
   } catch { return []; }
 }
-function write(trail: string[]) {
-  try { sessionStorage.setItem(KEY, JSON.stringify(trail.slice(-MAX))); } catch { /* a convenience only: Back still climbs by the address */ }
+function write(owner: string, trail: string[]) {
+  try { sessionStorage.setItem(KEY, JSON.stringify({ o: owner, t: trail.slice(-MAX) })); } catch { /* a convenience only: Back still climbs by the address */ }
 }
 
 /** One level up the address (/staff/reservations/abc → /staff/reservations); a first-level page goes home. */
@@ -33,25 +35,25 @@ function parentOf(path: string, home: string) {
   return parts.length < 2 ? home : `/${parts.join("/")}`;
 }
 
-export function MobileBack({ home, roots, label, children }: { home: string; roots: string[]; label: string; children: ReactNode }) {
+export function MobileBack({ home, roots, owner, label, children }: { home: string; roots: string[]; /** Who is signed in (their id): the trail belongs to them. */ owner: string; label: string; children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const isRoot = roots.includes(pathname);
 
   useEffect(() => {
-    if (isRoot) { write([pathname]); return; }
-    const trail = read();
+    if (isRoot) { write(owner, [pathname]); return; }
+    const trail = read(owner);
     const at = trail.lastIndexOf(pathname); // walking back the way you came does not grow the trail
-    write(at >= 0 ? trail.slice(0, at + 1) : [...trail, pathname]);
-  }, [pathname, isRoot]);
+    write(owner, at >= 0 ? trail.slice(0, at + 1) : [...trail, pathname]);
+  }, [pathname, isRoot, owner]);
 
   if (isRoot) return <>{children}</>;
 
   const back = () => {
-    const trail = read();
+    const trail = read(owner);
     const here = trail.lastIndexOf(pathname);
     const previous = here > 0 ? trail[here - 1] : undefined;
-    if (previous) { write(trail.slice(0, here)); router.push(previous); }
+    if (previous) { write(owner, trail.slice(0, here)); router.push(previous); }
     else router.push(parentOf(pathname, home));
   };
 

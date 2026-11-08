@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/server/db";
 import { checkIn, createReservation, extendStayFree } from "@/server/services/reservations";
 import { changeRoom } from "@/server/services/room-changes";
@@ -22,6 +22,12 @@ async function stay(roomNumber: string, from: string, to: string) {
   await checkIn(r.id, await receptionistActor(), null, eat(`${from}T15:00:00`));
   return r;
 }
+
+
+// These tests were written with fixed October-2026 dates; the calendar has moved on ("Arrival cannot be in the past"). The clock is held at the day
+// they were written for — only the Date, so timers and database calls run normally.
+beforeAll(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-05T07:00:00Z")); });
+afterAll(() => { vi.useRealTimers(); });
 
 describe("manager decisions on a stay", () => {
   it("free nights: the stay is longer, the bill is not — recorded with the reason", async () => {

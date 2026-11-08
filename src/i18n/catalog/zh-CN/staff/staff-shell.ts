@@ -55,6 +55,13 @@ const catalog: Catalog = {
   "No page matches that.": "没有匹配的页面。",
   // The banner's short role words (owner, 2026-11-08).
   "Boss": "老板",
+  // Used by client components, which load only the common + staff bundles (the public bundle has them too, but is not sent to staff).
+  "Main": "主要",
+  "Hotel website": "酒店官网",
+  "Services": "服务",
+  "Role": "角色",
+  "Switched off": "已关闭",
+  "expected {date}": "预计 {date}",
   "Director": "总经理",
   // The menu's one-word names (owner, 2026-11-06): the plain word first (the check needs it), then the meaning it has in the menu.
   "Debts": "欠款",

@@ -43,10 +43,10 @@ export function RoomTile({ number, type, state, guest, detail, overdue, pay, onC
         "hover:-translate-y-0.5 hover:shadow-[0_12px_26px_-16px_rgba(15,23,42,0.6)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 dark:bg-white/[0.04]",
         m.tint, m.border, m.hover)}>
       <span aria-hidden className={cn("absolute inset-y-2 left-0 w-[3px] rounded-r-full", overdue ? "bg-red-500" : m.dot)} />
-      <span className="flex items-center justify-between gap-1.5">
+      <span className="flex flex-wrap items-center justify-between gap-x-1.5 gap-y-1">
         <span className="shrink-0 text-lg font-semibold leading-none tracking-tight tabular-nums">{number}</span>
         {/* The state word may be long ("Needs cleaning") in a narrow tile: it shortens with … instead of spilling out of the tile. */}
-        <span className={cn("inline-flex min-w-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-semibold leading-none", m.badge)}>
+        <span className={cn("inline-flex min-w-0 max-w-full items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-semibold leading-none", m.badge)}>
           <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", m.dot)} /><span className="truncate">{t(m.label)}</span>
         </span>
       </span>

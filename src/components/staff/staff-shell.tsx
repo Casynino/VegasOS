@@ -82,7 +82,7 @@ export async function StaffShell({ children }: { children: ReactNode }) {
     const finance = grouped.find((g) => g.title === "Finance");
     const companies = finance?.items.filter((i) => i.href === "/staff/corporate") ?? [];
     const rest = grouped.filter((g) => g !== finance).map((g) => (g.title === "Bookings" ? { ...g, items: [...g.items, ...companies] } : g));
-    const money = finance ? { ...finance, items: finance.items.filter((i) => i.href === "/staff/collections") } : null;
+    const money = finance ? { ...finance, items: finance.items.filter((i) => i.href === "/staff/collections" || i.href === "/staff/expenses") } : null;
     // Collections just above People (Shifts) — after the hotel's and the restaurant's work (owner, 2026-10-04).
     const people = rest.findIndex((g) => g.title === "People");
     const at = people >= 0 ? people : rest.length;
@@ -130,7 +130,7 @@ export async function StaffShell({ children }: { children: ReactNode }) {
             <PhoneMenuButton label={t("Open menu")} />
             <div className="min-w-0 max-md:flex-1 shrink">
               {/* A department's home shows the date; every other page shows "‹ Back" (a phone has no back button of its own in an app or a link). */}
-              <MobileBack home={home} roots={[home, "/staff", "/staff/developer"]} label={t("Back")}>
+              <MobileBack home={home} roots={[home, "/staff", "/staff/developer", "/staff/start-shift"]} owner={user.actorId} label={t("Back")}>
                 <p className="truncate text-sm font-semibold text-foreground"><span className="sm:hidden">{new Date(`${today}T12:00:00Z`).toLocaleDateString(t.intl, { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" })}</span><span className="hidden sm:inline">{t.date(today, true)}</span></p>
                 <p className="hidden text-xs text-muted-foreground sm:block">{t("Hotel day 04:00 → 04:00")}</p>
               </MobileBack>
@@ -155,7 +155,7 @@ export async function StaffShell({ children }: { children: ReactNode }) {
           </div>
         </header>
         {/* On the shared restaurant screen, money and taking charge ask the waiter's PIN. */}
-        <main className="flex-1 px-3 pb-[calc(7rem+var(--work-pad,0px))] pt-5 sm:px-4 lg:px-6 lg:pb-8 lg:pt-3 print:p-0"><WaiterPinProvider device={device}><CustomerFinderAccess allowed={!consoleMode && can(user, "guests.view")}>{children}</CustomerFinderAccess></WaiterPinProvider></main>
+        <main className="flex-1 px-3 pb-[calc(7rem+var(--work-pad,0px))] pt-5 sm:px-4 lg:px-6 lg:pb-[calc(2rem+var(--work-pad,0px))] lg:pt-3 print:p-0"><WaiterPinProvider device={device}><CustomerFinderAccess allowed={!consoleMode && can(user, "guests.view")}>{children}</CustomerFinderAccess></WaiterPinProvider></main>
       </StaffFrame>
 
       <StaffBottomBar home={home} sidebar={sidebar} requests={newRequests} canBook={!consoleMode && can(user, "reservations.view")} console={consoleMode}

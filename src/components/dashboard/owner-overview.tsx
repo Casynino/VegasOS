@@ -19,6 +19,7 @@ import { getFrontDeskSnapshot } from "@/server/services/front-desk";
 import { newRequestCount, requestStats } from "@/server/services/booking-requests";
 import { newStockRequestCount } from "@/server/services/stock-requests";
 import { guideLabel } from "@/components/staff/guide-pill";
+import { ReceptionSearch } from "@/components/staff/reception/search";
 import { change, dailyMoney, meetingRoomStats, occupancy, outstanding, previousRange, profitLoss, type Range } from "@/server/services/reporting";
 import { addDays, diffDays, isBusinessDate, presetRange, toDbDate, type PeriodPreset } from "@/lib/time/business-date";
 import { formatTZS } from "@/lib/format";
@@ -93,6 +94,8 @@ export async function OwnerOverview({ searchParams, basePath }: {
     where: { reservationId: null, balanceAmount: { gt: 0 }, status: { in: ["ISSUED", "PARTIALLY_PAID", "OVERDUE"] }, dueDate: { lt: new Date(`${today}T00:00:00Z`) } },
     _sum: { balanceAmount: true }, _count: true,
   });
+  // The two counts on the quick actions start now, with the rest of the page's queries.
+  const quickCounts = Promise.all([can(user, "booking_requests.view") ? newRequestCount() : 0, can(user, "expenses.approve") ? newStockRequestCount() : 0]);
   const [pl, plPrev, occ, occPrev, occTrend, trendPl, owed, allRooms, snap, shift, reqs, payments, activity, meeting, latestRequests, qrBooked] = await Promise.all([
     profitLoss(range), profitLoss(prev), occupancy(range), occupancy(prev), occupancy(trend), profitLoss(trend), outstanding(), getRoomBoard(today),
     getFrontDeskSnapshot(today), getShiftOverview(today), requestStats(range.from, range.to),
@@ -207,7 +210,7 @@ export async function OwnerOverview({ searchParams, basePath }: {
   const canAnalyse = can(user, "finance.view");
   // The quick actions (owner, 2026-11-08, as in his Target console): one line of the places the Boss, the MD and the managers go first, instead of the
   // old "Jump to" pills. A phone shows the first six as plain icons in one row; a computer shows every one as a pill.
-  const [newOnline, newStock] = await Promise.all([can(user, "booking_requests.view") ? newRequestCount() : 0, can(user, "expenses.approve") ? newStockRequestCount() : 0]);
+  const [newOnline, newStock] = await quickCounts;
   const quick = ([
     can(user, "finance.view") && { href: "/staff/finance", label: t("Finance"), short: t("Finance"), icon: <Wallet />, tone: "gold" as const },
     can(user, "reports.view") && { href: "/staff/reports", label: t("Reports"), short: t("Reports"), icon: <FileChartColumn />, tone: "sky" as const },
@@ -224,6 +227,8 @@ export async function OwnerOverview({ searchParams, basePath }: {
   return (
     <div className="w-full space-y-6">
       <NameBanner name={firstName} role={user.roleName} />
+      {/* The guest / booking search (name, phone, reference, room): on a computer there is no top bar any more, so it sits under the banner like the reception's. */}
+      {can(user, "reservations.view") && <ReceptionSearch className="w-full md:max-lg:hidden" />}
 
       {quick.length > 0 && <QuickActions t={t} items={quick} />}
 

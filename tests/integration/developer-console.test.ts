@@ -943,8 +943,9 @@ describe("the Developer home page draws, on every tab, from real data", () => {
   it("the Developer sees the greeting, the health card, the cards, the shortcuts and EVERY part on one page, in the owner's arrangement", async () => {
     await as(dev);
     const html = await draw();
-    expect(html).toMatch(/Good (morning|afternoon|evening), /);
-    expect(html).toContain("health, people and everything done, in one place.");
+    // The banner is the name banner now (owner, 2026-11-08): the first name in capitals, the role "Developer", the date — no greeting sentence.
+    expect(html).toMatch(/<h1[^>]*>[\s\S]*?<\/h1>/);
+    expect(html).toContain("Developer");
     expect(html).toContain("out of 100");
     for (const w of ["Work as", "Add an account", "Use the app as any person, as you.", "Staff, manager or owner.", "Everything done in the system, by staff and by you.", "Stays, bills, payments and guests. Read only.", "Signed in today", "Failed sign-ins", "Server errors (24 h)"]) expect(html).toContain(w);
     // Audit and Business are links; Work as and Add an account open a popup (the Access page is in the side menu and in the popup)
@@ -1003,7 +1004,7 @@ describe("the Developer home page draws, on every tab, from real data", () => {
     await db.user.update({ where: { id: dev.id }, data: { preferredLanguage: "zh-CN" } });
     await as(dev);
     const zh = await draw();
-    expect(zh).toMatch(/(早上|下午|晚上)好，/);
+    expect(zh).toContain("开发者"); // the banner's role word, in Chinese
     expect(zh).toContain("需要您处理");
     expect(zh).toContain("定时任务没有设置密钥");
     expect(zh).not.toContain("The scheduled jobs have no secret");

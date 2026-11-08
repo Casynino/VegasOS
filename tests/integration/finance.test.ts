@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/server/db";
 import { createReservation, checkIn } from "@/server/services/reservations";
 import { recordReservationPayment } from "@/server/services/payments";
@@ -17,6 +17,12 @@ async function staff(email: string) {
   const u = await db.user.findUniqueOrThrow({ where: { email }, include: { role: { include: { permissions: { include: { permission: true } } } } } });
   return { userId: u.id, label: u.fullName, permissions: new Set(u.role.permissions.map((p) => p.permission.code)) as ReadonlySet<string>, roleCode: u.role.code };
 }
+
+
+// These tests were written with fixed October-2026 dates; the calendar has moved on ("Arrival cannot be in the past"). The clock is held at the day
+// they were written for — only the Date, so timers and database calls run normally.
+beforeAll(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-05T07:00:00Z")); });
+afterAll(() => { vi.useRealTimers(); });
 
 describe("financial source of truth", () => {
   it("revenue, discounts, occupancy, expenses and profit agree", async () => {

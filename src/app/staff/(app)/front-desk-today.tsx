@@ -156,7 +156,7 @@ export async function FrontDeskToday() {
   return (
     <div className="w-full space-y-6">
       <NameBanner image={LOBBY} name={firstName} role={user.roleName} />
-      <ReceptionSearch className="w-full md:hidden" />
+      <ReceptionSearch className="w-full md:max-lg:hidden" />
 
       {/* The quick actions — and my shift as one small switch at the end (like the waiter's): "Since 16:19", tap to end. */}
       <div id="shift" className="flex scroll-mt-24 flex-wrap items-center gap-x-3 gap-y-2">

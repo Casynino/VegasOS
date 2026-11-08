@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/server/db";
 import {
   cancelReservation, changeDiscount, checkIn, checkOut, createReservation, markNoShow,
@@ -12,6 +12,12 @@ const NOW = eat("2026-10-05T10:00:00");
 const guest = { fullName: "Test Guest", phone: "0710 000 001" };
 
 beforeEach(resetBusinessData);
+
+
+// These tests were written with fixed October-2026 dates; the calendar has moved on ("Arrival cannot be in the past"). The clock is held at the day
+// they were written for — only the Date, so timers and database calls run normally.
+beforeAll(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-05T07:00:00Z")); });
+afterAll(() => { vi.useRealTimers(); });
 
 describe("reservation engine", () => {
   it("website booking: real reservation, per-night discount, room-night ledger", async () => {

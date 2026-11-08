@@ -12,6 +12,13 @@ export async function resetBusinessData() {
   // Uploaded files, except website / menu photos (a cascade would take the menu with it).
   await db.$executeRawUnsafe(`DELETE FROM "stored_files" s WHERE NOT EXISTS (SELECT 1 FROM "media_assets" m WHERE m."fileId" = s."id")`);
   await db.room.updateMany({ data: { status: "AVAILABLE", statusNote: null } });
+  // The hotel's standard "Website price" (20,000 off a night for the guest's own bookings) is part of its set-up, from the migration that created it. Another
+  // test may have switched it off or deleted it in this shared test database — every test that books through the website starts with it in place.
+  await db.promotion.upsert({
+    where: { id: "promo_website_standard" },
+    update: { name: "Website price", type: "FIXED", value: 20_000, scope: "ALL", channel: "WEBSITE", isActive: true, startDate: null, endDate: null, roomTypeIds: [], roomIds: [], daysOfWeek: [], priority: 10 },
+    create: { id: "promo_website_standard", name: "Website price", type: "FIXED", value: 20_000, scope: "ALL", channel: "WEBSITE", isActive: true, roomTypeIds: [], roomIds: [], daysOfWeek: [], priority: 10 },
+  });
 }
 
 export async function managerActor(): Promise<Actor> {

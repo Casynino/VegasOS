@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/server/db";
 import { cancelReservation, changeDiscount, checkIn, checkOut, createReservation, markNoShow, previewCheckOut, releaseNoShow } from "@/server/services/reservations";
 import { recordReservationPayment, reversePayment } from "@/server/services/payments";
@@ -37,6 +37,12 @@ async function book(opts: { nights?: number; discount?: number; roomId?: string 
 }
 const roomRows = async () => (await getLedger(WIDE)).rows.filter((r) => r.source === "ROOM");
 
+
+// These tests were written with fixed October-2026 dates; the calendar has moved on ("Arrival cannot be in the past"). The clock is held at the day
+// they were written for — only the Date, so timers and database calls run normally.
+beforeAll(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-05T07:00:00Z")); });
+afterAll(() => { vi.useRealTimers(); });
+
 describe("financial controls — acceptance", () => {
   it("TEST 1 — normal room: checking in records 80,000 room income; reception has no way to set a price", async () => {
     const r = await book();
@@ -46,8 +52,9 @@ describe("financial controls — acceptance", () => {
     expect(row).toMatchObject({ income: 80_000, gross: 80_000, discount: 0, via: "Check-in" });
     const rec = await receptionistActor();
     expect(rec.permissions?.has("pricing.manage")).toBe(false);
-    // A discount above the hotel's limit is refused (the price itself is never typed).
-    await expect(changeDiscount(r.rooms[0].id, 50_000, "friend", rec)).rejects.toThrow();
+    // There is NO maximum discount any more (owner, 2026-11-05): reception may give any amount the room's price allows — the price itself is never typed.
+    // Who may discount is unchanged: an account without the right is refused.
+    await expect(changeDiscount(r.rooms[0].id, 50_000, "friend", { ...rec, permissions: new Set<string>() })).rejects.toThrow();
   });
 
   it("TEST 2 — Admin 10% promotion is applied automatically: 80,000 − 8,000 = 72,000", async () => {

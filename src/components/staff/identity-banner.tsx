@@ -40,7 +40,7 @@ export { WORK_AS_HOURS };
  * (--work-pad, added to the bottom padding of the page), so the pill never covers the last lines. From lg the pill floats at the corner
  * of a wide page and needs none. Nothing for anyone else.
  */
-export const stripVars = (identity: Identity) => (identity.actorType === "DEVELOPER" && identity.workAs ? "[--work-pad:3rem] lg:[--work-pad:0px]" : "");
+export const stripVars = (identity: Identity) => (identity.actorType === "DEVELOPER" && identity.workAs ? "[--work-pad:3rem] lg:[--work-pad:1.25rem]" : "");
 
 type SignOutAction = () => void | Promise<void>;
 

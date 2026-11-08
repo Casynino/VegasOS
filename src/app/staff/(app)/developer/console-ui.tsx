@@ -126,7 +126,7 @@ export function StatBlock({ label, value, caption, tag, tagTone = "slate", note,
         {Icon && <span className={cn("grid size-8 shrink-0 place-items-center rounded-xl sm:size-10", ICON_BOX[tagTone])} aria-hidden><Icon className="size-4 sm:size-[18px]" /></span>}
       </div>
       <p className={cn("mt-2 break-words font-semibold leading-none tracking-tight tabular-nums", small ? "text-xl sm:text-2xl" : "text-2xl sm:text-3xl", warn && "text-amber-700 dark:text-amber-300")}>{value}</p>
-      <p className="mt-1.5 text-xs text-muted-foreground sm:text-sm">{caption}</p>
+      <p className="mt-1.5 min-w-0 break-words text-xs text-muted-foreground sm:text-sm">{caption}</p>
       {tag && <div className="mt-2.5 sm:mt-3"><Tag tone={tagTone}>{tag}</Tag></div>}
     </div>
   );

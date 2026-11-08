@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/server/db";
 import {
   convertRequest, logContact, relinkCustomer, requestStats, setRequestStatus, submitBookingRequest,
@@ -21,6 +21,12 @@ const today = () => businessDateOf(new Date());
 const sel = (overrides: Partial<{ checkIn: string; checkOut: string; typeSlug: string; rooms: number; adults: number; children: number }> = {}) => ({
   checkIn: addDays(today(), 3), checkOut: addDays(today(), 5), typeSlug: "double-deluxe", rooms: 1, adults: 2, children: 0, ...overrides,
 });
+
+
+// These tests were written with fixed October-2026 dates; the calendar has moved on ("Arrival cannot be in the past"). The clock is held at the day
+// they were written for — only the Date, so timers and database calls run normally.
+beforeAll(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-05T07:00:00Z")); });
+afterAll(() => { vi.useRealTimers(); });
 
 describe("website booking requests", () => {
   it("submission creates a NEW request — not a reservation — with a server-side estimate", async () => {

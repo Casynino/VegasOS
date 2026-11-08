@@ -82,8 +82,8 @@ describe("state 3 — a Developer WORKING AS someone", () => {
     expect(html).not.toContain("top-0");
   });
 
-  it("the page keeps room at the bottom of a phone for the pill (--work-pad) and none from lg; nothing for anyone else", () => {
-    expect(stripVars(workingAs)).toBe("[--work-pad:3rem] lg:[--work-pad:0px]");
+  it("the page keeps room at the bottom for the pill (--work-pad: 3rem on a phone, 1.25rem on a computer); nothing for anyone else", () => {
+    expect(stripVars(workingAs)).toBe("[--work-pad:3rem] lg:[--work-pad:1.25rem]");
     expect(stripVars(developer)).toBe("");
     expect(stripVars(receptionist)).toBe("");
     expect(source("staff-shell.tsx")).toContain("pb-[calc(7rem+var(--work-pad,0px))]");
@@ -211,7 +211,8 @@ describe("the shell and the phone's Menu use them", () => {
   it("while working as someone the account page and the language (theirs) are not offered, and the bell is not drawn at all (a Developer's session is quiet); the console shows its own menu", () => {
     const shell = source("staff-shell.tsx");
     const panel = source("glass-sidebar.tsx");
-    expect(panel).toContain("!user.workAs && (");
+    // The account page of the person shown is offered while working as someone too (owner, 2026-11-08: "I cannot open the Admin's profile"); the language is not.
+    expect(panel).toContain('href="/staff/account"');
     expect(panel).toContain("!user.workAs && other");
     expect(shell).toContain("quiet={quiet}");
     expect(shell).toContain("home: consoleMode ? undefined : home");

@@ -268,6 +268,7 @@ export function GlassSidebar({ mode, sidebar, bell, collapsed = false, onCollaps
           <Search className={cn("shrink-0", phone ? "size-[18px]" : "size-4")} />
           <input ref={searchRef} value={query} onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing || e.keyCode === 229) return; // committing Chinese pinyin with Enter is not "go"
               if (e.key === "Enter" && results?.[0]) { e.preventDefault(); setQuery(""); onNavigate?.(); router.push(results[0].item.href); }
               else if (e.key === "Escape") { if (query) setQuery(""); else e.currentTarget.blur(); }
             }}
@@ -458,11 +459,10 @@ function Footer({ mode, rail, user, languages, onNavigate }: {
             <span className="block break-words text-[13px] font-semibold leading-snug text-foreground">{user.name}</span>
             <span className={cn("block truncate text-[11px]", user.developer ? "font-semibold text-fuchsia-300" : "text-muted-foreground")}>{user.developer && !user.workAs ? t("Developer") : t(user.role)}</span>
           </DropdownMenuLabel>
-          {!user.workAs && (
-            <DropdownMenuItem className={item} render={<Link href="/staff/account" onClick={onNavigate} />}>
-              <UserRound className="size-3.5" />{t("My account")}
-            </DropdownMenuItem>
-          )}
+          {/* The account page of the person shown — the Developer's own, or (working as someone) that person's, as they see it. */}
+          <DropdownMenuItem className={item} render={<Link href="/staff/account" onClick={onNavigate} />}>
+            <UserRound className="size-3.5" />{t("My account")}
+          </DropdownMenuItem>
           {!user.workAs && other && (
             <DropdownMenuItem className={item} onClick={() => void changeLanguage(other)}>
               <Languages className="size-3.5" /><span lang={LOCALE_META[other].html}>{LOCALE_META[other].label}</span>

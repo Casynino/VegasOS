@@ -59,7 +59,7 @@ export function WorkAsPill({ label, tip, stopLabel, closeLabel, stopWorkAs }: {
         <div className="flex items-center gap-2 rounded-full bg-fuchsia-700 py-1 pl-3.5 pr-1 text-white shadow-lg shadow-black/30">
           <Eye className="size-4 shrink-0" aria-hidden />
           <span className="min-w-0 truncate text-xs font-semibold">{label}</span>
-          <form action={stopWorkAs} className="shrink-0"><StopButton label={stopLabel} /></form>
+          <form action={stopWorkAs} onSubmit={() => { try { sessionStorage.removeItem(KEY); } catch { /* nothing to forget */ } }} className="shrink-0"><StopButton label={stopLabel} /></form>
           <button ref={fold} type="button" onClick={() => setFold(true)} aria-label={closeLabel} aria-expanded
             className="grid size-8 shrink-0 place-items-center rounded-full text-white/80 transition-colors hover:bg-white/15 hover:text-white focus-visible:outline-2 focus-visible:outline-white">
             <X className="size-4" aria-hidden />
