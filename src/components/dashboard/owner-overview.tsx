@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { inHouseBalances } from "@/server/services/guest-balances";
 import Link from "next/link";
 import {
-  Activity, Armchair, BadgeCheck, Banknote, BarChart3, BedDouble, BookOpenText, Boxes, Building2, CircleDollarSign, Clock, HandCoins, Inbox, Landmark, LineChart, Percent, Receipt, Store, Timer, TrendingUp, Trophy, UserX, Users, UtensilsCrossed, Wallet, Wrench,
+  Armchair, BadgeCheck, Banknote, BedDouble, BookOpenText, Boxes, Building2, CircleDollarSign, ClipboardCheck, FileChartColumn, HandCoins, Inbox, NotebookTabs, Percent, Receipt, ScrollText, Store, Timer, TrendingUp, Trophy, UserCog, UserX, Users, UtensilsCrossed, Wallet, Wrench,
 } from "lucide-react";
 import { can, requireUser } from "@/server/auth";
 import { tablesOnHome } from "@/server/services/table-performance";
@@ -16,7 +16,9 @@ import { discountLimit } from "@/lib/discounts";
 import { getRoomBoard } from "@/server/services/rooms";
 import { getShiftOverview } from "@/server/services/shifts";
 import { getFrontDeskSnapshot } from "@/server/services/front-desk";
-import { requestStats } from "@/server/services/booking-requests";
+import { newRequestCount, requestStats } from "@/server/services/booking-requests";
+import { newStockRequestCount } from "@/server/services/stock-requests";
+import { guideLabel } from "@/components/staff/guide-pill";
 import { change, dailyMoney, meetingRoomStats, occupancy, outstanding, previousRange, profitLoss, type Range } from "@/server/services/reporting";
 import { addDays, diffDays, isBusinessDate, presetRange, toDbDate, type PeriodPreset } from "@/lib/time/business-date";
 import { formatTZS } from "@/lib/format";
@@ -26,7 +28,7 @@ import { lineWho } from "@/lib/audit-line-who";
 import { DoneByDeveloper } from "@/components/staff/done-by-developer";
 import { billState } from "@/lib/payment-status";
 import {
-  AttentionCards, Delta, Initials, Panel, PanelLink, Pill, RoomsGlance, SectionLabel, StatTile, type AttentionItem,
+  AttentionCards, Delta, Initials, QuickActions, Panel, PanelLink, Pill, RoomsGlance, SectionLabel, StatTile, type AttentionItem,
 } from "./kit";
 import { AreaTrend, Donut } from "./light-charts";
 import { GuestsOwingOnHome, RoomsOnHome } from "./desk-on-home";
@@ -36,7 +38,6 @@ import { TABLE_META } from "./table-meta";
 import { BusinessDetail } from "@/app/staff/(app)/finance/finance-overview";
 import { readPeriod } from "@/components/staff/finance/finance-nav";
 import { MoneyAnalysis, MoneyAnalysisHeading } from "./money-analysis";
-import { JumpNav } from "./finance-panels";
 import { PartSkeleton } from "./finance-sections";
 import { getT } from "@/i18n/server";
 import { msg } from "@/i18n/msg";
@@ -204,28 +205,27 @@ export async function OwnerOverview({ searchParams, basePath }: {
   // The money analysis follows the chosen period; with none chosen (the dashboard opens on today) it reads this month — one day alone says little.
   const analysisPeriod = readPeriod(sp, today, "month");
   const canAnalyse = can(user, "finance.view");
-  const jump = [
-    { id: "attention", label: t("Needs your attention"), icon: <BadgeCheck /> },
-    { id: "rooms", label: t("Rooms today"), icon: <BedDouble /> },
-    { id: "tables", label: t("Tables today"), icon: <Armchair /> },
-    { id: "live", label: t("Right now"), icon: <Activity /> },
-    { id: "business", label: t("The business"), icon: <CircleDollarSign /> },
-    ...(canAnalyse ? [
-      { id: "accounts", label: t("Where the money is"), icon: <Landmark /> },
-      { id: "outlook", label: t("Cash outlook"), icon: <Clock /> },
-      { id: "trends", label: t("How the hotel is doing"), icon: <LineChart /> },
-    ] : []),
-    { id: "online", label: t("Online bookings"), icon: <Inbox /> },
-    { id: "detail", label: t("In detail"), icon: <BarChart3 /> },
-    // The guide books (every department's), one small pill at the end of the row — it opens a pop-up with them, it is not a part of this page.
-    { id: "guides", label: t("Guide books"), icon: <BookOpenText />, guide: true },
-  ];
+  // The quick actions (owner, 2026-11-08, as in his Target console): one line of the places the Boss, the MD and the managers go first, instead of the
+  // old "Jump to" pills. A phone shows the first six as plain icons in one row; a computer shows every one as a pill.
+  const [newOnline, newStock] = await Promise.all([can(user, "booking_requests.view") ? newRequestCount() : 0, can(user, "expenses.approve") ? newStockRequestCount() : 0]);
+  const quick = ([
+    can(user, "finance.view") && { href: "/staff/finance", label: t("Finance"), short: t("Finance"), icon: <Wallet />, tone: "gold" as const },
+    can(user, "reports.view") && { href: "/staff/reports", label: t("Reports"), short: t("Reports"), icon: <FileChartColumn />, tone: "sky" as const },
+    can(user, "reservations.view") && { href: "/staff/reservations", label: t("Reservations"), short: t("Bookings"), icon: <NotebookTabs />, tone: "amber" as const },
+    can(user, "booking_requests.view") && { href: "/staff/booking-requests", label: t("Online"), short: t("Online"), icon: <Inbox />, tone: "rose" as const, badge: newOnline },
+    can(user, "expenses.approve") && { href: "/staff/stock-requests", label: t("Purchases"), short: t("Purchases"), icon: <ClipboardCheck />, tone: "teal" as const, badge: newStock },
+    can(user, "users.manage") && { href: "/staff/users", label: t("Staff"), short: t("Staff"), icon: <UserCog />, tone: "violet" as const },
+    can(user, "rooms.view") && { href: "/staff/rooms", label: t("Rooms"), short: t("Rooms"), icon: <BedDouble />, tone: "emerald" as const },
+    can(user, "audit.view") && { href: "/staff/audit", label: t("Audit"), short: t("Audit"), icon: <ScrollText />, tone: "amber" as const },
+    // The guide books (every department's): a pill on a computer; on a phone they are in the menu.
+    guideLabel(t, user.permissions) && { href: "/staff/guides", label: guideLabel(t, user.permissions)!, short: t("Guides"), icon: <BookOpenText />, tone: "violet" as const, guide: true, phone: false },
+  ].filter(Boolean)) as { href: string; label: string; short?: string; icon: React.ReactNode; tone: "gold" | "violet" | "rose" | "emerald" | "amber" | "sky" | "teal"; badge?: number; guide?: boolean; phone?: boolean }[];
 
   return (
     <div className="w-full space-y-6">
       <NameBanner name={firstName} role={t(user.roleName)} />
 
-      <JumpNav label={t("Jump to")} items={jump} />
+      {quick.length > 0 && <QuickActions t={t} items={quick} />}
 
       <div id="attention" className="scroll-mt-28">
         <SectionLabel title={t("Needs your attention")} count={attention.length} t={t} />

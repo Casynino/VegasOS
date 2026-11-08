@@ -164,13 +164,13 @@ export async function FrontDeskToday() {
       <QuickActions t={t} items={[...([
         { href: "/staff/reservations/new", label: t("New booking"), short: t("Book"), hint: t("Walk-in or reserve"), icon: <CalendarPlus />, tone: "gold", perm: "reservations.create" },
         { href: "/staff/reservations", label: t("Reservations"), short: t("Bookings"), hint: t("All bookings"), icon: <NotebookTabs />, tone: "amber", perm: "reservations.view" },
-        { href: "/staff/hotel-qr", label: t("Hotel QR"), short: t("QR"), hint: qrToday ? t("{n} booked from the QR today", { n: qrToday }) : t("Show · print · QR bookings"), icon: <QrCode />, tone: "violet", perm: "reservations.view", badge: qrToday },
+        { href: "/staff/hotel-qr", label: t("Hotel QR"), short: t("QR"), hint: qrToday ? t("{n} booked from the QR today", { n: qrToday }) : t("Show · print · QR bookings"), icon: <QrCode />, tone: "violet", perm: "reservations.view", badge: qrToday, phone: false },
         { href: "/staff/check-in", label: t("Check in"), short: t("Check-in"), hint: board.arrivals.length ? t("{n} arriving today", { n: board.arrivals.length }) : t("Hand over the key"), icon: <KeyRound />, tone: "emerald", perm: "reservations.check_in", badge: board.arrivals.length },
         { href: "/staff/check-out", label: t("Check out"), short: t("Check-out"), hint: snap.departures.length ? t("{n} leaving today", { n: snap.departures.length }) : t("Settle the bill"), icon: <Luggage />, tone: "rose", perm: "reservations.check_out", badge: snap.departures.length },
         { href: "/staff/rooms", label: t("Rooms"), short: t("Rooms"), hint: t("Board & cleaning"), icon: <BedDouble />, tone: "sky", perm: "rooms.view" },
         { href: "/staff/requests", label: t("Guest request"), short: t("Requests"), hint: t("Room service & needs"), icon: <ConciergeBell />, tone: "violet", perm: "requests.view" },
-        { href: "/staff/expenses", label: t("Expense"), short: t("Expenses"), hint: t("Money paid out"), icon: <Banknote />, tone: "teal", perm: "expenses.record" },
-      ] as const).filter((a) => can(user, a.perm as never)).map((a) => ({ href: a.href, label: a.label, short: a.short, hint: a.hint, icon: a.icon, tone: a.tone, badge: "badge" in a ? a.badge : undefined })), ...(guideLabel(t, user.permissions) ? [{ href: "/staff/guides", label: guideLabel(t, user.permissions)!, short: t("Guides"), hint: undefined, icon: <BookOpenText />, tone: "violet" as const, badge: undefined, guide: true }] : [])]} />
+        { href: "/staff/expenses", label: t("Expense"), short: t("Expenses"), hint: t("Money paid out"), icon: <Banknote />, tone: "teal", perm: "expenses.record", phone: false },
+      ] as const).filter((a) => can(user, a.perm as never)).map((a) => ({ href: a.href, label: a.label, short: a.short, hint: a.hint, icon: a.icon, tone: a.tone, badge: "badge" in a ? a.badge : undefined, phone: "phone" in a ? a.phone : undefined })), ...(guideLabel(t, user.permissions) ? [{ href: "/staff/guides", label: guideLabel(t, user.permissions)!, short: t("Guides"), hint: undefined, icon: <BookOpenText />, tone: "violet" as const, badge: undefined, guide: true, phone: false }] : [])]} />
         </div>
         {worksShift ? (
           <span className="flex items-center gap-1.5">

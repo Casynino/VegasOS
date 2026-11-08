@@ -5,7 +5,7 @@ import { TrendingDown, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { englishT, type T } from "@/i18n/translate";
 import { AttentionList, type AttentionRow } from "./attention-list";
-import { PHONE_TILE, PhoneTileFace, phoneColumns } from "./phone-tile";
+import { PHONE_MAX, PHONE_TILE, PhoneTileFace, phoneColumns } from "./phone-tile";
 
 /**
  * Soft, light dashboard kit shared by every staff dashboard (admin, manager,
@@ -258,14 +258,15 @@ const QA_PILL = "group inline-flex h-10 shrink-0 items-center gap-2 rounded-full
  * booking) first, then every other everyday job with a small tinted icon and a
  * live count where it helps. Scrolls sideways on a phone instead of stacking.
  */
-export function QuickActions({ items, t = englishT }: { items: { href: string; label: string; /** One word for the phone tile (the pill keeps the full label). */ short?: string; hint?: string; icon: React.ReactNode; tone: QuickTone; badge?: number; guide?: boolean }[]; t?: T }) {
+export function QuickActions({ items, t = englishT }: { items: { href: string; label: string; /** One word for the phone tile (the pill keeps the full label). */ short?: string; hint?: string; icon: React.ReactNode; tone: QuickTone; badge?: number; guide?: boolean; /** false = not in the phone's one row (the pill stays on a computer). */ phone?: boolean }[]; t?: T }) {
+  const phoneItems = items.filter((a) => a.phone !== false).slice(0, PHONE_MAX);
   const primary = items.find((a) => a.tone === "gold");
   const rest = items.filter((a) => a !== primary);
   return (
     <>
     {/* The phone (below sm): icon tiles with one word under each, as in the owner's Target console (2026-11-08). */}
-    <nav aria-label={t("Quick actions")} className={cn("grid gap-x-1 gap-y-3 py-1 sm:hidden", phoneColumns(items.length))}>
-      {items.map((a) => a.guide ? (
+    <nav aria-label={t("Quick actions")} className={cn("grid gap-x-0 py-1 sm:hidden", phoneColumns(phoneItems.length))}>
+      {phoneItems.map((a) => a.guide ? (
         <GuideBookTrigger key={a.label} className={PHONE_TILE}><PhoneTileFace icon={a.icon} label={a.short ?? a.label} tone={a.tone} /></GuideBookTrigger>
       ) : (
         <Link key={a.label} href={a.href} title={a.hint ?? a.label} className={PHONE_TILE}><PhoneTileFace icon={a.icon} label={a.short ?? a.label} tone={a.tone} badge={a.badge} /></Link>

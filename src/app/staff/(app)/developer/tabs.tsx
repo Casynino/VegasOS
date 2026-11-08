@@ -16,7 +16,7 @@ export function Shortcuts({ t, people = [], roles = [] }: { t: T; people?: Perso
   return (
     <>
     {/* The phone (below sm): four icon tiles with one word under each, as in the owner's Target console (2026-11-08). */}
-    <nav aria-label={t("Quick actions")} className={`grid gap-x-1 gap-y-3 py-1 sm:hidden ${phoneColumns(2 + links.length)}`}>
+    <nav aria-label={t("Quick actions")} className={`grid gap-x-0 py-1 sm:hidden ${phoneColumns(2 + links.length)}`}>
       <WorkAsCard people={people} tile />
       <AddAccountCard roles={roles} tile />
       {links.map((c, n) => (
