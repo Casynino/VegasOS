@@ -369,7 +369,7 @@ export function RestaurantPortal({ role, perms, meId, takesCharge, name, greetin
               {restaurantQr && <RestaurantQrButton qr={restaurantQr} />}
               {guide && <GuidePill label={guide} />}
               {waiterShift && <WaiterShiftSwitch me={meId} shift={waiterShift.shift} left={waiterShift.left} />}
-              {shortcuts.length > 0 && <QuickActions items={shortcuts.map((x) => ({ ...x, label: t(x.label), hint: x.hint && t(x.hint), icon: SHORTCUT_ICON[x.icon] }))} t={t} />}
+              {shortcuts.length > 0 && <div className="min-w-0 basis-full sm:basis-auto"><QuickActions items={shortcuts.map((x) => ({ ...x, label: t(x.label), short: x.short && t(x.short), hint: x.hint && t(x.hint), icon: SHORTCUT_ICON[x.icon] }))} t={t} /></div>}
             </div>
           )}
           <TodayStrip parts={strip} t={t} />

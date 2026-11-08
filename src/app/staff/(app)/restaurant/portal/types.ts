@@ -129,7 +129,7 @@ export type SoundConfig = {
 };
 
 /** A shortcut button (drawn with the dashboards' quick-action pills). */
-export type Shortcut = { href: string; label: string; hint?: string; icon: "plus" | "menu" | "stock" | "qr" | "web" | "sale"; tone: "gold" | "amber" | "sky" | "violet" | "emerald" | "rose" };
+export type Shortcut = { href: string; label: string; /** One word for the phone tile. */ short?: string; hint?: string; icon: "plus" | "menu" | "stock" | "qr" | "web" | "sale"; tone: "gold" | "amber" | "sky" | "violet" | "emerald" | "rose" };
 
 /** Where the restaurant's money is right now (not for the cook). */
 export type MoneySummary = { received: number; receivedOrders: number; toCollect: number; toCollectOrders: number; onRooms: number; rooms: number; toConfirm: number; toConfirmAmount: number };

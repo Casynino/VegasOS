@@ -1,7 +1,6 @@
-import Image from "next/image";
 import Link from "next/link";
-import { headers } from "next/headers";
-import { Clock, Globe, LogOut } from "lucide-react";
+import { cookies, headers } from "next/headers";
+import { Clock } from "lucide-react";
 import { can, getMyOpenShift, requireUser } from "@/server/auth";
 import { isRestaurantDevice, needsOwnShift, worksWaiterShift } from "@/lib/permissions";
 import { businessToday, getSettings } from "@/server/settings";
@@ -9,13 +8,15 @@ import { newRequestCount } from "@/server/services/booking-requests";
 import { newStockRequestCount } from "@/server/services/stock-requests";
 import { staffHome } from "@/lib/staff-home";
 import { navFor } from "@/components/staff/nav-config";
-import { StaffNav } from "@/components/staff/staff-nav";
+import { PhoneMenuButton, PhoneMenuProvider } from "@/components/staff/phone-menu";
+import { StaffFrame } from "@/components/staff/staff-frame";
+import { AtWidth } from "@/components/staff/at-width";
+import type { SidebarProps } from "@/components/staff/glass-sidebar";
+import { SIDEBAR_COOKIE } from "@/lib/sidebar";
 import { StaffBottomBar } from "@/components/staff/bottom-bar";
 import { StaffDarkMode } from "@/components/staff/theme-switch";
-import { Initials } from "@/components/dashboard/kit";
-import { logoutAction } from "@/app/staff/(auth)/login/actions";
 import { stopWorkAsAction } from "@/app/staff/(app)/developer/access/actions";
-import { IdentityBanner, IdentityCard, IdentityChip, stripVars, type Identity } from "./identity-banner";
+import { IdentityBanner, stripVars, type Identity } from "./identity-banner";
 import { cn } from "@/lib/utils";
 import { ReceptionSearch } from "./reception/search";
 import { StaffAlerts } from "./staff-alerts";
@@ -30,7 +31,6 @@ import { I18nProvider } from "@/i18n/client";
 import { Toaster } from "@/components/ui/sonner";
 import { clientCatalog, getT } from "@/i18n/server";
 import { toLocale, DEFAULT_LOCALE, LOCALE_META } from "@/i18n/config";
-import { LanguageSwitch } from "@/components/i18n/language-switch";
 
 /**
  * The one staff application shell (sidebar, top bar, auth gate) used by
@@ -95,9 +95,24 @@ export async function StaffShell({ children }: { children: ReactNode }) {
   const locale = toLocale(user.locale) ?? DEFAULT_LOCALE;
   const [catalog, t] = await Promise.all([clientCatalog(locale, ["staff"]), getT()]);
 
+  // The side menu (a computer's floating panel and the phone's drawer): the same panel, the same words.
+  const sidebarFolded = (await cookies()).get(SIDEBAR_COOKIE)?.value === "rail";
+  const sidebar: SidebarProps = {
+    sections, home: consoleMode ? undefined : home, find: !consoleMode && can(user, "reservations.view"), hotelName: settings.hotelName,
+    user: { name: user.fullName, role: user.roleName, developer, workAs: !!workAs },
+    // The receptionist's own shift as one small line under the search (the top bar of a phone has it too).
+    shift: myShift ? { href: `/staff/shifts/${myShift.id}`, label: t("On shift · since {time}", { time: t.time(myShift.startedAt, settings.timezone) }), on: true }
+      : noShift ? { href: "/staff/start-shift", label: t("No active shift · Start"), on: false } : null,
+    languages: settings.enabledLanguages,
+  };
+  // The bell rings for what is waiting for this person (bookings, requests, orders, bills…) on every page. Not drawn for a Developer (quiet).
+  // ONE live bell: in the top bar of a phone, in the side menu of a computer (AtWidth mounts only the one that is on screen).
+  const bell = <StaffAlerts sound={{ enabled: settings.orderSoundsEnabled, volume: settings.orderSoundVolume, newSound: settings.newOrderSound, readySound: settings.readyOrderSound }} soundOff={user.soundOff} quiet={quiet} />;
+
   return (
     <I18nProvider locale={locale} catalog={catalog}>
     <QuietProvider quiet={quiet}>
+    <PhoneMenuProvider>
     <div id="staff-root" lang={LOCALE_META[locale].html} className={cn("dark flex min-h-svh flex-1 flex-col bg-canvas text-foreground", stripVars(identity))}>
       {/* A Developer: one unmistakable strip across every page (nothing for staff) — while working as someone, a taller one that says whom,
           for how long, and has Stop. Its height is the offset of the sticky parts below. */}
@@ -105,43 +120,18 @@ export async function StaffShell({ children }: { children: ReactNode }) {
       <div className="flex min-w-0 flex-1">
       <StaffDarkMode />
       <StackTableLabels />
-      <aside className="sticky top-[var(--dev-strip,0px)] hidden h-[calc(100svh-var(--dev-strip,0px))] w-72 shrink-0 p-3 lg:block print:!hidden">
-        <div className="flex h-full flex-col rounded-[1.75rem] border border-border/70 bg-card p-4 shadow-[0_2px_4px_rgba(15,23,42,0.03),0_20px_40px_-24px_rgba(15,23,42,0.25)]">
-          <Link href={home} className="mb-6 flex items-center gap-3 rounded-2xl px-1 py-1">
-            <Image src="/brand/logo-192.png" alt="" width={44} height={44} className="rounded-full shadow-[0_6px_14px_-6px_rgba(0,0,0,0.5)]" />
-            <div className="leading-tight">
-              <p className="font-display text-lg font-semibold text-foreground">{settings.hotelName}</p>
-              <p className="text-[11px] text-muted-foreground">{t("Hotel management")}</p>
-            </div>
-          </Link>
-          <div className="-mx-1 flex-1 overflow-y-auto px-1 pb-2 [scrollbar-width:thin]">
-            <StaffNav sections={sections} home={consoleMode ? undefined : home} />
-          </div>
-          {/* Sign out — the same plain button for everyone, the Restaurant Counter too (owner, 2026-10-04). */}
-          <div className="mt-3 space-y-2.5 border-t border-dashed border-border pt-3">
-            {/* Who is signed in, at laptop width where the top bar shows the name only (from xl the top bar shows name and role). */}
-            <IdentityCard identity={identity} t={t} className={consoleMode ? "xl:flex" : undefined}><Initials name={user.fullName} className={cn("size-9 text-xs", developer && "ring-2 ring-fuchsia-500")} /></IdentityCard>
-            {/* The Developer's console keeps the language switch here too (name, role, language, sign out — like ORA's console). */}
-            {consoleMode && <LanguageSwitch staff tone="light" languages={settings.enabledLanguages} className="w-full" />}
-            <form action={logoutAction}>
-              <button type="submit" className="flex w-full items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-xs font-medium text-muted-foreground transition-colors hover:border-rose-400/40 hover:bg-rose-500/10 hover:text-rose-300">
-                <LogOut className="size-3.5" />{t("Sign out")}
-              </button>
-            </form>
-          </div>
-        </div>
-      </aside>
-
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-[var(--dev-strip,0px)] z-30 px-3 pt-3 lg:pl-0 print:hidden">
-          <div className="flex h-16 items-center gap-3 rounded-[1.5rem] border border-border/70 bg-card/85 px-3 shadow-[0_10px_30px_-20px_rgba(15,23,42,0.35)] backdrop-blur-xl sm:px-4">
-            <Link href={home} className="shrink-0 lg:hidden"><Image src="/brand/logo-192.png" alt={settings.hotelName} width={36} height={36} className="rounded-full" /></Link>
-            <div className="min-w-0 shrink">
+      <StaffFrame initialCollapsed={sidebarFolded} sidebar={sidebar} bell={bell}>
+        {/* THE TOP BAR, on a phone and a tablet only (owner, 2026-11-08, as in his Target console): a floating rounded bar with the menu button, the date and the bell.
+            A computer has none — its side menu holds the search, the bell, the language, the account and Sign out. */}
+        <header className="sticky top-0 z-30 px-3 pt-3 lg:hidden print:hidden">
+          <div className="flex h-14 items-center gap-3 rounded-[1.5rem] border border-border/70 bg-card/85 px-3 shadow-[0_10px_30px_-20px_rgba(15,23,42,0.35)] backdrop-blur-xl sm:px-4">
+            <PhoneMenuButton label={t("Open menu")} />
+            <div className="min-w-0 max-md:flex-1 shrink">
               <p className="truncate text-sm font-semibold text-foreground"><span className="sm:hidden">{new Date(`${today}T12:00:00Z`).toLocaleDateString(t.intl, { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" })}</span><span className="hidden sm:inline">{t.date(today, true)}</span></p>
               <p className="hidden text-xs text-muted-foreground sm:block">{t("Hotel day 04:00 → 04:00")}</p>
             </div>
-            <div className="flex min-w-0 flex-1 justify-center">
-              {!consoleMode && can(user, "reservations.view") && <ReceptionSearch className="hidden w-full max-w-md md:block" />}
+            <div className="flex min-w-0 flex-1 justify-center max-md:hidden">
+              {!consoleMode && can(user, "reservations.view") && <ReceptionSearch className="w-full max-w-md" />}
             </div>
             {/* On shift: one small pill to her shift (what she did and collected so far) */}
             {myShift && (
@@ -156,47 +146,21 @@ export async function StaffShell({ children }: { children: ReactNode }) {
                 <Clock className="size-3.5" /><span className="sm:hidden">{t("Start shift")}</span><span className="hidden sm:inline">{t("No active shift · Start")}</span>
               </Link>
             )}
-            {/* EN | 中文 — this person's own language (saved on their account; nobody else's changes). Not while a Developer works as someone: it would change THEIR account. */}
-            {!workAs && <LanguageSwitch staff tone="light" languages={settings.enabledLanguages} className={cn("shrink-0", consoleMode && "lg:hidden")} />}
-            <a href="/" target="_blank" rel="noopener" title={t("The hotel website (opens in a new tab)")} aria-label={t("The hotel website (opens in a new tab)")}
-              className="hidden size-10 shrink-0 place-items-center rounded-full border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:grid">
-              <Globe className="size-4" />
-            </a>
-            {/* The bell: rings for what is waiting for this person (bookings, requests, orders, bills…) on every page. Not drawn for a Developer (quiet). */}
-            <StaffAlerts sound={{ enabled: settings.orderSoundsEnabled, volume: settings.orderSoundVolume, newSound: settings.newOrderSound, readySound: settings.readyOrderSound }}
-              soundOff={user.soundOff} quiet={quiet} />
-            {/* Who is signed in: the real name and role, always. Top bar: name + role from xl, the name alone at lg (role in the tooltip and the side menu's card), hidden below lg — the bottom bar's Menu shows both on a tablet and a phone. */}
-            {/* While a Developer works as someone, this shows that person and goes nowhere: their account page is theirs. */}
-            {workAs ? (
-              <div title={t("{name} · {role} — your account", { name: user.fullName, role: t(user.roleName) })} className="flex min-w-0 shrink-0 items-center gap-2.5 rounded-full">
-                <Initials name={user.fullName} className="size-10 text-xs ring-2 ring-fuchsia-500" />
-                <IdentityChip identity={identity} t={t} className="pr-2" />
-              </div>
-            ) : (
-              <Link href="/staff/account" title={t("{name} · {role} — your account", { name: user.fullName, role: t(user.roleName) })} aria-label={t("Your account — {name}, {role}", { name: user.fullName, role: t(user.roleName) })}
-                className="flex min-w-0 shrink-0 items-center gap-2.5 rounded-full ring-2 ring-transparent transition hover:ring-border">
-                <Initials name={user.fullName} className={cn("size-10 text-xs", developer && "ring-2 ring-fuchsia-500")} />
-                <IdentityChip identity={identity} t={t} className="pr-2" />
-              </Link>
-            )}
-            <form action={logoutAction} className="hidden shrink-0 sm:block">
-              <button type="submit" aria-label={t("Sign out")} title={t("Sign out")} className="grid size-10 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
-                <LogOut className="size-4" />
-              </button>
-            </form>
+            <AtWidth wide={false}>{bell}</AtWidth>
           </div>
         </header>
         {/* On the shared restaurant screen, money and taking charge ask the waiter's PIN. */}
-        <main className="flex-1 px-3 pb-[calc(7rem+var(--work-pad,0px))] pt-5 sm:px-4 lg:pb-8 lg:pl-2 lg:pr-5 print:p-0"><WaiterPinProvider device={device}><CustomerFinderAccess allowed={!consoleMode && can(user, "guests.view")}>{children}</CustomerFinderAccess></WaiterPinProvider></main>
-      </div>
+        <main className="flex-1 px-3 pb-[calc(7rem+var(--work-pad,0px))] pt-5 sm:px-4 lg:px-6 lg:pb-8 lg:pt-3 print:p-0"><WaiterPinProvider device={device}><CustomerFinderAccess allowed={!consoleMode && can(user, "guests.view")}>{children}</CustomerFinderAccess></WaiterPinProvider></main>
+      </StaffFrame>
 
-      <StaffBottomBar home={home} sections={sections} requests={newRequests} canBook={!consoleMode && can(user, "reservations.view")} console={consoleMode}
-        user={{ name: user.fullName, role: user.roleName, developer, workAs: !!workAs }} signOut />
+      <StaffBottomBar home={home} sidebar={sidebar} requests={newRequests} canBook={!consoleMode && can(user, "reservations.view")} console={consoleMode}
+        user={{ name: user.fullName, role: user.roleName, developer, workAs: !!workAs }} />
       </div>
     </div>
     {/* After a check-out done in place: the thank-you message, ready to send (opened by showCheckoutThanks). */}
     <CheckoutThanksHost />
     <Toaster richColors position="top-center" />
+    </PhoneMenuProvider>
     </QuietProvider>
     </I18nProvider>
   );

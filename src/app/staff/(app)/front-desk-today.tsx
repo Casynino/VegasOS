@@ -22,7 +22,7 @@ import { CheckOutButton } from "@/components/staff/reception/check-out-dialog";
 import { ReceptionSearch } from "@/components/staff/reception/search";
 import { cn } from "@/lib/utils";
 import { ShiftControls } from "@/components/staff/shift-controls";
-import { AttentionCards, BarList, HeroBanner, PairBars, Panel, PanelLink, Pill, QuickActions, SectionLabel, type AttentionItem } from "@/components/dashboard/kit";
+import { AttentionCards, BarList, PairBars, Panel, PanelLink, Pill, QuickActions, SectionLabel, type AttentionItem } from "@/components/dashboard/kit";
 import { Donut } from "@/components/dashboard/light-charts";
 import { RoomGrid } from "@/components/staff/rooms/room-grid";
 import { getRoomBoard } from "@/server/services/rooms";
@@ -33,6 +33,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { getT } from "@/i18n/server";
 import { msg } from "@/i18n/msg";
 import type { T } from "@/i18n/translate";
+import { NameBanner } from "@/components/dashboard/name-banner";
 
 /**
  * Reception — the hotel's operational centre. Ordered by what the desk does
@@ -151,31 +152,25 @@ export async function FrontDeskToday() {
     newRequests > 0 && { tone: "gold", icon: <ConciergeBell />, group: t.ctx("area", "Guests"), title: t.plural(newRequests, "{n} guest request waiting", "{n} guest requests waiting"), detail: t("Nobody has accepted yet — open it and tap Accept"), href: "#requests" },
   ].filter(Boolean) as AttentionItem[];
   const firstName = user.fullName.split(" ")[0];
-  const dayPart = greeting();
 
   return (
     <div className="w-full space-y-6">
-      <HeroBanner
-        image={LOBBY}
-        eyebrow={t("Front office · {role}", { role: t(user.roleName) })}
-        title={dayPart === "morning" ? t("Good morning, {name}", { name: firstName }) : dayPart === "afternoon" ? t("Good afternoon, {name}", { name: firstName }) : t("Good evening, {name}", { name: firstName })}
-        subtitle={t.rich("<b>{in}</b> to check in · <b>{out}</b> to check out today", { b: (c) => <strong className="font-semibold text-white">{c}</strong> }, { in: board.arrivals.length, out: snap.departures.length })}
-      />
+      <NameBanner image={LOBBY} name={firstName} role={t(user.roleName)} />
       <ReceptionSearch className="w-full md:hidden" />
 
       {/* The quick actions — and my shift as one small switch at the end (like the waiter's): "Since 16:19", tap to end. */}
       <div id="shift" className="flex scroll-mt-24 flex-wrap items-center gap-x-3 gap-y-2">
         <div className="min-w-0 basis-full md:basis-0 md:flex-1">
       <QuickActions t={t} items={[...([
-        { href: "/staff/reservations/new", label: t("New booking"), hint: t("Walk-in or reserve"), icon: <CalendarPlus />, tone: "gold", perm: "reservations.create" },
-        { href: "/staff/reservations", label: t("Reservations"), hint: t("All bookings"), icon: <NotebookTabs />, tone: "amber", perm: "reservations.view" },
-        { href: "/staff/hotel-qr", label: t("Hotel QR"), hint: qrToday ? t("{n} booked from the QR today", { n: qrToday }) : t("Show · print · QR bookings"), icon: <QrCode />, tone: "violet", perm: "reservations.view", badge: qrToday },
-        { href: "/staff/check-in", label: t("Check in"), hint: board.arrivals.length ? t("{n} arriving today", { n: board.arrivals.length }) : t("Hand over the key"), icon: <KeyRound />, tone: "emerald", perm: "reservations.check_in", badge: board.arrivals.length },
-        { href: "/staff/check-out", label: t("Check out"), hint: snap.departures.length ? t("{n} leaving today", { n: snap.departures.length }) : t("Settle the bill"), icon: <Luggage />, tone: "rose", perm: "reservations.check_out", badge: snap.departures.length },
-        { href: "/staff/rooms", label: t("Rooms"), hint: t("Board & cleaning"), icon: <BedDouble />, tone: "sky", perm: "rooms.view" },
-        { href: "/staff/requests", label: t("Guest request"), hint: t("Room service & needs"), icon: <ConciergeBell />, tone: "violet", perm: "requests.view" },
-        { href: "/staff/expenses", label: t("Expense"), hint: t("Money paid out"), icon: <Banknote />, tone: "teal", perm: "expenses.record" },
-      ] as const).filter((a) => can(user, a.perm as never)).map((a) => ({ href: a.href, label: a.label, hint: a.hint, icon: a.icon, tone: a.tone, badge: "badge" in a ? a.badge : undefined })), ...(guideLabel(t, user.permissions) ? [{ href: "/staff/guides", label: guideLabel(t, user.permissions)!, hint: undefined, icon: <BookOpenText />, tone: "violet" as const, badge: undefined, guide: true }] : [])]} />
+        { href: "/staff/reservations/new", label: t("New booking"), short: t("Book"), hint: t("Walk-in or reserve"), icon: <CalendarPlus />, tone: "gold", perm: "reservations.create" },
+        { href: "/staff/reservations", label: t("Reservations"), short: t("Bookings"), hint: t("All bookings"), icon: <NotebookTabs />, tone: "amber", perm: "reservations.view" },
+        { href: "/staff/hotel-qr", label: t("Hotel QR"), short: t("QR"), hint: qrToday ? t("{n} booked from the QR today", { n: qrToday }) : t("Show · print · QR bookings"), icon: <QrCode />, tone: "violet", perm: "reservations.view", badge: qrToday },
+        { href: "/staff/check-in", label: t("Check in"), short: t("Check-in"), hint: board.arrivals.length ? t("{n} arriving today", { n: board.arrivals.length }) : t("Hand over the key"), icon: <KeyRound />, tone: "emerald", perm: "reservations.check_in", badge: board.arrivals.length },
+        { href: "/staff/check-out", label: t("Check out"), short: t("Check-out"), hint: snap.departures.length ? t("{n} leaving today", { n: snap.departures.length }) : t("Settle the bill"), icon: <Luggage />, tone: "rose", perm: "reservations.check_out", badge: snap.departures.length },
+        { href: "/staff/rooms", label: t("Rooms"), short: t("Rooms"), hint: t("Board & cleaning"), icon: <BedDouble />, tone: "sky", perm: "rooms.view" },
+        { href: "/staff/requests", label: t("Guest request"), short: t("Requests"), hint: t("Room service & needs"), icon: <ConciergeBell />, tone: "violet", perm: "requests.view" },
+        { href: "/staff/expenses", label: t("Expense"), short: t("Expenses"), hint: t("Money paid out"), icon: <Banknote />, tone: "teal", perm: "expenses.record" },
+      ] as const).filter((a) => can(user, a.perm as never)).map((a) => ({ href: a.href, label: a.label, short: a.short, hint: a.hint, icon: a.icon, tone: a.tone, badge: "badge" in a ? a.badge : undefined })), ...(guideLabel(t, user.permissions) ? [{ href: "/staff/guides", label: guideLabel(t, user.permissions)!, short: t("Guides"), hint: undefined, icon: <BookOpenText />, tone: "violet" as const, badge: undefined, guide: true }] : [])]} />
         </div>
         {worksShift ? (
           <span className="flex items-center gap-1.5">
@@ -498,11 +493,6 @@ const FIVE_ROWS = "max-h-[23rem] divide-y divide-border overflow-y-auto overscro
 function ago(d: Date, now: Date, t: T) {
   const m = Math.max(0, Math.round((now.getTime() - d.getTime()) / 60000));
   return m < 1 ? t("just now") : m < 60 ? t("{n} min ago", { n: m }) : m < 24 * 60 ? t("{n} h ago", { n: Math.floor(m / 60) }) : m < 48 * 60 ? t("yesterday") : t("{n} days ago", { n: Math.floor(m / 1440) });
-}
-
-function greeting() {
-  const h = Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hourCycle: "h23", timeZone: "Africa/Dar_es_Salaam" }).format(new Date()));
-  return h < 12 ? "morning" : h < 17 ? "afternoon" : "evening";
 }
 
 

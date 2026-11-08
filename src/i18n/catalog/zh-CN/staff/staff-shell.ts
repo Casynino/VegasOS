@@ -47,6 +47,12 @@ const catalog: Catalog = {
   "nav::Book": "新建预订",
   "nav::People": "人员",
   "nav::Requests": "客人需求",
+  // The glass side menu (owner, 2026-11-08).
+  "Search pages": "搜索页面",
+  "Workspace": "工作区",
+  "Collapse": "收起",
+  "Expand": "展开",
+  "No page matches that.": "没有匹配的页面。",
   // The menu's one-word names (owner, 2026-11-06): the plain word first (the check needs it), then the meaning it has in the menu.
   "Debts": "欠款",
   "Handovers": "交接",

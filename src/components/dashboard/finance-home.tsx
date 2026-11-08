@@ -7,7 +7,7 @@ import { guideLabel } from "@/components/staff/guide-pill";
 import type { PermissionCode } from "@/lib/permissions";
 import { businessToday, getSettings, liveSinceDate } from "@/server/settings";
 import { accountantOverview } from "@/server/services/accountant";
-import { guestMovement, occupancy, previousRange, profitLoss, dailyMoney, onTheBooks, expenseSummary } from "@/server/services/reporting";
+import { guestMovement, previousRange, profitLoss, dailyMoney, onTheBooks, expenseSummary } from "@/server/services/reporting";
 import { paymentsByMethod } from "@/server/services/finance";
 import { onlinePaymentTotals } from "@/server/services/online-payments-admin";
 import { receivablesBoard } from "@/server/services/company-billing";
@@ -23,11 +23,12 @@ import type { T } from "@/i18n/translate";
 import { PeriodPicker, periodLabel, readPeriod } from "@/components/staff/finance/finance-nav";
 import { MoneyChart, type MoneyPoint } from "@/components/staff/finance/money-chart";
 import { BusinessDetail } from "@/app/staff/(app)/finance/finance-overview";
-import { AttentionCards, Delta, HeroBanner, Panel, PanelLink, QuickActions, SectionLabel, StatTile, type AttentionItem } from "./kit";
+import { AttentionCards, Delta, Panel, PanelLink, QuickActions, SectionLabel, StatTile, type AttentionItem } from "./kit";
 import { Donut } from "./light-charts";
 import { DataTable, FigureCards, HBars, JumpNav, PartHeading, Pipeline } from "./finance-panels";
 import { InsightsPanel, OutlookView } from "./finance-analysis";
 import { AccountsPart, BookingsSection, compareKit, insightFactsOf, PartSkeleton, TrendsSection, type HomeContext } from "./finance-sections";
+import { NameBanner } from "@/components/dashboard/name-banner";
 
 const shortDay = (d: string, t: T) => new Intl.DateTimeFormat(t.intl, { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${d}T00:00:00Z`));
 
@@ -50,7 +51,6 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
   const days = diffDays(p.from, p.to) + 1;
   // Charts: the period itself when it is a week or more, otherwise the two weeks up to it.
   const trendRange = days >= 7 ? range : { from: addDays(p.to, -13), to: p.to };
-  const todayRange = { from: today, to: today };
   const perms = user.permissions;
   const has = (...codes: PermissionCode[]) => codes.some((c) => perms.has(c));
   const handoverRights = CASH_HANDOVER_ON && has("cash.handover.view", "cash.handover.review");
@@ -61,7 +61,7 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
   const straddles = Boolean(live && prev.from < live && prev.to >= live);
   const prevHasRecords = !live || prev.to >= live;
 
-  const [ov, plPrev, methodsPrev, movement, movementPrev, trend, needs, receivedToday, occToday, online, restDisc, purchases, spend, owing, payments, aging, pace, onBooks] = await Promise.all([
+  const [ov, plPrev, methodsPrev, movement, movementPrev, trend, needs, online, restDisc, purchases, spend, owing, payments, aging, pace, onBooks] = await Promise.all([
     accountantOverview(range, today),
     profitLoss(prev),
     paymentsByMethod(prev.from, prev.to),
@@ -69,8 +69,6 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
     guestMovement(prev),
     dailyMoney(trendRange),
     financeNeeds(today, perms),
-    paymentsByMethod(today, today),
-    occupancy(todayRange),
     has("finance.view") ? onlinePaymentTotals(p.from, p.to) : null,
     restaurantDiscounts(range),
     buying ? purchasesPanel(today) : null,
@@ -90,9 +88,7 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
   const q = p.key === "custom" ? `from=${p.from}&to=${p.to}` : `period=${p.key}`;
 
   // ── The banner: today ──
-  const hour = Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hourCycle: "h23", timeZone: "Africa/Dar_es_Salaam" }).format(new Date()));
   const first = user.fullName.split(" ")[0];
-  const greeting = hour < 12 ? t("Good morning, {name}", { name: first }) : hour < 17 ? t("Good afternoon, {name}", { name: first }) : t("Good evening, {name}", { name: first });
   const owedNow = ov.owed.total;
   const attention = needs.map((n) => needCard(n, t));
   const href = (code: PermissionCode[], to: string) => (has(...code) ? to : undefined);
@@ -101,16 +97,16 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
 
   // ── Quick links: the jobs Finance does every day, each with what is waiting ──
   const quick = ([
-    handoverRights && { href: "/staff/accountant/handovers", label: t("Cash handovers"), icon: <HandCoins />, tone: "gold" as const, badge: count("handoverWaiting") },
-    has("purchases.authorize", "purchases.pay") && { href: "/staff/procurement", label: t("Purchases"), icon: <ClipboardCheck />, tone: "violet" as const, badge: count("authorize", "verify", "pay") },
-    has("expenses.record", "expenses.view_all") && { href: "/staff/expenses", label: t("Expenses"), icon: <Receipt />, tone: "rose" as const, badge: count("expenses") },
-    has("reports.view", "finance.view") && { href: "/staff/payments", label: t("Income"), icon: <Banknote />, tone: "emerald" as const },
-    has("finance.view") && { href: "/staff/finance/receivables", label: t("Who owes us"), icon: <Wallet />, tone: "amber" as const, badge: count("companyOverdue", "guestsOwing") },
-    has("ledger.view", "finance.view") && { href: "/staff/finance/ledger", label: t("General ledger"), icon: <Scale />, tone: "sky" as const },
-    has("reports.view") && { href: "/staff/reports", label: t("Reports"), icon: <FileText />, tone: "teal" as const },
+    handoverRights && { href: "/staff/accountant/handovers", label: t("Cash handovers"), short: t("Handovers"), icon: <HandCoins />, tone: "gold" as const, badge: count("handoverWaiting") },
+    has("purchases.authorize", "purchases.pay") && { href: "/staff/procurement", label: t("Purchases"), short: t("Purchases"), icon: <ClipboardCheck />, tone: "violet" as const, badge: count("authorize", "verify", "pay") },
+    has("expenses.record", "expenses.view_all") && { href: "/staff/expenses", label: t("Expenses"), short: t("Expenses"), icon: <Receipt />, tone: "rose" as const, badge: count("expenses") },
+    has("reports.view", "finance.view") && { href: "/staff/payments", label: t("Income"), short: t("Income"), icon: <Banknote />, tone: "emerald" as const },
+    has("finance.view") && { href: "/staff/finance/receivables", label: t("Who owes us"), short: t("Debts"), icon: <Wallet />, tone: "amber" as const, badge: count("companyOverdue", "guestsOwing") },
+    has("ledger.view", "finance.view") && { href: "/staff/finance/ledger", label: t("General ledger"), short: t("Ledger"), icon: <Scale />, tone: "sky" as const },
+    has("reports.view") && { href: "/staff/reports", label: t("Reports"), short: t("Reports"), icon: <FileText />, tone: "teal" as const },
     // The guide book (Finance's own), one small pill at the end of the row.
-    guideLabel(t, user.permissions) && { href: "/staff/guides", label: guideLabel(t, user.permissions)!, icon: <BookOpenText />, tone: "violet" as const, guide: true },
-  ].filter(Boolean)) as { href: string; label: string; icon: React.ReactNode; tone: "gold" | "violet" | "rose" | "emerald" | "amber" | "sky" | "teal"; badge?: number; guide?: boolean }[];
+    guideLabel(t, user.permissions) && { href: "/staff/guides", label: guideLabel(t, user.permissions)!, short: t("Guides"), icon: <BookOpenText />, tone: "violet" as const, guide: true },
+  ].filter(Boolean)) as { href: string; label: string; short?: string; icon: React.ReactNode; tone: "gold" | "violet" | "rose" | "emerald" | "amber" | "sky" | "teal"; badge?: number; guide?: boolean }[];
 
   // ── The day-by-day chart (months for long periods) and the income mix ──
   const byMonth = trend.length > 62;
@@ -149,13 +145,7 @@ export async function FinanceHome({ searchParams }: { searchParams: Promise<Reco
 
   return (
     <div className="w-full space-y-6">
-      <HeroBanner
-        eyebrow={user.roleName === "Finance" ? t("Finance") : t("Finance · {role}", { role: t(user.roleName) })}
-        title={greeting}
-        subtitle={<>{t.rich("<b>{pct}%</b> of the guest rooms occupied today · <g>{received}</g> received today", {
-          b: (c) => <strong className="font-semibold text-white">{c}</strong>, g: (c) => <strong className="font-semibold text-emerald-300">{c}</strong>,
-        }, { pct: Math.round(occToday.occupancy), received: formatTZS(receivedToday.total) })}{owedNow > 0 && <> · {t.rich("<a>{owed}</a> still owed to the hotel", { a: (c) => <strong className="font-semibold text-amber-300">{c}</strong> }, { owed: formatTZS(owedNow) })}</>}</>}
-      />
+      <NameBanner name={first} role={t(user.roleName)} />
 
       {quick.length > 0 && <QuickActions t={t} items={quick} />}
       <JumpNav label={t("Jump to")} items={jump} />

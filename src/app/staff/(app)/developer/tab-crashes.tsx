@@ -256,7 +256,7 @@ export function ErrorsTab({ t, c, when, now = new Date() }: { t: T; c: CrashData
   const newestRun = sys.jobs.reduce<JobStatus | null>((a, j) => (j.lastRunAt && (!a || !a.lastRunAt || j.lastRunAt > a.lastRunAt) ? j : a), null);
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatBlock
           icon={Bug} label={t("Server errors")} value={num(t, sys.errors24h)} caption={t("different errors in 24 hours")} warn={sys.errors24h > 0}
           tag={sys.errors24h > 0 ? t("Look at it") : t("Quiet")} tagTone={sys.errors24h ? "amber" : "emerald"}
@@ -384,7 +384,7 @@ export function SecurityTab({ t, c, when, now = new Date() }: { t: T; c: CrashDa
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatBlock
           icon={UserX} label={t("Failed sign-ins")} value={num(t, c.failed14d)} caption={t("in 14 days")} warn={!!f?.last24h}
           tag={c.failed14d === null ? undefined : c.failed14d > 0 ? t("Look at it") : t("Quiet")} tagTone={c.failed14d ? "amber" : "emerald"}

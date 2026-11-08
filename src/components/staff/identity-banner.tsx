@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { T } from "@/i18n/translate";
 import { cn } from "@/lib/utils";
 import { WORK_AS_HOURS } from "@/server/work-as-session";
+import { WorkAsPill } from "./work-as-pill";
 
 /**
  * Who is signed in, always in view.
@@ -17,7 +18,7 @@ import { WORK_AS_HOURS } from "@/server/work-as-session";
  *   someone, those show the PERSON being worked as.
  *
  * All of it is drawn on the server from the session (the account's role and the work-as record in the database, read on every request)
- * — nothing here comes from the page, the department or the browser. They are server components: no client code, and no setting that
+ * — nothing here comes from the page, the department or the browser. They are drawn on the server (the pill's fold, work-as-pill.tsx, is its only client state), with no setting that
  * the browser could change. (Removing the strip in the browser's tools only hides a picture — the server still treats the session as
  * a Developer's, refuses what a Developer must not do, and keeps every action in the audit trail under the Developer's own name.)
  */
@@ -72,23 +73,7 @@ export function IdentityBanner({ identity, t, stopWorkAs, now }: {
   const clock = workAsClock(identity.workAs.startedAt, now);
   const label = t("Working as {name}", { name: identity.name });
   const tip = t("{name} ({role}) · started {elapsed} ago · ends in {left}", { name: identity.name, role: t(identity.role), elapsed: spanWords(clock.elapsedMs, t), left: spanWords(clock.leftMs, t) });
-  return (
-    <div
-      role="region"
-      aria-label={label}
-      data-identity="work-as"
-      title={tip}
-      className="fixed bottom-20 right-3 z-50 flex max-w-[calc(100vw-1.5rem)] items-center gap-2 rounded-full bg-fuchsia-700 py-1 pl-3.5 pr-1 text-white shadow-lg shadow-black/30 lg:bottom-5 lg:right-5 print:hidden"
-    >
-      <span className="min-w-0 truncate text-xs font-semibold">{label}</span>
-      <form action={stopWorkAs} className="shrink-0">
-        <button type="submit" data-work-as-stop
-          className="inline-flex h-8 items-center rounded-full bg-white px-4 text-xs font-bold text-fuchsia-800 transition-colors hover:bg-fuchsia-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
-          {t("Stop")}
-        </button>
-      </form>
-    </div>
-  );
+  return <WorkAsPill label={label} tip={tip} stopLabel={t("Stop")} closeLabel={t("Close")} stopWorkAs={stopWorkAs} />;
 }
 
 /**

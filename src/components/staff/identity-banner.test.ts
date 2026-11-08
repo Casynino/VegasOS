@@ -179,17 +179,18 @@ describe("the top bar keeps room for the date and the search", () => {
 });
 
 describe("the shell and the phone's Menu use them", () => {
-  it("keeps name and role in view on a tablet and a phone: the bottom bar's Menu card, and the shell's own tooltip", () => {
+  it("keeps name and role in view: the side menu's person (computer) and the same panel in the phone's drawer", () => {
+    const panel = source("glass-sidebar.tsx");
+    expect(panel).toContain("user.name");
+    expect(panel).toContain("t(user.role)");
+    expect(panel).toContain("fuchsia"); // a Developer's picture and role carry its own colour, also while working as someone
+    // The phone's drawer draws that panel; while working as someone it says so too.
     const bar = source("bottom-bar.tsx");
-    expect(bar).toContain("{user.name}");
-    expect(bar).toContain("t(user.role)");
-    expect(bar).toContain("lg:hidden"); // the bar is the navigation below lg — exactly where the chip is hidden
-    // While working as someone the phone's Menu says so too, and its card goes nowhere.
+    expect(bar).toContain("<GlassSidebar mode=\"sheet\"");
+    expect(bar).toContain("lg:hidden"); // the bar is the navigation below lg — the side panel takes over from lg
     expect(bar).toContain("user.workAs");
     const shell = source("staff-shell.tsx");
-    expect(shell).toContain("<IdentityChip");
-    expect(shell).toContain("<IdentityCard");
-    expect(shell).toContain('aria-label={t("Your account — {name}, {role}"');
+    expect(shell).toContain("user: { name: user.fullName, role: user.roleName, developer, workAs: !!workAs }");
   });
 
   it("the shell draws the pill from the session's work-as record, with Stop wired to the Access page's action, on every page", () => {
@@ -200,18 +201,23 @@ describe("the shell and the phone's Menu use them", () => {
     expect(shell).toContain("stopWorkAs={stopWorkAsAction}");
     expect(shell).toContain('from "@/app/staff/(app)/developer/access/actions"');
     expect(shell).toContain("stripVars(identity)");
-    // No client state in the banner: it is a server component.
+    // The banner itself holds no client state (the fold of the pill is work-as-pill.tsx's).
     const banner = source("identity-banner.tsx");
     expect(banner).not.toMatch(/"use client"|useState|useEffect|localStorage|sessionStorage|document\.cookie/);
-    // The sticky parts below the strip keep using its offset variable.
-    expect(shell).toContain("top-[var(--dev-strip,0px)]");
+    // The page keeps room at the bottom of a phone for the floating pill.
+    expect(shell).toContain("pb-[calc(7rem+var(--work-pad,0px))]");
   });
 
-  it("while working as someone the language switch (their account) is hidden and the bell is not drawn at all (a Developer's session is quiet); the Developer console shows its own tabs", () => {
+  it("while working as someone the account page and the language (theirs) are not offered, and the bell is not drawn at all (a Developer's session is quiet); the console shows its own menu", () => {
     const shell = source("staff-shell.tsx");
-    expect(shell).toContain("{!workAs && <LanguageSwitch");
+    const panel = source("glass-sidebar.tsx");
+    expect(panel).toContain("!user.workAs && (");
+    expect(panel).toContain("!user.workAs && other");
     expect(shell).toContain("quiet={quiet}");
-    expect(shell).toContain("console={consoleMode}");
+    expect(shell).toContain("home: consoleMode ? undefined : home");
+    // The top bar is for a phone and a tablet only; one live bell (a computer's is in the side menu).
+    expect(shell).toContain('className="sticky top-0 z-30 px-3 pt-3 lg:hidden print:hidden"');
+    expect(shell).toContain("<AtWidth wide={false}>{bell}</AtWidth>");
     // A receptionist's "No active shift" reminder is not shown for the person being worked as (the shift gate is skipped then).
     expect(shell).toContain("const noShift = !workAs");
   });

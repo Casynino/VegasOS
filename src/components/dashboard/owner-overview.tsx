@@ -26,7 +26,7 @@ import { lineWho } from "@/lib/audit-line-who";
 import { DoneByDeveloper } from "@/components/staff/done-by-developer";
 import { billState } from "@/lib/payment-status";
 import {
-  AttentionCards, Delta, HeroBanner, Initials, Panel, PanelLink, Pill, RoomsGlance, SectionLabel, StatTile, type AttentionItem,
+  AttentionCards, Delta, Initials, Panel, PanelLink, Pill, RoomsGlance, SectionLabel, StatTile, type AttentionItem,
 } from "./kit";
 import { AreaTrend, Donut } from "./light-charts";
 import { GuestsOwingOnHome, RoomsOnHome } from "./desk-on-home";
@@ -41,6 +41,7 @@ import { PartSkeleton } from "./finance-sections";
 import { getT } from "@/i18n/server";
 import { msg } from "@/i18n/msg";
 import type { T } from "@/i18n/translate";
+import { NameBanner } from "@/components/dashboard/name-banner";
 
 const PERIODS: { key: PeriodPreset; label: string }[] = [
   { key: "today", label: msg("Today") }, { key: "yesterday", label: msg("Yesterday") }, { key: "week", label: msg("This week") },
@@ -125,9 +126,7 @@ export async function OwnerOverview({ searchParams, basePath }: {
   const vsLabel = days === 1 ? t("yesterday") : t("previous period");
   const now = new Date();
   const extensionsToday = await db.auditLog.count({ where: { action: "reservation.extended", createdAt: { gte: new Date(now.getTime() - 24 * 3600_000) } } });
-  const hour = Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hourCycle: "h23", timeZone: "Africa/Dar_es_Salaam" }).format(now));
   const firstName = user.fullName.split(" ")[0];
-  const greeting = hour < 12 ? t("Good morning, {name}", { name: firstName }) : hour < 17 ? t("Good afternoon, {name}", { name: firstName }) : t("Good evening, {name}", { name: firstName });
   // What each guest really owes (a group pays its rooms) — the same rule as the front desk.
   const owedBy = new Map(inHouse.rows.map((x) => [x.reservationId, x.outstanding]));
   const departuresOwing = snap.departures.filter((r) => (owedBy.get(r.id) ?? Math.max(0, r.balanceAmount)) > 0);
@@ -224,13 +223,7 @@ export async function OwnerOverview({ searchParams, basePath }: {
 
   return (
     <div className="w-full space-y-6">
-      <HeroBanner
-        eyebrow={t("Management · {role}", { role: t(user.roleName) })}
-        title={greeting}
-        subtitle={<>{t.rich("<b>{occupied} of {total}</b> rooms occupied tonight · <g>{received}</g> received today", {
-          b: (c) => <strong className="font-semibold text-white">{c}</strong>, g: (c) => <strong className="font-semibold text-emerald-300">{c}</strong>,
-        }, { occupied: rooms.occupied, total: rooms.total, received: formatTZS(receivedToday) })}{owedNow > 0 && <> · {t.rich("<a>{owed}</a> not paid yet by guests", { a: (c) => <strong className="font-semibold text-amber-300">{c}</strong> }, { owed: formatTZS(owedNow) })}</>}</>}
-      />
+      <NameBanner name={firstName} role={t(user.roleName)} />
 
       <JumpNav label={t("Jump to")} items={jump} />
 

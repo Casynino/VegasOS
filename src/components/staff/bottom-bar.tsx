@@ -1,20 +1,19 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, CalendarDays, ChevronRight, Home, Inbox, LogOut, Menu, ScrollText, Search, ShieldCheck } from "lucide-react";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { BarChart3, CalendarDays, Home, Inbox, Menu, ScrollText, Search, ShieldCheck } from "lucide-react";
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { StaffNav } from "./staff-nav";
-import { Initials } from "@/components/dashboard/kit";
-import { logoutAction } from "@/app/staff/(auth)/login/actions";
+import { GlassSidebar, type SidebarProps } from "./glass-sidebar";
+import { usePhoneMenu } from "./phone-menu";
 import { useT } from "@/i18n/client";
-import type { NavSection } from "./nav-config";
 
 /** Phone navigation: a flat bottom tab bar (Home · Find · Bookings · Requests · Menu). */
-export function StaffBottomBar({ home, sections, requests, canBook, user, signOut = true, console: consoleMode = false }: {
-  home: string; sections: NavSection[]; requests: number; canBook: boolean;
+export function StaffBottomBar({ home, sidebar, requests, canBook, user, console: consoleMode = false }: {
+  home: string; requests: number; canBook: boolean;
+  /** The side menu, drawn in the drawer. */
+  sidebar: SidebarProps;
   user: {
     name: string; role: string;
     /** A Developer account — the menu says so too. */
@@ -24,11 +23,9 @@ export function StaffBottomBar({ home, sections, requests, canBook, user, signOu
   };
   /** The Developer's own console (not working as anyone): the tabs are the console's pages, not the hotel's. */
   console?: boolean;
-  /** Not on the shared restaurant screen (it stays signed in; sign it out in My account). */
-  signOut?: boolean;
 }) {
   const pathname = usePathname();
-  const [open, setOpen] = useState(false);
+  const { open, setOpen } = usePhoneMenu();
   const t = useT();
   const tabs = consoleMode
     ? [
@@ -62,32 +59,12 @@ export function StaffBottomBar({ home, sections, requests, canBook, user, signOu
           <SheetTrigger render={<button type="button" className={cn(tab, "text-muted-foreground")} />}>
             <Menu className="size-5" />{t("Menu")}
           </SheetTrigger>
-          <SheetContent side="left" className="flex w-64 flex-col gap-3 bg-card p-3.5 text-foreground">
-            <SheetHeader className="px-0">
-              <SheetTitle className="font-display text-xl text-[oklch(0.55_0.1_75)] dark:text-gold">Vegas Luxury Hotel</SheetTitle>
-              {user.developer && user.workAs && <p className="rounded-md bg-fuchsia-700 px-2.5 py-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-white">{t("DEVELOPER MODE — you are working as {name} ({role})", { name: user.name, role: t(user.role) })}</p>}
-            </SheetHeader>
-            <div className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1"><StaffNav sections={sections} home={consoleMode ? undefined : home} onNavigate={() => setOpen(false)} /></div>
-            <div className="space-y-2.5 border-t border-dashed border-border pt-3">
-              {(() => {
-                const card = (
-                  <>
-                    <Initials name={user.name} className={cn("size-9 text-xs", user.developer && "ring-2 ring-fuchsia-500")} />
-                    <span className="min-w-0 flex-1 leading-tight"><span className="block truncate text-sm font-semibold">{user.name}</span><span className={cn("block truncate text-[11px]", user.developer ? "font-semibold text-fuchsia-700 dark:text-fuchsia-300" : "text-muted-foreground")}>{t(user.role)}</span></span>
-                    {!user.workAs && <ChevronRight className="size-4 text-muted-foreground" />}
-                  </>
-                );
-                // While working as someone the card shows that person and goes nowhere (their account page is theirs).
-                return user.workAs
-                  ? <div className="flex items-center gap-3 rounded-2xl bg-muted p-2.5">{card}</div>
-                  : <Link href="/staff/account" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-2xl bg-muted p-2.5">{card}</Link>;
-              })()}
-              {signOut && <form action={logoutAction}>
-                <button type="submit" className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-border py-2.5 text-sm font-medium text-muted-foreground hover:bg-rose-500/10 hover:text-rose-600">
-                  <LogOut className="size-4" />{t("Sign out")}
-                </button>
-              </form>}
-            </div>
+          {/* The drawer is only a frame (as in the owner's Target console): the glass panel inside it is the side menu, with its own round close button. */}
+          <SheetContent side="left" showCloseButton={false}
+            className="flex h-[100dvh] flex-col gap-0 border-0 bg-transparent py-3 pl-3 pr-0 text-foreground shadow-none data-[side=left]:w-[15.75rem] data-[side=left]:max-w-[80vw]">
+            <SheetTitle className="sr-only">{t("Staff navigation")}</SheetTitle>
+            {user.developer && user.workAs && <p className="mx-0 mb-2 rounded-xl bg-fuchsia-700 px-2.5 py-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-white">{t("DEVELOPER MODE — you are working as {name} ({role})", { name: user.name, role: t(user.role) })}</p>}
+            <div className="min-h-0 flex-1"><GlassSidebar mode="sheet" sidebar={sidebar} onNavigate={() => setOpen(false)} onClose={() => setOpen(false)} /></div>
           </SheetContent>
         </Sheet>
       </div>

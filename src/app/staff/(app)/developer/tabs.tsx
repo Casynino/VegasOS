@@ -4,6 +4,7 @@ import type { T } from "@/i18n/translate";
 import { CONSOLE_HREF } from "@/server/services/developer-console";
 import type { RoleChoice } from "./access/add-account-dialog";
 import { AddAccountCard, WorkAsCard, type PersonChoice } from "./home-dialogs";
+import { PHONE_TILE, PhoneTileFace, phoneColumns } from "@/components/dashboard/phone-tile";
 import { TILE, TILE_ICON } from "./tile-style";
 
 /** The four quick actions under the greeting: Work as and Add an account open a popup; Audit and Business are the console's other pages. */
@@ -13,7 +14,18 @@ export function Shortcuts({ t, people = [], roles = [] }: { t: T; people?: Perso
     { href: CONSOLE_HREF.business, icon: ChartColumn, title: t("Business"), text: t("Stays, bills, payments and guests. Read only.") },
   ];
   return (
-    <nav aria-label={t("Quick actions")} className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <>
+    {/* The phone (below sm): four icon tiles with one word under each, as in the owner's Target console (2026-11-08). */}
+    <nav aria-label={t("Quick actions")} className={`grid gap-x-1 gap-y-3 py-1 sm:hidden ${phoneColumns(2 + links.length)}`}>
+      <WorkAsCard people={people} tile />
+      <AddAccountCard roles={roles} tile />
+      {links.map((c, n) => (
+        <Link key={c.href} href={c.href} aria-label={c.title} className={PHONE_TILE}>
+          <PhoneTileFace icon={<c.icon aria-hidden />} label={c.title} tone={n === 0 ? "amber" : "sky"} />
+        </Link>
+      ))}
+    </nav>
+    <nav aria-label={t("Quick actions")} className="hidden grid-cols-1 gap-3 sm:grid sm:grid-cols-2 xl:grid-cols-4">
       <WorkAsCard people={people} />
       <AddAccountCard roles={roles} />
       {links.map((c) => (
@@ -26,5 +38,6 @@ export function Shortcuts({ t, people = [], roles = [] }: { t: T; people?: Perso
         </Link>
       ))}
     </nav>
+    </>
   );
 }

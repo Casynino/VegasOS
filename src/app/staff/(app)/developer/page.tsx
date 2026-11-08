@@ -9,7 +9,7 @@ import { healthReport } from "@/server/services/developer-health";
 import { accessPeople, accountRoleChoices } from "@/server/services/work-as";
 import { getT } from "@/i18n/server";
 import { AttentionPanel } from "./attention-panel";
-import { ConsoleBanner } from "./console-ui";
+import { NameBanner } from "@/components/dashboard/name-banner";
 import { HealthCard } from "./health-card";
 import {
   ActivitySection, ConsoleSection, ErrorsSection, GroupLabel, JumpRow, MessagesSection, PeopleSection, ReportsSection, SectionSkeleton, SecuritySection, SettingsSection, SpeedSection,
@@ -66,12 +66,6 @@ export default async function DeveloperHomePage({ searchParams }: PageProps<"/st
   // The people the "Work as" popup lists: everyone the Developer can work as, with their role.
   const people = groups.flatMap((g) => g.people.filter((p) => p.canWorkAs).map((p) => ({ id: p.id, fullName: p.fullName, roleName: g.roleName })));
 
-  const hello = {
-    morning: t("Good morning, {name}.", { name: greeting.firstName }),
-    afternoon: t("Good afternoon, {name}.", { name: greeting.firstName }),
-    evening: t("Good evening, {name}.", { name: greeting.firstName }),
-  }[greeting.partOfDay];
-
   const ctx: SectionCtx = { t, user, now, timezone: settings.timezone, when, ipAddress: meta.ipAddress, sessionHash };
   const loading = t("Loading…");
   const person = str(sp.person).trim();
@@ -95,10 +89,7 @@ export default async function DeveloperHomePage({ searchParams }: PageProps<"/st
   return (
     <div className="w-full space-y-8">
       <div className="space-y-6">
-        <ConsoleBanner
-          date={t.locale === "en" ? new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" }).format(new Date(`${greeting.today}T00:00:00Z`)) : t.date(greeting.today, true)} tag={t("Developer")} title={hello}
-          subtitle={t("Your control room for {hotel} — health, people and everything done, in one place.", { hotel: greeting.hotelName })}
-        />
+        <NameBanner name={greeting.firstName} role={t("Developer")} />
         <Shortcuts t={t} people={people} roles={roles.map((r) => ({ id: r.id, name: r.name }))} />
         <HealthCard t={t} h={health} />
         <AttentionPanel t={t} items={health.items} checks={health.checks} />

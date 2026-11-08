@@ -10,7 +10,8 @@ import { cn } from "@/lib/utils";
 import type { NavSection } from "./nav-config";
 import { useT } from "@/i18n/client";
 
-const ICONS: Record<string, LucideIcon> = {
+/** Icon names used in nav-config.ts → the icon (also used by the glass sidebar). */
+export const NAV_ICONS: Record<string, LucideIcon> = {
   Activity, Armchair, ArrowLeftRight, Banknote, BanknoteArrowUp, BarChart3, Coins, BedDouble, BookOpenText, Boxes, Building2, BusFront, CalendarCheck, CalendarClock, CalendarDays, CalendarPlus, CalendarRange, Car, CirclePlus, ClipboardCheck, ClipboardList, Clock, ConciergeBell, Contact, DoorClosed, DoorOpen, FileChartColumn, FileText, Gift, Globe, HandCoins, HandPlatter, History, Hotel, Inbox, Landmark, Languages, Layers, LayoutDashboard, LayoutGrid, MessageSquareText, NotebookText, Presentation, QrCode, Receipt, ReceiptText, ScrollText, Settings, ShieldCheck, Smartphone, Sofa, Tags, TrendingUp, UserCog, Users, UtensilsCrossed, Wallet,
 };
 
@@ -87,7 +88,7 @@ export function StaffNav({ sections, home, onNavigate }: { sections: NavSection[
   const pages = (section: NavSection, single: boolean) => (
     <ul className={cn("space-y-0.5", !single && "ml-[1.05rem] border-l border-slate-200 pb-0.5 pl-2 pt-0.5 dark:border-white/10")}>
       {section.items.map((item) => {
-        const Icon = ICONS[item.icon] ?? LayoutDashboard;
+        const Icon = NAV_ICONS[item.icon] ?? LayoutDashboard;
         const active = isActive(item.href);
         return (
           <li key={item.href} className="relative">
@@ -112,7 +113,7 @@ export function StaffNav({ sections, home, onNavigate }: { sections: NavSection[
         </Link>
       )}
       {sections.map((section, n) => {
-        const SIcon = ICONS[section.icon] ?? LayoutDashboard;
+        const SIcon = NAV_ICONS[section.icon] ?? LayoutDashboard;
         // Only one part of the hotel (e.g. the restaurant): no heading — the items right under Home. (The Developer console is also
         // only one section and has no Home pill above it, so its first item is NOT pulled up under the header.)
         const single = sections.length === 1 && !section.titled;
@@ -131,7 +132,7 @@ export function StaffNav({ sections, home, onNavigate }: { sections: NavSection[
         if (section.items.length === 1) {
           // A group with one page is that page, as a plain row.
           const item = section.items[0];
-          const Icon = ICONS[item.icon] ?? SIcon;
+          const Icon = NAV_ICONS[item.icon] ?? SIcon;
           const active = isActive(item.href);
           return (
             <Link key={section.title} href={item.href} onClick={onNavigate} aria-current={active ? "page" : undefined} className={cn(row, "font-medium", active ? rowOn : "text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-white/5 dark:hover:text-white")}>

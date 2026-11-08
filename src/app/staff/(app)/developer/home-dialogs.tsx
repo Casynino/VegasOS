@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { useT } from "@/i18n/client";
 import { startWorkAsAction } from "./access/actions";
 import { AddAccountForm, type RoleChoice } from "./access/add-account-dialog";
+import { PHONE_TILE, PhoneTileFace } from "@/components/dashboard/phone-tile";
 import { TILE, TILE_ICON } from "./tile-style";
 
 /** The two shortcut cards on the Developer Home that open a popup: "Work as someone" and "Add an account". */
@@ -28,7 +29,8 @@ function CardBody({ icon, title, text }: { icon: ReactNode; title: string; text:
 }
 
 /** "Work as": a tile that opens a popup with the people (name and role) — one press on a name and you are working as them. */
-export function WorkAsCard({ people }: { people: PersonChoice[] }) {
+/** `tile`: the phone's icon tile (one word under a soft chip, as in the owner's Target console) instead of the wide card. */
+export function WorkAsCard({ people, tile }: { people: PersonChoice[]; tile?: boolean }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -39,8 +41,8 @@ export function WorkAsCard({ people }: { people: PersonChoice[] }) {
   }, [people, query, t]);
   return (
     <>
-      <button type="button" className={TILE} onClick={() => { setQuery(""); setOpen(true); }}>
-        <CardBody icon={<Eye className="size-5" aria-hidden />} title={t("Work as")} text={t("Use the app as any person, as you.")} />
+      <button type="button" className={tile ? PHONE_TILE : TILE} onClick={() => { setQuery(""); setOpen(true); }} aria-label={tile ? t("Work as") : undefined}>
+        {tile ? <PhoneTileFace icon={<Eye aria-hidden />} label={t("Work as")} tone="violet" /> : <CardBody icon={<Eye className="size-5" aria-hidden />} title={t("Work as")} text={t("Use the app as any person, as you.")} />}
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
@@ -85,15 +87,15 @@ export function WorkAsCard({ people }: { people: PersonChoice[] }) {
 }
 
 /** "Add an account": a card that opens the same dialog as the Access page's button. */
-export function AddAccountCard({ roles }: { roles: RoleChoice[] }) {
+export function AddAccountCard({ roles, tile }: { roles: RoleChoice[]; tile?: boolean }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const [round, setRound] = useState(0);
   if (!roles.length) return null;
   return (
     <>
-      <button type="button" className={TILE} onClick={() => { setRound((n) => n + 1); setOpen(true); }}>
-        <CardBody icon={<UserPlus className="size-5" aria-hidden />} title={t("Add an account")} text={t("Staff, manager or owner.")} />
+      <button type="button" className={tile ? PHONE_TILE : TILE} onClick={() => { setRound((n) => n + 1); setOpen(true); }} aria-label={tile ? t("Add an account") : undefined}>
+        {tile ? <PhoneTileFace icon={<UserPlus aria-hidden />} label={t("Add")} tone="emerald" /> : <CardBody icon={<UserPlus className="size-5" aria-hidden />} title={t("Add an account")} text={t("Staff, manager or owner.")} />}
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>

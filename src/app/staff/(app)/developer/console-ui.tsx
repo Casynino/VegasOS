@@ -120,14 +120,14 @@ export function StatBlock({ label, value, caption, tag, tagTone = "slate", note,
   icon?: LucideIcon;
 }) {
   return (
-    <div title={note} className="flex min-w-0 flex-col rounded-2xl border border-border/70 bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-5">
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
-        {Icon && <span className={cn("grid size-10 shrink-0 place-items-center rounded-xl", ICON_BOX[tagTone])} aria-hidden><Icon className="size-[18px]" /></span>}
+    <div title={note} className="flex min-w-0 flex-col rounded-2xl border border-border/70 bg-card p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-5">
+      <div className="flex items-start justify-between gap-2 sm:gap-3">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground sm:text-[11px] sm:tracking-[0.14em]">{label}</p>
+        {Icon && <span className={cn("grid size-8 shrink-0 place-items-center rounded-xl sm:size-10", ICON_BOX[tagTone])} aria-hidden><Icon className="size-4 sm:size-[18px]" /></span>}
       </div>
-      <p className={cn("mt-2 break-words font-semibold leading-none tracking-tight tabular-nums", small ? "text-2xl" : "text-3xl", warn && "text-amber-700 dark:text-amber-300")}>{value}</p>
-      <p className="mt-1.5 text-sm text-muted-foreground">{caption}</p>
-      {tag && <div className="mt-3"><Tag tone={tagTone}>{tag}</Tag></div>}
+      <p className={cn("mt-2 break-words font-semibold leading-none tracking-tight tabular-nums", small ? "text-xl sm:text-2xl" : "text-2xl sm:text-3xl", warn && "text-amber-700 dark:text-amber-300")}>{value}</p>
+      <p className="mt-1.5 text-xs text-muted-foreground sm:text-sm">{caption}</p>
+      {tag && <div className="mt-2.5 sm:mt-3"><Tag tone={tagTone}>{tag}</Tag></div>}
     </div>
   );
 }

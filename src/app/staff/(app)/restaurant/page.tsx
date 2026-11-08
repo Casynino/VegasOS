@@ -109,9 +109,9 @@ export default async function RestaurantPortalPage() {
   // Shortcuts for this person (drawn by the portal, like the reception home's quick actions).
   // Orders, Take an order, Menu and Stock requests are the tabs above; managers also get these.
   const shortcuts: Shortcut[] = role === "manager" ? [
-    { href: "/staff/rooms/qr", label: t("Room QR codes"), icon: "qr", tone: "violet" },
-    { href: "/order", label: t("Online menu"), icon: "web", tone: "emerald" },
-    ...(perms.pay ? [{ href: "/staff/sales", label: t("Quick sale"), icon: "sale", tone: "rose" } as const] : []),
+    { href: "/staff/rooms/qr", label: t("Room QR codes"), short: t("QR"), icon: "qr", tone: "violet" },
+    { href: "/order", label: t("Online menu"), short: t("Online"), icon: "web", tone: "emerald" },
+    ...(perms.pay ? [{ href: "/staff/sales", label: t("Quick sale"), short: t("Sell"), icon: "sale", tone: "rose" } as const] : []),
   ] : [];
   const feed: FeedEvent[] = feedRows.map((e) => {
     // A table / place the hotel named shows in the reader's language (it falls back to itself).

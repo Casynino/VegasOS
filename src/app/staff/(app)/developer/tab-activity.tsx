@@ -106,7 +106,7 @@ export function ActivityTab({ t, a, now, timezone }: { t: T; a: ActivityData; no
   return (
     <div className="space-y-4">
       {/* ── the four figures ── */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatBlock
           icon={Users} label={t("Signed in today")} value={num(t, s.peopleSignedIn24h)} caption={t("different people in 24 hours")}
           tag={t.ctx("console", "Live")} tagTone="sky"
