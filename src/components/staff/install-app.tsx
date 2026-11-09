@@ -82,16 +82,16 @@ type StepItem = { text: ReactNode; icon?: typeof Share };
 
 function Step({ n, icon: Icon, children }: { n: number; icon?: typeof Share; children: ReactNode }) {
   return (
-    <li className="flex items-center gap-3 rounded-xl bg-white/[0.06] px-3 py-2.5 text-[13px] leading-snug text-white/85">
-      <span className="grid size-5 shrink-0 place-items-center rounded-full bg-gold text-[11px] font-semibold text-gold-foreground">{n}</span>
+    <li className="flex items-center gap-2.5 rounded-lg bg-white/[0.06] px-2.5 py-2 text-[12.5px] leading-snug text-white/85">
+      <span className="grid size-[18px] shrink-0 place-items-center rounded-full bg-gold text-[10.5px] font-semibold text-gold-foreground">{n}</span>
       <span className="min-w-0 flex-1">{children}</span>
-      {Icon ? <Icon className="size-4 shrink-0 text-white/45" aria-hidden="true" /> : null}
+      {Icon ? <Icon className="size-3.5 shrink-0 text-white/45" aria-hidden="true" /> : null}
     </li>
   );
 }
 
-const quiet = "inline-flex h-11 w-full items-center justify-center gap-2 rounded-full border border-white/15 text-[14px] font-medium text-white/85 transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold";
-const solid = "inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-gold text-[14px] font-semibold text-gold-foreground transition-[filter] hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold";
+const quiet = "inline-flex h-10 w-full items-center justify-center gap-2 rounded-full border border-white/15 text-[13.5px] font-medium text-white/85 transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold";
+const solid = "inline-flex h-10 w-full items-center justify-center gap-2 rounded-full bg-gold text-[13.5px] font-semibold text-gold-foreground transition-[filter] hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold";
 
 export function InstallSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const t = useT();
@@ -107,24 +107,24 @@ export function InstallSheet({ open, onClose }: { open: boolean; onClose: () => 
         {
           icon: Share,
           text: device.browser === "safari" || device.inApp
-            ? t.rich("Tap <b>Share</b> in Safari's toolbar (on newer iPhones it is under the <b>···</b> button).", { b: bold })
-            : t.rich("Tap <b>Share</b> next to the address at the top.", { b: bold }),
+            ? t.rich("Tap <b>Share</b> in the bottom bar (or under <b>···</b>).", { b: bold })
+            : t.rich("Tap <b>Share</b> in the address bar or menu.", { b: bold }),
         },
-        { icon: SquarePlus, text: t.rich("Scroll down and tap <b>Add to Home Screen</b>.", { b: bold }) },
-        { text: t.rich("Tap <b>Add</b>, then open <b>Vegas Hotel</b> from your home screen.", { b: bold }) },
+        { icon: SquarePlus, text: t.rich("Choose <b>Add to Home Screen</b>.", { b: bold }) },
+        { text: t.rich("Tap <b>Add</b>, then open <b>Vegas Hotel</b>.", { b: bold }) },
       ];
     }
     switch (device.browser) {
       case "samsung":
         return [
           { icon: Menu, text: t("Tap the menu at the bottom right.") },
-          { text: t.rich("Tap <b>Add page to</b>, then <b>Home screen</b> (or <b>Install app</b> if you see it).", { b: bold }) },
+          { text: t.rich("Tap <b>Add page to</b>, then <b>Home screen</b>.", { b: bold }) },
           open,
         ];
       case "huawei":
         return [
-          { icon: Menu, text: t("Open the browser menu (at the bottom, or the three dots at the top right).") },
-          { text: t.rich("Tap <b>Add to home screen</b> (some phones say <b>Add to desktop</b> or hide it under <b>Add to</b>), then confirm.", { b: bold }) },
+          { icon: Menu, text: t("Open the browser menu (at the bottom or top right).") },
+          { text: t.rich("Tap <b>Add to home screen</b> (or <b>Add to desktop</b>), then confirm.", { b: bold }) },
           open,
         ];
       case "firefox":
@@ -136,7 +136,7 @@ export function InstallSheet({ open, onClose }: { open: boolean; onClose: () => 
       default:
         return [
           { icon: EllipsisVertical, text: t("Open the browser menu (the three dots, top right or bottom).") },
-          { text: t.rich("Tap <b>Install app</b> or <b>Add to Home screen</b>, then <b>Install</b>.", { b: bold }) },
+          { text: t.rich("Tap <b>Install app</b> or <b>Add to Home screen</b>.", { b: bold }) },
           open,
         ];
     }
@@ -182,30 +182,30 @@ export function InstallSheet({ open, onClose }: { open: boolean; onClose: () => 
         role="dialog"
         aria-modal="true"
         aria-labelledby="vg-install-title"
-        className="relative my-auto w-full max-w-sm rounded-2xl border border-white/10 bg-[#15120e] p-5 text-left shadow-[0_24px_80px_-20px_rgba(0,0,0,0.9)] outline-none"
+        className="relative my-auto w-full max-w-[19rem] rounded-2xl border border-white/10 bg-[#15120e] p-4 text-left shadow-[0_24px_80px_-20px_rgba(0,0,0,0.9)] outline-none"
       >
-        <button type="button" onClick={onClose} aria-label={t("Close")} className="absolute right-2 top-2 grid size-11 place-items-center rounded-full text-white/60 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-gold">
+        <button type="button" onClick={onClose} aria-label={t("Close")} className="absolute right-1 top-1 grid size-10 place-items-center rounded-full text-white/60 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-gold">
           <X className="size-4" aria-hidden="true" />
         </button>
-        <div className="flex items-center gap-3 pr-8">
-          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-gold/15 text-gold"><Smartphone className="size-5" aria-hidden="true" /></span>
-          <div>
-            <h2 id="vg-install-title" className="text-base font-semibold">{t("Use it like an app")}</h2>
-            <p className="text-[13px] text-white/60">{t("Full screen, no browser bar, its own icon.")}</p>
+        <div className="flex items-center gap-2.5 pr-8">
+          <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-gold/15 text-gold"><Smartphone className="size-[18px]" aria-hidden="true" /></span>
+          <div className="min-w-0">
+            <h2 id="vg-install-title" className="text-sm font-semibold leading-tight">{t("Use it like an app")}</h2>
+            <p className="mt-0.5 text-xs leading-snug text-white/60">{t("Full screen, its own icon.")}</p>
           </div>
         </div>
 
         {device.inApp && (
-          <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-gold/40 bg-gold/10 px-3 py-2.5 text-[13px] leading-snug text-white/90">
-            <TriangleAlert className="mt-px size-4 shrink-0 text-gold" aria-hidden="true" />
+          <div className="mt-3 flex items-start gap-2 rounded-lg border border-gold/40 bg-gold/10 px-2.5 py-2 text-[12.5px] leading-snug text-white/90">
+            <TriangleAlert className="mt-px size-3.5 shrink-0 text-gold" aria-hidden="true" />
             <span>
-              {t.rich("This page is open inside {app}, which cannot put it on the home screen. Tap the <b>···</b> (or three dots) at the top and choose <b>Open in {browser}</b> or <b>Open in browser</b>, then do these steps.", { b: bold }, { app: device.appName === "this app" ? t("this app") : (device.appName ?? t("this app")), browser: browserName })}
+              {t.rich("{app} cannot add this to the home screen. Tap <b>···</b> (or the three dots) at the top, then <b>Open in {browser}</b>.", { b: bold }, { app: device.appName && device.appName !== "this app" ? device.appName : t("This app"), browser: browserName })}
             </span>
           </div>
         )}
 
         {canPrompt && !device.inApp ? (
-          <div className="mt-4 flex flex-col gap-2">
+          <div className="mt-3 flex flex-col gap-1.5">
             <button type="button" className={solid} onClick={async () => { await install(); onClose(); }}>
               <Download className="size-4" aria-hidden="true" />{t("Install the app")}
             </button>
@@ -213,10 +213,10 @@ export function InstallSheet({ open, onClose }: { open: boolean; onClose: () => 
           </div>
         ) : (
           <>
-            <ol className="mt-4 space-y-2">
+            <ol className="mt-3 space-y-1.5">
               {steps().map((st, i) => <Step key={i} n={i + 1} icon={st.icon}>{st.text}</Step>)}
             </ol>
-            <button type="button" className={`${quiet} mt-4`} onClick={onClose}>{t("Got it")}</button>
+            <button type="button" className={`${quiet} mt-3`} onClick={onClose}>{t("Got it")}</button>
           </>
         )}
       </div>
