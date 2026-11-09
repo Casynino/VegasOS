@@ -92,11 +92,11 @@ export default async function LoginPage() {
             <div className="relative w-full">
               <div aria-hidden="true" className="absolute -inset-px rounded-[1.4rem] bg-gradient-to-b from-gold/35 via-white/5 to-transparent sm:rounded-[1.75rem]" />
               <div className="relative rounded-[1.4rem] border border-white/10 vg-card p-5 shadow-[0_24px_80px_-20px_rgba(0,0,0,0.9)] sm:rounded-[1.75rem] sm:p-8">
-                <span className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.2em] text-white/55">
+                <span className="vg-pop-hide inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.2em] text-white/55">
                   <Lock className="size-3" aria-hidden="true" /> {t("Staff access only")}
                 </span>
                 <h2 className="mt-2 font-display text-[28px] leading-tight sm:mt-4 sm:text-4xl">{t("Sign in")}</h2>
-                <p className="mt-1 text-[13px] text-white/55 sm:text-sm">{t("Your dashboard opens for your role.")}</p>
+                <p className="vg-pop-hide mt-1 text-[13px] text-white/55 sm:text-sm">{t("Your dashboard opens for your role.")}</p>
                 <div className="mt-5 sm:mt-7">
                   <LoginForm />
                 </div>

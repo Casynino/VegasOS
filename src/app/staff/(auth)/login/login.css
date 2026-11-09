@@ -324,3 +324,17 @@
 @supports not (width: 1cqw) {
   .vg-scene { display: none; }
 }
+
+/* The sign-in pop-up on a phone screen (owner, 2026-11-09: small and clean, matching the install card): the dim behind it is light, the card is
+   see-through frosted glass, and the words the page already said (the "Staff access only" label and the line under the title) are left out. */
+@media (max-width: 767.98px), (max-height: 520px) and (orientation: landscape) {
+  .vg-card-wrap.is-open { background: rgba(5, 4, 3, 0.5); }
+  .vg-card-wrap.is-open .vg-pop-hide { display: none; }
+  .vg-card-wrap.is-open .vg-card {
+    padding: 1rem 1rem 1.1rem;
+    background-color: rgba(21, 17, 10, 0.97); /* nearly solid: a form must stay easy to read; the blur is the finish */
+    -webkit-backdrop-filter: blur(18px) saturate(1.4);
+    backdrop-filter: blur(18px) saturate(1.4);
+  }
+  .vg-card-wrap.is-open .vg-card h2 { margin-top: 0; font-size: 24px; }
+}

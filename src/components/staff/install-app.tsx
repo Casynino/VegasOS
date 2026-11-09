@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Download, EllipsisVertical, Menu, Share, Smartphone, SquarePlus, TriangleAlert, X } from "lucide-react";
+import { ArrowDown, Download, EllipsisVertical, Menu, Share, SquarePlus, TriangleAlert, X } from "lucide-react";
 import { useT } from "@/i18n/client";
 import { detectDevice, type Device } from "@/lib/phone-browser";
 
@@ -82,15 +82,14 @@ type StepItem = { text: ReactNode; icon?: typeof Share };
 
 function Step({ n, icon: Icon, children }: { n: number; icon?: typeof Share; children: ReactNode }) {
   return (
-    <li className="flex items-center gap-2.5 rounded-lg bg-white/[0.06] px-2.5 py-2 text-[12.5px] leading-snug text-white/85">
-      <span className="grid size-[18px] shrink-0 place-items-center rounded-full bg-gold text-[10.5px] font-semibold text-gold-foreground">{n}</span>
+    <li className="flex items-center gap-3 py-2.5 text-[14px] leading-snug text-white/65">
+      <span className="w-3 shrink-0 text-center text-[13px] font-semibold tabular-nums text-gold">{n}</span>
       <span className="min-w-0 flex-1">{children}</span>
-      {Icon ? <Icon className="size-3.5 shrink-0 text-white/45" aria-hidden="true" /> : null}
+      {Icon ? <Icon className="size-4 shrink-0 text-white/40" aria-hidden="true" /> : null}
     </li>
   );
 }
 
-const quiet = "inline-flex h-10 w-full items-center justify-center gap-2 rounded-full border border-white/15 text-[13.5px] font-medium text-white/85 transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold";
 const solid = "inline-flex h-10 w-full items-center justify-center gap-2 rounded-full bg-gold text-[13.5px] font-semibold text-gold-foreground transition-[filter] hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold";
 
 export function InstallSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -107,10 +106,10 @@ export function InstallSheet({ open, onClose }: { open: boolean; onClose: () => 
         {
           icon: Share,
           text: device.browser === "safari" || device.inApp
-            ? t.rich("Tap <b>Share</b> in the bottom bar (or under <b>···</b>).", { b: bold })
-            : t.rich("Tap <b>Share</b> in the address bar or menu.", { b: bold }),
+            ? t.rich("Tap <b>Share</b> (bottom, or <b>···</b>).", { b: bold })
+            : t.rich("Tap <b>Share</b> (address bar or menu).", { b: bold }),
         },
-        { icon: SquarePlus, text: t.rich("Choose <b>Add to Home Screen</b>.", { b: bold }) },
+        { icon: SquarePlus, text: t.rich("Tap <b>Add to Home Screen</b>.", { b: bold }) },
         { text: t.rich("Tap <b>Add</b>, then open <b>Vegas Hotel</b>.", { b: bold }) },
       ];
     }
@@ -170,33 +169,33 @@ export function InstallSheet({ open, onClose }: { open: boolean; onClose: () => 
   }, [open, onClose]);
 
   if (!open) return null;
-  // (drawn on <body>, so it is a full-screen card wherever it was opened from — the sign-in page, the shell, or the side menu's drawer)
+  // Safari on an iPhone has no one-tap install: while the card is open, a small arrow bounces over the toolbar where Share is (not on an iPad,
+  // where Share is at the top).
+  const pointAtShare = device.os === "ios" && device.browser === "safari" && !device.inApp && !canPrompt && typeof window !== "undefined" && window.innerWidth < 768;
+  // (drawn on <body>, so it is a card wherever it was opened from — the sign-in page, the shell, or the side menu's drawer)
   return createPortal(
     <div
-      className="fixed inset-0 z-[110] flex items-center justify-center overflow-y-auto overscroll-contain bg-[#050403]/75 p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] text-white"
+      className={`fixed inset-0 z-[110] flex items-end justify-center overflow-y-auto overscroll-contain bg-black/15 px-5 pt-[max(1rem,env(safe-area-inset-top))] text-white ${pointAtShare ? "pb-[calc(max(0.5rem,env(safe-area-inset-bottom))+5.75rem)]" : "pb-[max(1.75rem,calc(env(safe-area-inset-bottom)+1rem))]"}`}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
+      {/* Small and clean (owner, 2026-11-09, as on Hao Labs): frosted glass that belongs to the page — it sits low, the dim behind it is barely there, the card is see-through and blurs the scene under it. Only a title and the steps. */}
       <div
         ref={panel}
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="vg-install-title"
-        className="relative my-auto w-full max-w-[19rem] rounded-2xl border border-white/10 bg-[#15120e] p-4 text-left shadow-[0_24px_80px_-20px_rgba(0,0,0,0.9)] outline-none"
+        className="relative w-full max-w-[17.5rem] rounded-2xl border border-white/[0.09] bg-[#15110a]/55 px-4 pb-1.5 pt-3 text-left shadow-[0_18px_44px_-22px_rgba(0,0,0,0.75)] outline-none backdrop-blur-2xl backdrop-saturate-150"
       >
-        <button type="button" onClick={onClose} aria-label={t("Close")} className="absolute right-1 top-1 grid size-10 place-items-center rounded-full text-white/60 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-gold">
-          <X className="size-4" aria-hidden="true" />
-        </button>
-        <div className="flex items-center gap-2.5 pr-8">
-          <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-gold/15 text-gold"><Smartphone className="size-[18px]" aria-hidden="true" /></span>
-          <div className="min-w-0">
-            <h2 id="vg-install-title" className="text-sm font-semibold leading-tight">{t("Use it like an app")}</h2>
-            <p className="mt-0.5 text-xs leading-snug text-white/60">{t("Full screen, its own icon.")}</p>
-          </div>
+        <div className="flex items-center justify-between gap-3">
+          <h2 id="vg-install-title" className="text-[14px] font-medium tracking-tight">{t("Use it like an app")}</h2>
+          <button type="button" onClick={onClose} aria-label={t("Close")} className="-mr-2.5 grid size-10 place-items-center rounded-full text-white/55 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-gold">
+            <X className="size-4" aria-hidden="true" />
+          </button>
         </div>
 
         {device.inApp && (
-          <div className="mt-3 flex items-start gap-2 rounded-lg border border-gold/40 bg-gold/10 px-2.5 py-2 text-[12.5px] leading-snug text-white/90">
+          <div className="mb-1 mt-0.5 flex items-start gap-2 rounded-lg border border-gold/30 bg-gold/10 px-2.5 py-2 text-[12.5px] leading-snug text-white/90">
             <TriangleAlert className="mt-px size-3.5 shrink-0 text-gold" aria-hidden="true" />
             <span>
               {t.rich("{app} cannot add this to the home screen. Tap <b>···</b> (or the three dots) at the top, then <b>Open in {browser}</b>.", { b: bold }, { app: device.appName && device.appName !== "this app" ? device.appName : t("This app"), browser: browserName })}
@@ -205,21 +204,27 @@ export function InstallSheet({ open, onClose }: { open: boolean; onClose: () => 
         )}
 
         {canPrompt && !device.inApp ? (
-          <div className="mt-3 flex flex-col gap-1.5">
+          <div className="flex flex-col items-stretch gap-0.5 pb-1 pt-1.5">
             <button type="button" className={solid} onClick={async () => { await install(); onClose(); }}>
               <Download className="size-4" aria-hidden="true" />{t("Install the app")}
             </button>
-            <button type="button" className={quiet} onClick={onClose}>{t("Maybe later")}</button>
+            <button type="button" className="inline-flex h-10 items-center justify-center text-[13px] text-white/60 transition-colors hover:text-white focus-visible:outline-2 focus-visible:outline-gold" onClick={onClose}>{t("Maybe later")}</button>
           </div>
         ) : (
-          <>
-            <ol className="mt-3 space-y-1.5">
-              {steps().map((st, i) => <Step key={i} n={i + 1} icon={st.icon}>{st.text}</Step>)}
-            </ol>
-            <button type="button" className={`${quiet} mt-3`} onClick={onClose}>{t("Got it")}</button>
-          </>
+          <ol className="divide-y divide-white/[0.06]">
+            {steps().map((st, i) => <Step key={i} n={i + 1} icon={st.icon}>{st.text}</Step>)}
+          </ol>
         )}
       </div>
+
+      {pointAtShare && (
+        <div aria-hidden className="pointer-events-none fixed inset-x-0 bottom-[calc(max(0.5rem,env(safe-area-inset-bottom))+2.4rem)] z-[111] flex justify-center">
+          <span className="flex animate-bounce flex-col items-center gap-0.5 text-[10px] font-medium text-white/80 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] motion-reduce:animate-none">
+            {t("Share")}
+            <ArrowDown className="size-4 text-gold" />
+          </span>
+        </div>
+      )}
     </div>,
     document.body,
   );
