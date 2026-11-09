@@ -3,7 +3,7 @@
 .vg-scene {
   --vg-gold: 226, 186, 110;
   --floor: 15cqh; /* the polished floor under the horizon */
-  --sky: 40cqh; /* the height of the skyline */
+  --sky: min(40cqh, 84cqw); /* the height of the skyline: on a narrow phone it follows the width, so the buildings never crowd the words */
   position: absolute;
   inset: 0;
   overflow: hidden;
@@ -16,9 +16,15 @@
     radial-gradient(760px 480px at 6% 98%, rgba(150, 96, 40, 0.2), transparent 62%),
     linear-gradient(180deg, #0a0805 0%, #110c07 52%, #1a1209 100%);
 }
-@media (min-width: 768px) {
+/* "Phone screen" in this page = a narrow screen, OR a short screen turned sideways (a phone in landscape). On those the page shows the welcome
+   and ONE button and the form opens as a pop-up; on a tablet or computer the card stays on the page. */
+@media (min-width: 768px) and (min-height: 521px), (min-width: 768px) and (orientation: portrait) {
   /* a wide screen shows the whole drawing (1600 x 440), so the skyline's height follows the width */
   .vg-scene { --sky: min(54cqh, 27.5cqw); }
+}
+@media (max-height: 520px) and (orientation: landscape) {
+  /* a phone turned sideways has little height: a lower skyline, a thinner floor */
+  .vg-scene { --floor: 12cqh; --sky: min(36cqh, 22cqw); }
 }
 
 /* slow lights drifting in the dark */
@@ -238,16 +244,50 @@
   from { opacity: 0; transform: translate3d(0, 14px, 0); }
   to { opacity: 1; transform: none; }
 }
-@media (min-width: 768px) {
-  .vg-panel {
-    animation: vg-up 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) 0.2s both;
-  }
+.vg-panel {
+  animation: vg-up 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) 0.2s both;
 }
-/* the sign-in pop-up on a phone */
-@media (max-width: 767.98px) {
-  .vg-panel-open {
-    animation: vg-pop 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+/* the sign-in pop-up (phone screens), defined after .vg-panel so it wins */
+.vg-panel-open {
+  animation: vg-pop 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* the sign-in form: one button + pop-up on phone screens, the card on the page everywhere else (login-gate.tsx) */
+.vg-intro { display: none; }
+.vg-intro-btn { margin-top: 1.75rem; }
+.vg-title { font-size: clamp(32px, 12vw, 46px); }
+.vg-card-wrap { display: contents; }
+.vg-close { display: none; place-items: center; }
+.vg-install-wide { display: block; }
+@media (max-width: 767.98px), (max-height: 520px) and (orientation: landscape) {
+  .vg-intro { display: flex; flex-direction: column; align-items: center; text-align: center; }
+  .vg-card-wrap { display: none; }
+  .vg-card-wrap.is-open {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    align-items: flex-start;
+    justify-content: center;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 1rem;
+    padding-top: max(12svh, calc(env(safe-area-inset-top, 0px) + 1rem));
+    padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+    padding-left: max(1rem, env(safe-area-inset-left, 0px));
+    padding-right: max(1rem, env(safe-area-inset-right, 0px));
+    background: rgba(5, 4, 3, 0.8); /* solid enough that no blur layer is needed over the moving scene: easier on a slow phone */
   }
+  .vg-close { display: grid; }
+  .vg-install-wide { display: none; } /* (the pop-up is on a phone screen: its help link is the one under the Sign in button) */
+  .vg-main { align-items: flex-start; padding-top: 8svh; padding-bottom: 1rem; }
+}
+@media (max-height: 520px) and (orientation: landscape) {
+  .vg-card-wrap.is-open { padding-top: max(0.75rem, env(safe-area-inset-top, 0px)); padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px)); }
+  .vg-main { padding-top: 1svh; }
+  .vg-intro-eyebrow, .vg-intro-sub, .vg-intro-install { display: none; }
+  .vg-intro-btn { margin-top: 1rem; }
+  .vg-title { font-size: 34px; margin-top: 0; }
 }
 @keyframes vg-pop {
   from { opacity: 0; transform: translate3d(0, 12px, 0) scale(0.97); }
@@ -263,4 +303,24 @@
   }
   .vg-star { opacity: 0.6; }
   .vg-dust { display: none; }
+}
+
+/* the card: solid enough on a phone, glass on a tablet / computer (the blur is the heavy part, so only where there is room for it) */
+.vg-card {
+  position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 1.4rem;
+  background-color: rgba(21, 18, 14, 0.95);
+}
+@media (min-width: 768px) and (min-height: 521px), (min-width: 768px) and (orientation: portrait) {
+  .vg-card {
+    background-color: rgba(21, 18, 14, 0.88);
+    -webkit-backdrop-filter: blur(24px);
+    backdrop-filter: blur(24px);
+  }
+}
+
+/* an engine without container units (older than Chrome 105 / Safari 16) cannot draw the scene: the page stays plain dark, the form still works */
+@supports not (width: 1cqw) {
+  .vg-scene { display: none; }
 }

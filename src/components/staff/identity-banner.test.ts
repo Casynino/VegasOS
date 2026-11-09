@@ -75,7 +75,8 @@ describe("state 3 — a Developer WORKING AS someone", () => {
 
   it("floats over the page at the bottom right, above the phone's bottom bar (not a strip at the top), and is out of print", () => {
     const html = banner(workingAs, t, at(5));
-    expect(html).toContain("fixed bottom-20 right-3");
+    // above the phone's tab bar AND the home indicator (5rem + the bottom safe area), and clear of a notch when the phone is turned sideways
+    expect(html).toContain("fixed bottom-[calc(5rem+env(safe-area-inset-bottom,0px))] right-[max(0.75rem,env(safe-area-inset-right))]");
     expect(html).toContain("lg:bottom-5 lg:right-5");
     expect(html).toContain("print:hidden");
     expect(html).not.toContain("sticky");
@@ -217,7 +218,8 @@ describe("the shell and the phone's Menu use them", () => {
     expect(shell).toContain("quiet={quiet}");
     expect(shell).toContain("home: consoleMode ? undefined : home");
     // The top bar is for a phone and a tablet only; one live bell (a computer's is in the side menu).
-    expect(shell).toContain('className="sticky top-0 z-30 px-3 pt-3 lg:hidden print:hidden"');
+    // (its top margin is 0.75rem plus the phone's top safe area, so in the home-screen app it sits below the clock)
+    expect(shell).toContain('className="sticky top-0 z-30 px-3 pt-[calc(0.75rem+env(safe-area-inset-top,0px))] lg:hidden print:hidden"');
     expect(shell).toContain("<AtWidth wide={false}>{bell}</AtWidth>");
     // A receptionist's "No active shift" reminder is not shown for the person being worked as (the shift gate is skipped then).
     expect(shell).toContain("const noShift = !workAs");

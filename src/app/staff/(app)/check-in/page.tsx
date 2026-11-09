@@ -149,7 +149,7 @@ export default async function CheckInPage({ searchParams }: PageProps<"/staff/ch
               <Input name="q" defaultValue={q} placeholder={t("Name, phone, reference, ID, room")} className="h-10 rounded-xl pl-9" />
             </label>
           </form>
-          <div className="max-h-[70vh] overflow-y-auto p-2 lg:max-h-[calc(100svh-15rem)]">
+          <div className="max-h-[70svh] overflow-y-auto p-2 lg:max-h-[calc(100svh-15rem)]">
             {groups.length === 0 ? (
               <p className="px-3 py-8 text-center text-sm text-muted-foreground">{q ? t("No booking matches “{q}”.", { q }) : t("No bookings waiting in the next 14 days.")}</p>
             ) : groups.map((g) => (

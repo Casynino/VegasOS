@@ -40,7 +40,9 @@ export function PermissionMatrix({ permissions, roles }: { permissions: { code: 
     });
   }
 
-  const groups = Object.groupBy(permissions, (p) => p.code.split(".")[0]);
+  // (a plain loop, not Object.groupBy: that one needs iOS 17.4 / Chrome 117 and would crash this page on an older phone)
+  const groups: Record<string, typeof permissions> = {};
+  for (const p of permissions) (groups[p.code.split(".")[0]] ??= []).push(p);
 
   return (
     <div className="overflow-x-auto">

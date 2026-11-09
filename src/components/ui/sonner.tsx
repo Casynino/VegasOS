@@ -13,6 +13,9 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       theme={theme as ToasterProps["theme"]}
       className="toaster group"
+      // under the clock / Dynamic Island in the home-screen app (no inset in a normal tab: the same 24px / 16px as the default)
+      offset={{ top: "calc(env(safe-area-inset-top, 0px) + 24px)", right: 24, bottom: 24, left: 24 }}
+      mobileOffset={{ top: "calc(env(safe-area-inset-top, 0px) + 16px)", right: 16, bottom: 16, left: 16 }}
       containerAriaLabel={t("Notifications")}
       icons={{
         success: (

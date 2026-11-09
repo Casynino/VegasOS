@@ -394,8 +394,8 @@ export function GlassSidebar({ mode, sidebar, bell, collapsed = false, onCollaps
   return (
     <aside aria-label={t("Staff navigation")}
       onPointerOver={(e) => showHint(e.target)} onPointerLeave={() => setHint(null)} onFocusCapture={(e) => showHint(e.target)} onBlurCapture={() => setHint(null)}
-      className={cn("fixed left-3 top-3 z-30 hidden lg:block print:hidden", rail ? "w-[4.5rem]" : "bottom-3 w-56")}>
-      <div className={cn("glass-panel flex flex-col", rail ? "max-h-[calc(100dvh-1.5rem)]" : "h-full")}>{rail ? railView : full}</div>
+      className={cn("fixed left-[max(0.75rem,env(safe-area-inset-left))] top-[max(0.75rem,env(safe-area-inset-top))] z-30 hidden lg:block print:hidden", rail ? "w-[4.5rem]" : "bottom-[max(0.75rem,env(safe-area-inset-bottom))] w-56")}>
+      <div className={cn("glass-panel flex flex-col", rail ? "max-h-[calc(100dvh-1.5rem-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))]" : "h-full")}>{rail ? railView : full}</div>
 
       {/* Fold and unfold, on the panel's own edge. */}
       <div className="group absolute -right-3.5 top-[1.65rem] z-10">

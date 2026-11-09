@@ -147,6 +147,8 @@ async function run() {
       if (view.mobile) {
         await page.cmd("Emulation.setUserAgentOverride", { userAgent: PHONE_UA });
         await page.cmd("Emulation.setTouchEmulationEnabled", { enabled: true });
+        // the one-time "Use it like an app" sheet (src/components/staff/install-app.tsx) must not sit over a picture
+        await page.cmd("Page.addScriptToEvaluateOnNewDocument", { source: "try{localStorage.setItem('vg.installSeen','1')}catch(e){}" });
       }
       // the books are printed: every picture is taken in the light look
       await page.cmd("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: s0(list).dark ? "dark" : "light" }] });

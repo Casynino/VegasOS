@@ -65,7 +65,7 @@ export function CountView({ items }: { items: InventoryRow[] }) {
           </li>
         ))}
       </ul>
-      <div className="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 border-t border-border/70 bg-card/95 px-4 py-3 backdrop-blur">
+      <div className="sticky bottom-0 max-lg:bottom-[calc(3.5rem+env(safe-area-inset-bottom,0px))] flex flex-wrap items-center justify-between gap-3 border-t border-border/70 bg-card/95 px-4 py-3 backdrop-blur">
         <p className="text-xs text-muted-foreground">{missing.length ? t.plural(missing.length, "Give a reason for {n} difference.", "Give a reason for {n} differences.") : t("Differences are recorded with your name, the reason and the time.")}</p>
         <GoldButton pending={pending} disabled={!entered || missing.length > 0} onClick={go}>{t("Save count")}{changed.length ? ` · ${t.plural(changed.length, "{n} correction", "{n} corrections")}` : ""}</GoldButton>
       </div>

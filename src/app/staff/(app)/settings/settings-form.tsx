@@ -309,7 +309,7 @@ export function SettingsForm({ defaults: d }: { defaults: Defaults }) {
             </CardContent>
           </Card>
 
-          <div className="sticky bottom-0 flex justify-end border-t bg-background/95 py-3 backdrop-blur">
+          <div className="sticky bottom-0 max-lg:bottom-[calc(3.5rem+env(safe-area-inset-bottom,0px))] flex justify-end border-t bg-background/95 py-3 backdrop-blur">
             <Button type="submit" disabled={pending}>
               {pending && <Loader2 className="animate-spin" />}
               {t("Save settings")}

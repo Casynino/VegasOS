@@ -321,7 +321,7 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
         </section>
 
         {/* The ticket */}
-        <aside id="pos-ticket" className="flex scroll-mt-4 flex-col overflow-hidden rounded-3xl border border-border/70 bg-card shadow-sm lg:sticky lg:top-4 lg:max-h-[calc(100svh-2rem)]">
+        <aside id="pos-ticket" className="flex scroll-mt-24 flex-col overflow-hidden rounded-3xl border border-border/70 bg-card shadow-sm lg:scroll-mt-0 lg:sticky lg:top-[max(1rem,env(safe-area-inset-top))] lg:max-h-[calc(100svh-2rem)]">
           <header className="flex items-center gap-3 border-b border-border/60 px-4 py-3.5">
             <span className="grid h-11 min-w-11 shrink-0 place-items-center rounded-xl bg-[oklch(0.72_0.12_80/0.18)] px-1.5 text-sm font-bold tabular-nums text-[oklch(0.5_0.11_75)] dark:text-[oklch(0.84_0.11_82)]">{tile ?? <TypeIcon className="size-5" />}</span>
             <div className="min-w-0 flex-1 leading-tight">
@@ -591,7 +591,7 @@ export function PosScreen({ menu, guests, accounts, fee, canPay, roomBills, veri
 
       {/* Phone: the ticket is below the menu — jump to it. */}
       {count > 0 && (
-        <a href="#pos-ticket" className="fixed inset-x-3 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-30 flex h-14 items-center justify-between rounded-2xl bg-foreground px-4 text-background shadow-2xl lg:hidden">
+        <a href="#pos-ticket" className="fixed left-[max(0.75rem,env(safe-area-inset-left))] right-[max(0.75rem,env(safe-area-inset-right))] bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-30 flex h-14 items-center justify-between rounded-2xl bg-foreground px-4 text-background shadow-2xl lg:hidden">
           <span className="flex items-center gap-2 text-sm font-semibold"><span className="grid size-7 place-items-center rounded-full bg-amber-500 text-xs font-bold text-black">{count}</span>{t("Review order")}</span>
           <span className="font-bold tabular-nums">{formatTZS(total)}</span>
         </a>

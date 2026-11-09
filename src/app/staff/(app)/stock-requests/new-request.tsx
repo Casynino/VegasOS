@@ -169,7 +169,7 @@ export function NewRequest({ kitchen, drinks, storeItems, departments, defaultDe
       </section>
 
       {/* ── Your list: it scrolls on its own; urgent, what it is for, the note and "Check the list" stay in view ── */}
-      <section className="flex flex-col overflow-hidden rounded-3xl border border-border/70 bg-card xl:sticky xl:top-4 xl:max-h-[calc(100svh-6rem)]">
+      <section className="flex flex-col overflow-hidden rounded-3xl border border-border/70 bg-card xl:sticky xl:top-[max(1rem,env(safe-area-inset-top))] xl:max-h-[calc(100svh-6rem)]">
         <div className="flex items-baseline justify-between border-b border-border/60 px-4 py-3.5 sm:px-5">
           <h2 className="flex items-center gap-2 text-base font-semibold"><ClipboardList className="size-4 text-amber-400" />{t("Your list")}</h2>
           <span className="text-xs text-muted-foreground">{t.plural(ready.length, "{n} item", "{n} items")} · {t(deptName)}</span>

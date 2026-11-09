@@ -49,7 +49,7 @@ export function WorkAsPill({ label, tip, stopLabel, closeLabel, stopWorkAs }: {
   };
   return (
     <div role="region" aria-label={label} data-identity="work-as" title={tip}
-      className="fixed bottom-20 right-3 z-50 max-w-[calc(100vw-1.5rem)] lg:bottom-5 lg:right-5 print:hidden">
+      className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom,0px))] right-[max(0.75rem,env(safe-area-inset-right))] z-50 max-w-[calc(100vw-1.5rem)] lg:bottom-5 lg:right-5 print:hidden">
       {folded ? (
         <button ref={eye} type="button" onClick={() => setFold(false)} aria-label={label} aria-expanded={false}
           className="ml-auto grid size-11 place-items-center rounded-full bg-fuchsia-700 text-white shadow-lg shadow-black/30 transition-colors hover:bg-fuchsia-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">

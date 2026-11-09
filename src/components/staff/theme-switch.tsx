@@ -9,8 +9,11 @@ import { useEffect } from "react";
  */
 export function StaffDarkMode() {
   useEffect(() => {
-    document.documentElement.classList.add("dark");
-    return () => { document.documentElement.classList.remove("dark"); };
+    const root = document.documentElement;
+    root.classList.add("dark");
+    // pop-ups and menus are drawn outside the shell too: the app-like touch rules in globals.css hang on this mark
+    root.dataset.staff = "1";
+    return () => { root.classList.remove("dark"); delete root.dataset.staff; };
   }, []);
   return null;
 }

@@ -161,7 +161,7 @@ function StaffBell({ sound, soundOff }: { sound: AlertSound; soundOff: boolean }
       {waiting.length > 0 && (
         <Popover>
           <PopoverTrigger render={<button type="button" aria-label={t("{n} waiting for you — see them", { n: waiting.length })} title={t("What is waiting for you")}
-            className="absolute -right-1.5 -top-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white ring-2 ring-card transition hover:scale-110" />}>
+            className="absolute -right-1.5 -top-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white ring-2 ring-card transition after:absolute after:-inset-2 after:content-[''] hover:scale-110" />}>
             {waiting.length > 99 ? "99+" : waiting.length}
           </PopoverTrigger>
           <PopoverContent align="end" className="w-80 gap-0 rounded-2xl p-0">

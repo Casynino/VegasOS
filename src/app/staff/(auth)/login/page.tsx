@@ -3,7 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { CSSProperties } from "react";
-import { ArrowLeft, Lock, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Lock, ShieldCheck } from "lucide-react";
 import { getCurrentUser } from "@/server/auth";
 import { getSettings } from "@/server/settings";
 import { addressLines } from "@/components/public/contact";
@@ -12,6 +12,7 @@ import { DEFAULT_LOCALE } from "@/i18n/config";
 import { msg } from "@/i18n/msg";
 import { getT, guestLocale } from "@/i18n/server";
 import { LoginForm } from "./login-form";
+import { STAFF_PAINT } from "@/lib/staff-viewport";
 import { LoginGate } from "./login-gate";
 import { LoginScene } from "./login-scene";
 import "./login.css";
@@ -23,7 +24,14 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 /** The words the sign-in form shows — the browser gets only these here (the staff app's strings come after sign-in). */
-const FORM_WORDS = [msg("Email"), msg("you@vegashoteltz.com"), msg("Password"), msg("Hide password"), msg("Show password"), msg("Signing in…"), msg("Sign in")];
+const FORM_WORDS = [msg("Email"), msg("you@vegashoteltz.com"), msg("Password"), msg("Hide password"), msg("Show password"), msg("Signing in…"), msg("Sign in"),
+  // the full-screen app help (src/components/staff/install-app.tsx)
+  msg("Close"), msg("Get the full-screen app"), msg("Use it like an app"), msg("Full screen, no browser bar, its own icon."), msg("Install the app"), msg("Maybe later"), msg("Got it"),
+  msg("Tap ··· at the top right, then Open in browser."), msg("In Safari, sign in and tap Get the full-screen app again."), msg("In the browser, sign in and tap Get the full-screen app again."),
+  msg("Tap Share in Safari's toolbar, or in the ⋯ menu."), msg("Tap Share in the address bar or the menu."), msg("Scroll down and tap Add to Home Screen."), msg("Tap Add, then open Vegas Hotel from your home screen."),
+  msg("Tap the menu at the bottom right."), msg("Tap Add page to, then Home screen."), msg("Open Vegas Hotel from your home screen."), msg("Tap the menu at the bottom of the browser."),
+  msg("Tap Add to home screen (it may be under Add to)."), msg("Open the browser menu at the top right."), msg("Open the browser menu."), msg("Tap Install app or Add to Home screen."),
+  msg("If this page opened inside WeChat or WhatsApp, open it in Safari first."), msg("If this page opened inside WeChat or WhatsApp, open it in Chrome first.")];
 
 const rd = (s: number) => ({ "--rd": `${s}s` }) as CSSProperties;
 
@@ -43,9 +51,9 @@ export default async function LoginPage() {
   const formWords = t.locale === DEFAULT_LOCALE ? null : Object.fromEntries(FORM_WORDS.map((w) => [w, t(w)]));
 
   return (
-    <div className="relative isolate flex min-h-svh flex-1 flex-col overflow-hidden bg-[#0b0906] text-white">
+    <div className="relative isolate flex min-h-svh flex-1 flex-col overflow-hidden bg-[#0c0a07] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] pt-[env(safe-area-inset-top)] text-white">
       {/* the browser's own bars (top and bottom of a phone) take the page's colour: dark, like the picture */}
-      <style>{"html,body{background:#0b0906}"}</style>
+      <style>{STAFF_PAINT}</style>
       <LoginScene />
 
       <header className="vg-up flex items-center justify-between gap-3 px-4 py-4 sm:px-10 sm:py-7" style={rd(0.05)}>
@@ -61,7 +69,7 @@ export default async function LoginPage() {
         </Link>
       </header>
 
-      <main className="flex flex-1 items-center px-4 py-4 max-md:items-start max-md:pt-[8svh] sm:px-10 sm:py-8 lg:pb-[20svh]">
+      <main className="vg-main flex flex-1 items-center px-4 py-4 sm:px-10 sm:py-8 lg:pb-[20svh]">
         <div className="mx-auto grid w-full max-w-6xl items-center gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(360px,420px)]">
           <div className="vg-up hidden lg:block" style={rd(0.15)}>
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gold">Mlimani City · Dar es Salaam</p>
@@ -75,29 +83,28 @@ export default async function LoginPage() {
             <p className="mt-6 text-sm text-white/50">{t("Reception · Management · Administration — one sign-in for the whole hotel.")}</p>
           </div>
 
+          <I18nProvider locale={t.locale} catalog={formWords}>
           <LoginGate
             openLabel={t("Sign in")}
             closeLabel={t("Close")}
             intro={
               <>
-                <p className="vg-up text-[10px] font-semibold uppercase tracking-[0.26em] text-gold" style={rd(0.2)}>Mlimani City · Dar es Salaam</p>
-                <h1 className="vg-up mt-3 font-display text-[46px] leading-[1.02]" style={rd(0.3)}>{t("Welcome back.")}</h1>
-                <p className="vg-up mt-3 max-w-[16rem] text-balance text-[13px] leading-relaxed text-white/60" style={rd(0.42)}>{t("Your dashboard opens for your role.")}</p>
+                <p className="vg-up vg-intro-eyebrow text-[10px] font-semibold uppercase tracking-[0.26em] text-gold" style={rd(0.2)}>Mlimani City · Dar es Salaam</p>
+                <h1 className="vg-up vg-title mt-3 font-display leading-[1.02]" style={rd(0.3)}>{t("Welcome back.")}</h1>
+                <p className="vg-up vg-intro-sub mt-3 max-w-[16rem] text-balance text-[13px] leading-relaxed text-white/60" style={rd(0.42)}>{t("Your dashboard opens for your role.")}</p>
               </>
             }
           >
             <div className="relative w-full">
               <div aria-hidden="true" className="absolute -inset-px rounded-[1.4rem] bg-gradient-to-b from-gold/35 via-white/5 to-transparent sm:rounded-[1.75rem]" />
-              <div className="relative rounded-[1.4rem] border border-white/10 bg-[#15120e]/88 p-5 shadow-[0_24px_80px_-20px_rgba(0,0,0,0.9)] backdrop-blur-xl sm:rounded-[1.75rem] sm:p-8">
+              <div className="relative rounded-[1.4rem] border border-white/10 vg-card p-5 shadow-[0_24px_80px_-20px_rgba(0,0,0,0.9)] sm:rounded-[1.75rem] sm:p-8">
                 <span className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.2em] text-white/55">
                   <Lock className="size-3" aria-hidden="true" /> {t("Staff access only")}
                 </span>
                 <h2 className="mt-2 font-display text-[28px] leading-tight sm:mt-4 sm:text-4xl">{t("Sign in")}</h2>
                 <p className="mt-1 text-[13px] text-white/55 sm:text-sm">{t("Your dashboard opens for your role.")}</p>
                 <div className="mt-5 sm:mt-7">
-                  <I18nProvider locale={t.locale} catalog={formWords}>
-                    <LoginForm />
-                  </I18nProvider>
+                  <LoginForm />
                 </div>
                 <p className="mt-5 flex items-start gap-2 border-t border-white/10 pt-4 text-[12px] leading-relaxed text-white/45 sm:mt-6 sm:pt-5">
                   <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-white/35" aria-hidden="true" />
@@ -106,12 +113,20 @@ export default async function LoginPage() {
               </div>
             </div>
           </LoginGate>
+          </I18nProvider>
         </div>
       </main>
 
-      <footer className="flex flex-wrap items-end justify-between gap-4 px-4 pb-5 pt-2 text-xs text-white/35 sm:p-5 sm:px-10">
+      <footer className="flex flex-wrap items-end justify-between gap-4 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-2 text-xs text-white/35 sm:p-5 sm:px-10 sm:pb-[max(1.25rem,env(safe-area-inset-bottom))]">
         <p className="font-medium text-white/55">{settings.hotelName}</p>
-        <p className="hidden sm:block">{addressLines(settings).join(" · ")}</p>
+        <div className="flex items-end gap-x-6">
+          <p className="hidden sm:block">{addressLines(settings).join(" · ")}</p>
+          {/* Who made the system — one quiet line to Nino's page and work (owner, 2026-11-09: on the sign-in page, as on the website's footer). */}
+          <Link href="/nino" className="group -my-2 inline-flex min-h-10 items-center gap-1 rounded-sm text-xs text-white/55 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold">
+            {t.rich("Developed by <b>Nino</b>", { b: (c) => <span className="font-semibold text-white/80 transition-colors group-hover:text-[#c6f432]">{c}</span> })}
+            <ArrowUpRight className="size-3.5 transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden="true" />
+          </Link>
+        </div>
       </footer>
     </div>
   );

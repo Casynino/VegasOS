@@ -123,6 +123,12 @@ describe("the sign-in page", () => {
     expect(LoginPage.length).toBe(0);
   });
 
+  it("has the quiet 'Developed by Nino' link to /nino at the bottom (owner, 2026-11-09)", async () => {
+    const html = await page();
+    expect(html).toMatch(/<a[^>]*href="\/nino"[^>]*>/);
+    expect(text(html)).toContain("Developed by Nino");
+  });
+
   it("a person already signed in (a Developer too) is sent on to /staff, which opens their own home", async () => {
     signedIn.user = { id: "u1" };
     try { await expect(page()).rejects.toThrow("REDIRECT /staff"); } finally { signedIn.user = null; }

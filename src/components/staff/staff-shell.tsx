@@ -16,6 +16,8 @@ import type { SidebarProps } from "@/components/staff/glass-sidebar";
 import { SIDEBAR_COOKIE } from "@/lib/sidebar";
 import { StaffBottomBar } from "@/components/staff/bottom-bar";
 import { StaffDarkMode } from "@/components/staff/theme-switch";
+import { InstallPrompt } from "@/components/staff/install-app";
+import { StaffServiceWorker } from "@/components/staff/staff-service-worker";
 import { stopWorkAsAction } from "@/app/staff/(app)/developer/access/actions";
 import { IdentityBanner, stripVars, type Identity } from "./identity-banner";
 import { cn } from "@/lib/utils";
@@ -121,11 +123,12 @@ export async function StaffShell({ children }: { children: ReactNode }) {
       <IdentityBanner identity={identity} t={t} stopWorkAs={stopWorkAsAction} now={new Date()} />
       <div className="flex min-w-0 flex-1">
       <StaffDarkMode />
+      <StaffServiceWorker />
       <StackTableLabels />
       <StaffFrame initialCollapsed={sidebarFolded} sidebar={sidebar} bell={bell}>
         {/* THE TOP BAR, on a phone and a tablet only (owner, 2026-11-08, as in his Target console): a floating rounded bar with the menu button, the date and the bell.
             A computer has none — its side menu holds the search, the bell, the language, the account and Sign out. */}
-        <header className="sticky top-0 z-30 px-3 pt-3 lg:hidden print:hidden">
+        <header className="sticky top-0 z-30 px-3 pt-[calc(0.75rem+env(safe-area-inset-top,0px))] lg:hidden print:hidden">
           <div className="flex h-14 items-center gap-3 rounded-[1.5rem] border border-border/70 bg-card/85 px-3 shadow-[0_10px_30px_-20px_rgba(15,23,42,0.35)] backdrop-blur-xl sm:px-4">
             <PhoneMenuButton label={t("Open menu")} />
             <div className="min-w-0 max-md:flex-1 shrink">
@@ -155,7 +158,7 @@ export async function StaffShell({ children }: { children: ReactNode }) {
           </div>
         </header>
         {/* On the shared restaurant screen, money and taking charge ask the waiter's PIN. */}
-        <main className="flex-1 px-3 pb-[calc(7rem+var(--work-pad,0px))] pt-5 sm:px-4 lg:px-6 lg:pb-[calc(2rem+var(--work-pad,0px))] lg:pt-3 print:p-0"><WaiterPinProvider device={device}><CustomerFinderAccess allowed={!consoleMode && can(user, "guests.view")}>{children}</CustomerFinderAccess></WaiterPinProvider></main>
+        <main className="flex-1 px-3 pb-[calc(7rem+var(--work-pad,0px))] pt-5 sm:px-4 lg:px-6 lg:pb-[calc(2rem+var(--work-pad,0px))] lg:pt-[calc(0.75rem+env(safe-area-inset-top,0px))] print:p-0"><WaiterPinProvider device={device}><CustomerFinderAccess allowed={!consoleMode && can(user, "guests.view")}>{children}</CustomerFinderAccess></WaiterPinProvider></main>
       </StaffFrame>
 
       <StaffBottomBar home={home} sidebar={sidebar} requests={newRequests} canBook={!consoleMode && can(user, "reservations.view")} console={consoleMode}
@@ -164,6 +167,10 @@ export async function StaffShell({ children }: { children: ReactNode }) {
     </div>
     {/* After a check-out done in place: the thank-you message, ready to send (opened by showCheckoutThanks). */}
     <CheckoutThanksHost />
+    {/* the home-screen app runs under the status bar: this strip is that bar's own colour (globals.css) */}
+    <div aria-hidden className="staff-status-strip" />
+    {/* once, on a phone that has not put the app on its home screen: how to (Share → Add to Home Screen, or one tap on Android) */}
+    <InstallPrompt />
     <Toaster richColors position="top-center" />
     </PhoneMenuProvider>
     </QuietProvider>

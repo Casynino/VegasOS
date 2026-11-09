@@ -1320,6 +1320,36 @@ html:has(.pub-site) { background-color: var(--pub-night); }
   #staff-root { overflow-x: clip; }
 }
 
+/* ───────── Full screen on a phone or iPad (owner, 2026-11-09, as on Target Express) ─────────
+   The staff app runs edge to edge (viewport-fit=cover, src/lib/staff-viewport.ts). In the home-screen app on an iPhone the page runs under the
+   status bar (black-translucent, white clock): this strip is that bar's own colour, so a page scrolling under it never collides with the clock.
+   It has no height in a normal browser tab, where the browser draws its own bar. A phone turned sideways keeps the page clear of the notch. */
+.staff-status-strip { position: fixed; inset: 0 0 auto 0; z-index: 100; height: env(safe-area-inset-top, 0px); background: #0c0a07; pointer-events: none; }
+@media print { .staff-status-strip { display: none; } }
+#staff-root { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
+/* Pop-ups, menus and toasts are drawn outside #staff-root (in <body>), so the app-like touch rules are keyed on <html data-staff> (set by StaffDarkMode):
+   a double tap never zooms there either, a pop-up's scroll never carries on into the page behind it, and a long press on a button / tab / menu row does
+   not select text or open the iPhone's link menu, as in an app. Fields and text stay selectable. */
+html[data-staff] { touch-action: manipulation; }
+html[data-staff] :is([role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]) { overscroll-behavior: contain; }
+@media (pointer: coarse) {
+  html[data-staff] :is(button, [role="button"], [role="tab"], [role="menuitem"], nav a, header a) { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+}
+/* The top bar is lower by the phone's top margin, so a jump to a section or a scrollIntoView lands clear of it (the sites' own scroll-mt-* offsets were
+   tuned for the bar without that margin). */
+html[data-staff] { scroll-padding-top: env(safe-area-inset-top, 0px); }
+/* Pop-ups: about 47 of them set their own max-height, which knows nothing of the status strip; in the home-screen app (where the margins exist) a tall one
+   would slide under the clock with its close button. One rule for all: a phone sheet sits above the home indicator, so its top edge clears the strip; a
+   centred pop-up on a tablet keeps a margin of the same size. (In a browser tab the margins are 0 and nothing changes.) */
+@media (max-width: 639px) and (display-mode: standalone), (max-width: 639px) and (display-mode: fullscreen) {
+  html[data-staff] [data-slot="dialog-content"] { max-height: calc(100svh - 0.75rem - env(safe-area-inset-top, 0px) - max(0.5rem, env(safe-area-inset-bottom, 0px))); }
+}
+@media (min-width: 640px) and (display-mode: standalone), (min-width: 640px) and (display-mode: fullscreen) {
+  html[data-staff] [data-slot="dialog-content"] { max-height: calc(100svh - 1.5rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
+}
+/* Tab strips hide their scroll bar with the class [scrollbar-width:none]; browsers older than Chrome 121 / Safari 18.2 need this one too. */
+[class*="scrollbar-width:none"]::-webkit-scrollbar { display: none; }
+
 /* Phones: a table marked data-stack shows each row as a small card (its first cell as the title,
    the others labelled from the table's headings) — no sideways scrolling. See StackTableLabels. */
 @media (max-width: 639px) {

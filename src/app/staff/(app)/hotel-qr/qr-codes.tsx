@@ -297,9 +297,9 @@ export function GuestView({ code, hotel, onClose }: { code: Pick<QrCodeView, "qr
 
   return createPortal(
     <div ref={ref} role="dialog" aria-modal="true" aria-label={t("Scan to book your stay")}
-      className="fixed inset-0 z-[100] flex flex-col items-center justify-center-safe overflow-y-auto bg-[#0c0806] px-4 py-8 text-center text-white">
+      className="fixed inset-0 z-[100] flex flex-col items-center justify-center-safe overflow-y-auto bg-[#0c0806] px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(2rem,calc(env(safe-area-inset-top)+1rem))] text-center text-white">
       <div aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_45%,rgba(227,189,106,0.2),transparent_50%),radial-gradient(circle_at_10%_95%,rgba(56,97,210,0.3),transparent_45%)]" />
-      <button type="button" onClick={close} className="absolute right-4 top-4 inline-flex h-10 items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-4 text-sm font-medium text-white backdrop-blur hover:bg-white/15">
+      <button type="button" onClick={close} className="absolute right-[max(1rem,env(safe-area-inset-right))] top-[max(1rem,env(safe-area-inset-top))] inline-flex h-10 items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-4 text-sm font-medium text-white backdrop-blur hover:bg-white/15">
         <X className="size-4" />{t("Close")}
       </button>
       <div className="relative flex items-center gap-2.5">
@@ -310,8 +310,8 @@ export function GuestView({ code, hotel, onClose }: { code: Pick<QrCodeView, "qr
       <p className="relative mt-5 font-display text-[clamp(2rem,6vw,3.5rem)] font-semibold leading-none">{t("Scan to book")}</p>
       <p className="relative mt-1 font-display text-[clamp(1.4rem,4vw,2.4rem)] italic leading-none text-[#e3bd6a]">{t("your stay with us")}</p>
       <div className="relative mt-7 rounded-[2rem] bg-white p-[clamp(0.9rem,2.4vmin,1.6rem)] shadow-[0_0_0_2px_rgba(227,189,106,0.6),0_30px_80px_-30px_rgba(227,189,106,0.7)]">
-        <span className="block size-[min(78vw,58vh)] [&_svg]:size-full" dangerouslySetInnerHTML={{ __html: code.qr }} />
-        <span className="absolute left-1/2 top-1/2 grid size-[min(17vw,12.5vh)] -translate-x-1/2 -translate-y-1/2 place-items-center rounded-2xl bg-white p-1.5 shadow-[0_0_0_1px_rgba(11,16,38,0.08)]">
+        <span className="block size-[min(78vw,58svh)] [&_svg]:size-full" dangerouslySetInnerHTML={{ __html: code.qr }} />
+        <span className="absolute left-1/2 top-1/2 grid size-[min(17vw,12.5svh)] -translate-x-1/2 -translate-y-1/2 place-items-center rounded-2xl bg-white p-1.5 shadow-[0_0_0_1px_rgba(11,16,38,0.08)]">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/brand/logo-192.png" alt="" className="size-full rounded-xl" />
         </span>
