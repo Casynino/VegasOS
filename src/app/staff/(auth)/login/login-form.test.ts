@@ -123,10 +123,14 @@ describe("the sign-in page", () => {
     expect(LoginPage.length).toBe(0);
   });
 
-  it("has the quiet 'Developed by Nino' link to /nino at the bottom (owner, 2026-11-09)", async () => {
+  it("has the quiet 'Hotel Management System by Nino' line to /nino at the bottom, not 'Developed by' and not the hotel's name again (owner, 2026-11-09)", async () => {
     const html = await page();
     expect(html).toMatch(/<a[^>]*href="\/nino"[^>]*>/);
-    expect(text(html)).toContain("Developed by Nino");
+    const words = text(html);
+    expect(words).toContain("Hotel Management System by Nino");
+    expect(words).not.toContain("Developed by");
+    // the hotel's name stays in the corner at the top only
+    expect(words.split("Vegas Luxury Hotel").length - 1).toBeLessThanOrEqual(1);
   });
 
   it("a person already signed in (a Developer too) is sent on to /staff, which opens their own home", async () => {

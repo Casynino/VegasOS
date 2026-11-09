@@ -111,16 +111,19 @@ export default async function LoginPage() {
         </div>
       </main>
 
-      <footer className="flex flex-wrap items-end justify-between gap-4 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-2 text-xs text-white/35 sm:p-5 sm:px-10 sm:pb-[max(1.25rem,env(safe-area-inset-bottom))]">
-        <p className="font-medium text-white/55">{settings.hotelName}</p>
-        <div className="flex items-end gap-x-6">
-          <p className="hidden sm:block">{addressLines(settings).join(" · ")}</p>
-          {/* Who made the system — one quiet line to Nino's page and work (owner, 2026-11-09: on the sign-in page, as on the website's footer). */}
-          <Link href="/nino" className="group -my-2 inline-flex min-h-10 items-center gap-1 rounded-sm text-xs text-white/55 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold">
-            {t.rich("Developed by <b>Nino</b>", { b: (c) => <span className="font-semibold text-white/80 transition-colors group-hover:text-[#e2ba6e]">{c}</span> })}
+      <footer className="flex flex-wrap items-end justify-center gap-x-6 gap-y-1 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-2 text-xs text-white/35 sm:justify-between sm:p-5 sm:px-10 sm:pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+        {/* (the hotel's name is not repeated down here: it is already in the corner above) */}
+        <p className="hidden sm:block">{addressLines(settings).join(" · ")}</p>
+        {/* Who made the system — one quiet line to Nino's page and work (only here, on the sign-in page): the system's own name and "by Nino",
+            worded like the other systems' sign-in pages ("The Distribution Chain by Nino", "Sales Inventory System by Nino", "Sea Freight System by Nino"),
+            plain text with no pill or badge (owner, 2026-11-09: not "Developed by Nino", and no hotel name repeated). */}
+        <p className="flex items-center justify-center gap-x-1.5 text-xs text-white/55">
+          <span>{t("Hotel Management System")}</span>
+          <Link href="/nino" aria-label={`${t("Hotel Management System")} by Nino`} className="group -my-2 inline-flex min-h-10 items-center gap-1 rounded-sm transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold">
+            by <span className="font-semibold text-white/80 transition-colors group-hover:text-[#e2ba6e]">Nino</span>
             <ArrowUpRight className="size-3.5 transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden="true" />
           </Link>
-        </div>
+        </p>
       </footer>
     </div>
   );

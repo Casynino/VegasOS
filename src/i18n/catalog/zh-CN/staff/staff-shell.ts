@@ -24,6 +24,7 @@ const catalog: Catalog = {
   "Every guest leaves wanting to return.": "每一位客人，离开时都想再来。",
   "Reception · Management · Administration — one sign-in for the whole hotel.": "前台 · 管理 · 行政 — 全酒店统一登录。",
   "Staff access only": "仅限员工",
+  "Hotel Management System": "酒店管理系统",
   "Sign in": "登录",
   "Signing in…": "正在登录…",
   "Your dashboard opens for your role.": "登录后将打开与你的角色对应的工作台。",
