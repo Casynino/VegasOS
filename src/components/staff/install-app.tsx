@@ -1,15 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { Download, EllipsisVertical, Menu, Share, Smartphone, SquarePlus, X } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Download, EllipsisVertical, Menu, Share, Smartphone, SquarePlus, TriangleAlert, X } from "lucide-react";
 import { useT } from "@/i18n/client";
+import { detectDevice, type Device } from "@/lib/phone-browser";
 
 /**
- * Use it as an app (owner, 2026-11-09: the screen should be full, like an app, on every phone — iPhone, Samsung, Pixel, Huawei). A website in
- * a browser tab always keeps the browser's own bars and no page can hide them; the only full-screen version is the one put on the home screen.
- * So a phone that has not done that gets a small sheet saying how — one tap on Android Chrome, a few steps anywhere else. It opens by itself
- * once after sign-in and any time from the sign-in page ("Get the full-screen app"). Nothing shows once the app is installed, or on a computer.
- * Copied from Target Express, in the staff app's own dark look (it works on the sign-in page too, which is not inside the staff shell).
+ * Use it as an app (owner, 2026-11-09: the screen must be full, like an app, on every phone — iPhone, Samsung, Pixel, Huawei — and the phone
+ * itself must push people to install, as in Super Drive). A website in a browser tab always keeps the browser's own bars and no page can hide
+ * them; the only full-screen version is the one put on the home screen. So a phone that has not done that gets a card: ONE TAP on Android
+ * (Chrome's own Install button, shown when the browser offers it) and the shortest steps for the browser at hand anywhere else.
+ * The card opens by itself after sign-in on every new visit until the app is installed, any time from "Get the full-screen app" on the sign-in
+ * page, and from "Get the app" in the account menu. Nothing shows once the app is installed, or on a computer.
+ * Copied from Super Drive (src/components/InstallApp.tsx), in the staff app's own dark look. Every word it shows is listed in install-words.ts.
  */
 
 type InstallEvent = Event & {
@@ -32,25 +36,16 @@ if (typeof window !== "undefined") {
   });
 }
 
-const SEEN = "vg.installSeen";
+/** Asked once per browser visit (a new tab or a new day asks again) — until the app is on the home screen. */
+const ASKED = "vg.installAsked";
+/** The account menu asks the card to open (it lives in the shell, outside the menu's own pop-up). */
+const OPEN_EVENT = "vg:open-install";
+export const openInstallSheet = () => window.dispatchEvent(new Event(OPEN_EVENT));
 
-/**
- * Which phone browser this is, because the way to the home screen differs: Safari's Share sheet, Chrome's ⋮ menu, Samsung Internet's and
- * Huawei's ☰ menu at the bottom, and WeChat / WhatsApp, whose own browser cannot add anything to the home screen at all.
- */
-type Browser = "safari" | "ios-other" | "chrome" | "samsung" | "huawei" | "android-other" | "in-app";
-
-function browserOf(ua: string, ios: boolean): Browser {
-  if (/MicroMessenger|WhatsApp|FBAN|FBAV|Instagram|Line\//i.test(ua)) return "in-app";
-  if (ios) return /CriOS|FxiOS|EdgiOS|OPiOS/i.test(ua) ? "ios-other" : "safari";
-  if (/SamsungBrowser/i.test(ua)) return "samsung";
-  if (/HuaweiBrowser|HBPC|HarmonyOS|OpenHarmony|ArkWeb/i.test(ua)) return "huawei";
-  if (/Chrome\//i.test(ua) && !/EdgA|OPR|Firefox|YaBrowser|UCBrowser|MiuiBrowser|HeyTapBrowser/i.test(ua)) return "chrome";
-  return "android-other";
-}
-
-function useInstall() {
-  const [state, setState] = useState({ ready: false, phone: false, installed: false, ios: false, browser: "chrome" as Browser, canPrompt: false });
+export function useInstall() {
+  const [state, setState] = useState<{ ready: boolean; phone: boolean; installed: boolean; device: Device; canPrompt: boolean }>({
+    ready: false, phone: false, installed: false, device: { os: "other", browser: "other", inApp: false }, canPrompt: false,
+  });
   useEffect(() => {
     const check = () => {
       const standalone =
@@ -59,8 +54,7 @@ function useInstall() {
         (navigator as Navigator & { standalone?: boolean }).standalone === true;
       // a touch screen as its main input: a phone, and an iPad or Android tablet too (a laptop with a mouse is not)
       const phone = window.matchMedia("(pointer: coarse)").matches;
-      const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-      setState({ ready: true, phone, installed: standalone, ios, browser: browserOf(navigator.userAgent, ios), canPrompt: !!deferred });
+      setState({ ready: true, phone, installed: standalone, device: detectDevice(navigator.userAgent, navigator.platform, navigator.maxTouchPoints), canPrompt: !!deferred });
     };
     check();
     listeners.add(check);
@@ -83,6 +77,9 @@ function useInstall() {
   return { ...state, install };
 }
 
+const bold = (c: ReactNode) => <b className="font-semibold text-white">{c}</b>;
+type StepItem = { text: ReactNode; icon?: typeof Share };
+
 function Step({ n, icon: Icon, children }: { n: number; icon?: typeof Share; children: ReactNode }) {
   return (
     <li className="flex items-center gap-3 rounded-xl bg-white/[0.06] px-3 py-2.5 text-[13px] leading-snug text-white/85">
@@ -96,10 +93,54 @@ function Step({ n, icon: Icon, children }: { n: number; icon?: typeof Share; chi
 const quiet = "inline-flex h-11 w-full items-center justify-center gap-2 rounded-full border border-white/15 text-[14px] font-medium text-white/85 transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold";
 const solid = "inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-gold text-[14px] font-semibold text-gold-foreground transition-[filter] hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold";
 
-function InstallSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function InstallSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const t = useT();
-  const { ios, browser, canPrompt, install } = useInstall();
+  const { device, canPrompt, install } = useInstall();
   const panel = useRef<HTMLDivElement>(null);
+  const browserName = device.os === "ios" ? "Safari" : "Chrome";
+
+  /** The three steps for this phone and browser: every browser words them a little differently, so each gets its own. */
+  const steps = (): StepItem[] => {
+    const open: StepItem = { text: t.rich("Open <b>Vegas Hotel</b> from your home screen.", { b: bold }) };
+    if (device.os === "ios") {
+      return [
+        {
+          icon: Share,
+          text: device.browser === "safari" || device.inApp
+            ? t.rich("Tap <b>Share</b> in Safari's toolbar (on newer iPhones it is under the <b>···</b> button).", { b: bold })
+            : t.rich("Tap <b>Share</b> next to the address at the top.", { b: bold }),
+        },
+        { icon: SquarePlus, text: t.rich("Scroll down and tap <b>Add to Home Screen</b>.", { b: bold }) },
+        { text: t.rich("Tap <b>Add</b>, then open <b>Vegas Hotel</b> from your home screen.", { b: bold }) },
+      ];
+    }
+    switch (device.browser) {
+      case "samsung":
+        return [
+          { icon: Menu, text: t("Tap the menu at the bottom right.") },
+          { text: t.rich("Tap <b>Add page to</b>, then <b>Home screen</b> (or <b>Install app</b> if you see it).", { b: bold }) },
+          open,
+        ];
+      case "huawei":
+        return [
+          { icon: Menu, text: t("Open the browser menu (at the bottom, or the three dots at the top right).") },
+          { text: t.rich("Tap <b>Add to home screen</b> (some phones say <b>Add to desktop</b> or hide it under <b>Add to</b>), then confirm.", { b: bold }) },
+          open,
+        ];
+      case "firefox":
+        return [
+          { icon: EllipsisVertical, text: t("Open the browser menu at the top right.") },
+          { text: t.rich("Tap <b>Install</b>, then <b>Add</b>.", { b: bold }) },
+          open,
+        ];
+      default:
+        return [
+          { icon: EllipsisVertical, text: t("Open the browser menu (the three dots, top right or bottom).") },
+          { text: t.rich("Tap <b>Install app</b> or <b>Add to Home screen</b>, then <b>Install</b>.", { b: bold }) },
+          open,
+        ];
+    }
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -129,7 +170,8 @@ function InstallSheet({ open, onClose }: { open: boolean; onClose: () => void })
   }, [open, onClose]);
 
   if (!open) return null;
-  return (
+  // (drawn on <body>, so it is a full-screen card wherever it was opened from — the sign-in page, the shell, or the side menu's drawer)
+  return createPortal(
     <div
       className="fixed inset-0 z-[110] flex items-center justify-center overflow-y-auto overscroll-contain bg-[#050403]/75 p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] text-white"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
@@ -153,7 +195,16 @@ function InstallSheet({ open, onClose }: { open: boolean; onClose: () => void })
           </div>
         </div>
 
-        {canPrompt ? (
+        {device.inApp && (
+          <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-gold/40 bg-gold/10 px-3 py-2.5 text-[13px] leading-snug text-white/90">
+            <TriangleAlert className="mt-px size-4 shrink-0 text-gold" aria-hidden="true" />
+            <span>
+              {t.rich("This page is open inside {app}, which cannot put it on the home screen. Tap the <b>···</b> (or three dots) at the top and choose <b>Open in {browser}</b> or <b>Open in browser</b>, then do these steps.", { b: bold }, { app: device.appName === "this app" ? t("this app") : (device.appName ?? t("this app")), browser: browserName })}
+            </span>
+          </div>
+        )}
+
+        {canPrompt && !device.inApp ? (
           <div className="mt-4 flex flex-col gap-2">
             <button type="button" className={solid} onClick={async () => { await install(); onClose(); }}>
               <Download className="size-4" aria-hidden="true" />{t("Install the app")}
@@ -163,74 +214,49 @@ function InstallSheet({ open, onClose }: { open: boolean; onClose: () => void })
         ) : (
           <>
             <ol className="mt-4 space-y-2">
-              {browser === "in-app" ? (
-                <>
-                  <Step n={1} icon={EllipsisVertical}>{t("Tap ··· at the top right, then Open in browser.")}</Step>
-                  <Step n={2}>{ios ? t("In Safari, sign in and tap Get the full-screen app again.") : t("In the browser, sign in and tap Get the full-screen app again.")}</Step>
-                </>
-              ) : ios ? (
-                <>
-                  <Step n={1} icon={Share}>{browser === "safari" ? t("Tap Share in Safari's toolbar, or in the ⋯ menu.") : t("Tap Share in the address bar or the menu.")}</Step>
-                  <Step n={2} icon={SquarePlus}>{t("Scroll down and tap Add to Home Screen.")}</Step>
-                  <Step n={3}>{t("Tap Add, then open Vegas Hotel from your home screen.")}</Step>
-                </>
-              ) : browser === "samsung" ? (
-                <>
-                  <Step n={1} icon={Menu}>{t("Tap the menu at the bottom right.")}</Step>
-                  <Step n={2}>{t("Tap Add page to, then Home screen.")}</Step>
-                  <Step n={3}>{t("Open Vegas Hotel from your home screen.")}</Step>
-                </>
-              ) : browser === "huawei" ? (
-                <>
-                  <Step n={1} icon={Menu}>{t("Tap the menu at the bottom of the browser.")}</Step>
-                  <Step n={2}>{t("Tap Add to home screen (it may be under Add to).")}</Step>
-                  <Step n={3}>{t("Open Vegas Hotel from your home screen.")}</Step>
-                </>
-              ) : (
-                <>
-                  <Step n={1} icon={browser === "chrome" ? EllipsisVertical : Menu}>{browser === "chrome" ? t("Open the browser menu at the top right.") : t("Open the browser menu.")}</Step>
-                  <Step n={2}>{t("Tap Install app or Add to Home screen.")}</Step>
-                  <Step n={3}>{t("Open Vegas Hotel from your home screen.")}</Step>
-                </>
-              )}
+              {steps().map((st, i) => <Step key={i} n={i + 1} icon={st.icon}>{st.text}</Step>)}
             </ol>
-            {browser !== "in-app" ? (
-              <p className="mt-3 text-[12px] text-white/50">
-                {ios ? t("If this page opened inside WeChat or WhatsApp, open it in Safari first.") : t("If this page opened inside WeChat or WhatsApp, open it in Chrome first.")}
-              </p>
-            ) : null}
             <button type="button" className={`${quiet} mt-4`} onClick={onClose}>{t("Got it")}</button>
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
-/** Opens by itself once, a moment after a phone's browser opens the app (never when it is installed, never on a computer); closing it is remembered. */
+/**
+ * Opens by itself a moment after a phone's browser opens the app — on every new visit until the app is installed (never when it is
+ * installed, never on a computer). "Maybe later" or closing it only rests it for this visit. It also opens when the account menu asks.
+ */
 export function InstallPrompt() {
   const { ready, phone, installed } = useInstall();
   const [open, setOpen] = useState(false);
   useEffect(() => {
     if (!ready || !phone || installed) return;
     try {
-      if (window.localStorage.getItem(SEEN)) return;
+      if (window.sessionStorage.getItem(ASKED)) return;
     } catch {
       return;
     }
     const timer = window.setTimeout(() => {
       const a = document.activeElement as HTMLElement | null;
       const typing = !!a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable);
-      // not over a field someone is typing in, nor over another pop-up: it is asked again on the next visit (nothing is remembered yet)
+      // not over a field someone is typing in, nor over another pop-up: it is asked again a little later in this visit
       if (typing || document.querySelector('[role="dialog"][aria-modal="true"], [role="alertdialog"]')) return;
       setOpen(true);
     }, 2500);
     return () => window.clearTimeout(timer);
   }, [ready, phone, installed]);
+  useEffect(() => {
+    const on = () => setOpen(true);
+    window.addEventListener(OPEN_EVENT, on);
+    return () => window.removeEventListener(OPEN_EVENT, on);
+  }, []);
   const close = useCallback(() => {
     setOpen(false);
     try {
-      window.localStorage.setItem(SEEN, "1");
+      window.sessionStorage.setItem(ASKED, "1");
     } catch {
       /* a private window: it simply asks again next time */
     }
@@ -238,7 +264,7 @@ export function InstallPrompt() {
   return <InstallSheet open={open} onClose={close} />;
 }
 
-/** A button that opens the sheet. Draws nothing on a computer or once the app is installed. */
+/** A button that opens the card. Draws nothing on a computer or once the app is installed. `render` lets the caller style it. */
 export function InstallButton({ render }: { render: (open: () => void) => ReactNode }) {
   const { ready, phone, installed } = useInstall();
   const [open, setOpen] = useState(false);

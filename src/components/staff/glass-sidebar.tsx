@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ChevronDown, ChevronLeft, ChevronRight, Globe, Languages, LayoutGrid, LogOut, Search, UserRound, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Globe, Languages, LayoutGrid, LogOut, Search, Smartphone, UserRound, X } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { logoutAction } from "@/app/staff/(auth)/login/actions";
 import { LOCALES, LOCALE_META, type Locale } from "@/i18n/config";
@@ -13,6 +13,7 @@ import { setMyLanguage } from "@/i18n/actions";
 import { cn } from "@/lib/utils";
 import { Initials } from "@/components/dashboard/kit";
 import { NAV_ICONS } from "./staff-nav";
+import { openInstallSheet, useInstall } from "./install-app";
 import type { NavItem, NavSection } from "./nav-config";
 
 /**
@@ -431,6 +432,7 @@ function Footer({ mode, rail, user, languages, onNavigate }: {
   const current = useLocale();
   const logoutForm = useRef<HTMLFormElement>(null);
   const [, setBusy] = useState(false);
+  const inst = useInstall();
   const other = LOCALES.filter((l) => l === "en" || languages.includes(l)).find((l) => l !== current);
   const firstName = user.name.trim().split(/\s+/)[0] ?? user.name;
   const item = "gap-2 rounded-lg px-2.5 py-1.5 text-[13px]";
@@ -474,6 +476,12 @@ function Footer({ mode, rail, user, languages, onNavigate }: {
           <DropdownMenuItem className={item} render={<a href="/" target="_blank" rel="noopener" />}>
             <Globe className="size-3.5" />{t("Hotel website")}
           </DropdownMenuItem>
+          {/* A phone or tablet that has not put the app on its home screen: the full-screen card, any time (it also opens by itself after sign-in). */}
+          {inst.ready && inst.phone && !inst.installed && (
+            <DropdownMenuItem className={item} onClick={() => { onNavigate?.(); openInstallSheet(); }}>
+              <Smartphone className="size-3.5" />{t("Get the app")}
+            </DropdownMenuItem>
+          )}
           <DropdownMenuSeparator />
           <DropdownMenuItem className={cn(item, "text-rose-400 focus:text-rose-300")} onClick={() => logoutForm.current?.requestSubmit()}>
             <LogOut className="size-3.5" />{t("Sign out")}

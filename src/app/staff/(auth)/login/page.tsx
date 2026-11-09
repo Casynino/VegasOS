@@ -13,6 +13,7 @@ import { msg } from "@/i18n/msg";
 import { getT, guestLocale } from "@/i18n/server";
 import { LoginForm } from "./login-form";
 import { STAFF_PAINT } from "@/lib/staff-viewport";
+import { INSTALL_WORDS } from "@/components/staff/install-words";
 import { LoginGate } from "./login-gate";
 import { LoginScene } from "./login-scene";
 import "./login.css";
@@ -24,14 +25,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 /** The words the sign-in form shows — the browser gets only these here (the staff app's strings come after sign-in). */
-const FORM_WORDS = [msg("Email"), msg("you@vegashoteltz.com"), msg("Password"), msg("Hide password"), msg("Show password"), msg("Signing in…"), msg("Sign in"),
-  // the full-screen app help (src/components/staff/install-app.tsx)
-  msg("Close"), msg("Get the full-screen app"), msg("Use it like an app"), msg("Full screen, no browser bar, its own icon."), msg("Install the app"), msg("Maybe later"), msg("Got it"),
-  msg("Tap ··· at the top right, then Open in browser."), msg("In Safari, sign in and tap Get the full-screen app again."), msg("In the browser, sign in and tap Get the full-screen app again."),
-  msg("Tap Share in Safari's toolbar, or in the ⋯ menu."), msg("Tap Share in the address bar or the menu."), msg("Scroll down and tap Add to Home Screen."), msg("Tap Add, then open Vegas Hotel from your home screen."),
-  msg("Tap the menu at the bottom right."), msg("Tap Add page to, then Home screen."), msg("Open Vegas Hotel from your home screen."), msg("Tap the menu at the bottom of the browser."),
-  msg("Tap Add to home screen (it may be under Add to)."), msg("Open the browser menu at the top right."), msg("Open the browser menu."), msg("Tap Install app or Add to Home screen."),
-  msg("If this page opened inside WeChat or WhatsApp, open it in Safari first."), msg("If this page opened inside WeChat or WhatsApp, open it in Chrome first.")];
+const FORM_WORDS = [msg("Email"), msg("you@vegashoteltz.com"), msg("Password"), msg("Hide password"), msg("Show password"), msg("Signing in…"), msg("Sign in"), ...INSTALL_WORDS];
 
 const rd = (s: number) => ({ "--rd": `${s}s` }) as CSSProperties;
 
