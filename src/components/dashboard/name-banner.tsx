@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 /**
  * THE SMALL BANNER every desk opens on, copied from the owner's Target Express / Swift Cargo console (2026-11-08): deep warm night, a
  * gold light from the top, the hotel's own photo fading in at the right; the person's FIRST NAME in wide capitals between two gold rules,
- * their job title small in gold under it, then today's date — nothing else (no greeting, no explanation: the figures are right below).
+ * their job title small in gold under it, then (on a computer only) today's date — nothing else (no greeting, no explanation: the figures are right below).
  * Read from whoever is shown, so the name and the title can never disagree. The bell and the account live in the side menu.
  */
 /** The long role names read short in the banner (owner, 2026-11-08: "Director, not the full word"). */
@@ -37,7 +37,8 @@ export async function NameBanner({ name, role, image = "/images/exterior/exterio
           <span aria-hidden className="hidden h-px w-10 shrink-0 bg-[oklch(0.78_0.13_82)]/60 sm:block" />
         </h1>
         <p className="mt-1.5 text-[10px] font-semibold uppercase tracking-[0.32em] text-[oklch(0.84_0.11_82)] sm:mt-2 sm:text-[11px]">{t(SHORT_ROLE[role] ?? role)}</p>
-        <p className="mt-1 text-xs text-white/65 sm:mt-1.5 sm:text-sm">{date}</p>
+        {/* On a phone and a tablet the top bar above already shows the date, so the banner does not repeat it (owner, 2026-11-09); a computer has no top bar. */}
+        <p className="mt-1.5 hidden text-sm text-white/65 lg:block">{date}</p>
       </div>
     </section>
   );
