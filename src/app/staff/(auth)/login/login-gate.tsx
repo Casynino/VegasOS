@@ -92,7 +92,7 @@ export function LoginGate({ intro, openLabel, closeLabel, children }: { intro: R
             )}
           />
           {open && (
-            <button type="button" onClick={() => setOpen(false)} aria-label={closeLabel} className="vg-close absolute right-3 top-3 z-10 size-9 rounded-full text-white/60 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-gold">
+            <button type="button" onClick={() => setOpen(false)} aria-label={closeLabel} className="vg-close absolute right-2 top-2 z-10 size-10 rounded-full text-white/60 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-gold">
               <X className="size-4" aria-hidden="true" />
             </button>
           )}

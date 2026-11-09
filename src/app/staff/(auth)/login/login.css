@@ -336,5 +336,14 @@
     -webkit-backdrop-filter: blur(18px) saturate(1.4);
     backdrop-filter: blur(18px) saturate(1.4);
   }
-  .vg-card-wrap.is-open .vg-card h2 { margin-top: 0; font-size: 24px; }
+  .vg-card-wrap.is-open .vg-card h2 { margin-top: 0; font-size: 22px; line-height: 1.15; }
+  /* smaller still (owner, 2026-11-09: "this feels big"): a narrower card, shorter fields, a tighter form */
+  .vg-card-wrap.is-open .vg-panel { max-width: 20rem; }
+  .vg-card-wrap.is-open .vg-card { padding: 0.875rem 1rem 0.95rem; border-radius: 1.15rem; }
+  .vg-card-wrap.is-open .vg-card form > :not(:last-child) { margin-block-start: 0; margin-block-end: 0.7rem; }
+  .vg-card-wrap.is-open .vg-card form { margin-top: 0; }
+  .vg-card-wrap.is-open .vg-card .mt-5 { margin-top: 0.7rem; }
+  .vg-card-wrap.is-open .vg-card input[type="email"], .vg-card-wrap.is-open .vg-card input[type="password"], .vg-card-wrap.is-open .vg-card input[type="text"] { height: 2.5rem; }
+  .vg-card-wrap.is-open .vg-card button[type="submit"] { height: 2.5rem; margin-top: 0.15rem; }
+  .vg-card-wrap.is-open .vg-card .vg-pop-note { margin-top: 0.75rem; padding-top: 0.6rem; font-size: 11.5px; line-height: 1.35; }
 }

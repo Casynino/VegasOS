@@ -100,7 +100,7 @@ export default async function LoginPage() {
                 <div className="mt-5 sm:mt-7">
                   <LoginForm />
                 </div>
-                <p className="mt-5 flex items-start gap-2 border-t border-white/10 pt-4 text-[12px] leading-relaxed text-white/45 sm:mt-6 sm:pt-5">
+                <p className="vg-pop-note mt-5 flex items-start gap-2 border-t border-white/10 pt-4 text-[12px] leading-relaxed text-white/45 sm:mt-6 sm:pt-5">
                   <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-white/35" aria-hidden="true" />
                   {t("Forgot your password? Ask the hotel administrator.")}
                 </p>
