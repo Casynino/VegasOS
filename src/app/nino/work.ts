@@ -1,6 +1,7 @@
 /**
- * Nino's work, as shown on /nino. Every line comes from the project's own live site (its title and description) or
- * from Nino — nothing invented. Screenshots in /public/nino are the live home pages, taken 2026-10-05 (Super Drive Oil: its sign-in page, 2026-11-09).
+ * Nino's work, as shown on /nino. Every line comes from the project's own live site (its title and description), its README, or from Nino — nothing
+ * invented. This is the newest list (the one on the Super Drive Oil and Hao Labs pages): keep the three in step. Screenshots in /public/nino are the live
+ * home pages as they look now, all retaken 2026-11-09 (Hao Labs and Super Drive Oil show their sign-in pages; BlueWave Cargo its new sign-in scene).
  */
 
 export type Project = {
@@ -8,13 +9,14 @@ export type Project = {
   /** What it is, in a few words. */
   kind: string;
   line: string;
-  url: string;
+  /** A private project has no public address: its card is not a link. */
+  url?: string;
   /** Shown on the card: the address without https:// and www. */
   domain: string;
   shot?: string;
   tags: string[];
   code?: string;
-  status?: "soon";
+  status?: "soon" | "private";
 };
 
 const GH = "https://github.com/Casynino";
@@ -28,6 +30,12 @@ export const LIVE: Project[] = [
     tags: ["Booking engine", "Mobile money", "Staff system", "Reports"],
   },
   {
+    name: "Super Drive Oil", kind: "Oil distribution · sales, stock & credit",
+    line: "Every carton that comes in, goes out or is still owed is on the system — counter sales, the warehouse and pickup notes, cash and daily closing, Winga and credit — each one recorded against the person who made it.",
+    url: "https://super-drive-os.vercel.app", domain: "super-drive-os.vercel.app", shot: "/nino/superdrive.webp",
+    tags: ["Point of sale", "Warehouse pickups", "Daily closing", "Credit & Winga"], code: `${GH}/Super-Drive-OS`,
+  },
+  {
     name: "Swift Cargo", kind: "Sea freight · China → Tanzania",
     line: "Loose cargo and full containers from Guangzhou to Dar es Salaam — track a shipment, work out the CBM and see the price.",
     url: "https://www.swiftcargotz.com", domain: "swiftcargotz.com", shot: "/nino/swiftcargo.webp",
@@ -38,12 +46,6 @@ export const LIVE: Project[] = [
     line: "Air freight from Guangzhou and Hong Kong to Dar es Salaam, followed from the China warehouse to collection.",
     url: "https://targetexpressaircargo.com", domain: "targetexpressaircargo.com", shot: "/nino/target.webp",
     tags: ["Tracking", "Bookings"],
-  },
-  {
-    name: "Super Drive Oil", kind: "Oil distribution · sales, stock & credit",
-    line: "Sales, stock and credit in one place — every sale, payment and stock movement is recorded against the person who made it.",
-    url: "https://super-drive-os.vercel.app", domain: "super-drive-os.vercel.app", shot: "/nino/superdrive.webp",
-    tags: ["Live stock", "Cash & daily closing", "Credit control"], code: `${GH}/Super-Drive-OS`,
   },
   {
     name: "AiTransit Cargo", kind: "Air cargo · China → Zambia",
@@ -82,10 +84,10 @@ export const LIVE: Project[] = [
     tags: ["Brand site", "Community"],
   },
   {
-    name: "The Lab", kind: "Stock & commission dashboard",
-    line: "Request stock, track commission and watch performance. Take stock, make moves, earn more.",
-    url: "https://hao-stock.vercel.app", domain: "hao-stock.vercel.app", shot: "/nino/thelab.webp",
-    tags: ["Dashboard", "Accounts"],
+    name: "Hao Labs", kind: "Stock, settlement & commission system",
+    line: "Every box that leaves the Lab is on the system — who took it, what came back, what is still owed, and what each rep has earned. We keep Tanzania stocked.",
+    url: "https://hao-stock.vercel.app", domain: "hao-stock.vercel.app", shot: "/nino/haolabs.webp",
+    tags: ["Stock control", "Settlements", "Commission", "Reports"], code: `${GH}/The-Lab`,
   },
   {
     name: "Reckless Lab", kind: "Fashion label & store",
@@ -95,13 +97,53 @@ export const LIVE: Project[] = [
   },
 ];
 
-/** Launching soon, and the code on GitHub. */
+/** Everything else he has built: launching soon, code on GitHub, and private projects (no public address). Each line comes from the project's own README, business plan, package description or folder, never invented. */
 export const MORE: Project[] = [
   {
-    name: "BlueWave Cargo", kind: "Sourcing & cargo · China → Tanzania", status: "soon",
-    line: "Explore China's markets and factories, source products, plan a business visit and ship home from the Foshan warehouse.",
-    url: "https://bluewave-cargo.vercel.app", domain: "bluewave-cargo.vercel.app", shot: "/nino/bluewave.webp",
-    tags: ["Sourcing", "Cargo"],
+    name: "BlueWave Cargo", kind: "Sourcing & sea cargo · China → Tanzania", status: "soon",
+    line: "Find the markets and factories behind what you sell, plan a buying trip, get it sourced — and it ships from the Foshan warehouse to Dar es Salaam.",
+    url: "https://bluewave-cargo.vercel.app", domain: "bluewave-cargo.vercel.app", shot: "/nino/bluewave-signin.webp",
+    tags: ["Sourcing", "Tracking", "Warehouses", "Billing"],
+  },
+  {
+    name: "Swift Cargo OS", kind: "Sea freight system · China → Tanzania",
+    line: "The next Swift Cargo: public website, customer portal and the internal operations system for loose cargo and full containers, in one Next.js application.",
+    url: `${GH}/swiftcargo`, domain: "github.com/Casynino/swiftcargo", tags: ["Next.js", "Customer portal", "Operations"], code: `${GH}/swiftcargo`,
+  },
+  {
+    name: "ORA OS", kind: "Distribution & impact platform · Ora Pads",
+    line: "One login for four roles — admin, warehouse, partner and sales rep. Every stock movement is an immutable ledger entry, and orders are request-based: no cart, no public prices.",
+    url: `${GH}/ORA-OS`, domain: "github.com/Casynino/ORA-OS", tags: ["Inventory ledger", "Roles", "Next.js"], code: `${GH}/ORA-OS`,
+  },
+  {
+    name: "Ora Pads TZ store", kind: "E-commerce & inventory · Ora Pads", status: "private",
+    line: "An online marketplace with retail and wholesale buying, cart, checkout and order tracking, and an admin dashboard for stock, orders and sales reports.",
+    domain: "", tags: ["React", "Node.js", "MongoDB"],
+  },
+  {
+    name: "St Anne Marie Schools OS", kind: "School management system · Tanzania", status: "private",
+    line: "The day-to-day running of a school: students, payments, marks, attendance and reports, built for St Anne Marie Schools.",
+    domain: "", tags: ["Next.js", "PostgreSQL", "Reports"],
+  },
+  {
+    name: "IPATE", kind: "School app · parents, teachers & administrators", status: "private",
+    line: "A mobile app where parents follow their children's progress, attendance, homework and notices, and meet teachers without having to be at school.",
+    domain: "", tags: ["Mobile app", "Education"],
+  },
+  {
+    name: "Inino", kind: "Apple devices supplier · mobile app", status: "private",
+    line: "A mobile app for an Apple devices supplier, with its own Laravel back end.",
+    domain: "", tags: ["Flutter", "Laravel", "Mobile app"],
+  },
+  {
+    name: "Civlily", kind: "Stock management", status: "private",
+    line: "A stock management web app: a React front end on Vercel with its own API and cookie sign-in.",
+    domain: "", tags: ["React", "Stock"],
+  },
+  {
+    name: "Nexlume", kind: "Studio website", status: "private",
+    line: "A studio website for web development, graphics and UX design work.",
+    domain: "", tags: ["Web", "Graphics", "UX"],
   },
   {
     name: "Budgeta", kind: "Personal & business finance app",

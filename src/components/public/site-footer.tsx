@@ -193,7 +193,7 @@ export async function SiteFooter({ settings, blurb = DEFAULT_CONTENT.pages.foote
             </p>
             {/* Who made the site — one quiet line to Nino's page and work. */}
             <Link href="/nino" className={cn(focus, "group inline-flex min-h-11 items-center gap-1 text-xs text-white/45 transition-colors hover:text-white")}>
-              {t.rich("Developed by <b>Nino</b>", { b: (c) => <span className="font-semibold text-white/75 transition-colors group-hover:text-[#c6f432]">{c}</span> })}
+              {t.rich("Developed by <b>Nino</b>", { b: (c) => <span className="font-semibold text-white/75 transition-colors group-hover:text-[#e2ba6e]">{c}</span> })}
               <ArrowUpRight className="size-3.5 transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden="true" />
             </Link>
           </div>

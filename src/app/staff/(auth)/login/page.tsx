@@ -117,7 +117,7 @@ export default async function LoginPage() {
           <p className="hidden sm:block">{addressLines(settings).join(" · ")}</p>
           {/* Who made the system — one quiet line to Nino's page and work (owner, 2026-11-09: on the sign-in page, as on the website's footer). */}
           <Link href="/nino" className="group -my-2 inline-flex min-h-10 items-center gap-1 rounded-sm text-xs text-white/55 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold">
-            {t.rich("Developed by <b>Nino</b>", { b: (c) => <span className="font-semibold text-white/80 transition-colors group-hover:text-[#c6f432]">{c}</span> })}
+            {t.rich("Developed by <b>Nino</b>", { b: (c) => <span className="font-semibold text-white/80 transition-colors group-hover:text-[#e2ba6e]">{c}</span> })}
             <ArrowUpRight className="size-3.5 transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden="true" />
           </Link>
         </div>
