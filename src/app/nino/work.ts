@@ -1,6 +1,6 @@
 /**
  * Nino's work, as shown on /nino. Every line comes from the project's own live site (its title and description) or
- * from Nino — nothing invented. Screenshots in /public/nino are the live home pages, taken 2026-10-05.
+ * from Nino — nothing invented. Screenshots in /public/nino are the live home pages, taken 2026-10-05 (Super Drive Oil: its sign-in page, 2026-11-09).
  */
 
 export type Project = {
@@ -38,6 +38,12 @@ export const LIVE: Project[] = [
     line: "Air freight from Guangzhou and Hong Kong to Dar es Salaam, followed from the China warehouse to collection.",
     url: "https://targetexpressaircargo.com", domain: "targetexpressaircargo.com", shot: "/nino/target.webp",
     tags: ["Tracking", "Bookings"],
+  },
+  {
+    name: "Super Drive Oil", kind: "Oil distribution · sales, stock & credit",
+    line: "Sales, stock and credit in one place — every sale, payment and stock movement is recorded against the person who made it.",
+    url: "https://super-drive-os.vercel.app", domain: "super-drive-os.vercel.app", shot: "/nino/superdrive.webp",
+    tags: ["Live stock", "Cash & daily closing", "Credit control"], code: `${GH}/Super-Drive-OS`,
   },
   {
     name: "AiTransit Cargo", kind: "Air cargo · China → Zambia",
