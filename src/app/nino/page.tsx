@@ -16,8 +16,8 @@ export const metadata: Metadata = {
   title: { absolute: TITLE },
   description: DESCRIPTION,
   alternates: { canonical: "/nino" },
-  openGraph: { type: "profile", title: TITLE, description: DESCRIPTION, images: [{ url: "/nino/og.jpg", width: 1200, height: 630, alt: "NINO. — Systems scientist & developer", type: "image/jpeg" }] },
-  twitter: { card: "summary_large_image", title: TITLE, description: DESCRIPTION, images: ["/nino/og.jpg"] },
+  openGraph: { type: "profile", title: TITLE, description: DESCRIPTION, images: [{ url: "/nino/og-2.jpg", width: 1200, height: 630, alt: "NINO. — Systems scientist & developer", type: "image/jpeg" }] },
+  twitter: { card: "summary_large_image", title: TITLE, description: DESCRIPTION, images: ["/nino/og-2.jpg"] },
 };
 export const viewport: Viewport = { themeColor: "#0a0a0b" };
 
