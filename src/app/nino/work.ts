@@ -1,7 +1,7 @@
 /**
  * Nino's work, as shown on /nino. Every line comes from the project's own live site (its title and description), its README, or from Nino — nothing
- * invented. This is the newest list (the one on the Super Drive Oil and Hao Labs pages): keep the three in step. Screenshots in /public/nino are the live
- * home pages as they look now, all retaken 2026-11-09, the last time that night after ORA's redesign (Hao Labs and Super Drive Oil show their sign-in pages; BlueWave Cargo its new sign-in scene). The picture names end in -1109b so no phone shows a cached older copy: when a picture changes, give it a new name.
+ * invented. This is the newest list (the one on the Super Drive Oil and ZELab pages): keep the three in step. Screenshots in /public/nino are the live
+ * home pages as they look now, all retaken 2026-11-10 (ZELab and Super Drive Oil show their sign-in pages; BlueWave Cargo its new sign-in scene). The picture names end in -1110 so no phone shows a cached older copy: when a picture changes, give it a new name.
  */
 
 export type Project = {
@@ -26,73 +26,73 @@ export const LIVE: Project[] = [
   {
     name: "Vegas Luxury Hotel", kind: "Hotel website & operations system",
     line: "You're on it. The hotel's website, online booking and mobile-money payments — and the whole staff system behind it: reception, restaurant and room service, finance, stock and daily reports to the owner on WhatsApp.",
-    url: "https://www.vegashoteltz.com", domain: "vegashoteltz.com", shot: "/nino/vegas-1109b.webp",
+    url: "https://www.vegashoteltz.com", domain: "vegashoteltz.com", shot: "/nino/vegas-1110.webp",
     tags: ["Booking engine", "Mobile money", "Staff system", "Reports"],
   },
   {
     name: "Super Drive Oil", kind: "Oil distribution · sales, stock & credit",
     line: "Every carton that comes in, goes out or is still owed is on the system — counter sales, the warehouse and pickup notes, cash and daily closing, Winga and credit — each one recorded against the person who made it.",
-    url: "https://super-drive-os.vercel.app", domain: "super-drive-os.vercel.app", shot: "/nino/superdrive-1109b.webp",
+    url: "https://super-drive-os.vercel.app", domain: "super-drive-os.vercel.app", shot: "/nino/superdrive-1110.webp",
     tags: ["Point of sale", "Warehouse pickups", "Daily closing", "Credit & Winga"], code: `${GH}/Super-Drive-OS`,
   },
   {
     name: "Swift Cargo", kind: "Sea freight · China → Tanzania",
     line: "Loose cargo and full containers from Guangzhou to Dar es Salaam — track a shipment, work out the CBM and see the price.",
-    url: "https://www.swiftcargotz.com", domain: "swiftcargotz.com", shot: "/nino/swiftcargo-1109b.webp",
+    url: "https://www.swiftcargotz.com", domain: "swiftcargotz.com", shot: "/nino/swiftcargo-1110.webp",
     tags: ["Tracking", "Price calculator"],
   },
   {
     name: "Target Express Air Cargo", kind: "Air cargo · China → Tanzania",
     line: "Air freight from Guangzhou and Hong Kong to Dar es Salaam, followed from the China warehouse to collection.",
-    url: "https://targetexpressaircargo.com", domain: "targetexpressaircargo.com", shot: "/nino/target-1109b.webp",
+    url: "https://targetexpressaircargo.com", domain: "targetexpressaircargo.com", shot: "/nino/target-1110.webp",
     tags: ["Tracking", "Bookings"],
   },
   {
     name: "AiTransit Cargo", kind: "Air cargo · China → Zambia",
     line: "Air cargo to Lusaka with duty included, supplier payments in RMB and money exchange — one team on both ends of the route.",
-    url: "https://ai-transit-rouge.vercel.app", domain: "ai-transit-rouge.vercel.app", shot: "/nino/aitransit-1109b.webp",
+    url: "https://ai-transit-rouge.vercel.app", domain: "ai-transit-rouge.vercel.app", shot: "/nino/aitransit-1110.webp",
     tags: ["Tracking", "Payments"], code: `${GH}/AiTransit`,
   },
   {
     name: "EA Trade Link SIS", kind: "Education & business · China ↔ Tanzania",
     line: "Scholarships, visas, sourcing, factory visits and currency exchange — one platform for studying and doing business in China.",
-    url: "https://www.eatradelink.com", domain: "eatradelink.com", shot: "/nino/eatradelink-1109b.webp",
+    url: "https://www.eatradelink.com", domain: "eatradelink.com", shot: "/nino/eatradelink-1110.webp",
     tags: ["Platform", "Accounts"], code: `${GH}/EA-Trade-link-SIS-`,
   },
   {
     name: "Hǎodeals", kind: "Online store",
     line: "Limited deals, in stock and delivered fast — browse by category, shop and check out.",
-    url: "https://www.haodealtz.com", domain: "haodealtz.com", shot: "/nino/haodeals-1109b.webp",
+    url: "https://www.haodealtz.com", domain: "haodealtz.com", shot: "/nino/haodeals-1110.webp",
     tags: ["E-commerce", "Checkout"],
   },
   {
     name: "HA GROUP", kind: "Engineering company",
     line: "Turnkey electrical and electro-mechanical projects for mining, manufacturing and commercial clients across Africa.",
-    url: "https://hag-mancom.vercel.app", domain: "hag-mancom.vercel.app", shot: "/nino/hagroup-1109b.webp",
+    url: "https://hag-mancom.vercel.app", domain: "hag-mancom.vercel.app", shot: "/nino/hagroup-1110.webp",
     tags: ["Company site"],
   },
   {
     name: "KOTES (T) Limited", kind: "ICT infrastructure",
     line: "Fibre networks, systems integration and 24/7 managed support for government and enterprise in Tanzania.",
-    url: "https://kotes.vercel.app", domain: "kotes.vercel.app", shot: "/nino/kotes-1109b.webp",
+    url: "https://kotes.vercel.app", domain: "kotes.vercel.app", shot: "/nino/kotes-1110.webp",
     tags: ["Company site"],
   },
   {
     name: "ORA Pads", kind: "Social-impact brand · website & system",
     line: "Menstrual health, education and period dignity for every girl and woman across Tanzania — the brand's website, and the system behind it: orders, stock, sales reps, finance and credit for the team and its partners.",
-    url: "https://www.ora.co.tz", domain: "ora.co.tz", shot: "/nino/ora-1109b.webp",
+    url: "https://www.ora.co.tz", domain: "ora.co.tz", shot: "/nino/ora-1110.webp",
     tags: ["Brand site", "Orders & stock", "Credit control", "Partner portal"], code: `${GH}/ORA-OS`,
   },
   {
-    name: "Hao Labs", kind: "Stock, settlement & commission system",
-    line: "Every box that leaves the Lab is on the system — who took it, what came back, what is still owed, and what each rep has earned. We keep Tanzania stocked.",
-    url: "https://hao-stock.vercel.app", domain: "hao-stock.vercel.app", shot: "/nino/haolabs-1109b.webp",
+    name: "ZELab", kind: "Stock, settlement & commission system",
+    line: "Every box that leaves ZELab is on the system — who took it, what came back, what is still owed, and what each rep has earned. We keep Tanzania stocked.",
+    url: "https://www.zelab.site", domain: "zelab.site", shot: "/nino/zelab-1110.webp",
     tags: ["Stock control", "Settlements", "Commission", "Reports"], code: `${GH}/The-Lab`,
   },
   {
     name: "Reckless Lab", kind: "Fashion label & store",
     line: "A laboratory where fashion rules are broken to make something alive.",
-    url: "https://www.recklesslab.shop", domain: "recklesslab.shop", shot: "/nino/reckless-1109b.webp",
+    url: "https://www.recklesslab.shop", domain: "recklesslab.shop", shot: "/nino/reckless-1110.webp",
     tags: ["Store", "Brand"],
   },
 ];
@@ -102,7 +102,7 @@ export const MORE: Project[] = [
   {
     name: "BlueWave Cargo", kind: "Sourcing & sea cargo · China → Tanzania", status: "soon",
     line: "Find the markets and factories behind what you sell, plan a buying trip, get it sourced — and it ships from the Foshan warehouse to Dar es Salaam.",
-    url: "https://bluewave-cargo.vercel.app", domain: "bluewave-cargo.vercel.app", shot: "/nino/bluewave-signin.webp",
+    url: "https://bluewave-cargo.vercel.app", domain: "bluewave-cargo.vercel.app", shot: "/nino/bluewave-1110.webp",
     tags: ["Sourcing", "Tracking", "Warehouses", "Billing"],
   },
   {

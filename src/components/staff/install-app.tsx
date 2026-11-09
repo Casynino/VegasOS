@@ -178,7 +178,7 @@ export function InstallSheet({ open, onClose }: { open: boolean; onClose: () => 
       className={`fixed inset-0 z-[110] flex items-end justify-center overflow-y-auto overscroll-contain bg-black/15 px-5 pt-[max(1rem,env(safe-area-inset-top))] text-white ${pointAtShare ? "pb-[calc(max(0.5rem,env(safe-area-inset-bottom))+5.75rem)]" : "pb-[max(1.75rem,calc(env(safe-area-inset-bottom)+1rem))]"}`}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      {/* Small and clean (owner, 2026-11-09, as on Hao Labs): frosted glass that belongs to the page — it sits low, the dim behind it is barely there, the card is see-through and blurs the scene under it. Only a title and the steps. */}
+      {/* Small and clean (owner, 2026-11-09, as on ZELab): frosted glass that belongs to the page — it sits low, the dim behind it is barely there, the card is see-through and blurs the scene under it. Only a title and the steps. */}
       <div
         ref={panel}
         tabIndex={-1}
