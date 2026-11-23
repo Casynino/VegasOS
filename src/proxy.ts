@@ -1,5 +1,35 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+/**
+ * SYSTEM OFFLINE SWITCH (owner, 2026-11-23).
+ * While OFFLINE is true the WHOLE system — public website, staff dashboard, guest links AND the API — answers every
+ * request with a plain "temporarily offline" page (HTTP 503). No other proxy logic runs; nothing is read, changed or
+ * deleted. To bring the system back online: set OFFLINE to false AND restore the original matcher at the bottom of
+ * this file (both are swapped together — `git revert` of the offline commit also does both).
+ */
+const OFFLINE = true;
+const OFFLINE_MESSAGE = "This system is temporarily offline. Please contact the developer (Nino)";
+function offlinePage() {
+  const html =
+    `<!doctype html><html lang="en"><head><meta charset="utf-8"/>` +
+    `<meta name="viewport" content="width=device-width, initial-scale=1"/><meta name="robots" content="noindex"/>` +
+    `<title>Temporarily offline</title><style>:root{color-scheme:dark}*{margin:0;box-sizing:border-box}` +
+    `html,body{height:100%}body{background:#0c0a07;color:#ece7db;` +
+    `font:400 clamp(16px,2.6vw,19px)/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;` +
+    `display:grid;place-items:center;padding:24px;text-align:center}main{max-width:30rem}` +
+    `.dot{width:9px;height:9px;border-radius:50%;background:#c9a227;display:inline-block;margin-bottom:22px;` +
+    `box-shadow:0 0 0 6px rgba(201,162,39,.14)}p{text-wrap:balance}</style></head>` +
+    `<body><main><span class="dot"></span><p>${OFFLINE_MESSAGE}</p></main></body></html>`;
+  return new NextResponse(html, {
+    status: 503,
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store, max-age=0",
+      "retry-after": "3600",
+    },
+  });
+}
+
 const SESSION_COOKIE = "vlh_session";
 const STAFF_HINT = "vlh_staff";
 
@@ -33,6 +63,9 @@ function remember(res: NextResponse, locale: string) {
  * else English. `?lang=zh` on any guest link, or an /zh/… address, is a choice: remembered, then the clean address.
  */
 export function proxy(request: NextRequest) {
+  // System offline: every request gets the "temporarily offline" page, nothing else runs. See the switch at the top.
+  if (OFFLINE) return offlinePage();
+
   const { pathname, searchParams } = request.nextUrl;
 
   // An explicit choice in the address: remember it and go to the clean address.
@@ -73,6 +106,14 @@ export function proxy(request: NextRequest) {
   return res;
 }
 
+// While the system is OFFLINE the proxy must run on EVERY route (the normal matcher below only covers some of them),
+// so nothing slips through. To bring the system back online, set OFFLINE = false above and restore the ORIGINAL
+// matcher kept in the comment underneath this one.
+export const config = {
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+};
+
+/* ORIGINAL MATCHER — when bringing the system back online, replace the catch-all config above with this one:
 export const config = {
   matcher: [
     "/staff/:path*", "/admin/:path*", "/manager/:path*", "/reception/:path*", "/finance/:path*", "/admin", "/manager", "/reception", "/finance",
@@ -85,3 +126,4 @@ export const config = {
     "/staff-report/:path*", "/shift-report/:path*", "/daily-report/:path*",
   ],
 };
+*/
