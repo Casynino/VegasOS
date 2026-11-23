@@ -9,17 +9,52 @@ import { NextResponse, type NextRequest } from "next/server";
  */
 const OFFLINE = true;
 const OFFLINE_MESSAGE = "This system is temporarily offline. Please contact the developer (Nino)";
+
+// The hotel-night scene from the sign-in page, rebuilt compactly so the offline page can carry it inline (the proxy
+// runs at the edge and cannot import the React scene). Fixed numbers only, so it draws the same every time.
+const OFFLINE_STARS = Array.from({ length: 22 }, (_, i) => {
+  const x = (i * 79 + 13) % 100, y = (i * 47 + 7) % 44, delay = (i % 3) * 0.7;
+  return `<i style="left:${x}%;top:${y}%;animation-delay:-${delay}s"></i>`;
+}).join("");
+const OFFLINE_WINDOWS = (() => {
+  const towers: [cols: number[], top: number, mod: number][] = [
+    [[758, 782, 806, 830], 126, 3], // the hotel tower (most lit)
+    [[648, 672, 696], 236, 4], // left neighbour
+    [[900, 924, 948], 200, 4], // right neighbour
+  ];
+  let d = "";
+  for (const [cols, top, mod] of towers)
+    for (let y = top; y <= 414; y += 26) for (const x of cols) if ((x + y) % mod !== 0) d += `M${x} ${y}h6v9h-6z`;
+  return d;
+})();
 function offlinePage() {
-  const html =
-    `<!doctype html><html lang="en"><head><meta charset="utf-8"/>` +
-    `<meta name="viewport" content="width=device-width, initial-scale=1"/><meta name="robots" content="noindex"/>` +
-    `<title>Temporarily offline</title><style>:root{color-scheme:dark}*{margin:0;box-sizing:border-box}` +
-    `html,body{height:100%}body{background:#0c0a07;color:#ece7db;` +
-    `font:400 clamp(16px,2.6vw,19px)/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;` +
-    `display:grid;place-items:center;padding:24px;text-align:center}main{max-width:30rem}` +
-    `.dot{width:9px;height:9px;border-radius:50%;background:#c9a227;display:inline-block;margin-bottom:22px;` +
-    `box-shadow:0 0 0 6px rgba(201,162,39,.14)}p{text-wrap:balance}</style></head>` +
-    `<body><main><span class="dot"></span><p>${OFFLINE_MESSAGE}</p></main></body></html>`;
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/><meta name="robots" content="noindex"/><meta name="theme-color" content="#0a0805"/><title>Temporarily offline</title><style>
+*{margin:0;box-sizing:border-box}:root{color-scheme:dark}html,body{height:100%}
+body{min-height:100svh;background:#0a0805;color:#f2ece0;font:400 clamp(15px,2.6vw,18px)/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:grid;place-items:center;padding:24px;text-align:center;overflow:hidden}
+.scene{position:fixed;inset:0;z-index:0;overflow:hidden;background:radial-gradient(760px 460px at 0% 0%,rgba(22,70,74,.30),transparent 62%),radial-gradient(900px 540px at 80% -6%,rgba(246,214,138,.15),transparent 62%),radial-gradient(760px 480px at 6% 98%,rgba(150,96,40,.20),transparent 62%),linear-gradient(180deg,#0a0805 0%,#110c07 52%,#1a1209 100%)}
+.glow{position:absolute;border-radius:50%;filter:blur(8px);opacity:.85}
+.glow.a{width:46vmax;height:46vmax;left:-8vmax;top:-14vmax;background:radial-gradient(closest-side,rgba(246,214,138,.20),transparent);animation:dA 24s ease-in-out infinite alternate}
+.glow.b{width:40vmax;height:40vmax;right:-10vmax;top:-6vmax;background:radial-gradient(closest-side,rgba(176,108,40,.18),transparent);animation:dB 30s ease-in-out infinite alternate}
+@keyframes dA{to{transform:translate(6vmax,4vmax)}}@keyframes dB{to{transform:translate(-5vmax,5vmax)}}
+.stars{position:absolute;inset:0 0 50% 0}
+.stars i{position:absolute;width:2px;height:2px;border-radius:50%;background:#fff3d6;opacity:.5;animation:tw 6s ease-in-out infinite}
+@keyframes tw{0%,100%{opacity:.22}50%{opacity:.9}}
+.beam{position:absolute;bottom:30%;width:40vmax;height:48vmax;transform-origin:bottom center;background:linear-gradient(0deg,rgba(246,214,138,.5),rgba(246,214,138,.12) 48%,transparent);-webkit-mask-image:linear-gradient(90deg,transparent,#000 38%,#000 62%,transparent);mask-image:linear-gradient(90deg,transparent,#000 38%,#000 62%,transparent);opacity:.45}
+.beam.l{left:14%;animation:sL 15s ease-in-out infinite alternate}
+.beam.r{left:60%;animation:sR 19s ease-in-out -7s infinite alternate}
+@keyframes sL{from{transform:rotate(-16deg)}to{transform:rotate(10deg)}}@keyframes sR{from{transform:rotate(14deg)}to{transform:rotate(-12deg)}}
+.sky{position:absolute;left:0;right:0;bottom:30%;height:min(46vh,30vw)}
+.sky svg{width:100%;height:100%;display:block}
+.beacon{animation:bl 2.6s ease-in-out infinite}@keyframes bl{0%,100%{opacity:1}50%{opacity:.25}}
+.horizon{position:absolute;left:0;right:0;bottom:calc(30% - 1px);height:2px;background:linear-gradient(90deg,transparent,rgba(246,214,138,.85) 28%,#f6d68a 50%,rgba(246,214,138,.85) 72%,transparent)}
+.floor{position:absolute;left:0;right:0;bottom:0;height:30%;background:linear-gradient(180deg,rgba(246,214,138,.06),rgba(8,6,3,.82))}
+.vig{position:absolute;inset:0;pointer-events:none;background:radial-gradient(120% 90% at 50% 42%,transparent 54%,rgba(5,4,2,.66)),linear-gradient(180deg,rgba(8,6,3,.5),transparent 26%)}
+main{position:relative;z-index:1;max-width:32rem;animation:up .9s cubic-bezier(.2,.7,.2,1) both}
+.pin{width:10px;height:10px;border-radius:50%;background:#f6d68a;display:inline-block;margin-bottom:22px;box-shadow:0 0 0 7px rgba(246,214,138,.12),0 0 20px rgba(246,214,138,.65)}
+.msg{font-size:clamp(17px,3.4vw,22px);font-weight:500;letter-spacing:-.01em;color:#fbf4e4;text-wrap:balance;text-shadow:0 2px 24px rgba(0,0,0,.6)}
+@keyframes up{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}.stars i{opacity:.6}}
+</style></head><body><div class="scene"><span class="glow a"></span><span class="glow b"></span><div class="stars">${OFFLINE_STARS}</div><span class="beam l"></span><span class="beam r"></span><div class="sky"><svg viewBox="0 0 1600 440" preserveAspectRatio="xMidYMax slice" aria-hidden="true"><path d="M-20 440V372h150V440zM130 440V392h120V440zM250 440V352h150V440zM400 440V382h130V440zM530 440V336h150V440zM680 440V318h170V440zM850 440V330h160V440zM1010 440V360h140V440zM1150 440V340h150V440zM1300 440V380h160V440zM1460 440V360h170V440z" fill="#1c160d"/><path d="M738 440V100h124V440zM628 440V210h96V440zM876 440V175h104V440zM548 440V280h74V440zM986 440V250h84V440zM462 440V318h76V440zM1076 440V302h78V440zM372 440V344h84V440zM1160 440V324h90V440zM270 440V356h92V440zM1256 440V338h80V440zM176 440V374h84V440zM1348 440V362h90V440zM752 100V76h96v24zM774 76V58h52v18zM799 58V22h2v36z" fill="#0c0905"/><rect x="748" y="82" width="104" height="10" fill="#f6d68a" fill-opacity=".12"/><rect x="752" y="86" width="96" height="2" fill="#f6d68a" fill-opacity=".85"/><path d="${OFFLINE_WINDOWS}" fill="#f6d68a"/><circle cx="800" cy="20" r="3" fill="#ffe3a3" class="beacon"/></svg></div><div class="horizon"></div><div class="floor"></div><div class="vig"></div></div><main><span class="pin"></span><p class="msg">${OFFLINE_MESSAGE}</p></main></body></html>`;
   return new NextResponse(html, {
     status: 503,
     headers: {
