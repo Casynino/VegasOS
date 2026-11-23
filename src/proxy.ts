@@ -8,7 +8,8 @@ import { NextResponse, type NextRequest } from "next/server";
  * this file (both are swapped together — `git revert` of the offline commit also does both).
  */
 const OFFLINE = true;
-const OFFLINE_MESSAGE = "The system is temporarily offline. Contact Nino.";
+const OFFLINE_MESSAGE = "The system is offline.";
+const OFFLINE_SUB = "Contact Nino.";
 
 // The hotel-night scene from the sign-in page, rebuilt compactly so the offline page can carry it inline (the proxy
 // runs at the edge and cannot import the React scene). Fixed numbers only, so it draws the same every time.
@@ -28,7 +29,7 @@ const OFFLINE_WINDOWS = (() => {
   return d;
 })();
 function offlinePage() {
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/><meta name="robots" content="noindex"/><meta name="theme-color" content="#0a0805"/><title>Temporarily offline</title><style>
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/><meta name="robots" content="noindex"/><meta name="theme-color" content="#0a0805"/><title>System offline</title><style>
 *{margin:0;box-sizing:border-box}:root{color-scheme:dark}html,body{height:100%}
 body{min-height:100svh;background:#0a0805;color:#f2ece0;font:400 clamp(15px,2.6vw,18px)/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:26vh 24px 24px;text-align:center;overflow:hidden;position:relative}
 .scene{position:fixed;inset:0;z-index:0;overflow:hidden;background:radial-gradient(760px 460px at 0% 0%,rgba(22,70,74,.30),transparent 62%),radial-gradient(900px 540px at 80% -6%,rgba(246,214,138,.15),transparent 62%),radial-gradient(760px 480px at 6% 98%,rgba(150,96,40,.20),transparent 62%),linear-gradient(180deg,#0a0805 0%,#110c07 52%,#1a1209 100%)}
@@ -52,10 +53,11 @@ body{min-height:100svh;background:#0a0805;color:#f2ece0;font:400 clamp(15px,2.6v
 main{position:relative;z-index:2;width:min(92vw,34rem);animation:up .9s cubic-bezier(.2,.7,.2,1) both}
 main::before{content:"";position:absolute;inset:-30px -54px;z-index:-1;background:radial-gradient(66% 90% at 50% 50%,rgba(6,5,3,.84),rgba(6,5,3,.48) 56%,transparent 80%)}
 .pin{width:10px;height:10px;border-radius:50%;background:#f6d68a;display:inline-block;margin-bottom:22px;box-shadow:0 0 0 7px rgba(246,214,138,.12),0 0 20px rgba(246,214,138,.65)}
-.msg{font-size:clamp(19px,3.8vw,24px);font-weight:600;letter-spacing:-.01em;color:#fff7ea;text-wrap:balance;text-shadow:0 2px 10px rgba(0,0,0,.85),0 1px 30px rgba(0,0,0,.6)}
+.msg{font-size:clamp(20px,5vw,32px);font-weight:700;letter-spacing:-.015em;color:#fff7ea;white-space:nowrap;text-shadow:0 2px 10px rgba(0,0,0,.9),0 1px 34px rgba(0,0,0,.65)}
+.sub{margin-top:10px;font-size:clamp(16px,3.4vw,21px);font-weight:600;color:#efe4cf;white-space:nowrap;text-shadow:0 2px 10px rgba(0,0,0,.9),0 1px 30px rgba(0,0,0,.6)}
 @keyframes up{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important}.stars i{opacity:.6}}
-</style></head><body><div class="scene"><span class="glow a"></span><span class="glow b"></span><div class="stars">${OFFLINE_STARS}</div><span class="beam l"></span><span class="beam r"></span><div class="sky"><svg viewBox="0 0 1600 440" preserveAspectRatio="xMidYMax slice" aria-hidden="true"><path d="M-20 440V372h150V440zM130 440V392h120V440zM250 440V352h150V440zM400 440V382h130V440zM530 440V336h150V440zM680 440V318h170V440zM850 440V330h160V440zM1010 440V360h140V440zM1150 440V340h150V440zM1300 440V380h160V440zM1460 440V360h170V440z" fill="#1c160d"/><path d="M738 440V100h124V440zM628 440V210h96V440zM876 440V175h104V440zM548 440V280h74V440zM986 440V250h84V440zM462 440V318h76V440zM1076 440V302h78V440zM372 440V344h84V440zM1160 440V324h90V440zM270 440V356h92V440zM1256 440V338h80V440zM176 440V374h84V440zM1348 440V362h90V440zM752 100V76h96v24zM774 76V58h52v18zM799 58V22h2v36z" fill="#0c0905"/><rect x="748" y="82" width="104" height="10" fill="#f6d68a" fill-opacity=".12"/><rect x="752" y="86" width="96" height="2" fill="#f6d68a" fill-opacity=".85"/><path d="${OFFLINE_WINDOWS}" fill="#f6d68a"/><circle cx="800" cy="20" r="3" fill="#ffe3a3" class="beacon"/></svg></div><div class="horizon"></div><div class="floor"></div><div class="vig"></div></div><main><span class="pin"></span><p class="msg">${OFFLINE_MESSAGE}</p></main></body></html>`;
+</style></head><body><div class="scene"><span class="glow a"></span><span class="glow b"></span><div class="stars">${OFFLINE_STARS}</div><span class="beam l"></span><span class="beam r"></span><div class="sky"><svg viewBox="0 0 1600 440" preserveAspectRatio="xMidYMax slice" aria-hidden="true"><path d="M-20 440V372h150V440zM130 440V392h120V440zM250 440V352h150V440zM400 440V382h130V440zM530 440V336h150V440zM680 440V318h170V440zM850 440V330h160V440zM1010 440V360h140V440zM1150 440V340h150V440zM1300 440V380h160V440zM1460 440V360h170V440z" fill="#1c160d"/><path d="M738 440V100h124V440zM628 440V210h96V440zM876 440V175h104V440zM548 440V280h74V440zM986 440V250h84V440zM462 440V318h76V440zM1076 440V302h78V440zM372 440V344h84V440zM1160 440V324h90V440zM270 440V356h92V440zM1256 440V338h80V440zM176 440V374h84V440zM1348 440V362h90V440zM752 100V76h96v24zM774 76V58h52v18zM799 58V22h2v36z" fill="#0c0905"/><rect x="748" y="82" width="104" height="10" fill="#f6d68a" fill-opacity=".12"/><rect x="752" y="86" width="96" height="2" fill="#f6d68a" fill-opacity=".85"/><path d="${OFFLINE_WINDOWS}" fill="#f6d68a"/><circle cx="800" cy="20" r="3" fill="#ffe3a3" class="beacon"/></svg></div><div class="horizon"></div><div class="floor"></div><div class="vig"></div></div><main><span class="pin"></span><p class="msg">${OFFLINE_MESSAGE}</p><p class="sub">${OFFLINE_SUB}</p></main></body></html>`;
   return new NextResponse(html, {
     status: 503,
     headers: {
